@@ -75,6 +75,28 @@ def _broken(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
         npcs=[{"piece": s["pieces"][0]["id"], "route": ["z1"]}]))
     made("a promotion off the board", lambda s: s["rules"].update(
         promotion={"piece": s["pieces"][0]["id"], "rank": 40}))
+    # T1 (`plan-pieces-moves.md` §5.3): a path that turns, where it cannot.
+    made("a path on a leap", lambda s: s["pieces"][1]["moves"].append(
+        {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "path": "circle"}))
+    made("a circle with a gap", lambda s: s["pieces"][1]["moves"].append(
+        {"kind": "slide", "vectors": [[1, 1]], "symmetry": "lateral", "path": "circle"}))
+    made("a zigzag with no turn", lambda s: s["pieces"][1]["moves"].append(
+        {"kind": "slide", "vectors": [[0, 1]], "path": "zigzag"}))
+    made("a one-step path", lambda s: s["pieces"][1]["moves"].append(
+        {"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "path": "zigzag",
+         "range": 1}))
+    # A1 (`plan-pieces-moves.md` §6.3): a strike given to some pieces, wrongly.
+    def shooting(s: dict[str, Any], by: list[str], **more: Any) -> None:
+        royals = [p["id"] for p in s["pieces"] if p.get("royal")]
+        s["rules"]["strike"] = {"effect": "capture", "position": "stay", "immune": royals,
+                                "by": by, **more}
+
+    made("a strike nobody makes", lambda s: shooting(s, []))
+    made("a shooter that never captures", lambda s: (
+        s["pieces"][1].update(captures=[]), shooting(s, [s["pieces"][1]["id"]])))
+    made("every piece shoots", lambda s: shooting(s, [p["id"] for p in s["pieces"]]))
+    made("a shooter beside a side switch", lambda s: shooting(
+        s, [s["pieces"][1]["id"]], switches_sides=[s["pieces"][1]["id"]]))
     return out
 
 

@@ -321,6 +321,24 @@ def _sight_extras(pieces: Any) -> float:
     )
 
 
+# T1 (`docs/plan-pieces-moves.md` §5.5): a path that turns is one rule a player is taught
+# about the slide it rides on (how it turns, that it never comes back on itself, that two
+# paths to one square are one move), charged once per kind of turn the game uses, on top of
+# the descriptor it already counts as. Read off the spelling, as the sights are.
+_PATH_TURN = 1.0
+
+
+def _path_extras(pieces: Any) -> float:
+    """What a game's turning paths cost: each kind of turn (circle, zigzag) once."""
+    turns: set[str] = set()
+    for piece in pieces if isinstance(pieces, list) else []:
+        moves = piece.get("moves") if isinstance(piece, dict) else None
+        for move in moves if isinstance(moves, list) else []:
+            if isinstance(move, dict) and move.get("path") in ("circle", "zigzag"):
+                turns.add(move["path"])
+    return _PATH_TURN * len(turns)
+
+
 def _simultaneous_extras(rule: Any) -> float:
     """The part of `rules.simultaneous`' charge `_RULE_COSTS` cannot say (schema 27).
 
@@ -577,7 +595,7 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
 
     special_rules = (
         _count_special_rules(rules) + _spy_extras(pieces) + _speed_extras(pieces)
-        + _rest_extras(pieces) + _sight_extras(pieces)
+        + _rest_extras(pieces) + _sight_extras(pieces) + _path_extras(pieces)
     )
 
     # Schema 12: a `landing` set is charged as a descriptor is, per set and per expanded

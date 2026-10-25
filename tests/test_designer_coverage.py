@@ -773,7 +773,8 @@ class TestFindARuleByTyping:
 
 
 class TestOnlyAHopsFieldsOnAHop:
-    """Fix 8 (F8). *More about this move* offered a hop's two fields on a leap or a slide."""
+    """Fix 8 (F8). *More about this move* offered a hop's two fields on a leap or a slide.
+    T1 added a slide's own, its path."""
 
     def _move(self, move: dict[str, Any]) -> list[str]:
         spec = _template("skirmish")
@@ -781,16 +782,17 @@ class TestOnlyAHopsFieldsOnAHop:
         drawn = _draw(spec, "moveEditor(DRAFT.pieces[0].moves[0], 0, 0)")
         return _drawn_paths(drawn, "move.0.0")
 
-    def test_a_leap_has_no_hop_fields(self) -> None:
+    def test_a_leap_has_no_kind_only_fields(self) -> None:
         drawn = self._move({"kind": "leap", "vectors": [[0, 1]]})
         for key in cards.MOVE_KIND_ONLY:
             assert key not in drawn, (key, drawn)
         assert "condition" in drawn
 
-    def test_a_hop_has_them(self) -> None:
-        drawn = self._move({"kind": "hop", "vectors": [[0, 1]]})
-        for key in cards.MOVE_KIND_ONLY:
-            assert key in drawn, (key, drawn)
+    @pytest.mark.parametrize("kind", ["hop", "slide"])
+    def test_each_kind_has_its_own(self, kind: str) -> None:
+        drawn = self._move({"kind": kind, "vectors": [[0, 1]]})
+        for key, kinds in cards.MOVE_KIND_ONLY.items():
+            assert (key in drawn) is (kind in kinds), (kind, key, drawn)
 
     def test_one_already_written_stays(self) -> None:
         drawn = self._move({"kind": "slide", "vectors": [[0, 1]], "screen": "own"})
@@ -798,10 +800,15 @@ class TestOnlyAHopsFieldsOnAHop:
 
     @pytest.mark.parametrize("key", sorted(cards.MOVE_KIND_ONLY))
     def test_the_validator_refuses_each_on_every_other_kind(self, key: str) -> None:
-        value = {"screen": "own", "screen_range": 1}[key]
+        value = {"screen": "own", "screen_range": 1, "path": "zigzag"}[key]
         for kind in schema.MOVE_KINDS:
             spec = _template("skirmish")
-            spec["pieces"][0]["moves"][0]["kind"] = kind
+            # A zigzag needs two directions to turn between (T1), so every kind is drawn
+            # with the bishop's four, where the path is a slide's to keep.
+            spec["pieces"][0]["moves"][0].update(
+                kind=kind, vectors=[[1, 1]], symmetry="rotate4")
+            spec["pieces"][0]["moves"][0].pop("range", None)
+            spec["pieces"][0]["moves"][0].pop("min_range", None)
             base = _problems(spec)
             spec["pieces"][0]["moves"][0][key] = value
             added = [line for line in _problems(spec) if line not in base]

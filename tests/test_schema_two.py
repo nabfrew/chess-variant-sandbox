@@ -586,6 +586,12 @@ _EVERY_RULESET = sorted(RULESETS.glob("*.json")) + sorted((RULESETS.parent / "ar
 # showcases land, so the two alternating rest test specs join the walk (the incremental key
 # with resting pieces in it, every ply).
 _EVERY_RULESET += sorted(Path(__file__).parent.glob("_rest_*.json"))
+# T1: no committed or archived game turns a slide's path until T2's and T3's showcases land, so
+# the three path test specs (a rose, a ring queen, bolts) join the walk.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_path_*.json"))
+# A1: no committed or archived game gives a strike to some pieces only until A2's archers land,
+# so the archers' test spec (chess whose bishops shoot) joins the walk.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_strike_*.json"))
 
 
 def test_the_walk_below_reads_the_whole_corpus() -> None:

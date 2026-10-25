@@ -860,30 +860,21 @@ class TestAHandMayStartWithSomethingInIt:
         spec["rules"]["drops"]["stock"] = {"Z": 1}
         assert any("stock key 'Z'" in error for error in validate_spec(spec))
 
-    def test_the_relaxation_is_gated_on_the_stock_and_not_removed(self) -> None:
-        """Q29's shape, and the reason it is a predicate rather than a deletion.
-
-        Removing `pieces[].moves must be a non-empty array` outright would let *every*
-        spec ever written declare a piece that can never move -- schema 1 included, since
-        a version gate only stops an old stamp reaching a new key. So it is conditioned
-        on `piece_has_stock`, exactly as schema 2's multiple royals are conditioned on
-        `royalty_can_multiply`.
-        """
+    def test_the_gate_on_the_stock_is_lifted_by_i1(self) -> None:
+        """Schema 10 admitted `moves: []` only for a piece `piece_has_stock` names. I1
+        (`docs/plan-pieces-moves.md` §4) lifted the gate: any piece may have no moves, and
+        the shapes of one that are mistakes are refused by name instead
+        (`tests/test_moveless.py`). The predicate stays, for `rest`'s refusal."""
         assert piece_has_stock(_stone()["rules"], "S")
         assert not piece_has_stock(_stone()["rules"], "P")
 
         orphan = _stone()
         orphan["rules"].pop("drops")
-        errors = validate_spec(orphan)
-        assert any("moves must be a non-empty array" in error for error in errors)
+        assert validate_spec(orphan) == []
 
-        # A stock for a *different* piece does not license this one.
         elsewhere = _stone()
         elsewhere["rules"]["drops"]["stock"] = {"P": 2}
-        assert any(
-            "moves must be a non-empty array" in error
-            for error in validate_spec(elsewhere)
-        )
+        assert validate_spec(elsewhere) == []
 
     def test_a_stocked_piece_can_stand_on_the_board(self) -> None:
         """The sixth route into `_pieces_that_can_stand`, and the first that needs no other.

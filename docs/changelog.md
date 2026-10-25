@@ -13,6 +13,21 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-25
 
+### Pieces that shoot
+
+A game can now give the shooting capture to some pieces only: an archer bishop takes what it attacks and
+stays where it stood.
+
+### Pieces whose path turns
+
+A sliding piece can now turn as it goes: round in a circle, like the rose and the ring, or in a zigzag,
+like a crooked bishop. Choose it under the move's details in the designer.
+
+### Pieces that never move
+
+A piece in a designed game may now have no moves at all: an anchor, a flag to guard, a bomb that
+goes off when it is taken. A royal piece can be one too, so a game can be won by capturing a flag that cannot run.
+
 ### The games page opens with today's picks, and the score has its own page
 
 The games page now starts with a band of picks: today's game, this month's game, the spotlight, new games and members' games,

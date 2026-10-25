@@ -51,6 +51,7 @@ from chess_variant_sandbox.spec.schema import (
     SIGHT_EFFECTS,
     SIGHT_MAX,
     SQUARE_SYMMETRIES,
+    TURNING_PATHS,
     _any_equal_speed_meeting,
     _check_extinction_coherence,
     _sight_entry,
@@ -66,6 +67,8 @@ from chess_variant_sandbox.spec.schema import (
     obstacle_squares,
     opening_counts,
     parse_square,
+    path_of,
+    path_refusals,
     piece_has_stock,
     piece_rests,
     piece_sights,
@@ -79,6 +82,7 @@ from chess_variant_sandbox.spec.schema import (
     simultaneous_tie_pair,
     spy_ids,
     strike_is_live,
+    strikers,
     sweep_conflicts,
     turn_is_long,
     uses_sweep,
@@ -297,6 +301,8 @@ def _clip_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     piece, move = rng.choice(movers)
     floor = move.get("min_range", 1)
     lengths = [n for n in (1, 2, 3) if n >= (floor if isinstance(floor, int) else 1)]
+    if path_of(move) != "straight":
+        lengths = [n for n in lengths if n > 1]  # T1: a path of one step never turns
     if not lengths:
         return None  # nothing shorter than this move's own minimum is a move
     move["range"] = rng.choice(lengths)
@@ -339,6 +345,7 @@ def _slide_becomes_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
     move["kind"] = "leap"
     move.pop("range", None)
     move.pop("min_range", None)
+    move.pop("path", None)  # T1: a leap is one jump, with no path to turn
     settle_en_passant(spec)
     return f"turned the {piece.get('name', piece['id'])}'s slide into a leap"
 
@@ -366,6 +373,104 @@ def _ride_a_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
     if rng.random() < 0.25:
         move["min_range"] = 2
     return f"let the {name} leap again and again, each jump blockable on its way"
+
+
+def _bend_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """T1 (`docs/plan-pieces-moves.md` §5.5): a straight slide's path turns, a circle or a
+    zigzag, wherever the validator lets that set of directions turn (`path_refusals`).
+
+    Each child must pass the validator whole, which also refuses a path beside portals, on
+    the piece en passant is about and on a wild piece, so those are drawn and declined
+    rather than copied here. `straighten` is the way back."""
+    candidates = [
+        (index, position, path)
+        for index, piece in enumerate(pieces(spec))
+        for position, move in enumerate(piece.get("moves", []))
+        if move.get("kind") == "slide" and path_of(move) == "straight"
+        and move.get("range", 0) != 1
+        for path in TURNING_PATHS
+    ]
+    for index, position, path in rng.sample(candidates, len(candidates)):
+        trial = copy.deepcopy(spec)
+        piece = pieces(trial)[index]
+        piece["moves"][position]["path"] = path
+        if validate_spec(trial):
+            continue
+        spec.clear()
+        spec.update(trial)
+        name = piece.get("name", piece["id"])
+        return (
+            f"the {name}'s line turns as it goes, round in a circle, each step the next "
+            "direction round" if path == "circle"
+            else f"the {name}'s line zigzags, each step turning to a neighbouring direction "
+            "and back"
+        )
+    return None
+
+
+def _straighten(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """T1: a slide whose path turns runs straight again (``path`` taken out)."""
+    movers = [(p, m) for p, m in _movers(spec, "slide") if path_of(m) != "straight"]
+    if not movers:
+        return None
+    piece, move = rng.choice(movers)
+    move.pop("path", None)
+    return f"the {piece.get('name', piece['id'])}'s line runs straight again"
+
+
+def _still_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """I1 (`docs/plan-pieces-moves.md` §4.5): a piece on the board stops moving, or one that
+    never moves is given a king's step.
+
+    Still: a non-royal type the setup places, that castles and promotes in no rule, loses
+    every move (`moves: []`): it stands, blocks and can be taken. Freed: a type with no
+    moves that is not a stocked stone alone (that is `place-a-stone`'s) and not wild gets
+    one square in every direction. Each child must pass the validator, which refuses a
+    still piece some rule still asks to move."""
+    from chess_variant_sandbox.spec.schema import piece_has_stock
+
+    found = spec.get("rules")
+    rules: dict[str, Any] = found if isinstance(found, dict) else {}
+    wild = {npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)}
+    placed = {
+        placement.get("piece")
+        for placement in (spec.get("setup") or {}).get("placements") or []
+        if isinstance(placement, dict)
+    }
+    hexy = (spec.get("board") or {}).get("lattice") == "hex"
+    step = (
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate6"} if hexy
+        else {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}
+    )
+    candidates = [
+        piece for piece in pieces(spec)
+        if isinstance(piece.get("id"), str) and piece["id"] not in wild
+        and (
+            (piece.get("moves") == [] and (piece["id"] in placed
+                                           or not piece_has_stock(rules, piece["id"])))
+            or (piece.get("moves") and not piece.get("royal") and piece["id"] in placed)
+        )
+    ]
+    # Either way first, half the time each, so a game with both kinds crosses both ways.
+    freeing = rng.random() < 0.5
+    ordered = rng.sample(candidates, len(candidates))
+    ordered.sort(key=lambda piece: bool(piece.get("moves")) == freeing)
+    for piece in ordered:
+        trial = copy.deepcopy(spec)
+        target = next(p for p in pieces(trial) if p.get("id") == piece["id"])
+        name = piece.get("name", piece["id"])
+        if target.get("moves"):
+            target["moves"] = []
+            said = f"the {name} never moves: it stands where it starts until it is taken"
+        else:
+            target["moves"] = [copy.deepcopy(step)]
+            said = f"the {name} may now step one square in any direction"
+        if validate_spec(trial):
+            continue
+        spec.clear()
+        spec.update(trial)
+        return said
+    return None
 
 
 def _no_leg_for(move: dict[str, Any], vector: list[int]) -> bool:
@@ -418,6 +523,11 @@ def _change_symmetry(spec: dict[str, Any], rng: random.Random) -> str | None:
         return _turn_a_hex_move(spec, movers, rng)
     piece, move = rng.choice(movers)
     current = _set_symmetry(spec, move, rng)
+    # T1: a turning path needs its directions to go round (a circle) or to have a near pair
+    # (a zigzag); where the new symmetry leaves none, the line runs straight, by the
+    # validator's own reading (`path_refusals`).
+    if path_of(move) != "straight" and path_refusals(move, "move"):
+        move.pop("path", None)
     return f"changed how the {piece.get('name', piece['id'])}'s moves reflect ({current} to {move['symmetry']})"
 
 
@@ -1332,6 +1442,13 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     set_contacts(spec, effect=rng.choice(("promote", "demote")))
     if rules.get("contacts") is before:
         return None  # one non-royal piece, so there is no rung to move to
+    # I1: a link whose mover never moves never fires, and is refused by name.
+    still = {piece.get("id") for piece in pieces(spec) if piece.get("moves") == []}
+    links = [link for link in rules["contacts"]["links"] if link.get("mover") not in still]
+    if not links:
+        rules.pop("contacts")
+        return None
+    rules["contacts"]["links"] = links
     return (
         f"a piece that takes {_rung(spec, rules['contacts']['links'])} becomes that "
         "piece, so a capture changes what the taker is and not only what is left"
@@ -2358,7 +2475,11 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
     ):
         return None  # the validator refuses each of these beside a wild piece
 
-    candidates = _non_royal(spec)
+    # T1: a wild type's moves are never read, so the validator refuses a turning path on one.
+    candidates = [
+        piece for piece in _non_royal(spec)
+        if all(path_of(move) == "straight" for move in piece.get("moves", []))
+    ]
     if not candidates:
         return None
     board = spec.get("board", {})
@@ -3273,6 +3394,11 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     narrows a standing blast to radius 0 (taking off `immune`, which radius 0 refuses).
     Every royal is immune and never switches, which the validator requires; the switching
     pieces are every non-royal one, Andernach's reading.
+
+    A1 (`docs/plan-pieces-moves.md` §6.5) adds the strike's ``by`` both ways. *Arm one
+    piece*: a standing rifle strike is given to one capturing type at random instead of
+    being taken off (half the draws), and a new strike may be rifle given to one type (the
+    archers). *Arm everyone*: a strike with ``by`` loses it, every piece striking again.
     """
     if _commands(spec):
         return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
@@ -3284,6 +3410,9 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     if isinstance(explosion, dict) and explosion.get("radius") == 0:
         explosion["radius"] = 1
         return "a capture takes its neighbours with it again, not only the two pieces"
+    if isinstance(strike, dict) and "by" in strike:
+        strike.pop("by")
+        return "a capture by any piece strikes again, not only one by the listed pieces"
     if isinstance(strike, dict) and "switches_sides" in strike:
         strike.pop("switches_sides")
         if not strike_is_live(strike):
@@ -3294,6 +3423,10 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         and strike.get("effect", "capture") == "capture"
         and strike.get("position") in ("stay", "home")
     ):
+        if strike.get("position") == "stay" and rng.random() < 0.5:
+            armed = _arm_one_piece(spec, strike, rng)
+            if armed is not None:
+                return armed
         strip_rule(spec, "strike")
         return "a capture is an ordinary capture again: the taker moves in, the taken is gone"
 
@@ -3308,7 +3441,8 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         or uses_sweep(spec)
     ):
         return None  # two rules cannot both say what happens to a taken piece
-    switching = sorted(str(piece["id"]) for piece in _non_royal(spec))
+    # I1: a piece that never moves never captures, so it never switches.
+    switching = sorted(str(piece["id"]) for piece in _non_royal(spec) if piece.get("moves"))
     if isinstance(strike, dict) and strike:
         if not strike_is_live(strike) or not switching:
             return None
@@ -3327,8 +3461,11 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     )
     # Schema 18c: circe gives back what `only_lost` counts as lost, so it is not offered.
     # Schema 26: a strike that stays is refused beside rounds, so it is not offered there.
-    stays = () if is_simultaneous(rules) else ("stay",)
+    stays = () if is_simultaneous(rules) else ("stay", "shoot")
     choice = rng.choice((*stays, "switch") if only_lost else (*stays, "home", "switch"))
+    if choice == "shoot":
+        rule["position"] = "stay"
+        return _arm_one_piece(spec, rule, rng, adding=True)
     if choice == "switch":
         if not switching:
             return None
@@ -3343,6 +3480,36 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         )
     rules["strike"] = rule
     return said
+
+
+def _arm_one_piece(
+    spec: dict[str, Any], strike: dict[str, Any], rng: random.Random, adding: bool = False
+) -> str | None:
+    """Give a rifle strike to one capturing type (A1, `plan-pieces-moves.md` §6.5).
+
+    ``strike`` is the standing rule, or with ``adding`` the one about to be added. One of
+    the types whose captures it reaches is drawn, and only where there are two or more, so
+    the list never names every one (the strike without ``by``). Checked against the
+    validator; ``None`` where the result is refused, with the spec left alone.
+    """
+    listed = pieces(spec)
+    firing = strikers(listed, strike)
+    if not firing or len(firing) < 2:
+        return None
+    shooter = rng.choice(sorted(firing))
+    trial = copy.deepcopy(spec)
+    trial.setdefault("rules", {})["strike"] = {**copy.deepcopy(strike), "by": [shooter]}
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    name = next(
+        (str(p.get("name", p["id"])) for p in listed if p.get("id") == shooter), shooter
+    )
+    return (
+        f"the {name} shoots: its capture removes what it takes and it stays where it stood"
+        + ("" if adding else "; every other piece captures as usual again")
+    )
 
 
 def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -3379,6 +3546,7 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     piece, move = rng.choice(movers)
     move["kind"] = "sweep"
+    move.pop("path", None)  # T1: a sweep removes what lies on a line
     return (
         f"the {piece.get('name', piece['id'])} sweeps: it jumps to any square on its lines "
         "and removes every piece it passes over, its own included"
@@ -3452,6 +3620,9 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("leap-becomes-slide", _leap_becomes_slide),
     Operator("slide-becomes-leap", _slide_becomes_leap),
     Operator("ride-a-leap", _ride_a_leap),
+    Operator("still-a-piece", _still_a_piece),
+    Operator("bend-a-line", _bend_a_line),
+    Operator("straighten", _straighten),
     Operator("add-a-direction", _add_a_direction),
     Operator("remove-a-direction", _remove_a_direction),
     Operator("change-symmetry", _change_symmetry),

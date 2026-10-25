@@ -41,6 +41,7 @@ from chess_variant_sandbox.spec.legacy_names import LEGACY_NAMES
 from chess_variant_sandbox.spec.schema import (
     CONTACT_LINK_OFF_VALUES,
     DEFAULT_RANGE,
+    MOVE_OFF_VALUES,
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
     SIGHT_OFF_VALUES,
@@ -184,9 +185,9 @@ def drop_off_values(spec: dict[str, Any]) -> None:
     """Take out, in place, every key written at the value that states no rule (Q1008c).
 
     `schema`'s ``*_OFF_VALUES``: a piece type's ``rest: 0``, ``speed: 0``, ``spy: false`` and
-    ``sight: []``, a line of sight's ``through: false``, ``rules.simultaneous``'s ``tie:
-    "both"``, ``swap: "chase"`` and ``both: "draw"``, a portal group's ``kind: "momentum"``
-    and a contact link's ``own: false``. The validator accepts each and every reader takes it
+    ``sight: []``, a move's ``path: "straight"`` (T1), a line of sight's ``through:
+    false``, ``rules.simultaneous``'s ``tie: "both"``, ``swap: "chase"`` and ``both:
+    "draw"``, a portal group's ``kind: "momentum"`` and a contact link's ``own: false``. The validator accepts each and every reader takes it
     as the key's absence. Shared by the normal form and `spelling.current_spelling`, so a
     spec that writes one is named as, and tidied to, the game without it.
     """
@@ -194,6 +195,8 @@ def drop_off_values(spec: dict[str, Any]) -> None:
         for entry in _dicts(piece.get("sight")):
             _drop_off(entry, SIGHT_OFF_VALUES)
         _drop_off(piece, PIECE_OFF_VALUES)
+        for move in _dicts(piece.get("moves")):
+            _drop_off(move, MOVE_OFF_VALUES)
     rules = spec.get("rules")
     if not isinstance(rules, dict):
         return
@@ -201,6 +204,8 @@ def drop_off_values(spec: dict[str, Any]) -> None:
         _drop_off(rules["simultaneous"], SIMULTANEOUS_OFF_VALUES)
     for group in _dicts(rules.get("portals")):
         _drop_off(group, PORTAL_OFF_VALUES)
+        for move in _dicts(group.get("moves")):
+            _drop_off(move, MOVE_OFF_VALUES)
     contacts = rules.get("contacts")
     if isinstance(contacts, dict):
         for link in _dicts(contacts.get("links")):

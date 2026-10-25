@@ -39,6 +39,7 @@ from chess_variant_sandbox.spec.schema import (
     MODES,
     MOVE_KINDS,
     ORIENTATIONS,
+    PATHS,
     PORTAL_PASSAGES,
     REACH_ON,
     REPETITION_NEVER,
@@ -165,6 +166,28 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "type": "string",
                 "enum": list(MODES),
                 "description": "Whether this move may occupy an empty square, capture, or both.",
+            },
+            "path": {
+                "type": "string",
+                "enum": list(PATHS),
+                "description": (
+                    "For a slide only, how its path runs. straight (the default): every "
+                    "step the same direction. circle: each step turns to the next of the "
+                    "move's directions round, always the same way (either way), until it "
+                    "would land on a square it has been on; the knight's eight, [[1, 2]] "
+                    "by dihedral8, is the rose, round an octagon of up to seven knight "
+                    "steps, and the queen's, [[1, 0], [1, 1]] by rotate4, is a ring of "
+                    "one-square steps. zigzag: the first direction alternates with a "
+                    "neighbouring one (either), so [[1, 1]] by rotate4 runs NE, SE, NE, "
+                    "... along a rank or a file on its colour, Betza's crooked bishop. "
+                    "Any start, both senses. Each step's landing square is looked at, as a "
+                    "slide's: empty, it may stop and go on; occupied, the path ends there, "
+                    "taking it if it may. A square reached two ways is one move. range "
+                    "counts steps. A circle needs directions all the way round (no gap of "
+                    "half a turn); a zigzag two less than half a turn apart. Refused on "
+                    "any other kind, at range 1, on a hex lattice, beside portals, on the "
+                    "piece en passant is about, and on a wild piece."
+                ),
             },
             "screen_range": {
                 "type": "integer",
@@ -319,18 +342,19 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "description": "Losing every royal piece loses the game.",
             },
             "value": {"type": "number", "minimum": 0, "maximum": 100},
-            # No minItems (Q925): the validator admits `moves: []` for a piece
-            # `rules.drops.stock` puts in a hand (`schema.piece_has_stock`), and a
-            # cross-reference is not something a JSON Schema bound can say, so the condition
-            # is in words.
+            # No minItems (Q925, I1): `moves: []` is a piece that never moves, on any piece;
+            # the validator refuses the rules such a piece cannot act on, which a JSON Schema
+            # bound cannot say.
             "moves": {
                 "type": "array",
                 "items": move,
                 "maxItems": MAX_MOVE_DESCRIPTORS,
                 "description": (
                     "The ways this piece may move, each one a separate entry; the piece "
-                    "may make any one of them on its turn. A piece may have none only when "
-                    "it starts in a player's hand (rules.drops.stock)."
+                    "may make any one of them on its turn. An empty list is a piece that "
+                    "never moves: it stands where it is put, blocks, and can be taken, and "
+                    "gives no check. It may not promote by moving, castle, be the piece a "
+                    "goal or a capture rule names, or leave a player nothing to move."
                 ),
             },
             "region": _squares(
@@ -832,6 +856,21 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "Pieces that change sides when they capture: the capturer "
                             "becomes the other player's piece where it lands "
                             "(Andernach chess). A royal piece may not be listed."
+                        ),
+                    },
+                    "by": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "description": (
+                            "The only capturing pieces whose captures strike; every other "
+                            "piece captures as usual, moving onto the square it took. "
+                            "Leave it out and every piece strikes. With effect 'capture' "
+                            "and position 'stay' it is a piece that shoots: a capture by "
+                            "a listed piece removes its target and the piece stays where "
+                            "it stood (an archer). Each listed piece must capture "
+                            "something the strike reaches, the list may not name every "
+                            "piece that does, and it may not stand beside switches_sides."
                         ),
                     },
                     "landing": {**landing, "description": landing_description},
@@ -1441,8 +1480,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "Per piece id, how many each player holds before anything "
                             "has been captured, as a count of 1 to "
                             f"{MAX_STOCK} or \"{STOCK_UNLIMITED}\" for a supply that "
-                            "never runs out. A stocked piece is the only one that may "
-                            "have an empty 'moves' list."
+                            "never runs out. A stocked piece may have an empty 'moves' "
+                            "list, a stone that is placed and never moves."
                         ),
                         "additionalProperties": {
                             "anyOf": [

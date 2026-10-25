@@ -43,6 +43,7 @@ from chess_variant_sandbox.spec.schema import (
     npc_starts,
     obstacle_squares,
     parse_square,
+    path_of,
     piece_rests,
     piece_sights,
     piece_speeds,
@@ -59,6 +60,8 @@ from chess_variant_sandbox.spec.schema import (
     simultaneous_switch,
     spy_ids,
     strike_is_live,
+    turning_order,
+    turns_less_than_half,
     validate_or_raise,
     wrap_stated,
 )
@@ -2338,6 +2341,80 @@ def _lame_ride(
     return tuple(path), tuple(modes)
 
 
+def _turning_rides(
+    landing: Callable[[int, int], int | None],
+    file: int,
+    rank: int,
+    square: int,
+    steps: list[tuple[int, int]],
+    path: str,
+    width: int,
+    height: int,
+    mode: int,
+    max_range: int,
+    min_range: int,
+    confine: frozenset[int] | None,
+    obstacles: frozenset[int],
+) -> list[tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]]:
+    """Every path of one turning slide from one square (T1, `docs/plan-pieces-moves.md` §5.2):
+    ``(squares, modes, steps)`` per path, ``steps`` the index into ``steps`` of the direction
+    that reached each square (for the momentum signs).
+
+    ``steps`` are the descriptor's directions in the mover's frame, laid out round the origin
+    by `schema.turning_order`. A ``circle`` starts with any of them and takes the next one
+    round at every step, one way or the other; a ``zigzag`` alternates its first direction
+    with a neighbour less than half a turn away, either one. Every landing goes through
+    ``landing`` (the edge, a seam), so a path ends off the board, on a wall, or on a square it
+    has already been on, its origin included, exactly as a slide's ray does; a landing
+    nearer than ``min_range`` or outside ``confine`` carries mode 0 and is passed, as on a
+    slide, and trailing landings with no mode are dropped. ``range`` (0 for no cap) counts
+    steps. Each path is a slide entry of its own, so blocking is the core's walk of a ray:
+    the first occupied landing ends it, taken if it may be. Paths that share a square are
+    folded by the runtime dedup flag (`_needs_runtime_dedup`). Identical paths are kept
+    once and the list is sorted, so the table is a function of the spec alone.
+    """
+    count = len(steps)
+    # The longest a path can be: it never revisits a square.
+    limit = max_range if max_range > 0 else width * height
+    walks: list[list[int]] = []
+    for start in range(count):
+        ahead, behind = (start + 1) % count, (start - 1) % count
+        if path == "circle":
+            walks += [[(start + k) % count for k in range(limit)],
+                      [(start - k) % count for k in range(limit)]]
+            continue
+        # Counter-clockwise to the one ahead, or clockwise to the one behind, each only
+        # where that turn is less than half a turn (with two directions they are one).
+        for neighbour, first, second in ((ahead, start, ahead), (behind, behind, start)):
+            if neighbour != start and turns_less_than_half(steps[first], steps[second]):
+                walks.append([start if k % 2 == 0 else neighbour for k in range(limit)])
+    rides: set[tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]] = set()
+    for walk in walks:
+        squares: list[int] = []
+        modes: list[int] = []
+        used: list[int] = []
+        visited = {square}
+        at_file, at_rank = file, rank
+        for distance, index in enumerate(walk, start=1):
+            step_x, step_y = steps[index]
+            target = landing(at_file + step_x, at_rank + step_y)
+            if target is None or target in visited or target in obstacles:
+                break
+            visited.add(target)
+            squares.append(target)
+            used.append(index)
+            usable = distance >= min_range and (confine is None or target in confine)
+            modes.append(mode if usable else 0)
+            at_file, at_rank = target % width, target // width
+        while modes and not modes[-1]:
+            modes.pop()
+            squares.pop()
+            used.pop()
+        if modes:
+            rides.add((tuple(squares), tuple(modes), tuple(used)))
+    return sorted(rides)
+
+
 def _halved_toward_zero(value: int) -> int:
     """Half of ``value``, rounded toward zero, so ``-v`` halves to minus what ``v`` does."""
     return value // 2 if value >= 0 else -(-value // 2)
@@ -2481,6 +2558,9 @@ def _compile_square_full(
     # Schema 19: the momentum of each leap target and lame leap, built beside them.
     leap_momentum: dict[bool, dict[int, int]] = {}
     lame_momentum: list[tuple[int, ...]] = []
+    # T1: each turning slide's paths, and their momentum, built beside the lame rides.
+    turning_entries: list[Entry] = []
+    turning_momentum: list[tuple[int, ...]] = []
     # (kind, step x, step y, needs an unmoved origin, screen range, screen owner).
     # The last two are hop-only and are zero for everything else, which is what keeps a
     # slide and a hop along the same vector from merging into one ray.
@@ -2510,6 +2590,28 @@ def _compile_square_full(
         symmetry = descriptor.get("symmetry", "none")
         min_range = descriptor.get("min_range", 1)
         max_range = descriptor.get("range", DEFAULT_RANGE.get(kind, 1))
+
+        turning = path_of(descriptor)
+        if kind == "slide" and turning != "straight":
+            # T1: a turning path reads the whole set of directions at once, in the mover's
+            # frame (the second player's reflection, as below), so it is built here rather
+            # than one direction at a time. The validator keeps it off a hex lattice.
+            assert not radius, "a turning path is refused on a hex lattice"
+            frame = [
+                (dx, dy) if player == 0 else (-dx, -dy) if orientation == "rotate" else (dx, -dy)
+                for dx, dy in _descriptor_directions(descriptor["vectors"], symmetry, facing)
+            ]
+            steps = turning_order(frame)
+            for squares, path_modes, used in _turning_rides(
+                landing, file, rank, square, steps, turning, width, height, mode, max_range,
+                min_range, confine, obstacles,
+            ):
+                turning_entries.append((squares, path_modes, requires_unmoved))
+                turning_momentum.append(tuple(
+                    momentum_bits(*steps[index], m) if m else 0
+                    for index, m in zip(used, path_modes, strict=True)
+                ))
+            continue
 
         # Sorted, and the sort is what makes the compiled tables a function of the spec
         # alone. A set of tuples iterates in hash order, and CPython's tuple hash is
@@ -2673,13 +2775,17 @@ def _compile_square_full(
     if momentum:
         return (
             (
-                tuple(leap_entries), tuple(slide_entries + lame_entries),
+                tuple(leap_entries), tuple(slide_entries + lame_entries + turning_entries),
                 tuple(hop_entries), tuple(sweep_entries),
             ),
-            (leap_signs, tuple(slide_signs + lame_momentum), tuple(hop_signs)),
+            (
+                leap_signs, tuple(slide_signs + lame_momentum + turning_momentum),
+                tuple(hop_signs),
+            ),
         )
     return _resolve_overlaps(
-        leap_entries, slide_entries + lame_entries, hop_entries, sweep_entries
+        leap_entries, slide_entries + lame_entries + turning_entries, hop_entries,
+        sweep_entries,
     ), _NO_MOMENTUM
 
 
@@ -4141,6 +4247,7 @@ def _compile_strike(
 
     Schema 17 (Q540) gives ``"capture"`` two positions that say something (``stay``,
     rifle; ``home``, circe) and adds ``switches_sides`` (Andernach) under any effect.
+    A1 adds ``by``: only the listed types' captures strike, a row mask over the table.
     ``rebirth`` is ``(initial board, width, n_facings, hex lattice)``, from which
     ``home`` builds its table; without it the rule says only whether anything survives.
     """
@@ -4151,6 +4258,12 @@ def _compile_strike(
     immune = frozenset(index_of[p] for p in strike.get("immune", []) if p in index_of)
     switching = frozenset(
         index_of[p] for p in strike.get("switches_sides") or [] if p in index_of
+    )
+    # A1 (`docs/plan-pieces-moves.md` §6.2): only a capture by a listed type strikes, so
+    # every other mover's row is plain capture. `None` is every type, the rule as it was.
+    by = strike.get("by")
+    strikers = (
+        frozenset(index_of[p] for p in by if p in index_of) if by is not None else None
     )
     strike_to = [-1] * n_types
     if effect == "capture":
@@ -4179,6 +4292,7 @@ def _compile_strike(
     if switching:
         mover_flips = tuple(
             mover in switching and victim not in immune
+            and (strikers is None or mover in strikers)
             for mover in range(n_types)
             for victim in range(n_types)
         )
@@ -4187,13 +4301,23 @@ def _compile_strike(
 
     # The victim column, said the general way: every attacker meets the same table,
     # which is precisely what "keyed by the victim alone" means. `compact_to` reads it
-    # straight back out, so the boundary still sends one array of `n_types`.
+    # straight back out, so the boundary still sends one array of `n_types`. Under `by`
+    # (A1) an unlisted mover's row is all -1, the rows differ, `compact_to` is `None`, and
+    # the table crosses as the contact arrays, as Andernach's does.
+    if strikers is None:
+        onto_to = tuple(strike_to) * n_types
+    else:
+        onto_to = tuple(
+            target if mover in strikers else -1
+            for mover in range(n_types)
+            for target in strike_to
+        )
     rule = StrikeRule(
         effect=effect,
         position=position,
         immune_types=immune,
         n_types=n_types,
-        onto_to=tuple(strike_to) * n_types,
+        onto_to=onto_to,
         mover_to=(-1,) * (n_types * n_types),
         spelling="strike",
         landing=landing,

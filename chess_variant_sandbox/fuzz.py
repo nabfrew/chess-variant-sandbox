@@ -75,7 +75,7 @@ from chess_variant_sandbox.engine.compile import WILD, CompiledSpec, compile_spe
 from chess_variant_sandbox.loop.operators import OPERATORS, mutate
 from chess_variant_sandbox.spec.canonical import load_spec
 from chess_variant_sandbox.spec.complexity import _RULE_ACTIVE, _RULE_COSTS, _RULE_DEFAULTS
-from chess_variant_sandbox.spec.schema import validate_spec
+from chess_variant_sandbox.spec.schema import is_simultaneous, validate_spec
 
 ROOT = Path(__file__).resolve().parent.parent
 CORPUS = ROOT / "rulesets"
@@ -576,6 +576,11 @@ def run(seeds: range | list[int], plies: int = PLIES, corpus: Path = CORPUS) -> 
             continue
         del compiled
         coverage.observe(active_rules(built.spec))
+        if is_simultaneous(built.spec):
+            # The walk alternates moves; a game in rounds is played with `apply_round`, and
+            # its oracles are `tests/simultaneous_oracle.py`'s. Counted, as a refusal is.
+            coverage.refused["played in rounds"] += 1
+            continue
         try:
             coverage.walked += 1
             walk(built.spec, seed, plies)

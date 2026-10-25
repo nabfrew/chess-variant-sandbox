@@ -48,6 +48,7 @@ from chess_variant_sandbox.spec.schema import (
     simultaneous_switch,
     spy_ids,
     strike_changes_anything,
+    strikers,
     wrap_stated,
 )
 from chess_variant_sandbox.spec.transform import keeps_a_survivor
@@ -74,6 +75,10 @@ _SCALES: dict[str, float] = {
     # jump after jump; without this a lame rider and the single lame leap it was written from
     # read as one game (every other count is equal), and the loop would skip the tournament.
     "lame_rider_share": 1.0,
+    # T1 (`docs/plan-pieces-moves.md` §5.5). A slide whose path turns (a circle or a zigzag)
+    # reaches other squares from the same directions; without this the ring queen and the
+    # queen would differ only by the rule charge in `special_rules`.
+    "turning_share": 1.0,
     "royal_types": 2.0,
     "royal_step": 2.0,
     "royal_slides": 1.0,
@@ -184,6 +189,10 @@ _SCALES: dict[str, float] = {
     "strike_stays_put": 1.0,
     "strike_rebirths": 1.0,
     "capturer_switches_sides": 1.0,
+    # A1 (`docs/plan-pieces-moves.md` §6.5): the share of the capturing types whose captures
+    # strike, 1.0 without `by`. Without it rifle and the archers (rifle given to the bishops
+    # alone) would differ only by nothing, and read as distance zero.
+    "strikers_share": 1.0,
     # Schema 17 (Q540): a blast of radius 0 (kamikaze) is not atomic.
     "explodes_alone": 1.0,
     # Two, for the same reason the strike has three. A rule with a cost but no feature
@@ -389,6 +398,10 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         "lame_rider_share": sum(
             1 for piece in pieces for move in piece.get("moves", []) or []
             if move.get("kind") == "lame" and move.get("range", 1) != 1
+        ) / total_moves,
+        "turning_share": sum(
+            1 for piece in pieces for move in piece.get("moves", []) or []
+            if move.get("kind") == "slide" and move.get("path") in ("circle", "zigzag")
         ) / total_moves,
         "royal_types": float(sum(1 for piece in pieces if piece.get("royal"))),
         "royal_step": royal_step,
@@ -695,6 +708,7 @@ def _strike_features(spec: dict[str, Any]) -> dict[str, float]:
         "strike_stays_put": 0.0,
         "strike_rebirths": 0.0,
         "capturer_switches_sides": 0.0,
+        "strikers_share": 0.0,
     }
     strike = (spec.get("rules") or {}).get("strike")
     if not isinstance(strike, dict):
@@ -715,7 +729,20 @@ def _strike_features(spec: dict[str, Any]) -> dict[str, float]:
         "strike_stays_put": 1.0 if stays_put else 0.0,
         "strike_rebirths": 1.0 if position == "home" else 0.0,
         "capturer_switches_sides": 1.0 if switches else 0.0,
+        "strikers_share": _strikers_share(spec, strike),
     }
+
+
+def _strikers_share(spec: dict[str, Any], strike: dict[str, Any]) -> float:
+    """A1: the listed types over every type whose captures the strike reaches."""
+    by = strike.get("by")
+    pieces = spec.get("pieces")
+    if not isinstance(by, list) or not by or not isinstance(pieces, list):
+        return 1.0
+    firing = strikers(pieces, strike)
+    if not firing:
+        return 1.0
+    return len(set(firing) & set(by)) / len(firing)
 
 
 def _contact_features(pieces: list[Any], contacts: Any) -> dict[str, float]:
@@ -803,7 +830,26 @@ def _contact_features(pieces: list[Any], contacts: Any) -> dict[str, float]:
         "contacts_keep_the_mover": (
             1.0 if any(link.get("mover_to") == link.get("mover") for link in links) else 0.0
         ),
+        # A1: the strike's `strikers_share` read off the table, the capturing types that
+        # move in some live link over every capturing type, so a strike re-spelt as a
+        # table measures as the strike does.
+        "strikers_share": _movers_share(pieces, {str(link.get("mover")) for link in links}),
     }
+
+
+def _movers_share(pieces: list[Any], movers: set[str]) -> float:
+    capturing = {
+        str(piece["id"])
+        for piece in pieces
+        if isinstance(piece, dict) and "id" in piece and piece.get("captures") != []
+        and any(
+            isinstance(move, dict) and move.get("mode", "both") != "move"
+            for move in piece.get("moves") or []
+        )
+    }
+    if not capturing:
+        return 1.0
+    return len(capturing & movers) / len(capturing)
 
 
 def _stock_features(drops: Any) -> dict[str, float]:

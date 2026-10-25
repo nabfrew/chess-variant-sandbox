@@ -89,6 +89,14 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "backwards does; one that comes into play later points the way it starts. Some "
         "must then be placed pointing another way, or the pointing would change nothing.",
     ),
+    "pieces.moves.path": (
+        "how its path runs",
+        "For a slide only. Straight, every step the same way, is every ordinary slide. A "
+        "circle turns to the next direction round at every step, always the same way, as the "
+        "rose's knight steps run round an octagon. A zigzag turns to a neighbouring direction "
+        "and back again, as the crooked bishop runs along a rank on its own colour. A piece on "
+        "a square the path lands on ends it.",
+    ),
     "pieces.moves.screen_range": ("how far past the piece it jumps", None),
     "pieces.moves.screen": (
         "whose piece it jumps",
@@ -222,6 +230,13 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "pieces that change sides",
         "A piece listed here that takes something becomes the other player's piece on the "
         "square it took. A king may not be listed.",
+    ),
+    "rules.strike.by": (
+        "only captures made by",
+        "Only a capture made by a piece listed here strikes; every other piece captures as "
+        "usual, moving onto the square it took. With 'capture' and 'stay' a listed piece "
+        "shoots: what it takes is gone and it stays where it stood. Leave it empty and "
+        "every piece strikes.",
     ),
     "rules.contacts.links": ("what each pair becomes", None),
     "rules.contacts.links.mover": ("the piece taking", None),

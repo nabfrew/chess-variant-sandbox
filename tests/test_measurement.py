@@ -439,7 +439,13 @@ class TestTheFingerprintsPointAtSomething:
 # instead of calling `apply`, which refuses a round game and raised. Only a circe game in rounds
 # reaches the new line, and no library game is one, so no number should move. It was
 # "0d041f41fc5bfba1" after Q1007d; the next library replay re-scores under it.
-FROZEN_METRICS = "5a65f47b2629c080"
+#
+# **Moved 2026-10-25 by T1 (turning paths)**: `spec/complexity.py` charges a slide whose path
+# turns (`moves[].path` "circle" or "zigzag") one special rule per kind of turn
+# (`_path_extras`, `docs/plan-pieces-moves.md` §5.5). No library game writes a path, so no
+# number can move. It was "5a65f47b2629c080" after Q1020; the next library replay re-scores
+# under it.
+FROZEN_METRICS = "f745667ed7f652e7"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:

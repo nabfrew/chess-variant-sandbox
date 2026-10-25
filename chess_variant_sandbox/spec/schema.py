@@ -16,7 +16,8 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable, Sequence
 from collections.abc import Set as AbstractSet
-from math import gcd
+from functools import cmp_to_key
+from math import atan2, degrees, gcd
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from chess_variant_sandbox.spec.complexity import expand_symmetry
@@ -134,6 +135,15 @@ CLOCK_BOUNDS: dict[str, tuple[int, int]] = {
 
 # Whose piece may serve as a hop's screen.
 SCREEN_OWNERS = ("any", "own", "enemy")
+
+# T1 (`docs/plan-pieces-moves.md` §5.2): how a slide's path runs. ``"straight"`` repeats one
+# direction, the slide since schema 1 and the off value (`MOVE_OFF_VALUES`). ``"circle"``
+# turns to the next direction round at every step, always the same way (the rose, on the
+# knight's eight; the ring, on the king's eight); ``"zigzag"`` alternates its first direction
+# with one of its neighbours (the bolt, Betza's crooked bishop). Both senses and every
+# start, always. On a ``slide`` only; `compile._turning_rides` builds the paths.
+PATHS = ("straight", "circle", "zigzag")
+TURNING_PATHS = ("circle", "zigzag")
 
 # How many orientations a facing piece has. Two is forward and backward; four is the
 # quarter turns. Three is not offered because the board is square-gridded and a third
@@ -767,7 +777,7 @@ MAX_VECTOR_COMPONENT = 8
 
 _MOVE_KEYS = {
     "kind", "vectors", "symmetry", "range", "min_range", "mode", "condition",
-    "screen_range", "screen",
+    "screen_range", "screen", "path",
 }
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
@@ -842,7 +852,11 @@ _RULES_KEYS = {
     "simultaneous",
 }
 _OBSTACLES_KEYS = {"squares", "mirror", "blocks_leaps"}
-_STRIKE_KEYS = {"effect", "chain", "position", "immune", "landing", "switches_sides"}
+_STRIKE_KEYS = {
+    "effect", "chain", "position", "immune", "landing", "switches_sides",
+    # A1 (`docs/plan-pieces-moves.md` §6.2): the only capturing pieces whose captures strike.
+    "by",
+}
 _STRIKE_LINK_KEYS = {"from", "to"}
 # The three pairs are schema 16's, a hexagon's alone (`WRAP_PAIRS`); `files` and `ranks`
 # are a grid's alone. `_validate_wrap` refuses each shape's keys on the other.
@@ -976,6 +990,8 @@ SIGHT_OFF_VALUES: dict[str, Any] = {"through": False, "captures_own": False}
 SIMULTANEOUS_OFF_VALUES: dict[str, Any] = {"tie": "both", "swap": "chase", "both": "draw"}
 PORTAL_OFF_VALUES: dict[str, Any] = {"kind": "momentum"}
 CONTACT_LINK_OFF_VALUES: dict[str, Any] = {"own": False}
+# T1: a move descriptor's (a piece's, or a portal group's).
+MOVE_OFF_VALUES: dict[str, Any] = {"path": "straight"}
 
 
 def stated_off(where: Any, key: str, off_values: dict[str, Any]) -> bool:
@@ -1083,6 +1099,162 @@ class Sight(NamedTuple):
     affects: tuple[str, ...] | None
     through: bool
     captures_own: bool = False
+
+
+def moveless_ids(pieces: Any) -> set[str]:
+    """The declared types whose ``moves`` is the empty list: pieces that never move (I1)."""
+    return {
+        piece["id"]
+        for piece in _listed(pieces)
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+        and piece.get("moves") == []
+    }
+
+
+def _hand_can_hold(rules: dict[str, Any], pid: str) -> bool:
+    """Whether a hand can hold ``pid``: it is stocked, or captures fill a hand.
+
+    Over-approximates (a hand that fills from captures is counted as able to hold every
+    type), which only makes the refusals that read it less likely."""
+    drops = rules.get("drops")
+    if not isinstance(drops, dict) or not drops:
+        return False
+    return piece_has_stock(rules, pid) or drops.get("from_captures", True) is not False
+
+
+def _arrives_after_setup(rules: dict[str, Any], pid: str) -> bool:
+    """Whether ``pid`` can come to stand somewhere after ply zero without moving there: a
+    drop, a promotion into it, a strike chain or a contact turning a piece into it."""
+    if _hand_can_hold(rules, pid):
+        return True
+    if any(pid in _promotion_target_ids(entry) for entry in _promotion_entries(rules)
+           if isinstance(entry, dict)):
+        return True
+    strike = rules.get("strike")
+    if isinstance(strike, dict) and any(
+        isinstance(link, dict) and link.get("to") == pid for link in _listed(strike.get("chain"))
+    ):
+        return True
+    contacts = rules.get("contacts")
+    links = contacts.get("links") if isinstance(contacts, dict) else None
+    return any(
+        isinstance(link, dict) and pid in (link.get("mover_to"), link.get("onto_to"))
+        for link in _listed(links)
+    )
+
+
+def _check_moveless_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """The shapes of a piece that never moves that are mistakes (I1, `plan-pieces-moves.md`
+    §4.3, refusals 1 to 6).
+
+    ``moves: []`` is legal on any piece: it stands where the setup, a drop, a promotion, a
+    strike or a contact puts it, blocks, and can be taken. What is refused is a rule that
+    asks such a piece to do the one thing it cannot, which is make a move: a player left
+    with nothing to do from the first move, a promotion, castling or a goal it never moves
+    into, a capture rule about its captures, and a round's order for a piece that is never
+    in one. Each is a game with a rule that states nothing, or a game over before it
+    begins. A drop is the player's move, not the piece's, so the two round keys stand on a
+    type a hand can hold, as the rest refusal does on a stocked one.
+    """
+    still = moveless_ids(pieces)
+    if not still:
+        return
+
+    # 1. A player who can never move. The setup gives them only pieces that never move, no
+    # hand starts full (`from_captures` needs a capture first), no portal is theirs to move
+    # and no command of theirs borrows an enemy piece.
+    counts = opening_counts(spec)
+    stock = (rules.get("drops") or {}).get("stock") if isinstance(rules.get("drops"), dict) else None
+    sights = piece_sights(pieces)
+    for player in (0, 1):
+        theirs = set(counts[player])
+        if not theirs or not theirs <= still or stock:
+            continue
+        if any(player in end["moved_by"] for group in portal_groups(rules) for end in group["ends"]):
+            continue
+        if any(sight.effect == "command" for pid in theirs for sight in sights.get(pid, ())):
+            continue
+        errors.append(
+            f"player {player} can never move: every piece the setup gives them has no moves, "
+            "and they have nothing to drop; give one of their pieces a move, or a hand a stock"
+        )
+
+    # 2. A promotion of a piece that never reaches its zone, unless it enters there.
+    if rules.get("promote_on_entry") is not True:
+        for entry in _promotion_entries(rules):
+            pid = entry.get("piece") if isinstance(entry, dict) else None
+            if _in(pid, still):
+                errors.append(
+                    f"rules.promotion names {pid!r}, which has no moves and so never reaches "
+                    "its zone; promote a piece that moves, or let pieces promote on entry"
+                )
+
+    # 3. Castling is a move of both of its pieces.
+    castling = rules.get("castling")
+    if isinstance(castling, dict):
+        for role in ("king", "rook"):
+            pid = castling.get(role)
+            if _in(pid, still):
+                errors.append(
+                    f"rules.castling's {role} {pid!r} has no moves: castling would be the "
+                    "one move it makes; leave castling out or give it moves"
+                )
+
+    # 4. A goal for a piece that never arrives (or leaves, which is always by a move).
+    reach = rules.get("reach")
+    if isinstance(reach, dict) and _in(reach.get("piece"), still):
+        pid = reach["piece"]
+        if reach.get("on") == "leave":
+            errors.append(
+                f"rules.reach.piece {pid!r} has no moves and never leaves a goal square; "
+                "name a piece that moves"
+            )
+        elif not _arrives_after_setup(rules, pid):
+            errors.append(
+                f"rules.reach.piece {pid!r} has no moves and never arrives; name a piece "
+                "that moves"
+            )
+
+    # 5. Capture rules about the captures of a piece that never captures.
+    contacts = rules.get("contacts")
+    links = contacts.get("links") if isinstance(contacts, dict) else None
+    for index, link in enumerate(_listed(links)):
+        if isinstance(link, dict) and _in(link.get("mover"), still):
+            errors.append(
+                f"rules.contacts.links[{index}]: its mover {link['mover']!r} has no moves, so "
+                "the link never fires"
+            )
+    strike = rules.get("strike")
+    if isinstance(strike, dict):
+        for pid in sorted(_str_set(_listed(strike.get("switches_sides"))) & still):
+            errors.append(
+                f"rules.strike.switches_sides names {pid!r}, which has no moves and so "
+                "never captures"
+            )
+    explosion = rules.get("explode_on_capture")
+    if isinstance(explosion, dict):
+        by = _str_set(_listed(explosion.get("by")))
+        if by and by <= still:
+            errors.append(
+                "rules.explode_on_capture.by lists only pieces with no moves, which never "
+                "capture: no rule at all"
+            )
+
+    # 6. A round's order for a piece that is never in one. A drop is a move in a round, so a
+    # type a hand can hold keeps them.
+    for index, piece in enumerate(pieces):
+        if not isinstance(piece, dict) or piece.get("id") not in still:
+            continue
+        if _hand_can_hold(rules, piece["id"]):
+            continue
+        for key in ("speed", "beats"):
+            if _stated_on(piece, key):
+                errors.append(
+                    f"pieces[{index}].{key} is on {piece['id']!r}, which never moves, so it "
+                    "decides nothing; leave it out"
+                )
 
 
 def has_sights(spec_or_pieces: Any) -> bool:
@@ -3056,6 +3228,8 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_speed_coherence(spec, pieces, rules, errors)
     _check_rest_coherence(spec, pieces, rules, errors)
     _check_sight_coherence(spec, pieces, rules, errors)
+    _check_moveless_coherence(spec, pieces, rules, errors)
+    _check_path_coherence(pieces, rules, errors)
 
     if isinstance(rules.get("castling"), dict):
         castling = rules["castling"]
@@ -3067,6 +3241,60 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
                     f"rules.castling.king {king_id!r} is not a royal piece; castling protects "
                     "royalty, so pointing it at a common piece is almost always a mistake"
                 )
+
+
+def _check_path_coherence(
+    pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """The rules a turning path (T1, `plan-pieces-moves.md` §5.3 refusals 5 to 7) may not sit
+    beside, each by name.
+
+    A portal's exit carries a piece on in the direction it came (`compile.momentum_bits`),
+    and a path that turns has no next direction past a seam it did not plan; en passant
+    answers the one square a double step passes, and two paths to one square pass
+    different ones; and a wild piece walks its route, so a path on its type is a rule
+    nothing reads. A portal group's own moves are a portal's, so a path there is refused
+    by the first reason too."""
+    turning = [
+        (p_index, m_index, piece.get("id"), path_of(move))
+        for p_index, piece in enumerate(pieces) if isinstance(piece, dict)
+        for m_index, move in enumerate(_listed(piece.get("moves")))
+        if path_of(move) != "straight"
+    ]
+    for g_index, group in enumerate(_listed(rules.get("portals"))):
+        moves = group.get("moves") if isinstance(group, dict) else None
+        for m_index, move in enumerate(_listed(moves)):
+            if path_of(move) != "straight":
+                errors.append(
+                    f"rules.portals[{g_index}].moves[{m_index}].path {path_of(move)!r}: a "
+                    "portal's exit carries a piece on in the direction it came, and a turning "
+                    "path has no next direction past a seam it did not plan; a portal moves "
+                    "straight"
+                )
+    if not turning:
+        return
+    if rules.get("portals"):
+        p_index, m_index, _, path = turning[0]
+        errors.append(
+            f"pieces[{p_index}].moves[{m_index}].path {path!r} beside rules.portals: a "
+            "portal's exit carries a piece on in the direction it came, and a turning path "
+            "has no next direction past a seam it did not plan"
+        )
+    passing = promoting_piece_ids(rules) if rules.get("en_passant") else set()
+    wild = {npc.get("piece") for npc in _listed(rules.get("npcs")) if isinstance(npc, dict)}
+    for p_index, m_index, pid, path in turning:
+        where = f"pieces[{p_index}].moves[{m_index}].path {path!r}"
+        if pid in passing:
+            errors.append(
+                f"{where} on {pid!r}, the piece rules.en_passant is about: two paths to one "
+                "square pass different squares, so 'the square passed' is not one square; "
+                "keep its moves straight, or leave en passant out"
+            )
+        if pid in wild:
+            errors.append(
+                f"{where} on {pid!r}, a wild piece: a wild piece walks its route, and its "
+                "moves are never read"
+            )
 
 
 def _check_facing_coherence(
@@ -3648,6 +3876,8 @@ def _check_strike_coherence(
                 f"piece; {why}"
             )
 
+    _check_strike_by(pieces, strike, errors)
+
     immune = strike.get("immune")
     immune_ids = _str_set(immune) if isinstance(immune, list) else set()
     chain = strike.get("chain")
@@ -3681,6 +3911,76 @@ def _check_strike_coherence(
                 f"the royal piece {pid!r} is not in rules.strike.immune; a struck royal "
                 "must be a captured royal, so every royal piece has to be named immune"
             )
+
+
+def strikers(pieces: list[Any], strike: dict[str, Any]) -> list[str] | None:
+    """The piece ids whose captures a strike can ever fire on, ignoring its ``by``.
+
+    A type strikes when it has a move that may capture (a ``mode`` other than ``"move"``)
+    and its ``captures`` lets it take a type the strike reaches: one the compiled rule
+    (asked of the compiler, `_compiled_strike`, with ``by`` taken off) does not leave as a
+    plain capture. ``None`` on anything malformed, so a spec already collecting errors is
+    not also told its ``by`` is wrong (A1, `docs/plan-pieces-moves.md` §6.3).
+    """
+    if not all(isinstance(piece, dict) and isinstance(piece.get("id"), str) for piece in pieces):
+        return None
+    piece_ids = [piece["id"] for piece in pieces]
+    compiled = _compiled_strike({**strike, "by": None}, "strike", piece_ids)
+    if compiled is None:
+        return []
+    n = len(piece_ids)
+    reached = {
+        piece_ids[victim]
+        for victim in range(n)
+        if compiled.onto_to[victim] != -1 or (compiled.mover_flips and any(
+            compiled.mover_flips[mover * n + victim] for mover in range(n)))
+    }
+    found = []
+    for piece in pieces:
+        moves = piece.get("moves")
+        if not isinstance(moves, list) or any(not isinstance(m, dict) for m in moves):
+            return None
+        if not any(move.get("mode", "both") != "move" for move in moves):
+            continue
+        allowed = piece.get("captures")
+        takes = set(allowed) if isinstance(allowed, list) else set(piece_ids)
+        if takes & reached:
+            found.append(piece["id"])
+    return found
+
+
+def _check_strike_by(pieces: list[Any], strike: dict[str, Any], errors: list[str]) -> None:
+    """Refusals 2 and 3 of A1 (`docs/plan-pieces-moves.md` §6.3), on a live strike.
+
+    A ``by`` naming every type whose captures the strike reaches is the strike without
+    ``by``, one game in two spellings. A listed type that never captures anything the
+    strike reaches names a strike that never fires. The shape (a non-empty list of
+    declared ids, once each, not beside ``switches_sides``) is `_validate_strike_shape`'s.
+    """
+    by = strike.get("by")
+    if not isinstance(by, list) or not by or not all(isinstance(p, str) for p in by):
+        return
+    declared = {piece.get("id") for piece in pieces if isinstance(piece, dict)}
+    if any(pid not in declared for pid in by) or strike.get("switches_sides") is not None:
+        return
+    firing = strikers(pieces, strike)
+    if firing is None:
+        return
+    names = {
+        piece["id"]: piece.get("name", piece["id"]) for piece in pieces if isinstance(piece, dict)
+    }
+    for pid in dict.fromkeys(by):
+        if pid not in firing:
+            errors.append(
+                f"rules.strike.by names {pid!r}, and the {names.get(pid, pid)} never captures "
+                "anything the strike reaches, so its strike never fires; take it out of "
+                "rules.strike.by"
+            )
+    if firing and set(firing) <= set(by):
+        errors.append(
+            "rules.strike.by names every piece that captures, which is the strike with no such "
+            "list; leave rules.strike.by out"
+        )
 
 
 def _check_contact_coherence(
@@ -4708,6 +5008,125 @@ def board_shape(spec: Any) -> str:
 # -------------------------------------------------------------------------- pieces
 
 
+# ------------------------------------------------------------------ turning paths (T1)
+#
+# `docs/plan-pieces-moves.md` §5.2. The validator and the compiler read a turning path's
+# directions in one order, this one, so a spec has one set of paths and one set of
+# refusals. Exact: integer cross products, never a floating angle, so the order cannot
+# depend on rounding.
+
+_PATH_OFF_KIND: dict[str, str] = {
+    "leap": "a leap is one jump, and has no path to turn",
+    "lame": "a lame move's leg is fixed by its one vector, and a turning lame rider has "
+            "none stated",
+    "hop": "a hop's screen is the first piece on a line, and a turning path has no line",
+    "sweep": "a sweep removes what lies on a line, and a turning path has no line",
+}
+
+
+def _cross(a: tuple[int, int], b: tuple[int, int]) -> int:
+    return a[0] * b[1] - a[1] * b[0]
+
+
+def _upper(vector: tuple[int, int]) -> int:
+    """0 for a direction from east (included) to west (excluded) counter-clockwise, else 1."""
+    return 0 if vector[1] > 0 or (vector[1] == 0 and vector[0] > 0) else 1
+
+
+def turning_order(directions: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+    """``directions`` laid out round the origin, counter-clockwise from east, each once.
+
+    Each one's neighbours on a turning path (T1) are the ones beside it here, cyclically.
+    Two parallel directions pointing one way (``[1, 0]`` and ``[2, 0]``) sort shorter
+    first so the order is total; the validator refuses them on a path
+    (`path_refusals`)."""
+
+    def before(a: tuple[int, int], b: tuple[int, int]) -> int:
+        if _upper(a) != _upper(b):
+            return _upper(a) - _upper(b)
+        turn = _cross(a, b)
+        if turn:
+            return -1 if turn > 0 else 1
+        return (a[0] ** 2 + a[1] ** 2) - (b[0] ** 2 + b[1] ** 2)
+
+    return sorted(set(directions), key=cmp_to_key(before))
+
+
+def turns_less_than_half(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    """Whether turning counter-clockwise from ``a`` to ``b`` is less than half a turn."""
+    return _cross(a, b) > 0
+
+
+def _turn_degrees(a: tuple[int, int], b: tuple[int, int]) -> int:
+    """The counter-clockwise turn from ``a`` to ``b`` in whole degrees, in (0, 360]."""
+    turn = round(degrees(atan2(_cross(a, b), a[0] * b[0] + a[1] * b[1]))) % 360
+    return turn or 360
+
+
+def path_of(move: Any) -> str:
+    """A descriptor's ``path`` (T1), ``"straight"`` where it writes none or a malformed one."""
+    path = move.get("path", "straight") if isinstance(move, dict) else "straight"
+    return path if path in PATHS else "straight"
+
+
+def path_refusals(move: dict[str, Any], loc: str, hex_lattice: bool = False) -> list[str]:
+    """Why this descriptor's ``path`` cannot stand, or nothing (T1, §5.3 refusals 1 to 4).
+
+    A ``path`` other than ``"straight"`` turns a slide only; a slide of one step never
+    turns; ``circle`` needs directions all the way round, each less than half a turn from
+    the next, and ``zigzag`` at least one pair that close; and the hexagon's angle order is
+    not built. The rules a path may not sit beside (portals, en passant, wild pieces) are
+    `_check_path_coherence`'s, which knows the spec."""
+    if "path" not in move:
+        return []
+    path = move["path"]
+    if path not in PATHS:
+        return [f"{loc}.path must be one of {PATHS}, got {path!r}"]
+    if path == "straight":
+        return []
+    kind = move.get("kind")
+    if kind in _PATH_OFF_KIND:
+        return [f"{loc}.path {path!r} turns a slide only; on a {kind} it means nothing: "
+                f"{_PATH_OFF_KIND[kind]}"]
+    if kind != "slide":
+        return []  # an unknown kind is refused by name already
+    if hex_lattice:
+        return [f"{loc}.path {path!r} is for the square lattice: the order of the hexagon's "
+                "directions round a cell is not built"]
+    if move.get("range") == 1:
+        return [f"{loc}.path {path!r} with range 1 is one step, which never turns: write it "
+                "as a leap"]
+    vectors = move.get("vectors")
+    symmetry = move.get("symmetry", "none")
+    if (
+        not isinstance(vectors, list) or symmetry not in SQUARE_SYMMETRIES
+        or not all(
+            isinstance(v, list) and len(v) == 2
+            and all(isinstance(c, int) and not isinstance(c, bool) for c in v)
+            and v != [0, 0] for v in vectors
+        )
+    ):
+        return []  # malformed directions are refused by name already
+    directions: set[tuple[int, int]] = set()
+    for vector in vectors:
+        directions |= expand_symmetry((vector[0], vector[1]), symmetry)
+    ring = turning_order(directions)
+    pairs = list(zip(ring, ring[1:] + ring[:1], strict=True))
+    for a, b in pairs:
+        if len(ring) > 1 and _cross(a, b) == 0 and a[0] * b[0] + a[1] * b[1] > 0:
+            return [f"{loc}.path {path!r} turns from one direction to the next, and "
+                    f"{list(a)} and {list(b)} point the same way; keep one of them"]
+    if path == "circle":
+        wide = max(_turn_degrees(a, b) for a, b in pairs)
+        if wide >= 180:
+            return [f"{loc}.path 'circle' needs directions all the way round, each less than "
+                    f"half a turn from the next; these leave a gap of {wide} degrees"]
+    elif not any(turns_less_than_half(a, b) for a, b in pairs):
+        return [f"{loc}.path 'zigzag' needs two directions less than half a turn apart to "
+                "run between, and these have none"]
+    return []
+
+
 def _validate_pieces(
     pieces: Any,
     width: int,
@@ -4763,7 +5182,6 @@ def _validate_pieces(
             width,
             height,
             errors,
-            stocked=piece_has_stock(rules, piece.get("id")),
             hex_lattice=hex_lattice,
         )
         _validate_facing(piece, where, errors, hex_lattice)
@@ -4840,6 +5258,14 @@ def _validate_facing(
     if "turns" in facing and not isinstance(facing["turns"], bool):
         errors.append(f"{where}.facing.turns must be a boolean")
 
+    if piece.get("moves") == []:
+        # I1: said here, now that a board piece may have no moves, rather than left to the
+        # compiler's null-rotation refusal.
+        errors.append(
+            f"{where}.facing on a piece with no moves: it has nothing to turn, so every "
+            "way it points is the same piece; leave the facing out"
+        )
+
     if piece.get("royal", False):
         errors.append(
             f"{where}.facing on a royal piece: a royal that can turn is several piece "
@@ -4893,27 +5319,19 @@ def _validate_moves(
     width: int,
     height: int,
     errors: list[str],
-    stocked: bool = False,
     hex_lattice: bool = False,
 ) -> None:
-    """Every way this piece may move, and (schema 10) the one piece that has none.
+    """Every way this piece may move; an empty list is a piece that never moves (I1).
 
-    ``stocked`` lifts the non-empty claim, and only for a piece ``rules.drops.stock``
-    names -- ``piece_has_stock`` states why the relaxation is gated rather than removed.
     An empty list is still an empty list to everything downstream: the compiler builds no
     movement table for the type, ``_build_attack_sources`` gives it no attack source, and
     the core never generates a move from it. It is placed, it blocks, it can be taken.
+    Schema 10 admitted it only for a piece ``rules.drops.stock`` puts in a hand; I1
+    (``docs/plan-pieces-moves.md`` §4) lifted that gate and refuses instead the shapes of
+    it that are mistakes (`_refuse_moveless_mistakes`).
     """
-    if not isinstance(moves, list) or (not moves and not stocked):
-        errors.append(
-            f"{where}.moves must be a non-empty array"
-            + (
-                " unless rules.drops.stock puts the piece in a hand, which is the one "
-                "way a piece with no moves can still enter play"
-                if isinstance(moves, list)
-                else ""
-            )
-        )
+    if not isinstance(moves, list):
+        errors.append(f"{where}.moves must be an array (empty for a piece that never moves)")
         return
     if len(moves) > MAX_MOVE_DESCRIPTORS:
         errors.append(f"{where}.moves may hold at most {MAX_MOVE_DESCRIPTORS} descriptors")
@@ -5001,6 +5419,7 @@ def _validate_moves(
 
         _validate_vectors(move.get("vectors"), loc, errors)
         _validate_condition(move.get("condition"), loc, width, height, errors)
+        errors.extend(path_refusals(move, loc, hex_lattice))
 
 
 def _symmetry_refusals(
@@ -6093,7 +6512,7 @@ def _validate_portal_moves(
         return
     if not moves:
         return
-    _validate_moves(portal_moves(moves), loc, width, height, errors, stocked=True)
+    _validate_moves(portal_moves(moves), loc, width, height, errors)
     for index, move in enumerate(moves):
         if not isinstance(move, dict):
             continue
@@ -6579,6 +6998,12 @@ def _check_portal_carries(
                     f"{loc} names every piece that can move, so it lets in what no filter "
                     "would; drop it"
                 )
+            elif carries and not carries & movers and carries <= set(declared):
+                # I1: a piece with no moves never goes in by an end.
+                errors.append(
+                    f"{loc} carries only pieces with no moves, so it lets nothing in; name a "
+                    "piece that moves"
+                )
 
 
 def _check_portal_moves(group: dict[str, Any], orientation: str, errors: list[str]) -> None:
@@ -6781,12 +7206,15 @@ def _compiled_strike(rule: Any, key: str, piece_ids: Sequence[str]) -> StrikeRul
     links = rule.get(listed)
     immune = rule.get("immune")
     switching = rule.get("switches_sides")
+    by = rule.get("by")
     readable = {
         **rule,
         "immune": [p for p in immune if names_declared(p)] if isinstance(immune, list) else [],
         "switches_sides": (
             [p for p in switching if names_declared(p)] if isinstance(switching, list) else []
         ),
+        # A1: a malformed `by` is refused by its shape check; here it is read as every type.
+        "by": [p for p in by if names_declared(p)] if isinstance(by, list) and by else None,
         listed: [
             link
             for link in (links if isinstance(links, list) else [])
@@ -6868,6 +7296,15 @@ def strike_states_nothing(strike: Any, key: str, piece_ids: Sequence[str]) -> li
     if strike.get("immune"):
         stated.append("an immune list")
     if not stated:
+        if strike.get("by"):
+            # A1: `by` narrows who strikes, and a strike that changes nothing has nothing
+            # to narrow.
+            return [
+                "rules.strike.by names who strikes, but the strike has effect 'capture' "
+                f"and position 'advance', which is no strike at all: {PLAYED_AS_CAPTURE}. "
+                "Give it position 'stay' (the taker keeps its square: rifle chess) or "
+                "'home', or a chain, or leave rules.strike out"
+            ]
         return []
     return [
         f"rules.strike has effect 'capture' and {' and '.join(stated)}, and position, "
@@ -6924,6 +7361,29 @@ def _validate_strike_shape(strike: Any, piece_ids: list[str], errors: list[str])
                     )
             if len(set(map(str, switching))) != len(switching):
                 errors.append("rules.strike.switches_sides names a piece twice")
+
+    # A1 (`docs/plan-pieces-moves.md` §6.2-§6.3): the only capturing pieces whose captures
+    # strike, the explosion's `by` on the strike. Refusals 1 and 4 here; 2 and 3 read the
+    # pieces' moves, in `_check_strike_by`.
+    by = strike.get("by")
+    if by is not None:
+        if not isinstance(by, list) or not by:
+            errors.append(
+                "rules.strike.by must be a non-empty array of piece ids: a strike nobody "
+                "makes is no rule; leave rules.strike out"
+            )
+        else:
+            for piece in by:
+                if piece not in piece_ids:
+                    errors.append(f"rules.strike.by entry {piece!r} is not a declared piece")
+            if len(set(map(str, by))) != len(by):
+                errors.append("rules.strike.by names a piece twice")
+        if switching is not None:
+            errors.append(
+                "rules.strike.by beside rules.strike.switches_sides: rules.strike.switches_sides "
+                "already names the capturers it changes, and two lists of capturers in one strike "
+                "would make which one a switch reads a second rule; leave one out"
+            )
 
     immune = strike.get("immune", [])
     if not isinstance(immune, list):

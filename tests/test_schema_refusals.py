@@ -969,7 +969,7 @@ EN_PASSANT_INERT = (
     [
         pytest.param({}, [NEVER_INERT], id="well-formed"),
         pytest.param(
-            {"pieces.0.moves": "x"}, ["pieces[0].moves must be a non-empty array"],
+            {"pieces.0.moves": "x"}, ["pieces[0].moves must be an array (empty for a piece that never moves)"],
             id="moves-not-a-list",
         ),
         pytest.param(
@@ -989,7 +989,7 @@ def test_must_capture_is_called_inert_only_when_that_is_a_fact(
     [
         pytest.param({}, [EN_PASSANT_INERT], id="well-formed"),
         pytest.param(
-            {"pieces.2.moves": "x"}, ["pieces[2].moves must be a non-empty array"],
+            {"pieces.2.moves": "x"}, ["pieces[2].moves must be an array (empty for a piece that never moves)"],
             id="moves-not-a-list",
         ),
         pytest.param(

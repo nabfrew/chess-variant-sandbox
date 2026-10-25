@@ -36,7 +36,7 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 32
+LAST_BUMP = 35
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -702,6 +702,79 @@ def _schema_thirty_two_uses(spec: dict[str, Any]) -> set[str]:
     return used
 
 
+def _schema_thirty_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 33 added, by name (I1,
+    `docs/plan-pieces-moves.md` §4; numbered by order of landing, bumping no version).
+
+    * ``pieces.moves.empty`` -- a type with ``moves: []`` that the setup places, or that a
+      promotion, strike chain or contact can create, or that is a wild type: a piece that
+      never moves, standing on the board (a lifted restriction). A stone only a stock puts
+      in a hand is schema 10's *a piece with no moves of its own*, not this.
+    """
+    pieces = [p for p in _listed(spec.get("pieces")) if isinstance(p, dict)]
+    still = {p.get("id") for p in pieces if p.get("moves") == []}
+    if not still:
+        return set()
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    made: set[Any] = set()
+    setup = spec.get("setup") if isinstance(spec.get("setup"), dict) else {}
+    made |= {p.get("piece") for p in _listed(setup.get("placements")) if isinstance(p, dict)}
+    made |= {n.get("piece") for n in _listed(rules.get("npcs")) if isinstance(n, dict)}
+    for entry in _promotion_entries(rules):
+        if not isinstance(entry, dict):
+            continue
+        for key in ("to", "to_by_player"):
+            block = entry.get(key)
+            for targets in block.values() if isinstance(block, dict) else [block]:
+                made |= set(_listed(targets))
+    strike = rules.get("strike") if isinstance(rules.get("strike"), dict) else {}
+    made |= {link.get("to") for link in _listed(strike.get("chain")) if isinstance(link, dict)}
+    contacts = rules.get("contacts") if isinstance(rules.get("contacts"), dict) else {}
+    for link in _listed(contacts.get("links")):
+        if isinstance(link, dict):
+            made |= {link.get("mover_to"), link.get("onto_to")}
+    # A stock alone is not a route here: the stocked stone is schema 10's.
+    return {"pieces.moves.empty"} if still & made else set()
+
+
+
+def _schema_thirty_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 34 added, by name (T1,
+    `docs/plan-pieces-moves.md` §5; numbered by order of landing, bumping no version).
+
+    * ``pieces.moves.slide.path.circle`` -- a slide whose path turns to the next direction
+      round at every step (the rose, the ring);
+    * ``pieces.moves.slide.path.zigzag`` -- a slide whose path alternates between two
+      neighbouring directions (the bolt).
+
+    ``"straight"`` is the off value and names nothing.
+    """
+    used: set[str] = set()
+    for piece in _listed(spec.get("pieces")):
+        if not isinstance(piece, dict):
+            continue
+        for move in _listed(piece.get("moves")):
+            if (
+                isinstance(move, dict) and move.get("kind") == "slide"
+                and move.get("path") in ("circle", "zigzag")
+            ):
+                used.add(f"pieces.moves.slide.path.{move['path']}")
+    return used
+
+def _schema_thirty_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 35 added, by name (A1,
+    `docs/plan-pieces-moves.md` §6; numbered by order of landing, bumping no version).
+
+    * ``rules.strike.by`` -- only the listed pieces' captures strike (under rifle's
+      reading, a piece that shoots: the arrow).
+    """
+    rules = spec.get("rules")
+    strike = rules.get("strike") if isinstance(rules, dict) else None
+    if isinstance(strike, dict) and strike.get("by"):
+        return {"rules.strike.by"}
+    return set()
+
+
 def _hex_symmetries_used(spec: dict[str, Any]) -> set[str]:
     """Schema 18b's names for the hexagon's turns, wherever a descriptor writes one."""
     written: list[Any] = []
@@ -750,4 +823,7 @@ _COLLECTORS = {
     30: _schema_thirty_uses,
     31: _schema_thirty_one_uses,
     32: _schema_thirty_two_uses,
+    33: _schema_thirty_three_uses,
+    34: _schema_thirty_four_uses,
+    35: _schema_thirty_five_uses,
 }

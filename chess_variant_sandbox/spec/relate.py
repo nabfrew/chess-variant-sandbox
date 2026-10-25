@@ -497,7 +497,10 @@ _PIECE_POSITIONS: dict[str, Any] = {
     "npcs": [{"piece": _ID, "immune": _IDS}],
     # Schema 21: an end's `carries`, on a pair keyed by the end, on a map's end a list.
     "portals": [{"piece": _ID, "carries": {_ANY: _IDS}, "ends": [{"carries": _IDS}]}],
-    "strike": {"immune": _IDS, "chain": [{"from": _ID, "to": _ID}], "switches_sides": _IDS},
+    "strike": {
+        "immune": _IDS, "chain": [{"from": _ID, "to": _ID}], "switches_sides": _IDS,
+        "by": _IDS,  # A1: the pieces whose captures strike
+    },
     "contacts": {
         "immune": _IDS,
         "links": [{"mover": _ID, "onto": _ID, "mover_to": _ID, "onto_to": _ID}],
@@ -694,6 +697,9 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
             _frozen(move.get("condition") or {}),
             move.get("screen_range"),
             move.get("screen"),
+            # T1: a slide whose path turns is another movement over the same directions;
+            # "straight", the off value, is the key's absence.
+            move.get("path", "straight"),
         )
         for vector in move.get("vectors") or []:
             merged[attrs] |= expand_symmetry(

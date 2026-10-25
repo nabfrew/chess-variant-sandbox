@@ -298,6 +298,8 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "sight_freeze_share", "sight_disarm_share", "sight_shield_share", "sight_aura_share",  # Q999a
     "sight_command_share", "sight_turncoat_share",  # Q1007c
     "lame_rider_share",  # Q1007a
+    "turning_share",  # T1
+    "strikers_share",  # A1
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",

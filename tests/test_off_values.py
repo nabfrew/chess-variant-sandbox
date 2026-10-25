@@ -22,6 +22,7 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.schema import (
     CONTACT_LINK_OFF_VALUES,
+    MOVE_OFF_VALUES,
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
     SIGHT_OFF_VALUES,
@@ -57,6 +58,15 @@ def _captures_own(spec: dict[str, Any]) -> None:
             entry.setdefault("captures_own", False)
 
 
+def _straight(spec: dict[str, Any]) -> None:
+    for piece in spec["pieces"]:
+        for move in piece.get("moves", []):
+            move.setdefault("path", "straight")
+    for group in spec.get("rules", {}).get("portals", []):
+        for move in group.get("moves", []):
+            move.setdefault("path", "straight")
+
+
 def _simultaneous(key: str, value: Any) -> Callable[[dict[str, Any]], None]:
     def write(spec: dict[str, Any]) -> None:
         spec["rules"]["simultaneous"][key] = value
@@ -88,6 +98,7 @@ CASES = [
      _simultaneous("both", "draw")),
     ("rules.portals[].kind", "archive/wormhole.json", _kind),
     ("rules.contacts.links[].own", "archive/einstein.json", _own),
+    ("pieces[].moves[].path", "rulesets/chess.json", _straight),
 ]
 
 
@@ -95,6 +106,7 @@ def test_every_off_value_has_a_case() -> None:
     named = {
         **{f"pieces[].{key}": 1 for key in PIECE_OFF_VALUES},
         **{f"pieces[].sight[].{key}": 1 for key in SIGHT_OFF_VALUES},
+        **{f"pieces[].moves[].{key}": 1 for key in MOVE_OFF_VALUES},
         **{f"rules.simultaneous.{key}": 1 for key in SIMULTANEOUS_OFF_VALUES},
         **{f"rules.portals[].{key}": 1 for key in PORTAL_OFF_VALUES},
         **{f"rules.contacts.links[].{key}": 1 for key in CONTACT_LINK_OFF_VALUES},

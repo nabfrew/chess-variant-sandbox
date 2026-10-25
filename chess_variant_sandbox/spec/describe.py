@@ -40,6 +40,7 @@ from chess_variant_sandbox.spec.schema import (
     has_speeds,
     is_simultaneous,
     obstacle_squares,
+    path_of,
     piece_rests,
     piece_sights,
     piece_speeds,
@@ -433,6 +434,11 @@ _MOVELESS = {
             "there for the rest of the game",
     "blast": "never moves, and nothing can capture it: once it is on a square it stays "
              "there until an explosion beside it destroys it",
+    # I1 (`docs/plan-pieces-moves.md` §4.3): a royal that never moves, by the win it is under.
+    "royal_capture": "never moves, so it cannot run from an attack: it stays on its square, "
+                     "and taking it is how the game is won (see the rules)",
+    "checkmate": "never moves, so a check on it can be answered only by taking the checking "
+                 "piece or blocking its line, never by stepping away",
 }
 
 
@@ -457,9 +463,13 @@ def _moveless_fates(spec: dict[str, Any], listed: list[dict[str, Any]]) -> dict[
     capturing = capturing_types(compiled)
     blast = compiled.explosion
     fates: dict[str, str] = {}
+    royal = {piece["id"] for piece in listed if piece.get("royal")}
+    win = (spec.get("rules") or {}).get("win", "checkmate")
     for piece_id in moveless:
         victim = compiled.piece_ids.index(piece_id)
-        if any(
+        if piece_id in royal and win in ("royal_capture", "checkmate"):
+            fates[piece_id] = _MOVELESS[win]
+        elif any(
             capturing[attacker] and compiled.capture_allowed[attacker][victim]
             for attacker in range(compiled.n_types)
         ):
@@ -591,7 +601,7 @@ def _move_descriptor(move: dict[str, Any]) -> str:
         # Not "path must be clear": the leap has exactly one square that can stop it,
         # and which square that is (the leg, the eye) is the rule people actually state.
         reach = "leaping, but stopped by a piece standing on the square it passes"
-    elif kind == "slide" and long_vector and max_range != 1:
+    elif kind == "slide" and long_vector and max_range != 1 and path_of(move) == "straight":
         jumps = "any number of jumps" if max_range == 0 else (
             f"exactly {max_range} jumps" if min_range == max_range
             else f"up to {max_range} jumps"
@@ -611,6 +621,15 @@ def _move_descriptor(move: dict[str, Any]) -> str:
             f"jumping {span} along the line, and every piece it passes over, its own "
             "included, is removed; a piece it may not capture stops it"
         )
+    elif kind == "slide" and path_of(move) != "straight":
+        # T1: a turning path, counted in steps.
+        steps = "any number of steps" if max_range == 0 else f"up to {max_range} steps"
+        turn = (
+            "turning to the next direction round at every step, either way"
+            if path_of(move) == "circle"
+            else "turning to a neighbouring direction and back at every step, a zigzag"
+        )
+        reach = f"{steps}, {turn}, stopped by a piece on a square it lands on"
     elif max_range == 0:
         reach = "any distance until blocked"
     elif min_range == max_range:
@@ -1056,7 +1075,41 @@ def _rider_count(move: dict[str, Any], aim: _Aim) -> str | None:
     return f"{count} of {jump}"
 
 
+def _path_words(move: dict[str, Any], aim: _Aim) -> str | None:
+    """A slide whose path turns (T1, `docs/plan-pieces-moves.md` §5.2): *any number of steps of
+    two and one, in all eight directions, each step turning to the next direction round, ...*.
+
+    Counted in steps, which is what the engine counts its ``range`` in. ``None`` for a
+    straight slide, and where the step has no phrase (the vectors say it then)."""
+    path = path_of(move)
+    if path == "straight":
+        return None
+    if aim.step and aim.scale == 1:
+        noun, over = f"one-square steps {aim.words}", ""
+    elif aim.step:
+        noun = f"steps of {_count(aim.scale)} squares {aim.words}"
+        over = ", jumping over the squares between"
+    elif aim.unit:
+        noun, over = f"steps of {aim.words}", ", jumping over the squares between"
+    else:
+        return None
+    far = int(move.get("range", DEFAULT_RANGE["slide"]))
+    near = int(move.get("min_range", 1))
+    count = "any number of" if far == 0 else f"up to {_count(far)}"
+    nearest = f", stopping no nearer than step {_count(near)}" if near > 1 else ""
+    if path == "circle":
+        turn = ("each step turning to the next direction round, always the same way (either "
+                "way), so the path circles and never comes back onto a square it has been on")
+    else:
+        turn = ("turning to a neighbouring direction and back again at every step (either "
+                "neighbour), so the path zigzags between the two")
+    return (f"{count} {noun}, {turn}{nearest}; stopped by a piece on a square it lands on"
+            f"{over}")
+
+
 def _slide_words(move: dict[str, Any], aim: _Aim) -> str | None:
+    if path_of(move) != "straight":
+        return _path_words(move, aim)
     rider = _rider_count(move, aim)
     if rider is not None:
         # Option 1: nothing between two landings is looked at.
@@ -1950,6 +2003,11 @@ def _landing_phrase(rule: dict[str, Any]) -> str:
     )
 
 
+def _or_list(names: list[str]) -> str:
+    """``bishop``, ``bishop or knight``, ``pawn, bishop or knight``."""
+    return " or ".join([", ".join(names[:-1]), names[-1]] if len(names) > 2 else names)
+
+
 def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     """What happens instead of removal when a piece is taken.
 
@@ -1979,6 +2037,33 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         if isinstance(switching, list) and switching
         else []
     )
+    # A1 (`docs/plan-pieces-moves.md` §6.2): only the listed pieces' captures strike.
+    by = strike.get("by")
+    by_names = (
+        [str(names.get(pid, pid)) for pid in by] if isinstance(by, list) and by else []
+    )
+    by_lines = (
+        [
+            f"Only a capture made by a {_or_list(by_names)} strikes; every other piece "
+            "captures as usual, moving onto the square it took."
+        ]
+        if by_names
+        else []
+    )
+    if effect == "capture" and position == "stay" and by_names:
+        # The arrow: rifle given to some pieces only.
+        shooters = _or_list(by_names)
+        lines = [
+            f"A {shooters} shoots: a capture by a {shooters} removes its target and the "
+            f"{shooters} stays where it stood, never moving onto the square it took. "
+            "Every other piece captures as usual, moving onto the square it took."
+        ]
+        if immune:
+            lines.append(
+                f"{', '.join(immune)} cannot be shot, and a {shooters} that takes one "
+                "moves onto its square as usual."
+            )
+        return lines
     if effect == "capture":
         # Schema 17 (Q540): what a plain capture leaves behind, when it is not plain.
         said = {
@@ -1994,6 +2079,8 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         }.get(position)
         lines = [said] if said else []
         lines += switch_lines
+        if lines:
+            lines += by_lines
         if lines and immune:
             lines.append(f"{', '.join(immune)} are taken as usual.")
         return lines
@@ -2030,7 +2117,7 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         lines.append(
             f"{', '.join(immune)} cannot be struck, so taking one removes it for good."
         )
-    return lines + switch_lines
+    return lines + switch_lines + by_lines
 
 
 def _describe_contacts(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:

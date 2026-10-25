@@ -365,6 +365,12 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
             _prune_list(strike, "switches_sides")
             if not strike_is_live(strike):
                 rules.pop("strike", None)
+        # A1: the pieces whose captures strike. A strike none of whose shooters is left is
+        # no rule, and widening it to every piece would be another game, so it goes.
+        if "strike" in rules and "by" in strike:
+            _prune_list(strike, "by")
+            if "by" not in strike:
+                rules.pop("strike", None)
 
     contacts = rules.get("contacts")
     if isinstance(contacts, dict):

@@ -75,7 +75,7 @@ from chess_variant_sandbox.engine.compile import (
 )
 from chess_variant_sandbox.fairy import betza
 from chess_variant_sandbox.spec.complexity import expand_symmetry
-from chess_variant_sandbox.spec.schema import DEFAULT_RANGE, SpecError, parse_square
+from chess_variant_sandbox.spec.schema import DEFAULT_RANGE, SpecError, parse_square, path_of
 
 # Fairy-Stockfish's large-board build. Beyond this the engine returns nonsense rather
 # than an error, which is why the ceiling is checked here rather than discovered later.
@@ -759,6 +759,11 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
         "mode": (_TRANSLATED, "the m and c modifiers"),
         "condition": (_TRANSLATED, "its keys are listed below"),
         "screen_range": (_TRANSLATED, "0 is p and 1 is g; any other is refused by name"),
+        "path": (
+            _REFUSED,
+            "T1: a circle or a zigzag, by name in `_descriptor_term`, since pyffish reads "
+            "XBetza's q and z as the plain piece; \"straight\", the off value, refuses nothing",
+        ),
         "screen": (
             _TRANSLATED,
             "any crosses; a hop that chooses whose piece it jumps is refused by name",
@@ -1537,6 +1542,17 @@ def _descriptor_term(
 ) -> str | None:
     """One move descriptor as one or more Betza terms."""
     kind = descriptor["kind"]
+    # T1 (`docs/plan-pieces-moves.md` §5.4): refused before any Betza is written. pyffish
+    # 0.0.90 loads XBetza's `q` (circular), `z` (crooked) and `o` without an error and plays
+    # the plain piece: `qN` is the knight, `zB` the bishop, so a translation would be a
+    # second, wrong game. `path_of` reads "straight", the off value, as no path.
+    path = path_of(descriptor)
+    if path != "straight":
+        reasons.append(
+            f"{where}: a {path} path turns as it goes, and Fairy-Stockfish reads XBetza's "
+            "circular and crooked modifiers as the plain piece"
+        )
+        return None
     directions: set[tuple[int, int]] = set()
     symmetry = descriptor.get("symmetry", "none")
     for vector in descriptor["vectors"]:

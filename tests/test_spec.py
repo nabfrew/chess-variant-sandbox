@@ -1058,6 +1058,7 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_RULES}/obstacles{_P}/squares": _AT_LEAST_ONE,
     f"{_RULES}/strike{_P}/chain": _AT_LEAST_ONE,
     f"{_RULES}/strike{_P}/switches_sides": _AT_LEAST_ONE,
+    f"{_RULES}/strike{_P}/by": _AT_LEAST_ONE,  # A1
     **_vector_bounds(_LANDING_STRIKE, _AT_LEAST_ONE),
     f"{_RULES}/contacts{_P}/links": _AT_LEAST_ONE,
     **_vector_bounds(_LANDING_CONTACT, _AT_LEAST_ONE),
@@ -1539,11 +1540,15 @@ class TestTheContractAdmitsWhatTheValidatorAdmits:
         assert any(p["moves"] == [] for p in stones["pieces"])
 
     def test_a_piece_with_no_moves_is_the_validators_call(self, chess_spec: dict) -> None:
-        """Without a stock the validator refuses `moves: []`; the schema leaves that to it."""
+        """Both admit `moves: []` on any piece since I1; what of it is a mistake (a rule it
+        cannot act on) is the validator's to refuse, and the schema leaves that to it."""
         spec = _as_proposed(chess_spec)
         spec["pieces"].append({"id": "S", "name": "stone", "value": 1, "moves": []})
         assert _schema_errors(spec, rule_spec_schema()) == []
-        assert any("moves must be a non-empty array" in e for e in validate_spec(spec))
+        assert validate_spec(spec) == []
+        spec["rules"]["castling"]["rook"] = "S"
+        assert _schema_errors(spec, rule_spec_schema()) == []
+        assert any("has no moves" in e for e in validate_spec(spec))
 
 
 class TestTheSchemaClosesItsObjects:

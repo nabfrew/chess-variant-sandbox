@@ -71,6 +71,8 @@ PIECE_PATHS = frozenset({
     "rules.strike.chain[].to",
     "rules.strike.immune",
     "rules.strike.switches_sides",
+    # A1: the pieces whose captures strike, the explosion's `by` pick list on the strike.
+    "rules.strike.by",
     "rules.contacts.links[].mover",
     "rules.contacts.links[].onto",
     "rules.contacts.links[].mover_to",
@@ -134,6 +136,8 @@ PIECE_ROW: dict[str, tuple[str, ...]] = {
 MOVE_KIND_ONLY: dict[str, tuple[str, ...]] = {
     "screen_range": ("hop",),
     "screen": ("hop",),
+    # T1: a path that turns is a slide's (`docs/plan-pieces-moves.md` §5.2).
+    "path": ("slide",),
 }
 
 # What an empty number box means, said in the box (Q995c, fix 5, F5): an empty speed box

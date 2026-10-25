@@ -334,6 +334,18 @@ LIBRARY = test_index_quality.RUNS
 # No record, score, interval or verdict moved (101,376 records equal outside the clock and that
 # one game's name); the replaced measurements, with the stamp this window held, are kept under
 # each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-25.md`).
+#
+# **Opened 2026-10-25 by T1** (turning paths): `spec/complexity.py` charges a slide whose path
+# turns one special rule per kind of turn, which moves `metrics` (`FROZEN_METRICS`); `analysis`
+# and the build fingerprint are unmoved. No library game writes a path, so no number should
+# move. The window is the stamp R32 left the library; **the next library re-score empties it**.
+#
+# **Emptied 2026-10-25 by R33**, that re-score: the 99 library games re-scored from their stored
+# records and analyses under `metrics` "f745667ed7f652e7" (no game played, no analysis pass; the 98
+# certificates carried). No library game writes a `path` or a `strike.by`; no file but each
+# `canonical.json`'s `basis.metrics` moved, and no score, interval or verdict; the replaced
+# measurements are kept under each game's `runs/<hash>/previous/`
+# (`docs/reference/replay-2026-10-26.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

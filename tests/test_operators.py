@@ -88,7 +88,8 @@ _NUMBER_WORDS = {
     15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen",
     20: "twenty", 21: "twenty_one", 22: "twenty_two", 23: "twenty_three", 24: "twenty_four",
     25: "twenty_five", 26: "twenty_six", 27: "twenty_seven", 28: "twenty_eight",
-    29: "twenty_nine", 30: "thirty", 31: "thirty_one", 32: "thirty_two",
+    29: "twenty_nine", 30: "thirty", 31: "thirty_one", 32: "thirty_two", 33: "thirty_three",
+    34: "thirty_four", 35: "thirty_five",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -376,6 +377,9 @@ class TestMutation:
         # Q1007a's `ride-a-leap` rides a lame leap a game already has: xiangqi's horse and
         # elephant.
         parents.append(specs["xiangqi"])
+        # T1's `straighten` takes out a path a game already has, and none is archived until
+        # T2 and T3 (`plan-pieces-moves.md` §5.7): chess with zigzag bishops stands in.
+        parents.append(_parent_crooked_bishops())
 
         def fires(operator) -> bool:
             return any(
@@ -2023,7 +2027,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 32
+_FEATURES_ARE_FOR_SCHEMA = 35
 
 
 @dataclass(frozen=True)
@@ -2387,6 +2391,25 @@ def _parent_command() -> dict:
     })
 
 
+def _parent_archers() -> dict:
+    """Chess whose bishops shoot (A1, `plan-pieces-moves.md` §6.7): rifle's strike given to the
+    bishops alone."""
+    chess = _chess()
+    chess["rules"]["strike"] = {
+        "effect": "capture", "position": "stay", "immune": ["K"], "by": ["B"],
+    }
+    return chess
+
+
+def _parent_crooked_bishops() -> dict:
+    """Chess with zigzag bishops (T1, `plan-pieces-moves.md` §5.7, Z1): the bishop's own
+    descriptor with ``path: "zigzag"``."""
+    chess = _chess()
+    for move in next(p for p in chess["pieces"] if p["id"] == "B")["moves"]:
+        move["path"] = "zigzag"
+    return chess
+
+
 def _parent_lame_rider() -> dict:
     """Chess with lame riding knights (Q1007a, `plan-schema-31.md` §2.2): each `[1, 2]` jump
     blocked on its leg, two jumps or more, the nearest landing passed over."""
@@ -2461,27 +2484,17 @@ def _armies_differ(spec: dict) -> bool:
     return len(set(first) & set(second)) < 2 and len(set(first) | set(second)) >= 2
 
 
-# Generation 32's inventory (Q1007a, `plan-schema-31.md` §2.5): two names, each a move property
-# riding on no rule. `ride-a-leap` enters both (a lame leap given a `range`, now and then a
-# `min_range` of 2) and leaves both (the rider made a single jump again). Generation 31's two
-# rows (Q1007c) retired with the generation; `cast-a-gaze`, `turn-the-gaze` and
-# `blind-a-piece` still cross them.
+# Generation 35's inventory (A1, `plan-pieces-moves.md` §6.5): one name, a modifier on the
+# strike, so its host is `strike`. `leave-something-behind` enters it (a standing rifle strike
+# is given to one capturing type, or a new strike is rifle given to one) and leaves it (the
+# list dropped, every piece striking again), keeping the strike. It names types and adds none,
+# so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
+# and `straighten` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    "Q1007a lame range": _Feature(
-        None, frozenset({"pieces.moves.lame.range"}), True, "chess+lame-riders",
-        _parent_lame_rider,
-        likely=lambda spec: any(
-            move.get("kind") == "lame"
-            for piece in spec.get("pieces", []) for move in piece.get("moves", [])
-        ),
-    ),
-    "Q1007a lame min_range": _Feature(
-        None, frozenset({"pieces.moves.lame.min_range"}), True, "chess+lame-riders",
-        _parent_lame_rider,
-        likely=lambda spec: any(
-            move.get("kind") == "lame"
-            for piece in spec.get("pieces", []) for move in piece.get("moves", [])
-        ),
+    "A1 strike by": _Feature(
+        "strike", frozenset({"rules.strike.by"}), True, "chess+archers",
+        _parent_archers,
+        likely=lambda spec: isinstance(spec.get("rules", {}).get("strike"), dict),
     ),
 }
 
@@ -2493,16 +2506,11 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # Q1007a's two names. R1 (`plan-schema-31.md` §6.1) was to carry the lame rider; the user
-    # made its rook the slide reading (2026-10-23), and of its three drafts Q1007e kept R1b, a
-    # slide, over R1c, the lame one (2026-10-24, §6.1 *The drafts*). Neither R1 nor R3 can carry
-    # it without changing a fixed move rule, so both rows stay owed.
-    "Q1007a lame range": (
-        "owed: R1c, the lame draft of plan-schema-31.md §6.1, was not kept; no showcase uses it"
-    ),
-    "Q1007a lame min_range": (
-        "owed: no showcase registered in plan-schema-31.md §6 uses min_range on a lame rider"
-    ),
+    # I1's one name. Its showcase is I2, *capture the flag* (`plan-pieces-moves.md` §4.7),
+    # registered before the rule was built; I2 deletes this row when it lands.
+    # A1's one name. Its showcase is A2, *the archers* (`plan-pieces-moves.md` §6.7),
+    # registered before the rule was built; A2 deletes this row when it lands.
+    "A1 strike by": "owed: A2, the archers (plan-pieces-moves.md §6.7)",
     # Schema 30's `through` went on 2026-10-22, when Q999d archived S2
     # (`archive/chess-with-a-sheltering-king`, `docs/archive/plan-passive.md` §6.1) beside S1 and S3
     # (`archive/madrasi`, `-with-daunting-knights`); freeze, disarm and shield had gone the
@@ -2590,6 +2598,9 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     }),
     31: frozenset({"pieces.sight.command", "pieces.sight.captures_own"}),
     32: frozenset({"pieces.moves.lame.range", "pieces.moves.lame.min_range"}),
+    33: frozenset({"pieces.moves.empty"}),
+    34: frozenset({"pieces.moves.slide.path.circle", "pieces.moves.slide.path.zigzag"}),
+    35: frozenset({"rules.strike.by"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2598,6 +2609,29 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 34's two names (T1), owed in `_SHOWCASE_OWED` until generation 35 (A1) retired
+    # their `_FEATURES` rows. Their showcases are T2, *crooked bishops*, and T3, *the circling
+    # queen* (`plan-pieces-moves.md` §5.7); each deletes its row when it lands.
+    "schema 34: pieces.moves.slide.path.circle": (
+        "owed: T3, the circling queen (plan-pieces-moves.md §5.7)"
+    ),
+    "schema 34: pieces.moves.slide.path.zigzag": (
+        "owed: T2, crooked bishops (plan-pieces-moves.md §5.7)"
+    ),
+    # Generation 33's name (I1), owed in `_SHOWCASE_OWED` until generation 34 (T1) retired its
+    # `_FEATURES` row. Its showcase is I2, *capture the flag* (`plan-pieces-moves.md` §4.7),
+    # which deletes this row when it lands.
+    "schema 33: pieces.moves.empty": "owed: I2, capture the flag (plan-pieces-moves.md §4.7)",
+    # Generation 32's two names (Q1007a), owed in `_SHOWCASE_OWED` until generation 33 retired
+    # their `_FEATURES` rows. R1 (`plan-schema-31.md` §6.1) was to carry the lame rider; the user
+    # made its rook the slide reading (2026-10-23), and Q1007e kept R1b, a slide, over R1c, the
+    # lame one. Neither R1 nor R3 can carry it without changing a fixed move rule.
+    "schema 32: pieces.moves.lame.range": (
+        "owed: R1c, the lame draft of plan-schema-31.md §6.1, was not kept; no showcase uses it"
+    ),
+    "schema 32: pieces.moves.lame.min_range": (
+        "owed: no showcase registered in plan-schema-31.md §6 uses min_range on a lame rider"
+    ),
     # Generation 31's two names (Q1007c). Q1007f built and measured their showcases K1 and K2
     # (`plan-schema-31.md` §6.3, 2026-10-24): both viable and fair, both missed V2 (a commanded
     # move offered too rarely), so both retired by the call registered before their first
@@ -3814,7 +3848,8 @@ _PINNED_SCALES: dict[str, float] = {
     "wins_by_leaving": 1.0, "portal_pairs": 1.0, "portals_move": 1.0, "portals_one_way": 1.0,
     "portals_no_back": 1.0, "portals_ring": 1.0, "portals_funnel": 1.0,
     "portals_other_map": 1.0, "portals_filtered": 1.0, "portals_fold": 1.0,
-    "npcs_share_a_walk": 1.0, "lame_rider_share": 1.0,
+    "npcs_share_a_walk": 1.0, "lame_rider_share": 1.0, "turning_share": 1.0,
+    "strikers_share": 1.0,
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
     "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
     "beats_share": 1.0, "simultaneous_swap_collides": 1.0, "simultaneous_both_score": 1.0,
@@ -3882,14 +3917,15 @@ class TestDistanceIsPinnedToTheNumber:
     def test_the_distance_is_rounded_to_four_places(self) -> None:
         """Chess against its bare-royal twin differs in the flag (1/1), the rule mass (52
         to 58, over 90) and the special rules (3 to 4, over 6): the mean over the 100
-        features (Q1011 brought it to 100: Q1007a's `lame_rider_share` was the 81st) is 0.012333,
-        which rounds to 0.0123 and not to 0.012 or 0.01233."""
+        features (Q1011 brought it to 100: Q1007a's `lame_rider_share` was the 81st), 101 since
+        T1's `turning_share` and 102 since A1's `strikers_share`, is 0.012091, which rounds to
+        0.0121 and not to 0.012 or 0.01209."""
         chess = _chess()
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0123
+        assert distance(chess, twin) == 0.0121
 
 
 def _one_leap_beside_a_stone() -> dict:

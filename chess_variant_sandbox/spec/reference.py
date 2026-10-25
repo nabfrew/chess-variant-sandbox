@@ -181,6 +181,7 @@ DEFAULTS: dict[str, str] = {
     "pieces[].moves[].mode": "`\"both\"`",
     "pieces[].moves[].screen": "`\"any\"`",
     "pieces[].moves[].screen_range": "`0`",
+    "pieces[].moves[].path": "`\"straight\"`, every step the same direction",
     "pieces[].moves[].condition.first_move": "`false`",
     "rules.portals[].moves[].symmetry": "`\"none\"`",
     "rules.portals[].moves[].mode": "`\"move\"`, the only mode a portal's move may have",
@@ -349,7 +350,10 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "sweep clears every piece along its line. A leap can be ridden, jump after jump in "
         "one direction: as a slide over the jump it is stopped only where it would land "
         "(the nightrider), and as a lame move with a range each jump is also stopped by a "
-        "piece on the one square it passes, the square a lame leap is blocked on. A piece "
+        "piece on the one square it passes, the square a lame leap is blocked on. A slide's "
+        "path may turn as it goes: round in a circle, each step the next direction round "
+        "(the rose, on the knight's eight), or in a zigzag between two neighbouring "
+        "directions (the crooked bishop). A piece "
         "can be kept to one part of the board, or point one way and spend a move turning.",
         ("slide", "leap", "hop", "lame", "sweep", "pieces[].region", "pieces[].facing"),
     ),
@@ -358,7 +362,8 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "A piece may be able to take only certain others, so armies can beat one another in "
         "a circle. A taken piece can become another piece, be sent home, change places with "
         "its taker, blow up with everything round it, or go into the captor's hand to be "
-        "dropped back into play; a player can start with pieces in hand; captures can be "
+        "dropped back into play. A piece can shoot, taking what it captures without moving "
+        "onto its square; a player can start with pieces in hand; captures can be "
         "compulsory.",
         ("pieces[].captures", "rules.strike", "rules.contacts", "rules.explode_on_capture",
          "rules.drops", "pieces[].promoted_from", "rules.promote_on_entry",
