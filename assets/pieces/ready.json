@@ -6,6 +6,7 @@
    "id": "A",
    "value": 1,
    "reading": "the (2,2) leaper (Betza A; shatranj's elephant)",
+   "description": "Jumps exactly two squares diagonally, over anything in between. It is the elephant of shatranj, the old Persian chess, and the bishop's ancestor.",
    "moves": [
     {
      "kind": "leap",
@@ -24,6 +25,7 @@
    "id": "M",
    "value": 12,
    "reading": "queen and knight",
+   "description": "Moves as a queen or jumps as a knight, the strongest of the classic invented pieces. Some old versions of chess gave the queen this power.",
    "moves": [
     {
      "kind": "slide",
@@ -56,6 +58,7 @@
    "id": "X",
    "value": 1,
    "reading": "a piece that never moves (its words: immobile, stuck, fixed)",
+   "description": "Never moves. It blocks lines and can be jumped over, and is taken as any piece is.",
    "moves": [],
    "note": "It never moves: it blocks lines and screens hops, and is taken as any piece is."
   },
@@ -64,6 +67,7 @@
    "id": "T",
    "value": 2,
    "reading": "the (3,4) leaper (Parlett)",
+   "description": "Jumps three squares one way and four the other, a knight's jump stretched long. One of the classic invented chess pieces.",
    "moves": [
     {
      "kind": "leap",
@@ -82,6 +86,7 @@
    "id": "A",
    "value": 8,
    "reading": "bishop and knight (Capablanca)",
+   "description": "Moves as a bishop or jumps as a knight. It comes from Capablanca's chess, played on a wider board.",
    "moves": [
     {
      "kind": "slide",
@@ -110,6 +115,7 @@
    "id": "A",
    "value": 3,
    "reading": "an archer (its words: archer, shooter): a bishop whose every capture is a shot, Rifle chess's capture given to one piece",
+   "description": "Moves like a bishop, any distance diagonally. With the game's shooting rule on, it takes by shooting, staying where it is, as every piece does in Rifle chess.",
    "moves": [
     {
      "kind": "slide",
@@ -139,6 +145,7 @@
    "id": "P",
    "value": 1,
    "reading": "moves diagonally forward, captures straight forward (Berolina, E. Nebermann 1926)",
+   "description": "Moves one square diagonally forward, two from its starting row, and takes one square straight forward: a pawn turned inside out. It comes from Berolina chess, 1926.",
    "moves": [
     {
      "kind": "slide",
@@ -186,6 +193,7 @@
    "id": "B",
    "value": 3,
    "reading": "the diagonal rider",
+   "description": "Moves any distance diagonally until something is in the way. The bishop of chess.",
    "moves": [
     {
      "kind": "slide",
@@ -204,6 +212,7 @@
    "id": "B",
    "value": 5,
    "reading": "camel and zebra (Betza CZ)",
+   "description": "Jumps three squares one way and one or two the other, the camel's and the zebra's jumps together. An invented chess piece.",
    "moves": [
     {
      "kind": "leap",
@@ -232,6 +241,7 @@
    "id": "Z",
    "value": 3,
    "reading": "the crooked bishop (its words: zigzag; Betza's boyscout, XBetza zB): diagonal steps turning one way and back, along a rank or a file",
+   "description": "Moves any number of diagonal steps that zigzag back and forth, so its path runs along a row or a column. It is Ralph Betza's crooked bishop, shaped like its lightning drawing.",
    "moves": [
     {
      "kind": "slide",
@@ -251,6 +261,7 @@
    "id": "X",
    "value": 1,
    "reading": "Stratego's bomb, one shot: it never moves, and whatever takes it is destroyed with it",
+   "description": "Never moves, and with the game's exploding rule on, whatever takes it is destroyed with it. It comes from the board game Stratego.",
    "moves": [],
    "rules": {
     "explode_on_capture": {
@@ -267,6 +278,7 @@
    "id": "C",
    "value": 2.5,
    "reading": "the (1,3) leaper (Parlett)",
+   "description": "Jumps three squares one way and one the other, a longer knight's jump. It comes from Tamerlane chess, a large medieval variant.",
    "moves": [
     {
      "kind": "leap",
@@ -285,6 +297,7 @@
    "id": "C",
    "value": 6,
    "reading": "king and knight",
+   "description": "Steps one square in any direction, like a king, or jumps as a knight. An invented chess piece.",
    "moves": [
     {
      "kind": "leap",
@@ -317,6 +330,7 @@
    "id": "C",
    "value": 4.5,
    "reading": "wazir, alfil and dabbaba (Omega chess)",
+   "description": "Steps one square straight, or jumps two squares straight or diagonally. It comes from Omega chess.",
    "moves": [
     {
      "kind": "leap",
@@ -355,6 +369,7 @@
    "id": "C",
    "value": 9,
    "reading": "rook and knight (Capablanca)",
+   "description": "Moves as a rook or jumps as a knight. It comes from Capablanca's chess, played on a wider board.",
    "moves": [
     {
      "kind": "slide",
@@ -383,6 +398,7 @@
    "id": "M",
    "value": 3,
    "reading": "a king that is not royal",
+   "description": "Steps one square in any direction, like a king, but losing it does not lose the game. An invented chess piece.",
    "moves": [
     {
      "kind": "leap",
@@ -405,6 +421,7 @@
    "id": "F",
    "value": 0,
    "reading": "Stratego's flag: a royal that never moves",
+   "description": "Never moves, and the game is about not losing it, so it must be defended where it stands. It is the flag of the board game Stratego.",
    "moves": [],
    "royal": true,
    "note": "Under win by royal capture taking it wins at once. Under checkmate a check on it can only be met by taking or blocking the checker, since it cannot step away."
@@ -414,6 +431,7 @@
    "id": "H",
    "value": 7,
    "reading": "bishop and wazir (shogi's dragon horse)",
+   "description": "Moves as a bishop, or steps one square straight. It is the dragon horse of shogi, Japanese chess, a promoted bishop.",
    "moves": [
     {
      "kind": "slide",
@@ -442,6 +460,7 @@
    "id": "D",
    "value": 8,
    "reading": "rook and ferz (shogi's dragon king)",
+   "description": "Moves as a rook, or steps one square diagonally. It is the dragon king of shogi, Japanese chess, a promoted rook.",
    "moves": [
     {
      "kind": "slide",
@@ -470,6 +489,7 @@
    "id": "D",
    "value": 1,
    "reading": "the (2,0) leaper (Betza D)",
+   "description": "Jumps exactly two squares forward, back or sideways, over anything in between. Its name, an old siege engine, comes from medieval Arabic chess.",
    "moves": [
     {
      "kind": "leap",
@@ -488,6 +508,7 @@
    "id": "D",
    "value": 4,
    "reading": "knight and pawn (problemist convention)",
+   "description": "Moves either as a knight or as a pawn: a step forward, two from its starting row, and a diagonal step forward to take. A favourite of chess puzzle composers.",
    "moves": [
     {
      "kind": "leap",
@@ -546,6 +567,7 @@
    "id": "K",
    "value": 0,
    "reading": "a royal king (no settled convention)",
+   "description": "Steps one square in any direction, and the game is about not losing it, as with a king. Its drawing has no settled tradition, so it moves as a king.",
    "moves": [
     {
      "kind": "leap",
@@ -569,6 +591,7 @@
    "id": "E",
    "value": 3,
    "reading": "a watcher (its words: sight): a king's step, and every enemy it sees within two squares is frozen",
+   "description": "Steps one square in any direction, and freezes every enemy piece it sees within two squares in a straight or diagonal line, so those cannot move. A watching piece its drawing suggests.",
    "moves": [
     {
      "kind": "leap",
@@ -609,6 +632,7 @@
    "id": "P",
    "value": 1,
    "reading": "this project's own piece, not the tradition's: the pawn of weathervane, a pawn that points, so its forward and its captures turn with the way it faces (archive/weathervane.json plays it)",
+   "description": "A pawn that points: it moves and takes as a pawn, but towards the way it faces, which can be any side. A piece made here, for the game weathervane.",
    "moves": [
     {
      "kind": "slide",
@@ -658,6 +682,7 @@
    "id": "F",
    "value": 3.5,
    "reading": "ferz, alfil and dabbaba (Betza FAD)",
+   "description": "Steps one square diagonally, or jumps two squares diagonally or two straight. An invented chess piece that reaches every nearby square of its own colour.",
    "moves": [
     {
      "kind": "leap",
@@ -696,6 +721,7 @@
    "id": "F",
    "value": 1,
    "reading": "one diagonal step (shatranj)",
+   "description": "Steps one square diagonally. It is the counsellor of shatranj, the old Persian chess, and the queen's weak ancestor.",
    "moves": [
     {
      "kind": "leap",
@@ -714,6 +740,7 @@
    "id": "F",
    "value": 2.5,
    "reading": "ferz and threeleaper (Betza FH)",
+   "description": "Steps one square diagonally, or jumps exactly three squares straight. An invented chess piece.",
    "moves": [
     {
      "kind": "leap",
@@ -742,6 +769,7 @@
    "id": "G",
    "value": 9,
    "reading": "a queen that passes through (its words): every queen-line square up to seven away, as a leap",
+   "description": "Jumps up to seven squares in any straight or diagonal line, passing through whatever is in between. A queen that goes through walls, as its drawing suggests.",
    "moves": [
     {
      "kind": "leap",
@@ -812,6 +840,7 @@
    "id": "G",
    "value": 2,
    "reading": "the (1,4) leaper (Betza; Parlett)",
+   "description": "Jumps four squares one way and one the other, a very long knight's jump. An invented chess piece.",
    "moves": [
     {
      "kind": "leap",
@@ -830,6 +859,7 @@
    "id": "G",
    "value": 2,
    "reading": "a queen-line hop, landing just past the screen (Dawson)",
+   "description": "Moves along any straight or diagonal line only by jumping over one piece, of either side, landing on the square just past it. Invented by the puzzle composer Thomas Dawson.",
    "moves": [
     {
      "kind": "hop",
@@ -853,6 +883,7 @@
    "id": "T",
    "value": 6,
    "reading": "a timer (its words): a queen that rests two turns after it moves",
+   "description": "Moves as a queen, but after each move it must rest for its player's next two turns. A piece that keeps time, as its drawing suggests.",
    "moves": [
     {
      "kind": "slide",
@@ -876,6 +907,7 @@
    "id": "K",
    "value": 0,
    "reading": "a royal king (no canonical move of its own)",
+   "description": "Steps one square in any direction, and the game is about not losing it. An upside-down king that moves as a king, since no tradition gives it a move of its own.",
    "moves": [
     {
      "kind": "leap",
@@ -899,6 +931,7 @@
    "id": "G",
    "value": 2,
    "reading": "the grasshopper (problemist convention: an upside-down queen)",
+   "description": "An upside-down queen is how puzzle books draw the grasshopper: it moves along any line only by jumping over one piece, landing just past it.",
    "moves": [
     {
      "kind": "hop",
@@ -922,6 +955,7 @@
    "id": "K",
    "value": 0,
    "reading": "the king",
+   "description": "Steps one square in any direction, and the game is about not losing it. The king of chess.",
    "moves": [
     {
      "kind": "leap",
@@ -945,6 +979,7 @@
    "id": "K",
    "value": 3,
    "reading": "ferz and dabbaba (chu shogi)",
+   "description": "Steps one square diagonally, or jumps two squares straight. It comes from chu shogi, a large Japanese chess.",
    "moves": [
     {
      "kind": "leap",
@@ -973,6 +1008,7 @@
    "id": "N",
    "value": 3,
    "reading": "the (1,2) leaper",
+   "description": "Jumps two squares one way and one the other, an L shape, over anything in between. The knight of chess.",
    "moves": [
     {
      "kind": "leap",
@@ -991,6 +1027,7 @@
    "id": "M",
    "value": 3,
    "reading": "a king that is not royal (Betza's man)",
+   "description": "Steps one square in any direction, like a king, but losing it does not lose the game. An invented chess piece.",
    "moves": [
     {
      "kind": "leap",
@@ -1013,6 +1050,7 @@
    "id": "W",
    "value": 4,
    "reading": "ferz and camel (Omega chess's wizard)",
+   "description": "Steps one square diagonally, or jumps three squares one way and one the other. It is the wizard of Omega chess.",
    "moves": [
     {
      "kind": "leap",
@@ -1041,6 +1079,7 @@
    "id": "N",
    "value": 5,
    "reading": "the knight rider (Dawson, 1925)",
+   "description": "Makes any number of knight's jumps in a row in one direction, stopped by a piece on a square it would land on. Invented by Thomas Dawson in 1925.",
    "moves": [
     {
      "kind": "slide",
@@ -1059,6 +1098,7 @@
    "id": "P",
    "value": 1,
    "reading": "rock-paper-scissors: a king's step, and it takes only the rock",
+   "description": "Steps one square in any direction. In a rock, paper and scissors set it takes only the rock, which you can set once all three are in.",
    "moves": [
     {
      "kind": "leap",
@@ -1090,6 +1130,7 @@
    "id": "P",
    "value": 1,
    "reading": "the pawn",
+   "description": "Moves one square forward, two from its starting row, and takes one square diagonally forward. The pawn of chess.",
    "moves": [
     {
      "kind": "slide",
@@ -1138,6 +1179,7 @@
    "id": "P",
    "value": 3,
    "reading": "wazir and alfil (Betza WA)",
+   "description": "Steps one square straight, or jumps two squares diagonally. It comes from chu shogi, a large Japanese chess.",
    "moves": [
     {
      "kind": "leap",
@@ -1166,6 +1208,7 @@
    "id": "P",
    "value": 0,
    "reading": "a second royal that moves as a king (Tamerlane's prince)",
+   "description": "Steps one square in any direction, and the game is about not losing it, a second such piece beside the king. It comes from Tamerlane chess, a large medieval variant.",
    "moves": [
     {
      "kind": "leap",
@@ -1190,6 +1233,7 @@
    "id": "Q",
    "value": 9,
    "reading": "the queen",
+   "description": "Moves any distance in any straight or diagonal line until something is in the way. The queen of chess.",
    "moves": [
     {
      "kind": "slide",
@@ -1212,6 +1256,7 @@
    "id": "M",
    "value": 12,
    "reading": "queen and knight (its words: super queen)",
+   "description": "Moves as a queen or jumps as a knight, so it reaches more squares than any chess piece. An invented chess piece.",
    "moves": [
     {
      "kind": "slide",
@@ -1244,6 +1289,7 @@
    "id": "O",
    "value": 6,
    "reading": "a circular rider (its words: circle, orbit, loop): one-square steps turning an eighth each time, round a small octagon",
+   "description": "Steps one square at a time, turning one direction round with every step, so its path curves round a small circle. A circling piece its drawing suggests.",
    "moves": [
     {
      "kind": "slide",
@@ -1267,6 +1313,7 @@
    "id": "R",
    "value": 1,
    "reading": "rock-paper-scissors: a king's step, and it takes only the scissors",
+   "description": "Steps one square in any direction. In a rock, paper and scissors set it takes only the scissors, which you can set once all three are in.",
    "moves": [
     {
      "kind": "leap",
@@ -1298,6 +1345,7 @@
    "id": "R",
    "value": 5,
    "reading": "the rook",
+   "description": "Moves any distance forward, back or sideways until something is in the way. The rook of chess.",
    "moves": [
     {
      "kind": "slide",
@@ -1316,6 +1364,7 @@
    "id": "R",
    "value": 6,
    "reading": "rook and alfil",
+   "description": "Moves as a rook, or jumps exactly two squares diagonally. An invented chess piece.",
    "moves": [
     {
      "kind": "slide",
@@ -1344,6 +1393,7 @@
    "id": "O",
    "value": 5,
    "reading": "the circular knight rider: knight steps turning an eighth each time, round an octagon (Parlett; XBetza qN)",
+   "description": "Makes knight's jumps one after another, each turning one direction round, so its path circles round an octagon. A classic invented chess piece.",
    "moves": [
     {
      "kind": "slide",
@@ -1363,6 +1413,7 @@
    "id": "K",
    "value": 0,
    "reading": "a royal knight (Knightmate)",
+   "description": "Jumps as a knight, and the game is about not losing it. It comes from Knightmate, where the king and the knights trade places.",
    "moves": [
     {
      "kind": "leap",
@@ -1382,6 +1433,7 @@
    "id": "S",
    "value": 3,
    "reading": "a diagonal rider (its words)",
+   "description": "Moves any distance diagonally until something is in the way, as a bishop does. Named for the diagonal cross its drawing shows.",
    "moves": [
     {
      "kind": "slide",
@@ -1400,6 +1452,7 @@
    "id": "S",
    "value": 1,
    "reading": "rock-paper-scissors: a king's step, and it takes only the paper",
+   "description": "Steps one square in any direction. In a rock, paper and scissors set it takes only the paper, which you can set once all three are in.",
    "moves": [
     {
      "kind": "leap",
@@ -1431,6 +1484,7 @@
    "id": "S",
    "value": 1.5,
    "reading": "one step forward or diagonally forward, a double step from home (Betza)",
+   "description": "Moves or takes one square forward or diagonally forward, and may step two forward from its starting row. An invented chess piece, a stronger pawn.",
    "moves": [
     {
      "kind": "leap",
@@ -1476,6 +1530,7 @@
    "id": "K",
    "value": 0,
    "reading": "a royal king (no settled convention)",
+   "description": "Steps one square in any direction, and the game is about not losing it, as with a king. Its drawing has no settled tradition, so it moves as a king.",
    "moves": [
     {
      "kind": "leap",
@@ -1499,6 +1554,7 @@
    "id": "S",
    "value": 1,
    "reading": "chaturaji's boat, the (2,2) leaper (Murray)",
+   "description": "Jumps exactly two squares diagonally, over anything in between. It is the boat of chaturaji, an old four-player Indian chess.",
    "moves": [
     {
      "kind": "leap",
@@ -1517,6 +1573,7 @@
    "id": "B",
    "value": 8,
    "reading": "shogi's bishop, as rulesets/shogi.json plays it",
+   "description": "Moves any distance diagonally until something is in the way. The bishop of shogi, Japanese chess.",
    "moves": [
     {
      "kind": "slide",
@@ -1536,6 +1593,7 @@
    "id": "G",
    "value": 6,
    "reading": "shogi's gold, as rulesets/shogi.json plays it",
+   "description": "Steps one square forward, back, sideways or diagonally forward. The gold general of shogi, Japanese chess.",
    "moves": [
     {
      "kind": "leap",
@@ -1566,6 +1624,7 @@
    "id": "K",
    "value": 0,
    "reading": "shogi's king, as rulesets/shogi.json plays it",
+   "description": "Steps one square in any direction, and the game is about not losing it. The king of shogi, Japanese chess.",
    "moves": [
     {
      "kind": "leap",
@@ -1590,6 +1649,7 @@
    "id": "N",
    "value": 3,
    "reading": "shogi's knight, as rulesets/shogi.json plays it",
+   "description": "Jumps two squares forward and one to either side, and only forward. The knight of shogi, Japanese chess.",
    "moves": [
     {
      "kind": "leap",
@@ -1609,6 +1669,7 @@
    "id": "L",
    "value": 3,
    "reading": "shogi's lance, as rulesets/shogi.json plays it",
+   "description": "Moves any distance straight forward until something is in the way, and never back. The lance of shogi, Japanese chess.",
    "moves": [
     {
      "kind": "slide",
@@ -1627,6 +1688,7 @@
    "id": "P",
    "value": 1,
    "reading": "shogi's pawn, as rulesets/shogi.json plays it",
+   "description": "Moves and takes one square straight forward. The pawn of shogi, Japanese chess.",
    "moves": [
     {
      "kind": "leap",
@@ -1645,6 +1707,7 @@
    "id": "H",
    "value": 10,
    "reading": "shogi's horse, as rulesets/shogi.json plays it",
+   "description": "Moves as a bishop, or steps one square straight. In shogi, Japanese chess, it is what a bishop becomes when promoted.",
    "moves": [
     {
      "kind": "slide",
@@ -1676,6 +1739,7 @@
    "id": "Y",
    "value": 5,
    "reading": "shogi's promoted knight, as rulesets/shogi.json plays it",
+   "description": "Steps one square forward, back, sideways or diagonally forward, as a gold general does. In shogi, Japanese chess, it is what a knight becomes when promoted.",
    "moves": [
     {
      "kind": "leap",
@@ -1707,6 +1771,7 @@
    "id": "X",
    "value": 5,
    "reading": "shogi's promoted lance, as rulesets/shogi.json plays it",
+   "description": "Steps one square forward, back, sideways or diagonally forward, as a gold general does. In shogi, Japanese chess, it is what a lance becomes when promoted.",
    "moves": [
     {
      "kind": "leap",
@@ -1738,6 +1803,7 @@
    "id": "Q",
    "value": 5,
    "reading": "shogi's tokin, as rulesets/shogi.json plays it",
+   "description": "Steps one square forward, back, sideways or diagonally forward, as a gold general does. The tokin of shogi, Japanese chess: what a pawn becomes when promoted.",
    "moves": [
     {
      "kind": "leap",
@@ -1769,6 +1835,7 @@
    "id": "D",
    "value": 12,
    "reading": "shogi's dragon, as rulesets/shogi.json plays it",
+   "description": "Moves as a rook, or steps one square diagonally. In shogi, Japanese chess, it is what a rook becomes when promoted.",
    "moves": [
     {
      "kind": "slide",
@@ -1800,6 +1867,7 @@
    "id": "Z",
    "value": 5,
    "reading": "shogi's promoted silver, as rulesets/shogi.json plays it",
+   "description": "Steps one square forward, back, sideways or diagonally forward, as a gold general does. In shogi, Japanese chess, it is what a silver becomes when promoted.",
    "moves": [
     {
      "kind": "leap",
@@ -1831,6 +1899,7 @@
    "id": "R",
    "value": 10,
    "reading": "shogi's rook, as rulesets/shogi.json plays it",
+   "description": "Moves any distance forward, back or sideways until something is in the way. The rook of shogi, Japanese chess.",
    "moves": [
     {
      "kind": "slide",
@@ -1850,6 +1919,7 @@
    "id": "S",
    "value": 5,
    "reading": "shogi's silver, as rulesets/shogi.json plays it",
+   "description": "Steps one square diagonally in any direction, or one straight forward. The silver general of shogi, Japanese chess.",
    "moves": [
     {
      "kind": "leap",
@@ -1879,6 +1949,7 @@
    "id": "R",
    "value": 4,
    "reading": "a rook limited to four (Betza, the Remarkable Rookies)",
+   "description": "Moves up to four squares forward, back or sideways, stopped by anything in the way. A shortened rook from Ralph Betza's chess variants.",
    "moves": [
     {
      "kind": "slide",
@@ -1898,6 +1969,7 @@
    "id": "S",
    "value": 5,
    "reading": "a slider six ways, on a hex board (its words: six ways)",
+   "description": "On a board of six-sided cells, moves any distance in any of the six directions until something is in the way. It is the rook of hexagonal chess.",
    "moves": [
     {
      "kind": "slide",
@@ -1917,6 +1989,7 @@
    "id": "S",
    "value": 1,
    "reading": "the xiangqi soldier: one step forward, and sideways too once across the river",
+   "description": "Steps one square forward. In xiangqi, Chinese chess, it also steps sideways once across the river, which you can add.",
    "moves": [
     {
      "kind": "leap",
@@ -1936,6 +2009,7 @@
    "id": "L",
    "value": 2.5,
    "reading": "the western lance, a forward rider",
+   "description": "Moves any distance straight forward until something is in the way, and never back. A western cousin of the shogi lance.",
    "moves": [
     {
      "kind": "slide",
@@ -1954,6 +2028,7 @@
    "id": "S",
    "value": 5,
    "reading": "alfil, dabbaba and knight (Betza ADN)",
+   "description": "Jumps to any square exactly two away: two straight, two diagonally, or a knight's jump. An invented chess piece.",
    "moves": [
     {
      "kind": "leap",
@@ -1992,6 +2067,7 @@
    "id": "H",
    "value": 1,
    "reading": "the (3,0) leaper (Betza H)",
+   "description": "Jumps exactly three squares forward, back or sideways, over anything in between. An invented chess piece.",
    "moves": [
     {
      "kind": "leap",
@@ -2010,6 +2086,7 @@
    "id": "T",
    "value": 3,
    "reading": "a three-way rider (its words): forward and both forward diagonals",
+   "description": "Moves any distance straight forward or diagonally forward, until something is in the way. A three-pronged piece its drawing suggests.",
    "moves": [
     {
      "kind": "slide",
@@ -2032,6 +2109,7 @@
    "id": "G",
    "value": 1,
    "reading": "the (3,3) leaper (Betza G)",
+   "description": "Jumps exactly three squares diagonally, over anything in between. An invented chess piece.",
    "moves": [
     {
      "kind": "leap",
@@ -2050,6 +2128,7 @@
    "id": "U",
    "value": 7,
    "reading": "bishop and nightrider",
+   "description": "Moves like a bishop, or makes any number of knight's jumps in a row in one direction. An invented chess piece.",
    "moves": [
     {
      "kind": "slide",
@@ -2078,6 +2157,7 @@
    "id": "W",
    "value": 3,
    "reading": "wazir and alfil (Betza's waffle, WA)",
+   "description": "Steps one square straight, or jumps two squares diagonally. An invented chess piece, the same as the phoenix under another name.",
    "moves": [
     {
      "kind": "leap",
@@ -2106,6 +2186,7 @@
    "id": "W",
    "value": 1,
    "reading": "one orthogonal step (Betza W)",
+   "description": "Steps one square forward, back or sideways. It comes from medieval Arabic chess, where it was the king's minister.",
    "moves": [
     {
      "kind": "leap",
@@ -2124,6 +2205,7 @@
    "id": "A",
    "value": 2,
    "reading": "xiangqi's advisor, as rulesets/xiangqi.json plays it",
+   "description": "Steps one square diagonally. The advisor of xiangqi, Chinese chess, where it stays inside its palace, which you can add.",
    "moves": [
     {
      "kind": "leap",
@@ -2144,6 +2226,7 @@
    "id": "C",
    "value": 4.5,
    "reading": "xiangqi's cannon, as rulesets/xiangqi.json plays it",
+   "description": "Moves like a rook, but takes only by jumping over exactly one piece to land on the piece beyond. The cannon of xiangqi, Chinese chess.",
    "moves": [
     {
      "kind": "slide",
@@ -2174,6 +2257,7 @@
    "id": "R",
    "value": 9,
    "reading": "xiangqi's chariot, as rulesets/xiangqi.json plays it",
+   "description": "Moves any distance forward, back or sideways until something is in the way. The chariot of xiangqi, Chinese chess, its rook.",
    "moves": [
     {
      "kind": "slide",
@@ -2193,6 +2277,7 @@
    "id": "E",
    "value": 2,
    "reading": "xiangqi's elephant, as rulesets/xiangqi.json plays it",
+   "description": "Moves two squares diagonally, but not if the square between is occupied. The elephant of xiangqi, Chinese chess, where it stays on its own side of the river.",
    "moves": [
     {
      "kind": "lame",
@@ -2213,6 +2298,7 @@
    "id": "K",
    "value": 0,
    "reading": "xiangqi's general, as rulesets/xiangqi.json plays it",
+   "description": "Steps one square forward, back or sideways, and the game is about not losing it. The general of xiangqi, Chinese chess, where it stays inside its palace.",
    "moves": [
     {
      "kind": "leap",
@@ -2234,6 +2320,7 @@
    "id": "H",
    "value": 4,
    "reading": "xiangqi's horse, as rulesets/xiangqi.json plays it",
+   "description": "Jumps as a knight, but is blocked by a piece on the square next to it in the direction it sets off. The horse of xiangqi, Chinese chess.",
    "moves": [
     {
      "kind": "lame",
@@ -2253,6 +2340,7 @@
    "id": "A",
    "value": 2,
    "reading": "xiangqi's advisor, as rulesets/xiangqi.json plays it",
+   "description": "Steps one square diagonally. The advisor of xiangqi, Chinese chess, where it stays inside its palace, which you can add.",
    "moves": [
     {
      "kind": "leap",
@@ -2273,6 +2361,7 @@
    "id": "C",
    "value": 4.5,
    "reading": "xiangqi's cannon, as rulesets/xiangqi.json plays it",
+   "description": "Moves like a rook, but takes only by jumping over exactly one piece to land on the piece beyond. The cannon of xiangqi, Chinese chess.",
    "moves": [
     {
      "kind": "slide",
@@ -2303,6 +2392,7 @@
    "id": "R",
    "value": 9,
    "reading": "xiangqi's chariot, as rulesets/xiangqi.json plays it",
+   "description": "Moves any distance forward, back or sideways until something is in the way. The chariot of xiangqi, Chinese chess, its rook.",
    "moves": [
     {
      "kind": "slide",
@@ -2322,6 +2412,7 @@
    "id": "E",
    "value": 2,
    "reading": "xiangqi's elephant, as rulesets/xiangqi.json plays it",
+   "description": "Moves two squares diagonally, but not if the square between is occupied. The elephant of xiangqi, Chinese chess, where it stays on its own side of the river.",
    "moves": [
     {
      "kind": "lame",
@@ -2342,6 +2433,7 @@
    "id": "K",
    "value": 0,
    "reading": "xiangqi's general, as rulesets/xiangqi.json plays it",
+   "description": "Steps one square forward, back or sideways, and the game is about not losing it. The general of xiangqi, Chinese chess, where it stays inside its palace.",
    "moves": [
     {
      "kind": "leap",
@@ -2363,6 +2455,7 @@
    "id": "H",
    "value": 4,
    "reading": "xiangqi's horse, as rulesets/xiangqi.json plays it",
+   "description": "Jumps as a knight, but is blocked by a piece on the square next to it in the direction it sets off. The horse of xiangqi, Chinese chess.",
    "moves": [
     {
      "kind": "lame",
@@ -2382,6 +2475,7 @@
    "id": "S",
    "value": 1,
    "reading": "xiangqi's soldier, as rulesets/xiangqi.json plays it",
+   "description": "Steps one square forward. The soldier of xiangqi, Chinese chess, where it also steps sideways once across the river, which you can add.",
    "moves": [
     {
      "kind": "leap",
@@ -2401,6 +2495,7 @@
    "id": "S",
    "value": 1,
    "reading": "xiangqi's soldier, as rulesets/xiangqi.json plays it",
+   "description": "Steps one square forward. The soldier of xiangqi, Chinese chess, where it also steps sideways once across the river, which you can add.",
    "moves": [
     {
      "kind": "leap",
@@ -2420,6 +2515,7 @@
    "id": "Z",
    "value": 2.5,
    "reading": "the (2,3) leaper (Parlett)",
+   "description": "Jumps three squares one way and two the other, a stretched knight's jump. One of the classic invented chess pieces.",
    "moves": [
     {
      "kind": "leap",

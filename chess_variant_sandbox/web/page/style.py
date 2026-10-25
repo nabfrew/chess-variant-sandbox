@@ -1470,6 +1470,20 @@ RULES = """
                      border-radius: var(--r-ctl); }
   .drawingGrid button[aria-pressed="true"] { border-color: var(--act);
                                              box-shadow: inset 0 0 0 1px var(--act); }
+  /* PF3: a ready piece's tile carries a small i in its corner, which opens the piece's
+     description as a line across the grid under the tile's row, pushing the rows below
+     down instead of lying over them. The i's reach stays inside the tile's corner, so a
+     press anywhere else on the tile still takes the piece. */
+  .readyTile { position: relative; }
+  .drawingGrid button.info.readyInfo {
+    position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; margin: 0;
+    padding: 0; display: inline-flex; font-size: 11px; background: var(--panel);
+  }
+  .drawingGrid button.info.readyInfo::after { width: 28px; height: 28px; }
+  .drawingGrid button.info.readyInfo[aria-expanded="true"] { color: var(--ink);
+                                                        border-color: var(--act); }
+  .readyAbout { grid-column: 1 / -1; color: var(--ink); line-height: 1.45;
+                border-left: 3px solid var(--note); padding: 3px 0 3px 9px; }
   /* What each player holds off the board, under a still of the opening position. */
   .stillHand { gap: 5px; margin-top: 6px; align-items: baseline; }
   /* Q852: the line under a still board naming each wild piece's walk that jumps, with a

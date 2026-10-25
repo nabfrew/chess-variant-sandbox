@@ -1,5 +1,5 @@
 {
- "source_commit": "af7fce4f67d16002fa38669cf4dacc421a2b694c",
+ "source_commit": "3ab7b476d377c831ffcfe331349231266f9ca5ab",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -506,8 +506,8 @@
   },
   {
    "path": "assets/pieces/ready.json",
-   "bytes": 41545,
-   "sha256": "5b04ca603e3855abdad635311b13dac1db8f7a6c47ddaf6d85fd314d9a0de896"
+   "bytes": 55802,
+   "sha256": "86d5186e1d444ca91f6d590b170f6da731d6a62c9e3fe2706c99a45d7fbac106"
   },
   {
    "path": "assets/pieces/svg/alfil-black.svg",
@@ -2961,8 +2961,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/style.py",
-   "bytes": 118890,
-   "sha256": "4cda1a972cdea9578be01b7b2fcd9b9a0b60c7ff92d885568ca54fc413786ef9"
+   "bytes": 119855,
+   "sha256": "6f72f6421160a52a3386d2fa24400d5889d4d94a9c24a369818c94cf56e6aef8"
   },
   {
    "path": "chess_variant_sandbox/web/page/tokens.py",
@@ -2976,8 +2976,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/piece_library.py",
-   "bytes": 4707,
-   "sha256": "45a652499b08cfbe38093dc3cf9c0ad084b497668323d32f9f19eea42d9f692a"
+   "bytes": 4926,
+   "sha256": "f5fee2b1d886cbb37ebce84937cfa6482f3776209bf2ce111bcdb89de61cb10b"
   },
   {
    "path": "chess_variant_sandbox/web/play.py",
@@ -3066,8 +3066,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/design.js",
-   "bytes": 217678,
-   "sha256": "2d37136a815a891fa9c58cae8cf7d90b4bfd287b7d7710aaa34fa154e87fc227"
+   "bytes": 221015,
+   "sha256": "ade2a260557bfa563be4a40ce5cb6d27513500a96498b16c44509871e903d92a"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/detail.js",
@@ -3251,8 +3251,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 146813,
-   "sha256": "33f560f9165eac565431824afb08a6144d7e18df6c24761ea754098ecebe378c"
+   "bytes": 147061,
+   "sha256": "5cd2d9023c04ec3303e474690163635d5861c0876501e82d470027481eef5db1"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -5621,8 +5621,8 @@
   },
   {
    "path": "tests/test_ready_pieces.py",
-   "bytes": 14693,
-   "sha256": "1c9143145835e69931bf1113dbcf9891631c9ff13d023f0652b74de82e94bae1"
+   "bytes": 16787,
+   "sha256": "c0c50a2999a084b5e82c0fa72c2fa811f008f4e0b20390dfec4dd0b2c5640c61"
   },
   {
    "path": "tests/test_recertify.py",

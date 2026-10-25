@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-26
 
+### A few words about each ready-made piece
+
+Every ready-made piece in the designer now has a small i in the corner of its tile. Press it, or point at
+the tile, to read a sentence or two on what the piece is, how it moves and where it comes from.
+
 ### Kings in the exploding games play by their own rules
 
 In atomic and kamikaze a king can no longer capture, since the blast would take it too, so the kings may

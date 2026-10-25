@@ -30,7 +30,16 @@ CATALOGUE = json.loads((PIECES / "catalogue.json").read_text(encoding="utf-8"))
 
 # The keys an entry may hold: the piece's own (what travels into a draft) and what is said.
 _PIECE_KEYS = {"name", "value", "royal", "moves", "rest", "sight", "facing"}
-_ENTRY_KEYS = _PIECE_KEYS | {"id", "reading", "lattice", "rules", "rules_say", "note"}
+_ENTRY_KEYS = _PIECE_KEYS | {"id", "reading", "description", "lattice", "rules", "rules_say",
+                             "note"}
+
+# PF3: a description is one or two sentences of 60 to 200 characters, short enough to read
+# at a glance on a phone beside the grid, long enough to say what, how and from where.
+_DESCRIPTION_CHARS = (60, 200)
+# Words a visitor is not asked to know (plain-words.md); a piece's own name may still hold one,
+# and an inventor's name (Ralph Betza) is a name, not his notation.
+_JARGON = ("xbetza", "leaper", "rider", "orthogonal", "royal", "compound", "hopper", "rules.",
+           "@", "spec", "json", "lattice", "vector", "symmetry")
 
 
 # ---------------------------------------------------------------- the survey's spellings
@@ -224,6 +233,38 @@ class TestTheCatalogue:
         assert "note" in READY["pieces"]["soldier"]
 
 
+class TestEachIsDescribed:
+    """PF3: every ready piece says in a visitor's words what it is, how it moves and whence."""
+
+    @pytest.mark.parametrize("slug", sorted(READY["pieces"]))
+    def test_it_has_a_short_plain_description(self, slug: str) -> None:
+        import re
+
+        from site_words import hits
+
+        entry = READY["pieces"][slug]
+        said = entry.get("description", "")
+        low, high = _DESCRIPTION_CHARS
+        assert low <= len(said) <= high, (slug, len(said))
+        assert said[0].isupper() and said.endswith("."), slug
+        assert 1 <= len(re.findall(r"[.!?](?:\s|$)", said)) <= 2, slug
+        own = entry["name"].lower()
+        for word in _JARGON:
+            assert word not in said.lower().replace(own, ""), (slug, word)
+        assert hits(said) == [], slug
+
+    @pytest.mark.parametrize("slug", sorted(READY["pieces"]))
+    def test_its_words_agree_with_its_moves(self, slug: str) -> None:
+        entry = READY["pieces"][slug]
+        said = entry["description"].lower()
+        assert ("never moves" in said) == (entry["moves"] == []), slug
+        assert ("not losing it" in said) == bool(entry.get("royal")), slug
+        if entry.get("rest"):
+            assert "rest" in said, slug
+        if entry.get("rules"):
+            assert "rule on" in said, slug  # the rule it needs is a condition, said as one
+
+
 class TestEachCompiles:
     @pytest.mark.parametrize("slug", sorted(READY["pieces"]))
     def test_it_validates_and_compiles(self, slug: str) -> None:
@@ -260,10 +301,12 @@ class TestTheDesignerOffersThem:
             assert ready["piece"].get("facing") == entry.get("facing")
             assert len(ready["says"]) == len(entry["moves"])
             assert ready["lattice"] == entry.get("lattice", "square")
+            assert ready["description"] == entry["description"]
         for slug in READY["left_out"]:
             assert offered[slug].get("ready") is None
 
     def test_the_page_picks_one_whole_and_says_what_it_needs(self) -> None:
         for needle in ("data-readypiece", "function takeReadyPiece", "data-readyrules",
-                       "function readyNeedsHtml", "'@self'", "'@royals'"):
+                       "function readyNeedsHtml", "'@self'", "'@royals'",
+                       "data-readyabout", "function placeReadyAbout", "ready.description"):
             assert needle in PAGE, needle

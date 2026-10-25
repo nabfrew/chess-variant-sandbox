@@ -19,6 +19,9 @@ that way, out of `assets/pieces/ready.json` (`tests/test_ready_pieces.py` holds 
 to its reading in `docs/plan-pieces-moves.md` §1). The page lets a designer take it whole --
 drawing, name and moves -- and says in the entry's own words what game-wide rule it needs.
 The file is data: nothing here reads what a move means beyond saying it in words.
+
+PF3: each entry's `description` is a sentence or two for a visitor (what it is, how it
+moves, where it comes from), which the page shows on request beside the grid.
 """
 
 from __future__ import annotations
@@ -58,6 +61,7 @@ def _ready(entry: Any) -> dict[str, Any] | None:
         "id": entry.get("id", ""),
         "piece": {key: entry[key] for key in _READY_PIECE_KEYS if key in entry},
         "reading": entry.get("reading", ""),
+        "description": entry.get("description", ""),
         "says": [move_sentence(move, lattice == "hex") for move in entry["moves"]],
         "lattice": lattice,
         "rules": entry.get("rules"),

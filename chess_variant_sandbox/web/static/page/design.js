@@ -1066,6 +1066,7 @@ function wirePalettePieces(form) {
 let READY_OPEN = false;   // whether the ready pieces' panel is open
 let READY_FIND = '';      // what is typed in its search
 let READY_KIND = '';      // the category whose chip is on, or '' for all of them
+let READY_ABOUT = '';     // the drawing whose description is open under its row, or ''
 const READY_NEEDS = {};   // a ready piece's letter -> what it said it needs, until dismissed
 
 function readyPiecesHtml() {
@@ -1107,7 +1108,8 @@ function readyOffers(anyKind) {
     if (!ready || ready.lattice !== lattice) return false;
     if (!anyKind && READY_KIND && drawing.category !== READY_KIND) return false;
     const said = [drawing.name, drawing.slug, ready.piece.name, ready.reading,
-      drawing.category].concat(drawing.words, ready.says).join(' ').toLowerCase();
+      ready.description, drawing.category].concat(drawing.words, ready.says)
+      .join(' ').toLowerCase();
     return words.every(word => said.includes(word));
   });
 }
@@ -1118,12 +1120,62 @@ function readyListHtml() {
   const offers = readyOffers(false);
   const all = readyOffers(true).length;
   if (!offers.length) return '<div class="muted small">No ready piece is called that.</div>';
-  return `<div class="muted small">${offers.length} of ${all} ready pieces</div>
-    <ul class="drawingGrid">${offers.map(drawing => `<li><button
-      data-readypiece="${esc(drawing.slug)}"
-      title="${esc(drawing.ready.piece.name + ': ' + drawing.ready.reading)}"><img
-      src="${esc(drawingHref(drawing))}" alt=""><span>${
-      esc(drawing.ready.piece.name)}</span></button></li>`).join('')}</ul>`;
+  return `<div class="muted small">${offers.length} of ${all} ready pieces; the i on one
+      says what it is</div>
+    <ul class="drawingGrid readyGrid" id="dReadyGrid">${offers.map(drawing => {
+      const ready = drawing.ready;
+      const about = ready.description || ready.reading;
+      const open = READY_ABOUT === drawing.slug;
+      return `<li class="readyTile"><button data-readypiece="${esc(drawing.slug)}"
+      title="${esc(ready.piece.name + ': ' + about)}"><img
+      src="${esc(drawingHref(drawing))}" alt=""><span>${esc(ready.piece.name)}</span></button
+      ><button class="info readyInfo" data-readyabout="${esc(drawing.slug)}"
+      aria-expanded="${open}" aria-controls="dReadyAbout"
+      aria-label="about the ${esc(ready.piece.name)}">i</button></li>`;
+    }).join('')}</ul>`;
+}
+
+// PF3: a ready piece's description, opened by the i in its tile's corner (a press, a tap
+// or Enter) and drawn as a line of its own under the row that tile stands in, across the
+// whole grid. It pushes the rows below it down rather than lying over them, so it covers
+// neither the board nor another piece, and a press on the tile itself still takes the
+// piece in one go. A hover reads the same words from the tile's title.
+function placeReadyAbout() {
+  const grid = document.getElementById('dReadyGrid');
+  if (!grid) return;
+  const old = document.getElementById('dReadyAbout');
+  if (old) old.remove();
+  const button = READY_ABOUT && grid.querySelector(
+    `[data-readyabout="${CSS.escape(READY_ABOUT)}"]`);
+  grid.querySelectorAll('[data-readyabout]').forEach(node => {
+    node.setAttribute('aria-expanded', String(node === button));
+  });
+  if (!button) { READY_ABOUT = ''; return; }
+  const drawing = PIECE_LIBRARY.pieces.find(one => one.slug === READY_ABOUT);
+  const ready = drawing && drawing.ready;
+  if (!ready) { READY_ABOUT = ''; return; }
+  // The last tile of the row this one stands in: the line goes after it.
+  const tile = button.closest('li');
+  let last = tile;
+  while (last.nextElementSibling && last.nextElementSibling.offsetTop === tile.offsetTop) {
+    last = last.nextElementSibling;
+  }
+  const line = document.createElement('li');
+  line.className = 'readyAbout small';
+  line.id = 'dReadyAbout';
+  line.setAttribute('role', 'note');
+  const name = document.createElement('b');
+  name.textContent = ready.piece.name + '. ';
+  line.append(name, ready.description || ready.reading);
+  last.after(line);
+  const shown = line.getBoundingClientRect();
+  const box = grid.getBoundingClientRect();
+  if (shown.bottom > box.bottom) grid.scrollTop += shown.bottom - box.bottom;
+}
+
+function toggleReadyAbout(slug) {
+  READY_ABOUT = READY_ABOUT === slug ? '' : slug;
+  placeReadyAbout();
 }
 
 function redrawReady() {
@@ -1133,6 +1185,7 @@ function redrawReady() {
   if (list) list.innerHTML = readyListHtml();
   const form = document.getElementById('form');
   if (form) wireReadyList(form);
+  placeReadyAbout();
 }
 
 // '@self' is the piece's letter and '@royals' the draft's royal pieces, wherever they
@@ -1213,6 +1266,28 @@ function wireReadyList(form) {
       takeReadyPiece(node.dataset.readypiece);
     };
   });
+  form.querySelectorAll('[data-readyabout]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      toggleReadyAbout(node.dataset.readyabout);
+    };
+  });
+  const grid = form.querySelector('#dReadyGrid');
+  if (grid) {
+    // Escape closes the open description and leaves the focus on the i that opened it.
+    grid.onkeydown = event => {
+      if (event.key !== 'Escape' || !READY_ABOUT) return;
+      const slug = READY_ABOUT;
+      toggleReadyAbout(slug);
+      const button = grid.querySelector(`[data-readyabout="${CSS.escape(slug)}"]`);
+      if (button) button.focus();
+    };
+  }
+  // The grid's columns follow its width, so the line moves to its tile's row on a resize.
+  if (!wireReadyList.resizing) {
+    wireReadyList.resizing = true;
+    window.addEventListener('resize', () => { if (READY_ABOUT) placeReadyAbout(); });
+  }
 }
 
 function wireReadyPieces(form) {
@@ -1238,6 +1313,7 @@ function wireReadyPieces(form) {
     find.oninput = () => { READY_FIND = find.value; redrawReady(); };
   }
   wireReadyList(form);
+  placeReadyAbout();
   form.querySelectorAll('[data-readyrules]').forEach(node => {
     node.onclick = event => {
       event.stopPropagation();
