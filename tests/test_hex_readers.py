@@ -299,6 +299,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/the-herd": "53d4d557420812eb",  # N9, generations 37 and 42
     "archive/short-sweeping-bishop-chess": "23f5880775966d4a",  # LPD, schema 31
     "archive/chess-with-galloping-knights": "3d807ce97ef38810",  # Q1023, schema 31
+    "archive/chess-with-preaching-bishops": "f9001b221be00a88",  # Q1024, schema 31
     "archive/anchors": "9992b0d1e2fcec6e",  # I3, generation 33
     "archive/madrasi": "b11e935637736813",  # Q999d, schema 30
     "archive/chess-with-a-sheltering-king": "84030d503bb17bc8",  # Q999d, schema 30

@@ -432,6 +432,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/the-herd": "bc1e91a0f50ed3cb",  # N9, generations 37 and 42
     "archive/short-sweeping-bishop-chess": "980b6362973afb82",  # LPD, schema 31
     "archive/chess-with-galloping-knights": "582fe0dfb371a0e8",  # Q1023, schema 31
+    "archive/chess-with-preaching-bishops": "518e2cd85fcfa1ea",  # Q1024, schema 31
     "archive/anchors": "b57b92f43654cb71",  # I3, generation 33
     "archive/madrasi": "b6e19675623090e2",  # Q999d, schema 30
     "archive/chess-with-a-sheltering-king": "e7321c09e075fea8",  # Q999d, schema 30

@@ -1,5 +1,5 @@
 {
- "source_commit": "8734666a18a192b392981241404b8dd5bfeb7632",
+ "source_commit": "2ab3f160b11ee6a69b0854332482417d1a094cdb",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -81,8 +81,8 @@
   },
   {
    "path": "archive/README.md",
-   "bytes": 98755,
-   "sha256": "7142ed29ba156cf3b944bd483176981beffb5834086683ae011c8c08fcd3e530"
+   "bytes": 100311,
+   "sha256": "db6f73ef8f703fdf7ab9b1fc88875b26c0c34b31450abc83fbea88430c89326c"
   },
   {
    "path": "archive/anchors.json",
@@ -143,6 +143,11 @@
    "path": "archive/chess-with-nightriders.json",
    "bytes": 3730,
    "sha256": "ae553c2e6721d42217cfea4f7bd0494c9325d69878a9c062cb541a1f564debc2"
+  },
+  {
+   "path": "archive/chess-with-preaching-bishops.json",
+   "bytes": 4578,
+   "sha256": "e791893e038f73a10d91ce3f2b8465fc8081e61d95baddc6f40062d91676bef1"
   },
   {
    "path": "archive/circe-mortal-diagonals.json",
@@ -3281,8 +3286,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 149731,
-   "sha256": "806dbc648c97ebb98693663e23447ad767cb373d340326b55dfe1a363eadade5"
+   "bytes": 149880,
+   "sha256": "57f3488f0ff55a4bc1c0068e76feb2dd5ecb684bb97f898e80148093dd3be476"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -5046,8 +5051,8 @@
   },
   {
    "path": "tests/test_command.py",
-   "bytes": 17451,
-   "sha256": "de43f841ef3dc96f988998ac04330b16b7fd6e04515dda8d82c224e3b7abe567"
+   "bytes": 17725,
+   "sha256": "6ba20c4c07d5f5db3d5f1f83546ca2ea4a41105e808527e6949dc2eb1877cfec"
   },
   {
    "path": "tests/test_command_line_runs.py",
@@ -5061,8 +5066,8 @@
   },
   {
    "path": "tests/test_command_walks.py",
-   "bytes": 6273,
-   "sha256": "b8ed29ed1c7bb6ab3358a9b3d778f466597687947630a5d125fb95983763e2a4"
+   "bytes": 6431,
+   "sha256": "fc0aac0325e726bdaea35f5aae83d511bbe9238b6d5f7944c09854b0266c7b0a"
   },
   {
    "path": "tests/test_communities.py",
@@ -5381,13 +5386,13 @@
   },
   {
    "path": "tests/test_hex_readers.py",
-   "bytes": 33144,
-   "sha256": "d839b52d05245efeee6170b965790d93de5bab15cd5840f98f023256d17ac66d"
+   "bytes": 33228,
+   "sha256": "f1550607dc97eee8578bcc5dddfd4755dad2df247cf840ccd1e6a3e1fa45e676"
   },
   {
    "path": "tests/test_hex_resolver.py",
-   "bytes": 23072,
-   "sha256": "618f2069a42f616b55a569f62891c6c0a3f9c8a1bed8f939fc63f2399ca42bcb"
+   "bytes": 23156,
+   "sha256": "b12209acf351b44eb957d07d01faa34446deda745dea7a6bc64dd6c337c95fe6"
   },
   {
    "path": "tests/test_history.py",
@@ -5591,8 +5596,8 @@
   },
   {
    "path": "tests/test_operators.py",
-   "bytes": 230550,
-   "sha256": "951cbae8c1004a0924b373d00c40392a37ddbe8ec798bf8ac45c25255f15255b"
+   "bytes": 230145,
+   "sha256": "0e10d2351274002a3ed8d8ca8b55cdbf7fcb655544426588f85647c237d84a25"
   },
   {
    "path": "tests/test_page_files.py",
@@ -5941,8 +5946,8 @@
   },
   {
    "path": "tests/test_schema_nine.py",
-   "bytes": 82170,
-   "sha256": "69b0932960c6ec53fd656bc50b6d2d56be4d4227ca97e8ae64d5a1d7c1bbaa7c"
+   "bytes": 82469,
+   "sha256": "944f1221d5b73b15ccad6c629cf07fad2f7be473c383d58b4b9ec3448b3af1b6"
   },
   {
    "path": "tests/test_schema_nine_core.py",
@@ -5971,8 +5976,8 @@
   },
   {
    "path": "tests/test_schema_six.py",
-   "bytes": 61274,
-   "sha256": "ec92362587ab07910b7bb84c2b51d6e95b54856acb91c208713b95c177ac1f57"
+   "bytes": 61349,
+   "sha256": "be386bc4e6ad5796d4ebd8a32ee907bb91457d45530d45676b4611fd6ce58730"
   },
   {
    "path": "tests/test_schema_sixteen.py",
@@ -5981,8 +5986,8 @@
   },
   {
    "path": "tests/test_schema_ten.py",
-   "bytes": 113794,
-   "sha256": "52b976057e7b9b68cb06d0fdb8358cd6ac3fb9efc16f7d0fbec2cfa610042daa"
+   "bytes": 113958,
+   "sha256": "6545d1381679c007fad91b06f78f999ea9b83722318a0e5e85b21ce0aa5d2de0"
   },
   {
    "path": "tests/test_schema_thirteen.py",
@@ -6123,6 +6128,11 @@
    "path": "tests/test_showcase_opposite_colours.py",
    "bytes": 10022,
    "sha256": "dccd7cb61e0b7100a15a20ef30c49d047402e9dcb0571296adb4245ba7fea520"
+  },
+  {
+   "path": "tests/test_showcase_preaching_bishops.py",
+   "bytes": 5281,
+   "sha256": "c1c917cfdcf2539f82c530331b7728f592fe0d1cc14ebdbbf45fc2a22a11bab8"
   },
   {
    "path": "tests/test_showcase_shepherds_duck.py",

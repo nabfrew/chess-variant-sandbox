@@ -2798,20 +2798,11 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # here from Q1007e (which kept R1b, a slide, over R1c, the lame draft) until 2026-10-26, when
     # Q1023 archived L1, *chess with galloping knights* (`archive/chess-with-galloping-knights.json`,
     # `plan-schema-31.md` §6.4: the knight's leap plus a lame rider from its second jump on).
-    # Generation 31's two names (Q1007c). Q1007f built and measured their showcases K1 and K2
-    # (`plan-schema-31.md` §6.3, 2026-10-24): both viable and fair, both missed V2 (a commanded
-    # move offered too rarely), so both retired by the call registered before their first
-    # measured game (`tests/_retired_chess_with_commanding_knights.json`,
-    # `_retired_chess_with_a_spellbinding_king.json`). A game that closes these rows is one in
-    # which the effect binds as §6.3's V2 asks.
-    "schema 31: pieces.sight.command": (
-        "Q1007f: K1 retired, a commanded move offered at 0.076 of graded side-turns, bar 0.15"
-        " (plan-schema-31.md §6.3)"
-    ),
-    "schema 31: pieces.sight.captures_own": (
-        "Q1007f: K2 retired, a commanded move offered at 0.028 of graded side-turns, bar 0.05"
-        " (plan-schema-31.md §6.3)"
-    ),
+    # Generation 31's two names (Q1007c), `pieces.sight.command` and `.captures_own`, were here
+    # from Q1007f's retirement of K1 and K2 (`plan-schema-31.md` §6.3, 2026-10-24: a command
+    # offered too rarely) until 2026-10-26, when Q1024 archived P1, *chess with preaching
+    # bishops* (`archive/chess-with-preaching-bishops.json`, §6.5: a bishop's aura commanding
+    # enemy pawns, which may be made to take their own side; 0.885, every bar met).
     # Schema 30's four names went on 2026-10-22: freeze, disarm and shield when Q999b
     # archived `archive/opposite-colours` (`docs/archive/plan-passive.md` §6.5), `through` when Q999d
     # archived S2, `archive/chess-with-a-sheltering-king` (§6.1; coverage rows 75 to 78).

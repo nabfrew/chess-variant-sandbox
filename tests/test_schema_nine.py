@@ -219,6 +219,10 @@ FROZEN: dict[str, tuple[str, str]] = {
     # `min_range`; `docs/plan-schema-31.md` §6.4; `tests/test_showcase_galloping_knights.py`),
     # from `4c1922ffae26`. New.
     "archive/chess-with-galloping-knights.json": ("69f1e486af87", "e11db59559c33321"),
+    # Q1024, 2026-10-26: P1, chess with preaching bishops, schema 31's command and captures_own
+    # (`docs/plan-schema-31.md` §6.5; `tests/test_showcase_preaching_bishops.py`), from
+    # `4c1922ffae26`. New.
+    "archive/chess-with-preaching-bishops.json": ("91c2c24305e5", "1dbafa64248e5732"),
     "archive/marchfield.json": ("0be72e61ef24", "3a2d5a7fddb76113"),
     # Schema 10's seven showcases (Q101, 2026-09-07), rows 23--30 of
     # `docs/reference/schema-showcase-coverage.md`. Frozen *at* schema 10 rather than

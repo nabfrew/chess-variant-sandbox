@@ -39,11 +39,12 @@ def oracle(name: str) -> SightOracle:
     return SightOracle(json.loads((HERE / f"{name}.json").read_text(encoding="utf-8")))
 
 
-def walk(name: str, games: int, plies: int = 200) -> tuple[int, int]:
+def walk(name: str, games: int, plies: int = 200, judge: SightOracle | None = None) -> tuple[int, int]:
     """Play ``games`` seeded random games of ``name`` through the core, holding every list to the
     oracle's; the number of positions compared and of commanded moves played, so a walk that
-    compared nothing, or never commanded, fails."""
-    judge = oracle(name)
+    compared nothing, or never commanded, fails. ``judge`` walks a spec held outside `tests/`
+    (an `archive/` showcase), ``name`` then only labelling a failure."""
+    judge = judge or oracle(name)
     engine = judge.engine
     compared = commanded = 0
     for seed in range(games):

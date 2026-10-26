@@ -1,0 +1,107 @@
+{
+  "schema_version": 31,
+  "name": "chess with preaching bishops",
+  "description": "Chess in which a bishop can turn the enemy's pawns against their own side. Every enemy pawn that stands in line with one of your bishops, along a rank, a file or a diagonal, at any distance and whatever stands between, can be moved by you, as your move for the turn, the way its owner would move it: a step forward, two from its starting square, or a diagonal capture. The only thing such a pawn can capture is a piece of its own army, never yours and never its king. It stays its owner's pawn, and a move you make with it never promotes it. So every enemy pawn in a bishop's lines is a traitor in waiting. A pawn chain, where each pawn guards the next, is a strength in chess; here the guard can be made to take the pawn it guards, and a knight or bishop standing just in front of its own pawn can be taken by it. The other use is the push: an enemy pawn marched forward leaves weak squares behind it, pulls the cover away from its king, or walks into your pieces' reach, but every step also brings it nearer to promoting, so a push can be a gift. Each side's bishops already look down the opposing c- and f-pawns from the first move. The question all game is how to keep your own pawns out of the enemy bishops' lines while putting yours where they hear the enemy's. Everything else is chess.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {
+          "kind": "slide",
+          "vectors": [[0, 1]],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {"from_rank": 1}
+        },
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}],
+      "sight": [
+        {
+          "vectors": [[1, 0], [1, 1]],
+          "symmetry": "rotate4",
+          "effect": "command",
+          "whose": "enemy",
+          "affects": ["P"],
+          "through": true,
+          "captures_own": true
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[1, 0], [1, 1]],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "en_passant": true,
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-26",
+    "origin": "designed",
+    "source": "docs/plan-schema-31.md, Q1024: P1, the showcase for schema 31's command effect and its captures_own (section 6.5)",
+    "history": "P1 of docs/plan-schema-31.md section 6.5, registered 2026-10-26 before any measured game: chess (4c1922ffae26) with one key on the bishop, an aura over the queen's eight lines to the edge that commands enemy pawns and lets them be made to take their own side. Chosen by Q1024 from ten drafts after K1 and K2 (section 6.3) retired for a command too rarely offered: commanding every enemy piece drew by repetition (a command and its undoing repeat a position at will), commanding pawns alone does not, since a pawn never steps back.",
+    "parents": ["4c1922ffae26"]
+  }
+}

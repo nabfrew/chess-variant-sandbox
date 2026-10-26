@@ -180,10 +180,13 @@ def test_a_command_that_can_never_bind_is_refused() -> None:
 
 
 def test_every_existing_sight_game_compiles_to_the_tables_it_had() -> None:
-    """Inert: the new flag sits at its inert default, so no sight game's tables move."""
+    """Inert: the new flag sits at its inert default, so no sight game's tables move. A game that
+    declares a command (Q1024's `chess-with-preaching-bishops`, `plan-schema-31.md` §6.5) is the
+    flag's own showcase, not a game it could have moved."""
     for path in sorted((ROOT / "archive").glob("*.json")):
         spec = json.loads(path.read_text("utf-8"))
-        if not any(piece.get("sight") for piece in spec.get("pieces", [])):
+        sights = [entry for piece in spec.get("pieces", []) for entry in piece.get("sight") or []]
+        if not sights or any(entry.get("effect") == "command" for entry in sights):
             continue
         tables = canonical_tables(compile_spec(spec))
         assert "sight_command" not in tables, path.name

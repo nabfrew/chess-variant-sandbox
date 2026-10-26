@@ -1024,6 +1024,25 @@ Every prediction held (the index within 0.05 of the nightrider's 0.900; games lo
 `tests/test_showcase_galloping_knights.py` holds the mechanism, against `test_lame_rider`'s
 oracle, with a check at a gallop answered by a block on a leg.
 
+## `chess-with-preaching-bishops.json` — schema 31, a bishop that commands pawns (Q1024)
+
+2026-10-26, **in the library** (`91c2c24305e5`). P1 of `docs/plan-schema-31.md` §6.5, the second
+showcase of the `command` effect and the first of its `captures_own`, after K1 and K2 (below)
+retired for a command too rarely offered: chess with one key on the bishop, an aura over its
+eight lines to the edge that commands every enemy pawn on them, through any piece between, and
+lets such a pawn be made to take a non-royal piece of its own side. The pawn chain that guards
+itself, and the piece standing in front of its own pawn, become liabilities in a bishop's lines;
+a pushed enemy pawn is a weakness made and a pawn nearer promoting. Chosen from ten drafts:
+commanding pieces that can step back drew by repetition at the top of the ladder (a command and
+its owner's undoing repeat the position at will), commanding pawns cannot. Measured 2026-10-26:
+**0.885 [0.866, 0.909], viable 4-0**, every registered bar met: a commanded move offered at
+0.346 of graded side-turns (0.327 between the two strongest players) and played at 0.049 of
+graded moves, a turncoat capture at 0.0152 (964 in 784 graded games); the top three's games
+0.910 decided, graded games 81.0 plies, the first seat 0.527 of decided games. Every prediction
+held (the index within 0.05 of chess's; turncoat captures 0.31 of the commanded moves played;
+2.8% of the top three's games drawn by repetition). `tests/test_showcase_preaching_bishops.py`
+holds the mechanism against the sight oracle.
+
 ## `chess-with-commanding-knights.json`, `chess-with-a-spellbinding-king.json` — schema 31, pieces the opponent may move (Q1007f; both retired)
 
 2026-10-24, built, measured and **retired without joining**, by the call registered before their
