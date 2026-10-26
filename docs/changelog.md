@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### Ten new creature drawings
+
+Every piece in the library's games now has a picture instead of a letter. Ten new creatures (among them the wolf, the
+kraken, the hydra and the golem) join the designer's piece menu, and the wild creatures that belong to neither player
+show their picture on a small amber disc.
+
 ### More positions to solve
 
 Seventeen more games now have proven positions to try: a moment where one move wins and the quick players miss it.

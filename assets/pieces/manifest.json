@@ -271,6 +271,24 @@
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
     "modified": "drawn for this repository in Cburnett's grammar: a camel on a stem"
   },
+  "cat-black": {
+    "file": "svg/cat-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2325,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a cat's face on a stem"
+  },
+  "cat-white": {
+    "file": "svg/cat-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2325,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a cat's face on a stem"
+  },
   "centaur-black": {
     "file": "svg/centaur-black.svg",
     "viewBox": "0 0 45 45",
@@ -417,6 +435,24 @@
     "licence": "CC0",
     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en"
   },
+  "dog-black": {
+    "file": "svg/dog-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2569,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a dog's face on a stem"
+  },
+  "dog-white": {
+    "file": "svg/dog-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2569,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a dog's face on a stem"
+  },
   "dragon-black": {
     "file": "svg/dragon-black.svg",
     "viewBox": "0 0 45 45",
@@ -454,6 +490,24 @@
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
     "modified": "drawn for this repository in Cburnett's grammar: a drop of water"
+  },
+  "dryad-black": {
+    "file": "svg/dryad-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 4147,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a tree with a face in its leaves"
+  },
+  "dryad-white": {
+    "file": "svg/dryad-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 4147,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a tree with a face in its leaves"
   },
   "duck-black": {
     "file": "svg/duck-black.svg",
@@ -671,6 +725,42 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
   },
+  "golem-black": {
+    "file": "svg/golem-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1732,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a figure of stone"
+  },
+  "golem-white": {
+    "file": "svg/golem-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1732,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a figure of stone"
+  },
+  "gorgon-black": {
+    "file": "svg/gorgon-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 4807,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a face crowned with snakes"
+  },
+  "gorgon-white": {
+    "file": "svg/gorgon-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 4807,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a face crowned with snakes"
+  },
   "grasshopper-black": {
     "file": "svg/grasshopper-black.svg",
     "viewBox": "0 0 45 45",
@@ -760,6 +850,24 @@
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
     "modified": "drawn for this repository in Cburnett's grammar: an hourglass"
+  },
+  "hydra-black": {
+    "file": "svg/hydra-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 5170,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: three serpent heads on one body"
+  },
+  "hydra-white": {
+    "file": "svg/hydra-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 5170,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: three serpent heads on one body"
   },
   "inverted-king-black": {
     "file": "svg/inverted-king-black.svg",
@@ -886,6 +994,24 @@
     "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "kraken-black": {
+    "file": "svg/kraken-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 3808,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an octopus"
+  },
+  "kraken-white": {
+    "file": "svg/kraken-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 3808,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an octopus"
   },
   "leaf-black": {
     "file": "svg/leaf-black.svg",
@@ -1104,6 +1230,24 @@
     "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "rat-black": {
+    "file": "svg/rat-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2898,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a rat's face on a stem"
+  },
+  "rat-white": {
+    "file": "svg/rat-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2898,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a rat's face on a stem"
   },
   "ring-rider-black": {
     "file": "svg/ring-rider-black.svg",
@@ -1449,6 +1593,24 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
   },
+  "siren-black": {
+    "file": "svg/siren-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2699,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a mermaid"
+  },
+  "siren-white": {
+    "file": "svg/siren-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2699,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a mermaid"
+  },
   "snowflake-black": {
     "file": "svg/snowflake-black.svg",
     "viewBox": "0 0 45 45",
@@ -1684,6 +1846,24 @@
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
     "modified": "drawn for this repository in Cburnett's grammar: a ring crossed by a plus, on a stem"
+  },
+  "wolf-black": {
+    "file": "svg/wolf-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2171,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a wolf's face on a stem"
+  },
+  "wolf-white": {
+    "file": "svg/wolf-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2171,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a wolf's face on a stem"
   },
   "xiangqi-advisor-black": {
     "file": "svg/xiangqi-advisor-black.svg",

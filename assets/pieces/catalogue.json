@@ -213,6 +213,20 @@
     "black"
    ]
   },
+  "cat": {
+   "name": "cat",
+   "category": "leapers",
+   "words": [
+    "kitten",
+    "feline",
+    "watering hole"
+   ],
+   "says": "a cat's face on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
   "centaur": {
    "name": "centaur",
    "category": "compounds",
@@ -317,6 +331,20 @@
     "black"
    ]
   },
+  "dog": {
+   "name": "dog",
+   "category": "leapers",
+   "words": [
+    "hound",
+    "hunting dog",
+    "puppy"
+   ],
+   "says": "a dog's face on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
   "dragon": {
    "name": "dragon",
    "category": "leapers",
@@ -339,6 +367,21 @@
     "lake"
    ],
    "says": "a drop of water",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "dryad": {
+   "name": "dryad",
+   "category": "oddities",
+   "words": [
+    "tree spirit",
+    "nymph",
+    "grove",
+    "ent"
+   ],
+   "says": "a tree with a face in its leaves",
    "seats": [
     "white",
     "black"
@@ -507,6 +550,36 @@
     "black"
    ]
   },
+  "golem": {
+   "name": "golem",
+   "category": "oddities",
+   "words": [
+    "statue",
+    "clay",
+    "stone giant",
+    "construct"
+   ],
+   "says": "a figure of stone",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "gorgon": {
+   "name": "gorgon",
+   "category": "oddities",
+   "words": [
+    "medusa",
+    "petrify",
+    "freeze",
+    "snakes"
+   ],
+   "says": "a face crowned with snakes",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
   "grasshopper": {
    "name": "grasshopper",
    "category": "riders",
@@ -570,6 +643,20 @@
     "sand"
    ],
    "says": "an hourglass",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "hydra": {
+   "name": "hydra",
+   "category": "oddities",
+   "words": [
+    "serpent",
+    "many-headed",
+    "snake"
+   ],
+   "says": "three serpent heads on one body",
    "seats": [
     "white",
     "black"
@@ -658,6 +745,21 @@
     "(1,2) leaper",
     "horse"
    ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "kraken": {
+   "name": "kraken",
+   "category": "oddities",
+   "words": [
+    "octopus",
+    "squid",
+    "sea monster",
+    "tentacles"
+   ],
+   "says": "an octopus",
    "seats": [
     "white",
     "black"
@@ -815,6 +917,20 @@
     "super queen"
    ],
    "says": "the queen's coronet with a six-pointed star",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "rat": {
+   "name": "rat",
+   "category": "leapers",
+   "words": [
+    "mouse",
+    "rodent",
+    "vermin"
+   ],
+   "says": "a rat's face on a stem",
    "seats": [
     "white",
     "black"
@@ -1114,6 +1230,21 @@
     "black"
    ]
   },
+  "siren": {
+   "name": "siren",
+   "category": "oddities",
+   "words": [
+    "mermaid",
+    "song",
+    "charm",
+    "lure"
+   ],
+   "says": "a mermaid",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
   "snowflake": {
    "name": "snowflake",
    "category": "leapers",
@@ -1287,6 +1418,20 @@
     "W"
    ],
    "says": "a ring crossed by a plus, on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "wolf": {
+   "name": "wolf",
+   "category": "leapers",
+   "words": [
+    "wolves",
+    "pack",
+    "predator"
+   ],
+   "says": "a wolf's face on a stem",
    "seats": [
     "white",
     "black"

@@ -310,6 +310,10 @@ def _cell(x: float, y: float, cell: float, hexed: bool, attrs: str) -> str:
             f"{attrs}/>")
 
 
+WILD_ICON = 0.74
+"""A wild piece's drawing as a share of its cell: `stillboard.js`'s `WILD_ICON`."""
+
+
 def _piece(shape: Mapping[str, Any], value: int, x: float, y: float, cell: float,
            drawings: dict[str, str]) -> str:
     """One piece from its board byte, as `stillboard.js`'s `stillPieceHtml` draws it: its
@@ -330,7 +334,11 @@ def _piece(shape: Mapping[str, Any], value: int, x: float, y: float, cell: float
                 f'<circle cx="{_num(cx)}" cy="{_num(cy)}" r="{_num(cell * 0.24)}" fill="none" '
                 f'stroke="{colour}" stroke-width="{_num(cell * 0.1)}"/>')
     icons = shape.get("icons") or []
-    icon = icons[kind][player] if player <= 1 and kind < len(icons) else None
+    # PI3: a wild piece (owner 2) wears its type's first seat's drawing; the duck bare, every
+    # other one a size smaller on the third owner's disc, as `stillPieceHtml` draws it.
+    wild = player > 1
+    based = wild and shape.get("duck") != kind
+    icon = icons[kind][0 if wild else player] if kind < len(icons) else None
     if icon:
         headings = shape.get("facingAngles") or []
         directional = (shape.get("directional") or [])
@@ -343,7 +351,15 @@ def _piece(shape: Mapping[str, Any], value: int, x: float, y: float, cell: float
         side = _icon_side(cell)
         at_x, at_y = round(x + (cell - side) / 2), round(y + (cell - side) / 2)
         turn = f" rotate({_num(angle)} {_num(side / 2)} {_num(side / 2)})" if angle else ""
-        return f'<use href="#{ref}" transform="translate({at_x} {at_y}){turn}"/>'
+        if not based:
+            return f'<use href="#{ref}" transform="translate({at_x} {at_y}){turn}"/>'
+        # The drawing is made at `side`; a wild one is scaled about the cell's centre.
+        shrink = WILD_ICON / 0.88
+        return (f'<circle cx="{_num(cx)}" cy="{_num(cy)}" r="{_num(cell * 0.44)}" '
+                f'fill="{LIGHT["p2"]}" fill-opacity="0.6" stroke="{LIGHT["ink"]}" '
+                f'stroke-width="{_num(cell * 0.025)}"/>'
+                f'<use href="#{ref}" transform="translate({_num(cx)} {_num(cy)}) '
+                f'scale({_num(shrink)}) translate({_num(-side / 2)} {_num(-side / 2)}){turn}"/>')
     fill, ink = (("p0", "p0-ink"), ("p1", "p1-ink"))[player] if player <= 1 else ("p2", "p2-ink")
     ids = shape.get("pieceIds") or []
     letter = str(ids[kind]) if kind < len(ids) else "?"

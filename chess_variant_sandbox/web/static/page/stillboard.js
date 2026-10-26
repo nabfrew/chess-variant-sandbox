@@ -259,19 +259,35 @@ function edgeNamesHtml(cell, view, box) {
 // rule, read off the same list), else its lettered disc. Never an army's icon for a wild
 // piece (owner 2, schema 9): an icon pair has one drawing per player, and the third owner
 // is neither.
+// PI3: a wild piece (owner 2) that has a drawing wears its type's first-seat drawing, a size
+// smaller, on the third owner's disc: the disc says *nobody's* where the lettered disc used
+// to, and the drawing says what it is. Shared by the play board's `drawPiece` and
+// `stillPieceHtml`, so the two boards cannot disagree; the duck alone stands bare
+// (generation 42, N4c: there is one duck and its picture is the rule's).
+const WILD_ICON = 0.74;
+
+function wildBase(cx, cy, cell) {
+  return `<circle cx="${cx}" cy="${cy}" r="${cell * 0.44}" fill="var(--p2)" fill-opacity="0.6"
+    stroke="var(--ink)" stroke-width="${cell * 0.025}" data-wild="1"/>`;
+}
+
 function stillPieceHtml(preview, value, x, y, cell) {
   const stride = preview.sideStride || preview.nTypes;
   const type = (value - 1) % preview.nTypes, player = Math.floor((value - 1) / stride);
   const facing = Math.floor(((value - 1) % stride) / preview.nTypes);
-  // Generation 42 (N4c): the duck is nobody's, but drawn as its type's own drawing.
+  // Generation 42 (N4c): the duck is nobody's, but drawn as its type's own drawing; PI3:
+  // every other wild piece with a drawing too, on the third owner's disc (`wildBase`).
   const wild = player > 1, duck = wild && preview.duck === type;
-  const icon = wild && !duck ? null : ((preview.icons || [])[type] || [])[duck ? 0 : player];
+  const icon = ((preview.icons || [])[type] || [])[wild ? 0 : player];
   if (icon) {
+    const based = wild && !duck;
     const heading = (preview.directional || [])[type]
       ? (preview.facingAngles || [])[player] : null;
     const angle = heading ? heading[facing] || 0 : (icon.rotate ? 180 : 0);
-    return `<image href="${esc(icon.href)}" x="${x + cell * 0.06}" y="${y + cell * 0.06}"
-      width="${cell * 0.88}" height="${cell * 0.88}" preserveAspectRatio="xMidYMid meet"${
+    const size = cell * (based ? WILD_ICON : 0.88), corner = (cell - size) / 2;
+    return `${based ? wildBase(x + cell / 2, y + cell / 2, cell) : ''}<image href="${
+      esc(icon.href)}" x="${x + corner}" y="${y + corner}"
+      width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet"${
       angle ? ` transform="rotate(${angle} ${x + cell / 2} ${y + cell / 2})"` : ''}/>`;
   }
   return `<circle cx="${x + cell / 2}" cy="${y + cell / 2}" r="${cell * 0.34}"

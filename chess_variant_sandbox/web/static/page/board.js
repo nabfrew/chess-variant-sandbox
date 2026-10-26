@@ -1387,13 +1387,16 @@ function fitPortals(svg) {
 function drawPiece(piece, x, y, cell, square) {
   const cx = x + cell / 2, cy = y + cell / 2;
   // An icon pair is one drawing per player and has no third entry, so a wild piece
-  // (owner 2, schema 9) is always the lettered disc, in the third tint.
-  // Generation 42 (N4c): the duck is nobody's too, but it is drawn as its type's own drawing
-  // (the first seat's), since there is one duck and its picture is the rule's.
+  // (owner 2, schema 9) wears its type's first-seat drawing, never the owner's index.
+  // Generation 42 (N4c): the duck is drawn as that drawing alone, since there is one duck
+  // and its picture is the rule's. PI3: every other wild piece with a drawing (the wolf,
+  // the kraken, the hydra...) stands on the third owner's disc (`wildBase`), so it reads
+  // as neither player's; one with no drawing is still the lettered disc, in the third tint.
   const wild = piece.player > 1;
   const duck = wild && piece.type === SESSION.ruleset.duck;
-  const pair = wild && !duck ? null : (SESSION.ruleset.icons || [])[piece.type];
-  const icon = pair ? pair[duck ? 0 : piece.player] : null;
+  const pair = (SESSION.ruleset.icons || [])[piece.type];
+  const icon = pair ? pair[wild ? 0 : piece.player] : null;
+  const based = wild && !duck && !!icon;
   const tag = square === undefined ? '' : ` data-piece="${square}"`;
   // Schema 19: a portal end is drawn by the board (`portalGlyph`, the vortex of Q838b): its
   // pair's colour and, where there are several, its number; whose pieces may go in, by its
@@ -1418,7 +1421,7 @@ function drawPiece(piece, x, y, cell, square) {
   }
   let inner;
   if (icon) {
-    const size = cell * 0.88, corner = (cell - size) / 2;
+    const size = cell * (based ? WILD_ICON : 0.88), corner = (cell - size) / 2;
     // A piece with a facing is drawn pointing where it faces, and nothing else turns.
     // `directional` names the types that have one; `facingAngles` gives the heading,
     // that table rather than `facing * 90`, because a mirrored army turns the other
@@ -1428,7 +1431,8 @@ function drawPiece(piece, x, y, cell, square) {
       ? (SESSION.ruleset.facingAngles || [])[piece.player] : null;
     const angle = heading ? heading[piece.facing || 0] || 0 : (icon.rotate ? 180 : 0);
     const spin = angle ? ` transform="rotate(${angle} ${cx} ${cy})"` : '';
-    inner = `<image href="${esc(icon.href)}" x="${x + corner}" y="${y + corner}" width="${size}"
+    inner = `${based ? wildBase(cx, cy, cell) : ''}<image href="${esc(icon.href)}" x="${
+             x + corner}" y="${y + corner}" width="${size}"
              height="${size}" preserveAspectRatio="xMidYMid meet"${spin}/>`;
   } else {
     const fill = piece.player === 0 ? 'var(--p0)'

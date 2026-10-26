@@ -83,6 +83,18 @@
   "paper": "paper",
   "scissors": "scissors",
 
+  "cat": "cat",
+  "dog": "dog",
+  "hound": "dog",
+  "wolf": "wolf",
+  "rat": "rat",
+  "kraken": "kraken",
+  "hydra": "hydra",
+  "golem": "golem",
+  "gorgon": "gorgon",
+  "siren": "siren",
+  "dryad": "dryad",
+
   "gold": "shogi-gold",
   "silver": "shogi-silver",
   "hen": "shogi-promoted-pawn",

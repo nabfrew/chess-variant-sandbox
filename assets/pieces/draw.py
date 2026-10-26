@@ -899,6 +899,275 @@ def wheel(top: float) -> Part:
     ]
 
 
+# ------------------------------------------------------------------ the creatures
+#
+# The library games' own beasts (PI2): the watering hole's cat, dog and rat beside its
+# elephant (heads on the leaper's stem, as the alfil is), the wolf, and the monsters that
+# stand on the base alone. Each is one outline a black piece keeps legible: where two
+# parts overlap, a seam line, as the elephant's cheeks have.
+
+def _at(top: float) -> Callable[[float, float], tuple[float, float]]:
+    """Points given as offsets from (CX, top), the way every head is drawn."""
+    return lambda x, y: (CX + x, top + y)
+
+
+def _mirrored(top: float, half: list[tuple[float, float]]) -> str:
+    """A closed outline from its left half (offsets from (CX, top)), mirrored about CX."""
+    p = _at(top)
+    return poly(mirror([p(x, y) for x, y in half]))
+
+
+def _tube(top: float, ends: tuple[tuple[float, float], ...], w0: float, w1: float,
+          steps: int = 18) -> str:
+    """A tapering limb (a tentacle, a neck, a tail) along one cubic Bézier through four
+    points (offsets from (CX, top)), `w0` wide at its root and `w1` at its tip."""
+    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = ends
+    left, right = [], []
+    for i in range(steps + 1):
+        t = i / steps
+        u = 1 - t
+        x = u ** 3 * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t ** 3 * x3
+        y = u ** 3 * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t ** 3 * y3
+        dx = 3 * u * u * (x1 - x0) + 6 * u * t * (x2 - x1) + 3 * t * t * (x3 - x2)
+        dy = 3 * u * u * (y1 - y0) + 6 * u * t * (y2 - y1) + 3 * t * t * (y3 - y2)
+        n = math.hypot(dx, dy) or 1.0
+        w = (w0 + (w1 - w0) * t) / 2
+        left.append((CX + x - dy / n * w, top + y + dx / n * w))
+        right.append((CX + x + dy / n * w, top + y - dx / n * w))
+    return poly(left + right[::-1])
+
+
+def cat(top: float) -> Part:
+    """A cat's face: round cheeks, two pointed ears, almond eyes and whiskers."""
+    p = _at(top)
+    face = _mirrored(top, [(0, 0.5), (-4, 0.2), (-7.5, -1.5), (-9.5, -4.5), (-10, -8),
+                           (-9.2, -11.5), (-10, -19), (-4.5, -14.2), (-1.5, -14.6)])
+    return [
+        Mark("body", face),
+        Mark("line", _path("M", p(-8, -12.5), "L", p(-8.4, -16.5), "L", p(-5.5, -14)) + " "
+             + _path("M", p(8, -12.5), "L", p(8.4, -16.5), "L", p(5.5, -14))),
+        Mark("dot", ellipse(CX - 3.6, top - 8.5, 1.1, 1.9)),
+        Mark("dot", ellipse(CX + 3.6, top - 8.5, 1.1, 1.9)),
+        Mark("dot", poly([p(-1.4, -5.6), p(1.4, -5.6), p(0, -4)])),
+        Mark("line", _path("M", p(-2.6, -2.6), "Q", p(-1.2, -1.6), p(0, -3.6), "Q",
+                           p(1.2, -1.6), p(2.6, -2.6))),
+        Mark("line", _path("M", p(-3.5, -4.6), "L", p(-8.5, -5.6), "M", p(-3.5, -3.6), "L",
+                           p(-8, -2.4), "M", p(3.5, -4.6), "L", p(8.5, -5.6), "M",
+                           p(3.5, -3.6), "L", p(8, -2.4))),
+    ]
+
+
+def dog(top: float) -> Part:
+    """A dog's face: long ears hanging past the cheeks, a broad muzzle and a big nose."""
+    p = _at(top)
+    ear = [(-4.5, -15.5), (-9.5, -16.5), (-12, -11), (-11.5, -4.5), (-10.5, -2),
+           (-8.5, -1.5), (-7, -4), (-6, -9)]
+    head = _mirrored(top, [(0, 0.5), (-3.5, 0.2), (-5, -2), (-5.5, -5), (-6.5, -9),
+                           (-6.8, -13), (-5.5, -16.5), (-2.5, -18.2)])
+    return [
+        Mark("body", poly([p(x, y) for x, y in ear])),
+        Mark("body", poly([p(-x, y) for x, y in ear])),
+        Mark("body", head),
+        # Where the head lies over the ears.
+        Mark("line", _path("M", p(-5.5, -5), "L", p(-6.5, -9), "L", p(-6.8, -13), "L",
+                           p(-5.5, -16.5), "M", p(5.5, -5), "L", p(6.5, -9), "L",
+                           p(6.8, -13), "L", p(5.5, -16.5))),
+        Mark("dot", circle(CX - 2.8, top - 11, 1.1)),
+        Mark("dot", circle(CX + 2.8, top - 11, 1.1)),
+        Mark("dot", ellipse(CX, top - 5.2, 2.3, 1.6)),
+        Mark("line", _path("M", p(0, -3.6), "L", p(0, -2.2), "M", p(-2.6, -1.4), "Q",
+                           p(0, -0.6), p(2.6, -1.4))),
+    ]
+
+
+def wolf(top: float) -> Part:
+    """A wolf's face: tall ears, a ruff of fur at the cheeks, a long muzzle to the nose."""
+    p = _at(top)
+    face = _mirrored(top, [(0, 0.5), (-2, 0.2), (-3.2, -2.5), (-4.5, -5), (-8.5, -6.5),
+                           (-7.2, -8.5), (-10.5, -10), (-8.2, -11.8), (-9.2, -14),
+                           (-9.5, -20.5), (-3.5, -15.5), (-1.5, -15.8)])
+    return [
+        Mark("body", face),
+        Mark("line", _path("M", p(-7.6, -13.8), "L", p(-7.8, -18), "L", p(-5, -15.2), "M",
+                           p(7.6, -13.8), "L", p(7.8, -18), "L", p(5, -15.2))),
+        Mark("dot", poly([p(-5.2, -11.2), p(-1.8, -9.6), p(-2.6, -8.6)])),
+        Mark("dot", poly([p(5.2, -11.2), p(1.8, -9.6), p(2.6, -8.6)])),
+        Mark("line", _path("M", p(-1.6, -7.5), "L", p(-2.4, -3), "M", p(1.6, -7.5), "L",
+                           p(2.4, -3))),
+        Mark("dot", ellipse(CX, top - 1.4, 1.9, 1.2)),
+    ]
+
+
+def rat(top: float) -> Part:
+    """A rat's head in profile, facing left: a long pointed snout, a big round ear, and
+    the bare tail curling up behind."""
+    p = _at(top)
+    head = _path("M", p(-3, 0.5), "C", p(-5, -1.5), p(-8, -4), p(-11.5, -6), "C",
+                 p(-12.2, -6.6), p(-12, -7.6), p(-11, -8), "C", p(-6, -11), p(-2, -14),
+                 p(2.5, -13.5), "C", p(7, -13), p(8, -7), p(6, -3), "L", p(4.5, 0.5), "Z")
+    return [
+        Mark("body", _tube(top, ((5, -3), (10, -1), (14, -6), (11, -13)), 2.0, 0.8)),
+        Mark("body", head),
+        Mark("body", circle(CX + 2.5, top - 15, 4.6)),
+        Mark("line", circle(CX + 2.7, top - 15.2, 2.5)),
+        Mark("dot", circle(CX - 4.2, top - 9, 1.1)),
+        Mark("dot", circle(CX - 11.4, top - 7, 1.1)),
+        Mark("line", _path("M", p(-8.5, -6.2), "L", p(-10, -3.2), "M", p(-7.6, -5.6), "L",
+                           p(-8, -2.4))),
+        Mark("line", _path("M", p(5.6, -3.4), "L", p(4.4, 0.2))),
+    ]
+
+
+def kraken(top: float) -> Part:
+    """An octopus: a domed mantle with two eyes, four arms spreading and curling."""
+    p = _at(top)
+    arms = [
+        ((-5, -10), (-9.5, -5), (-14.5, -7), (-12.5, -14)),
+        ((-1.6, -8.5), (-2.5, -3), (-5, 1), (-7.2, -1.8)),
+        ((1.6, -8.5), (2.5, -3), (5, 1), (7.2, -1.8)),
+        ((5, -10), (9.5, -5), (14.5, -7), (12.5, -14)),
+    ]
+    mantle = _path("M", p(-6.5, -9), "C", p(-8.5, -14), p(-6.5, -21.5), p(0, -21.5), "C",
+                   p(6.5, -21.5), p(8.5, -14), p(6.5, -9), "C", p(4, -7.2), p(-4, -7.2),
+                   p(-6.5, -9), "Z")
+    return [Mark("body", _tube(top, arm, 2.8, 0.8)) for arm in arms] + [
+        Mark("body", mantle),
+        Mark("line", _path("M", p(-6.5, -9), "C", p(-4, -7.2), p(4, -7.2), p(6.5, -9))),
+        Mark("dot", ellipse(CX - 2.6, top - 12.5, 1.1, 1.6)),
+        Mark("dot", ellipse(CX + 2.6, top - 12.5, 1.1, 1.6)),
+    ]
+
+
+def _serpent_head(top: float, x: float, y: float, angle: float, r: float = 2.6) -> Part:
+    """A snake's head, an egg whose narrow end, the snout, points `angle` degrees from
+    (x, y) (0 is right, -90 up), with an eye on its upper side."""
+    a = math.radians(angle)
+    ux, uy = math.cos(a), math.sin(a)
+    pts = []
+    for i in range(32):
+        u = 2 * math.pi * i / 32
+        along, across = math.cos(u), math.sin(u)
+        # Longer and narrower towards the snout: an egg, not a dart.
+        reach = r * (1.55 if along > 0 else 1.0)
+        width = r * (0.95 - 0.25 * max(along, 0.0))
+        px, py = along * reach, across * width
+        pts.append((CX + x + px * ux - py * uy, top + y + px * uy + py * ux))
+    side = -1 if ux >= 0 else 1
+    ex = x + 0.6 * r * ux - side * 0.45 * r * uy
+    ey = y + 0.6 * r * uy + side * 0.45 * r * ux
+    return [Mark("body", poly(pts)), Mark("dot", circle(CX + ex, top + ey, 0.75))]
+
+
+def hydra(top: float) -> Part:
+    """Three serpent necks rising from one coiled body, each with its own head."""
+    p = _at(top)
+    necks = [((-3.5, -4), (-6, -9), (-12, -9), (-10, -15)),
+             ((0, -4), (-1.5, -9), (1.5, -12.5), (0, -17)),
+             ((3.5, -4), (6, -9), (12, -9), (10, -15))]
+    part = [Mark("body", _tube(top, neck, 3.4, 2.6)) for neck in necks]
+    part += [Mark("body", ellipse(CX, top - 3.5, 9.5, 4)),
+             Mark("line", _path("M", p(-6.5, -6.2), "Q", p(0, -8.6), p(6.5, -6.2))),
+             Mark("line", _path("M", p(-5, -3), "Q", p(0, -1), p(5, -3)))]
+    part += _serpent_head(top, -10.5, -16.5, -150)
+    part += _serpent_head(top, 0, -18.5, -90)
+    part += _serpent_head(top, 10.5, -16.5, -30)
+    return part
+
+
+def golem(top: float) -> Part:
+    """A figure of stone: a square head on broad shoulders, heavy arms, a crack."""
+    p = _at(top)
+    arm_left = poly([p(-10.8, -4), p(-11.2, -14.5), p(-7, -15.5), p(-6.5, -4.5)])
+    arm_right = poly([p(10.8, -4), p(11.2, -14.5), p(7, -15.5), p(6.5, -4.5)])
+    trunk = poly([p(-5, 0.5), p(-5.5, -5), p(-7.5, -15.5), p(7.5, -15.5), p(5.5, -5),
+                  p(5, 0.5), p(1, 0.5), p(0.8, -3.5), p(-0.8, -3.5), p(-1, 0.5)])
+    return [
+        Mark("body", arm_left), Mark("body", arm_right),
+        Mark("body", trunk),
+        Mark("line", _path("M", p(-6.4, -5), "L", p(-7.3, -14.6), "M", p(6.4, -5), "L",
+                           p(7.3, -14.6))),
+        Mark("body", rect(CX - 3.8, top - 21.5, 7.6, 6.5)),
+        Mark("line", _path("M", p(-2.2, -18.8), "L", p(-0.8, -18.8), "M", p(0.8, -18.8),
+                           "L", p(2.2, -18.8))),
+        Mark("line", _path("M", p(-2.5, -13), "L", p(0.5, -10.5), "L", p(-1, -8.5), "L",
+                           p(2.5, -6))),
+    ]
+
+
+def gorgon(top: float) -> Part:
+    """A gorgon's face, crowned with snakes."""
+    p = _at(top)
+    snakes = [((-4.5, -12), (-8.5, -13), (-8, -17), (-11.5, -19)),
+              ((-2, -14), (-4.5, -17), (-2, -19), (-4.5, -22)),
+              ((2, -14), (4.5, -17), (2, -19), (4.5, -22)),
+              ((4.5, -12), (8.5, -13), (8, -17), (11.5, -19))]
+    part = [Mark("body", _tube(top, s, 2.4, 1.6)) for s in snakes]
+    part += [Mark("body", circle(CX - 11.8, top - 19.2, 1.5)),
+             Mark("body", circle(CX - 4.7, top - 22.2, 1.5)),
+             Mark("body", circle(CX + 4.7, top - 22.2, 1.5)),
+             Mark("body", circle(CX + 11.8, top - 19.2, 1.5))]
+    part += [
+        Mark("body", poly([p(-2.5, 0.5), p(-2.5, -3), p(2.5, -3), p(2.5, 0.5)])),
+        Mark("body", ellipse(CX, top - 9, 6.3, 6.8)),
+        Mark("dot", ellipse(CX - 2.4, top - 10, 1.1, 1.4)),
+        Mark("dot", ellipse(CX + 2.4, top - 10, 1.1, 1.4)),
+        Mark("line", _path("M", p(-2.2, -5.6), "Q", p(0, -6.8), p(2.2, -5.6))),
+        Mark("line", _path("M", p(-5.5, -12.5), "Q", p(0, -16.5), p(5.5, -12.5))),
+    ]
+    return part
+
+
+def siren(top: float) -> Part:
+    """A mermaid, the siren of the sea: long hair, a scaled tail curling to its fluke."""
+    p = _at(top)
+    tail = _tube(top, ((-1, -10), (-1.5, -1.5), (4, 1), (8, -3.5)), 5.2, 1.6)
+    fluke = poly([p(7.2, -2.6), p(7.4, -9.5), p(9.6, -6.6), p(13.4, -8.4), p(9.4, -2.2)])
+    hair = _path("M", p(-2.6, -19.5), "C", p(-4.5, -16), p(-4.5, -13), p(-6.5, -10.5), "L",
+                 p(-3.5, -12), "L", p(-2.5, -15), "Z")
+    return [
+        Mark("body", fluke),
+        Mark("body", tail),
+        Mark("body", poly([p(-3.5, -9.5), p(-3.3, -15), p(3.3, -15), p(3.5, -9.5)])),
+        Mark("line", _path("M", p(-3.4, -9.8), "L", p(3.4, -9.8), "M", p(-1.5, -6), "Q",
+                           p(0, -5), p(1.5, -6), "M", p(-1, -3), "Q", p(0.8, -1.8),
+                           p(2.4, -2.4))),
+        Mark("body", poly([p(3.2, -14.5), p(6.5, -18.5), p(7.5, -17.5), p(4, -12.5)])),
+        Mark("body", hair),
+        # Where the hair falls over the shoulder, and where the head lies over the hair.
+        Mark("line", _path("M", p(-3.3, -14.6), "L", p(-3.45, -10.2))),
+        Mark("body", circle(CX - 0.2, top - 18.6, 3.4)),
+        Mark("line", _path("M", p(-1.6, -15.6), "A", (3.3, 3.3), "0 0 1", p(-3.5, -18.9))),
+        Mark("dot", circle(CX + 1.1, top - 19, 0.75)),
+    ]
+
+
+def dryad(top: float) -> Part:
+    """A tree with a face in its leaves, the tree's own spirit."""
+    p = _at(top)
+    c, rx, ry = -14.0, 10.5, 7.5
+    leaves = []
+    for i in range(96):
+        a = 2 * math.pi * i / 96
+        bump = 1 + 0.1 * abs(math.sin(4.5 * a))
+        leaves.append(p(rx * bump * math.cos(a), c + ry * bump * math.sin(a)))
+    trunk = _path("M", p(-9.5, 0.5), "C", p(-5, -0.5), p(-2.5, -2), p(-2.2, -8), "L",
+                  p(2.2, -8), "C", p(2.5, -2), p(5, -0.5), p(9.5, 0.5), "Z")
+    # Two boughs raised from the trunk like arms, past the leaves on either side.
+    boughs = [((-1.5, -4.5), (-6, -5), (-11, -6), (-13.5, -11.5)),
+              ((1.5, -4.5), (6, -5), (11, -6), (13.5, -11.5))]
+    return [
+        Mark("body", _tube(top, boughs[0], 2.2, 1.2)),
+        Mark("body", _tube(top, boughs[1], 2.2, 1.2)),
+        Mark("body", trunk),
+        Mark("body", poly(leaves)),
+        Mark("dot", ellipse(CX - 3.2, top - 15, 1.1, 1.5)),
+        Mark("dot", ellipse(CX + 3.2, top - 15, 1.1, 1.5)),
+        Mark("line", _path("M", p(-3, -11), "Q", p(0, -9), p(3, -11))),
+        Mark("line", _path("M", p(-7.5, -16.5), "Q", p(-6.5, -19), p(-4, -19.5), "M",
+                           p(7.5, -16.5), "Q", p(6.5, -19), p(4, -19.5))),
+    ]
+
+
 # Cburnett's knight head, as it is drawn in Chess_nlt45.svg (CC BY-SA 3.0): the neck and
 # the head, an eye and a nostril. A head that uses it makes its drawing his work
 # rearranged, credited to him under his licence (`Drawing.cburnett`).
@@ -995,6 +1264,8 @@ HEADS: dict[str, Head] = {
     "rose": rose, "acorn": acorn, "horns": horns, "bull": bull, "frog": frog,
     "coronet-small": coronet_small, "orb": orb, "helmet": helmet, "cap": cap,
     "onion": onion, "twin": twin, "cube": cube, "tower-small": tower_small,
+    "cat": cat, "dog": dog, "wolf": wolf, "rat": rat, "kraken": kraken, "hydra": hydra,
+    "golem": golem, "gorgon": gorgon, "siren": siren, "dryad": dryad,
     "none": lambda top: [],
 }
 
@@ -1180,6 +1451,30 @@ piece("snowflake", "snowflake", "leapers", "stem", "snowflake",
       "a snowflake on a stem", ("ice", "frost", "six ways"), scale=0.88)
 piece("axe", "axe", "leapers", "stem", "axe",
       "an axe on a stem", ("berserker", "woodcutter", "executioner"), scale=0.95)
+
+# The library games' creatures (PI2), which wore their letters until they were drawn: the
+# watering hole's animals are heads on the stem beside its elephant, the wolf with them;
+# the monsters stand on the base alone. A hound wears the dog (aliases.json).
+piece("cat", "cat", "leapers", "stem", "cat",
+      "a cat's face on a stem", ("kitten", "feline", "watering hole"))
+piece("dog", "dog", "leapers", "stem", "dog",
+      "a dog's face on a stem", ("hound", "hunting dog", "puppy"))
+piece("wolf", "wolf", "leapers", "stem", "wolf",
+      "a wolf's face on a stem", ("wolves", "pack", "predator"), scale=0.95)
+piece("rat", "rat", "leapers", "stem", "rat",
+      "a rat's face on a stem", ("mouse", "rodent", "vermin"))
+piece("kraken", "kraken", "oddities", "plinth", "kraken",
+      "an octopus", ("octopus", "squid", "sea monster", "tentacles"))
+piece("hydra", "hydra", "oddities", "plinth", "hydra",
+      "three serpent heads on one body", ("serpent", "many-headed", "snake"))
+piece("golem", "golem", "oddities", "plinth", "golem",
+      "a figure of stone", ("statue", "clay", "stone giant", "construct"))
+piece("gorgon", "gorgon", "oddities", "plinth", "gorgon",
+      "a face crowned with snakes", ("medusa", "petrify", "freeze", "snakes"))
+piece("siren", "siren", "oddities", "plinth", "siren",
+      "a mermaid", ("mermaid", "song", "charm", "lure"))
+piece("dryad", "dryad", "oddities", "plinth", "dryad",
+      "a tree with a face in its leaves", ("tree spirit", "nymph", "grove", "ent"))
 
 
 # ------------------------------------------------------------------ writing the files

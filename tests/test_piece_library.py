@@ -243,18 +243,10 @@ REPOSITORY = PIECES.parents[1]
 LIBRARY_SPECS = sorted([*(REPOSITORY / "rulesets").glob("*.json"),
                         *(REPOSITORY / "archive").glob("*.json")])
 
-# The library pieces drawn as their letter, because no drawing names them (PI1's audit,
-# docs/reference/piece-library-audit.md). A new drawing that names one of these should
-# dress it, and a new library game whose piece has no drawing is added here on purpose.
-LETTERS = {
-    ("kraken-ford", "X"),  # kraken
-    ("pitchfork", "W"), ("wolves", "W"), ("wolves-bounty", "W"), ("wolves-patrol", "W"),
-    ("the-shepherds-duck", "W"),  # N6
-    ("the-hydra", "H"), ("the-hydra", "Y"),  # N7: hound, hydra
-    ("the-herd", "G"), ("the-herd", "S"), ("the-herd", "Y"),  # N9: gorgon, siren, dryad
-    ("the-golem-well", "G"),  # golem
-    ("watering-hole", "C"), ("watering-hole", "D"), ("watering-hole", "R"),  # cat, dog, rat
-}
+# The library pieces drawn as their letter. PI1's audit (docs/reference/piece-library-audit.md)
+# left fifteen, because no drawing named them; PI2 drew them, so none is left. A new library
+# game whose piece has no drawing gets one (draw.py), not an entry here.
+LETTERS: set[tuple[str, str]] = set()
 
 
 def _drawn(path: Path) -> list[tuple[dict, list]]:
@@ -285,10 +277,29 @@ class TestTheLibraryWearsTheMenu:
                         strays.append((path.stem, piece["id"], icon["stem"]))
         assert not strays, strays
 
-    def test_only_the_pieces_no_drawing_names_are_letters(self) -> None:
+    def test_no_library_piece_falls_back_to_a_letter(self) -> None:
+        """Every piece of every library game wears a drawing on both seats (PI2)."""
         letters = {(path.stem, piece["id"]) for path in LIBRARY_SPECS
-                   for piece, pair in _drawn(path) if not any(pair)}
+                   for piece, pair in _drawn(path) if not all(pair)}
         assert letters == LETTERS
+
+    @pytest.mark.parametrize(("game", "piece", "slug"), [
+        ("kraken-ford", "X", "kraken"), ("wolves", "W", "wolf"), ("pitchfork", "W", "wolf"),
+        ("wolves-bounty", "W", "wolf"), ("wolves-patrol", "W", "wolf"),
+        ("the-shepherds-duck", "W", "wolf"), ("the-hydra", "Y", "hydra"),
+        ("the-hydra", "H", "dog"), ("the-herd", "G", "gorgon"), ("the-herd", "S", "siren"),
+        ("the-herd", "Y", "dryad"), ("the-golem-well", "G", "golem"),
+        ("watering-hole", "C", "cat"), ("watering-hole", "D", "dog"),
+        ("watering-hole", "R", "rat"),
+    ])
+    def test_the_creatures_wear_their_own_drawings(self, game: str, piece: str,
+                                                   slug: str) -> None:
+        """PI2: the pieces PI1 left as letters, each in the drawing that names it (the
+        hound wears the dog)."""
+        path = next(p for p in LIBRARY_SPECS if p.stem == game)
+        pair = dict((p["id"], art) for p, art in _drawn(path))[piece]
+        assert [icon["stem"] for icon in pair] == [slug + "-white", slug + "-black"]
+        assert slug in draw.DRAWN
 
     @pytest.mark.parametrize(("game", "piece", "slug"), [
         ("knightmate", "N", "royal-knight"), ("bastion", "K", "shield-king"),

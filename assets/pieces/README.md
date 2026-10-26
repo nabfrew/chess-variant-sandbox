@@ -23,8 +23,8 @@ Everything in `svg/` is committed, so nothing here runs at build time. `fetch.py
 is provenance: it records which Wikimedia Commons file each icon came from and
 re-checks each licence against an allowlist.
 
-216 files, 115 drawings: 12 standard chess files, 156 fairy (130 of them drawn here:
-124 by `draw.py` in Cburnett's grammar, and the six rock, paper and scissors before it), 6
+236 files, 125 drawings: 12 standard chess files, 176 fairy (150 of them drawn here:
+144 by `draw.py` in Cburnett's grammar, and the six rock, paper and scissors before it), 6
 inverted, 14 shogi, 28 xiangqi. The designer's palette offers them by category:
 leapers, riders, compounds, royals, pawns, oddities, and the two families kept apart,
 shogi and xiangqi (`catalogue.json`).
@@ -44,7 +44,7 @@ transparent background.
 
 ## The grammar (plan-visual.md §7, decision D4)
 
-`draw.py` draws 62 pieces from a few shared parts so that a board of fairy pieces reads
+`draw.py` draws 72 pieces from a few shared parts so that a board of fairy pieces reads
 as one set with the familiar six: a 45 × 45 frame, a 1.5 black stroke with round joins,
 the first player's piece white and the second's black, a detail line black on a white
 piece and white on a black one, one shared base, transparent ground. A piece is a *body*
@@ -78,7 +78,11 @@ to a first-time visitor; the archbishop, by the same rule, is his bishop's mitre
 with the knight's head rising from behind its point, where Commons' is a whole
 knight on a bishop's foot. The alfil (an elephant's head), the camel (standing, one
 hump) and the wazir (a ring crossed by a plus, the fairy fonts' disc) are drawn in the
-grammar too; until Q557b they were Quivira's font glyphs, a second style. The shogi set
+grammar too; until Q557b they were Quivira's font glyphs, a second style. The library
+games' creatures (PI2) are drawn here too, so no library game wears a letter: the cat, dog,
+rat and wolf as heads on the stem beside the watering hole's elephant, and the kraken,
+hydra, golem, gorgon, siren (a mermaid) and dryad as pictures on the base; a hound wears
+the dog. The shogi set
 is Hari Seldon's westernised tiles; the xiangqi set is Inductiveload's discs. Mixing the families on one board will look
 like several sets, because it is.
 
@@ -133,11 +137,11 @@ the tournament, not the metrics.
 ## Licensing
 
 Every file is under a free licence, and `fetch.py` fails rather than downloading
-anything outside its allowlist. As it stands: 124 CC0, 56 CC BY-SA 3.0, 28 public
+anything outside its allowlist. As it stands: 146 CC0, 56 CC BY-SA 3.0, 28 public
 domain, 5 CC BY-SA 4.0, 1 GFDL. `CREDITS.md` names the author, licence and source
 page for each one.
 
-The 124 files drawn in the grammar are described above: 114 CC0, and the 10 of the
+The 144 files drawn in the grammar are described above: 134 CC0, and the 10 of the
 knight's family that wear Cburnett's head under his CC BY-SA 3.0. Of the other
 non-xiangqi files, 54 are redistributed
 byte-for-byte unmodified; the

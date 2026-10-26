@@ -44,6 +44,8 @@ script, not this file.
 | `bomb-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a bomb with a lit fuse |
 | `camel-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a camel on a stem |
 | `camel-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a camel on a stem |
+| `cat-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a cat's face on a stem |
+| `cat-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a cat's face on a stem |
 | `centaur-black.svg` | CheChe | [CC0](http://creativecommons.org/publicdomain/zero/1.0/deed.en) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_Cdt45.svg) |  |
 | `centaur-white.svg` | Sunny3113 | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_Clt45.svg) |  |
 | `champion-black.svg` | File:Chess zdl44.png : OmegaChessFan / *derivative work NikNaks93 | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_zdt45.svg) |  |
@@ -60,10 +62,14 @@ script, not this file.
 | `crowned-rook-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: the rook's battlements wearing a small crown |
 | `dabbaba-black.svg` | Sammy2012 | [CC0](http://creativecommons.org/publicdomain/zero/1.0/deed.en) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_vdt45.svg) |  |
 | `dabbaba-white.svg` | Sammy2012 | [CC0](http://creativecommons.org/publicdomain/zero/1.0/deed.en) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_vlt45.svg) |  |
+| `dog-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a dog's face on a stem |
+| `dog-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a dog's face on a stem |
 | `dragon-black.svg` | Cburnett | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg) | drawn for this repository from Cburnett's knight: a winged knight's head on a stem |
 | `dragon-white.svg` | Cburnett | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg) | drawn for this repository from Cburnett's knight: a winged knight's head on a stem |
 | `drop-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a drop of water |
 | `drop-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a drop of water |
+| `dryad-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a tree with a face in its leaves |
+| `dryad-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a tree with a face in its leaves |
 | `duck-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a duck |
 | `duck-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a duck |
 | `emperor-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a wide body with a broad cross |
@@ -88,6 +94,10 @@ script, not this file.
 | `ghost-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a ghost |
 | `giraffe-black.svg` | Francois-Pier | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_Gdt45.svg) |  |
 | `giraffe-white.svg` | Francois-Pier | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_Glt45.svg) |  |
+| `golem-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a figure of stone |
+| `golem-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a figure of stone |
+| `gorgon-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a face crowned with snakes |
+| `gorgon-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a face crowned with snakes |
 | `grasshopper-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a chevron on a shaft |
 | `grasshopper-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a chevron on a shaft |
 | `hammer-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a hammer |
@@ -98,6 +108,8 @@ script, not this file.
 | `hopper-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a chevron on a stem |
 | `hourglass-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: an hourglass |
 | `hourglass-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: an hourglass |
+| `hydra-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: three serpent heads on one body |
+| `hydra-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: three serpent heads on one body |
 | `inverted-king-black.svg` | Chess_kdt45.svg : en:User:Cburnett derivative work: NikNaks93 ( talk ) | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_fdt45.svg) |  |
 | `inverted-king-white.svg` | Chess_klt45.svg : en:User:Cburnett derivative work: NikNaks93 ( talk ) | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_flt45.svg) |  |
 | `inverted-pawn-black.svg` | NikNaks93 | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_hdt45.svg) |  |
@@ -112,6 +124,8 @@ script, not this file.
 | `kirin-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a flame on a stem |
 | `knight-black.svg` | Cburnett | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg) |  |
 | `knight-white.svg` | Cburnett | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg) |  |
+| `kraken-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: an octopus |
+| `kraken-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: an octopus |
 | `leaf-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a leaf |
 | `leaf-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a leaf |
 | `man-black.svg` | Original: LithiumFlash This version: CheChe | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_Mdt45.svg) |  |
@@ -136,6 +150,8 @@ script, not this file.
 | `queen-star-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: the queen's coronet with a six-pointed star |
 | `queen-star-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: the queen's coronet with a six-pointed star |
 | `queen-white.svg` | Cburnett | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_qlt45.svg) |  |
+| `rat-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a rat's face on a stem |
+| `rat-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a rat's face on a stem |
 | `ring-rider-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a ring on a shaft |
 | `ring-rider-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a ring on a shaft |
 | `rock-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository: a faceted boulder |
@@ -174,6 +190,8 @@ script, not this file.
 | `shogi-silver.svg` | Hari Seldon | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0) | [Commons](https://commons.wikimedia.org/wiki/File:Shogi_silver_western.svg) |  |
 | `short-rook-black.svg` | Uray M. János | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_Sdt45.svg) |  |
 | `short-rook-white.svg` | Uray M. János | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_Slt45.svg) |  |
+| `siren-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a mermaid |
+| `siren-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a mermaid |
 | `snowflake-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a snowflake on a stem |
 | `snowflake-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a snowflake on a stem |
 | `soldier-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a pawn in a crested helmet |
@@ -200,6 +218,8 @@ script, not this file.
 | `waffle-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a square on a stem |
 | `wazir-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a ring crossed by a plus, on a stem |
 | `wazir-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a ring crossed by a plus, on a stem |
+| `wolf-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a wolf's face on a stem |
+| `wolf-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a wolf's face on a stem |
 | `xiangqi-advisor-black.svg` | Inductiveload | Public domain | [Commons](https://commons.wikimedia.org/wiki/File:Xiangqi_Advisor_(Trad).svg) | one disc cut from the four-up source sheet |
 | `xiangqi-advisor-white.svg` | Inductiveload | Public domain | [Commons](https://commons.wikimedia.org/wiki/File:Xiangqi_Advisor_(Trad).svg) | one disc cut from the four-up source sheet |
 | `xiangqi-cannon-black.svg` | Inductiveload | Public domain | [Commons](https://commons.wikimedia.org/wiki/File:Xiangqi_Cannon_(Trad).svg) | one disc cut from the four-up source sheet |

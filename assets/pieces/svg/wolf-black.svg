@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- wolf: a wolf's face on a stem. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 14.5,35.5 C 16.5,33.5 18.5,32.5 19,30.5 L 26,30.5 C 26.5,32.5 28.5,33.5 30.5,35.5 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 16.5,30.5 L 28.5,30.5 L 28.5,29.5 C 28.5,29 28,28.5 27.5,28.5 L 17.5,28.5 C 17,28.5 16.5,29 16.5,29.5 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 18,30.5 L 27,30.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 22.5,29 L 20.5,28.7 L 19.3,26 L 18,23.5 L 14,22 L 15.3,20 L 12,18.5 L 14.3,16.7 L 13.3,14.5 L 13,8 L 19,13 L 21,12.7 L 24,12.7 L 26,13 L 32,8 L 31.7,14.5 L 30.7,16.7 L 33,18.5 L 29.7,20 L 31,22 L 27,23.5 L 25.7,26 L 24.5,28.7 L 22.5,29 Z" fill="#000000" stroke="#000000" stroke-width="1.21" transform="translate(-5.29,-6.7) scale(1.2350)"/>
+  <path d="M 14.9,14.7 L 14.7,10.5 L 17.5,13.3 M 30.1,14.7 L 30.3,10.5 L 27.5,13.3" fill="none" stroke="#ffffff" stroke-width="1.21" transform="translate(-5.29,-6.7) scale(1.2350)"/>
+  <path d="M 17.3,17.3 L 20.7,18.9 L 19.9,19.9 Z" fill="#ffffff" stroke="none" stroke-width="1.21" transform="translate(-5.29,-6.7) scale(1.2350)"/>
+  <path d="M 27.7,17.3 L 24.3,18.9 L 25.1,19.9 Z" fill="#ffffff" stroke="none" stroke-width="1.21" transform="translate(-5.29,-6.7) scale(1.2350)"/>
+  <path d="M 20.9,21 L 20.1,25.5 M 24.1,21 L 24.9,25.5" fill="none" stroke="#ffffff" stroke-width="1.21" transform="translate(-5.29,-6.7) scale(1.2350)"/>
+  <path d="M 20.6,27.1 A 1.9,1.2 0 1 1 24.4,27.1 A 1.9,1.2 0 1 1 20.6,27.1 Z" fill="#ffffff" stroke="none" stroke-width="1.21" transform="translate(-5.29,-6.7) scale(1.2350)"/>
+</g>
+</svg>

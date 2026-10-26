@@ -1,5 +1,5 @@
 {
- "source_commit": "d708ef91069fe44346a1274a2dcb32c0a99b8a1e",
+ "source_commit": "79855ef65063c350be87eee4d01cddb32e175e3e",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -481,23 +481,23 @@
   },
   {
    "path": "assets/pieces/CREDITS.md",
-   "bytes": 43144,
-   "sha256": "9440097447ca79703b89229d9414347db874ea80718b31f6d82d67f5a246e617"
+   "bytes": 46942,
+   "sha256": "20734f0186dbbd99b6a80efa0a4105a481955fab9fd3fa0a86a6c78466bcf720"
   },
   {
    "path": "assets/pieces/README.md",
-   "bytes": 10730,
-   "sha256": "215ca9c3d7cabb66a1a1d4e33ad93e8574cdab8134c184d0fec1ff848c2e0cff"
+   "bytes": 11019,
+   "sha256": "51bb0a9005c0a0a39e3f4742f0475693c6d258327401b8fd5a5bc201160dca36"
   },
   {
    "path": "assets/pieces/aliases.json",
-   "bytes": 2425,
-   "sha256": "134e6c0dc150830f1d0df7c835effbe9fcf33ece6f6a3d4650261390d556767d"
+   "bytes": 2634,
+   "sha256": "e053465ab661f4259081c47a310349a4e637bf5ae290e6379c7eecd922d2bf31"
   },
   {
    "path": "assets/pieces/catalogue.json",
-   "bytes": 22090,
-   "sha256": "2c01022e852efaebc213429d208327ab5035b2095acb9135bb9c271ddcb474f8"
+   "bytes": 24235,
+   "sha256": "2a1554d2155b0326c0867ac3ffd9e708313ef923fbe7e8cbcced620cb7e1c3ec"
   },
   {
    "path": "assets/pieces/catalogue.py",
@@ -516,8 +516,8 @@
   },
   {
    "path": "assets/pieces/draw.py",
-   "bytes": 55013,
-   "sha256": "75cc9f18372c54d933721a58042929ea63fa79d597528281e51c1f50702e5f43"
+   "bytes": 70039,
+   "sha256": "b740c044ec2fc2039c7131fd7b8def556f0b125d5e7eef166e92f1e45befa392"
   },
   {
    "path": "assets/pieces/fetch.py",
@@ -526,18 +526,18 @@
   },
   {
    "path": "assets/pieces/index.html",
-   "bytes": 84076,
-   "sha256": "d4cd60863c23a4151da71ea1ff52e9576cc3f2ec64af0755847ff963c7f6afbb"
+   "bytes": 90730,
+   "sha256": "e3cff4b656402d712366d4e7f18fc626518fc337ea49677822b9c2681bcd2535"
   },
   {
    "path": "assets/pieces/manifest.json",
-   "bytes": 74073,
-   "sha256": "df589ae413aac3b0c1c86c82904d856e9745f9a5a39665fc0f125b4e7271ad58"
+   "bytes": 80641,
+   "sha256": "d7d0670818b2e26aafa0a677fc35a28db1c28fb62935bdcb581e52dddda29522"
   },
   {
    "path": "assets/pieces/ready.json",
-   "bytes": 56467,
-   "sha256": "4effa6eb720927722ab7ffcc05f070337e678297aab318c4ce641c7f348a6387"
+   "bytes": 56782,
+   "sha256": "dbcb7ae5d50cd3d24b1a1e849514385b176202d485ffca39ea7e36474779f074"
   },
   {
    "path": "assets/pieces/svg/alfil-black.svg",
@@ -690,6 +690,16 @@
    "sha256": "6a1cb3d5efc480b8139f864587ffacd577ad5485b735e00cf98f48148d4b38cc"
   },
   {
+   "path": "assets/pieces/svg/cat-black.svg",
+   "bytes": 2325,
+   "sha256": "4424e5f0f9abb66a9e2e3a105faf5fb708a8a92f7b0db3aea8ee316d4b2afb93"
+  },
+  {
+   "path": "assets/pieces/svg/cat-white.svg",
+   "bytes": 2325,
+   "sha256": "bb88bae7cea56180a2fdfbbfeb9cf79cb953e3eb37c8f00d2bd8f42cebe1bdd8"
+  },
+  {
    "path": "assets/pieces/svg/centaur-black.svg",
    "bytes": 4361,
    "sha256": "a79e60becc89d07b16a2e53e492b60f7dbc916538c46252bb2678bdf9515a6b6"
@@ -770,6 +780,16 @@
    "sha256": "321ab45f65bda57563e397a60ba84963f285f84fb5f095a9e39906f5ea39cb6d"
   },
   {
+   "path": "assets/pieces/svg/dog-black.svg",
+   "bytes": 2569,
+   "sha256": "c70d112130248a320dbd1d47fe37ed6745bf91c054d6239e5ed0b884dc84974b"
+  },
+  {
+   "path": "assets/pieces/svg/dog-white.svg",
+   "bytes": 2569,
+   "sha256": "db89a62a7b4437e302464ab44efedcdc46700c02fc5e64fd7ccc4b7b9373b138"
+  },
+  {
    "path": "assets/pieces/svg/dragon-black.svg",
    "bytes": 2354,
    "sha256": "a7e56cc9d0cbe2a530e1aea7b5a41f7c64dffc7762a7ca7cc671a9e9ae103e72"
@@ -788,6 +808,16 @@
    "path": "assets/pieces/svg/drop-white.svg",
    "bytes": 971,
    "sha256": "0137ae76f49727030b3dbae1a948ff6b17701e314aab0a231e8899cdfc013b87"
+  },
+  {
+   "path": "assets/pieces/svg/dryad-black.svg",
+   "bytes": 4147,
+   "sha256": "7a06b4da8a5dbb75daf7eb67835e12aba56aa4cac8ef14f5c57691b4bb5fe32f"
+  },
+  {
+   "path": "assets/pieces/svg/dryad-white.svg",
+   "bytes": 4147,
+   "sha256": "42bcc2a4bc920202f85e606f48dc9b1115343c1ad95bd320619429a54a523112"
   },
   {
    "path": "assets/pieces/svg/duck-black.svg",
@@ -910,6 +940,26 @@
    "sha256": "d0a232b343635f46ffb370718d4c2b2d2e2e4d35435451480deeabbb16acb713"
   },
   {
+   "path": "assets/pieces/svg/golem-black.svg",
+   "bytes": 1732,
+   "sha256": "06ff7b7d6868349f448551ec84a89dcb88c4ad41132913bcf342b0d457d7c11d"
+  },
+  {
+   "path": "assets/pieces/svg/golem-white.svg",
+   "bytes": 1732,
+   "sha256": "759cb996f9487f1f07eacb0d5d3b346274c0af7527fe7a05b3609a059b377b1d"
+  },
+  {
+   "path": "assets/pieces/svg/gorgon-black.svg",
+   "bytes": 4807,
+   "sha256": "dd1affd9c4f4ff99e94069db1020deead74be10ee8805c2793379267daa7f23a"
+  },
+  {
+   "path": "assets/pieces/svg/gorgon-white.svg",
+   "bytes": 4807,
+   "sha256": "4d11c0d5f4a1e91884787903b229cc5900d8e3c5be1bb7f2603ed18bf34fa09b"
+  },
+  {
    "path": "assets/pieces/svg/grasshopper-black.svg",
    "bytes": 1304,
    "sha256": "9c60cf2cf0a8049b9f709866f8740c4aebf6cb54bb9ccd036a0bdad37ef88bc8"
@@ -958,6 +1008,16 @@
    "path": "assets/pieces/svg/hourglass-white.svg",
    "bytes": 1168,
    "sha256": "3dbf0fa4b0e77bfd3895b333abebda640fcd656a69fa3eac6b88ac1e3423bdf6"
+  },
+  {
+   "path": "assets/pieces/svg/hydra-black.svg",
+   "bytes": 5170,
+   "sha256": "7e6a69f8a2ac78c57df7ef4d17cd106e5e682b7daf71d8c295d5f4d886a47bd8"
+  },
+  {
+   "path": "assets/pieces/svg/hydra-white.svg",
+   "bytes": 5170,
+   "sha256": "a721aa82ab76f80d65a5e414bdde5324451490d436dcddeea9674baaffac315f"
   },
   {
    "path": "assets/pieces/svg/inverted-king-black.svg",
@@ -1028,6 +1088,16 @@
    "path": "assets/pieces/svg/knight-white.svg",
    "bytes": 1325,
    "sha256": "5486791207156f7ae8b8678187648df45085d726334c2862e73b077dea00641e"
+  },
+  {
+   "path": "assets/pieces/svg/kraken-black.svg",
+   "bytes": 3808,
+   "sha256": "53fd86c3c6ee545a813ea007f7bd116ad6badc693f3b2fb8a9a65b69c2360bd7"
+  },
+  {
+   "path": "assets/pieces/svg/kraken-white.svg",
+   "bytes": 3808,
+   "sha256": "2533832837d4f4f0c9a8a0b1fdb750c835e5604c2fe6bef93fde51b3e8e8b92d"
   },
   {
    "path": "assets/pieces/svg/leaf-black.svg",
@@ -1148,6 +1218,16 @@
    "path": "assets/pieces/svg/queen-white.svg",
    "bytes": 1087,
    "sha256": "b72b864e2a5b6c8f8afb7f260130c10e649ff063f4ef58190c00a35c56364327"
+  },
+  {
+   "path": "assets/pieces/svg/rat-black.svg",
+   "bytes": 2898,
+   "sha256": "f71dd25acf51aa3ca15efcddf8f7114cef2618bb29ce4b4927e1e43fc418e0a7"
+  },
+  {
+   "path": "assets/pieces/svg/rat-white.svg",
+   "bytes": 2898,
+   "sha256": "31226a07166db7c40ff442a88877fe002b92e5e5a3e3d4a917d22cbd94a71eb0"
   },
   {
    "path": "assets/pieces/svg/ring-rider-black.svg",
@@ -1340,6 +1420,16 @@
    "sha256": "a0854e451b352735c2d1f43543efeb6dbb3b163ee0e682a886e915835aaf5327"
   },
   {
+   "path": "assets/pieces/svg/siren-black.svg",
+   "bytes": 2699,
+   "sha256": "832281c3607ac0d9deb28961bbdb43b1636d1faaba0c64e39cb8e46ebb88d5b7"
+  },
+  {
+   "path": "assets/pieces/svg/siren-white.svg",
+   "bytes": 2699,
+   "sha256": "1b8c052580d2a17e69f49300b790a88df7755a90ce804f2d5fccfadd76f16b33"
+  },
+  {
    "path": "assets/pieces/svg/snowflake-black.svg",
    "bytes": 1274,
    "sha256": "c102665fc6f6a327f8b55cc75d9576a7d372737a25e019344a63784ceaf7a64b"
@@ -1468,6 +1558,16 @@
    "path": "assets/pieces/svg/wazir-white.svg",
    "bytes": 1503,
    "sha256": "20e81115d0c159f40602cd46724fd73c25d65a437077599ffe04ecbcc0e7d302"
+  },
+  {
+   "path": "assets/pieces/svg/wolf-black.svg",
+   "bytes": 2171,
+   "sha256": "0267e93ca31c1dd16bcf7954b058ec9cbd953d9b4554dab687bf0112a03a470a"
+  },
+  {
+   "path": "assets/pieces/svg/wolf-white.svg",
+   "bytes": 2171,
+   "sha256": "1cd7c45244092a9437d7aaaee321d952befe244ebc68bfa0262fa15be386b09d"
   },
   {
    "path": "assets/pieces/svg/xiangqi-advisor-black.svg",
@@ -2951,8 +3051,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/game_picture.py",
-   "bytes": 30350,
-   "sha256": "962bdcea8c477e7893e61ee9b4bf44d6a465abfc3c78f3307031b0c33a71ecac"
+   "bytes": 31256,
+   "sha256": "4e572b2955a007b9b65713a3448ece899e93de94a5baf3b991324eb7f29c8e4b"
   },
   {
    "path": "chess_variant_sandbox/web/page/marks.py",
@@ -3071,8 +3171,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/board.js",
-   "bytes": 260163,
-   "sha256": "015e7cfd3d0f30cffa9032f8ecd4baa0278a789c50a101878ad9e3165f4075be"
+   "bytes": 260459,
+   "sha256": "b74631b80530a92c5c19caddd5a858bdaf4e8c8af797086ad49b22d7f844020b"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/boot.js",
@@ -3156,8 +3256,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/stillboard.js",
-   "bytes": 34066,
-   "sha256": "06a077c20ead18325cee5ace52976ca43795507ca03fe76bb342be8daf30f0f2"
+   "bytes": 34947,
+   "sha256": "78f30af6b7fd674f92d062ef021410cd9d712996499ac347dd437b458e6e6dd8"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/teaching.js",
@@ -3291,8 +3391,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 150921,
-   "sha256": "43d6fbf032fea0de471608964ce62d2c57b998ee6265b847764e01595f6fc000"
+   "bytes": 151231,
+   "sha256": "74b7144516950218998a32df0ea29e8ad680b05e3a759edeef664f13e842a22a"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -5341,8 +5441,8 @@
   },
   {
    "path": "tests/test_game_picture.py",
-   "bytes": 10882,
-   "sha256": "d1ee98a3c20fb66bc0d0bb8aed6657e9d19bb83e7642a956a818f56526c44330"
+   "bytes": 11955,
+   "sha256": "b2016e99c741a1205a19eda999dd8c22885c6b0d5248af77a3c29cec995e2cb4"
   },
   {
    "path": "tests/test_generation.py",
@@ -5636,8 +5736,8 @@
   },
   {
    "path": "tests/test_piece_library.py",
-   "bytes": 15052,
-   "sha256": "d8698c983a1aa1d2821582ec725b303f33f48a0440a3a1ada70f2e69b242b2d2"
+   "bytes": 15807,
+   "sha256": "ecc6b05cd6b3f84c3d80ee7bd9056fb9aac49d83569c7932876594125873d7d9"
   },
   {
    "path": "tests/test_pinwheel.py",
@@ -6641,8 +6741,8 @@
   },
   {
    "path": "tests/test_web.py",
-   "bytes": 772332,
-   "sha256": "36689169af27cb3246cdf5b59b9c98be6e3a3b9d38ffa90c4808e042b7013cb8"
+   "bytes": 774702,
+   "sha256": "db550fa3a5dc5e12fe901f40491af3311b03ed60ac5b59d5d486e8aea8bf54d2"
   },
   {
    "path": "tests/test_web_board_fit.py",

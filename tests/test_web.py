@@ -4473,12 +4473,13 @@ class TestThePageIsStillJavaScript:
         from page_text import PAGE
 
         assert "--p2:" in PAGE and "--p2-ink:" in PAGE
-        # Once in the play board's `drawPiece`, once in the designer preview's. Generation 42
-        # (N4c): the duck, a third-owner piece too, is the one that wears its type's drawing,
-        # and only by the first seat's entry (`duck ? 0 : player`), never the owner's.
+        # Once in the play board's `drawPiece`, once in the designer preview's. A wild piece
+        # wears its type's drawing only by the first seat's entry (`wild ? 0 : player`),
+        # never the owner's (PI3; the duck alone since generation 42). What each draws is
+        # `TestAWildPieceWearsItsDrawing`'s.
         assert PAGE.count("'var(--p2)'") == 2
         assert PAGE.count("player > 1") == 2
-        assert PAGE.count("[duck ? 0 : player]") == 1 and PAGE.count("pair[duck ? 0 :") == 1
+        assert PAGE.count("[wild ? 0 : player]") == 1 and PAGE.count("pair[wild ? 0 :") == 1
 
 
 class TestTheLoadingIndicator:
@@ -13600,6 +13601,57 @@ class TestOnlyADirectionalPieceIsTurned:
             start = PAGE.index(name)
             body = PAGE[start:PAGE.index("\nfunction ", start + 1)]
             assert body.count("directional || [])[") == 1, name
+
+
+class TestAWildPieceWearsItsDrawing:
+    """PI3 (the user, 2026-10-26: every library piece an icon, not a letter): a wild piece
+    (owner 2) with a drawing is drawn with its type's first-seat drawing on the third
+    owner's disc, on the play board (`drawPiece`) and every still (`stillPieceHtml`); the
+    duck bare, as generation 42 drew it; one with no drawing still the lettered disc.
+
+    Run in node, both renderers, over the same three types: 0 has a drawing, 1 has none,
+    2 is the duck. Board bytes: owner 2 is `2 * sideStride + type + 1`.
+    """
+
+    ICONS = ("[[{ href: 'wolf0' }, { href: 'wolf1' }], [null, null],"
+             " [{ href: 'duck0' }, { href: 'duck1' }]]")
+    RULESET = (
+        "SESSION = { ruleset: { nTypes: 3, sideStride: 3, pieceIds: ['W', 'Z', 'U'],"
+        f" duck: 2, icons: {ICONS} }} }};"
+        f" PREVIEW = {{ nTypes: 3, sideStride: 3, pieceIds: ['W', 'Z', 'U'], duck: 2,"
+        f" icons: {ICONS} }};"
+    )
+
+    def _both(self, kind: int) -> list[str]:
+        drawn = _in_page(
+            self.RULESET,
+            f"[drawPiece({{ player: 2, type: {kind} }}, 0, 0, 10),"
+            f" stillPieceHtml(PREVIEW, {2 * 3 + kind + 1}, 0, 0, 10)]",
+        )
+        assert isinstance(drawn, list) and len(drawn) == 2
+        return [str(one) for one in drawn]
+
+    def test_a_wild_piece_with_a_drawing_wears_the_first_seats_on_the_third_disc(
+        self,
+    ) -> None:
+        for drawn in self._both(0):
+            assert "href=\"wolf0\"" in drawn and "wolf1" not in drawn
+            assert 'data-wild="1"' in drawn and "var(--p2)" in drawn
+            assert "<text" not in drawn
+
+    def test_a_wild_piece_with_no_drawing_is_still_the_lettered_disc(self) -> None:
+        for drawn in self._both(1):
+            assert "<image" not in drawn and 'data-wild="1"' not in drawn
+            assert ">Z</text>" in drawn and "var(--p2)" in drawn
+
+    def test_the_duck_stands_bare(self) -> None:
+        for drawn in self._both(2):
+            assert "href=\"duck0\"" in drawn
+            assert 'data-wild="1"' not in drawn and "<text" not in drawn
+
+    def test_a_players_piece_is_untouched(self) -> None:
+        drawn = _in_page(self.RULESET, "drawPiece({ player: 1, type: 0 }, 0, 0, 10)")
+        assert "href=\"wolf1\"" in str(drawn) and 'data-wild="1"' not in str(drawn)
 
 
 class TestAnUploadOntoAPieceDrawnPerPlayer:

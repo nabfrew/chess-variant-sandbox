@@ -99,6 +99,24 @@ class TestTheDrawing:
         assert plain.count("<circle ") == pieces
         assert plain.count(f">{shape['pieceIds'][0]}</text>") == pieces
 
+    def test_a_wild_piece_wears_its_drawing_on_the_third_disc(self) -> None:
+        """PI3, as `stillPieceHtml` draws it (`test_web.TestAWildPieceWearsItsDrawing`): a
+        wild piece (owner 2) wears its type's first seat's drawing on the third owner's
+        disc; the duck bare; one with no drawing the lettered disc."""
+        game = _game()
+        shape = _shape(game)
+        types = int(shape["nTypes"])
+        stride = int(shape.get("sideStride") or types)
+        wild = 2 * stride + 1  # type 0, owner 2
+        drawn = game_picture._piece(shape, wild, 0, 0, 50, {})
+        fill = game_picture.LIGHT["p2"]
+        assert "<use " in drawn and f'fill="{fill}"' in drawn and "<text" not in drawn
+        duck = game_picture._piece({**shape, "duck": 0}, wild, 0, 0, 50, {})
+        assert "<use " in duck and "<circle" not in duck
+        bare = {**shape, "icons": [[None, None] for _ in shape["icons"]]}
+        lettered = game_picture._piece(bare, wild, 0, 0, 50, {})
+        assert "<use " not in lettered and f">{shape['pieceIds'][0]}</text>" in lettered
+
     def test_the_name_is_set_to_fit(self) -> None:
         room = 470.0
         size, lines = game_picture.name_lines("Short", room)
