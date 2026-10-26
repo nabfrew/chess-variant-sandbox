@@ -53,7 +53,7 @@ _NAMED = re.compile(r'<(?:script|link)\b[^>]*?\b(?:src|href)="(/[^"]+)"')
 # Every script the pages run, as files: the application's, the replay's shared one and
 # the site's.
 SCRIPT_FILES = sorted({*page.SCRIPTS.values(), *site_pages.SCRIPTS.values(),
-                       shell.SHELL_SCRIPT_FILE, WRAPPED_FILE})
+                       *shell.HEAD_SCRIPTS.values(), WRAPPED_FILE})
 
 
 def _get(app: App, *paths: str) -> list[tuple[int, dict[str, str], bytes]]:
@@ -99,7 +99,7 @@ def _served_pages() -> dict[str, str]:
 
 class TestTheNameIsTheBytes:
     def test_a_name_is_the_digest_of_what_it_answers(self) -> None:
-        for route in (*page.SCRIPTS, *site_pages.SCRIPTS, shell.SHELL_SCRIPT_ROUTE):
+        for route in (*page.SCRIPTS, *site_pages.SCRIPTS, *shell.HEAD_SCRIPTS):
             named = assets.name_of(route)
             body, kind = assets.answer(named)  # type: ignore[misc]
             assert named == assets.versioned(route, hashlib.sha256(body).hexdigest()[:12])

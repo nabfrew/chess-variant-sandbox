@@ -11,7 +11,7 @@ only tokens (`tests/test_style.py`). The look is plan-visual.md's club room (§3
 
 from __future__ import annotations
 
-from chess_variant_sandbox.web.landing import BLOCKS
+from chess_variant_sandbox.web.landing import BLOCKS, STORY_SLOTS
 from chess_variant_sandbox.web.page.shell import BODY, HEAD, MONO, faces
 from chess_variant_sandbox.web.page.tokens import TOKENS
 
@@ -1939,6 +1939,17 @@ RULES += """
 # `landing.BLOCKS` so a row and its colour are named in one place.
 RULES += "".join(f"\n  .{block.hue} {{ --family: var(--{block.colour}); }}"
                  for block in BLOCKS)
+
+# LP6 (`docs/plan-landing.md` §4.1): the headline the server draws at `/` holds every holding
+# story's ending in the pool's order (`landing.drawn_intro`); it shows the one `story.js` put
+# on `<html>` by its place in the pool (`data-story-at`), and the first without the script.
+# By place, never by key, so no story is named here.
+RULES += """
+  .drawnClauses > .clause { display: none; }
+  html:not([data-story-at]) .drawnClauses > .clause:first-child { display: inline; }"""
+RULES += "".join(
+    f'\n  html[data-story-at="{at}"] .drawnClauses > .clause:nth-child({at + 1}) '
+    "{ display: inline; }" for at in range(STORY_SLOTS))
 
 # The three families, each with its system fallback after it (§3.1).
 FAMILIES = f"""

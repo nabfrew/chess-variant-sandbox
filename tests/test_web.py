@@ -1712,12 +1712,14 @@ class TestTheExplorer:
         outlines' two files are asked for after the graph library, in order, the first
         time the outlines are on (S5). The typefaces under `/static/fonts/` are the
         shell's, not vendored code, and every page asks for them (V1), as it does for the
-        shell's own script, `/static/shell.js` (V2).
+        shell's own script, `/static/shell.js` (V2), and the landing's draw after it,
+        `/static/story.js` (LP6).
         """
         from page_text import EXPLORER, MEASURE, PAGE
 
-        # The shell's script under its versioned name (G12, `/static/shell.<digest>.js`).
-        others = PAGE.count("/static/") - PAGE.count("/static/fonts/") - PAGE.count("/static/shell.")
+        # The head's scripts under their versioned names (G12, `/static/shell.<digest>.js`).
+        others = (PAGE.count("/static/") - PAGE.count("/static/fonts/")
+                  - PAGE.count("/static/shell.") - PAGE.count("/static/story."))
         assert PAGE.count("/static/vendor/") == 1 and others == 2
         assert MEASURE.count("'/static/measure-worker.js'") == 1
         assert "const EXPLORER_VENDOR = '/static/vendor/';" in EXPLORER

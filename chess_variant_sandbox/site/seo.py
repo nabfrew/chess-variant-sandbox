@@ -30,8 +30,9 @@ Nothing here reads a cookie: both files are the same bytes for everybody.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from html import escape
+from typing import Any
 
 from chess_variant_sandbox.site import asking, mail, terms
 from chess_variant_sandbox.spec import reference
@@ -158,10 +159,44 @@ DESIGNER = "/#/design"
 """The designer, a view of the single page (`shell.SECTIONS`' *Build*)."""
 
 
-def llms(base: str, games: Sequence[front.Listed]) -> str:
+LLMS_STORIES = (
+    "The front page tells one of these stories, chosen at random each time it is opened: an "
+    "idea written as a rule, what went wrong with the game it made, the one change, and what "
+    "that change did. In the page's order:"
+)
+
+
+def story_lines(base: str, stories: Sequence[Mapping[str, Any]]) -> list[str]:
+    """`llms.txt`'s paragraph on the front page's stories (LP6, `docs/plan-landing.md` §4.1):
+    each holding story's pair in the pool's order, a library game by its name at its own
+    address, a constructed one said to be an example made for the page, with no address.
+    Nothing in it is random: the same stories hold, the same lines."""
+    if not stories:
+        return []
+
+    def named(side: Mapping[str, Any], example: bool) -> str:
+        name = _bracketed(str(side.get("name") or "An unnamed game"))
+        return name if example else f"[{name}]({base}{front.game_path(str(side['hash']))})"
+
+    rows = ["## The front page's stories", "", LLMS_STORIES, ""]
+    for story in stories:
+        example = bool(story.get("example"))
+        failed, fixed = story["failed"], story["fixed"]
+        if example:
+            rows.append(f"- {story['title']} ({story['family']}): {named(failed, True)} and "
+                        f"{named(fixed, True)}, an example made for the page, which has no "
+                        "address of its own.")
+        else:
+            rows.append(f"- {story['title']} ({story['family']}): {named(failed, False)} was "
+                        f"ruled out; one change made {named(fixed, False)}, which stays in.")
+    return [*rows, ""]
+
+
+def llms(base: str, games: Sequence[front.Listed],
+         stories: Sequence[Mapping[str, Any]] = ()) -> str:
     """`llms.txt`: what the site is, where the rule language is (as Markdown, the file to
-    give an assistant, and as a page), and the games list, with every game `sitemap` lists
-    by its name at its own address."""
+    give an assistant, and as a page), the front page's stories (`story_lines`), and the
+    games list, with every game `sitemap` lists by its name at its own address."""
     rows = [
         f"# {NAME}",
         "",
@@ -178,6 +213,7 @@ def llms(base: str, games: Sequence[front.Listed]) -> str:
         f"- [The rule language, as a page]({base}{reference.PAGE}): the same text as a web "
         "page, with a link to every section.",
         "",
+        *story_lines(base, stories),
         "## The games",
         "",
         f"- [The games]({base}{front.GAMES_PATH}): every game, each playable in the browser "

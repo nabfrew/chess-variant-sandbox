@@ -11,6 +11,14 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-28
+
+### Four stories on the front page
+
+The front page now tells one of four stories on each visit: stones, a door, a blast and a sweep, each showing a rule
+that failed and the change that fixed it, played out on the board. You never see the same one twice in a row, and a reload
+keeps the one you are reading.
+
 ## 2026-10-27
 
 ### One place to choose a piece

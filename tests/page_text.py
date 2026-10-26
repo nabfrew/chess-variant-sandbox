@@ -26,6 +26,9 @@ The shell's script (`web/static/shell.js`, in every page's `<head>`) is served t
 not part of a page's program here: it reads and writes only `<html>`'s theme, the footer's
 switch and the header's menu, which no view touches, and `tests/test_shell.py` runs it on
 its own. `inlined` and `script_of` leave it out, so the page-level runs are what they were.
+The landing's draw (`web/static/story.js`, LP6, after it in the single page's head) is left
+out the same way, and `tests/test_story_draw.py` runs it on its own: without it the page
+keeps `?story=` or the first story, as a browser that did not run it would.
 """
 
 from __future__ import annotations
@@ -38,7 +41,7 @@ from chess_variant_sandbox.web.page import assets, shell
 
 # Route -> file, for every script a server answers.
 SERVED = {
-    **page.SCRIPTS, **site_pages.SCRIPTS, shell.SHELL_SCRIPT_ROUTE: shell.SHELL_SCRIPT_FILE
+    **page.SCRIPTS, **site_pages.SCRIPTS, **shell.HEAD_SCRIPTS
 }
 
 _SCRIPT = re.compile(r"<script([^>]*)>(.*?)</script>", re.S)
@@ -74,7 +77,7 @@ def inlined(html: str) -> str:
     stylesheet link as the `<style>` of its text."""
     def block(run: re.Match[str]) -> str:
         routes = [route for route in _SRC.findall(run[0])
-                  if plain(route) != shell.SHELL_SCRIPT_ROUTE]
+                  if plain(route) not in shell.HEAD_SCRIPTS]
         if not routes:
             return run[0]
         return "<script>\n" + "".join(text(route) for route in routes) + "</script>\n"
@@ -95,7 +98,7 @@ def script_of(html: str) -> str:
         if "application/json" in attributes:
             continue
         found = re.search(r'src="([^"]+)"', attributes)
-        if found and plain(found[1]) == shell.SHELL_SCRIPT_ROUTE:
+        if found and plain(found[1]) in shell.HEAD_SCRIPTS:
             continue
         parts.append(text(found[1]) if found else body)
     return "\n".join(parts)

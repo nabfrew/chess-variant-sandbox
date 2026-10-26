@@ -49,6 +49,16 @@ SHELL_SCRIPT_FILE = STATIC_DIR / "shell.js"
 # Named by its digest in every head, for a year (G12, `assets.py`).
 assets.serve_files({SHELL_SCRIPT_ROUTE: SHELL_SCRIPT_FILE})
 
+STORY_SCRIPT_ROUTE = "/static/story.js"
+STORY_SCRIPT_FILE = STATIC_DIR / "story.js"
+"""The landing's draw (LP6, `docs/plan-landing.md` §4.1): in the single page's head after the
+shell's, it puts the story drawn from `<html data-stories>` on `<html>` before the first
+paint. Served as the shell's is, by its digest for a year and by this route `no-store`."""
+assets.serve_files({STORY_SCRIPT_ROUTE: STORY_SCRIPT_FILE})
+
+HEAD_SCRIPTS = {SHELL_SCRIPT_ROUTE: SHELL_SCRIPT_FILE, STORY_SCRIPT_ROUTE: STORY_SCRIPT_FILE}
+"""The scripts a head carries, outside both `SCRIPTS` tables: route -> file."""
+
 
 @lru_cache(maxsize=1)
 def fonts() -> dict[str, dict[str, Any]]:

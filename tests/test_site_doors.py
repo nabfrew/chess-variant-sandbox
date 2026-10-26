@@ -310,6 +310,23 @@ class TestTheFrontDoors:
         assert page.title == front.HOME_TITLE
         assert unescape(page.meta("description")) == front.HOME_DESCRIPTION
 
+    def test_a_story_link_is_the_front_pages_own_bytes(self, site: Site) -> None:
+        """LP6 (§4.1): the server never draws the story. `/?story=<key>` is answered by the
+        bytes `/` is, its one canonical and preview, the head's draw by its digest and the
+        same `no-store` the front page has; and `/llms.txt` says the same twice."""
+        bare = _fetch(site.port, "/")
+        named = _fetch(site.port, "/?story=door")
+        assert bare.status == named.status == 200
+        assert named.html == bare.html == _fetch(site.port, "/").html
+        assert named.headers["cache-control"] == bare.headers["cache-control"]
+        head = bare.html.split("</head>")[0]
+        assert head.count('rel="canonical"') == 1 and head.count('"og:title"') == 1
+        story = re.search(r'<script src="(/static/story\.[0-9a-f]{12}\.js)">', head)
+        assert story is not None
+        script = _fetch(site.port, story[1])
+        assert script.status == 200 and "max-age=31536000" in script.headers["cache-control"]
+        assert _fetch(site.port, seo.LLMS_PATH).html == _fetch(site.port, seo.LLMS_PATH).html
+
     def test_the_drawn_words_are_the_heros_own_markup(self) -> None:
         """The router clones the template over the drawn words, so the headline lands where
         it already stood: what is drawn is the start of the hero's markup, word for word."""

@@ -1318,7 +1318,7 @@ class SiteApp(App):
 
     def llms(self, base: str) -> str:
         """`llms.txt` (G8), its addresses written on `base`."""
-        return seo.llms(base, self.listed_pages())
+        return seo.llms(base, self.listed_pages(), self.stories()["stories"])
 
     def games_feed(self, base: str) -> str:
         """`/feeds/games.atom` (G11): the listed games that are new, its addresses on `base`."""
@@ -3139,7 +3139,7 @@ def served_elsewhere(path: str) -> bool:
         path.startswith(
             ("/api/", VENDOR_PREFIX, shell.FONT_PREFIX, picture.PREFIX, BROWSER_PREFIX)
         )
-        or path in (*PAGE_PATHS, shell.SHELL_SCRIPT_ROUTE, WORKER_ROUTE, RULES_ROUTE)
+        or path in (*PAGE_PATHS, *shell.HEAD_SCRIPTS, WORKER_ROUTE, RULES_ROUTE)
         or path in shell.icons()
         or path in PAGE_SCRIPTS
     )

@@ -1503,8 +1503,8 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
                 body, kind = shell.icons()[parsed.path]
                 self._send(200, body, kind, cache=shell.ICON_CACHE)
                 return
-            if parsed.path == shell.SHELL_SCRIPT_ROUTE:
-                self._script(shell.SHELL_SCRIPT_FILE)
+            if parsed.path in shell.HEAD_SCRIPTS:
+                self._script(shell.HEAD_SCRIPTS[parsed.path])
                 return
             if parsed.path == WORKER_ROUTE:
                 self._worker()

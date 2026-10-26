@@ -22,6 +22,10 @@ async function showLanding() {
   dropUnoffered(view);
   wireWallRails();
   startJourney();
+  // LP6: a reload or a step back to the same story comes back where the reader was in it
+  // (kept by the head's `story.js`; the router has just put the view at its top).
+  const back = typeof window.landingScroll === 'function' ? window.landingScroll() : null;
+  if (back) window.scrollTo(0, back);
   // The hero's boards and today's game wait for the listing; the words do not.
   const data = await api('/api/library').catch(() => null);
   if (!data) return;
@@ -33,12 +37,15 @@ async function showLanding() {
 
 // The template holds every story in the pool, each as one part (its hero and its journey,
 // `landing.html_page`); the page keeps one and drops the rest before it is shown, so each
-// part's ids stand once. `?story=<key>` names it; otherwise the first holds (LP6 draws one).
+// part's ids stand once. The head's `story.js` drew it (LP6: `?story=<key>`, the tab's own on a
+// reload, else one at random among the others); without that script, `?story=` or the first.
 function chooseStory(fragment) {
   const parts = [...fragment.querySelectorAll('.storyPart')];
   if (!parts.length) return fragment;
-  let wanted = null;
-  try { wanted = new URLSearchParams(location.search).get('story'); } catch (err) { wanted = null; }
+  let wanted = typeof window.landingStory === 'function' ? window.landingStory() : null;
+  if (!wanted) {
+    try { wanted = new URLSearchParams(location.search).get('story'); } catch (err) { wanted = null; }
+  }
   const kept = parts.find(part => part.dataset.story === wanted) || parts[0];
   parts.forEach(part => { if (part !== kept) part.remove(); });
   return fragment;

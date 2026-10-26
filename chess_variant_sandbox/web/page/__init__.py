@@ -88,6 +88,7 @@ from chess_variant_sandbox.web import landing
 from chess_variant_sandbox.web.page import assets, utilities
 from chess_variant_sandbox.web.page.shell import (
     NAME,
+    STORY_SCRIPT_ROUTE,
     TAGLINE,
     brand,
     footer,
@@ -142,10 +143,16 @@ def script_tags(routes: Iterable[str]) -> str:
 
 
 def _head(title: str, head: str) -> str:
+    """The head; and on `<html>` the landing's pool (LP6, `docs/plan-landing.md` §4.1), the
+    keys of the stories that hold now, in their order, which `story.js` (after the shell's
+    script) draws one from before the first paint. The same bytes whichever it draws."""
+    pool = " ".join(story["key"] for story in landing.current_stories())
+    stories = f' data-stories="{escape(pool, quote=True)}"' if pool else ""
     return (
-        '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        f'<!doctype html>\n<html lang="en"{stories}>\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f"<title>{escape(title)}</title>\n{head}" + head_links()
+        + script_tags([STORY_SCRIPT_ROUTE])
         + stylesheet_links(page_sheet_id=CYTOSCAPE_SHEET_ID)
     )
 

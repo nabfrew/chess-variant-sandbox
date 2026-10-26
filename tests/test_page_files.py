@@ -115,8 +115,11 @@ class TestTheFilesAreTheWholeOfIt:
     def test_the_page_loads_the_table_in_its_order(self) -> None:
         loaded = [page_text.plain(route)
                   for route in re.findall(r'<script src="([^"]+)"></script>', page.PAGE)]
-        assert loaded[0] == shell.SHELL_SCRIPT_ROUTE
-        loaded = loaded[1:]
+        # The head's two (the shell's, then the landing's draw, LP6), then the table.
+        assert loaded[:2] == list(shell.HEAD_SCRIPTS) == [shell.SHELL_SCRIPT_ROUTE,
+                                                          shell.STORY_SCRIPT_ROUTE]
+        assert page.PAGE.index(assets.name_of(shell.STORY_SCRIPT_ROUTE)) < page.PAGE.index("</head>")
+        loaded = loaded[2:]
         assert loaded == list(page.SCRIPTS)
         assert loaded[0].endswith("/core.js") and loaded[-1].endswith("/boot.js")
 
@@ -144,7 +147,7 @@ class TestEachFileParses:
             *(PACKAGE / "web" / "static" / "page").glob("*.js"),
             *(PACKAGE / "site" / "static").glob("*.js"),
             *(PACKAGE / "viz").glob("*.js"),
-            shell.SHELL_SCRIPT_FILE,
+            *shell.HEAD_SCRIPTS.values(),
         ]
         assert len(files) >= 25
         for file in files:

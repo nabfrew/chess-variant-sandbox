@@ -939,6 +939,10 @@ def _ideas(story: dict[str, Any] | None) -> list[dict[str, str]]:
 # A constructed story's game is no library game (§2.1): the hero names it as what it is.
 EXAMPLE_CAPTION = "an example made for this page"
 
+STORY_SLOTS = 8
+"""How many stories the pool may hold (LP6): the stylesheet has a rule per place in the pool
+for the drawn headline's ending (`style.py`), and a test holds the pool within it."""
+
 
 def headline(story: dict[str, Any] | None) -> str:
     """The question with its leading ending, as one line of text."""
@@ -991,12 +995,21 @@ def drawn_intro(story: dict[str, Any] | None = None) -> str:
     The site puts this in `#view` at `/`, so a reader without script, and a crawler, reads
     what the site is: the question with the leading story's ending, written whole. It is the
     start of the hero's own markup, so when `landing.js` clones the template over it the
-    headline lands where it already stood."""
-    if story is None and _CURRENT["stories"]:
-        story = _CURRENT["stories"][0]
-    ideas = _ideas(story)
-    clause = (f'<span class="clauses"><span class="clause {ideas[0]["hue"]} on">'
-              f'{_e(ideas[0]["clause"])}</span></span>') if ideas else ""
+    headline lands where it already stood.
+
+    LP6: with no `story` named, every holding story's ending is drawn, in the pool's order,
+    and the stylesheet shows the one `story.js` drew (`html[data-story-at]`, the first
+    without the script, `STORY_SLOTS`), so the headline does not change when the template
+    lands."""
+    pool = [story] if story is not None else list(_CURRENT["stories"])
+    if pool:
+        clause = '<span class="clauses drawnClauses">' + "".join(
+            f'<span class="clause {one["hue"]} on" data-story="{_e(one["key"])}">'
+            f'{_e(one["hero"]["clause"])}</span>' for one in pool) + "</span>"
+    else:
+        ideas = _ideas(None)
+        clause = (f'<span class="clauses"><span class="clause {ideas[0]["hue"]} on">'
+                  f'{_e(ideas[0]["clause"])}</span></span>') if ideas else ""
     return (
         '<div class="landing"><section class="landingHero heroB"><div class="landingIntro">'
         f'<h2 class="landingTitle"><span class="wcbi">{_e(QUESTION)}</span> {clause}</h2>'
