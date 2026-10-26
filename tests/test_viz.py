@@ -99,7 +99,7 @@ def test_a_wild_piece_is_drawn_as_neither_players(chess_spec: dict, tmp_path: Pa
 
     text = page.read_text(encoding="utf-8")
     assert "--p2:" in text and "--p2-ink:" in text
-    assert "if (piece.player > 1) return null;" in text
+    assert "pair[piece.player > 1 ? 0 : piece.player]" in text  # PI4: drawn, not lettered
 
 
 def test_icons_can_be_turned_off(chess_spec: dict, tmp_path: Path) -> None:
@@ -1908,3 +1908,49 @@ def test_the_archbishop_is_a_mitre_with_a_knights_head() -> None:
     assert "| `archbishop-white.svg` | Cburnett |" in credits
     hrefs = {name: icon_for(name, 0)["href"] for name in ("archbishop", "knight", "bishop", "chancellor")}
     assert len(set(hrefs.values())) == 4, hrefs
+
+
+class TestTheReplayDrawsAWildPieceAsTheBoardsDo:
+    """PI4. PI3 put a wild piece's own drawing on the third owner's disc on every page board;
+    the offline replay still lettered it. Same three types as
+    `test_web.py::TestAWildPieceWearsItsDrawing`: 0 has a drawing, 1 has none, 2 is the duck.
+    """
+
+    ICONS = "[[{href:'wolf0'},{href:'wolf1'}],[null,null],[{href:'duck0'},{href:'duck1'}]]"
+
+    def _drawn(self, player: int, kind: int) -> str:
+        replay = Path(__file__).parents[1] / "chess_variant_sandbox" / "viz" / "replay.js"
+        source = replay.read_text(encoding="utf-8")
+        start = source.index("function iconFor")
+        end = source.index("// One square, wherever in the grid")
+        head = (
+            "const DATA = { nTypes: 3, pieceIds: ['W','Z','U'], duck: 2,"
+            f" pieceIcons: {self.ICONS} }}; const CELL = 10, FRAME = {{}};"
+            "function portalGlyph(){} function portalPairs(){} function portalAimFor(){}"
+            "function portalPartner(){} function portalSquareIn(){}"
+            "let BEATS = null, at = 0;"
+        )
+        call = f"drawPiece({{ player: {player}, type: {kind}, facing: 0 }}, 0, 0, false)"
+        done = node_session.run(
+            head + source[start:end] + f"\nconsole.log(JSON.stringify({call}));"
+        )
+        assert done.returncode == 0, done.stderr
+        return str(json.loads(done.stdout))
+
+    def test_a_wild_piece_with_a_drawing_wears_the_first_seats_on_the_third_disc(self) -> None:
+        drawn = self._drawn(2, 0)
+        assert 'href="wolf0"' in drawn and "wolf1" not in drawn
+        assert 'data-wild="1"' in drawn and "var(--p2)" in drawn and "<text" not in drawn
+
+    def test_a_wild_piece_with_no_drawing_is_still_the_lettered_disc(self) -> None:
+        drawn = self._drawn(2, 1)
+        assert "<image" not in drawn and 'data-wild="1"' not in drawn
+        assert ">Z</text>" in drawn and "var(--p2)" in drawn
+
+    def test_the_duck_stands_bare(self) -> None:
+        drawn = self._drawn(2, 2)
+        assert 'href="duck0"' in drawn and 'data-wild="1"' not in drawn and "<text" not in drawn
+
+    def test_a_players_piece_is_untouched(self) -> None:
+        drawn = self._drawn(1, 0)
+        assert 'href="wolf1"' in drawn and 'data-wild="1"' not in drawn

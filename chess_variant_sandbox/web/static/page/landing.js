@@ -29,7 +29,11 @@ async function showLanding() {
   // LP6: a reload or a step back to the same story comes back where the reader was in it
   // (kept by the head's `story.js`; the router has just put the view at its top).
   const back = typeof window.landingScroll === 'function' ? window.landingScroll() : null;
-  if (back) window.scrollTo(0, back);
+  // LP11: the play screen's way back to the story lands on its step.
+  const beat = LANDING_BEAT && view.querySelector(`#beats [data-beat="${LANDING_BEAT}"]`);
+  LANDING_BEAT = null;
+  if (beat) beat.scrollIntoView({ block: 'start' });
+  else if (back) window.scrollTo(0, back);
   const data = await listing;
   if (!data) return;
   takePieceArt(data);
@@ -56,9 +60,13 @@ function wirePlayDoors(root, listing) {
     door.addEventListener('click', event => {
       if (!plain(event)) return;
       event.preventDefault();
-      playNow(door, door.dataset.play, Number(door.dataset.seat) || 0);
+      // LP11: the game remembers the story that started it, for the play screen's way back.
+      const part = door.closest('.storyPart');
+      if (part) keepStoryGame(part.dataset.story, door.dataset.play);
+      playNow(door, door.dataset.play, Number(door.dataset.seat) || 0, door.dataset.agent);
     });
   });
+  wireHeroBoard(root);
   const today = root.querySelector('[data-today]');
   if (!today) return;
   today.addEventListener('click', async event => {
@@ -71,6 +79,72 @@ function wirePlayDoors(root, listing) {
     if (step && step.hash && gentle) return playNow(today, step.hash, 0, gentle.agent);
     clearPending();
     goPath(step && step.hash ? gamePath(step.hash) : GAMES_PATH);
+  });
+}
+
+// LP11 (`landing-cold-read.md` §6.2 item 2): the hero's board looked playable at 375 and was
+// a replay, so a tap on the story's own board takes the story's door beside it: the same game,
+// started. The other endings' boards are other games, and stay pictures.
+function wireHeroBoard(root) {
+  const part = root.querySelector('.storyPart');
+  const door = part && part.querySelector('.landingWays a[data-play]');
+  const state = door && part.querySelector(`.heroState[data-story="${part.dataset.story}"]`);
+  const board = state && state.querySelector('[data-board]');
+  if (!board) return;
+  board.classList.add('heroPlays');
+  board.setAttribute('role', 'button');
+  board.setAttribute('tabindex', '0');
+  board.setAttribute('aria-label', door.textContent);
+  board.title = door.textContent;
+  board.addEventListener('click', () => door.click());
+  board.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    door.click();
+  });
+}
+
+// LP11 (§6.2 item 1): a game a story's door started links back to the story (the play screen's
+// *← the story* and its ending's *how this game was made*, `showBoard` and `drawEnded`). What
+// the tab keeps is the story and its fixed game, so a new game of the same game, and a reload,
+// still find the way back; storage refused keeps it for this page only.
+const STORY_GAME_KEY = 'storyGame';
+let STORY_GAME = null;
+
+function keepStoryGame(key, hash) {
+  if (!key || !hash) return;
+  STORY_GAME = { key: key, hash: hash };
+  try { window.sessionStorage.setItem(STORY_GAME_KEY, key + ' ' + hash); } catch (refused) { /* this page */ }
+}
+
+// The story a game of `hash` was started from in this tab, or null.
+function storyGameFor(hash) {
+  let kept = STORY_GAME;
+  if (!kept) {
+    let held = null;
+    try { held = window.sessionStorage.getItem(STORY_GAME_KEY); } catch (refused) { held = null; }
+    const parts = (held || '').split(' ');
+    if (parts.length === 2) kept = { key: parts[0], hash: parts[1] };
+  }
+  return kept && kept.hash === hash ? kept.key : null;
+}
+
+// The story's address, and the step its way back lands on: *what goes wrong*, the first beat
+// the hero's door skipped.
+const STORY_BACK_BEAT = 2;
+let LANDING_BEAT = null;
+
+function storyPath(key) {
+  return '/?story=' + encodeURIComponent(key);
+}
+
+// A link back to the story, followed without loading the page again unless a new tab is asked.
+function wireStoryBack(link) {
+  link.addEventListener('click', event => {
+    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    LANDING_BEAT = STORY_BACK_BEAT;
+    goPath(link.getAttribute('href'));
   });
 }
 

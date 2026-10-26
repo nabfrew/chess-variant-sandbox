@@ -13,6 +13,7 @@ first screen and reduced motion are the browser's and the look check's.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import re
 from pathlib import Path
 from typing import Any
@@ -381,8 +382,9 @@ def test_each_storys_play_doors_start_its_fixed_game_in_its_seat(
         part = _part(drawn, story["key"])
         fixed = story["fixed"]
         seat = story["seat"]
+        agent = f' data-agent="{story["opponent"]["agent"]}"' if story["opponent"] else ""
         door = (f'href="/game/{fixed["hash"]}?seat={seat["side"]}" data-play="{fixed["hash"]}" '
-                f'data-seat="{seat["index"]}"')
+                f'data-seat="{seat["index"]}"{agent}')
         assert part.count(door) == 2, story["key"]
         hero = part[:part.index('id="journey"')]
         assert f'class="button storyWay" {door}' in hero
@@ -423,3 +425,138 @@ def test_step_two_holds_on_its_moment_and_the_hero_on_its_story() -> None:
     assert "if (this.hold) { this.holdOnMoment(); return; }" in landing_js
     assert "if (show.closest('.storyPart')) { stop(); return; }" in landing_js
     assert "window.addEventListener('scroll', settle, { passive: true });" in landing_js
+
+
+# ------------------------------------------------------------------ the way back (LP11)
+
+
+def test_a_story_names_its_doors_opponent_as_it_names_its_seat(
+        drawn: str, rendered: dict[str, Any]) -> None:
+    """LP11 (`landing-cold-read.md` §6.2 item 4): blast's gentlest fell to a three-move queen
+    trap, so its doors seat *easy*; every other story keeps LP9's gentlest, asked of the game's
+    page, and its step 5 says so."""
+    against = {story["key"]: story["opponent"] for story in rendered["stories"]}
+    assert against["blast"] == {"agent": "minimax:nodes=400", "name": "easy"}
+    assert all(against[key] is None for key in ("stones", "door", "sweep"))
+    for story in rendered["stories"]:
+        part = _part(drawn, story["key"])
+        five = part[part.index('data-beat="5"'):part.index('data-beat="6"')]
+        if story["opponent"]:
+            assert part.count(f'data-agent="{story["opponent"]["agent"]}"') == 2
+            assert "against the computer player easy," in five
+        else:
+            assert "data-agent" not in part
+            assert "against the gentlest," in five
+    landing_js = (STATIC / "landing.js").read_text(encoding="utf-8")
+    assert ("playNow(door, door.dataset.play, Number(door.dataset.seat) || 0, door.dataset.agent);"
+            in landing_js)
+    assert "const against = agent || await gentlestAgent(hash);" in landing_js
+
+
+def test_a_story_naming_no_rung_is_refused() -> None:
+    story = next(one for one in stories.STORIES if one.key == "blast")
+    with pytest.raises(stories.StoryError):
+        stories.door_opponent(dataclasses.replace(story, opponent="minimax:nodes=7"))
+    with pytest.raises(stories.StoryError):
+        stories.door_opponent(dataclasses.replace(story, opponent="human"))
+
+
+def test_the_heros_own_board_starts_the_storys_game(drawn: str) -> None:
+    """LP11 (§6.2 item 2): a tap on the story's own board in the hero takes the story's door
+    (the same game, started); the other endings' boards stay pictures."""
+    landing_js = (STATIC / "landing.js").read_text(encoding="utf-8")
+    assert "wireHeroBoard(root);" in landing_js
+    # Every story's own ending names it, at a turn (blast) or at the opening (stones).
+    for key in ("stones", "blast"):
+        part = _part(drawn, key)
+        stage = part[part.index('id="heroStage"'):part.index('id="journey"')]
+        assert stage.count(f'data-story="{key}"') == 1 and stage.count("data-story=") == 1
+    assert ".heroState[data-story=\"${part.dataset.story}\"]" in landing_js
+    assert "board.addEventListener('click', () => door.click());" in landing_js
+    assert "board.setAttribute('role', 'button');" in landing_js
+    assert ".heroBoard.heroPlays { cursor: pointer; }" in PAGE
+
+
+def test_a_game_a_story_started_links_back_to_the_story() -> None:
+    """LP11 (§6.2 item 1): the door keeps the story and its game in the tab; the play screen
+    carries *← the story* and its ending *how this game was made*, both to the story's step 2,
+    and only for a game of the story's own fixed game."""
+    landing_js = (STATIC / "landing.js").read_text(encoding="utf-8")
+    board_js = (STATIC / "board.js").read_text(encoding="utf-8")
+    assert "if (part) keepStoryGame(part.dataset.story, door.dataset.play);" in landing_js
+    assert "return kept && kept.hash === hash ? kept.key : null;" in landing_js
+    assert "const STORY_BACK_BEAT = 2;" in landing_js
+    assert "if (beat) beat.scrollIntoView({ block: 'start' });" in landing_js
+    assert "storyGameFor(rules.hash)" in board_js
+    assert ">&larr; the story</a>" in board_js
+    assert "const STORY_ENDED_SAID = 'how this game was made';" in board_js
+    assert "STORY_SHOWN ? `<p class=\"ended-story small\">" in board_js
+    # A draft, a try from a proven position and an inline board carry none.
+    assert ("const story = !inline && !proven && !rules.scratch && !snapshot.puzzle" in board_js)
+
+
+def test_the_opponents_name_opens_the_picker_in_the_readers_seat() -> None:
+    """LP11 (§6.2 item 3): the computer's name on a practice board links to the game page's
+    picker with the reader's seat chosen (`?seat=`, which scrolls to it); chosen over *one
+    harder* on *new game*, because the reader clicked the name first and the picker holds the
+    whole ladder with its strengths."""
+    board_js = (STATIC / "board.js").read_text(encoding="utf-8")
+    assert "const picker = pickerPath(player);" in board_js
+    assert "data-picker title=\"${esc(PICKER_TITLE)}\"" in board_js
+    assert "return gamePath(rules.hash) + '?seat=' + encodeURIComponent(said);" in board_js
+    assert ("if (!SESSION || BOARD_INLINE || BOARD_PROVEN || SESSION.correspondence "
+            "|| SESSION.puzzle) {") in board_js
+    assert "wireOpponentPicker(root);" in board_js
+
+
+_PRACTICE = """
+SESSION = { id: 's1', seats: ['human', 'minimax:nodes=400'],
+            ruleset: { hash: 'abcdef012345', name: 'queen bomb', sides: ['white', 'black'] } };
+"""
+
+
+def test_the_picker_link_runs_for_a_practice_board_alone() -> None:
+    from test_web import _in_page
+
+    others = ("SESSION.seats = ['human', 'human']", "SESSION.seats = ['greedy', 'greedy']",
+              "SESSION.ruleset.scratch = true", "SESSION.puzzle = { id: 'p' }",
+              "BOARD_INLINE = true")
+    probe = ("(() => { const base = JSON.stringify(SESSION); const out = {"
+             " paths: [pickerPath(0), pickerPath(1)],"
+             " seats: [seatHtml(0).includes('data-picker'), seatHtml(1).includes('data-picker')] };"
+             " SESSION.seats = ['greedy', 'human']; out.black = pickerPath(0); out.others = [];"
+             + "".join(f" SESSION = JSON.parse(base); BOARD_INLINE = false; {one};"
+                       " out.others.push(pickerPath(1));" for one in others)
+             + " return out; })()")
+    got = _in_page(_PRACTICE, probe)
+    assert got["paths"] == [None, "/game/abcdef012345?seat=white"]
+    assert got["seats"] == [False, True]
+    assert got["black"] == "/game/abcdef012345?seat=black"
+    assert got["others"] == [None] * len(others)
+
+
+def test_the_story_a_game_came_from_is_its_fixed_games_alone() -> None:
+    from test_web import _in_page
+
+    probe = ("[storyGameFor('abcdef012345'), (keepStoryGame('blast', 'abcdef012345'),"
+             " storyGameFor('abcdef012345')), storyGameFor('012345abcdef'), storyPath('blast')]")
+    assert _in_page("", probe) == [None, "blast", None, "/?story=blast"]
+
+
+def test_back_from_the_picker_draws_the_game_it_left() -> None:
+    """LP11: back from `/game/<hash>?seat=` to `/#/play/<id>` changes the path and the fragment,
+    and Chromium sends no `hashchange` for it, so the `popstate` draws; a fragment-only step is
+    still the `hashchange`'s, and one that follows a drawn `popstate` draws nothing."""
+    from test_web import _in_page
+
+    probe = ("(() => { let drawn = 0; render = () => { drawn += 1; RENDERED = location.href; };"
+             " const at = href => { const u = new URL(href); Object.assign(location, { href: u.href,"
+             " pathname: u.pathname, search: u.search, hash: u.hash }); };"
+             " const out = [];"
+             " RENDERED = 'http://x/game/ab?seat=white'; RENDERED_HASH = '';"
+             " at('http://x/?story=stones#/play/s1'); onHistory(); out.push(drawn);"
+             " onHashChange(); out.push(drawn);"
+             " RENDERED = 'http://x/#/play/s1'; RENDERED_HASH = '#/play/s1';"
+             " at('http://x/#/game/ab'); onHistory(); out.push(drawn);"
+             " onHashChange(); out.push(drawn); return out; })()")
+    assert _in_page("", probe) == [1, 1, 1, 2]

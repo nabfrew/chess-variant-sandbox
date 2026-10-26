@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### From a story to a game and back
+
+A game started from a front-page story now links back to the story and to how its game was made, and tapping the
+story's board starts that game. The computer opponent's name opens the list of opponents, so a harder one is a tap away.
+The offline replay now draws the wild creatures with their pictures too.
+
 ### Ten new creature drawings
 
 Every piece in the library's games now has a picture instead of a letter. Ten new creatures (among them the wolf, the

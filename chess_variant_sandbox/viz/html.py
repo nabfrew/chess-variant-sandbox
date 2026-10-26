@@ -204,6 +204,8 @@ def _write_page(
         # is drawn as the play board draws it (`portalGlyph`). ``None`` without portals.
         "portals": portal_payload(engine.spec),
         "pieceIcons": art,
+        # PI4: the duck's type, which stays bare where every other wild piece wears a disc.
+        "duck": engine.spec.duck.piece_type if engine.spec.duck is not None else None,
         "credits": credits_for(art),
         "boards": boards,
         # Schema 22 (Q843d): where the folds lie in each position, no board byte, so the replay

@@ -1501,9 +1501,24 @@ function goPath(path) {
 
 // Back and Forward between `/` and `/game` change no hash, so no `hashchange` comes and the
 // `popstate` that does draws. A step that changes the hash is the `hashchange`'s to draw.
+//
+// LP11: a step between two addresses whose paths differ as well as their fragments (back from
+// a game's picker, `/game/<hash>?seat=`, to `/#/play/<id>`) gets no `hashchange` in Chromium,
+// so the `popstate` draws whenever the path or query moved; a `hashchange` that does follow
+// finds the address already drawn and draws nothing (`onHashChange`).
 let RENDERED = '', RENDERED_HASH = '';
 function onHistory() {
-  if (location.hash === RENDERED_HASH && location.href !== RENDERED) render();
+  if (location.href === RENDERED) return;
+  let moved = true;
+  try {
+    const was = new URL(RENDERED);
+    moved = was.pathname + was.search !== location.pathname + (location.search || '');
+  } catch (error) { moved = true; }
+  if (moved || location.hash === RENDERED_HASH) render();
+}
+
+function onHashChange() {
+  if (location.href !== RENDERED) render();
 }
 
 function render() {

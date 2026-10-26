@@ -36,6 +36,7 @@ function leaveBoard() {
   if (BOARD_SIGHT) BOARD_SIGHT.disconnect();
   BOARD_SIGHT = null;
   BOARD_OFFSCREEN = false;
+  STORY_SHOWN = null;
   SESSION = null;
   SHOWN = null;
   SELECTED = null;
@@ -116,7 +117,14 @@ async function showBoard(snapshot, how) {
   // The editor's trial says the *game* is not recorded, never that the rules are not
   // saved: they may well be, and after a save that read as a contradiction (Q576, N4).
 
+  // LP11 (`landing-cold-read.md` §6.2 item 1): a game a landing story's door started carries
+  // a way back to the story beside the way to its game's page (`landing.js` `storyGameFor`).
+  const story = !inline && !proven && !rules.scratch && !snapshot.puzzle
+    && typeof storyGameFor === 'function' ? storyGameFor(rules.hash) : null;
+  STORY_SHOWN = story;
   root.innerHTML = `
+    ${story ? `<a class="crumb storyBack" href="${esc(storyPath(story))}" data-story-back
+      >&larr; the story</a>` : ''}
     ${inline ? `<div class="muted small">This is a game of the rules as they stand right
       now. Nothing about it is kept, and changing the draft ends it.</div>`
       : proven ? '' : `<button class="crumb" id="back">&larr; ${
@@ -213,6 +221,8 @@ async function showBoard(snapshot, how) {
     go(rules.scratch ? '#/design'
       : snapshot.puzzle ? '#/proven/' + rules.hash + '/' + snapshot.puzzle.id
         : '#/game/' + rules.hash);
+  if (story) root.querySelectorAll('[data-story-back]').forEach(wireStoryBack);
+  wireOpponentPicker(root);
   const again = document.getElementById('again');
   if (again) again.onclick = () => restart(snapshot.seats);
   // A rematch with the seats exchanged, which is the whole of "let me try that as the
@@ -2886,6 +2896,38 @@ function seatLabel(player) {
 // Under the name, how hard that seat thinks: the server's plain words off the budget it
 // plays at (`web/play.py::strength`). A name alone left two machines reading "hard vs
 // hard" with nothing to say what hard meant (Q288). Nothing under a person.
+// LP11 (`landing-cold-read.md` §6.2 item 3): the computer's name on a practice board is the
+// way to another opponent, the picker on the game's page with the reader's own seat chosen
+// (`?seat=`, which `detail.js` scrolls to). A reader who won clicked it first. Only a board one
+// person plays against the computer, of a library game: a draft, a try from a proven position,
+// a game between two people and a watched one have no picker to go to.
+const PICKER_TITLE = 'choose another opponent';
+
+function pickerPath(player) {
+  if (!SESSION || BOARD_INLINE || BOARD_PROVEN || SESSION.correspondence || SESSION.puzzle) {
+    return null;
+  }
+  const rules = SESSION.ruleset || {};
+  const seats = SESSION.seats || [];
+  const you = seats.indexOf('human');
+  if (rules.scratch || !rules.hash || you < 0 || seats.lastIndexOf('human') !== you
+      || seats[player] === 'human') return null;
+  const side = (rules.sides || [])[you];
+  const said = side ? String(side).toLowerCase() : you === 0 ? 'first' : 'second';
+  return gamePath(rules.hash) + '?seat=' + encodeURIComponent(said);
+}
+
+// The picker's link is followed without loading the page again, as the router's own.
+function wireOpponentPicker(root) {
+  root.querySelectorAll('a[data-picker]').forEach(link => {
+    link.addEventListener('click', event => {
+      if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      goPath(link.getAttribute('href'));
+    });
+  });
+}
+
 function seatHtml(player) {
   const strength = (SESSION.strength || [])[player] || '';
   // A person's seat carries their mark (R2) beside their handle.
@@ -2894,9 +2936,12 @@ function seatHtml(player) {
   // And links to their page (R1): only a member with a mark has one, never somebody who
   // left.
   const member = between && between.marks && between.marks[player];
+  const picker = pickerPath(player);
   const label = member && between.players && between.players[player]
     ? `<a href="/players/${esc(between.players[player])}">${mark}${esc(seatLabel(player))}</a>`
-    : `${mark}${esc(seatLabel(player))}`;
+    : picker ? `<a href="${esc(picker)}" data-picker title="${esc(PICKER_TITLE)}">${
+      esc(seatLabel(player))}</a>`
+      : `${mark}${esc(seatLabel(player))}`;
   return `<b>${esc(sideName(player))}</b>
     <span class="muted">${label}</span>${initiativeHtml(player)}${
     strength ? `<div class="muted small">${esc(strength)}</div>` : ''}`;
@@ -3049,6 +3094,11 @@ function resultFor(outcome) {
   return outcome.winner === you ? 'won' : 'lost';
 }
 
+// The landing story the game on screen was started from (`showBoard`), or null, and the line
+// its ending carries back to it.
+let STORY_SHOWN = null;
+const STORY_ENDED_SAID = 'how this game was made';
+
 // The ended state (plan-visual.md §3.3): a banner over the middle of the board, the board
 // still to be seen round it, with the result, the engine's reason, and the two things a
 // finished game offers -- the game again, by this board's own control for it and in its
@@ -3066,7 +3116,7 @@ function drawEnded() {
   // the try again sits beside it (S6: one primary, naming its result).
   const next = BOARD_PROVEN ? document.getElementById('provenNext') : null;
   const key = `${outcome.winner}|${outcome.reason}|${again ? again.id : ''}|${
-    next && !next.disabled ? 'next' : ''}|${TIMELINE.length}`;
+    next && !next.disabled ? 'next' : ''}|${TIMELINE.length}|${STORY_SHOWN || ''}`;
   banner.hidden = false;
   if (banner.dataset.built === key) return;
   banner.dataset.built = key;
@@ -3078,7 +3128,12 @@ function drawEnded() {
     parts.how ? `<div class="ended-how">${esc(parts.how)}</div>` : ''}<div class="row">${
     going ? `<button class="primary" data-ended="next">${esc(going)}</button>` : ''}${
     again ? `<button class="${going ? '' : 'primary'}" data-ended="again">${esc(word)}</button>` : ''}${
-    TIMELINE.length > 1 ? '<button class="quiet" data-ended="review">review</button>' : ''}</div>`;
+    TIMELINE.length > 1 ? '<button class="quiet" data-ended="review">review</button>' : ''}</div>${
+    // LP11 (§6.2 item 1): after a game a story started, the story's beats, when a visitor
+    // who played first has the patience for them.
+    STORY_SHOWN ? `<p class="ended-story small"><a href="${esc(storyPath(STORY_SHOWN))}"
+      data-story-back>${esc(STORY_ENDED_SAID)}</a></p>` : ''}`;
+  if (STORY_SHOWN) banner.querySelectorAll('[data-story-back]').forEach(wireStoryBack);
   banner.querySelectorAll('[data-ended]').forEach(node => {
     node.onclick = () => {
       if (node.dataset.ended === 'review') stepBy(-1);

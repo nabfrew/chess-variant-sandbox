@@ -189,6 +189,11 @@ class Story:
     # seat the visitor there (`?seat=<side>` on the fixed game's page), so the door story's
     # visitor plays Black, whose door it now is.
     seat: int = 0
+    # The computer player its play doors seat against, by its agent string (LP11,
+    # `landing-cold-read.md` §6.2 item 4), as `seat` names the visitor's side; empty for the
+    # gentlest the fixed game's page offers (LP9's rule, the default). Blast's gentlest falls
+    # to a three-move queen trap, which contradicts its own last beat, *the game goes on*.
+    opponent: str = ""
 
 
 STORIES: tuple[Story, ...] = (
@@ -304,6 +309,7 @@ STORIES: tuple[Story, ...] = (
                         show=((1, 13), (63, 63)), keys="events", pace=520, moment=13)),
         hero_at=13,
         quote="So the queen becomes a one-shot weapon",
+        opponent="minimax:nodes=400",
     ),
     Story(
         key="sweep", title="a sweep", family="how pieces move", kind=LIBRARY,
@@ -931,8 +937,24 @@ def render_story(story: Story, app: Roots,
         "quote": story.quote if story.quote in str(fixed_spec.get("description", "")) else "",
         # Whose seat the story is about, by its place and by the side's name on the board.
         "seat": {"index": story.seat, "side": str(sides[story.seat])},
+        # Whom its play doors seat against: a rung of the ladder every board offers, by its
+        # agent and its name, or None for the gentlest the game's page offers.
+        "opponent": door_opponent(story),
         "pieceArt": art,
     }
+
+
+def door_opponent(story: Story) -> dict[str, str] | None:
+    """The rung of the alternating ladder a story's doors seat against, or None for the
+    gentlest; a story naming a player the ladder does not hold is refused."""
+    if not story.opponent:
+        return None
+    from chess_variant_sandbox.web.opponents import HUMAN, RUNGS
+
+    for agent, name, _tail in RUNGS:
+        if agent == story.opponent and agent != HUMAN:
+            return {"agent": agent, "name": name}
+    raise StoryError(f"{story.key}'s door opponent {story.opponent} is no rung of the ladder")
 
 
 def inputs(app: Roots) -> tuple[tuple[str, int], ...]:

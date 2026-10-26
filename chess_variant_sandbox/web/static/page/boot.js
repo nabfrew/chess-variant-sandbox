@@ -7,7 +7,7 @@ document.getElementById('home').onclick = () => goPath('/');
 // The first draw waits for `/api/me`, because what a view offers depends on the server.
 identify().then(() => {
   paintIdentity();
-  window.addEventListener('hashchange', render);
+  window.addEventListener('hashchange', onHashChange);
   window.addEventListener('popstate', onHistory);
   render();
 });

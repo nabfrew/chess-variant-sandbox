@@ -751,6 +751,7 @@ RULES = """
   .frame-ended .ended-head { font: 600 24px/30px var(--f-head); letter-spacing: -.01em; }
   .frame-ended .ended-how { color: var(--muted); margin-top: 2px; }
   .frame-ended .row { justify-content: center; margin-top: 12px; gap: 6px; }
+  .frame-ended .ended-story { margin: 10px 0 0; }
   .frame-ended.won { border-color: var(--win); }
   .frame-ended.won .ended-head { color: var(--win); }
   .frame-ended.lost { border-color: var(--loss); }
@@ -1010,6 +1011,8 @@ RULES = """
   .crumb { background: none; border: none; padding: 0; min-height: var(--hit); color: var(--muted);
            cursor: pointer; font-weight: 400; }
   .crumb:hover { color: var(--ink); }
+  /* LP11: a game a landing story started carries *← the story* before its game's crumb. */
+  a.crumb { display: inline-flex; align-items: center; text-decoration: none; margin-right: 18px; }
   .spin { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
           background: var(--muted); animation: pulse 1.5s ease-in-out infinite; }
   @keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
@@ -1833,6 +1836,9 @@ RULES += """
   .landingB .heroState.on { opacity: 1; transform: none; pointer-events: auto; }
   .landingB .heroBoard { max-width: 440px; }
   .landingB .heroBoard:empty { aspect-ratio: 1; }
+  /* LP11: the story's own board in the hero starts its game, as its door does. */
+  .landingB .heroBoard.heroPlays { cursor: pointer; }
+  .landingB .heroBoard.heroPlays:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
   .landingB .heroState figcaption { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
                           margin-top: 10px; }
   .landingB .heroState figcaption a { font-weight: 600; }

@@ -51,11 +51,15 @@ function pieceOf(value) {
 // letter where it does not -- which is most invented pieces, and some real ones.
 function iconFor(piece) {
   // An icon pair is one drawing per player and has no third entry, so a wild piece
-  // (owner 2, schema 9) is always the lettered disc.
-  if (piece.player > 1) return null;
+  // (owner 2, schema 9) wears the first seat's (PI3, as the play board does); with no
+  // drawing it is the lettered disc.
   const pair = (DATA.pieceIcons || [])[piece.type];
-  return pair ? pair[piece.player] : null;
+  return pair ? pair[piece.player > 1 ? 0 : piece.player] : null;
 }
+
+// PI3, as `stillboard.js` draws it: a wild piece's drawing is a size smaller on the third
+// owner's disc, edged in `--ink` (not `--p2`, the trail's stroke); the duck stays bare.
+const WILD_ICON = 0.74;
 
 // The disc a lettered piece is drawn on. `--p2` is the wild third owner's.
 function tintFor(player) {
@@ -81,7 +85,11 @@ function drawPiece(piece, x, y, idle) {
   }
   const icon = iconFor(piece);
   if (icon) {
-    const size = CELL * 0.88, corner = (CELL - size) / 2;
+    const based = piece.player > 1 && DATA.duck !== piece.type;
+    const size = CELL * (based ? WILD_ICON : 0.88), corner = (CELL - size) / 2;
+    const disc = based
+      ? `<circle cx="${cx}" cy="${cy}" r="${CELL * 0.44}" fill="var(--p2)" fill-opacity="0.6"
+          stroke="var(--ink)" stroke-width="${CELL * 0.025}" data-wild="1"/>` : '';
     // A piece with a facing is drawn pointing where it faces, and nothing else turns.
     // `directional` names the types that have one; `facingAngles` gives the heading,
     // that table rather than `facing * 90`, because a mirrored army turns the other
@@ -91,7 +99,7 @@ function drawPiece(piece, x, y, idle) {
       ? (DATA.facingAngles || [])[piece.player] : null;
     const angle = heading ? heading[piece.facing] || 0 : (icon.rotate ? 180 : 0);
     const spin = angle ? ` transform="rotate(${angle} ${cx} ${cy})"` : '';
-    return `<image href="${icon.href}" x="${x + corner}" y="${y + corner}"
+    return `${disc}<image href="${icon.href}" x="${x + corner}" y="${y + corner}"
              width="${size}" height="${size}"
              preserveAspectRatio="xMidYMid meet"${spin}/>`;
   }

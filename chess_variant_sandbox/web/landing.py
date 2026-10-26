@@ -986,8 +986,12 @@ def play_door(story: dict[str, Any] | None, words: str, classes: str = "button")
     fixed = story["fixed"]
     seat = story.get("seat") or {"index": 0, "side": "white"}
     digest = str(fixed["hash"])
+    # LP11: a story may name the computer player its doors seat (`Story.opponent`), as it
+    # names the seat; without one, `landing.js` asks the game's page for its gentlest.
+    against = story.get("opponent")
+    agent = f' data-agent="{_e(against["agent"])}"' if against else ""
     return (f'<a class="{classes}" href="{_e(seat_link(digest, seat["side"]))}" '
-            f'data-play="{_e(digest)}" data-seat="{int(seat["index"])}">'
+            f'data-play="{_e(digest)}" data-seat="{int(seat["index"])}"{agent}>'
             f'{_e(words.format(name=fixed["name"]))}</a>')
 
 
@@ -1005,7 +1009,10 @@ def _hero(story: dict[str, Any] | None) -> str:
         for n, idea in enumerate(ideas))
     states = "".join(
         f'<div class="heroState {idea["hue"]}{" on" if n == 0 else ""}" data-game="{_e(idea["game"])}"'
-        + (f' data-at="{idea["at"]}" data-story="{_e(idea["story"])}"' if idea["at"] else "")
+        + (f' data-at="{idea["at"]}"' if idea["at"] else "")
+        # LP11: the story's own ending names its story, at a turn or at the opening, so its
+        # board can start the story's game (`landing.js` `wireHeroBoard`).
+        + (f' data-story="{_e(idea["story"])}"' if idea["story"] else "")
         + '><div class="heroBoard" data-board></div>'
         f'<figcaption class="small"><span class="chip familyChip"><span class="swatch" '
         f'aria-hidden="true"></span>{_e(idea["chip"])}</span> '
@@ -1073,12 +1080,18 @@ JOURNEY_TITLE = "One idea, start to finish"
 STEP_NAMES = ("an idea, as a rule", "what goes wrong", "the one change", "what it changes",
               "play it against the computer", "challenge a friend")
 LADDER_SAID = "Computer opponents, from the gentlest to the hardest."
-PLAY_THIS_SAID = "You play {side}, against the gentlest, in a practice game."
+PLAY_THIS_SAID = "You play {side}, against {against}, in a practice game."
+GENTLEST = "the gentlest"
+NAMED_OPPONENT = "the computer player {name}"
 
 
 def play_this_said(story: dict[str, Any]) -> str:
     seat = story.get("seat") or {"side": "white"}
-    return PLAY_THIS_SAID.format(side=_capital(str(seat["side"])))
+    named = story.get("opponent")
+    against = NAMED_OPPONENT.format(name=named["name"]) if named else GENTLEST
+    return PLAY_THIS_SAID.format(side=_capital(str(seat["side"])), against=against)
+
+
 CHANGE_NOTE = "Every save is its own game with its own answer, and undo is one key."
 CHALLENGE_SAID = "Send a link. Move when it suits you."
 CHALLENGE_LINE = (
@@ -1263,7 +1276,8 @@ def story_html(story: dict[str, Any], others: list[dict[str, Any]] | None = None
                     "as its page offers them. ")
                  + "A practice game has undo and restart and needs no account; a rated game "
                  "needs one.</p>"
-                 # LP9: one plain way in, the gentlest opponent, in the story's seat.
+                 # LP9: one plain way in, in the story's seat, against the gentlest or the story's own
+                 # opponent (LP11).
                  + (f'<div class="row playThis">{play_door(story, PLAY_THIS)}'
                     f'<span class="small muted">{_e(play_this_said(story))}</span></div>'
                     if not story["example"] else "")),
