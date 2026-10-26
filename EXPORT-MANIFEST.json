@@ -1,5 +1,5 @@
 {
- "source_commit": "67526c9cb4627a7c5cfee78c4034473545f9219b",
+ "source_commit": "843921f1baf9e1e35111777f360da6524abeacc7",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -2841,8 +2841,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/designing.py",
-   "bytes": 193835,
-   "sha256": "73aafa0ff32f1254b704c3d51e215dd011305e9967f90125143861fb4ace7ea9"
+   "bytes": 202080,
+   "sha256": "f6bdeaa68a849ed69657ec549c8d63179176fe18030271bd8ba58e3746215cbf"
   },
   {
    "path": "chess_variant_sandbox/web/draw_offer.py",
@@ -2991,8 +2991,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/style.py",
-   "bytes": 134503,
-   "sha256": "6b7bf0bb8d4fffabf983cef8a9b8fd7d768a70c1336d39ce4fb5efabcba96147"
+   "bytes": 134871,
+   "sha256": "879dbe1fef1748a12ff41e158d4b663758a9f872807e09c0cd1c94076fb2e9a7"
   },
   {
    "path": "chess_variant_sandbox/web/page/tokens.py",
@@ -3096,8 +3096,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/design.js",
-   "bytes": 233911,
-   "sha256": "83d180488826cf7a4f360ef27061d66c0ca158b41e4d403731e54fa486b7020b"
+   "bytes": 234723,
+   "sha256": "693b6e133a7a39e79e90e237c4f203ef190ad60ae17627fe66acdcd097ac7740"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/detail.js",
@@ -5121,8 +5121,8 @@
   },
   {
    "path": "tests/test_design_doors.py",
-   "bytes": 6401,
-   "sha256": "89369493fd6280ec4d56ccb0a0f417b976d5929f6e34928afa206f5068df961d"
+   "bytes": 12583,
+   "sha256": "0296008e59a6ffde1e5d474e8f2f5e0bc80c1e333e1008f70922f4cfbd7b5b0b"
   },
   {
    "path": "tests/test_designer.py",

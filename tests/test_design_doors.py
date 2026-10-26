@@ -11,11 +11,13 @@ and the draft checked is the browser's, LP7's acceptance.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from pathlib import Path
 from urllib.parse import unquote
 
+import node_session
 import pytest
 from page_text import PAGE
 
@@ -58,8 +60,11 @@ def test_every_word_of_the_wall_resolves_to_a_card(block: landing.Block,
     assert door["said"].strip()
     _card_of(door)
     if word.key.startswith("rules.") and word.key not in designing.DOOR_TURNS:
-        assert door == {"kind": "rule", "rule": word.key.removeprefix("rules."),
-                        "said": word.card}  # the card's own label, as the wall says it
+        plain = {key: door[key] for key in ("kind", "rule", "said")}
+        assert plain == {"kind": "rule", "rule": word.key.removeprefix("rules."),
+                         "said": word.card}  # the card's own label, as the wall says it
+        # Beyond those, only the parts the server chose where the default is no game.
+        assert set(door) - set(plain) <= {"card", "with", "withSaid"}, door
 
 
 def test_every_story_card_is_a_word_of_the_wall() -> None:
@@ -125,7 +130,10 @@ class TestThePage:
     def test_the_designer_takes_the_door_through_its_own_add_paths(self) -> None:
         assert "async function openDoor(kit, key)" in PAGE
         # *add a rule*'s default and companion, and the server's refusals for the fallback.
-        assert "DRAFT.rules[key] = fieldDefault(field, [key], 'rules');" in PAGE
+        assert ": fieldDefault(field, [key], 'rules');" in PAGE
+        # Where the default is no game, the server's choice the door carries (Q1036).
+        assert "JSON.parse(JSON.stringify(door.card))" in PAGE
+        assert "door.value !== undefined ? JSON.parse(JSON.stringify(door.value))" in PAGE
         assert "RULE_COMPANIONS[key]" in PAGE
         assert "api('/api/design/rules'," in PAGE
         # rounds and hexagons are the controls' own answers.
@@ -135,3 +143,124 @@ class TestThePage:
     def test_an_unknown_key_opens_the_designer_as_it_was_with_a_sentence(self) -> None:
         assert "DOOR_SAID = { missing: key };" in PAGE
         assert "so the designer opens as it was" in PAGE
+
+
+# Q1036: every door opens on a draft that is a game. The page's own `openDoor` makes each
+# door's draft in node, as a click from the landing does, and every question it asks the
+# server is answered by this library's `App`: a question not yet answered is recorded, the
+# run answers it and goes again, until the page asks nothing new. Rounds and hexagons are
+# the controls' own answers (`doorDrawn`), so their two control paths run after the door.
+# Each draft then goes through the designer's check, `designing.check`, which is what the
+# page shows and what `/api/design/moves` needs to answer.
+_DOOR_STUB = """
+  const el = new Proxy({}, { get: (t, k) => (k === 'style' ? {} : () => null),
+                             set: () => true });
+  global.document = { getElementById: () => el, querySelector: () => null,
+                      querySelectorAll: () => [], addEventListener: () => {},
+                      createElement: () => el, body: el };
+  global.window = { matchMedia: () => ({ matches: false, addEventListener: () => {} }),
+                    addEventListener: () => {}, innerWidth: 1200, scrollTo: () => {} };
+  global.location = { pathname: '/game', hash: '' };
+  global.history = { replaceState: () => {} };
+  global.fetch = () => new Promise(() => {});
+"""
+
+_DOOR_WALK = """
+const ASKED = [];
+api = async (path, body) => {
+  const asked = path + ' ' + JSON.stringify(body === undefined ? null : body);
+  if (Object.prototype.hasOwnProperty.call(ANSWERS, asked)) {
+    return JSON.parse(JSON.stringify(ANSWERS[asked]));
+  }
+  ASKED.push([path, body === undefined ? null : body]);
+  return path === '/api/design/rules' ? { refused: {} } : null;
+};
+drawDesigner = () => {}; drawTurns = () => {}; checkDraft = () => {};
+loadMoveMap = () => {}; drawBoardSide = () => {};
+async function walkDoors(keys) {
+  const drafts = {};
+  for (const key of keys) {
+    DRAFT = null;
+    const door = await openDoor(DESIGN_KIT, key);
+    if (door.kind === 'turns') { TURN_ASKING = ''; await chooseTurnWay(door.way); }
+    if (door.kind === 'board') {
+      writeBoardField(DRAFT.board, 'lattice', door.lattice);
+      fitWrapToShape();
+      await ontoHex();
+    }
+    drafts[key] = DRAFT;
+  }
+  return { drafts, asked: ASKED };
+}
+"""
+
+
+def _door_drafts(app: App) -> dict[str, dict[str, object]]:
+    """Each door's draft as the page makes it, every question answered by `app`."""
+    script = re.search(r"<script>(.*)</script>", PAGE, re.S)
+    assert script is not None
+    kit = app.get("/api/design")
+    answers: dict[str, object] = {}
+    for _ in range(8):
+        body = (_DOOR_STUB + script.group(1) + "\n" + f"DESIGN_KIT = {json.dumps(kit)};\n"
+                + f"const ANSWERS = {json.dumps(answers)};\n" + _DOOR_WALK
+                + f"walkDoors({json.dumps(sorted(kit['doors']['doors']))})"
+                + ".then(v => console.log(JSON.stringify(v)));")
+        done = node_session.run(body)
+        assert done.returncode == 0, done.stderr
+        walked = json.loads(done.stdout)
+        if not walked["asked"]:
+            return dict(walked["drafts"])
+        for path, asked in walked["asked"]:
+            # JSON.stringify's spelling, which the page's lookup reads.
+            key = path + " " + json.dumps(asked, separators=(",", ":"), ensure_ascii=False)
+            answers[key] = app.get(path) if asked is None else app.post(path, asked)
+    raise AssertionError("the page kept asking new questions")
+
+
+@pytest.mark.slow
+class TestEveryDoorOpensAGame:
+    def test_every_doors_draft_passes_the_designers_check(self, tmp_path: Path) -> None:
+        for name in ("rulesets", "runs", "archive"):
+            (tmp_path / name).mkdir()
+        shutil.copy(ROOT / "rulesets" / "chess.json", tmp_path / "rulesets" / "chess.json")
+        app = App(tmp_path / "rulesets", tmp_path / "runs", archive_dir=tmp_path / "archive")
+        drafts = _door_drafts(app)
+        assert set(drafts) == set(DOORS["doors"])
+        failed = {}
+        for key, draft in drafts.items():
+            answer = designing.check(draft)
+            if not answer.get("valid") or answer.get("errors"):
+                failed[key] = answer.get("errors")
+        assert not failed, failed
+
+
+class TestTheChosenParts:
+    """What the server chooses for the four doors whose card's default is no game, read
+    against chess (fast; the walk above is the proof that each is then a game)."""
+
+    def test_the_portals_stand_a_half_turn_apart_off_the_middle(self) -> None:
+        assert DOORS["doors"]["rules.portals"]["card"] == [{"orange": "c4", "blue": "f5"}]
+
+    def test_promoting_on_arrival_comes_with_a_hand_that_feeds_it(self) -> None:
+        door = DOORS["doors"]["rules.promote_on_entry"]
+        assert door["card"] is True
+        assert door["with"] == designing.DOOR_ENTRY_FEED
+        assert door["withSaid"] == ["pieces played back onto the board"]
+
+    def test_only_on_these_squares_keeps_a_piece_to_its_own_half(self) -> None:
+        door = DOORS["doors"]["pieces[].region"]
+        piece = CHESS["pieces"][door["piece"]]
+        assert piece.get("royal") is not True
+        assert door["value"] and all(int(square[1:]) <= 4 for square in door["value"])
+
+    def test_a_facing_goes_on_a_piece_it_changes(self) -> None:
+        door = DOORS["doors"]["pieces[].facing"]
+        assert door["value"] == designing.DOOR_FACING
+        # Not the piece worth most, whose moves read the same both ways.
+        assert door["piece"] != designing.door_piece(CHESS)
+
+    def test_a_template_start_chooses_nothing(self) -> None:
+        bare = designing.doors(MODEL)["doors"]
+        assert "card" not in bare["rules.portals"]
+        assert "value" not in bare["pieces[].region"]

@@ -175,7 +175,7 @@ async function openDoor(kit, key) {
   if (door.kind === 'rule') how = await doorRule(kit, door, from);
   else if (door.kind !== 'board' && (door.kind !== 'turns' || door.field)) doorPiece(door);
   keepDraft();
-  DOOR_SAID = Object.assign({ said: door.said }, how);
+  DOOR_SAID = Object.assign({ said: door.said, withSaid: door.withSaid }, how);
   return door;
 }
 
@@ -197,12 +197,18 @@ async function doorStart(kit) {
 }
 
 // *Add a rule*'s card for `key` on the draft in hand: `fieldDefault`, and its companion.
-function doorAddRule(key) {
+// Where the card's default cannot be a game (a portal's ends, Q1036), the door carries
+// what the server chose instead (`card`), and the rules the card needs beside it (`with`).
+function doorAddRule(key, door) {
   const model = cardModel();
   const field = model && model.rules.find(f => f.key === key);
   if (!field) return null;
   DRAFT.rules = DRAFT.rules || {};
-  DRAFT.rules[key] = fieldDefault(field, [key], 'rules');
+  Object.entries((door && door.with) || {}).forEach(([other, value]) => {
+    if (!(other in DRAFT.rules)) DRAFT.rules[other] = JSON.parse(JSON.stringify(value));
+  });
+  DRAFT.rules[key] = door && door.card !== undefined
+    ? JSON.parse(JSON.stringify(door.card)) : fieldDefault(field, [key], 'rules');
   const companion = RULE_COMPANIONS[key];
   if (companion) companion(DRAFT.rules);
   return DRAFT.rules[key];
@@ -216,7 +222,7 @@ async function doorRule(kit, door, from) {
   const start = { draft: JSON.stringify(DRAFT), from: DRAFT_FROM, parent: DRAFT_PARENT, said: from };
   const takes = async () => {
     const before = JSON.parse(JSON.stringify(DRAFT));
-    const card = doorAddRule(door.rule);
+    const card = doorAddRule(door.rule, door);
     const answer = await api('/api/design/rules',
       { spec: before, candidates: { [door.rule]: card } }).catch(() => null);
     if (answer && answer.refused && answer.refused[door.rule]) {
@@ -233,7 +239,7 @@ async function doorRule(kit, door, from) {
   DRAFT = JSON.parse(start.draft);
   DRAFT_FROM = start.from;
   DRAFT_PARENT = start.parent;
-  doorAddRule(door.rule);
+  doorAddRule(door.rule, door);
   return { from: start.said };
 }
 
@@ -258,7 +264,9 @@ function doorPiece(door) {
   } else if (door.kind === 'piece') {
     const field = ((cardModel() || {}).piece || []).find(f => f.key === door.field);
     if (field && piece[field.key] === undefined) {
-      piece[field.key] = fieldDefault(field, [field.key], 'piece.' + index);
+      // The server's choice where the field's default is no game (Q1036: squares to keep to).
+      piece[field.key] = door.value !== undefined ? JSON.parse(JSON.stringify(door.value))
+        : fieldDefault(field, [field.key], 'piece.' + index);
     }
   }
 }
@@ -311,7 +319,9 @@ function doorSaidHtml() {
     : said.present
       ? `A copy of <b>${esc(said.from)}</b>, which already has <b>${esc(said.said)}</b>`
       : `A copy of <b>${esc(said.from)}</b> with <b>${esc(said.said)}</b> added`;
-  return `<p class="small doorSaid" role="status">${start}: its card is marked below.
+  const beside = said.withSaid && said.withSaid.length && !said.present
+    ? `, and <b>${said.withSaid.map(esc).join('</b> and <b>')}</b>, which it needs` : '';
+  return `<p class="small doorSaid" role="status">${start}${beside}: its card is marked below.
     Change anything, and the draft is checked as you go.</p>`;
 }
 

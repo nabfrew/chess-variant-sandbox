@@ -324,8 +324,12 @@ RULES = """
      side where there is room and one above the other on a phone. */
   .landingShelf, .landingPicks { max-width: none; }
   .landingShelf > p { max-width: 760px; }
-  .newShelf { display: grid; grid-auto-flow: column; gap: 12px; height: 156px;
-              grid-auto-columns: minmax(250px, 1fr); overflow-x: auto; overflow-y: hidden;
+  /* Q1034: a card is wide enough for a score pill and its (i) on one line beside the board
+     (a re-certified pill, *0.894 4 runs from a sample*, is the widest), so the pills are two
+     rows at most, and the shelf tall enough for a two-line name, two lines of sentence, both
+     pill rows and a desk's scrollbar: nothing in a card is cut at the shelf's foot. */
+  .newShelf { display: grid; grid-auto-flow: column; gap: 12px; height: 176px;
+              grid-auto-columns: minmax(300px, 1fr); overflow-x: auto; overflow-y: hidden;
               scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
               scrollbar-width: thin; }
   .newGame { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px;
@@ -356,7 +360,7 @@ RULES = """
   .pickWays { gap: 6px; flex-wrap: wrap; align-items: center; }
   .landingPicks > .pick[aria-busy] > * { visibility: hidden; }
   @media (max-width: 760px) {
-    .newShelf { grid-auto-columns: minmax(270px, 86%); }
+    .newShelf { grid-auto-columns: minmax(300px, 86%); }
     .landingPicks { grid-template-columns: minmax(0, 1fr); }
     .landingPicks > .pick { grid-template-columns: 84px minmax(0, 1fr); gap: 12px; padding: 12px; min-height: 0; }
     .pickBoard .thumb { width: 84px; }

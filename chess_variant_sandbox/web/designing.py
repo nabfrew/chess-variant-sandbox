@@ -77,6 +77,8 @@ from chess_variant_sandbox.spec.schema import (
     MAX_PORTAL_GROUPS,
     PORTAL_ENDS,
     SQUARE_SYMMETRIES,
+    format_square,
+    parse_square,
     piece_sights,
     portal_groups,
     portal_map_shape,
@@ -4038,6 +4040,191 @@ def door_piece(spec: Any) -> int:
     return best
 
 
+# Q1036: four doors open on a draft that is not a game yet when the card holds only what
+# *add a rule* gives it (`fieldDefault`), because the rule has a part the card cannot guess:
+# where a portal's ends stand, what feeds promoting on arrival, which squares a piece keeps
+# to, and which piece a facing turns. For those the server chooses the missing part here,
+# against the start the door copies, and the door carries it as data (`card`, `with`,
+# `value`, `piece`); the page writes it as it would write the card's default. Each choice
+# is the first of a short list of readable candidates that the validator accepts on the
+# start, so a door whose start takes none of them opens as before and the check says why.
+
+# What promoting on arrival needs beside it when the start has nothing that enters play: a
+# hand that fills from captures, so a captured piece dropped inside its zone arrives
+# promoted.
+DOOR_ENTRY_FEED: dict[str, Any] = {"drops": {"from_captures": True}}
+
+# The facing a door gives a piece: forward and backward, the smallest that turns anything.
+DOOR_FACING: dict[str, Any] = {"axes": 2}
+
+
+def _door_stands(spec: dict[str, Any]) -> bool:
+    """Whether the validator and the compiler, as the designer's check asks them, have
+    nothing to say (some refusals, a facing that turns nothing among them, are the
+    compiler's)."""
+    spec = settled(spec)
+    if _worth_saying(validate_spec(spec)):
+        return False
+    try:
+        Engine(spec)
+    except (SpecError, ValueError):
+        return False
+    return True
+
+
+def _door_board(spec: dict[str, Any]) -> tuple[int, int] | None:
+    board = spec.get("board")
+    if not isinstance(board, dict) or board.get("lattice", "square") != "square":
+        return None
+    width, height = board.get("width"), board.get("height")
+    if not isinstance(width, int) or not isinstance(height, int):
+        return None
+    return width, height
+
+
+def _door_with_rule(spec: dict[str, Any], key: str, value: Any,
+                    beside: dict[str, Any] | None = None) -> dict[str, Any]:
+    import copy
+
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    rules.update(copy.deepcopy(beside or {}))
+    rules[key] = copy.deepcopy(value)
+    return trial
+
+
+def door_portals(spec: dict[str, Any]) -> list[dict[str, str]] | None:
+    """One pair of portals the start takes: two squares a half turn apart, a little off the
+    middle on the first player's side of it (c4 and f5 on eight by eight), so each side has
+    one end near it and both have to watch both. The nearest pair to that the validator
+    accepts, or None."""
+    shape = _door_board(spec)
+    if shape is None:
+        return None
+    width, height = shape
+    aim_file, aim_rank = width // 2 - 2, height // 2 - 1
+    squares = sorted(((f, r) for f in range(width) for r in range(height // 2)),
+                     key=lambda at: (abs(at[1] - aim_rank), abs(at[0] - aim_file), at))
+    for file_index, rank_index in squares[:24]:
+        other = (width - 1 - file_index, height - 1 - rank_index)
+        if other == (file_index, rank_index):
+            continue
+        card = [{"orange": format_square(file_index, rank_index),
+                 "blue": format_square(*other)}]
+        if _door_stands(_door_with_rule(spec, "portals", card)):
+            return card
+    return None
+
+
+def door_entry_feed(spec: dict[str, Any]) -> dict[str, Any] | None:
+    """The rules promoting on arrival needs beside it on the start: none when the start
+    takes it as it stands, a hand that fills from captures when that is what it lacks, and
+    None when neither stands."""
+    if _door_stands(_door_with_rule(spec, "promote_on_entry", True)):
+        return {}
+    held = spec.get("rules")
+    rules: dict[str, Any] = held if isinstance(held, dict) else {}
+    beside = {key: value for key, value in DOOR_ENTRY_FEED.items() if key not in rules}
+    if beside and _door_stands(_door_with_rule(spec, "promote_on_entry", True, beside)):
+        return beside
+    return None
+
+
+def _door_starts(spec: dict[str, Any], pid: str, width: int, height: int) -> list[tuple[int, int]]:
+    """Where the first player's `pid` stands in the setup, as written."""
+    setup = spec.get("setup")
+    rows = setup.get("placements") if isinstance(setup, dict) else None
+    found: list[tuple[int, int]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict) or row.get("piece") != pid or row.get("player", 0) != 0:
+            continue
+        for name in row.get("squares") or []:
+            at = parse_square(name, width, height) if isinstance(name, str) else None
+            if at is not None:
+                found.append(at)
+    return found
+
+
+def door_region(spec: dict[str, Any], index: int) -> list[str] | None:
+    """The squares a door keeps piece `index` to: its own half, on the files it starts on
+    and their neighbours (the c-, d- and e-files of the first four ranks for a queen on d1),
+    so it still moves and never crosses the middle. None where the start refuses it."""
+    import copy
+
+    shape = _door_board(spec)
+    pieces = spec.get("pieces")
+    if shape is None or not isinstance(pieces, list) or not 0 <= index < len(pieces):
+        return None
+    width, height = shape
+    piece = pieces[index]
+    pid = piece.get("id") if isinstance(piece, dict) else None
+    starts = _door_starts(spec, pid, width, height) if isinstance(pid, str) else []
+    if not starts or any(rank >= height // 2 for _, rank in starts):
+        return None
+    files = sorted({f + step for f, _ in starts for step in (-1, 0, 1) if 0 <= f + step < width})
+    region = [format_square(f, r) for f in files for r in range(height // 2)]
+    trial = copy.deepcopy(spec)
+    trial["pieces"][index]["region"] = region
+    return region if _door_stands(trial) else None
+
+
+def door_facing_piece(spec: dict[str, Any]) -> int | None:
+    """The piece a facing changes: the first, in `door_piece`'s order (worth most, not
+    royal), whose moves differ when it turns round, as the validator judges it. None when
+    no piece of the start is one."""
+    import copy
+
+    pieces = [p for p in (spec or {}).get("pieces") or [] if isinstance(p, dict)]
+    if not pieces:
+        return None
+
+    def worth(index: int) -> tuple[int, float, int]:
+        piece = pieces[index]
+        value = piece.get("value")
+        royal = piece.get("royal") is True
+        return (1 if royal else 0, -(value if isinstance(value, (int, float)) else 0), index)
+
+    for index in sorted(range(len(pieces)), key=worth):
+        if "facing" in pieces[index]:
+            return index
+        trial = copy.deepcopy(spec)
+        trial["pieces"][index]["facing"] = copy.deepcopy(DOOR_FACING)
+        if _door_stands(trial):
+            return index
+    return None
+
+
+def _door_parts(found: dict[str, dict[str, Any]], labels: dict[str, str],
+                spec: dict[str, Any], piece: int) -> None:
+    """The parts the four doors need that a card's default cannot hold (Q1036), chosen
+    against the start and written into their doors."""
+    if not _door_stands(spec):
+        return
+    portal = found.get("rules.portals")
+    if portal is not None and "portals" not in (spec.get("rules") or {}):
+        card = door_portals(spec)
+        if card is not None:
+            portal["card"] = card
+    entry = found.get("rules.promote_on_entry")
+    if entry is not None and "promote_on_entry" not in (spec.get("rules") or {}):
+        beside = door_entry_feed(spec)
+        if beside:
+            entry["card"] = True
+            entry["with"] = beside
+            entry["withSaid"] = [labels.get(key, key) for key in beside]
+    region = found.get("pieces[].region")
+    if region is not None:
+        squares = door_region(spec, piece)
+        if squares is not None:
+            region["value"] = squares
+    facing = found.get("pieces[].facing")
+    if facing is not None:
+        turned = door_facing_piece(spec)
+        if turned is not None:
+            facing["piece"] = turned
+            facing["value"] = dict(DOOR_FACING)
+
+
 def doors(model: dict[str, Any], start: dict[str, Any] | None = None) -> dict[str, Any]:
     """Every key the designer can be opened at, and the add path each takes.
 
@@ -4069,6 +4256,8 @@ def doors(model: dict[str, Any], start: dict[str, Any] | None = None) -> dict[st
             field = {"field": key.removeprefix("pieces[].")} if key.startswith("pieces[].") else {}
             found[key] = {"kind": "turns", "way": way, "rule": rule,
                           "said": found[key]["said"], "piece": piece, **field}
+    if start is not None and isinstance(start.get("spec"), dict):
+        _door_parts(found, labels, start["spec"], piece)
     return {
         "start": None if start is None else {"hash": start["hash"], "name": start["name"]},
         "doors": found,
