@@ -2652,12 +2652,12 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # N4b's four names. *The shepherd's duck* (N6, `plan-npc.md` §6.1) carries the classic duck
-    # and its shield; N6 deletes those two rows. No registered showcase walks the duck or starts
-    # it on a square (§6.1's duck goes anywhere from off the board), so those two wait for a
-    # task that registers one (`schema-showcase-coverage.md` rows 93 and 94).
-    "N4b duck": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
-    "N4b duck sight": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
+    # N4b's two names left. `rules.duck` and the duck's sight went on 2026-10-26, when N6
+    # archived *the shepherd's duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1). No
+    # registered showcase walks the duck or starts it on a square: §6.1's draft fixes the classic
+    # duck from off the board, and only its respawn and ranks were tunable, so N6 could carry
+    # neither without changing what was registered; they wait for a task that registers one
+    # (`schema-showcase-coverage.md` rows 93 and 94).
     "N4b duck by_moves": "owed: none registered (plan-npc.md §6.1's duck goes anywhere)",
     "N4b duck start": "owed: none registered (plan-npc.md §6.1's duck starts off the board)",
     # N3d's name went to `_NO_SHOWCASE_ON_PURPOSE` when N4b retired its `_FEATURES` row.
@@ -2780,29 +2780,19 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
-    # Generation 41's name (N3d), owed in `_SHOWCASE_OWED` until generation 42 (N4b) retired its
-    # `_FEATURES` row. N7 deletes this row when *the hydra* lands.
-    "schema 41: rules.npcs.split": "owed: N7, the hydra (plan-npc.md §6.2)",
-    # Generation 40's name (N3c), owed in `_SHOWCASE_OWED` until generation 41 (N3d) retired its
-    # `_FEATURES` row. N7 deletes this row when *the hydra* lands.
-    "schema 40: rules.npcs.pounce.attackers": "owed: N7, the hydra (plan-npc.md §6.2)",
-    # Generation 39's name (N3b), owed in `_SHOWCASE_OWED` until generation 40 (N3c) retired its
-    # `_FEATURES` row. N7 deletes this row when *the hydra* lands.
-    "schema 39: rules.npcs.pounce.prey": "owed: N7, the hydra (plan-npc.md §6.2)",
-    # Generation 38's name (N5), owed in `_SHOWCASE_OWED` until generation 39 (N3b) retired its
-    # `_FEATURES` row. N6 deletes this row when *the shepherd's duck* lands.
-    "schema 38: rules.npcs.turns_back": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
+    # Generation 39's `rules.npcs.pounce.prey` (N3b), 40's `...pounce.attackers` (N3c) and 41's
+    # `rules.npcs.split` (N3d) went on 2026-10-26, when N7 archived *the hydra*
+    # (`archive/the-hydra.json`, `plan-npc.md` §6.2).
+    # Generation 36's `rules.npcs.respawn` (N1), 37's `pieces.sight.shield.beside_npcs` (N2) and
+    # 38's `rules.npcs.turns_back` (N5) went on 2026-10-26, when N6 archived *the shepherd's
+    # duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1).
     # Generation 37's names (N2), owed in `_SHOWCASE_OWED` until generation 38 (N5) retired
-    # their `_FEATURES` rows. *The shepherd's duck* (N6) carries the shield beside wild pieces;
+    # their `_FEATURES` rows. *The shepherd's duck* (N6) carried the shield beside wild pieces;
     # neither registered showcase gives a wild type a sight (§6's drafts are fixed but for their
     # tunable numbers), so the three wild effects are owed by a showcase task not yet queued.
     "schema 37: pieces.sight.wild.freeze": "owed: no task yet (plan-npc.md §6 registers no wild sight)",
     "schema 37: pieces.sight.wild.disarm": "owed: no task yet (plan-npc.md §6 registers no wild sight)",
     "schema 37: pieces.sight.wild.shield": "owed: no task yet (plan-npc.md §6 registers no wild sight)",
-    "schema 37: pieces.sight.shield.beside_npcs": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
-    # Generation 36's name (N1), owed in `_SHOWCASE_OWED` until generation 37 (N2) retired its
-    # `_FEATURES` row. N6 deletes this row when *the shepherd's duck* lands.
-    "schema 36: rules.npcs.respawn": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
     # Generation 34's two names (T1) were owed here until their showcases landed, both
     # 2026-10-25 (`plan-pieces-moves.md` §5.7): T2's `archive/crooked-bishops.json` deleted
     # `...path.zigzag`'s row and T3's `archive/circling-queen.json` `...path.circle`'s.

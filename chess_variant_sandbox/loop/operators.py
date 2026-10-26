@@ -87,6 +87,7 @@ from chess_variant_sandbox.spec.schema import (
     portal_open_ends,
     promoting_piece_ids,
     reach_reflection,
+    reads_alike_for_both,
     reflect_square,
     simultaneous_tie_pair,
     spy_ids,
@@ -525,6 +526,15 @@ def _set_symmetry(spec: dict[str, Any], move: dict[str, Any], rng: random.Random
     return str(current)
 
 
+def _pouncing_types(spec: dict[str, Any]) -> set[str]:
+    """The wild types some `rules.npcs` entry makes pounce (generation 39)."""
+    npcs = (spec.get("rules") or {}).get("npcs") or []
+    return {
+        str(npc.get("piece")) for npc in npcs
+        if isinstance(npc, dict) and npc_pounce(npc) is not None
+    }
+
+
 def _change_symmetry(spec: dict[str, Any], rng: random.Random) -> str | None:
     movers = _movers(spec)
     if not movers:
@@ -532,6 +542,20 @@ def _change_symmetry(spec: dict[str, Any], rng: random.Random) -> str | None:
     if _lattice_symmetries(spec) is HEX_SYMMETRIES:
         return _turn_a_hex_move(spec, movers, rng)
     piece, move = rng.choice(movers)
+    if str(piece.get("id")) in _pouncing_types(spec):
+        # Generation 39 (N3b): a pouncer's moves must read the same for both players (a wild
+        # piece has no forward), so it draws only among the symmetries that keep them so
+        # (N7's hydra was the first library game with a pouncer to meet this).
+        orientation = (spec.get("setup") or {}).get("orientation", "mirror")
+        current = move.get("symmetry", "none")
+        alike = [
+            s for s in _lattice_symmetries(spec)
+            if s != current and reads_alike_for_both(move.get("vectors"), s, orientation)
+        ]
+        if not alike:
+            return None
+        move["symmetry"] = rng.choice(alike)
+        return f"changed how the {piece.get('name', piece['id'])}'s moves reflect ({current} to {move['symmetry']})"
     current = _set_symmetry(spec, move, rng)
     # T1: a turning path needs its directions to go round (a circle) or to have a near pair
     # (a zigzag); where the new symmetry leaves none, the line runs straight, by the
@@ -2470,7 +2494,12 @@ def _hunt_the_wild(spec: dict[str, Any], rng: random.Random) -> str | None:
         return f"anything may take a wild {kind} again, not only the one type that could"
     if spec.get("rules", {}).get("drops"):
         return None  # an immune type that can reach a hand is refused by name
-    hunters = [piece for piece in pieces(spec) if str(piece.get("id")) != kind]
+    # Generation 42 (N4b): the duck's type is named by `rules.duck` alone, and nobody owns it,
+    # so it hunts nothing (N6's shepherds duck was the first library game to meet this).
+    duck = duck_piece(spec.get("rules", {}))
+    hunters = [
+        piece for piece in pieces(spec) if str(piece.get("id")) not in (kind, duck)
+    ]
     if not hunters:
         return None
     hunter = str(rng.choice(hunters)["id"])

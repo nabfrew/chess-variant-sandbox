@@ -1051,6 +1051,53 @@ of 0.977 (0.953), the top three's games 0.917 decided, graded games 98.7 plies a
 87.9, the first seat 0.509 of decided games. Pawns took 1.22 anchors a graded game, 1.64 between
 the strongest. `tests/test_showcase_anchors.py` holds the mechanism.
 
+## `the-hydra.json` — generations 39 to 41, wild pieces that pounce and split (N7)
+
+2026-10-26, **in the library** (`0f126fe608ef`). The showcase of `docs/plan-npc.md` §6.2,
+registered before any of its rules was built: chess with a hydra on d4 and d5 that never walks
+but takes whatever piece ends its owner's move attacking it, growing a new head onto that
+square up to six heads in all and lunging onto the attacker past that, and that cannot take a
+king, so the king is the one piece that may walk up to a head and take it; and four hounds on
+three-square wing loops that take any piece of the player who has just moved standing next to
+them, then wait where they landed. It shows `pounce: "prey"` (the hounds), `pounce:
+"attackers"` and `split` (the hydras) in one game. Registered after a self-play read with its
+one tunable moved: the drafted mirrored hound pair stood both sides' hounds on mirror squares on
+the same ply, which cost the first player a pawn on its first move whatever it played (first
+seat 0 of 17 decided), so the loops keep their squares but start on b4 and g4, and the black
+side's are written as their own entries one ply behind. Fairy-Stockfish has no counterpart of
+a wild piece, so the pounce oracle is V1's second reading. Measured 2026-10-26: **0.845 [0.823,
+0.873], viable 4-0**, every registered bar met, the index by 0.005: a head grown in 0.846 of
+graded games (every game between the two strongest players), 6.1 hound pounces a graded game,
+a hydra piece taken by a player in 0.834 of graded games, the top three's games 0.924 decided,
+graded games 122.2 plies against chess's 87.9, the first seat 0.507 of decided games. The
+players do not learn to starve it: the most heads standing averages 4.6 (5.6 between the
+strongest, who fill it to the cap in three games of four), against a prediction of 2 to 4,
+and a king takes a head in 0.81 of graded games. `tests/test_showcase_hydra.py` holds the
+mechanism, and `docs/reference/hydra-study.py` reads the runs.
+
+## `the-shepherds-duck.json` — generations 36 to 38 and 42, the duck and the wolves that turn (N6)
+
+2026-10-26, **in the library** (`e7d2d7406586`). The showcase of `docs/plan-npc.md` §6.1,
+registered before any of its rules was built: chess won by taking the king, in which every turn
+ends with the mover putting the duck (a neutral piece nobody can take) on any empty square, the
+duck shielding the eight squares round it for both sides, and a mirrored wolf pair pacing ranks
+4 and 5 end to end that eats anything it steps on but a shielded piece, turns round at what it
+may not eat, and comes back to a4 or a5 eight turns after a player takes it, for a point. It
+shows the duck (`rules.duck`, the classic form), the duck's sight, the shield beside wild
+pieces, `turns_back` and `respawn` in one game; the duck that walks (`goes: "by_moves"`) and the
+duck that starts on the board (`start`) were outside the registered draft and still have no
+showcase. Registered as drafted (respawn 8, ranks 4/5) after a self-play read. Fairy-Stockfish
+has no counterpart of a wild piece, so the sight oracle is V1's second reading. Measured
+2026-10-26: **0.899 [0.869, 0.925], viable 4-0**, every registered bar met: 0.453 of graded
+turns end with the duck shielding a piece of the mover's that the opponent attacks (0.619
+between the two strongest players), 5.9 wolf turns at a block a graded game (12.1), a wolf
+returning in 0.921 of graded games, the top three's games all decided, graded games 133.9
+plies (both halves of each turn counted) against chess's 87.9, the first seat 0.518 of decided
+games. The duck stood next to its own king after 0.22 of duck moves; the wolves are hunted
+for their point from the opening and stand on the board only about half the time, against a
+prediction of 0.85. `tests/test_showcase_shepherds_duck.py` holds the mechanism, and
+`docs/reference/shepherds-duck-study.py` reads the runs.
+
 ## `horse-archers.json` — generation 35, a piece that shoots (A2)
 
 2026-10-25, **in the library** (`9c90463dc10f`). The registered fallback of A2,

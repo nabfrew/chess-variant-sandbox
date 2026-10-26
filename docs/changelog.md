@@ -18,6 +18,16 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 The designer's piece sections are now one picker. Press a piece to see its drawing, a few words about it
 and how it moves, then add it; this works by touch on a phone too. Each piece's card folds to a single line.
 
+### A new game: the hydra
+
+Chess with a hydra in the middle of the board that grows a new head onto any piece that attacks it, and
+four hounds on the wings that pounce on whatever they can reach.
+
+### A new game: the shepherds duck
+
+Chess where each turn ends by moving a duck that shields the pieces beside it, while two wolves pace the
+middle ranks, turning back when blocked and returning after they are taken. It is the library's first game with a duck.
+
 ### The duck
 
 A game can now have a duck: a piece nobody owns that every player must move after their own move, as in

@@ -40,6 +40,8 @@ COSTS: dict[str, float] = {
     "npcs": 2.5, "promote_on_entry": 1.0, "portals": 2.5,
     # Schema 26 (Q918a); its first library specs are Q918e's showcases.
     "simultaneous": 3.0,
+    # Generation 42 (N4b); its first library spec is N6's shepherds duck.
+    "duck": 2.0,
 }
 # A chase switch (`rest`, `swap`, `both`), each on top of `simultaneous` (schema 27).
 SWITCH_COST = 1.0

@@ -294,6 +294,8 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/crooked-bishops": "2ead2536dfc6a8ff",  # T2, generation 34
     "archive/circling-queen": "6cc108310afcc1ea",  # T3, generation 34
     "archive/horse-archers": "7b5260ad7ddcaad2",  # A2, generation 35
+    "archive/the-shepherds-duck": "fcb8e3a5a79c519c",  # N6, generations 36 to 38 and 42
+    "archive/the-hydra": "9f2e615018f91bc5",  # N7, generations 39 to 41
     "archive/anchors": "9992b0d1e2fcec6e",  # I3, generation 33
     "archive/madrasi": "b11e935637736813",  # Q999d, schema 30
     "archive/chess-with-a-sheltering-king": "84030d503bb17bc8",  # Q999d, schema 30

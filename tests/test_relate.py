@@ -1007,7 +1007,8 @@ def test_the_index_module_names_no_piece_and_no_game() -> None:
     # `rules.castling` names its two seats in the schema itself, and the corpus has
     # pieces called that; `pieces[].spy` (schema 27) is a key, and the showcases' spy is
     # named for it. A schema key is not a piece name.
-    schema_words = {"king", "rook", "spy"}
+    # `rules.duck` (generation 42) is a key too, and the shepherds duck's duck is named for it.
+    schema_words = {"king", "rook", "spy", "duck"}
     named = set()
     for stem, spec in corpus_specs():
         named.add(stem)

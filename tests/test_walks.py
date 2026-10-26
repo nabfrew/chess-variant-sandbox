@@ -105,7 +105,11 @@ class TestTheWalk:
         for walk in found:
             squares = walk["squares"]
             for at, square in enumerate(squares):
-                assert npcs.next[square] == squares[(at + 1) % len(squares)], path.stem
+                # A turning-back entry's route is a line (generation 38): its last square's
+                # `next` is itself, never the first (the shepherds duck, N6, the first such game).
+                last = at == len(squares) - 1 and npcs.on_line(square)
+                following = square if last else squares[(at + 1) % len(squares)]
+                assert npcs.next[square] == following, path.stem
                 assert npcs.piece[square] == walk["type"], path.stem
         starts = [square for walk in found for square in walk["starts"]]
         assert sorted(starts) == sorted(square for square, _ in npcs.starts)

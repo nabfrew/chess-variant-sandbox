@@ -1,0 +1,337 @@
+{
+  "schema_version": 31,
+  "name": "the hydra",
+  "description": "Chess with a monster in the middle of the board. A hydra stands on d4 and another on d5, and neither ever walks; instead, any piece that ends its owner's move attacking a hydra, pawns included, is eaten at once by a new head that grows onto its square. A head is a hydra in every way, so the monster spreads along the lines its attackers came from, and a head grown on your piece's square can be taken at once by an enemy piece that was guarding that square: feeding the hydra is an exchange, and a sacrifice that opens a line can be one too. No more than six heads may stand at once; past that, a head lunges onto the piece that attacks it instead, and leaves its post. A hydra cannot harm a king, so the king is the one piece that may walk up to a head and take it, and the king becomes the hydra-slayer. Four hounds walk short three-square loops on the wings, and after every move a hound takes a piece of the player who has just moved that stands next to it, then waits where it landed until it can pounce again or finds itself back on a loop; the hounds by Black's camp walk one move behind those by White's, so each army meets the hounds at its door after its own second move. So the centre is a minefield in which a careless knight or a long-range piece feeds the monster, and the question all game is when to open lines through the middle, and when to send the king to clear it. Checkmate wins; a game that reaches its move limit, or fifty moves a side without a capture or a promotion, goes to the side with more material.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Y",
+      "name": "hydra",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q"
+      ]
+    },
+    {
+      "id": "H",
+      "name": "hound",
+      "value": 2,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "scoring": {
+      "count": "material"
+    },
+    "npcs": [
+      {
+        "piece": "Y",
+        "route": [
+          "d4"
+        ],
+        "mirror": true,
+        "pounce": "attackers",
+        "split": 6,
+        "bounty": 0
+      },
+      {
+        "piece": "H",
+        "route": [
+          "b4",
+          "a5",
+          "a3"
+        ],
+        "pounce": "prey"
+      },
+      {
+        "piece": "H",
+        "route": [
+          "a6",
+          "b5",
+          "a4"
+        ],
+        "pounce": "prey"
+      },
+      {
+        "piece": "H",
+        "route": [
+          "g4",
+          "h5",
+          "h3"
+        ],
+        "pounce": "prey"
+      },
+      {
+        "piece": "H",
+        "route": [
+          "h6",
+          "g5",
+          "h4"
+        ],
+        "pounce": "prey"
+      }
+    ]
+  },
+  "provenance": {
+    "added": "2026-10-26",
+    "origin": "designed",
+    "source": "docs/plan-npc.md, N7: the showcase for pounce on prey, pounce on attackers and split (section 6.2)",
+    "history": "Section 6.2 of docs/plan-npc.md, pre-registered 2026-10-25 before any of its rules was built: chess with a stationary hydra pair on d4 and d5 that takes what attacks it (every type but the king) and splits up to six heads, and four hounds on three-square wing loops that take the mover's pieces next to them. Registered after a draft read in self-play at 1600 and 6400 nodes, with the one tunable the read argued for moved: the loops keep their squares, start on b4 and g4, and the black side's run one ply behind the white side's (four entries in place of two mirrored ones), because a mirrored pair starts both sides' hounds on the same ply and the drafted start took two of the first player's pawns on its first move whatever it played.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}

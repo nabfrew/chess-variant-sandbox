@@ -249,6 +249,8 @@ LIBRARY_SPECS = sorted([*(REPOSITORY / "rulesets").glob("*.json"),
 LETTERS = {
     ("kraken-ford", "X"),  # kraken
     ("pitchfork", "W"), ("wolves", "W"), ("wolves-bounty", "W"), ("wolves-patrol", "W"),
+    ("the-shepherds-duck", "W"),  # N6
+    ("the-hydra", "H"), ("the-hydra", "Y"),  # N7: hound, hydra
     ("the-golem-well", "G"),  # golem
     ("watering-hole", "C"), ("watering-hole", "D"), ("watering-hole", "R"),  # cat, dog, rat
 }

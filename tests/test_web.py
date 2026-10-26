@@ -7739,7 +7739,11 @@ class TestTheMoveListSaysWhatTheWildPiecesDid:
 
         expected: list[str] = []
         for move in history:
-            expected.append("move")
+            # A duck move (generation 42, N4c; its entry carries `pass`) is written on its
+            # turn's line, after the piece move, so it opens no row of its own; the phase,
+            # which runs after the duck half, follows that line.
+            if "pass" not in move:
+                expected.append("move")
             if move["phase"]:
                 expected.append("phase")
         assert ["phase" if "phase" in c else "move" for c, _ in rows] == expected
@@ -7751,6 +7755,13 @@ class TestTheMoveListSaysWhatTheWildPiecesDid:
         wild = {engine.spec.piece_names[t] for t in npcs.piece if t >= 0}
         for classes, said in rows:
             if "phase" not in classes:
+                continue
+            # A phase that opens with a copy (generation 41, N3d) names the new piece first:
+            # "and a new hydra grows on c6 from the one on d5" (N7's hydra, the first library
+            # game with a split, met this).
+            if said.startswith("and a new "):
+                assert "wild piece" not in said, said
+                assert any(f"a new {name} grows on " in said for name in wild), said
                 continue
             assert said.startswith("and the "), said
             assert "wild piece" not in said, said
@@ -11145,9 +11156,10 @@ class TestBuildingAGameByHand:
         # `simultaneous` left the set with Q918e's four round showcases (2026-10-15).
         # `bare_royal` left it on 2026-10-21, when Q994p's `archive/the-golem-well`, a
         # model's design from RULES.md alone, became the first library spec to use it.
-        # `duck` (generation 42, N4b) joined it; N6's *shepherd's duck* takes it out.
+        # `duck` (generation 42, N4b) joined it, and left on 2026-10-26 with N6's
+        # `archive/the-shepherds-duck`.
         assert _RULES_KEYS - seen == {
-            "checkmate", "turn", "duck",
+            "checkmate", "turn",
         }, "the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(

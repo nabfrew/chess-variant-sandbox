@@ -499,6 +499,16 @@ FROZEN: dict[str, tuple[str, str]] = {
     # may take, generation 33's `moves: []` on the board (`docs/plan-pieces-moves.md` §4.8;
     # `tests/test_showcase_anchors.py`), from `4c1922ffae26`. New.
     "archive/anchors.json": ("d6cb641394dd", "5caf97001f5a1db8"),
+    # N6, 2026-10-26: the shepherds duck, chess won by taking the king with the classic duck
+    # shielding round it and a wolf pair that turns back and returns, generations 36 to 38 and
+    # 42 (`docs/plan-npc.md` §6.1; `tests/test_showcase_shepherds_duck.py`), from
+    # `4c1922ffae26`. New.
+    "archive/the-shepherds-duck.json": ("e7d2d7406586", "906a46e35f292ea2"),
+    # N7, 2026-10-26: the hydra, chess with a stationary hydra pair that grows a head on whatever
+    # attacks it, up to six, and four hounds that pounce on the mover's pieces beside them,
+    # generations 39 to 41 (`docs/plan-npc.md` §6.2; `tests/test_showcase_hydra.py`), from
+    # `4c1922ffae26`. New.
+    "archive/the-hydra.json": ("0f126fe608ef", "2fa09f528586afbd"),
 }
 
 

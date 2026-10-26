@@ -1,0 +1,307 @@
+{
+  "schema_version": 31,
+  "name": "the shepherds duck",
+  "description": "Chess in which every turn ends with a second, smaller move: the player who has just moved picks up the duck, a neutral piece that nobody owns and nobody can take, and puts it down on any empty square. The duck shields the pieces on the eight squares round it, whoever owns them: nothing may capture them while it stands there. Two wolves, one on the fourth rank and one on the fifth, walk their rank from end to end after every turn and eat whatever they step onto, kings included, for this game is won by taking the king, not by mate. A wolf that meets something it may not eat (the duck, the other wolf or a shielded piece) turns round and walks back the way it came, so the duck is also a shepherd's crook, for turning a wolf away from your own camp and toward the other. A wolf taken by a player is worth a point to the taker and comes back to its corner of the a-file eight turns later, and if the game runs out of moves the points decide it. So every turn asks two questions: what to move, and what the duck should do about the reply, whether to wall off a line, shield a piece the opponent threatens for one move, or send a wolf back. No threat is ever quite final, because the opponent's duck can shield it away for a move, and the middle of the board is crossed on the wolves' clock.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "duck",
+      "value": 0,
+      "moves": [],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "range": 1,
+          "through": true,
+          "effect": "shield",
+          "whose": "any"
+        }
+      ]
+    },
+    {
+      "id": "W",
+      "name": "wolf",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 600,
+    "no_progress_draw": 100,
+    "duck": {
+      "piece": "D"
+    },
+    "npcs": [
+      {
+        "piece": "W",
+        "route": [
+          "a4",
+          "b4",
+          "c4",
+          "d4",
+          "e4",
+          "f4",
+          "g4",
+          "h4"
+        ],
+        "mirror": true,
+        "turns_back": true,
+        "respawn": 8,
+        "bounty": 1
+      }
+    ],
+    "scoring": {
+      "count": "points"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-26",
+    "origin": "designed",
+    "source": "docs/plan-npc.md, N6: the showcase for the duck, its shield, wild pieces that turn back and wild pieces that return (section 6.1)",
+    "history": "Section 6.1 of docs/plan-npc.md, pre-registered 2026-10-25 before any of its rules was built and amended by N4a before any run (max_plies 600, each duck half a ply): chess won by taking the king, with the classic duck (any empty square, off the board at the start) shielding the eight squares round it, and a mirrored wolf pair pacing ranks 4 and 5 end to end that turns back, returns eight phases after it is taken, and pays a point under scoring.count points. Registered as drafted (respawn 8, ranks 4 and 5, the tunable numbers left at the draft's), after a draft read in self-play at 1600 and 6400 nodes.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}
