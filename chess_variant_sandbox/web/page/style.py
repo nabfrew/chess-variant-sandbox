@@ -1896,7 +1896,12 @@ RULES += """
   .landingB .challengeLink { background: var(--sunk); border-radius: 8px; padding: 8px 10px; max-width: 24em; }
   .landingB .handCount { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
   .landingB .swap .handCount, .landingB .swap .muted { margin-left: 6px; }
-  @media (max-width: 900px) {
+  .landingB .claimKey { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+  .landingB .claimKey.p0 { background: var(--claim0); }
+  .landingB .claimKey.p1 { background: var(--claim1); }
+  .landingB .otherStories { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .landingB .otherStories p { margin: 0; }
+  .landingB .otherStories .row { gap: 8px; flex-wrap: wrap; margin-top: 8px; }  @media (max-width: 900px) {
     .landingB .heroB { grid-template-columns: minmax(0, 1fr); gap: 16px; margin: 4px 0 28px; }
     .landingB .heroB .landingTitle { font-size: 30px; line-height: 36px; }
     .landingB .heroB .clauses { min-height: 108px; }
@@ -1911,6 +1916,10 @@ RULES += """
     .landingB .beatBoard { display: block; max-width: 300px; margin-top: 12px; }
     .landingB .beatTray { display: flex; flex-wrap: wrap; }
     .landingB .journeyTitle { font-size: 24px; line-height: 30px; }
+    .landingB .otherStories { display: flex; align-items: center; gap: 10px; }
+    .landingB .otherStories p { flex: none; max-width: 40%; }
+    .landingB .otherStories .row { flex-wrap: nowrap; overflow-x: auto; margin-top: 0; min-width: 0; }
+    .landingB .otherStories .chip { flex: none; }
   }
   /* Reduced motion: nothing turns, plays, grows or is pinned; each game's board sits in its
      own step, stepped by press, and every edit and verdict shows at once. */

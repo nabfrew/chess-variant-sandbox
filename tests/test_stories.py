@@ -31,8 +31,10 @@ from chess_variant_sandbox.web import candidacy, designing, library, stories
 
 ROOT = Path(__file__).resolve().parents[1]
 LIBRARY_STORIES = [s for s in stories.STORIES if s.kind == stories.LIBRARY]
-CONSTRUCTED_STORIES = [s for s in stories.STORIES if s.kind == stories.CONSTRUCTED]
-BEATS = [(s.key, which, beat) for s in stories.STORIES
+# The constructed kind is tested on the examples out of the pool (ground, since LPD).
+CONSTRUCTED_STORIES = [s for s in (*stories.STORIES, *stories.EXAMPLES)
+                       if s.kind == stories.CONSTRUCTED]
+BEATS = [(s.key, which, beat) for s in (*stories.STORIES, *stories.EXAMPLES)
          for which, beat in (("wrong", s.wrong), ("right", s.right))]
 
 
@@ -87,8 +89,12 @@ def scores(monkeypatch: pytest.MonkeyPatch) -> dict[str, dict[str, Any]]:
 
 
 def test_four_stories_in_the_plans_order() -> None:
-    assert [s.key for s in stories.STORIES] == ["stones", "door", "blast", "ground"]
-    assert [s.kind for s in stories.STORIES] == [stories.LIBRARY] * 3 + [stories.CONSTRUCTED]
+    """LPD (2026-10-26): *a sweep*, a measured pair, took ground's place in the pool; ground
+    stays a constructed example out of it."""
+    assert [s.key for s in stories.STORIES] == ["stones", "door", "blast", "sweep"]
+    assert [s.kind for s in stories.STORIES] == [stories.LIBRARY] * 4
+    assert [s.key for s in stories.EXAMPLES] == ["ground"]
+    assert stories.GROUND.kind == stories.CONSTRUCTED
 
 
 def test_the_families_differ_and_each_is_the_palettes() -> None:
@@ -239,6 +245,11 @@ def test_what_each_ending_shows(replays: dict[tuple[str, str], dict[str, Any]]) 
     bomb = replays[("blast", "right")]
     assert [f["n"] for f in bomb["frames"]] == [*range(1, 14), 63]
     assert bomb["frames"][-1]["cut"] and "blast" in bomb["frames"][12]
+    # A sweep: mate on the first move, the sweep clearing a square on the way; the fix's
+    # moment sweeps two in one move.
+    sweep = replays[("sweep", "wrong")]["frames"]
+    assert len(sweep) == 1 and sweep[0]["sweep"] and sweep[0]["key"]
+    assert len(replays[("sweep", "right")]["frames"][23]["sweep"]) == 2
     # Ground: repainted, the count never reaches the goal; kept for good, it does.
     painted = replays[("ground", "wrong")]
     goal = 25
@@ -266,6 +277,8 @@ def test_every_frames_event_is_the_engines(
             area = set(frame["blast"]["area"])
             assert set(frame["blast"]["cleared"]) <= area
             assert frame["blast"]["cleared"]
+        if "sweep" in frame:
+            assert frame["sweep"] and target not in frame["sweep"] and origin not in frame["sweep"]
         if "counts" in frame:
             assert all(owner in (0, 1, 2) for _, owner in frame["claims"])
 
@@ -315,7 +328,7 @@ def test_a_constructed_storys_quick_answers_are_the_designers(
 def test_every_story_holds_while_its_pair_reads_as_told(scores: dict[str, Any],
                                                          tmp_path: Path) -> None:
     rendered = stories.render(Roots(tmp_path))
-    assert rendered["pool"] == ["stones", "door", "blast", "ground"], rendered["dropped"]
+    assert rendered["pool"] == ["stones", "door", "blast", "sweep"], rendered["dropped"]
     assert rendered["dropped"] == []
 
 
@@ -337,15 +350,16 @@ def test_a_story_whose_pair_stops_reading_as_told_leaves_the_pool(
     assert "stones" not in rendered["pool"]
     assert "stones" not in [s["key"] for s in rendered["stories"]]
     assert [d["key"] for d in rendered["dropped"]] == ["stones"]
-    assert rendered["pool"] == ["door", "blast", "ground"]
+    assert rendered["pool"] == ["door", "blast", "sweep"]
 
 
-def test_with_every_library_pair_gone_the_constructed_story_stays(
-        scores: dict[str, Any], tmp_path: Path) -> None:
+def test_with_every_library_pair_gone_a_constructed_story_stays(
+        scores: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     for digest in list(scores):
         scores[digest] = made_score(True, status="provisional")
-    rendered = stories.render(Roots(tmp_path))
-    assert rendered["pool"] == ["ground"]
+    assert stories.render(Roots(tmp_path))["pool"] == []
+    monkeypatch.setattr(stories, "STORIES", (*stories.STORIES, stories.GROUND))
+    assert stories.render(Roots(tmp_path))["pool"] == ["ground"]
 
 
 def test_a_constructed_story_that_stops_replaying_leaves_the_pool(
@@ -354,9 +368,10 @@ def test_a_constructed_story_that_stops_replaying_leaves_the_pool(
     broken = dataclasses.replace(
         story, right=dataclasses.replace(
             story.right, game=dataclasses.replace(story.right.game, ending=(1, "coloured"))))
-    monkeypatch.setattr(stories, "STORIES", (*stories.STORIES[:3], broken))
+    monkeypatch.setattr(stories, "STORIES", (*stories.STORIES, broken))
     rendered = stories.render(Roots(tmp_path))
-    assert rendered["pool"] == ["stones", "door", "blast"]
+    assert rendered["pool"] == ["stones", "door", "blast", "sweep"]
+    assert [d["key"] for d in rendered["dropped"]] == ["ground"]
 
 
 def test_the_sentences_are_filled_from_the_games(scores: dict[str, Any],

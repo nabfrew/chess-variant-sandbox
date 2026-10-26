@@ -57,7 +57,7 @@ from typing import Any, Protocol
 
 from chess_variant_sandbox.engine.compile import WILD
 from chess_variant_sandbox.engine.engine import Engine
-from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_PROMOTION, decode_move
+from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_PROMOTION, MOVE_SWEEP, decode_move
 from chess_variant_sandbox.spec.canonical import MECHANIC_KEYS, load_spec, spec_hash
 from chess_variant_sandbox.viz.wrapped import portal_transit, square_name
 from chess_variant_sandbox.web.landing import BLOCKS
@@ -147,7 +147,7 @@ class Card:
     now: str
     tail: str
     # Where the rule sits in a spec, so its line of the language is read off the spec.
-    rule: tuple[str, ...]
+    rule: tuple[str | int, ...]
 
 
 @dataclass(frozen=True)
@@ -296,44 +296,86 @@ STORIES: tuple[Story, ...] = (
         quote="So the queen becomes a one-shot weapon",
     ),
     Story(
-        key="ground", title="ground", family="how a game is won", kind=CONSTRUCTED,
-        clause=("every square your knight landed on became yours, and {goal} of them won?"),
-        chip="claiming ground",
-        idea=("Wouldn't it be cool if every square your knight landed on became yours, and "
-              "holding {goal} of the {squares} won?"),
-        note=("Five knights a side on a seven-by-seven board; taking every enemy knight wins "
-              "too. An example made for this page, not a library game: {failed}."),
-        card=Card(title="claiming ground", lead="a claimed square", was="can be painted back",
-                  now="is kept for good", tail="; {goal} of the {squares} wins",
-                  rule=("rules", "territory")),
-        tweak="A claim is for good.",
-        changes=(Change(("rules", "territory", "mode"), "repaint", "permanent"),),
+        key="sweep", title="a sweep", family="how pieces move", kind=LIBRARY,
+        clause="your bishop swept its diagonal clear, taking everything it passed over?",
+        chip="pieces that sweep",
+        idea=("Wouldn't it be cool if a bishop swept down its diagonal, removing every piece "
+              "it passed over, its own included?"),
+        note=("Nothing stops it: it sweeps any distance, through anything in its way. That is "
+              "{failed}, a game in the library."),
+        card=Card(title="sweep a line clear", lead="the bishop sweeps", was="any distance",
+                  now="up to three squares", tail="", rule=("pieces", 2, "moves")),
+        tweak="Three squares at most, not any distance.",
+        changes=(Change(("pieces", 2, "moves", 0, "range"), now=3),),
         wrong=Beat(
-            say=("Painting over the other side's square is worth two and an empty one only "
-                 "one, so nobody claims empty ground and nobody reaches {goal}."),
-            lead="Two computer players ({nodes} positions each) play it. Watch the count.",
-            end=("The count never gets past {best}, short of {goal}: what one side paints, the "
-                 "other paints back. Turn {turns}: {a} squares to {b}, and the moves run out: "
-                 "a draw."),
-            source=("a game played for this page by two {nodes}-position computer players "
-                    "(seed {seed}); {typical} played ran out of moves like this one"),
-            game=Played(hash="0247e54a9305", example="ground-repaint",
-                        ending=(None, "ply_limit"), keys=20, pace=70)),
+            say=("The bishop sweeps any distance, through anything, so White's first move is "
+                 "checkmate."),
+            lead=("The hardest computer player plays it against itself. Watch the first "
+                  "move."),
+            end=("Turn {moment}: White's bishop sweeps {moment_swept} off the board and lands "
+                 "on {moment_to}. Nothing can block a sweep, and the king has no square: "
+                 "checkmate, {winner} wins."),
+            source=("a recorded game between the hardest computer player and itself, {turns} "
+                    "turn{turns_s} (seed {seed}, game {game} of {of})"),
+            game=Played(hash="42bd7d06828d", seed=0, line=252, ending=(0, "checkmate"),
+                        keys="events", pace=600, moment=1)),
         right=Beat(
-            say=("Every claim is now a step towards {goal} that cannot be undone, so the empty "
-                 "squares run out and somebody gets there."),
-            lead="The same two players. Watch the count.",
-            end="Turn {turns}: {winner} claims its {goal}th square and wins, {a} to {b}.",
-            source=("a game played for this page by the same two players (seed {seed}); "
-                    "{typical} played finished by the count"),
-            game=Played(hash="f7eafa39e370", example="ground-for-good",
-                        ending=(0, "coloured"), keys=10, pace=130)),
-        hero_at=44,
-        files=("ground-repaint.json", "ground-for-good.json"),
+            say=("Three squares is a door that closes: the sweep stays, but a sweeping check "
+                 "has to be set up, and can be seen coming."),
+            lead="The same player against itself. Watch the bishops.",
+            end=("Turn {moment}: Black's bishop sweeps {moment_swept} in one move and takes on "
+                 "{moment_to}. Turn {turns}: checkmate, {winner} wins."),
+            source=("a recorded game between the hardest computer player and itself, {turns} "
+                    "turn{turns_s} (seed {seed}, game {game} of {of})"),
+            game=Played(hash="c7c6907901b3", seed=3000, line=255, ending=(0, "checkmate"),
+                        keys="events", pace=360, moment=24)),
+        quote="a shield worth keeping, or a door worth burning",
     ),
 )
 
-BY_KEY = {story.key: story for story in STORIES}
+# Constructed examples out of the pool (LPD, 2026-10-26: *a sweep*, a measured pair, took
+# ground's place). Kept, with their files under `web/stories/`, so the constructed kind stays
+# tested; `render` draws only `STORIES`.
+GROUND = Story(
+    key="ground", title="ground", family="how a game is won", kind=CONSTRUCTED,
+    clause=("every square your knight landed on became yours, and {goal} of them won?"),
+    chip="claiming ground",
+    idea=("Wouldn't it be cool if every square your knight landed on became yours, and "
+          "holding {goal} of the {squares} won?"),
+    note=("Five knights a side on a seven-by-seven board; taking every enemy knight wins "
+          "too. An example made for this page, not a library game: {failed}."),
+    card=Card(title="claiming ground", lead="a claimed square", was="can be painted back",
+              now="is kept for good", tail="; {goal} of the {squares} wins",
+              rule=("rules", "territory")),
+    tweak="A claim is for good.",
+    changes=(Change(("rules", "territory", "mode"), "repaint", "permanent"),),
+    wrong=Beat(
+        say=("Painting over the other side's square is worth two and an empty one only "
+             "one, so nobody claims empty ground and nobody reaches {goal}."),
+        lead="Two computer players ({nodes} positions each) play it. Watch the count.",
+        end=("The count never gets past {best}, short of {goal}: what one side paints, the "
+             "other paints back. Turn {turns}: {a} squares to {b}, and the moves run out: "
+             "a draw."),
+        source=("a game played for this page by two {nodes}-position computer players "
+                "(seed {seed}); {typical} played ran out of moves like this one"),
+        game=Played(hash="0247e54a9305", example="ground-repaint",
+                    ending=(None, "ply_limit"), keys=20, pace=70)),
+    right=Beat(
+        say=("Every claim is now a step towards {goal} that cannot be undone, so the empty "
+             "squares run out and somebody gets there."),
+        lead="The same two players. Watch the count.",
+        end="Turn {turns}: {winner} claims its {goal}th square and wins, {a} to {b}.",
+        source=("a game played for this page by the same two players (seed {seed}); "
+                "{typical} played finished by the count"),
+        game=Played(hash="f7eafa39e370", example="ground-for-good",
+                    ending=(0, "coloured"), keys=10, pace=130)),
+    hero_at=44,
+    files=("ground-repaint.json", "ground-for-good.json"),
+)
+
+EXAMPLES: tuple[Story, ...] = (GROUND,)
+
+BY_KEY = {story.key: story for story in (*STORIES, *EXAMPLES)}
 
 
 # ------------------------------------------------------------------ the change
@@ -393,14 +435,16 @@ def change_lines(changes: tuple[Change, ...]) -> list[dict[str, str]]:
     return lines
 
 
-def rule_line(spec: dict[str, Any], path: tuple[str, ...]) -> str | None:
+def rule_line(spec: dict[str, Any], path: tuple[str | int, ...]) -> str | None:
     """The rule's line of the language as `spec` writes it, or None where it has none."""
     node: Any = spec
     for step in path:
-        if not isinstance(node, dict) or step not in node:
+        held = ((isinstance(node, dict) and step in node)
+                or (isinstance(node, list) and isinstance(step, int) and 0 <= step < len(node)))
+        if not held:
             return None
         node = node[step]
-    return f"{_language(path[-1])}: {_language(node)}"
+    return f"{_language(str(path[-1]))}: {_language(node)}"
 
 
 # ------------------------------------------------------------------ the games
@@ -453,6 +497,11 @@ def _did(engine: Engine, state: Any, after: Any, move: int) -> dict[str, Any]:
     trip = portal_transit(engine, state, move)
     if trip:
         item["portal"] = [trip["portal"], trip["portalOut"]]
+    if kind == MOVE_SWEEP:
+        # The squares the sweep cleared besides its landing square: its compiled path, read
+        # against the two positions as a blast's are.
+        item["sweep"] = [i for i in c.sweep_path(state.board, origin, target)
+                         if state.board[i] and not after.board[i]]
     explosion = c.explosion
     if (explosion is not None and kind != MOVE_DROP and state.board[target]
             and not after.board[target]):
@@ -470,7 +519,7 @@ def _key(played: Played, n: int, last: int, item: dict[str, Any]) -> bool:
     return bool(
         n == last
         or n == (played.moment or last)
-        or (keys == "events" and ("portal" in item or "blast" in item))
+        or (keys == "events" and ("portal" in item or "blast" in item or "sweep" in item))
         or (keys == "drops" and "drop" in item)
         or (isinstance(keys, int) and n % keys == 0))
 
@@ -510,6 +559,7 @@ def replay(spec: dict[str, Any], played: Played) -> dict[str, Any]:
         start["unlimited"] = list(c.drops.unlimited)
     if state.colour:
         start["claims"] = sorted(_claims(state.colour).items())
+        start["counts"] = [state.colour.count(1), state.colour.count(2)]
     ends = _ends(engine, state)
     moves = [int(m) for m in record["moves"]]
     wanted = _shown(played, len(moves))
@@ -571,6 +621,8 @@ def replay(spec: dict[str, Any], played: Played) -> dict[str, Any]:
         "moment": moment,
         "moment_to": square_name(at["to"], width) if "to" in at else "",
         "portal_in": square_name(at["portal"][0], width) if "portal" in at else "",
+        "moment_swept": " and ".join(square_name(i, width) for i in at.get("sweep") or []),
+        "turns_s": "" if len(moves) == 1 else "s",
         "first_promotion": promoted,
         "winner": (str(sides[outcome.winner]).capitalize() if outcome.winner is not None
                    else ""),

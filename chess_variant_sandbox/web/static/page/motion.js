@@ -31,6 +31,7 @@ const PACE = {
   strike: 390,           // a captured piece being knocked off the board
   burst: 330,            // the ring that marks where it was taken
   drop: 330,             // a piece arriving from a hand
+  claim: 420,            // a claimed square's paint growing from its centre (LP5)
   // A blast (LP4, the landing mock-up's): the fireball over the area, swelling and gone in
   // this long; each piece it took burns and is thrown in this long, starting this much
   // after the blast goes off.
@@ -155,6 +156,21 @@ function stoneDrop(node, x, y, cell, delay = 0, most = Infinity) {
   ], { duration: duration, delay: delay, easing: 'ease-in', fill: delay ? 'backwards' : 'none' });
   run.onfinish = () => { node.style.transformOrigin = ''; };
   return delay + duration;
+}
+
+// A claim (LP5, §2.2): the square's paint grows from its centre in the claimer's colour,
+// over whatever paint was there, starting `at`. `paint` is the square's paint already drawn
+// in the new colour; `x`, `y` its square's corner. `most` caps how long it takes, as
+// `travel`'s does. Returns when it is fully painted.
+function claimPaint(paint, x, y, cell, at = 0, most = Infinity) {
+  const duration = Math.min(most, PACE.claim);
+  paint.style.transformOrigin = `${x + cell / 2}px ${y + cell / 2}px`;
+  const run = paint.animate([
+    { transform: 'scale(0)', opacity: 0.6 },
+    { transform: 'scale(1)', opacity: 1 },
+  ], { duration: duration, delay: at, easing: 'ease-out', fill: 'backwards' });
+  run.onfinish = () => { paint.style.transformOrigin = ''; };
+  return at + duration;
 }
 
 // Returns how long the move takes, which is what a capture on the destination square

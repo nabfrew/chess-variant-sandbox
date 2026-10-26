@@ -925,13 +925,19 @@ def _ideas(story: dict[str, Any] | None) -> list[dict[str, str]]:
     if story is not None:
         hero = story["hero"]
         ideas.append({"hue": story["hue"], "clause": hero["clause"], "chip": hero["chip"],
-                      "game": hero["game"], "at": "" if hero["at"] is None else str(hero["at"])})
+                      "game": hero["game"], "at": "" if hero["at"] is None else str(hero["at"]),
+                      "story": story["key"], "example": "1" if story["example"] else ""})
     family = story["family"] if story is not None else None
     for idea in HERO_IDEAS:
         if idea.family != family:
             ideas.append({"hue": _FAMILY_HUE[idea.family], "clause": idea.clause,
-                          "chip": idea.chip, "game": idea.game, "at": ""})
+                          "chip": idea.chip, "game": idea.game, "at": "", "story": "",
+                          "example": ""})
     return ideas
+
+
+# A constructed story's game is no library game (§2.1): the hero names it as what it is.
+EXAMPLE_CAPTION = "an example made for this page"
 
 
 def headline(story: dict[str, Any] | None) -> str:
@@ -952,11 +958,13 @@ def _hero(story: dict[str, Any] | None) -> str:
         for n, idea in enumerate(ideas))
     states = "".join(
         f'<div class="heroState {idea["hue"]}{" on" if n == 0 else ""}" data-game="{_e(idea["game"])}"'
-        f'{(" data-at=" + chr(34) + idea["at"] + chr(34)) if idea["at"] else ""}>'
-        '<div class="heroBoard" data-board></div>'
+        + (f' data-at="{idea["at"]}" data-story="{_e(idea["story"])}"' if idea["at"] else "")
+        + '><div class="heroBoard" data-board></div>'
         f'<figcaption class="small"><span class="chip familyChip"><span class="swatch" '
         f'aria-hidden="true"></span>{_e(idea["chip"])}</span> '
-        f'<a href="/game" data-name>{_e(idea["game"])}</a></figcaption></div>'
+        + (f'<b>{_e(idea["game"])}</b> <span class="muted">{_e(EXAMPLE_CAPTION)}</span>'
+           if idea["example"] else f'<a href="/game" data-name>{_e(idea["game"])}</a>')
+        + "</figcaption></div>"
         for n, idea in enumerate(ideas))
     dots = "".join(
         f'<button type="button" class="heroDot{" on" if n == 0 else ""}" '
@@ -1035,7 +1043,7 @@ def _verdict(side: dict[str, Any], good: bool, quote: str = "") -> str:
         said = "".join(f"<li>{_e(line)}</li>" for line in quick.get("said") or [])
         return (f'<p class="small exampleNote">{_e(side["name"])}: {_e(side["line"])}</p>'
                 f'<ul class="small quickSaid">{said}</ul>'
-                f'<p class="muted small">{_e(quick.get("when", ""))}</p>')
+                f'<p class="muted small">{_e(_capital(str(quick.get("when", ""))))}</p>')
     name = f'<a href="/game/{_e(str(side["hash"]))}">{_e(side["name"])}</a>'
     words = _failings(list(side.get("words") or []))
     mark = ("verdict-word-good", "it stays in") if good else ("verdict-word-bad", "ruled out")
@@ -1051,15 +1059,27 @@ def _verdict(side: dict[str, Any], good: bool, quote: str = "") -> str:
     return out
 
 
+def _capital(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
 def _failings(words: list[str]) -> str:
-    """The site's words for the tests a game failed, one a run (`run 1: ...`): the first run's
-    whole, and where every run failed the same test, said once more for all of them."""
+    """The site's words for the tests a game failed, one a run (`run 1 of 4: ...`): each test
+    in the order first met, the first run's words whole, and where every run failed that
+    test, said once more for all of them (LP5: a game can fail several tests in every run)."""
     if not words:
         return ""
-    tests = {said.split(": ", 1)[-1].split(",")[0] for said in words}
-    if len(words) > 1 and len(tests) == 1:
-        return f"{words[0]}; the same in all {len(words)} runs"
-    return "; ".join(words)
+    runs = {said.split(": ", 1)[0] for said in words if said.startswith("run ")}
+    groups: dict[str, list[str]] = {}
+    for said in words:
+        groups.setdefault(said.split(": ", 1)[-1].split(",")[0], []).append(said)
+    out: list[str] = []
+    for group in groups.values():
+        if len(runs) > 1 and len(group) == len(runs):
+            out.append(f"{group[0]}; the same in all {len(group)} runs")
+        else:
+            out += group
+    return "; ".join(out)
 
 
 def _quick(side: dict[str, Any]) -> str:
@@ -1122,8 +1142,25 @@ def _step(n: int, body: str, classes: str = "") -> str:
 _BAR_ORDER = ("depth", "drama", "decisions", "pacing", "variety", "balance")
 
 
-def story_html(story: dict[str, Any]) -> str:
-    """One story's journey, the six steps of §2.1, from `stories.render`'s record."""
+OTHERS_SAID = "More ideas, start to finish:"
+
+
+def _others(story: dict[str, Any], others: list[dict[str, Any]]) -> str:
+    """The journey's foot: a chip per other holding story, each opening the page on it."""
+    chips = "".join(
+        f'<a class="chip familyChip {other["hue"]}" href="/?story={_e(other["key"])}" '
+        f'title="{_e(other["family"])}"><span class="swatch" aria-hidden="true"></span>'
+        f'{_e(other["title"])}{", an example" if other["example"] else ""}</a>'
+        for other in others if other["key"] != story["key"])
+    if not chips:
+        return ""
+    return (f'<nav class="otherStories" aria-label="other stories"><p class="muted small">'
+            f'{_e(OTHERS_SAID)}</p><div class="row">{chips}</div></nav>')
+
+
+def story_html(story: dict[str, Any], others: list[dict[str, Any]] | None = None) -> str:
+    """One story's journey, the six steps of §2.1, from `stories.render`'s record, and a
+    chip for each of the `others`."""
     failed, fixed, card = story["failed"], story["fixed"], story["card"]
     names = {failed["name"]: str(failed["hash"])} if not story["example"] else {}
     hue = story["hue"]
@@ -1152,8 +1189,10 @@ def story_html(story: dict[str, Any]) -> str:
                          _verdict(fixed, True, story.get("quote") or "")
                          + _bars(failed, fixed))),
         _step(5, f'<h3>{_e(LADDER_SAID)}</h3>'
-                 f'<div class="ladder" data-ladder="{_e(str(fixed["hash"]))}"></div>'
-                 f'<p class="small muted">'
+                 # An example is no library game, so it has no page to read a ladder from.
+                 + ('' if story["example"] else
+                    f'<div class="ladder" data-ladder="{_e(str(fixed["hash"]))}"></div>')
+                 + '<p class="small muted">'
                  + ("Every draft can be played at once, an example like this one too. "
                     if story["example"] else
                     f'Each one on <a href="/game/{_e(str(fixed["hash"]))}">{_e(fixed["name"])}</a>, '
@@ -1174,19 +1213,25 @@ def story_html(story: dict[str, Any]) -> str:
         '<figure class="pin" aria-hidden="true"><div class="pinStatus mono small" id="pinWords">'
         '</div><div class="pinBoard" id="pinBoard"></div><div class="pinTray row" id="pinTray">'
         '</div><div class="pinVerdict mono small" id="pinVerdict"></div></figure>'
-        f'<ol class="beats" id="beats">{"".join(steps)}</ol></div></section>')
+        f'<ol class="beats" id="beats">{"".join(steps)}</ol></div>'
+        + _others(story, others or []) + '</section>')
 
 
 def html_page(version: str = DEFAULT_WEIGHTS,
               stories: list[dict[str, Any]] | None = None) -> str:
-    """The landing page's markup: the hero, the first holding story's journey (LP4; LP6
-    draws every story in the pool), the wall of words, and the contact line. With no story
-    holding, the journey is left out and the hero still turns."""
-    story = stories[0] if stories else None
-    journey = story_html(story) if story is not None else ""
+    """The landing page's markup: for every holding story, in the pool's order, its hero and
+    its journey as one part (`storyPart`, LP5), then the wall of words and the contact line.
+    `landing.js` keeps one part when it clones the template (`?story=<key>`, else the first;
+    LP6 draws one at random) and drops the others, so each part's ids stand once on the page.
+    With no story holding, the journey is left out and the hero still turns."""
+    parts = "".join(
+        f'<div class="storyPart" data-story="{_e(story["key"])}">'
+        + _hero(story) + story_html(story, stories) + "</div>"
+        for story in stories or []) or _hero(None)
+    pool = " ".join(story["key"] for story in stories or [])
     return (
-        '<div class="landing landingB" id="landing">'
-        + _hero(story) + journey
+        f'<div class="landing landingB" id="landing" data-stories="{_e(pool)}">'
+        + parts
         + _section("palette", WALL_HEADING, _wall_html(), classes="landingWall")
         + f'<div class="landingFoot" id="{CONTACT_ID}"><p>{CONTACT_LINE}</p></div>'
         + "</div>")

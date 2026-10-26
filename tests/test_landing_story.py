@@ -46,6 +46,12 @@ def drawn(rendered: dict[str, Any]) -> str:
     return landing.html_page(stories=rendered["stories"])
 
 
+@pytest.fixture
+def first(drawn: str, rendered: dict[str, Any]) -> str:
+    """The first story's part: its hero and its journey, as a page keeps it."""
+    return _part(drawn, rendered["stories"][0]["key"])
+
+
 # ------------------------------------------------------------------ the hero
 
 
@@ -59,7 +65,8 @@ def test_the_hero_games_are_listed_library_games() -> None:
 
 
 def test_the_question_leads_with_the_storys_idea_and_leaves_out_its_family(
-        drawn: str, rendered: dict[str, Any]) -> None:
+        first: str, rendered: dict[str, Any]) -> None:
+    drawn = first
     story = rendered["stories"][0]
     clauses = re.findall(r'<span class="clause ([\w-]+)(?: on)?">([^<]*)</span>', drawn)
     assert clauses[0] == (story["hue"], landing._e(story["hero"]["clause"]))
@@ -89,7 +96,8 @@ def test_the_front_pages_description_is_the_question(rendered: dict[str, Any]) -
 # ------------------------------------------------------------------ the journey
 
 
-def test_six_steps_from_the_record(drawn: str, rendered: dict[str, Any]) -> None:
+def test_six_steps_from_the_record(first: str, rendered: dict[str, Any]) -> None:
+    drawn = first
     story = rendered["stories"][0]
     journey = drawn[drawn.index('id="journey"'):]
     assert re.findall(r'data-beat="(\d)"', journey) == ["1", "2", "3", "4", "5", "6"]
@@ -102,7 +110,8 @@ def test_six_steps_from_the_record(drawn: str, rendered: dict[str, Any]) -> None
 
 
 def test_each_verdict_waits_for_its_game_and_carries_its_basis(
-        drawn: str, rendered: dict[str, Any]) -> None:
+        first: str, rendered: dict[str, Any]) -> None:
+    drawn = first
     story = rendered["stories"][0]
     assert drawn.count('class="verdictBlock pending"') == 2
     for side in (story["failed"], story["fixed"]):
@@ -110,7 +119,8 @@ def test_each_verdict_waits_for_its_game_and_carries_its_basis(
         assert "4 runs" in side["line"] and "scoring rules version" in side["line"]
 
 
-def test_the_qualities_are_paired_with_their_numbers(drawn: str, rendered: dict[str, Any]) -> None:
+def test_the_qualities_are_paired_with_their_numbers(first: str, rendered: dict[str, Any]) -> None:
+    drawn = first
     story = rendered["stories"][0]
     bars = re.findall(r'<b data-v="([\d.]+)"></b><i data-v="([\d.]+)"></i>', drawn)
     assert len(bars) == 6
@@ -196,3 +206,149 @@ def test_the_landing_plays_no_move_of_its_own() -> None:
     landing_js = (STATIC / "landing.js").read_text(encoding="utf-8")
     for asked in ("legal", "/api/play", "/api/move", "wrapStep(", "explosion"):
         assert asked not in landing_js, asked
+
+
+# ------------------------------------------------------------------ every story (LP5)
+
+
+def _part(drawn: str, key: str) -> str:
+    """One story's part of the page: its hero and its journey (`storyPart`)."""
+    start = drawn.index(f'<div class="storyPart" data-story="{key}">')
+    rest = [drawn.index(mark, start + 1) for mark in ('<div class="storyPart"', 'id="landing-palette"')
+            if mark in drawn[start + 1:]]
+    return drawn[start:min(rest)]
+
+
+def _text(markup: str) -> str:
+    return re.sub(r"<[^>]+>", " ", markup)
+
+
+def test_every_holding_story_is_one_part_in_the_pools_order(
+        drawn: str, rendered: dict[str, Any]) -> None:
+    keys = [s["key"] for s in rendered["stories"]]
+    assert keys == ["stones", "door", "blast", "sweep"]
+    assert re.findall(r'<div class="storyPart" data-story="(\w+)">', drawn) == keys
+    assert f'data-stories="{" ".join(keys)}"' in drawn
+    for key in keys:
+        part = _part(drawn, key)
+        assert part.count('id="journey"') == part.count('id="heroShow"') == 1
+        assert '<section class="journey' in part and f'data-story="{key}"' in part
+
+
+@pytest.mark.parametrize("key", ["stones", "door", "blast", "sweep"])
+def test_each_storys_six_steps_are_its_record(drawn: str, rendered: dict[str, Any],
+                                               key: str) -> None:
+    story = next(s for s in rendered["stories"] if s["key"] == key)
+    part = _part(drawn, key)
+    hero = part[:part.index('id="journey"')]
+    clauses = re.findall(r'<span class="clause ([\w-]+)(?: on)?">([^<]*)</span>', hero)
+    assert clauses[0] == (story["hue"], landing._e(story["hero"]["clause"]))
+    journey = part[part.index('id="journey"'):]
+    assert re.findall(r'data-beat="(\d)"', journey) == ["1", "2", "3", "4", "5", "6"]
+    for said in (story["idea"], story["wrong"]["say"], story["change"]["say"],
+                 story["right"]["say"], story["wrong"]["end"], story["right"]["end"],
+                 story["failed"]["line"], story["fixed"]["line"]):
+        assert landing._e(said) in journey, said
+    card = story["card"]
+    assert f"<del>{landing._e(card['was'])}</del> <ins>{landing._e(card['now'])}</ins>" in journey
+    assert journey.count('class="verdictBlock pending"') == 2
+    # The foot opens the page on each other story.
+    others = [s["key"] for s in rendered["stories"] if s["key"] != key]
+    assert re.findall(r'href="/\?story=(\w+)"', journey) == others
+
+
+def test_a_storys_hero_board_at_a_turn_is_its_own_game(drawn: str) -> None:
+    assert stories.BY_KEY["blast"].hero_at == 13
+    assert 'data-at="13" data-story="blast"' in _part(drawn, "blast")
+    assert "data-at=" not in _part(drawn, "sweep")[:_part(drawn, "sweep").index('id="journey"')]
+
+
+@pytest.fixture
+def with_ground(monkeypatch: pytest.MonkeyPatch, rendered: dict[str, Any],
+                tmp_path: Path) -> tuple[str, dict[str, Any]]:
+    """The page with ground, the constructed example out of the pool since LPD, put back in:
+    the constructed kind's drawing is held on it."""
+    monkeypatch.setattr(stories, "STORIES", (*stories.STORIES, stories.GROUND))
+    again = stories.render(Roots(tmp_path))
+    assert again["pool"][-1] == "ground"
+    return landing.html_page(stories=again["stories"]), again
+
+
+def test_ground_says_example_and_carries_no_score(
+        with_ground: tuple[str, dict[str, Any]]) -> None:
+    """§2.1's honesty rules for a constructed story: the hero's caption, step 1's note, the
+    other stories' chip and both verdict lines say *example*; no index, no runs, no ±, no
+    quality bars, no ladder read from a game page it has not got."""
+    drawn, rendered = with_ground
+    assert 'data-at="44" data-story="ground"' in _part(drawn, "ground")
+    part = _part(drawn, "ground")
+    hero = part[:part.index('id="journey"')]
+    assert landing.EXAMPLE_CAPTION in hero and 'href="/game" data-name>ground for good' not in hero
+    ground = next(s for s in rendered["stories"] if s["key"] == "ground")
+    assert "example" in ground["note"]
+    assert part.count(f": {stories.EXAMPLE_LINE}</p>") == 2
+    text = _text(part)
+    assert not re.search(r"\bruns?\b", text.replace("run out", "")) and "±" not in text
+    assert "pairBars" not in part and "data-ladder" not in part
+    for key in ("stones", "door", "blast", "sweep"):
+        chips = re.findall(r'href="/\?story=ground"[^>]*>(.*?)</a>', _part(drawn, key))
+        assert len(chips) == 1 and "an example" in chips[0]
+
+
+def test_the_door_carries_the_sites_lean_sentence(rendered: dict[str, Any]) -> None:
+    door = copy.deepcopy(next(s for s in rendered["stories"] if s["key"] == "door"))
+    door["fixed"]["lean"] = "the second side won more, though not by enough to rule it out"
+    assert ("The site adds: the second side won more, though not by enough to rule it out."
+            in landing.story_html(door))
+
+
+@pytest.mark.parametrize("key", ["door", "blast"])
+def test_a_library_storys_quick_answers_are_the_designers(rendered: dict[str, Any],
+                                                          key: str) -> None:
+    """Wormhole's and queens wake's quick answers on step 2 are the designer's two rungs on
+    the failed game's own file: `designing.check` and the eight-game screen."""
+    story = next(s for s in rendered["stories"] if s["key"] == key)
+    path, _ = stories.library_paths(Roots(ROOT / "runs"))[stories.BY_KEY[key].wrong.game.hash]
+    raw = load_spec(path)
+    checked = designing.check(raw)
+    screened = candidacy.screen_draft(raw)
+    quick = story["failed"]["quick"]
+    assert quick["playable"] == checked["playable"] is True
+    assert quick["opening"] == checked["openingWords"]
+    assert quick["said"][0] == f"It plays and reaches an ending, with {checked['openingWords']}."
+    stats = screened["stats"]
+    assert screened["passed"] is True
+    assert quick["said"][1] == ("The eight-game check finds a winner in "
+                                f"{int(stats['decisive'])} of its {int(stats['games'])} games.")
+    assert quick["when"] == stories.LIBRARY_QUICK_WHEN
+
+
+def test_the_landing_draws_claims_from_the_frames() -> None:
+    """Ground's paint and its count are the server's (`claims`, `counts`), and its motion is
+    `motion.js`'s one copy."""
+    landing_js = (STATIC / "landing.js").read_text(encoding="utf-8")
+    motion = (STATIC / "motion.js").read_text(encoding="utf-8")
+    assert "function claimPaint(" in motion and PAGE.count("function claimPaint(") == 1
+    assert "claimPaint(" in landing_js and "item.claims" in landing_js
+    assert "game.start.counts" in landing_js and ".filter(o =>" not in landing_js
+
+
+def test_the_sweep_is_drawn_from_its_frames(rendered: dict[str, Any]) -> None:
+    """The squares a sweep cleared are the server's (`sweep` on a frame); the page strikes
+    each as the sweeper passes and tints it after, and counts the sweep as the rule acting."""
+    landing_js = (STATIC / "landing.js").read_text(encoding="utf-8")
+    assert "item.sweep" in landing_js and "frame.item.sweep" in landing_js
+    sweep = next(s for s in rendered["stories"] if s["key"] == "sweep")
+    first = sweep["wrong"]["game"]["frames"][0]
+    assert first["n"] == 1 and first["sweep"] and first["key"]
+
+
+def test_the_failings_say_each_test_once_where_every_run_failed_it() -> None:
+    runs = [f"run {k} of 4: game length, worse half came to 1.000 turns" for k in range(1, 5)]
+    runs += [f"run {k} of 4: quick kills, worse half came to 1.000" for k in range(1, 5)]
+    runs.append("run 3 of 4: recovery from a mistake could not be measured on this game")
+    assert landing._failings(runs) == (
+        "run 1 of 4: game length, worse half came to 1.000 turns; the same in all 4 runs; "
+        "run 1 of 4: quick kills, worse half came to 1.000; the same in all 4 runs; "
+        "run 3 of 4: recovery from a mistake could not be measured on this game")
+    assert landing._failings(["a, b", "c, d"]) == "a, b; c, d"

@@ -16,7 +16,7 @@ async function showLanding() {
   SHOWN = null;
   const template = document.getElementById('landingPage');
   view.textContent = '';
-  view.append(template.content.cloneNode(true));
+  view.append(chooseStory(template.content.cloneNode(true)));
   // The landing page is in none of the header's sections, at `/` or at `#/about`.
   document.querySelectorAll('#sections a').forEach(link => link.removeAttribute('aria-current'));
   dropUnoffered(view);
@@ -29,6 +29,19 @@ async function showLanding() {
   const today = view.querySelector('[data-today]');
   if (today && data.firstStep && data.firstStep.hash) today.href = gamePath(data.firstStep.hash);
   startHero(data);
+}
+
+// The template holds every story in the pool, each as one part (its hero and its journey,
+// `landing.html_page`); the page keeps one and drops the rest before it is shown, so each
+// part's ids stand once. `?story=<key>` names it; otherwise the first holds (LP6 draws one).
+function chooseStory(fragment) {
+  const parts = [...fragment.querySelectorAll('.storyPart')];
+  if (!parts.length) return fragment;
+  let wanted = null;
+  try { wanted = new URLSearchParams(location.search).get('story'); } catch (err) { wanted = null; }
+  const kept = parts.find(part => part.dataset.story === wanted) || parts[0];
+  parts.forEach(part => { if (part !== kept) part.remove(); });
+  return fragment;
 }
 
 // A visitor to the site is offered *Sign in*, a member their own page in its place (Q723);
@@ -262,6 +275,21 @@ function heroStill(game) {
   return boardPreview(Object.assign({}, still, { icons: icons, hash: game.hash }), null);
 }
 
+// The stories' games, asked once a page (`/api/stories`).
+function storiesData() {
+  if (!STORY.fetched) STORY.fetched = api('/api/stories').catch(() => null);
+  return STORY.fetched;
+}
+
+async function heroFrame(state) {
+  const data = await storiesData();
+  const story = data && data.games && data.games[state.dataset.story];
+  if (!story || !document.body.contains(state)) return;
+  const frame = storyFrames(story.right).find(f => f.n === Number(state.dataset.at));
+  if (!frame) return;
+  drawStoryFrame(state.querySelector('[data-board]'), story.right, frame, null, data.pieceArt || {}, true);
+}
+
 function startHero(data) {
   const show = document.getElementById('heroShow');
   if (!show) return;
@@ -273,10 +301,11 @@ function startHero(data) {
   states.forEach(state => {
     const game = games.get(state.dataset.game);
     const link = state.querySelector('[data-name]');
-    if (game) {
-      state.querySelector('[data-board]').innerHTML = heroStill(game);
-      if (link) link.href = gamePath(game.hash);
-    }
+    if (game && link) link.href = gamePath(game.hash);
+    // A story's own game at the turn its hero names (`data-at`) is drawn from the story's
+    // frames, as its steps draw it; a constructed story's game has no listing to draw from.
+    if (state.dataset.at && state.dataset.story) heroFrame(state);
+    else if (game) state.querySelector('[data-board]').innerHTML = heroStill(game);
   });
   let at = 0, timer = null, held = false;
   const turn = i => {
@@ -330,14 +359,25 @@ function storyFrames(game) {
   let board = game.start.board.slice();
   let hands = game.start.hands || null;
   let counts = null;
-  const out = [{ n: 0, board: board, hands: hands, counts: counts, item: null, key: true }];
+  // Who holds each square, where the rule claims ground: the start's, then each frame's
+  // changes (owner 0 where a claim went), as the server read them off the engine.
+  let claims = game.start.claims ? new Map(game.start.claims) : null;
+  if (claims) counts = game.start.counts || null;
+  const out = [{ n: 0, board: board, hands: hands, counts: counts, claims: claims, item: null,
+    key: true }];
   for (const item of game.frames) {
     board = board.slice();
     for (const [square, value] of item.set) board[square] = value;
     hands = item.hands || hands;
     counts = item.counts || counts;
+    if (item.claims) {
+      claims = new Map(claims || []);
+      for (const [square, owner] of item.claims) {
+        if (owner) claims.set(square, owner); else claims.delete(square);
+      }
+    }
     out.push({ n: item.n, move: item.move, board: board, hands: hands, counts: counts,
-      item: item, key: !!item.key });
+      claims: claims, item: item, key: !!item.key });
   }
   return out;
 }
@@ -365,10 +405,35 @@ function drawStoryFrame(mount, game, frame, prev, art, still) {
   const at = square => squareXY(square, cell, view);
   motionDrawer(svg, (value, x, y, size) => stillPieceHtml(preview, value, x, y, size));
   const item = frame.item;
+  // The ground each side holds, under the pieces, in its claimer's colour (as the play board
+  // paints it). With motion, a square this move claimed shows the paint it had before and
+  // its new paint grows over it.
+  const fresh = new Map();
+  const painted = (frame.claims ? [...frame.claims] : []).concat(
+    !still && prev && prev.claims && item && item.claims
+      ? item.claims.filter(([sq]) => prev.claims.has(sq)).map(([sq]) => [sq, prev.claims.get(sq), true])
+      : []);
+  for (const [square, owner, was] of painted) {
+    const cellGroup = svg.querySelector(`[data-square="${square}"]`);
+    if (!cellGroup) continue;
+    const [x, y] = at(square);
+    const paint = document.createElementNS(SVGNS, 'rect');
+    paint.setAttribute('x', x);
+    paint.setAttribute('y', y);
+    paint.setAttribute('width', cell);
+    paint.setAttribute('height', cell);
+    paint.setAttribute('fill', owner === 1 ? 'var(--claim0)' : 'var(--claim1)');
+    paint.setAttribute('opacity', '0.45');
+    paint.setAttribute('data-mark', 'claim');
+    // The old paint goes under the new.
+    cellGroup.insertBefore(paint, cellGroup.children[1] || null);
+    if (!was) fresh.set(square, [paint, x, y]);
+  }
   // The marks a still frame keeps, under the pieces: the move's two squares lit, a portal's
-  // two ends, a blast's whole area.
+  // two ends, a blast's whole area, the squares a sweep cleared.
   const lit = !item ? [] : item.blast ? item.blast.area
-    : [item.from, item.to].concat(item.portal || []).filter(sq => sq !== undefined);
+    : [item.from, item.to].concat(item.portal || [], item.sweep || []).filter(sq => sq !== undefined);
+  const burnt = new Set(item ? (item.blast ? item.blast.area : item.sweep || []) : []);
   for (const square of lit) {
     const cellGroup = svg.querySelector(`[data-square="${square}"]`);
     if (!cellGroup) continue;
@@ -378,9 +443,11 @@ function drawStoryFrame(mount, game, frame, prev, art, still) {
     mark.setAttribute('y', y);
     mark.setAttribute('width', cell);
     mark.setAttribute('height', cell);
-    mark.setAttribute('fill', item.blast ? 'var(--fx-fire)' : 'var(--hl-last)');
-    mark.setAttribute('opacity', item.blast ? '0.3' : '0.4');
-    mark.setAttribute('data-mark', item.blast ? 'blast' : 'last');
+    const hot = burnt.has(square);
+    mark.setAttribute('fill', hot ? 'var(--fx-fire)' : 'var(--hl-last)');
+    // A swept square is one square, so it takes a stronger tint than a blast's whole area.
+    mark.setAttribute('opacity', item.blast ? '0.3' : hot ? '0.5' : '0.4');
+    mark.setAttribute('data-mark', item.blast ? 'blast' : hot ? 'swept' : 'last');
     cellGroup.insertBefore(mark, cellGroup.children[1] || null);
   }
   if (still || !prev || !item) return 0;
@@ -434,14 +501,32 @@ function drawStoryFrame(mount, game, frame, prev, art, still) {
   }
   const moving = node(item.to);
   if (!moving) return 0;
-  const flight = travel(moving, fx - tx, fy - ty, false, 0, most);
+  // A sweep is the rule acting: it takes the time its travel needs, not the story's pace.
+  const flight = travel(moving, fx - tx, fy - ty, false, 0, item.sweep ? Infinity : most);
+  // A sweep: each piece on its path is struck as the sweeper passes over it, in the order
+  // the server listed them along the path.
+  let swept = 0;
+  for (const square of item.sweep || []) {
+    if (!before[square]) continue;
+    const [x, y] = at(square);
+    const share = Math.hypot(x - fx, y - fy) / Math.max(1, Math.hypot(tx - fx, ty - fy));
+    swept = Math.max(swept, capture(svg, before[square], x, y, cell,
+      { at: flight * Math.min(1, share), dx: tx - fx, dy: ty - fy }));
+  }
+  if (swept) svg.appendChild(moving);
+  // A square the move claimed is painted as the piece lands on it.
+  let painting = 0;
+  for (const [square, owner] of item.claims || []) {
+    const paint = owner && fresh.get(square);
+    if (paint) painting = Math.max(painting, claimPaint(paint[0], paint[1], paint[2], cell, flight * PACE.impact, most));
+  }
   if (before[item.to]) {
     const ghost = before[item.to];
     const done = capture(svg, ghost, tx, ty, cell, { at: flight * PACE.impact, dx: tx - fx, dy: ty - fy });
     svg.appendChild(moving);
-    return Math.max(flight, done);
+    return Math.max(flight, done, painting, swept);
   }
-  return flight;
+  return Math.max(flight, painting, swept);
 }
 
 // What the rule keeps count of, under a board: the pieces in hand, or the ground each side holds.
@@ -450,7 +535,7 @@ function storyTray(game, frame) {
   const sides = start.sides || ['white', 'black'];
   const name = side => side.charAt(0).toUpperCase() + side.slice(1);
   if (frame.counts) {
-    return frame.counts.map((count, p) => `<span class="handCount">${esc(name(sides[p]))} ${count}</span>`)
+    return frame.counts.map((count, p) => `<span class="handCount"><span class="claimKey p${p}" aria-hidden="true"></span>${esc(name(sides[p]))} ${count}</span>`)
       .join('') + '<span class="muted small">squares held</span>';
   }
   if (!frame.hands) return '';
@@ -469,7 +554,7 @@ function storyTray(game, frame) {
   }).join('');
 }
 
-const STORY = { active: 1, players: {}, data: null };
+const STORY = { active: 1, players: {}, data: null, fetched: null };
 
 function pinShown() {
   const pin = document.querySelector('#journey .pin');
@@ -531,7 +616,15 @@ class StoryPlayer {
       document.getElementById('pinWords').textContent = words;
       document.getElementById('pinTray').innerHTML = storyTray(this.game, frame);
     }
-    if (this.at === this.frames.length - 1) this.done();
+    // The verdict waits for the last turn's motion (a blast, a journey) to be over.
+    if (this.at === this.frames.length - 1) {
+      if (motion) {
+        const shown = this.at;
+        setTimeout(() => { if (this.at === shown) this.done(); }, motion);
+      } else {
+        this.done();
+      }
+    }
     return motion;
   }
   done() {
@@ -558,7 +651,7 @@ class StoryPlayer {
       const frame = this.frames[this.at];
       // The turn the rule acts (a portal, a blast) gets the time its motion needs and a
       // breath after it; any other turn takes the story's pace.
-      const acts = frame.item && (frame.item.portal || frame.item.blast);
+      const acts = frame.item && (frame.item.portal || frame.item.blast || frame.item.sweep);
       const wait = Math.max(this.game.pace, acts ? motion + 350 : motion)
         + (frame.item && frame.item.cut ? 600 : 0);
       if (this.at < this.frames.length - 1) {
@@ -670,7 +763,7 @@ async function startJourney() {
   if (!journey) return;
   drawPairBars(journey);
   fillLadder(journey);
-  const data = await api('/api/stories').catch(() => null);
+  const data = await storiesData();
   if (!document.body.contains(journey)) return;
   const story = data && data.games && data.games[journey.dataset.story];
   if (!story) return;
