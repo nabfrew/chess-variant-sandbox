@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### Start a game from any rule on the front page
+
+Every word on the front page's wall of rules, and each story's rule card, now has a way to start a game with
+that rule: it opens the designer on a copy of chess with the rule already added and explained.
+
 ### Four stories on the front page
 
 The front page now tells one of four stories on each visit: stones, a door, a blast and a sweep, each showing a rule

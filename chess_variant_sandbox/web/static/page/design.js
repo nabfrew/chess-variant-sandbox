@@ -67,7 +67,7 @@ async function designKit() {
   return DESIGN_KIT;
 }
 
-async function showDesigner(from) {
+async function showDesigner(from, rule) {
   stopPolling();
   // A game that was in hand went with the markup it was drawn into, whether this is a
   // return from the board page or a fresh editor.
@@ -84,7 +84,13 @@ async function showDesigner(from) {
   const [kit] = await Promise.all([
     designKit(), LIBRARY.length ? null : roster().catch(() => null),
   ]);
-  if (from && (from !== DRAFT_FROM || AFRESH)) {
+  // LP7: `#/design?rule=<key>`, a door at one rule (`openDoor`); its sentence is said once.
+  DOOR_SAID = null;
+  const door = typeof rule === 'string' ? await openDoor(kit, rule) : null;
+  if (door || DOOR_SAID) {
+    // The door made the draft, or said there was none and left the one in hand.
+    if (!DRAFT) takeDraft(heldDraft(), kit.templates[0].spec);
+  } else if (from && (from !== DRAFT_FROM || AFRESH)) {
     AFRESH = false;
     const source = await api('/api/design/' + from);
     DRAFT = forkOf(source, from);
@@ -116,6 +122,7 @@ async function showDesigner(from) {
       ${DRAFT_FROM ? `Started from <b>${esc(
         (DRAFT_PARENT && DRAFT_PARENT.name) || nameOf(DRAFT_FROM) || DRAFT_FROM)}</b>.` : ''}
     </p>
+    ${doorSaidHtml()}
     ${phoneNoteHtml()}
     ${startFromHtml(kit)}
     <div class="designer bench u-mt-12">
@@ -137,6 +144,175 @@ async function showDesigner(from) {
   loadMoveMap();
   // Whether this copy serves the browser build, which is what measuring here needs.
   hereLookup();
+  doorDrawn(door);
+}
+
+// ------------------------------------------------ a door at a rule (LP7)
+//
+// `#/design?rule=<key>` (`docs/plan-landing.md` §5, box LP7): the designer opened on a copy of
+// chess with one rule added, from a word of the landing's wall or a story's card. Which of the
+// designer's own add paths a key takes is the server's (`designing.doors`, in the kit): *add a
+// rule* for a rule's card, *how the players take turns* for rounds and several moves a turn,
+// *add a way of moving*, a line of sight or a piece's field on the piece the server names, and
+// *the cells are* hexagons. So the card arrives holding what the designer would give it, and
+// the check judges the draft as it judges any other. A rule chess cannot take is tried on the
+// templates, as the server's refusals say (`POST /api/design/rules`). A key with no door
+// opens the designer as it was, and says so.
+let DOOR_SAID = null;   // what the last door did, said once under the heading
+
+async function openDoor(kit, key) {
+  const all = (kit.doors && kit.doors.doors) || {};
+  const door = key && Object.prototype.hasOwnProperty.call(all, key) ? all[key] : null;
+  try { history.replaceState(null, '', '#/design'); } catch (error) { /* stays */ }
+  if (!door) {
+    DOOR_SAID = { missing: key };
+    return null;
+  }
+  // The draft in hand is kept for undo, as a template chosen over it is.
+  if (DRAFT) snapshotDraft();
+  const from = await doorStart(kit);
+  let how = { from };
+  if (door.kind === 'rule') how = await doorRule(kit, door, from);
+  else if (door.kind !== 'board' && (door.kind !== 'turns' || door.field)) doorPiece(door);
+  keepDraft();
+  DOOR_SAID = Object.assign({ said: door.said }, how);
+  return door;
+}
+
+// The copy a door starts from: the server's (chess), else the first template.
+async function doorStart(kit) {
+  const start = kit.doors && kit.doors.start;
+  const source = start && start.hash
+    ? await api('/api/design/' + start.hash).catch(() => null) : null;
+  resetPortalState();
+  DRAFT_PIECE = 0;
+  if (source) {
+    DRAFT = forkOf(source, start.hash);
+    DRAFT_FROM = start.hash;
+    DRAFT_PARENT = source;
+    return source.name || start.name;
+  }
+  takeDraft(null, kit.templates[0].spec);
+  return kit.templates[0].title;
+}
+
+// *Add a rule*'s card for `key` on the draft in hand: `fieldDefault`, and its companion.
+function doorAddRule(key) {
+  const model = cardModel();
+  const field = model && model.rules.find(f => f.key === key);
+  if (!field) return null;
+  DRAFT.rules = DRAFT.rules || {};
+  DRAFT.rules[key] = fieldDefault(field, [key], 'rules');
+  const companion = RULE_COMPANIONS[key];
+  if (companion) companion(DRAFT.rules);
+  return DRAFT.rules[key];
+}
+
+// A rule the start already has is its card, as it stands. One it cannot take is tried on
+// each template in turn; where none takes it either, it goes on the start, and the check
+// says why it does not stand.
+async function doorRule(kit, door, from) {
+  if (door.rule in (DRAFT.rules || {})) return { from, present: true };
+  const start = { draft: JSON.stringify(DRAFT), from: DRAFT_FROM, parent: DRAFT_PARENT, said: from };
+  const takes = async () => {
+    const before = JSON.parse(JSON.stringify(DRAFT));
+    const card = doorAddRule(door.rule);
+    const answer = await api('/api/design/rules',
+      { spec: before, candidates: { [door.rule]: card } }).catch(() => null);
+    if (answer && answer.refused && answer.refused[door.rule]) {
+      DRAFT = before;
+      return false;
+    }
+    return true;
+  };
+  if (await takes()) return { from };
+  for (const template of kit.templates || []) {
+    takeDraft(null, template.spec);
+    if (await takes()) return { from: template.title, instead: from };
+  }
+  DRAFT = JSON.parse(start.draft);
+  DRAFT_FROM = start.from;
+  DRAFT_PARENT = start.parent;
+  doorAddRule(door.rule);
+  return { from: start.said };
+}
+
+// A door that adds to one piece: the piece the server names, opened (PF4's fold), with a
+// way of moving of the door's kind, a line of sight, or the field, as the card's own
+// buttons and fields add them.
+function doorPiece(door) {
+  const pieces = DRAFT.pieces || [];
+  const index = Math.max(0, Math.min(door.piece || 0, pieces.length - 1));
+  const piece = pieces[index];
+  if (!piece) return;
+  DRAFT_PIECE = index;
+  PIECES_OPEN.add(piece.id);
+  if (door.kind === 'move') {
+    const move = { kind: 'slide', vectors: [[0, 1]], symmetry: 'rotate4' };
+    writeMoveField(move, 'kind', door.move);
+    Object.assign(move, JSON.parse(JSON.stringify(door.shape || {})));
+    piece.moves = (piece.moves || []).concat([move]);
+  } else if (door.kind === 'sight') {
+    piece.sight = (Array.isArray(piece.sight) ? piece.sight : [])
+      .concat([JSON.parse(JSON.stringify(NEW_SIGHT))]);
+  } else if (door.kind === 'piece') {
+    const field = ((cardModel() || {}).piece || []).find(f => f.key === door.field);
+    if (field && piece[field.key] === undefined) {
+      piece[field.key] = fieldDefault(field, [field.key], 'piece.' + index);
+    }
+  }
+}
+
+// Once the designer is drawn: the two doors that are a control's own answer (rounds or
+// several moves a turn; hexagons) press it, and the card the door opened on is brought
+// into view.
+function doorDrawn(door) {
+  if (!door) return;
+  const shown = () => {
+    const card = doorCard(door);
+    if (!card) return;
+    card.classList.add('doorCard');
+    if (typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'center' });
+  };
+  if (door.kind === 'turns') {
+    const asked = chooseTurnWay(door.way);
+    return asked && asked.then ? asked.then(shown) : shown();
+  }
+  if (door.kind === 'board') {
+    const lattice = document.getElementById('dLattice');
+    if (lattice && lattice.value !== door.lattice) {
+      lattice.value = door.lattice;
+      const asked = lattice.onchange && lattice.onchange();
+      return asked && asked.then ? asked.then(shown) : shown();
+    }
+  }
+  shown();
+}
+
+function doorCard(door) {
+  if (door.kind === 'rule') return document.querySelector(`.ruleCard[data-rule="${door.rule}"]`);
+  if (door.kind === 'board') return document.getElementById('dLattice');
+  if (door.kind === 'turns' && !door.field) return document.getElementById('dTurns');
+  return document.querySelector(`.editorPiece[data-piece="${DRAFT_PIECE}"]`);
+}
+
+function doorSaidHtml() {
+  const said = DOOR_SAID;
+  if (!said) return '';
+  if (said.missing !== undefined) {
+    return `<p class="small doorSaid" role="status">${said.missing
+      ? `There is no rule called <b>${esc(said.missing)}</b> to start a game with`
+      : 'No rule was named to start a game with'}, so the designer opens as it was. Every
+      rule it has is under <i>add a rule</i>, below the pieces.</p>`;
+  }
+  const start = said.instead
+    ? `<b>${esc(said.said)}</b> does not go in ${esc(said.instead)} as it stands, so this is
+      the template <b>${esc(said.from)}</b> with it added`
+    : said.present
+      ? `A copy of <b>${esc(said.from)}</b>, which already has <b>${esc(said.said)}</b>`
+      : `A copy of <b>${esc(said.from)}</b> with <b>${esc(said.said)}</b> added`;
+  return `<p class="small doorSaid" role="status">${start}: its card is marked below.
+    Change anything, and the draft is checked as you go.</p>`;
 }
 
 // F11 (`first-visit-study.md`): the wheel over a sticking column scrolled the column, not

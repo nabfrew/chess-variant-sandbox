@@ -3989,3 +3989,87 @@ def _nesting(text: str) -> int:
         elif char in "]}":
             depth -= 1
     return deepest
+
+
+# ------------------------------------------------------------------ a door at a rule (LP7)
+
+# `#/design?rule=<key>` (`docs/plan-landing.md` §5, box LP7): the designer opened on a copy
+# of a game with one rule added, from a word of the landing's wall or a story's card. The
+# key is the rule language's, as `reference.FAMILIES` and the wall spell it (`rules.drops`,
+# `pieces[].region`, a kind of move, `board.lattice`). This says, for every key the designer
+# has a control for, which of the designer's own *add* paths the page takes; what the card
+# then holds is the designer's (`page/cards.fieldDefault`, `RULE_COMPANIONS`, the turns and
+# hexagon answers), and whether the draft is a game is the check's. A key not here opens the
+# designer as it was, with a sentence saying so.
+
+# The rules and piece fields that only mean something when the players take turns another
+# way: the door is the designer's *how the players take turns* (`take_turns`).
+DOOR_TURNS = {"rules.simultaneous": "rounds", "rules.turn": "several",
+              "pieces[].speed": "rounds", "pieces[].beats": "rounds", "pieces[].spy": "rounds"}
+
+# How the door's sentence names a kind of move, a line of sight and the hexagons, which are
+# controls the designer draws by hand rather than cards of the generated model.
+DOOR_MOVE_WORDS = {"slide": "a way of moving that slides", "leap": "a way of moving that leaps",
+                   "hop": "a way of moving that hops over a piece",
+                   "lame": "a way of moving that is a blockable leap",
+                   "sweep": "a way of moving that sweeps"}
+DOOR_SIGHT_WORDS = "a line of sight"
+
+# What a door's new way of moving holds beyond its kind, where *add a way of moving*'s one step
+# forward (`page/design.js`) cannot be that kind: a blockable leap of one square has no
+# square to be blocked on, so the door's is the two-step leap a xiangqi horse makes.
+DOOR_MOVE_SHAPES: dict[str, dict[str, Any]] = {
+    "lame": {"vectors": [[1, 2]], "symmetry": "dihedral8"},
+}
+DOOR_HEX_WORDS = "hexagons"
+
+
+def door_piece(spec: Any) -> int:
+    """The piece a door that adds to one piece adds to: the first of the pieces worth most
+    that is not royal (the one whose change shows most), else the first."""
+    pieces = [piece for piece in (spec or {}).get("pieces") or [] if isinstance(piece, dict)]
+    best, worth = 0, None
+    for index, piece in enumerate(pieces):
+        value = piece.get("value")
+        if piece.get("royal") is True or not isinstance(value, (int, float)):
+            continue
+        if worth is None or value > worth:
+            best, worth = index, value
+    return best
+
+
+def doors(model: dict[str, Any], start: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Every key the designer can be opened at, and the add path each takes.
+
+    `model` is `cards.card_model`'s, so a rule is offered exactly when *add a rule* offers
+    it. `start` is the game a door copies (`{"hash", "name", "spec"}`, a copy of chess on
+    both servers), or None, and then the page starts from its first template. Each door is
+    `{"kind", "said"}` and what its kind needs: `rule` (a rule's card, by its key in
+    `rules`), `turns` (a way of taking turns, with the rule that way writes), `move` (a
+    way of moving of that kind), `piece` (a piece field), `sight` and `board` (hexagons).
+    A door that adds to a piece names it, `piece`, an index into the start's pieces."""
+    labels = {field["key"]: field["label"] for field in model["rules"]}
+    piece_labels = {field["key"]: field["label"] for field in model["piece"]}
+    piece = door_piece(start["spec"]) if start else 0
+    found: dict[str, dict[str, Any]] = {}
+    for key in model["ruleOrder"]:
+        found[f"rules.{key}"] = {"kind": "rule", "rule": key, "said": labels.get(key, key)}
+    for key, field in piece_labels.items():
+        found[f"pieces[].{key}"] = {"kind": "piece", "field": key, "said": field,
+                                    "piece": piece}
+    for kind, said in DOOR_MOVE_WORDS.items():
+        found[kind] = {"kind": "move", "move": kind, "said": said, "piece": piece,
+                       **({"shape": DOOR_MOVE_SHAPES[kind]} if kind in DOOR_MOVE_SHAPES else {})}
+    found["pieces[].sight"] = {"kind": "sight", "said": DOOR_SIGHT_WORDS, "piece": piece}
+    found["board.lattice"] = {"kind": "board", "lattice": "hex", "said": DOOR_HEX_WORDS}
+    for key, way in DOOR_TURNS.items():
+        if key in found:
+            rule = {"rounds": "simultaneous", "several": "turn"}[way]
+            # A piece's field in rounds opens that piece's card, where rounds show the field.
+            field = {"field": key.removeprefix("pieces[].")} if key.startswith("pieces[].") else {}
+            found[key] = {"kind": "turns", "way": way, "rule": rule,
+                          "said": found[key]["said"], "piece": piece, **field}
+    return {
+        "start": None if start is None else {"hash": start["hash"], "name": start["name"]},
+        "doors": found,
+    }

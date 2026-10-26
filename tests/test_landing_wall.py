@@ -193,7 +193,8 @@ def test_every_link_lands_on_its_heading_of_rules(block: landing.Block,
 
 
 def test_every_word_on_the_page_links_where_the_table_says() -> None:
-    links = re.findall(r'<a class="wallWord" href="([^"]+)" title="[^"]*">([^<]+)</a>', _wall())
+    links = re.findall(r'<a class="wallWord" href="([^"]+)" title="[^"]*" data-door="[^"]*">'
+                       r'([^<]+)</a>', _wall())
     sections = landing.rule_sections()
     expected = [(landing.word_link(word, sections), word.said.replace("'", "&#x27;"))
                 for _, word in WORDS]

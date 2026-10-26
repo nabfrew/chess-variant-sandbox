@@ -20,6 +20,7 @@ async function showLanding() {
   // The landing page is in none of the header's sections, at `/` or at `#/about`.
   document.querySelectorAll('#sections a').forEach(link => link.removeAttribute('aria-current'));
   dropUnoffered(view);
+  wireWallDoors();
   wireWallRails();
   startJourney();
   // LP6: a reload or a step back to the same story comes back where the reader was in it
@@ -91,6 +92,27 @@ function showScore(target) {
 function scoreAnchor(part) {
   const template = document.getElementById('scoreView');
   return !!(part && template && template.content && template.content.getElementById(part));
+}
+
+// LP7: each word of the wall gains its door into the designer, `#/design?rule=<key>`, from the
+// key the server put on it (`data-door`, `landing.door_link`'s spelling): the word becomes a
+// chip of two links, its section of /rules and *start a game with this rule*.
+const WALL_DOOR_SAID = 'start a game with this rule';
+
+function wireWallDoors() {
+  view.querySelectorAll('a.wallWord[data-door]').forEach(word => {
+    const chip = document.createElement('span');
+    chip.className = 'wallWord';
+    const door = document.createElement('a');
+    door.className = 'wallDoor';
+    door.href = '#/design?rule=' + encodeURIComponent(word.dataset.door);
+    door.title = WALL_DOOR_SAID;
+    door.setAttribute('aria-label', WALL_DOOR_SAID + ': ' + word.textContent);
+    door.textContent = '+';
+    word.replaceWith(chip);
+    word.className = 'wallRule';
+    chip.append(word, door);
+  });
 }
 
 // LP2: the wall of words. On a phone each family's words are one rail that scrolls sideways

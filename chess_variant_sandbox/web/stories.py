@@ -148,6 +148,9 @@ class Card:
     tail: str
     # Where the rule sits in a spec, so its line of the language is read off the spec.
     rule: tuple[str | int, ...]
+    # The rule's key as the wall of words spells it (`landing.Word.key`): the card's door
+    # into the designer, *start a game with this rule* (LP7, `#/design?rule=<key>`).
+    door: str
 
 
 @dataclass(frozen=True)
@@ -194,7 +197,8 @@ STORIES: tuple[Story, ...] = (
         note=("A stone never moves, is never captured and never leaves: a wall that blocks "
               "lines for both sides. That is {failed}, a game in the library."),
         card=Card(title="pieces played back onto the board", lead="each player holds a stone ×",
-                  was="as many as they like", now="three", tail="", rule=("rules", "drops")),
+                  was="as many as they like", now="three", tail="", rule=("rules", "drops"),
+                  door="rules.drops"),
         tweak="Three stones each, not as many as they like.",
         changes=(Change(("rules", "drops", "stock", "X"), "unlimited", 3),),
         wrong=Beat(
@@ -230,7 +234,8 @@ STORIES: tuple[Story, ...] = (
               "sides: a piece that ends its move on one end comes out one step beyond the "
               "other, capturing there as usual. That is {failed}, a game in the library."),
         card=Card(title="portals", lead="a pair on {ends}, open to", was="both players",
-                  now="Black only", tail="", rule=("rules", "portals")),
+                  now="Black only", tail="", rule=("rules", "portals"),
+                  door="rules.portals"),
         tweak="Shut the door to the player who moves first.",
         changes=(Change(("rules", "portals", 0, "passage"), now={"0": "closed"}),),
         wrong=Beat(
@@ -267,7 +272,7 @@ STORIES: tuple[Story, ...] = (
               "library."),
         card=Card(title="captures that explode", lead="when a queen", was="is taken",
                   now="takes", tail="; pawns are immune",
-                  rule=("rules", "explode_on_capture")),
+                  rule=("rules", "explode_on_capture"), door="rules.explode_on_capture"),
         tweak="The queen explodes when she takes, not when she is taken.",
         changes=(Change(("rules", "explode_on_capture", "of"), was=["Q"]),
                  Change(("rules", "explode_on_capture", "by"), now=["Q"])),
@@ -304,7 +309,8 @@ STORIES: tuple[Story, ...] = (
         note=("Nothing stops it: it sweeps any distance, through anything in its way. That is "
               "{failed}, a game in the library."),
         card=Card(title="sweep a line clear", lead="the bishop sweeps", was="any distance",
-                  now="up to three squares", tail="", rule=("pieces", 2, "moves")),
+                  now="up to three squares", tail="", rule=("pieces", 2, "moves"),
+                  door="sweep"),
         tweak="Three squares at most, not any distance.",
         changes=(Change(("pieces", 2, "moves", 0, "range"), now=3),),
         wrong=Beat(
@@ -346,7 +352,7 @@ GROUND = Story(
           "too. An example made for this page, not a library game: {failed}."),
     card=Card(title="claiming ground", lead="a claimed square", was="can be painted back",
               now="is kept for good", tail="; {goal} of the {squares} wins",
-              rule=("rules", "territory")),
+              rule=("rules", "territory"), door="rules.territory"),
     tweak="A claim is for good.",
     changes=(Change(("rules", "territory", "mode"), "repaint", "permanent"),),
     wrong=Beat(
@@ -904,7 +910,8 @@ def render_story(story: Story, app: Roots,
                  "was": story.card.was, "now": story.card.now,
                  "tail": _fill(story.card.tail, shared),
                  "before": rule_line(failed_spec, story.card.rule),
-                 "after": rule_line(fixed_spec, story.card.rule)},
+                 "after": rule_line(fixed_spec, story.card.rule),
+                 "door": story.card.door},
         "wrong": said(story.wrong, wrong),
         "change": {"say": story.tweak, "lines": change_lines(story.changes),
                    "edits": [{"path": list(ch.path),

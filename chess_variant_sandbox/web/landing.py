@@ -26,6 +26,7 @@ import html
 import re
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 from chess_variant_sandbox.corpus import CANONICAL_AGENTS, CANONICAL_GAMES
 from chess_variant_sandbox.metrics.components import QUICK_KILL_PLIES
@@ -384,6 +385,15 @@ WALL_LEAD = (
     "it down.")
 WALL_BAND = "Your idea next."
 
+# LP7 (`docs/plan-landing.md` §5): each word, and each story's card, is a door into the
+# designer at its rule, `#/design?rule=<key>`; `web/designing.doors` says what each key opens.
+DOOR_SAID = "start a game with this rule"
+
+
+def door_link(key: str) -> str:
+    """The designer's address at one rule key."""
+    return "#/design?rule=" + quote(key, safe=".")
+
 
 def section_key(key: str) -> str:
     """The rule key whose section of `/rules` writes `key` down: a rule's own section, the
@@ -439,9 +449,12 @@ def _wall_html() -> str:
     sections = rule_sections()
     rows = []
     for block in BLOCKS:
+        # The door is the key alone (`data-door`); `landing.js` draws it beside the word as
+        # `door_link`, so the page every view carries holds one attribute a word, not a link.
         words = "".join(
             f'<a class="wallWord" href="{_e(word_link(word, sections))}" '
-            f'title="{_e("in the designer: " + word.card)}">{_e(word.said)}</a>'
+            f'title="{_e("in the designer: " + word.card)}" data-door="{_e(word.key)}">'
+            f'{_e(word.said)}</a>'
             for word in block.words)
         rows.append(
             f'<div class="wallRow {block.hue}" data-wall="{_e(block.family)}">'
@@ -1188,6 +1201,8 @@ def story_html(story: dict[str, Any], others: list[dict[str, Any]] | None = None
                  f'<div class="ruleCard {hue}"><span class="swatch" aria-hidden="true"></span>'
                  f'<div><b>{_e(card["title"])}</b><span class="small muted">{_e(card["lead"])} '
                  f'{_e(card["was"])}{_e(card["tail"])}</span></div></div>'
+                 f'<p class="storyDoor small"><a href="{_e(door_link(card["door"]))}">'
+                 f'{_e(DOOR_SAID)}</a></p>'
                  + (f'<pre class="ruleCode"><code>{_e(before)}</code></pre>' if before else "")),
         _step(2, f'<h3 class="say bad">{_e(story["wrong"]["say"])}</h3>'
                  + _play("wrong", story["wrong"], _quick(failed) + _verdict(failed, False))),

@@ -352,3 +352,15 @@ def test_the_failings_say_each_test_once_where_every_run_failed_it() -> None:
         "run 1 of 4: quick kills, worse half came to 1.000; the same in all 4 runs; "
         "run 3 of 4: recovery from a mistake could not be measured on this game")
     assert landing._failings(["a, b", "c, d"]) == "a, b; c, d"
+
+
+def test_each_storys_card_is_a_door_into_the_designer(drawn: str,
+                                                      rendered: dict[str, Any]) -> None:
+    # LP7: the card of the idea, as a rule, opens the designer at the story's rule.
+    assert rendered["stories"]
+    for story in rendered["stories"]:
+        part = _part(drawn, story["key"])
+        door = landing.door_link(story["card"]["door"])
+        assert (f'<p class="storyDoor small"><a href="{door}">{landing.DOOR_SAID}</a></p>'
+                in part), story["key"]
+        assert part.count('class="storyDoor') == 1

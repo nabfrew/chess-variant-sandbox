@@ -1526,7 +1526,9 @@ function render() {
   // the window scrolls; the panels that scroll inside themselves, such as the board's
   // move list, are untouched.
   window.scrollTo(0, 0);
-  let parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  // LP7: a query after the route (`#/design?rule=<key>`) is the view's, not a part of it.
+  let parts = location.hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean);
+  const routeQuery = new URLSearchParams(location.hash.split('?').slice(1).join('?'));
   // Q723: `#/` is the games, said as `/game` (a saved `/#/` is replaced, not followed).
   if (!parts.length && location.hash.replace(/^#/, '') === '/') {
     try { history.replaceState(null, '', GAMES_PATH); } catch (error) { /* stays */ }
@@ -1589,7 +1591,7 @@ function render() {
   }
   // The designer takes an optional ruleset to start from, which is what "make one like
   // this" on a game's page links to. With none it starts from a template.
-  if (parts[0] === 'design') return showDesigner(parts[1] || '').catch(fail);
+  if (parts[0] === 'design') return showDesigner(parts[1] || '', routeQuery.get('rule')).catch(fail);
   if (parts[0] === 'opponent' && parts[1]) return showBotBuilder(parts[1]).catch(fail);
   if (parts[0] === 'run' && parts[1] && RUN && RUN.id === parts[1]) return showRun(RUN);
   return showLibrary().catch(fail);

@@ -675,11 +675,15 @@ class App:
             # Everything the editor needs before it can draw anything: what a new game
             # can start from, and what an opponent can be told to care about.
             corpus_specs = cards.corpus_specs(self.ruleset_dir, self.archive_dir)
+            model = cards.card_model(corpus_specs)
             return {
                 "templates": designing.templates(),
                 "vocabulary": designing.vocabulary(),
                 "schema": designing.schema_note(),
-                "cards": cards.card_model(corpus_specs),
+                "cards": model,
+                # LP7: `#/design?rule=<key>`, a door at each rule the designer has a
+                # control for, opening on a copy of chess (`designing.doors`).
+                "doors": designing.doors(model, self._door_start()),
                 # What a rule is called and what it does, in words. The schema describes
                 # thirteen of the twenty-eight keys and names all of them, so a menu
                 # built from the schema alone can only show the key.
@@ -858,6 +862,18 @@ class App:
         answer["taken"] = ends[1 - int(made["on"])]
         answer["words"] = str(made["words"])
         return answer
+
+    # The game a door into the designer copies (LP7, `docs/plan-landing.md` §5): chess, the
+    # game everybody knows, so the one rule added is the one thing that is new.
+    DOOR_START = "chess.json"
+
+    def _door_start(self) -> dict[str, Any] | None:
+        """The library's chess, as a door copies it, or None where this library has none."""
+        path = (self.ruleset_dir / self.DOOR_START).resolve()
+        for game in self.known().values():
+            if game.path.resolve() == path:
+                return {"hash": game.hash, "name": game.name, "spec": game.spec}
+        return None
 
     def post(self, path: str, body: dict[str, Any]) -> Any:
         parts = [part for part in path.strip("/").split("/") if part]

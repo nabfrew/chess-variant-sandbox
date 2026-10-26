@@ -250,21 +250,32 @@ RULES = """
   .wallRow dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
   .wall .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none;
                   background: var(--family); }
-  .landing a.wallWord { display: inline-flex; align-items: center; min-height: var(--chip-h);
-                        padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px;
-                        background: var(--panel); color: var(--ink); font-size: 14px;
-                        line-height: 18px; text-decoration: none; white-space: nowrap;
-                        transition: border-color .2s, box-shadow .2s, transform .2s; }
-  .landing a.wallWord:hover, .landing a.wallWord:focus-visible {
+  /* LP7: a word is two links in one chip, its section of /rules and, after a hairline, its
+     door into the designer (`+`, *start a game with this rule*). */
+  .landing .wallWord { display: inline-flex; align-items: stretch; min-height: var(--chip-h);
+                       border: 1px solid var(--line); border-radius: 999px;
+                       background: var(--panel); font-size: 14px; line-height: 18px;
+                       white-space: nowrap; flex: none;
+                       transition: border-color .2s, box-shadow .2s, transform .2s; }
+  .landing a.wallWord, .landing .wallWord a { display: inline-flex; align-items: center;
+                                             color: var(--ink); text-decoration: none; }
+  .landing a.wallWord { padding: 4px 12px; }
+  .landing .wallWord a.wallRule { padding: 4px 10px 4px 12px; }
+  .landing .wallWord a.wallDoor { padding: 4px 11px 4px 9px; border-left: 1px solid var(--line);
+                                  color: var(--family); font-weight: 600; }
+  .landing .wallWord:hover, .landing .wallWord:focus-within {
     border-color: var(--family); box-shadow: inset 3px 0 0 var(--family);
     transform: translateY(-1px); }
+  .landing .wallWord a.wallDoor:hover, .landing .wallWord a.wallDoor:focus-visible {
+    background: var(--act-tint); border-radius: 0 999px 999px 0; }
+  .landingB .storyDoor { margin: 8px 0 0; }
   .wallBand { margin-top: 26px; padding: 20px 24px; border-radius: 12px;
               background: var(--act-tint); display: flex; flex-wrap: wrap; gap: 12px 24px;
               align-items: center; justify-content: space-between; }
   .wallBand p { margin: 0; font-family: var(--f-head); font-size: 24px; line-height: 30px; }
   @media (prefers-reduced-motion: reduce) {
-    .landing a.wallWord { transition: none; }
-    .landing a.wallWord:hover, .landing a.wallWord:focus-visible { transform: none; }
+    .landing .wallWord { transition: none; }
+    .landing .wallWord:hover, .landing .wallWord:focus-within { transform: none; }
   }
   @media (max-width: 760px) {
     .wallRow { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 0; }
@@ -1648,6 +1659,10 @@ RULES = """
   .cardShow { font-size: 13px; line-height: 18px; }
   .cardShow + .cardDrop { margin-left: 0; }
   .cardSays { margin-top: 2px; line-height: 1.35; }
+  /* LP7: a door into the designer marks the card it opened on, and says so once. */
+  .doorCard { outline: 2px solid var(--act); outline-offset: 3px; border-radius: var(--r-ctl); }
+  .doorSaid { max-width: 70ch; padding: 8px 12px; border-radius: var(--r-panel);
+              background: var(--act-tint); }
   .cardBody { display: grid; gap: 2px; margin-top: 4px; }
   .listControl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .listControl input[data-cpart="text"] { flex: 1 1 140px; width: auto; }
