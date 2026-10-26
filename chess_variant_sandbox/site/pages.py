@@ -50,6 +50,9 @@ from chess_variant_sandbox.site import asking, quota, routes, seo, terms
 from chess_variant_sandbox.site import badges as site_badges
 from chess_variant_sandbox.viz import pieces
 from chess_variant_sandbox.web.page import (
+    SCRIPT_PREFIX as PAGE_SCRIPT_PREFIX,
+)
+from chess_variant_sandbox.web.page import (
     assets,
     front,
     marks,
@@ -242,6 +245,112 @@ _OWN = """
   main.member ul.lines li { font-size: 15px; line-height: 22px; }
   main.member select { max-width: 100%; }
 
+  /* UP2, your own page as the workshop (docs/plan-user-page.md §3.2): what waits on you
+     beside your published game, the path every game takes with your games on it, then
+     your record, what you have done and the settings, folded. Boards are the app's still
+     board (`stillboard.js`), each in a box of its own width. */
+  main.profile { max-width: none; }
+  main.profile section, main.profile #done, main.profile #drafts { margin-top: 34px; }
+  main.profile h2 { font-size: 22px; line-height: 28px; margin: 0 0 10px; }
+  .whoBand { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+             margin: 6px 0 4px; }
+  .whoBand h1 { font-size: 34px; line-height: 40px; margin: 0; }
+  .whoBand .memberMark { display: block; }
+  .bandLinks { font-size: 14px; }
+  .lead.leadIn { margin: 0 0 14px; font-size: 14px; max-width: 46rem; }
+  .startDoors { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 8px; }
+
+  .hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px;
+          align-items: start; }
+  .hero.lone { grid-template-columns: minmax(0, 46rem); }
+  .hero[hidden] { display: none; }
+  ul.waitRows { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 10px; }
+  .waitRow, .feature, .mini { background: var(--paper) 0 0 / 180px, var(--panel);
+                              border: 1px solid var(--line); border-radius: var(--r-panel);
+                              box-shadow: var(--shadow); }
+  .waitRow { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 14px;
+             align-items: center; padding: 10px 12px; }
+  .waitRow.yours { border-color: var(--act); box-shadow: 0 0 0 1px var(--act), var(--shadow); }
+  .waitRow .kicker, .feature .kicker { font-size: 12px; line-height: 16px; color: var(--muted); }
+  .waitRow .title { font-weight: 600; font-size: 16px; line-height: 22px; }
+  .waitRow .facts, .mini .facts, .feature .facts { margin: 2px 0 0; font-size: 13px;
+                                                   line-height: 18px; color: var(--muted); }
+  .waitRow .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .stillBox { min-width: 0; }
+  .stillBox .board-frame { pointer-events: none; }
+  .stillBox .stillHand { font-size: 12px; margin-top: 4px; }
+  ul.quiet { list-style: none; margin: 0 0 6px; padding: 0; font-size: 14px; }
+  ul.quiet li { margin: 0 0 6px; }
+  ul.quiet li > b { margin-right: 6px; }
+  .feature { margin: 0; padding: 16px; display: grid; gap: 8px; }
+  .feature h3 { font-size: 24px; line-height: 30px; margin: 0; color: var(--ink); }
+  .feature .stillBox { max-width: 380px; }
+
+  .secHead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+             gap: 8px 16px; }
+  .pipe { display: grid; grid-template-columns: 2.2fr repeat(4, minmax(0, 1fr)); gap: 12px;
+          align-items: start; }
+  .pipe.extra { grid-template-columns: 2.2fr repeat(5, minmax(0, 1fr)); }
+  .pipeCol { display: grid; gap: 10px; padding: 10px; border-radius: var(--r-panel);
+             background: var(--sunk); align-content: start; min-width: 0; }
+  .pipeCol > header { display: grid; gap: 2px; padding: 0 2px 6px; text-align: left;
+                      border-bottom: 2px solid var(--line); }
+  .pipeCol > header b { font-family: var(--f-head); font-size: 16px; }
+  .pipeCol > header span { font-size: 12px; line-height: 16px; color: var(--muted); }
+  .pipeCol.first { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pipeCol.first > header { grid-column: 1 / -1; }
+  .mini { padding: 10px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+  .mini h3 { font-size: 16px; line-height: 22px; margin: 0; }
+  .mini .change { font-size: 12px; line-height: 16px; color: var(--muted);
+                  border-left: 2px solid var(--line); padding-left: 6px; }
+  .mini .go { font-size: 13px; }
+  .mini.door { background: none; box-shadow: none; border: 1.5px dashed var(--edge);
+               text-align: center; align-content: center; min-height: 120px; }
+  .mini.door p { margin: 0; font-size: 13px; color: var(--muted); }
+  .rungDots { display: flex; gap: 4px; margin-top: 2px; }
+  .rungDots i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); }
+  .rungDots i.done { background: var(--good); border-color: var(--good); }
+  .rungDots i.failed { border-color: var(--bad); }
+  .rungDots i.running { border-color: var(--good); }
+
+  .counts.compact { margin: 0 0 14px; }
+  #proven .rule { display: block; font-size: 12px; color: var(--muted); }
+  ul.dated { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  ul.dated li { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 12px;
+                font-size: 15px; line-height: 21px; }
+  ul.dated .when { font: 13px/21px var(--f-mono); color: var(--muted); }
+  ul.dated .rule { display: block; font-size: 13px; line-height: 18px; color: var(--muted); }
+
+  details.settings { margin-top: 34px; }
+  details.settings > summary { cursor: pointer; font-family: var(--f-head); font-size: 20px;
+                               font-weight: 600; }
+  .settingsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
+                  margin-top: 12px; }
+  .setting:empty { display: none; }
+  .setting { background: var(--paper) 0 0 / 180px, var(--panel); border: 1px solid var(--line);
+             border-radius: var(--r-panel); box-shadow: var(--shadow); padding: 4px 14px 6px; }
+  .setting h3 { margin-top: 10px; }
+
+  @media (max-width: 1000px) {
+    .pipe, .pipe.extra { grid-template-columns: minmax(0, 1fr); }
+    .pipeCol.empty > header { border: 0; padding: 0; display: flex; gap: 8px;
+                              align-items: baseline; flex-wrap: wrap; }
+    .mini:not(.door) { grid-template-columns: 96px minmax(0, 1fr); align-items: start; }
+    .mini:not(.door) > .stillBox { grid-row: 1 / span 6; }
+  }
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: minmax(0, 1fr); }
+    .feature .stillBox { max-width: 100%; }
+  }
+  @media (max-width: 760px) {
+    .whoBand h1 { font-size: 28px; line-height: 34px; }
+    .waitRow { grid-template-columns: 72px minmax(0, 1fr); }
+    .waitRow .acts { grid-column: 1 / -1; justify-content: flex-start; }
+    .pipeCol.first { grid-template-columns: minmax(0, 1fr); }
+    ul.dated li { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .settingsGrid { grid-template-columns: minmax(0, 1fr); }
+  }
+
   /* The profile's record, narrow. The last three columns -- the best opponent beaten,
      the rungs and the distance to the top -- are columns on a desk and lines under the
      game's name below 760px, so eight columns never have to fit a phone. */
@@ -283,6 +392,16 @@ SCRIPTS: dict[str, Path] = {
 }
 # Named by their digests, for a year, as the application's are (G12, `web/page/assets.py`).
 assets.serve_files(SCRIPTS)
+
+# UP2: the application's own still board, for a page that draws a position (the user
+# page's games and waiting games): `stillboard.js` and the two files it draws with, the
+# same bytes under the same names as the application loads, so a browser that has been
+# on either side has them already. One drawing of a board, never a second (rule:
+# `stillboard.js` and `board.js` hold the only copies). Each of the three declares only
+# functions and constants and touches no element as it loads; the page's own script
+# supplies the three globals the application's `core.js` would (`FLIPPED`, `PIECE_ART`,
+# `esc`).
+BOARD_SCRIPTS = ("wrapped", "wood", "stillboard")
 
 
 TAGLINE = shell.TAGLINE  # the application's header line, one spelling for both
@@ -372,6 +491,7 @@ def _shell(
     *,
     description: str,
     path: str | None = None,
+    boards: bool = False,
 ) -> str:
     """One page, in the application's shell.
 
@@ -391,10 +511,14 @@ def _shell(
 
     A page with no script gets no `<script>` tag at all, and no page gets a script body:
     `scripts` names files under `site/static/`, loaded in order, and `data` is what the
-    server hands them, as JSON in a tag that never runs. `<` is written `\\u003c` there,
+    server hands them. `boards` loads the application's still board first (`BOARD_SCRIPTS`),
+    for a page that draws a game's position, as JSON in a tag that never runs. `<` is written `\\u003c` there,
     so no value can close the tag.
     """
-    tail = script_tags(f"{SCRIPT_PREFIX}{name}.js" for name in scripts)
+    tail = script_tags([
+        *(f"{PAGE_SCRIPT_PREFIX}{name}.js" for name in (BOARD_SCRIPTS if boards else ())),
+        *(f"{SCRIPT_PREFIX}{name}.js" for name in scripts),
+    ])
     base = seo.site_base()
     head = front.head_lines(
         title,
@@ -512,32 +636,36 @@ def not_found() -> str:
     return _shell("No page here", body, kind="lost", description=NOT_FOUND_SAYS)
 
 
-def _who(handle: str, user: int | None, linked: bool = False) -> str:
-    """The header's corner on a signed-in page: the reader's mark (R2) and handle, on
-    every page but their own one a button to it (Q731: a bare name read as a label saying
-    who is signed in, not as a way somewhere). `_member_button` is the one markup; the
-    application's header builds the same element in `core.js`'s `paintIdentity`."""
+def _who(handle: str, user: int | None, linked: bool = False, here: bool = False) -> str:
+    """The header's corner on a signed-in page: the reader's mark (R2) and handle as a
+    button to their own page (Q731: a bare name read as a label saying who is signed in,
+    not as a way somewhere), on their own page too, marked there as the page you are on
+    (UP0). `_member_button` is the one markup; the application's header builds the same
+    element in `core.js`'s `paintIdentity`."""
     mark = "" if user is None else marks.svg(user, 20)
     if linked:
-        return _member_button(handle, mark)
+        return _member_button(handle, mark, here=here)
     return f"{mark}{escape(handle)}"
 
 
-def _member_button(handle: str, mark: str = "") -> str:
+def _member_button(handle: str, mark: str = "", *, here: bool = False) -> str:
     """The header's way to your own page: your mark and handle, then *your page* and a
     chevron, in one outlined button (`style.py`'s `.memberButton`). Its name says both
-    what it is and who is signed in; on a phone the handle goes and *your page* stays."""
+    what it is and who is signed in; on a phone the handle goes and *your page* stays.
+    On that page itself it carries `aria-current="page"`."""
     named = escape(handle)
+    current = ' aria-current="page"' if here else ""
     return (
-        f'<a class="memberButton" href="/profile" aria-label="Your page, signed in as {named}">'
+        f'<a class="memberButton" href="/profile"{current} '
+        f'aria-label="Your page, signed in as {named}">'
         f'{mark}<span class="memberName">{named}</span>'
         '<span class="memberGo">your page<span aria-hidden="true"> ›</span></span></a>'
     )
 
 
-def _your_mark(user: int | None) -> str:
+def _your_mark(user: int | None, size: int = 40) -> str:
     """Your page's heading carries your mark large, beside your handle (R2)."""
-    return "" if user is None else marks.svg(user, 40)
+    return "" if user is None else marks.svg(user, size)
 
 
 def _then(asked: str | None) -> str | None:
@@ -716,34 +844,33 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
     and a line whose rules the store will not hand back draws no link.
     """
     body = (
-        f"<h1>{_your_mark(user)}{escape(handle)}</h1>\n"
-        '<p class="lead">What you have played, and how many of each game\'s computer '
-        "players you have beaten, weakest to strongest.</p>\n"
-        '<div class="counts" id="counts"></div>\n'
-        # L2 of `docs/archive/plan-launch.md` §3.2: in the counts' place until the first is
-        # non-zero, what a person can do here rather than three noughts.
+        # UP2: the member's mark large beside the handle, the page's one piece of identity
+        # (§2.4), and the way to the page as other members see it.
+        f'<div class="whoBand">{_your_mark(user, 64)}<h1>{escape(handle)}</h1>'
+        '<span class="grow"></span><span class="bandLinks" id="band-links"></span></div>\n'
+        # L2 of `docs/archive/plan-launch.md` §3.2 and UP2: for a member with nothing here
+        # yet, what they can do: build a game first, today's game beside it.
         '<div id="start"></div>\n'
-        # B2, above the table: the one part of this page that is an unfinished thing
-        # rather than a record of finished ones.
-        '<div id="carry"></div>\n'
-        # Q572, s6 of the mock: *Correspondence*. Q570's games between people, running,
-        # and the line of what this person finished; Q571's challenges for you and sent
-        # by you, and the games you are open to; and the one email's box.
-        '<div id="correspondence"><h2>Correspondence</h2>\n'
+        # UP2 (direction B, §3.2): *Waiting on you* first, a row each with a small board
+        # and one action, the quiet lines under them; beside it the member's published
+        # game, large. B2's games left running, Q570's games between people and Q571's
+        # challenges all wait here.
+        '<section class="hero" id="waiting" hidden><div class="heroLeft">\n'
+        '<h2 id="wait-head">Waiting on you</h2>\n'
         '<div id="between"></div>\n'
         '<div id="challenges"></div>\n'
-        '<div id="move-email"></div>\n'
-        # Q606 (R10): the maker's one switch, drawn only for somebody with a published
-        # game of their own.
-        '<div id="takes-challengers"></div></div>\n'
-        # Q719: *Invite somebody*, drawn only for a person `/admin` gave invitations to.
-        '<div id="invite"></div>\n'
-        # Q596: your page as other members see it, and its one box (R1).
-        '<div id="your-page"></div>\n'
-        # Q503b: the games this person made, grouped by level, each with its next step.
-        '<div id="mine"></div>\n'
+        '<div id="carry"></div>\n'
+        '<div id="between-quiet"></div>\n'
+        '<div id="challenges-quiet"></div>\n'
+        '<p class="under" id="wait-rule"></p></div>\n'
+        '<div id="featured"></div></section>\n'
+        # Q503b and UP2: the games this person made, as the path every game takes, each in
+        # the column of where it stands (`workshop.columns`).
+        '<section id="mine"></section>\n'
         # Q503a: the games a save had listed, back to Draft, with the reason.
         '<div id="drafts"></div>\n'
+        '<section id="record-part"><h2 id="record-head">Your record</h2>\n'
+        '<div class="counts" id="counts"></div>\n'
         '<table class="record" id="record"><thead><tr><th>game</th><th>played</th><th>won</th>'
         '<th>drawn</th><th>lost</th><th class="best">best beaten</th>'
         '<th class="beat">computer players beaten</th><th class="dist">your rating</th>'
@@ -754,25 +881,39 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
         "added later, there is a new one to beat. <em>your rating</em> is your rating on "
         "that game, then how far it sits from the game's strongest computer player, and "
         "it is blank until you have played a rated game there.</p>\n"
+        # UP0 and choice F1: the rated games not played, one line naming the library's
+        # filters, which is all of *still open* the page says.
+        '<p class="under" id="untried"></p>\n'
+        # R9b (Q605): this person's own solved marks on proven positions, in one line.
+        '<div id="proven"></div></section>\n'
         '<div id="done"></div>\n'
-        # R9b (Q605): this person's own solved marks on proven positions, by game.
-        '<div id="proven"></div>\n'
-        '<div id="open"></div>\n'
         # Always here, badges or none. A rule shown only to whoever has met it is a
         # hidden rule (§3, test 7), so the way to the list cannot depend on the reader.
         '<p class="under">Badges are dated records of things people do here. '
         '<a href="/badges">Every badge and what earns it</a> is on one page, the same '
         "for everybody.</p>\n"
+        # Choice E1: settings and invitations folded at the foot, every box with its
+        # sentence. Q572's email, Q606's switch, Q596's page box and Q719's invitations.
+        '<details class="settings" id="settings"><summary>Settings and invitations</summary>\n'
+        '<div class="settingsGrid">\n'
+        '<div class="setting" id="move-email"></div>\n'
+        '<div class="setting" id="takes-challengers"></div>\n'
+        '<div class="setting" id="your-page"></div>\n'
+        '<div class="setting" id="invite"></div>\n'
+        "</div></details>\n"
         '<p class="note" id="note"></p>\n'
         '<div class="row"><button id="out">sign out</button></div>'
     )
     scripts = ("post", "game-link", "play-link", "profile")
     data = {"LINES": _MILESTONE_LINES, "SHOWN": _SHOWN}
-    # The corner names the reader, as the application's header does. Here it is text
-    # rather than a link, because the page it would link to is this one.
+    # The corner names the reader with the same button as on every other page (UP0: a
+    # way back that looked different from the place it leads read as two places), marked
+    # as the page you are on.
     return _shell(
-        f"{handle} on Chess variant sandbox", body, scripts, kind="wide", corner=_who(handle, user),
+        f"{handle} on Chess variant sandbox", body, scripts, kind="wide profile",
+        corner=_who(handle, user, linked=True, here=True),
         data=data, players=players, description=PROFILE_SAYS, path="/profile",
+        boards=True,
     )
 
 

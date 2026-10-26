@@ -2776,7 +2776,10 @@ class TestOneShell:
         """The application fills it from `/api/me`; these pages are rendered by the
         server, which hands the handle to the two pages that have one. Credits and
         privacy read no cookie at all, so their corner is empty on purpose."""
-        assert '<span class="muted small" id="who">ada</span>' in page_text.inlined(site_pages.profile("ada"))
+        # UP0: your own page carries the same button as every other page, marked current.
+        assert (f'<span class="muted small" id="who">'
+                f'{site_pages._member_button("ada", here=True)}</span>'
+                in page_text.inlined(site_pages.profile("ada")))
         assert f'{site_pages._member_button("boss")}</span>' in page_text.inlined(site_pages.admin("boss"))
         assert f'{site_pages._member_button("ada")}</span>' in page_text.inlined(site_pages.players("ada"))
         for path in ("/signin", "/join", "/credits", "/privacy", "/terms", "/badges",
@@ -4732,6 +4735,106 @@ def _done(lines: list[dict[str, Any]], held: list[dict[str, Any]] | None = None)
     )
 
 
+class TestTheUserPagesFaultsThatNeedNoChoice:
+    """UP0 of `docs/plan-user-page.md` §5. The record lists the games played and says the
+    rest in one line; no count tile reads a nought; a day is written one way; the corner
+    is the same button on your own page; no script writes a fixed style."""
+
+    @staticmethod
+    def _game(name: str, **record: Any) -> dict[str, Any]:
+        return {"hash": name * 4, "name": name, "played": 0, "won": 0, "drawn": 0,
+                "lost": 0, "unbeaten": True, "retired": False, **record}
+
+    def _record(self, games: list[dict[str, Any]], deleted: list[str] | None = None) -> Any:
+        return _rendered(
+            f"DELETED = new Set({json.dumps(deleted or [])});"
+            f"const GAMES = {json.dumps(games)};"
+            "drawGames(GAMES, true); drawUntried(GAMES, true);"
+            "const under = document.getElementById('untried');"
+            "console.log(JSON.stringify({"
+            " rows: document.getElementById('games').children.map(row => row.textContent),"
+            " line: under.textContent,"
+            " links: under.children.filter(child => child.href).map(child =>"
+            "   [child.href, child.textContent])}));"
+        )
+
+    def test_an_unplayed_game_is_never_a_row(self) -> None:
+        said = self._record([
+            self._game("alpha", played=2, won=1, lost=1),
+            self._game("beta"), self._game("gamma", unbeaten=False),
+            self._game("delta", played=1, drawn=1, retired=True),
+        ])
+        assert len(said["rows"]) == 2
+        assert said["rows"][0].startswith("alpha") and said["rows"][1].startswith("delta")
+        assert not any(row.startswith(("beta", "gamma")) for row in said["rows"])
+
+    def test_the_rest_are_one_line_linking_the_librarys_filters(self) -> None:
+        said = self._record([
+            self._game("alpha", played=1, lost=1), self._game("beta"),
+            self._game("gamma", unbeaten=False), self._game("delta"),
+            # Neither retired nor deleted games are in the library to be tried.
+            self._game("eps", retired=True), self._game("zeta"),
+        ], deleted=["zeta" * 4])
+        assert said["line"] == (
+            "You have not played 3 of the rated games yet (they are under untried by you "
+            "in the library), and on 2 of those nobody has beaten the strongest computer "
+            "player yet (every such game is under Unbeaten)."
+        )
+        assert said["links"] == [["/game?tag=untried", "untried by you"],
+                                 ["/game?tag=unbeaten", "Unbeaten"]]
+
+    def test_the_line_drops_what_would_be_a_nought(self) -> None:
+        said = self._record([self._game("alpha", played=1), self._game("beta", unbeaten=False)])
+        assert said["line"] == ("You have not played 1 of the rated games yet (it is under "
+                                "untried by you in the library).")
+        assert self._record([self._game("alpha", played=1)])["line"] == ""
+
+    @pytest.mark.parametrize("counts", [
+        {"rated": 9, "tried": 1, "won": 0, "top": 0, "highest": 0},
+        {"rated": 9, "tried": 4, "won": 2, "top": 0, "highest": 0},
+        {"rated": 9, "tried": 4, "won": 0, "top": 0, "highest": 1},
+        {"rated": 9, "tried": 4, "won": 3, "top": 1, "highest": 2},
+    ])
+    def test_no_count_tile_reads_a_nought(self, counts: dict[str, int]) -> None:
+        tiles = _rendered(
+            f"drawCounts({json.dumps(counts)});"
+            "console.log(JSON.stringify(document.getElementById('counts').children"
+            ".map(tile => tile.children[0].textContent)));"
+        )
+        assert tiles and "0" not in tiles
+        assert len(tiles) == sum(1 for key in ("tried", "won", "top", "highest") if counts[key])
+
+    def test_a_day_is_written_as_the_members_page_writes_it(self) -> None:
+        from datetime import datetime, timezone
+
+        stamps = ["2026-10-24T09:15:00+00:00", "2026-01-03T23:59:59+00:00", "2026-12-31"]
+        said = _rendered(f"console.log(JSON.stringify({json.dumps(stamps)}.map(day)));")
+        assert said == ["24 Oct 2026", "3 Jan 2026", "31 Dec 2026"]
+        for stamp, shown in zip(stamps, said, strict=True):
+            when = datetime.fromisoformat(stamp).replace(tzinfo=timezone.utc)
+            assert site_pages._day(when) == shown
+
+    def test_the_corner_on_your_own_page_is_the_button_marked_current(self) -> None:
+        page = site_pages.profile("ada", user=7)
+        corner = page[page.index('id="who">'):]
+        corner = corner[: corner.index("</span>\n")]
+        assert '<a class="memberButton" href="/profile" aria-current="page"' in corner
+        assert 'aria-current' not in site_pages.players("ada", user=7).split('id="who">')[1][:300]
+
+    def test_no_label_is_shown_by_a_style_write(self) -> None:
+        script = (site_pages.SCRIPT_DIR / "profile.js").read_text(encoding="utf-8")
+        assert ".style.display" not in script
+        assert script.count("label.className = 'u-d-block';") == 3
+
+    def test_the_library_takes_one_filter_from_the_link(self) -> None:
+        from page_text import PAGE
+
+        assert "BROWSE.tag = askedTag();" in PAGE
+        assert "const ASKED_TAGS = ['unbeaten', 'beaten', 'unrated', 'untried'];" in PAGE
+        assert "if (BROWSE.tag === 'untried' && game.untried !== true) return false;" in PAGE
+        assert "${VIEWER ? option('untried', 'untried by you', BROWSE.tag) : ''}" in PAGE
+
+
 class TestTheProfileDrawsTheMetaGame:
     """A2's own half. The dated lines and *still open* under the table, and the two new
     columns in it, all drawn from `GET /api/profile` through text nodes.
@@ -4758,8 +4861,8 @@ class TestTheProfileDrawsTheMetaGame:
     def test_a_line_names_its_milestone_its_game_its_date_and_its_seat(self) -> None:
         said = _done(self.LINES)
         assert said.startswith("What you have done")
-        assert "Both sides, on alpha, 2026-09-14, playing second." in said
-        assert "The tour, completed on beta, 2026-09-13, playing first." in said
+        assert "Both sides, on alpha, 14 Sep 2026, playing second." in said
+        assert "The tour, completed on beta, 13 Sep 2026, playing first." in said
 
     def test_a_line_carries_its_own_rule(self) -> None:
         """§3's seventh test. A page that named a rule only once you had met it would be
@@ -4771,87 +4874,14 @@ class TestTheProfileDrawsTheMetaGame:
     def test_a_person_with_no_milestones_gets_no_heading(self) -> None:
         assert _done([]) == ""
 
-    def test_still_open_names_a_kind_its_counts_and_a_few_of_the_untried_games(
-        self,
-    ) -> None:
-        axes = [{"axis": "board", "kinds": [
-            {"bin": "small", "tried": False,
-             "untried": ["aaa", "bbb", "ccc", "ddd", "eee"],
-             "unwon": ["aaa"], "unbeaten": ["fff"]},
-        ]}]
-        said = _rendered(
-            "NAMES = {aaa: 'alpha', bbb: 'beta', ccc: 'gamma', ddd: 'delta',"
-            " eee: 'epsilon'};"
-            f"drawStillOpen({json.dumps(axes)});"
-            "console.log(JSON.stringify(document.getElementById('open').textContent));"
-        )
-        assert "Still open for you" in said
-        assert "board" in said
-        assert (
-            "small (a kind you have not tried) — 5 untried, 1 not yet won, "
-            "1 still Unbeaten. alpha, beta, gamma, delta and 1 more."
-        ) in said
-
-    def test_still_open_speaks_in_the_kind_cards_words(self) -> None:
-        """S6. The heading is the question and the line the kind, both the server's,
-        rather than the grid's own keys (*ending*, *ground*)."""
-        axes = [{"axis": "ending", "asks": "How the game is won", "kinds": [
-            {"bin": "ground", "words": "won by claiming enough of the board",
-             "tried": True, "untried": ["aaa"], "unwon": [], "unbeaten": []},
-        ]}]
-        said = _rendered(
-            "NAMES = {aaa: 'alpha'};"
-            f"drawStillOpen({json.dumps(axes)});"
-            "console.log(JSON.stringify(document.getElementById('open').textContent));"
-        )
-        assert "How the game is won" in said
-        assert "won by claiming enough of the board — 1 untried" in said
-        assert "ending" not in said and "ground —" not in said
-        assert "behaviour grid" not in said
-
-    def test_a_kind_you_have_tried_is_not_marked_as_one_you_have_not(self) -> None:
-        axes = [{"axis": "board", "kinds": [
-            {"bin": "small", "tried": True, "untried": [], "unwon": ["aaa"],
-             "unbeaten": []},
-        ]}]
-        said = _rendered(
-            "NAMES = {aaa: 'alpha'};"
-            f"drawStillOpen({json.dumps(axes)});"
-            "console.log(JSON.stringify(document.getElementById('open').textContent));"
-        )
-        assert "a kind you have not tried" not in said
-        assert "small — 1 not yet won." not in said
-        assert "small — 1 not yet won" in said
-
-    def test_a_bin_with_nothing_open_is_left_out(self) -> None:
-        axes = [{"axis": "board", "kinds": [
-            {"bin": "small", "tried": True, "untried": [], "unwon": [], "unbeaten": []},
-            {"bin": "large", "tried": True, "untried": ["aaa"], "unwon": [],
-             "unbeaten": []},
-        ]}]
-        said = _rendered(
-            "NAMES = {aaa: 'alpha'};"
-            f"drawStillOpen({json.dumps(axes)});"
-            "console.log(JSON.stringify(document.getElementById('open').textContent));"
-        )
-        assert "small" not in said
-        assert "large" in said
-
-    def test_an_axis_with_nothing_open_draws_no_section(self) -> None:
-        """Both ways of having nothing to say. A bin list that is empty, and bins whose
-        every reading is closed, leave out the heading rather than draw an empty one."""
-        for kinds in (
-            [],
-            [{"bin": "small", "tried": True, "untried": [], "unwon": [],
-              "unbeaten": []}],
-        ):
-            axes = [{"axis": "army", "kinds": kinds}]
-            said = _rendered(
-                f"drawStillOpen({json.dumps(axes)});"
-                "console.log(JSON.stringify("
-                "document.getElementById('open').textContent));"
-            )
-            assert said == "", kinds
+    def test_still_open_is_one_line_and_never_the_library_again_by_kind(self) -> None:
+        """Choice F1 of `docs/plan-user-page.md` §4 (UP2): *still open* is the one line under
+        the record that names the library's filters (`drawUntried`, UP0's), never the
+        library again grouped by kind of game."""
+        page = page_text.inlined(site_pages.profile("ada"))
+        assert "Still open for you" not in page and "drawStillOpen" not in page
+        assert 'id="open"' not in page and 'id="untried"' in page
+        assert "drawUntried(payload.games, payload.counts.tried > 0);" in page
 
     def test_the_two_columns_word_their_own_readings(self) -> None:
         said = _rendered(
@@ -4893,64 +4923,75 @@ class TestTheProfileDrawsTheMetaGame:
 
 
 class TestAnEmptyProfileSaysWhatToDo:
-    """L2 of `docs/archive/plan-launch.md` §3.2. A profile with nothing on it says what a person
-    can do, never three noughts over a table of *none yet*; once a rated game is finished
-    the counts and the table are back and the line is gone."""
+    """L2 of `docs/archive/plan-launch.md` §3.2, and UP2 of `docs/plan-user-page.md` §5. A page
+    with nothing on it says what a person can do, never three noughts over a table of *none
+    yet*: *Start building a game* first, the one primary (the site's key idea), *Play
+    today's game* beside it, and one line on what the page will hold. Once a rated game is
+    finished, a game made or a game waiting, the counts and the table are back and the
+    doors are gone."""
 
     @staticmethod
     def _game(name: str, **record: Any) -> dict[str, Any]:
         return {"hash": name * 4, "name": name, "played": 0, "won": 0, "drawn": 0,
                 "lost": 0, "unbeaten": True, "retired": False, **record}
 
-    def _drawn(self, counts: dict[str, Any], games: list[dict[str, Any]]) -> Any:
+    def _drawn(self, counts: dict[str, Any], games: list[dict[str, Any]], busy: bool = False,
+               today: dict[str, str] | None = None) -> Any:
         return _rendered(
             f"const COUNTS = {json.dumps(counts)}, GAMES = {json.dumps(games)};"
-            "drawCounts(COUNTS); drawStart(COUNTS, GAMES);"
+            f"drawCounts(COUNTS); drawStart(COUNTS, GAMES, {json.dumps(busy)},"
+            f" {json.dumps(today)});"
             "drawGames(GAMES, COUNTS.tried > 0);"
+            "const start = document.getElementById('start');"
+            "const links = [];"
+            "(function walk(node) {"
+            "  if (node.href !== undefined) links.push([node.href, node.textContent,"
+            "    node.className]);"
+            "  (node.children || []).forEach(walk);"
+            "})(start);"
             "console.log(JSON.stringify({"
             " counts: document.getElementById('counts').textContent,"
-            " start: document.getElementById('start').textContent,"
+            " start: start.textContent, links,"
             " hidden: [document.getElementById('record').hidden,"
             "          document.getElementById('record-under').hidden]}));"
         )
 
     NONE = {"rated": 4, "tried": 0, "won": 0, "top": 0, "highest": 0}
 
-    def test_nothing_played_says_what_to_do_and_draws_no_nought(self) -> None:
-        said = self._drawn(self.NONE, [
-            self._game("alpha"), self._game("beta"),
-            self._game("gamma", unbeaten=False), self._game("delta", retired=True),
-        ])
+    def test_nothing_here_says_what_to_do_and_draws_no_nought(self) -> None:
+        said = self._drawn(self.NONE, [self._game("alpha"), self._game("beta")])
         assert said["counts"] == ""
-        assert said["start"].startswith(
-            "Nothing here yet. Play a rated game and it starts here."
-        )
-        # The unbeaten games, as an offer: the beaten one and the retired one are not.
-        assert "2 games nobody has beaten yet: alpha, beta." in said["start"]
-        assert "gamma" not in said["start"] and "delta" not in said["start"]
+        assert said["start"].startswith("Nothing here yet.")
+        assert "This page will hold the games you make" in said["start"]
         assert said["hidden"] == [True, True]
 
-    def test_the_line_links_to_a_game_to_play(self) -> None:
-        script = _script_of(page_text.inlined(site_pages.profile("ada")))
-        # The games (Q723): `/` is the landing page now.
-        assert "const START = '/game';" in script
-        assert "play.href = START;" in script
+    def test_building_a_game_comes_first_and_is_the_one_primary(self) -> None:
+        said = self._drawn(self.NONE, [self._game("alpha")],
+                           today={"name": "los alamos", "hash": "fcbb53d53ce4"})
+        assert said["links"] == [
+            ["/#/design", "Start building a game", "button primary"],
+            ["/game/fcbb53d53ce4", "Play today's game", "button"],
+        ]
 
-    def test_with_nothing_unbeaten_the_line_stands_alone(self) -> None:
-        said = self._drawn(self.NONE, [self._game("alpha", unbeaten=False)])
-        assert said["start"] == "Nothing here yet. Play a rated game and it starts here."
+    def test_without_a_day_s_game_the_second_door_is_the_games(self) -> None:
+        said = self._drawn(self.NONE, [self._game("alpha")])
+        assert said["links"][1][:2] == ["/game", "Play today's game"]
 
-    def test_a_long_list_names_a_few_and_counts_the_rest(self) -> None:
-        games = [self._game(name) for name in ("aa", "bb", "cc", "dd", "ee", "ff")]
-        said = self._drawn(self.NONE, games)
-        assert "6 games nobody has beaten yet: aa, bb, cc, dd and 2 more." in said["start"]
+    def test_it_is_not_the_library_again(self) -> None:
+        """Choice F1: the new member's page offers no list of the library's games."""
+        said = self._drawn(self.NONE, [self._game(name) for name in ("aa", "bb", "cc")])
+        for name in ("aa", "bb", "cc"):
+            assert name not in said["start"]
 
     def test_a_finished_game_brings_the_counts_and_the_table_back(self) -> None:
         counts = {"rated": 4, "tried": 1, "won": 0, "top": 0, "highest": 0}
         said = self._drawn(counts, [self._game("alpha", played=1, lost=1)])
         assert said["start"] == ""
-        assert "1games tried" in said["counts"] and "0games won" in said["counts"]
+        assert said["counts"] == "1games tried"
         assert said["hidden"] == [False, False]
+
+    def test_a_game_made_or_waiting_takes_the_doors_away(self) -> None:
+        assert self._drawn(self.NONE, [self._game("alpha")], busy=True)["start"] == ""
 
     def test_nothing_on_it_counts_down_or_nags(self) -> None:
         said = self._drawn(self.NONE, [self._game("alpha")])["start"].lower()
@@ -4995,7 +5036,7 @@ class TestTheProfileDrawsBadges:
         held = [_badge(badges.LONG_WAY_ROUND, when="2026-09-15T09:00:00+00:00")]
         said = _done(self.MILESTONE, held)
         assert said.startswith("What you have done")
-        assert "The long way round, 2026-09-15." in said
+        assert "The long way round, 15 Sep 2026." in said
         assert badges.BADGES[badges.LONG_WAY_ROUND].sentence in said
         assert "Both sides, on alpha" in said
 
@@ -5022,9 +5063,9 @@ class TestTheProfileDrawsBadges:
         self,
     ) -> None:
         on_a_game = _done([], [_badge(badges.GIANT_KILLER, game="aaa", name_of="alpha")])
-        assert "Giant-killer, on alpha, 2026-10-03." in on_a_game
+        assert "Giant-killer, on alpha, 3 Oct 2026." in on_a_game
         across = _done([], [_badge(badges.GRAND_TOUR)])
-        assert "The grand tour, 2026-10-03." in across
+        assert "The grand tour, 3 Oct 2026." in across
 
     def test_a_score_badge_quotes_the_day_its_range_and_its_weights(self) -> None:
         """§2.9's dated quotation. The figures are the row's, so nothing since moves
@@ -5035,7 +5076,7 @@ class TestTheProfileDrawsBadges:
             score={"headline": 0.52, "ci_low": 0.47, "ci_high": 0.58, "weights": "v9",
                    "basis": {"seeds": [0, 1000, 2000, 3000]}},
         )])
-        assert "Proved the clanker wrong, on alpha, 2026-10-03." in said
+        assert "Proved the clanker wrong, on alpha, 3 Oct 2026." in said
         assert (
             "On that day, a score of 0.52 (likely 0.47 to 0.58; the average of four runs,"
             " scoring rules version 9), 4.4 stars from 9 people and 12 people who had"
@@ -5911,11 +5952,13 @@ class TestTheProfileOffersAnOpenGameBack:
 
     def test_the_line_links_to_the_board_and_says_what_game_it_is(self) -> None:
         drawn = _carry([self.ENTRY])
-        assert "Games you left running" in drawn["said"]
-        assert drawn["links"] == [{"href": "/#/play/sessionid01", "text": "alpha"}]
+        # UP2: a row of *Waiting on you*: what it is, the game's name to the board, the
+        # facts, and *Carry on*, which goes to the board too.
+        assert "Left running" in drawn["said"]
+        assert drawn["links"] == [{"href": "/#/play/sessionid01", "text": "alpha"},
+                                  {"href": "/#/play/sessionid01", "text": "Carry on"}]
         assert (
-            "alpha — against medium, playing first, 12 turns played, "
-            "last moved 2026-09-18."
+            "Against medium, playing first, 12 turns played, last moved 18 Sep 2026."
         ) in drawn["said"]
 
     def test_an_opponent_the_ladder_does_not_name_reads_as_the_computer(
@@ -5949,7 +5992,7 @@ class TestTheProfileOffersAnOpenGameBack:
         person's and the idle sweep will resign it like any other."""
         drawn = _carry([{**self.ENTRY, "name": "deleted game", "openable": False}])
         assert drawn["links"] == []
-        assert "deleted game — against medium" in drawn["said"]
+        assert "deleted game" in drawn["said"] and "Against medium" in drawn["said"]
         assert "These rules are gone, so the board cannot be drawn." in drawn["said"]
 
     def test_nothing_running_draws_no_heading(self) -> None:

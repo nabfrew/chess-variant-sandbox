@@ -445,9 +445,11 @@ class TestThroughTheSite:
             waiting = _as(app, ada).get("/api/challenges")
             assert [entry["from"] for entry in waiting["forYou"]] == ["bo"]
             assert waiting["open"] == [{"game": SHORT_HASH, "name": SHORT["name"]}]
-            assert _as(app, ada).get("/api/profile")["challenges"]["forYou"] == (
-                waiting["forYou"]
-            )
+            # The same challenges; the profile adds each one's board (UP1).
+            assert [
+                {k: v for k, v in entry.items() if k not in ("position", "lastMove")}
+                for entry in _as(app, ada).get("/api/profile")["challenges"]["forYou"]
+            ] == waiting["forYou"]
             started = _as(app, ada).post(f"/api/challenge/{sent['id']}/accept", {})
             read = _as(app, bo).get(f"/api/session/{started['id']}")
             assert read["correspondence"]["players"] == ["ada", "bo"]

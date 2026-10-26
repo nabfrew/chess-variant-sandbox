@@ -121,8 +121,9 @@ class TestTheOrder:
     def test_the_page_keeps_the_servers_order(self) -> None:
         """The profile draws the list as it arrives; the order lives in one function."""
         source = _code(_function(PACKAGE / "site" / "static" / "profile.js", "drawBetween"))
-        assert ".sort(" not in source
-        assert "entry.toMove" in source
+        line = _code(_function(PACKAGE / "site" / "static" / "profile.js", "opponentLine"))
+        assert ".sort(" not in source and ".sort(" not in line
+        assert "opponentLine(" in source and "entry.toMove" in line
 
 
 # ---------------------------------------------------------------------------- the store
@@ -334,7 +335,8 @@ class TestThePage:
             assert "<" not in tail and "class" not in tail, tail
         source = _between_source()
         drawn = _code(_function(PACKAGE / "site" / "static" / "profile.js", "drawBetween"))
-        for code in (source, drawn):
+        line = _code(_function(PACKAGE / "site" / "static" / "profile.js", "opponentLine"))
+        for code in (source, drawn, line):
             for mark in ESCALATION:
                 assert not re.search(rf"(?<![\w-]){re.escape(mark)}(?![\w-])", code, re.I), mark
 

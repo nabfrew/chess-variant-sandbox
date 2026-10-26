@@ -344,9 +344,9 @@ class TestTheProfileDraws:
 
     def test_a_designer_line_has_no_seat_and_the_fork_says_who(self) -> None:
         said = _done(self.LINES)
-        assert "Built on by somebody else, on alpha, by bob, 2026-09-14." in said
-        assert "Played by somebody else, on alpha, 2026-09-13." in said
-        assert "First draft kept, on alpha, 2026-09-12." in said
+        assert "Built on by somebody else, on alpha, by bob, 14 Sep 2026." in said
+        assert "Played by somebody else, on alpha, 13 Sep 2026." in said
+        assert "First draft kept, on alpha, 12 Sep 2026." in said
         assert "playing" not in said
         assert "The first play." in said
 

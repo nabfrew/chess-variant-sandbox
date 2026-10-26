@@ -1182,7 +1182,7 @@ class TestThePositionsPageDraws:
         body = profile[start: profile.index("\n}\n", start)]
         assert "if (!lines.length) return;" in body
         assert "Only you see this." in body
-        assert "share.said" in body and "line.share" in body and "provenLink(" in body
+        assert "share.said" in body and "one.share" in body and "provenLink(" in body
         assert "drawProven(payload.proven || [], payload.provenShare);" in profile
         link = profile[profile.index("function provenLink"):]
         assert "link.getAttribute('href') + PROVEN" in link[: link.index("\n}\n")]

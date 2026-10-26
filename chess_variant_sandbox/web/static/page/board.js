@@ -1043,12 +1043,6 @@ function effectsShown() {
   return effectPairs(AT ? AT.effects : SESSION.effects);
 }
 
-function effectPairs(effects) {
-  if (!effects || !effects.length) return [];
-  if (Array.isArray(effects[0])) return effects.filter(pair => pair[1]);
-  return effects.map((bits, square) => [square, bits]).filter(pair => pair[1]);
-}
-
 // Each affected piece's badges (`effectBadges`), on its square's corners.
 function effectsHtml(affected, cell) {
   return affected.map(([square, bits]) => {
@@ -1162,16 +1156,6 @@ function foldOn(square) {
 function boardCentre(square, cell) {
   const xy = squareXY(square, cell, FRAME);
   return [xy[0] + cell / 2, xy[1] + cell / 2];
-}
-
-// A line from (ax, ay) to (bx, by), each end held back by `trimA` and `trimB` cells, so
-// it runs between two glyphs rather than over them; '' when nothing is left of it.
-function trimmedLine(ax, ay, bx, by, trimA, trimB, cell, attrs) {
-  const length = Math.hypot(bx - ax, by - ay);
-  if (!(length > (trimA + trimB) * cell)) return '';
-  const ux = (bx - ax) / length, uy = (by - ay) / length;
-  return `<line x1="${(ax + ux * trimA * cell).toFixed(3)}" y1="${(ay + uy * trimA * cell).toFixed(3)}"
-    x2="${(bx - ux * trimB * cell).toFixed(3)}" y2="${(by - uy * trimB * cell).toFixed(3)}" ${attrs}/>`;
 }
 
 // A move through a portal in its two legs (§4): the piece's own way to the end it went in
@@ -1799,12 +1783,7 @@ function drawBoard(previous) {
     // themselves are drawn over the board (`portalLegsHtml`).
     // A round (schema 26) tints both players' moves: `lastMove` is its second entry, and
     // its `reveal` holds both.
-    if (last && (square === last.from || square === last.to
-        || (last.portal !== undefined && (square === last.portal || square === last.portalOut))
-        || (last.foldIn !== undefined && (square === last.foldIn || square === last.foldOut))
-        || (last.reveal && last.reveal.moves.some(m => m.from === square || m.to === square)))) {
-      out += mark(x, y, cell, 'var(--hl-last)', 0.34);
-    }
+    if (last && lastMoveHas(last, square)) out += mark(x, y, cell, 'var(--hl-last)', 0.34);
     // Where the wild piece walked, in its own hand and not the mover's: a dashed
     // outline rather than a tint, because the palette's third owner is an amber a
     // shade off the last-move mark and "the boar did this" has to be legible as a

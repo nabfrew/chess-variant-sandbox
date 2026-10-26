@@ -638,10 +638,14 @@ class TestTheWood:
 
     def test_the_marks_the_contrast_test_reads_are_the_ones_drawn(self) -> None:
         """`BOARD_MARKS`' opacities are the board's own, so the floors read what is drawn."""
+        import page_text
         from page_text import BOARD, WRAPPED
 
         marks = dict(tokens.BOARD_MARKS)
         assert f"mark(x, y, cell, 'var(--hl-last)', {marks['hl-last']})" in BOARD
+        # UP2: a still that carries a last move tints it at the same opacity.
+        assert f"const LAST_TINT = {marks['hl-last']};" in page_text.text(
+            "/static/page/stillboard.js")
         assert f"mark(x, y, cell, 'var(--hl-sel)', {marks['hl-sel']})" in BOARD
         assert re.search(r"fill=\"\$\{piece \? 'none' : 'var\(--dot\)'\}\"\s+stroke=\"var\(--dot\)\" "
                          rf"stroke-width=\"\$\{{cell \* 0\.05\}}\" opacity=\"{marks['dot']}\"", BOARD)

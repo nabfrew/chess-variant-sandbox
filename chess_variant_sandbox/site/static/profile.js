@@ -8,6 +8,46 @@ let NAMES = {};
 // because *deleted game* is a name a game could in principle be given.
 let DELETED = new Set();
 
+// UP2: the three globals the application's `core.js` gives its still board, which this page
+// loads without it (`pages.BOARD_SCRIPTS`): no board here is turned round, the drawings
+// arrive with the payload (`pieceArt`, as the listing sends them), and every name a board
+// writes goes through `esc`, as it does on the application's pages.
+let FLIPPED = false;
+let PIECE_ART = {};
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function el(tag, className, said) {
+  const it = document.createElement(tag);
+  if (className) it.className = className;
+  if (said !== undefined) it.textContent = said;
+  return it;
+}
+
+// UP2: a position as the application's still board draws it (`stillboard.js`
+// `boardPreview`, the one drawing of a board; this page works out no square). `still` is a
+// payload the server drew (a game's opening, or a running game's position replayed through
+// the engine) with each piece's drawing named by stem; `last` is the engine's last move,
+// tinted as the play board tints it; `hand` keeps the hand strip under the board. A thumbnail
+// (`plain`) draws no marks and names no square. The board's string is the only markup this
+// page puts in: every name in it went through `esc`, and nothing else here is written as
+// markup. Absent where there is no position, or no board script (a test's stand-in DOM).
+function stillNode(still, hash, last, hand) {
+  const box = el('div', 'stillBox');
+  if (!still || typeof boardPreview !== 'function' || !document.createRange) return box;
+  const icons = (still.icons || []).map(pair => (pair || []).map(icon =>
+    icon && PIECE_ART[icon.stem]
+      ? { href: PIECE_ART[icon.stem], rotate: icon.rotate, stem: icon.stem } : null));
+  const drawn = boardPreview(Object.assign({}, still, {
+    icons, hash, plain: true, last: last || null, handsUsed: !!hand && !!still.handsUsed,
+  }), null);
+  box.setAttribute('aria-hidden', 'true');
+  box.appendChild(document.createRange().createContextualFragment(drawn));
+  return box;
+}
+
 function cell(row, text, className) {
   const td = document.createElement('td');
   td.textContent = text;
@@ -97,7 +137,16 @@ function distance(game) {
 const UNNAMED = 'an unnamed game';
 function named(game) { return game.name || UNNAMED; }
 function nameOf(hash) { return NAMES[hash] || UNNAMED; }
-function day(stamp) { return stamp ? String(stamp).slice(0, 10) : ''; }
+// UP0: a day is written one way on every page that is a member's, *24 Oct 2026*, as the
+// member's page (`pages._day`) writes it. Read off the stamp's own date, never through
+// the browser's clock, so the day the server stored is the day shown wherever it is read.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov',
+  'Dec'];
+function day(stamp) {
+  const held = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(stamp || ''));
+  if (!held) return stamp ? String(stamp).slice(0, 10) : '';
+  return Number(held[3]) + ' ' + MONTHS[Number(held[2]) - 1] + ' ' + held[1];
+}
 function seatWord(seat) { return seat === 0 ? 'playing first' : 'playing second'; }
 
 // The games you have actually played, then the rest, each part by name. The payload
@@ -125,59 +174,53 @@ function drawCounts(counts) {
   const where = document.getElementById('counts');
   where.replaceChildren();
   if (!counts.tried) return;
-  where.appendChild(count('games tried', counts.tried));
-  where.appendChild(count('games won', counts.won));
-  where.appendChild(count('strongest beaten', counts.top));
-  // S2, absent at nought rather than shown as one, because nobody is behind for
-  // topping no game's table.
-  if (counts.highest) {
-    where.appendChild(count('games where you are top rated', counts.highest));
+  // S2 and UP0: every tile is absent at nought rather than shown as one, because nobody
+  // is behind for winning, beating the strongest or topping no game's table yet (§3,
+  // test 5). *games tried* is never nought here: the counts are drawn from the first.
+  const tiles = [['games tried', counts.tried], ['games won', counts.won],
+    ['strongest beaten', counts.top], ['games where you are top rated', counts.highest]];
+  for (const [label, value] of tiles) {
+    if (value) where.appendChild(count(label, value));
   }
 }
 
-// L2, a profile with nothing on it: one line on what to do, and the games nobody has
-// beaten yet as an offer, a few by name. Nothing here counts down or counts what the
-// person has not done; once a rated game is finished the counts take its place.
+// L2 and UP2, a page with nothing on it yet: the site's key idea first (*invite people to
+// make games*, `plan-landing.md`), so *Start building a game* is the one primary, *Play
+// today's game* beside it (the front page's own pick, `payload.today`, else the games),
+// and one line on what the page will hold. Not the library again by kind, and nothing that
+// counts down or counts what the person has not done. Absent once anything is here: a
+// game finished, a game made, or a game waiting.
 const START = '/game';
-function drawStart(counts, rows) {
+const BUILD = '/#/design';
+const BUILD_WORDS = "Start building a game";
+const TODAY_WORDS = "Play today's game";
+function drawStart(counts, rows, busy = false, today = null) {
   const where = document.getElementById('start');
   where.replaceChildren();
-  if (counts.tried) return;
-  const line = document.createElement('p');
-  line.className = 'lead';
-  words(line, 'Nothing here yet. ');
-  const play = document.createElement('a');
-  play.href = START;
-  play.textContent = 'Play a rated game';
-  line.appendChild(play);
-  words(line, ' and it starts here.');
-  where.appendChild(line);
-  const open = rows.filter(game => game.unbeaten === true && !game.played
-    && !game.retired && !DELETED.has(game.hash));
-  if (!open.length) return;
-  const offer = document.createElement('p');
-  bold(offer, open.length + (open.length === 1 ? ' game nobody has beaten yet'
-    : ' games nobody has beaten yet'));
-  words(offer, ': ');
-  const some = inOrder(open).slice(0, SHOWN);
-  some.forEach((game, index) => {
-    if (index) words(offer, ', ');
-    offer.appendChild(gameLink(game.hash, named(game)));
-  });
-  const rest = open.length - some.length;
-  words(offer, rest ? ' and ' + rest + ' more. ' : '. ');
-  words(offer, 'Beat the strongest computer player on one and you are the first.');
-  where.appendChild(offer);
+  if (counts.tried || busy) return;
+  where.appendChild(el('p', 'lead', 'Nothing here yet.'));
+  const doors = el('div', 'startDoors');
+  const build = el('a', 'button primary', BUILD_WORDS);
+  build.href = BUILD;
+  doors.appendChild(build);
+  const play = el('a', 'button', TODAY_WORDS);
+  play.href = today && today.hash ? GAME + today.hash : START;
+  doors.appendChild(play);
+  where.appendChild(doors);
+  where.appendChild(el('p', 'under', 'This page will hold the games you make, each on its '
+    + 'way from a draft to the library; the games waiting for your move; and the rated '
+    + 'games you have played, with what you have done on them.'));
 }
 
 // The table is hidden with the counts: before a first finished game every row of it
-// would read *none yet*.
+// would read *none yet*. UP0: a row is a game you have played, never one you have not;
+// the rest are one line under the table (`drawUntried`), not ninety rows of noughts.
 function drawGames(rows, started = true) {
   document.getElementById('record').hidden = !started;
   document.getElementById('record-under').hidden = !started;
   const games = document.getElementById('games');
   games.replaceChildren();
-  for (const game of inOrder(rows)) {
+  for (const game of inOrder(rows.filter(game => game.played > 0))) {
     const row = document.createElement('tr');
     const first = cell(row, '');
     first.appendChild(gameLink(game.hash, named(game)));
@@ -199,6 +242,41 @@ function drawGames(rows, started = true) {
   }
 }
 
+// UP0: the rated games you have not played, as one line under the table: how many, and
+// how many of those nobody has beaten, each linked to the library with its filter set
+// (`/game?tag=`, read once by `browse.js`). The same games `drawStart` offers by name to
+// a member with nothing played: in the library now, never retired or deleted. Absent
+// when there are none, and the second clause absent when it would be a nought.
+const UNTRIED_LINK = '/game?tag=untried';
+const UNBEATEN_LINK = '/game?tag=unbeaten';
+function drawUntried(rows, started = true) {
+  const where = document.getElementById('untried');
+  if (!where) return;
+  where.replaceChildren();
+  if (!started) return;
+  const open = rows.filter(game => !game.played && !game.retired && !DELETED.has(game.hash));
+  if (!open.length) return;
+  const unbeaten = open.filter(game => game.unbeaten === true).length;
+  const link = (href, said) => {
+    const it = document.createElement('a');
+    it.href = href;
+    it.textContent = said;
+    where.appendChild(it);
+  };
+  words(where, 'You have not played ' + open.length + ' of the rated games yet ('
+    + (open.length === 1 ? 'it is' : 'they are') + ' under ');
+  link(UNTRIED_LINK, 'untried by you');
+  words(where, ' in the library)');
+  if (unbeaten) {
+    words(where, (open.length === 1 ? ', and nobody has beaten the strongest computer '
+      + 'player on it yet' : ', and on ' + unbeaten + ' of those nobody has beaten the '
+      + 'strongest computer player yet') + ' (every such game is under ');
+    link(UNBEATEN_LINK, 'Unbeaten');
+    words(where, ')');
+  }
+  words(where, '.');
+}
+
 // B2. One rated game you left running, as a line. The name is the link, and it goes to
 // the board rather than to the game's page: the point of the line is the game in
 // progress, and the game's page is one click on from it.
@@ -206,46 +284,66 @@ function drawGames(rows, started = true) {
 // An entry whose rules the store will not hand back -- a deleted game, or one taken off
 // the site -- draws no link at all. There is nothing to replay the moves through, so no
 // board can be drawn, and the sentence says so rather than offering a link that refuses.
+//
+// UP2: a row of *Waiting on you*, with the position as the engine left it (the server's
+// `position`, its last move tinted) and one action, *Carry on*.
 function carryItem(entry) {
-  const item = document.createElement('li');
   const name = entry.name || nameOf(entry.game);
+  let title;
   if (entry.openable) {
-    const link = document.createElement('a');
-    link.href = PLAY + entry.id;
-    link.textContent = name;
-    item.appendChild(link);
+    title = el('a', '', name);
+    title.href = PLAY + entry.id;
   } else {
-    bold(item, name);
+    title = el('b', '', name);
   }
+  const row = waitRow('Left running \u00b7 rated, against the computer', title,
+    entry.openable ? stillNode(entry.position, entry.game, entry.lastMove) : null);
   // S8: a named opponent always (the server's `label`), and turns, each player's move
   // being one.
-  words(item, ' \u2014 against ' + (entry.label || 'the computer') + ', playing '
+  words(row.facts, 'Against ' + (entry.label || 'the computer') + ', playing '
     + (entry.seat === 0 ? 'first' : 'second') + ', ' + entry.plies + ' turn'
     + (entry.plies === 1 ? '' : 's') + ' played'
     + (entry.moved ? ', last moved ' + day(entry.moved) : ', not moved yet') + '.');
   if (!entry.openable) {
-    span(item, 'These rules are gone, so the board cannot be drawn. The game stays open '
+    span(row.facts, 'These rules are gone, so the board cannot be drawn. The game stays open '
       + 'until it is resigned after thirty days without a move.', 'rule');
+  } else {
+    const go = el('a', 'button main', 'Carry on');
+    go.href = PLAY + entry.id;
+    row.acts.appendChild(go);
   }
-  return item;
+  return row.item;
 }
 
-// The whole section, newest game first, which is the order the server sends. Absent when
-// nothing is running, because an empty heading would read as a nought.
+// UP2: one row of *Waiting on you*: a small board, what is waiting (`kicker`), the game's
+// name (`title`, a node), a line of facts the caller fills, and its actions. `yours` rings
+// a game where it is your move, the one thing on the page that needs you most.
+function waitRow(kicker, title, board, yours = false) {
+  const item = el('li', 'waitRow' + (yours ? ' yours' : ''));
+  item.appendChild(board || el('div', 'stillBox'));
+  const text = el('div');
+  text.appendChild(el('div', 'kicker', kicker));
+  const name = el('div', 'title');
+  name.appendChild(title);
+  text.appendChild(name);
+  const facts = el('p', 'facts');
+  text.appendChild(facts);
+  item.appendChild(text);
+  const acts = el('div', 'acts');
+  item.appendChild(acts);
+  return { item, facts, acts };
+}
+
+// The rated games left running, newest first, which is the order the server sends, as rows
+// of *Waiting on you*. Absent when nothing is running, because an empty list would read as
+// a nought. The rule is said once, under the rows (`drawQuiet`).
+const IDLE_RULE = 'A rated game against the computer is resigned after thirty idle days, '
+  + 'or when you start another rated game on the same game.';
 function drawCarryOn(entries) {
   const where = document.getElementById('carry');
   where.replaceChildren();
   if (!entries.length) return;
-  const heading = document.createElement('h2');
-  heading.textContent = 'Games you left running';
-  where.appendChild(heading);
-  const lead = document.createElement('p');
-  lead.className = 'under';
-  lead.textContent = 'Rated games still open. Each one is resigned after thirty idle '
-    + 'days, or when you start another rated game on the same game.';
-  where.appendChild(lead);
-  const list = document.createElement('ul');
-  list.className = 'lines';
+  const list = el('ul', 'waitRows');
   for (const entry of entries) list.appendChild(carryItem(entry));
   where.appendChild(list);
 }
@@ -258,50 +356,61 @@ function drawCarryOn(entries) {
 // words (the dated exception to test 2): nothing here counts down, no count in a heading,
 // no colour that alarms. The rule is said once, as a rule. Each part is absent when it
 // has nothing in it; the section's heading stays for the email box under it.
+//
+// UP2: *Your move* is a row of *Waiting on you*, with the position as it stands and the
+// opponent's last move tinted, and *Make your move*; *Their move* is a quiet line under the
+// rows (`#between-quiet`), with the finished line and the rule said once.
 function drawBetween(between) {
   const where = document.getElementById('between');
-  if (!where) return;
+  const quiet = document.getElementById('between-quiet');
+  if (!where || !quiet) return;
   where.replaceChildren();
+  quiet.replaceChildren();
   const running = (between && between.running) || [];
   const finished = between && between.finished;
-  if (finished) {
-    const line = document.createElement('p');
-    line.className = 'under';
-    line.textContent = finished;
-    where.appendChild(line);
-  }
-  if (!running.length) return;
-  const part = (title, entries) => {
-    if (!entries.length) return;
-    const heading = document.createElement('h3');
-    heading.textContent = title;
-    where.appendChild(heading);
-    const list = document.createElement('ul');
-    list.className = 'lines';
-    for (const entry of entries) {
-      const item = document.createElement('li');
-      const link = document.createElement('a');
-      link.href = PLAY + entry.id;
-      link.textContent = entry.name || nameOf(entry.game);
-      // The opponent's generated mark (R2), at the head of the line.
-      const mark = window.memberMark && window.memberMark(entry.opponentMark, 18);
-      if (mark) item.appendChild(mark);
-      item.appendChild(link);
-      words(item, ' against ');
-      person(item, entry.opponent);
-      words(item, ' \u00b7 ' + (entry.rated ? 'rated' : 'practice')
-        + ', last moved ' + day(entry.moved) + '. ');
-      if (entry.toMove) words(item, entry.toMove);
-      list.appendChild(item);
+  if (running.length) {
+    const mine = running.filter(entry => entry.yourMove);
+    const rows = el('ul', 'waitRows');
+    for (const entry of mine) {
+      const name = el('a', '', entry.name || nameOf(entry.game));
+      name.href = PLAY + entry.id;
+      const row = waitRow('Your move \u00b7 by correspondence', name,
+        stillNode(entry.position, entry.game, entry.lastMove), true);
+      opponentLine(row.facts, entry);
+      const go = el('a', 'button main', 'Make your move');
+      go.href = PLAY + entry.id;
+      row.acts.appendChild(go);
+      rows.appendChild(row.item);
     }
-    where.appendChild(list);
-  };
-  part('Your move', running.filter(entry => entry.yourMove));
-  part('Their move', running.filter(entry => !entry.yourMove));
-  const rule = document.createElement('p');
-  rule.className = 'under';
-  rule.textContent = 'No clock: each of you moves when you like. ' + between.rule;
-  where.appendChild(rule);
+    if (mine.length) where.appendChild(rows);
+    const lines = el('ul', 'quiet');
+    for (const entry of running.filter(entry => !entry.yourMove)) {
+      const item = el('li');
+      bold(item, 'Their move');
+      const link = el('a', '', entry.name || nameOf(entry.game));
+      link.href = PLAY + entry.id;
+      item.appendChild(link);
+      words(item, ' ');
+      opponentLine(item, entry);
+      lines.appendChild(item);
+    }
+    if (lines.children.length) quiet.appendChild(lines);
+    quiet.appendChild(el('p', 'under', 'No clock: each of you moves when you like. '
+      + between.rule));
+  }
+  if (finished) quiet.appendChild(el('p', 'under', finished));
+}
+
+// Who a game between people is against, with their mark (R2), and the server's facts:
+// rated or practice, when the last move landed, and the time to move in its own words.
+function opponentLine(where, entry) {
+  words(where, 'against ');
+  const mark = window.memberMark && window.memberMark(entry.opponentMark, 18);
+  if (mark) where.appendChild(mark);
+  person(where, entry.opponent);
+  words(where, ' \u00b7 ' + (entry.rated ? 'rated' : 'practice')
+    + ', last moved ' + day(entry.moved) + '. ');
+  if (entry.toMove) words(where, entry.toMove);
 }
 
 // Q572, `docs/archive/plan-return.md` §1.5 and s6 of the mock. The one email's box, off unless
@@ -315,7 +424,7 @@ function drawMoveEmail(box) {
   heading.textContent = 'Email';
   where.appendChild(heading);
   const label = document.createElement('label');
-  label.style.display = 'block';
+  label.className = 'u-d-block';
   const tick = document.createElement('input');
   tick.type = 'checkbox';
   tick.id = 'move-email-box';
@@ -347,7 +456,7 @@ function drawInvite(box) {
   if (!where) return;
   where.replaceChildren();
   if (!box) return;
-  const heading = document.createElement('h2');
+  const heading = document.createElement('h3');
   heading.textContent = 'Invite somebody';
   where.appendChild(heading);
   const count = document.createElement('p');
@@ -395,8 +504,9 @@ function drawTakesChallengers(box) {
   if (!where) return;
   where.replaceChildren();
   if (!box || !(box.games || []).length) return;
+  where.appendChild(el('h3', '', 'Challengers'));
   const label = document.createElement('label');
-  label.style.display = 'block';
+  label.className = 'u-d-block';
   const tick = document.createElement('input');
   tick.type = 'checkbox';
   tick.id = 'takes-challengers-box';
@@ -428,7 +538,7 @@ function drawYourPage(address, box) {
   const where = document.getElementById('your-page');
   if (!where || !address) return;
   where.replaceChildren();
-  const heading = document.createElement('h2');
+  const heading = document.createElement('h3');
   heading.textContent = 'Your page';
   where.appendChild(heading);
   const lead = document.createElement('p');
@@ -444,7 +554,7 @@ function drawYourPage(address, box) {
   where.appendChild(lead);
   if (!box) return;
   const label = document.createElement('label');
-  label.style.display = 'block';
+  label.className = 'u-d-block';
   const tick = document.createElement('input');
   tick.type = 'checkbox';
   tick.id = 'favourites-box';
@@ -475,8 +585,10 @@ function drawYourPage(address, box) {
 // A declined challenge says so and no more.
 function drawChallenges(asked) {
   const where = document.getElementById('challenges');
-  if (!where) return;
+  const quiet = document.getElementById('challenges-quiet');
+  if (!where || !quiet) return;
   where.replaceChildren();
+  quiet.replaceChildren();
   const forYou = (asked && asked.forYou) || [];
   const sent = (asked && asked.sent) || [];
   const open = (asked && asked.open) || [];
@@ -488,7 +600,7 @@ function drawChallenges(asked) {
   const heading = (text) => {
     const it = document.createElement('h3');
     it.textContent = text;
-    where.appendChild(it);
+    quiet.appendChild(it);
   };
   const button = (parent, text, kind, press) => {
     const it = document.createElement('button');
@@ -501,25 +613,25 @@ function drawChallenges(asked) {
     const line = document.createElement('p');
     line.className = 'under';
     line.textContent = asked.pausedSays;
-    where.appendChild(line);
+    quiet.appendChild(line);
   }
+  // UP2: each challenge for you is a row of *Waiting on you*, the game's opening as its
+  // board, *Accept* its action and *decline* beside it.
   if (forYou.length) {
-    heading('A challenge for you');
-    const list = document.createElement('ul');
-    list.className = 'lines';
+    const list = el('ul', 'waitRows');
     for (const entry of forYou) {
-      const item = document.createElement('li');
+      const row = waitRow('A challenge for you', gameLink(entry.game, entry.name),
+        stillNode(entry.position, entry.game, entry.lastMove));
       const mark = window.memberMark && window.memberMark(entry.fromMark, 18);
-      if (mark) item.appendChild(mark);
-      person(bold(item, ''), entry.from);
-      words(item, entry.rematch ? ' offers a rematch at ' : ' challenged you to ');
-      item.appendChild(gameLink(entry.game, entry.name));
-      span(item, ' · ' + entry.seat + ' · ' + (entry.rated ? 'rated' : 'practice')
-        + ' · sent ' + day(entry.made) + ' ', 'muted small');
-      button(item, 'Accept', 'primary', () =>
+      if (mark) row.facts.appendChild(mark);
+      person(bold(row.facts, ''), entry.from);
+      words(row.facts, entry.rematch ? ' offers a rematch' : ' challenged you');
+      words(row.facts, ' · ' + entry.seat + ' · ' + (entry.rated ? 'rated' : 'practice')
+        + ' · sent ' + day(entry.made) + '.');
+      button(row.acts, 'Accept', 'main', () =>
         act('/api/challenge/' + entry.id + '/accept', {}));
-      button(item, 'decline', '', () => act('/api/challenge/' + entry.id + '/decline', {}));
-      list.appendChild(item);
+      button(row.acts, 'decline', '', () => act('/api/challenge/' + entry.id + '/decline', {}));
+      list.appendChild(row.item);
     }
     where.appendChild(list);
   }
@@ -549,7 +661,7 @@ function drawChallenges(asked) {
       }
       list.appendChild(item);
     }
-    where.appendChild(list);
+    quiet.appendChild(list);
   }
   if (open.length) {
     heading('Open to a game of');
@@ -562,57 +674,159 @@ function drawChallenges(asked) {
         .then(() => draw()).catch(error => say(error.message)));
     });
     span(line, ' (tick the box on any game\'s page to add one)', 'muted small');
-    where.appendChild(line);
+    quiet.appendChild(line);
   }
 }
 
-// Q503b, §3.4. *Your games*: the games this person made, grouped by level in the
-// server's order, each group headed by the level's word (`site/stages.py`, the one place
-// a level is decided) and each game with its next step and the way to take it, which is
-// the designer. Absent when there are none, as every section here is.
+// Q503b, §3.4, and UP2 (direction B, `docs/plan-user-page.md` §3.2): *Your workshop*, the
+// games this person made on the path every game takes. The columns are the server's
+// (`workshop.columns`: the four levels and *Measured*, a draft whose score the site has
+// checked), each game in the column it stands in, with its board, the change from the game
+// it was made from in the designer's words, the designer's rungs as dots, and its next step
+// in the server's words (`step`). The page holds no level word and decides no column: a
+// new level moves the page with no page edit. *Start a new game* opens the designer;
+// *Try another change* opens it on a copy of the game a draft was made from, the way a game
+// page's *make your own from this* does.
 const DESIGN = '/#/design/';
+const START_NEW = 'Start a new game';
 
-function drawYourGames(groups) {
+function drawYourGames(groups, columns = [], lead = false) {
   const where = document.getElementById('mine');
   where.replaceChildren();
-  if (!groups.length) return;
-  const heading = document.createElement('h2');
-  heading.textContent = 'Your games';
-  where.appendChild(heading);
-  for (const group of groups) {
-    const level = document.createElement('h3');
-    level.textContent = group.level;
-    level.dataset.level = group.level;
-    where.appendChild(level);
-    if (group.says) {
-      const lead = document.createElement('p');
-      lead.className = 'under';
-      lead.textContent = group.says;
-      where.appendChild(lead);
-    }
-    const list = document.createElement('ul');
-    list.className = 'lines';
-    for (const game of group.games) {
-      const item = document.createElement('li');
-      item.appendChild(gameLink(game.hash, game.name));
-      if (game.next) words(item, ' — ' + game.next);
-      // Q599: how many voters chose each fixed tag, a count and never who.
-      const tagged = game.tagCounts || [];
-      if (tagged.length) {
-        span(item, ' Tagged: ' + tagged.map(entry => entry.words + ' · ' + entry.count)
-          .join(', ') + '.', 'rule');
-      }
-      if (game.inDesigner) {
-        words(item, ' ');
-        const open = document.createElement('a');
-        open.href = DESIGN + game.hash;
-        open.textContent = 'open in the designer';
-        item.appendChild(open);
-      }
-      list.appendChild(item);
-    }
-    where.appendChild(list);
+  const games = {};
+  for (const group of groups) for (const game of group.games) games[game.hash] = game;
+  const head = el('div', 'secHead');
+  head.appendChild(el('h2', '', 'Your workshop'));
+  const start = el('a', 'button' + (lead ? ' primary' : ''), START_NEW);
+  start.href = BUILD;
+  head.appendChild(start);
+  if (!groups.length) {
+    // A member who has made nothing yet: the door and one line, never an empty path.
+    where.appendChild(head);
+    where.appendChild(el('p', 'lead leadIn', 'You have not made a game yet. The designer '
+      + 'builds one from a palette of rules, plays it at once and checks it as you edit.'));
+    return;
   }
+  where.appendChild(head);
+  where.appendChild(madeFromLine(Object.values(games)));
+  const pipe = el('div', 'pipe' + (columns.length > 5 ? ' extra' : ''));
+  columns.forEach((column, index) => {
+    const col = el('section', 'pipeCol' + (index ? '' : ' first')
+      + (column.games.length || !index ? '' : ' empty'));
+    const header = el('header');
+    header.appendChild(el('b', '', column.word));
+    header.appendChild(el('span', '', column.says));
+    col.appendChild(header);
+    for (const hash of column.games) if (games[hash]) col.appendChild(miniCard(games[hash]));
+    if (!index) col.appendChild(tryAnother(Object.values(games)));
+    pipe.appendChild(col);
+  });
+  where.appendChild(pipe);
+}
+
+// The games these were made from, said once: each parent with its level and its score
+// with the basis it carries, and the games made from it. *The line of thought* of §3.2.
+function madeFromLine(games) {
+  const line = el('p', 'lead leadIn');
+  const parents = [];
+  for (const game of games) {
+    const parent = game.parent;
+    if (!parent || !parent.name) continue;
+    let found = parents.find(one => one.parent.hash === parent.hash);
+    if (!found) { found = { parent, names: [] }; parents.push(found); }
+    found.names.push(game.name);
+  }
+  words(line, 'From an idea to the library, one step at a time: each game stands in the '
+    + 'column of where it is.');
+  for (const { parent, names } of parents) {
+    words(line, ' Made from ');
+    line.appendChild(gameLink(parent.hash, parent.name));
+    const said = [parent.level, scoreWords(parent.score)].filter(Boolean).join(', ');
+    words(line, (said ? ' (' + said + ')' : '') + ': ' + listed(names) + '.');
+  }
+  return line;
+}
+
+// A score as the site lets one be said: the number with its run count, and a re-certified
+// one says so; a provisional one is marked, with its revision and its date, never bare.
+function scoreWords(score) {
+  if (!score || score.index === null || score.index === undefined) return '';
+  const runs = (score.seeds || []).length || score.totalsUsed || 0;
+  const number = Number(score.index).toFixed(3);
+  const counted = runs ? ' \u00b7 ' + runs + (runs === 1 ? ' run' : ' runs') : '';
+  if (score.status !== 'current') {
+    return 'provisional: ' + number + counted + ' (' + [score.revision, day(score.measuredAt)]
+      .filter(Boolean).join(', ') + ')';
+  }
+  return number + counted + (score.certified ? ', re-certified from a sample' : '');
+}
+
+function listed(names) {
+  if (names.length < 2) return names.join('');
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+
+// One game in its column: its board, its name, the change, the rungs and the next step.
+function miniCard(game) {
+  const card = el('article', 'mini');
+  card.appendChild(stillNode(game.still, game.hash));
+  const name = el('h3');
+  name.appendChild(gameLink(game.hash, game.name));
+  card.appendChild(name);
+  for (const sentence of game.change || []) card.appendChild(el('p', 'change', sentence));
+  if ((game.rungs || []).length) card.appendChild(rungDots(game.rungs));
+  if (game.step) card.appendChild(el('p', 'facts', game.step));
+  // Q599: how many voters chose each fixed tag, a count and never who.
+  const tagged = game.tagCounts || [];
+  if (tagged.length) {
+    card.appendChild(el('p', 'facts', 'Tagged: ' + tagged.map(entry => entry.words + ' · '
+      + entry.count).join(', ') + '.'));
+  }
+  if (game.inDesigner) {
+    const open = el('a', 'go', 'open in the designer');
+    open.href = DESIGN + game.hash;
+    card.appendChild(open);
+  }
+  return card;
+}
+
+// The designer's rungs as dots, each named by its title, in the marks the designer draws.
+function rungDots(rungs) {
+  const row = el('span', 'rungDots');
+  for (const rung of rungs) {
+    const dot = el('i', rung.state);
+    dot.title = rung.name + ': ' + rung.says;
+    row.appendChild(dot);
+  }
+  return row;
+}
+
+// *Try another change*: the designer on a copy of the game a draft was made from, one door
+// per such game, or on the member's own game where none was made from another.
+function tryAnother(games) {
+  const door = el('article', 'mini door');
+  door.appendChild(el('b', '', 'Try another change'));
+  const seen = new Set();
+  const from = [];
+  for (const game of games) {
+    const parent = game.parent && game.parent.name ? game.parent : null;
+    const target = parent ? { hash: parent.hash, name: parent.name }
+      : { hash: game.hash, name: game.name };
+    if (seen.has(target.hash)) continue;
+    seen.add(target.hash);
+    from.push(target);
+  }
+  const line = el('p');
+  words(line, 'Open the designer on a copy of ');
+  from.slice(0, 3).forEach((target, index) => {
+    if (index) words(line, index === Math.min(from.length, 3) - 1 ? ' or ' : ', ');
+    const link = el('a', '', target.name);
+    link.href = DESIGN + target.hash;
+    line.appendChild(link);
+  });
+  words(line, '; it checks the draft as you edit.');
+  door.appendChild(line);
+  return door;
 }
 
 // Q503a. The games a save had listed, which went back to Draft when saving stopped
@@ -647,18 +861,37 @@ function drawBackToDraft(games) {
 
 // One milestone, as a line. The rule sentence goes under it, because a page that named
 // a rule only once you had met it would be hiding every rule you had not (§3, test 7).
-function milestoneItem(line) {
+// UP2: milestones of one kind on one day are one line naming every game (`more`), the
+// rule said once; such a line names no seat, which differs from game to game.
+function milestoneItem(line, more = []) {
   const item = document.createElement('li');
   const said = LINES[line.kind] || [line.kind, 'on'];
   bold(item, said[0]);
   words(item, ', ' + said[1] + ' ');
-  item.appendChild(gameLink(line.game, line.name));
+  const all = [line, ...more];
+  all.forEach((one, index) => {
+    if (index) words(item, index === all.length - 1 ? ' and ' : ', ');
+    item.appendChild(gameLink(one.game, one.name));
+  });
   // A designer's line (D1 to D4) has no seat; D4 says who forked it.
   if (line.by) { words(item, ', by '); person(item, line.by); }
-  const seat = line.seat === 0 || line.seat === 1 ? ', ' + seatWord(line.seat) : '';
+  const seat = !more.length && (line.seat === 0 || line.seat === 1)
+    ? ', ' + seatWord(line.seat) : '';
   words(item, ', ' + day(line.when) + seat + '.');
   span(item, line.rule, 'rule');
   return item;
+}
+
+// Milestones of one kind on one day, by the same person where one is named, as one group,
+// newest first as the lines arrive sorted below.
+function grouped(lines) {
+  const groups = [];
+  for (const line of lines) {
+    const found = groups.find(group => group[0].kind === line.kind
+      && day(group[0].when) === day(line.when) && (group[0].by || '') === (line.by || ''));
+    if (found) found.push(line); else groups.push([line]);
+  }
+  return groups;
 }
 
 // One badge, as a line among the milestones (box E4 of `docs/archive/plan-meta-game.md`).
@@ -687,7 +920,11 @@ function drawDone(lines, held) {
   const where = document.getElementById('done');
   where.replaceChildren();
   const items = [];
-  for (const line of lines) items.push([line.when || '', milestoneItem(line)]);
+  const newest = lines.slice().sort((one, two) => String(two.when || '').localeCompare(
+    String(one.when || '')));
+  for (const [line, ...more] of grouped(newest)) {
+    items.push([line.when || '', milestoneItem(line, more)]);
+  }
   for (const badge of held) items.push([badge.when || '', badgeItem(badge)]);
   if (!items.length) return;
   items.sort((one, two) => String(two[0]).localeCompare(String(one[0])));
@@ -700,52 +937,43 @@ function drawDone(lines, held) {
   where.appendChild(list);
 }
 
-// R9b (`site/proven.py`): the proven positions this person solved, a line a game, theirs
-// alone. A count of their own marks against what the game offers, never anybody else's,
-// and no section at all until there is a mark (§1.5: no empty heading). Since Q993b each
-// line names the game's share solved and links to its positions' own page, and the share
-// across every game with proven positions leads, counted live by the server.
+// R9b (`site/proven.py`): the proven positions this person solved, theirs alone. A count
+// of their own marks against what the game offers, never anybody else's, and nothing at
+// all until there is a mark (§1.5: no empty heading). Since Q993b each game names its share
+// solved and links to its positions' own page, and the share across every game with
+// proven positions leads, counted live by the server. UP2: one line under the record,
+// its rule under it.
 function drawProven(lines, share) {
   const where = document.getElementById('proven');
   if (!where) return;
   where.replaceChildren();
   if (!lines.length) return;
-  const heading = document.createElement('h2');
-  heading.textContent = 'Proven positions you solved';
-  where.appendChild(heading);
-  if (share && share.said) {
-    const all = document.createElement('p');
-    all.id = 'provenShare';
-    all.textContent = share.said;
-    where.appendChild(all);
-  }
-  const lead = document.createElement('p');
-  lead.className = 'under';
-  lead.textContent = 'Positions the computer proved won for the side to move, each '
-    + "game's on a page of its own. Only you see this. A try that did not end in your win "
-    + 'is not counted against you, and nothing here expires. Each count is of the positions '
-    + 'the game offers now, so one later left out as too easy is no longer counted, and '
-    + 'one added lowers the share.';
-  where.appendChild(lead);
-  const list = document.createElement('ul');
-  list.className = 'lines';
-  for (const line of lines) {
-    const item = document.createElement('li');
-    item.appendChild(provenLink(line.hash, line.name));
+  const line = el('p');
+  line.id = 'provenShare';
+  bold(line, 'Proven positions. ');
+  if (share && share.said) words(line, share.said + ' ');
+  lines.forEach((one, index) => {
+    if (index) words(line, '; ');
+    line.appendChild(provenLink(one.hash, one.name));
     const said = [];
-    if (line.of !== null && line.of !== undefined) {
-      said.push('solved ' + line.solved + ' of ' + line.of + ' (' + line.share + ')');
+    if (one.of !== null && one.of !== undefined) {
+      said.push('solved ' + one.solved + ' of ' + one.of + ' (' + one.share + ')');
     }
-    said.push(line.of === null ? 'converted ' + line.converted
-      : 'converted ' + line.converted + ' of ' + line.of);
-    if (line.found || line.singles) {
-      said.push(line.singles === null ? 'found the move in ' + line.found
-        : 'found the move in ' + line.found + ' of ' + line.singles);
+    said.push(one.of === null ? 'converted ' + one.converted
+      : 'converted ' + one.converted + ' of ' + one.of);
+    if (one.found || one.singles) {
+      said.push(one.singles === null ? 'found the move in ' + one.found
+        : 'found the move in ' + one.found + ' of ' + one.singles);
     }
-    words(item, ': ' + said.join(', ') + '.');
-    list.appendChild(item);
-  }
-  where.appendChild(list);
+    words(line, ': ' + said.join(', '));
+  });
+  words(line, '.');
+  where.appendChild(line);
+  where.appendChild(el('span', 'rule', 'Positions the computer proved won for the side to '
+    + "move, each game's on a page of its own. Only you see this. A try that did not end in "
+    + 'your win is not counted against you, and nothing here expires. Each count is of the '
+    + 'positions the game offers now, so one later left out as too easy is no longer '
+    + 'counted, and one added lowers the share.'));
 }
 
 // A game's proven positions, at their own address (Q993b): the game's name, linked to the
@@ -757,64 +985,62 @@ function provenLink(hash, name) {
 }
 const PROVEN = '/proven';
 
-// One bin of one axis. The counts first, then a few of the untried games by name,
-// because the line is there so a person can pick one rather than to list the library
-// again. A bin with nothing open at all draws nothing.
-function openLine(kind) {
-  const said = [];
-  if (kind.untried.length) said.push(kind.untried.length + ' untried');
-  if (kind.unwon.length) said.push(kind.unwon.length + ' not yet won');
-  if (kind.unbeaten.length) said.push(kind.unbeaten.length + ' still Unbeaten');
-  if (!said.length) return null;
-  const item = document.createElement('li');
-  // S6: the kind in the game page's own words, the server's (`kind.words`).
-  bold(item, kind.words || kind.bin);
-  if (!kind.tried) span(item, ' (a kind you have not tried)', 'mark');
-  words(item, ' \u2014 ' + said.join(', '));
-  const some = kind.untried.slice(0, SHOWN);
-  if (some.length) {
-    words(item, '. ');
-    some.forEach((hash, index) => {
-      if (index) words(item, ', ');
-      item.appendChild(gameLink(hash, nameOf(hash)));
-    });
-    const rest = kind.untried.length - some.length;
-    words(item, rest ? ' and ' + rest + ' more.' : '.');
+// UP2 (§3.2): beside what waits on you, the member's game furthest along the path, large:
+// its board and hand, the four levels with its own lit (`stages.track`), its next step in
+// the server's words. The furthest is the first game in the last column the server marks
+// with a `feature` (its kicker, `workshop.FEATURED`) that holds one; no level is read here.
+function drawFeatured(groups, columns) {
+  const where = document.getElementById('featured');
+  if (!where) return null;
+  where.replaceChildren();
+  const games = {};
+  for (const group of groups) for (const game of group.games) games[game.hash] = game;
+  let shown = null, kicker = '';
+  for (const column of columns) {
+    if (column.feature && column.games.length && games[column.games[0]]) {
+      shown = games[column.games[0]];
+      kicker = column.feature;
+    }
   }
-  return item;
+  if (!shown) return null;
+  const card = el('figure', 'feature');
+  card.appendChild(el('div', 'kicker', kicker));
+  const name = el('h3');
+  name.appendChild(gameLink(shown.hash, shown.name));
+  card.appendChild(name);
+  card.appendChild(stillNode(shown.still, shown.hash, null, true));
+  card.appendChild(trackList(shown.track || []));
+  if (shown.step) card.appendChild(el('p', 'facts', shown.step));
+  where.appendChild(card);
+  return shown;
 }
 
-// M6's *still open for you*, by grid axis. An axis whose bins are all closed is left
-// out, and so is the whole section when nothing anywhere is open.
-function drawStillOpen(axes) {
-  const where = document.getElementById('open');
-  where.replaceChildren();
-  const drawn = [];
-  for (const axis of axes) {
-    const items = axis.kinds.map(openLine).filter(Boolean);
-    // S6: headed by the question the kind answers (*How the game is won*), the server's.
-    if (items.length) drawn.push([axis.asks || axis.axis, items]);
-  }
-  if (!drawn.length) return;
-  const heading = document.createElement('h2');
-  heading.textContent = 'Still open for you';
-  where.appendChild(heading);
-  const lead = document.createElement('p');
-  lead.className = 'under';
-  lead.textContent = 'Rated games you have not tried, have not yet won, and that nobody '
-    + 'has beaten the strongest computer player on, grouped by kind of game. The games '
-    + 'named are the untried ones. Nothing here expires; the list grows when the library '
-    + 'does and shrinks as you play.';
-  where.appendChild(lead);
-  for (const [axis, items] of drawn) {
-    const name = document.createElement('h3');
-    name.textContent = axis;
-    where.appendChild(name);
-    const list = document.createElement('ul');
-    list.className = 'open';
-    for (const item of items) list.appendChild(item);
-    where.appendChild(list);
-  }
+// The four levels with this game's lit, in the application's own markup (`core.js`
+// `trackHtml`, the `.track` rule), from the server's `track`.
+function trackList(track) {
+  const list = el('ol', 'track');
+  for (const step of track) list.appendChild(el('li', step.lit ? 'lit' : '', step.word));
+  return list;
+}
+
+// *Waiting on you*: its heading over the rows, the rule for games left running said once
+// under them, and the first row's action as the page's one primary. With nothing that
+// needs you, the section names what is in play, and with nothing in play at all it is
+// absent. Reads only what the drawings above put on the page.
+function drawWaiting(featured) {
+  const section = document.getElementById('waiting');
+  const head = document.getElementById('wait-head');
+  const rows = section.querySelectorAll('.waitRow');
+  const quiet = section.querySelectorAll('#between-quiet > *, #challenges-quiet > *');
+  head.textContent = rows.length ? 'Waiting on you' : 'Games in play';
+  const rule = document.getElementById('wait-rule');
+  rule.textContent = document.querySelector('#carry .waitRow') ? IDLE_RULE : '';
+  section.hidden = !rows.length && !quiet.length;
+  section.classList.toggle('lone', !featured);
+  if (section.hidden) return false;
+  const first = section.querySelector('.waitRow .main');
+  if (first) first.classList.add('primary');
+  return !!rows.length;
 }
 
 async function draw() {
@@ -825,22 +1051,42 @@ async function draw() {
   NAMES = {};
   for (const game of payload.games) NAMES[game.hash] = named(game);
   DELETED = new Set(payload.deleted || []);
-  drawCounts(payload.counts);
-  drawStart(payload.counts, payload.games);
+  PIECE_ART = payload.pieceArt || {};
+  const made = payload.yourGames || [];
+  const columns = payload.workshop || [];
+  drawBand(payload.page);
   drawCarryOn(payload.carryOn || []);
   drawBetween(payload.between);
   drawChallenges(payload.challenges);
+  const waits = drawWaiting(drawFeatured(made, columns));
+  const busy = made.length > 0 || !document.getElementById('waiting').hidden;
+  drawStart(payload.counts, payload.games, busy, payload.today);
+  // The workshop is drawn for anybody past the start: with nothing waiting, its *Start a
+  // new game* is the page's one primary.
+  if (busy || payload.counts.tried) drawYourGames(made, columns, !waits);
   drawMoveEmail(payload.moveEmail);
   drawTakesChallengers(payload.takesChallengers);
   drawInvite(payload.invites);
   drawYourPage(payload.page, payload.favourites);
-  drawYourGames(payload.yourGames || []);
   drawBackToDraft(payload.backToDraft || []);
+  drawCounts(payload.counts);
   drawGames(payload.games, payload.counts.tried > 0);
+  drawUntried(payload.games, payload.counts.tried > 0);
   drawDone(payload.milestones || [], payload.badges || []);
   drawProven(payload.proven || [], payload.provenShare);
-  drawStillOpen(payload.stillOpen || []);
-  if (!payload.games.length) say('You have no rated games yet. Pick one and play it.');
+  document.getElementById('record-part').hidden = !payload.counts.tried
+    && !(payload.proven || []).length;
+}
+
+// The band's way to your page as other members see it (R1), the server's address.
+function drawBand(address) {
+  const where = document.getElementById('band-links');
+  if (!where) return;
+  where.replaceChildren();
+  if (!address) return;
+  const link = el('a', '', 'your page as members see it ›');
+  link.href = address;
+  where.appendChild(link);
 }
 
 // Whether to offer the maintainer's page, from the one route the application's own

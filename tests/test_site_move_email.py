@@ -627,10 +627,14 @@ class TestThePage:
     def test_the_profile_has_correspondence_in_place_of_the_interim_list(self) -> None:
         profile = (PACKAGE / "site" / "static" / "profile.js").read_text(encoding="utf-8")
         assert "Games against people" not in profile
-        for heading in ("'Your move'", "'Their move'", "'Email'"):
+        for heading in ("'Your move ", "'Their move'", "'Email'"):
             assert heading in profile, heading
+        # UP2: your move waits with everything else that waits on you, and the email's box
+        # is folded with the settings at the foot (choice E1).
         markup = pages.profile("ada")
-        assert "<h2>Correspondence</h2>" in markup and 'id="move-email"' in markup
+        assert 'id="move-email"' in markup
+        assert markup.index('id="between"') < markup.index('<details class="settings"') < (
+            markup.index('id="move-email"'))
 
     def test_no_count_dot_title_or_escalation_in_the_new_page_code(self) -> None:
         browse = (PACKAGE / "web" / "static" / "page" / "browse.js").read_text(encoding="utf-8")

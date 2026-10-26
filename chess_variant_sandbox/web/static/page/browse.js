@@ -256,6 +256,19 @@ function settleOrder() {
   if (!ACCOUNTS) return;
   BROWSE.sort = openingSort('index', inTab());
   BROWSE.descending = BROWSE.sort !== 'name';
+  BROWSE.tag = askedTag();
+}
+
+// UP0: a link into the library with one filter set (`/game?tag=unbeaten`, a member's
+// page's `untried by you`), read once as the list opens. The filters stay out of the
+// address after that (`BROWSE`): the link is a way in, not a place the list keeps.
+// *untried* is a signed-in reader's own reading, so a visitor's link to it sets nothing.
+const ASKED_TAGS = ['unbeaten', 'beaten', 'unrated', 'untried'];
+function askedTag() {
+  let asked = '';
+  try { asked = new URLSearchParams(location.search).get('tag') || ''; } catch (error) { return ''; }
+  if (!ASKED_TAGS.includes(asked)) return '';
+  return asked === 'untried' && !VIEWER ? '' : asked;
 }
 
 // The order a list opens in: `wanted`, unless no game in `games` has a value for it.
@@ -392,6 +405,8 @@ function narrowed() {
     if (BROWSE.tag === 'unbeaten' && game.unbeaten !== true) return false;
     if (BROWSE.tag === 'beaten' && game.unbeaten !== false) return false;
     if (BROWSE.tag === 'unrated' && game.rated !== false) return false;
+    // The viewer's own *untried* (`site/browse.py` `_untried`), null for a visitor.
+    if (BROWSE.tag === 'untried' && game.untried !== true) return false;
     // Q972: the server's count of the proven positions the game's page offers
     // (`proven.offered`), undefined on the local application, which offers none.
     if (BROWSE.proven === 'yes' && !(game.provenPositions > 0)) return false;
@@ -592,6 +607,7 @@ function controlsHtml() {
               ${option('unbeaten', 'Unbeaten', BROWSE.tag)}
               ${option('beaten', 'beaten', BROWSE.tag)}
               ${option('unrated', 'unrated (no computer players yet)', BROWSE.tag)}
+              ${VIEWER ? option('untried', 'untried by you', BROWSE.tag) : ''}
             </select>${info('unbeaten')}</label>` : ''}
           ${SITE ? `<label class="pick">proven positions
             <select id="proven">

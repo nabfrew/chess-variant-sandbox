@@ -168,13 +168,14 @@ class TestTheHues:
 
     def test_your_page_and_the_corner_carry_your_mark(self) -> None:
         page = pages.profile("ada", user=7)
-        assert f"<h1>{marks.svg(7, 40)}ada</h1>" in page
-        assert f'id="who">{marks.svg(7, 20)}ada</span>' in page
+        # UP2: the mark large beside the handle, the page's one piece of identity.
+        assert f'<div class="whoBand">{marks.svg(7, 64)}<h1>ada</h1>' in page
+        assert f'id="who">{pages._member_button("ada", marks.svg(7, 20), here=True)}</span>' in page
         assert pages._member_button("ada", marks.svg(7, 20)) in pages.players("ada", user=7)
         assert f'{marks.svg(7, 20)}<span class="memberName">ada</span>' in pages.players(
             "ada", user=7)
-        # Without an id (a test, a constant page), the corner is the handle alone.
-        assert 'id="who">ada</span>' in pages.profile("ada")
+        # Without an id (a test, a constant page), the button carries no mark.
+        assert f'id="who">{pages._member_button("ada", here=True)}</span>' in pages.profile("ada")
 
     def test_the_corner_drops_it_on_a_phone(self) -> None:
         assert "header.top #who .memberMark { display: none; }" in pages.STYLE

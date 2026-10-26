@@ -106,6 +106,11 @@ function boardPreview(preview, map, drawn, bench) {
         out += cellShape(x, y, cell, view, `fill="none" stroke="var(--bad)" stroke-width="${
           cell * 0.05}" stroke-dasharray="${cell * 0.1}" opacity="0.8"`, 0.08);
       }
+      // UP2: a position a game stands in (the user page's waiting games) carries the
+      // engine's `lastMove`, and its squares are tinted as the play board tints them.
+      if (preview.last && lastMoveHas(preview.last, square)) {
+        out += cellShape(x, y, cell, view, `fill="var(--hl-last)" opacity="${LAST_TINT}"`);
+      }
       // Under the piece, for the play board's reason: these squares are singled out for
       // being arrived on, so whatever is standing there has to stay what you see first.
       if (marks[square]) out += squareBadge(x, y, cell, marks[square], view, tag);
@@ -240,6 +245,38 @@ function boardPreview(preview, map, drawn, bench) {
     styleClass(woodFrameStyle(identity))}"><div class="board-box">${svg}<div class="coords${
     view.hex ? ' on-wood' : ''}" aria-hidden="true">${edgeNamesHtml(cell, view, box)}</div></div></div></div>${
     handStripHtml(preview)}`;
+}
+
+// UP2: two of the play board's helpers the still board draws with too, kept here, where
+// both boards find them (this file loads before `board.js`), so a page that loads the
+// still board alone (the site's user page, `pages.BOARD_SCRIPTS`) has every name it calls.
+// A line from (ax, ay) to (bx, by), each end held back by `trimA` and `trimB` cells, so
+// it runs between two glyphs rather than over them; '' when nothing is left of it.
+function trimmedLine(ax, ay, bx, by, trimA, trimB, cell, attrs) {
+  const length = Math.hypot(bx - ax, by - ay);
+  if (!(length > (trimA + trimB) * cell)) return '';
+  const ux = (bx - ax) / length, uy = (by - ay) / length;
+  return `<line x1="${(ax + ux * trimA * cell).toFixed(3)}" y1="${(ay + uy * trimA * cell).toFixed(3)}"
+    x2="${(bx - ux * trimB * cell).toFixed(3)}" y2="${(by - uy * trimB * cell).toFixed(3)}" ${attrs}/>`;
+}
+
+// A sight's effects as `[square, bits]` pairs, from the live snapshot's value per square or
+// the history entry's pairs; empty where none is set.
+function effectPairs(effects) {
+  if (!effects || !effects.length) return [];
+  if (Array.isArray(effects[0])) return effects.filter(pair => pair[1]);
+  return effects.map((bits, square) => [square, bits]).filter(pair => pair[1]);
+}
+
+// Whether `square` is one the engine's last move touched: where it left and landed, the
+// two ends of a portal or a fold it went through, and in a round (schema 26) both players'
+// moves. One answer for the play board (`drawBoard`) and a still that carries a `last`.
+const LAST_TINT = 0.34;  // `tokens.BOARD_MARKS`' hl-last, as `board.js` draws it
+function lastMoveHas(last, square) {
+  return square === last.from || square === last.to
+    || (last.portal !== undefined && (square === last.portal || square === last.portalOut))
+    || (last.foldIn !== undefined && (square === last.foldIn || square === last.foldOut))
+    || !!(last.reveal && last.reveal.moves.some(m => m.from === square || m.to === square));
 }
 
 // The squares' names set outside a board, one `.co` each beside its own edge cell, placed

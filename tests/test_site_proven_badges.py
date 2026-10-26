@@ -192,7 +192,7 @@ class TestTheProfileDrawsIt:
         award = awards.Award(kind=badges.EVERY_PROVEN, holder=ADA, game="aaa",
                              earned=DAY, evidence={"positions": 3})
         said = _done([], [{**badges.line(award), "name_of": "alpha"}])
-        assert "Every proven position, on alpha, 2026-10-21." in said
+        assert "Every proven position, on alpha, 21 Oct 2026." in said
         assert "On that day, 3 proven positions on the game." in said
         assert badges.BADGES[badges.EVERY_PROVEN].rule in said
 

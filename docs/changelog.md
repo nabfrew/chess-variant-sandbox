@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### Your own page, rebuilt as a workshop
+
+Your own page now opens with what waits on you, each with a small board and one button, beside the game of yours
+furthest along. Below, your games sit in columns from draft to the library, each saying what changed and what comes
+next. It lists only the games you have played, empty counts are gone, and a new member's page opens on building a game.
+
 ### From a story to a game and back
 
 A game started from a front-page story now links back to the story and to how its game was made, and tapping the

@@ -102,6 +102,7 @@ from chess_variant_sandbox.site import (
     unbeaten,
     usage,
     votes,
+    workshop,
 )
 from chess_variant_sandbox.site import people as trust_people
 from chess_variant_sandbox.spec import spec_hash, validate_spec
@@ -1572,10 +1573,28 @@ class SiteApp(App):
             for group in designed:
                 for game in group["games"]:
                     game["tagCounts"] = tagged.get(game["hash"], [])
+            # UP1 (`docs/plan-user-page.md` §5): each game's board, track, rungs, parent and
+            # change, and each waiting game's board and last move (`site/workshop.py`), the
+            # drawings sent once in `pieceArt` as the listing sends them.
+            known = self.known()
+            art: dict[str, str] = {}
+            workshop.designs(
+                connection, viewer, designed, known, self.runs_dir, art, self._current
+            )
+            workshop.waiting(connection, between, art, shut)
+            carry_on = [
+                {
+                    **_carry_on(row, viewer),
+                    "name": named.get(row.game, ""),
+                    "openable": row.game not in shut,
+                }
+                for row in sorted(running, key=lambda row: row.started, reverse=True)
+            ]
+            workshop.waiting(connection, carry_on, art, shut)
+            workshop.challenged(connection, asked["forYou"], known, self.runs_dir, art)
             # R9b: this person's own solved marks on proven positions, by game.
             marked = proven.games_marked(connection, viewer)
             proven_names = browse.names(connection, sorted(marked))
-        known = self.known()
         proven_records = {
             game: proven.load(self.runs_dir, game, known[game].spec if game in known else None)
             for game in marked
@@ -1595,6 +1614,12 @@ class SiteApp(App):
             # Q503b. *Your games*: the games this person made, grouped by level, each
             # with its next step (`stages.yours`).
             "yourGames": designed,
+            # UP2: the workshop's columns, the path every game takes with this person's
+            # games standing on it, each game by hash (`workshop.columns`).
+            "workshop": workshop.columns(designed),
+            # UP2: a new member's *Play today's game*, the front page's own pick
+            # (`launch.first_step`) over the games the site still offers.
+            "today": _today_game(known, retired | gone | shut),
             # Q503a. This person's games a save had listed, which went back to Draft when
             # saving stopped listing; the page says why under its own heading.
             "backToDraft": [
@@ -1647,14 +1672,9 @@ class SiteApp(App):
             ],
             # B2 of `docs/archive/plan-ux.md`. The games this person left running, newest
             # first, so the one they were last at is the first one offered back.
-            "carryOn": [
-                {
-                    **_carry_on(row, viewer),
-                    "name": named.get(row.game, ""),
-                    "openable": row.game not in shut,
-                }
-                for row in sorted(running, key=lambda row: row.started, reverse=True)
-            ],
+            "carryOn": carry_on,
+            # UP1: the drawings every `still` and `position` above names by stem.
+            "pieceArt": art,
             # Q570, Q572. Games between people still being played, each with whose move
             # it is (the engine's side to move), in `correspondence.started_order`, and
             # the line of what this person finished (§1.6), absent until there is a
@@ -3035,6 +3055,17 @@ def _move_box(connection: Any, user: int) -> dict[str, Any]:
         "said": move_email.BOX_SAID,
         "under": move_email.BOX_UNDER,
     }
+
+
+def _today_game(
+    known: Mapping[str, library.Game], closed: Iterable[str]
+) -> dict[str, str] | None:
+    """The day's game as the front page picks it (`launch.first_step`), its name and hash,
+    over the games the site still offers; `None` when none of the rotation is offered."""
+    shut = set(closed)
+    offered = [game for digest, game in known.items() if digest not in shut]
+    step = launch.first_step(offered, [], launch.today())
+    return None if step is None else {"name": str(step["name"]), "hash": str(step["hash"])}
 
 
 def _carry_on(found: matches.Row, user: int) -> dict[str, Any]:
