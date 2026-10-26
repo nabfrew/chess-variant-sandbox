@@ -26,6 +26,7 @@ from chess_variant_sandbox.agents.base import AgentConfig
 from chess_variant_sandbox.agents.evaluation import Evaluator
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import CompiledSpec
+from chess_variant_sandbox.engine.moves import MOVE_DUCK, move_type
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.tournament.record import GameRecord
 
@@ -171,7 +172,8 @@ def play_game_mixed(
             move = player.select_move(state, legal, rngs[mover])
         successor = engine.apply(state, move)
         if collect_series:
-            captures.append(1 if successor.halfmove == 0 else 0)
+            # Generation 42 (N4b): a duck move takes nothing (`play.rs`'s reading).
+            captures.append(1 if successor.halfmove == 0 and move_type(move) != MOVE_DUCK else 0)
         moves.append(move)
         state = successor
 
@@ -392,7 +394,8 @@ def play_game_python(
         move = players[mover].select_move(state, legal, rngs[mover])
         successor = engine.apply(state, move)
         if collect_series:
-            captures.append(1 if successor.halfmove == 0 else 0)
+            # Generation 42 (N4b): a duck move takes nothing (`play.rs`'s reading).
+            captures.append(1 if successor.halfmove == 0 and move_type(move) != MOVE_DUCK else 0)
         moves.append(move)
         state = successor
 

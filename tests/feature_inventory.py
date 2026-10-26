@@ -28,6 +28,8 @@ from chess_variant_sandbox.spec.schema import (
     WRAP_PAIRS,
     _listed,
     castling_rank_walled_beyond_its_spans,
+    duck_goes,
+    duck_piece,
     has_rests,
     has_speeds,
     keeping_link_holds,
@@ -40,7 +42,7 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 41
+LAST_BUMP = 42
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -906,6 +908,31 @@ def _schema_forty_one_uses(spec: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _schema_forty_two_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 42 added, by name (N4b, `docs/plan-npc.md`
+    §4.6; numbered by order of landing, bumping no version).
+
+    * ``rules.duck`` -- every turn ends with the mover moving one neutral, uncapturable piece;
+    * ``rules.duck.goes.by_moves`` -- the duck walks its type's moves instead of going anywhere;
+    * ``rules.duck.start`` -- the duck starts on a square rather than off the board;
+    * ``pieces.sight.duck`` -- the duck's type carries a sight (N2's duck half, §4.2).
+    """
+    rules = spec.get("rules")
+    pid = duck_piece(rules)
+    if pid is None:
+        return set()
+    names = {"rules.duck"}
+    if duck_goes(rules) == "by_moves":
+        names.add("rules.duck.goes.by_moves")
+    if isinstance(rules, dict) and "start" in rules["duck"]:
+        names.add("rules.duck.start")
+    pieces = spec.get("pieces")
+    for piece in pieces if isinstance(pieces, list) else ():
+        if isinstance(piece, dict) and piece.get("id") == pid and piece.get("sight"):
+            names.add("pieces.sight.duck")
+    return names
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -940,4 +967,5 @@ _COLLECTORS = {
     39: _schema_thirty_nine_uses,
     40: _schema_forty_uses,
     41: _schema_forty_one_uses,
+    42: _schema_forty_two_uses,
 }

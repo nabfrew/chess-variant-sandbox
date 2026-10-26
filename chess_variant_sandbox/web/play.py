@@ -31,7 +31,10 @@ from chess_variant_sandbox.agents.base import AgentConfig, native_spec, parse_ag
 from chess_variant_sandbox.engine.coming import coming_phases
 from chess_variant_sandbox.engine.engine import _square_name as square_name
 from chess_variant_sandbox.engine.moves import (
+    DUCK_PASS,
+    DUCK_PLACE,
     MOVE_DROP,
+    MOVE_DUCK,
     MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
@@ -177,6 +180,20 @@ def _reply(
     if native[0] not in DEEPENING or choices < 2:
         return move, None
     return move, depth
+
+
+def _duck_entry(move: int) -> dict[str, Any]:
+    """A duck move as the page reads it (generation 42, N4c, `docs/plan-npc.md` §4.6):
+    ``from`` None on a placement from off the board and on the pass, ``to`` None on the pass,
+    and ``pass`` whether it is the pass. Read off the move word, which says how; nothing
+    here decides whether the move is legal."""
+    how = move_promotion(move)
+    passed = how == DUCK_PASS
+    return {
+        "from": None if passed or how == DUCK_PLACE else move_from(move),
+        "to": None if passed else move_to(move),
+        "pass": passed,
+    }
 
 
 def _portal_bar(state: GameState) -> dict[str, int] | None:
@@ -484,6 +501,10 @@ class Session:
                 # (`CompiledSpec.rest`), so a game whose longest rest is over 1 numbers its
                 # pause signs with the turns left; empty in every game without a rest.
                 "rest": list(engine.spec.rest),
+                # Generation 42 (N4c, `docs/plan-npc.md` §4.6): the duck's type, or None in
+                # a game without `rules.duck`. The move list writes a turn on one line from
+                # it, and the board names the duck in its words.
+                "duck": engine.spec.duck.piece_type if engine.spec.duck is not None else None,
             },
             "seats": list(self.seats),
             # How hard each seat thinks, in plain words off the budget it plays at, for
@@ -511,6 +532,12 @@ class Session:
             # Moves left in this turn. 1 for every ruleset without a turn rule, where
             # the side flips on every move; a player owed a second move needs telling.
             "remaining": self.state.remaining,
+            # Generation 42 (N4c, §4.6): whether the side to move owes its duck move, the
+            # second half of its turn (the core's `duck_owed`), and where the duck stands
+            # (None off the board, and in every game without one). The board enters its duck
+            # mode from the first and rings the second; it works out neither.
+            "duckOwed": engine.duck_owed(self.state),
+            "duck": engine.duck_square(self.state),
             "sideToMove": mover,
             # Schema 20 (`no_straight_back`): the end the last move carried, standing on
             # `standing`, may not go straight back to `left` this move; `None` where nothing
@@ -672,6 +699,11 @@ class Session:
                 entry["promotion"] = move_promotion(move) % engine.spec.n_types
             elif kind == MOVE_ROTATE:
                 entry["rotation"] = move_promotion(move)
+            elif kind == MOVE_DUCK:
+                # Generation 42 (N4c, §4.6): the duck's half. A placement comes from off the
+                # board (no origin) and the pass goes nowhere (no target the board lights);
+                # the page offers the pass as a button, only when it is the one move.
+                entry.update(_duck_entry(move))
             elif kind == MOVE_PORTAL:
                 # Schema 19: the end it goes in by, the end it comes out beside and the
                 # way it comes out, named here (`viz.wrapped.portal_transit`); the target
@@ -807,11 +839,23 @@ class Session:
                 del self.states[-2:], self.history[-2:], self.played[-2:]
             return self.snapshot()
         watched = HUMAN not in self.seats
+        engine = self.engine
+        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): a take-back never leaves half a turn.
+        # Begun with a duck move owed, it takes back the person's piece move alone (they
+        # regret it before placing the duck); otherwise it stops only where a person owes a
+        # piece move, so a reply's take-back returns the whole of the person's last turn.
+        if engine.spec.duck is not None and engine.duck_owed(self.state) and self.states:
+            self.state = self.states.pop()
+            self.history.pop()
+            self.played.pop()
+            return self.snapshot()
         while self.states:
             self.state = self.states.pop()
             self.history.pop()
             self.played.pop()
-            if watched or self.seats[self.state.side_to_move] == HUMAN:
+            if watched:
+                break
+            if self.seats[self.state.side_to_move] == HUMAN and not engine.duck_owed(self.state):
                 break
         return self.snapshot()
 
@@ -859,6 +903,9 @@ class Session:
                 "text": engine.describe_move(self.state, move),
                 "from": None if move_type(move) == MOVE_DROP else move_from(move),
                 "to": move_to(move),
+                # Generation 42 (N4c): a duck move's own block, `_offer`'s words; its
+                # placement has no origin and its pass no square. Absent for every other move.
+                **(_duck_entry(move) if move_type(move) == MOVE_DUCK else {}),
                 "by": by,
                 "player": self.state.side_to_move,
                 # What the wild-piece phase did after this move (schema 9), from the

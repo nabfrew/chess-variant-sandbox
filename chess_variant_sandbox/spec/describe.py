@@ -37,6 +37,8 @@ from chess_variant_sandbox.spec.schema import (
     Sight,
     SpecError,
     absent_squares,
+    duck_goes,
+    duck_piece,
     has_speeds,
     is_simultaneous,
     npc_pounce,
@@ -221,6 +223,8 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
         # First in the list on purpose: it changes what "a turn" means, so every other
         # sentence below is read differently once you know it.
         lines.append(_describe_turn(turn))
+    # Generation 42 (N4b): the duck changes what a turn is too, so it is read beside it.
+    lines.extend(_describe_duck(spec, rules))
 
     # Second for the same reason, one level down: a seam changes what a *line* is, so
     # every sentence about how a piece moves is read differently once you know it.
@@ -443,6 +447,9 @@ _MOVELESS = {
                      "and taking it is how the game is won (see the rules)",
     "checkmate": "never moves, so a check on it can be answered only by taking the checking "
                  "piece or blocking its line, never by stepping away",
+    # Generation 42 (N4b): the duck that goes anywhere has no moves of its own to state.
+    "duck": "the duck: no piece moves of its own; each player moves it to an empty square as "
+            "the second half of every turn, and nothing can capture it (see the rules)",
 }
 
 
@@ -469,9 +476,12 @@ def _moveless_fates(spec: dict[str, Any], listed: list[dict[str, Any]]) -> dict[
     fates: dict[str, str] = {}
     royal = {piece["id"] for piece in listed if piece.get("royal")}
     win = (spec.get("rules") or {}).get("win", "checkmate")
+    duck = duck_piece(spec.get("rules"))
     for piece_id in moveless:
         victim = compiled.piece_ids.index(piece_id)
-        if piece_id in royal and win in ("royal_capture", "checkmate"):
+        if piece_id == duck:
+            fates[piece_id] = _MOVELESS["duck"]
+        elif piece_id in royal and win in ("royal_capture", "checkmate"):
             fates[piece_id] = _MOVELESS[win]
         elif any(
             capturing[attacker] and compiled.capture_allowed[attacker][victim]
@@ -1225,6 +1235,11 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "one. The hand is filled by what they capture, by a stock they start with, or by "
         "both.",
     ),
+    "duck": (
+        "the duck",
+        "A piece nobody owns that every turn ends by moving: the player moves a piece, then "
+        "moves the duck to an empty square, where it blocks lines and nothing may take it.",
+    ),
     "en_passant": (
         "taking a piece in passing",
         "A piece that steps two squares past an enemy that could have taken it on the way "
@@ -1366,6 +1381,7 @@ RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
     "reach": ("king of the hill", "race", "goal", "target square"),
     "extinction": ("extinction", "run out"),
     "npcs": ("wild", "neutral", "monster", "non-player"),
+    "duck": ("duck chess", "duck", "neutral blocker", "wall"),
     "turn": ("double move", "marseillais", "progressive", "several moves", "two moves"),
     "castling": ("castle",),
     "en_passant": ("en passant",),
@@ -1860,6 +1876,35 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
         )
     )
     return lines
+
+
+def _describe_duck(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, as a player is told it."""
+    pid = duck_piece(rules)
+    if pid is None:
+        return []
+    names = {p.get("id"): p.get("name", p.get("id")) for p in spec.get("pieces", []) if isinstance(p, dict)}
+    name = names.get(pid, pid)
+    duck = rules["duck"]
+    goes = (
+        "to any empty square but the one it stands on"
+        if duck_goes(rules) == "anywhere"
+        else "by its own moves, onto an empty square"
+    )
+    start = duck.get("start")
+    where = (
+        f"The {name} starts on {start}."
+        if isinstance(start, str)
+        else f"The {name} starts off the board, and the first player's first {name} move puts it on any empty square."
+    )
+    return [
+        f"Every turn is two halves: the player moves a piece, then moves the {name} ({pid}), "
+        f"a piece nobody owns, {goes}; with nowhere to go it stays and the turn ends. {where} "
+        f"The {name} blocks lines like any piece, nothing may capture it and it captures "
+        f"nothing. A move that takes a royal ends the game at once, with no {name} move. "
+        f"Each half is a ply of the game's length; repetition and the clocks are counted "
+        f"only at a turn's start."
+    ]
 
 
 def _describe_turn(turn: dict[str, Any]) -> str:

@@ -43,9 +43,12 @@ from chess_variant_sandbox.agents.evaluation import WIN_SCORE, Evaluator
 from chess_variant_sandbox.engine import Engine, GameState, SpyPhase
 from chess_variant_sandbox.engine.compile import POUNCE_ATTACKERS
 from chess_variant_sandbox.engine.moves import (
+    DUCK_PASS,
+    DUCK_PLACE,
     MOVE_CASTLE,
     MOVE_COMMANDED,
     MOVE_DROP,
+    MOVE_DUCK,
     MOVE_FOLD,
     MOVE_PROMOTION,
     MOVE_ROTATE,
@@ -145,6 +148,11 @@ class GameAnalysis:
     # by type. ``None`` for a game without wild pieces (and for a game in rounds), and then
     # absent from the file, as ``rounds`` is.
     wild: dict[str, Any] | None = None
+    # Generation 42 (N4b, `docs/plan-npc.md` §4.6): what the duck did (`DUCK_COUNTS`, and
+    # ``royal_distance``, the duck's king's distance to the mover's royal after each duck move,
+    # -1 with none on the board). ``None`` for a game without a duck, and then absent from the
+    # file, as ``rounds`` is.
+    duck: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -159,6 +167,8 @@ class GameAnalysis:
             del data["rest"]
         if self.wild is None:
             del data["wild"]
+        if self.duck is None:
+            del data["duck"]
         return data
 
     @classmethod
@@ -523,6 +533,48 @@ WILD_COUNTS = (
 )
 
 
+# Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck tally, per game. Its moves, how many put
+# it down from off the board, how many passed, and after each duck move the duck's king's
+# distance to the mover's royal (the lattice's own distance on a hex board; -1 with no royal
+# of the mover's standing), which §6.1's prediction reads.
+DUCK_COUNTS = ("duck_moves", "placements", "passes")
+
+
+def _duck_tally(engine: Engine) -> dict[str, Any] | None:
+    if engine.spec.duck is None:
+        return None
+    return {**dict.fromkeys(DUCK_COUNTS, 0), "royal_distance": []}
+
+
+def _king_distance(engine: Engine, first: int, second: int) -> int:
+    width = engine.spec.width
+    files = second % width - first % width
+    ranks = second // width - first // width
+    if engine.spec.lattice == "hex":
+        # The hex lattice's own distance (`schema.hex_distance`, outside this file's set).
+        return max(abs(files), abs(ranks), abs(files + ranks))
+    return max(abs(files), abs(ranks))
+
+
+def _count_duck(engine: Engine, duck: dict[str, Any], mover: int, move: int, after: GameState) -> None:
+    if move_type(move) != MOVE_DUCK:
+        return
+    duck["duck_moves"] += 1
+    how = move_promotion(move)
+    duck["placements"] += int(how == DUCK_PLACE)
+    duck["passes"] += int(how == DUCK_PASS)
+    spec = engine.spec
+    at = engine.duck_square(after)
+    royals = [
+        square for square, value in enumerate(after.board)
+        if value and spec.owner_of(value) == mover and spec.type_of(value) in spec.royal_types
+    ]
+    duck["royal_distance"].append(
+        min((_king_distance(engine, at, royal) for royal in royals), default=-1)
+        if at is not None else -1
+    )
+
+
 def _wild_tally(engine: Engine) -> dict[str, Any] | None:
     if engine.spec.npcs is None:
         return None
@@ -551,7 +603,7 @@ def _count_wild(
             wild["returns"] += 1
         elif step.kind == "turn":
             wild["turns"] += 1
-    standing = sum(1 for value in after.board if value and spec.owner_of(value) == 2)
+    standing = sum(1 for value in after.board if _is_wild_piece(spec, value))
     wild["most_standing"] = max(wild["most_standing"], standing)
 
 
@@ -587,8 +639,9 @@ def _analyse_game(
     wild = _wild_tally(engine)
     if wild is not None:
         wild["most_standing"] = sum(
-            1 for value in state.board if value and engine.spec.owner_of(value) == 2
+            1 for value in state.board if _is_wild_piece(engine.spec, value)
         )
+    duck = _duck_tally(engine)
 
     for index, move in enumerate(record.moves):
         board = state.board
@@ -618,11 +671,14 @@ def _analyse_game(
                 # consistently.
                 capture_counts.append(sum(1 for m in legal if _takes(board, m)))
 
+        mover = state.side_to_move
         if wild is None:
             state = engine.apply(state, move)
         else:
             state, phase = engine.apply_with_phase(state, move)
             _count_wild(engine, wild, board, move, state, phase)
+        if duck is not None:
+            _count_duck(engine, duck, mover, move, state)
         walked += 1
         position_keys.append(state.key)
         if state.key in seen_keys:
@@ -646,7 +702,15 @@ def _analyse_game(
         sight=sight,
         rest=rest,
         wild=wild,
+        duck=duck,
     )
+
+
+def _is_wild_piece(spec: Any, value: int) -> bool:
+    """A wild piece's byte: the third owner's, and (generation 42) not the duck's."""
+    if not value or spec.owner_of(value) != 2:
+        return False
+    return spec.duck is None or spec.type_of(value) != spec.duck.piece_type
 
 
 def _mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
@@ -664,6 +728,11 @@ def _mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
     kind = move_type(move)
     if kind == MOVE_DROP:
         return move_promotion(move) % n_types
+    if kind == MOVE_DUCK:
+        # Generation 42: the duck's moves count under its type, placed or passing as moved.
+        duck = engine.spec.duck
+        assert duck is not None
+        return duck.piece_type
     if kind == MOVE_FOLD:
         portals = engine.spec.portals
         assert portals is not None
@@ -675,7 +744,7 @@ def _mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
 def _moves_an_instance(move: int) -> bool:
     """Whether a move moves the piece on its origin square: a drop moves none, and a fold's
     own move leaves the piece standing in it where it is."""
-    return move_type(move) not in (MOVE_DROP, MOVE_FOLD)
+    return move_type(move) not in (MOVE_DROP, MOVE_FOLD, MOVE_DUCK)
 
 
 def _starting_squares(engine: Engine, board: bytes) -> set[int]:
@@ -706,13 +775,15 @@ def _takes(board: bytes, move: int) -> bool:
     read as a capture, so a game whose pieces turn offered one in nearly every position).
     A file-based castling can land the king on its own rook, or on its own square, and
     moves the rook rather than removing it. A fold's own move may end on a piece and leave
-    it standing (`docs/archive/plan-portals-2.md` §3R.1 rule 6). These are the three
-    `agents.rs::capture_gain` and `agents/minimax.py` leave out.
+    it standing (`docs/archive/plan-portals-2.md` §3R.1 rule 6). A duck's pass (generation 42)
+    names the duck's own square. These are the four `agents.rs::capture_gain` and
+    `agents/minimax.py` leave out.
     """
     return board[move_to(move)] != 0 and move_type(move) not in (
         MOVE_ROTATE,
         MOVE_CASTLE,
         MOVE_FOLD,
+        MOVE_DUCK,
     )
 
 

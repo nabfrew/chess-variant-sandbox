@@ -67,6 +67,7 @@ from chess_variant_sandbox.spec.describe import (
     plain_move_sentence,
     sight_sentence,
 )
+from chess_variant_sandbox.spec.describe import _describe_duck as _duck_lines
 from chess_variant_sandbox.spec.plain import REST_WORDS, field_words, the_rules
 from chess_variant_sandbox.spec.plain import plain_problem as _spec_plain_problem
 from chess_variant_sandbox.spec.schema import (
@@ -408,7 +409,8 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
                 # are about a piece's lines of sight, under its sight rows.
                 "sightLines": sight_lines(spec),
                 "sightProblems": sight_problems(problems, spec, sides),
-                "portals": _portals_answer(spec, problems, preview)}
+                "portals": _portals_answer(spec, problems, preview),
+                "duck": duck_answer(spec, problems, sides)}
 
     # A spec the schema accepts can still fail to compile -- the compiler enforces things
     # the validator does not, and it says so by raising. Its message is one paragraph,
@@ -423,7 +425,8 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
                 "preview": preview, "moveLines": move_lines(spec),
                 "portalMoveLines": portal_move_lines(spec),
                 "sightLines": sight_lines(spec),
-                "portals": _portals_answer(spec, [], preview)}
+                "portals": _portals_answer(spec, [], preview),
+                "duck": duck_answer(spec, [], None)}
 
     import time
 
@@ -468,6 +471,8 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
         # Schema 19 (P3): the pairs' cards in sentences, their warnings with the exits each
         # end has (N4), and whether *+ portal pair* can add another.
         "portals": _portals_answer(spec, [], preview, engine),
+        # Generation 42 (N4c): the duck's card in words, and the refusals that are its.
+        "duck": duck_answer(spec, [], (preview or {}).get("sides"), said=True),
     }
 
 
@@ -1560,6 +1565,25 @@ def portal_errors(problems: list[str], spec: Any = None, sides: Any = None) -> l
     return out
 
 
+def duck_answer(
+    spec: Any, problems: list[str], sides: Any, *, said: bool = False
+) -> dict[str, Any] | None:
+    """The duck's card beside a check's answer (generation 42, N4c, `docs/plan-npc.md` §4.6).
+
+    ``says``: the rule as a player is told it (`describe`'s duck line), once the draft is a
+    game (``said``); ``errors``: the validator's refusals that are about the duck, in the
+    designer's words (`plain_problem`). None in a draft without `rules.duck`.
+    """
+    rules = spec.get("rules") if isinstance(spec, dict) else None
+    if not isinstance(rules, dict) or not isinstance(rules.get("duck"), dict):
+        return None
+    mine = [problem for problem in problems if "duck" in problem]
+    return {
+        "says": _duck_lines(spec, rules) if said else [],
+        "errors": plain_problems(mine, spec, sides),
+    }
+
+
 def _portals_answer(
     spec: Any, problems: list[str], preview: dict[str, Any] | None, engine: Any = None
 ) -> dict[str, Any]:
@@ -1770,11 +1794,34 @@ def refusals(spec: Any, candidates: dict[str, Any]) -> dict[str, Any]:
     for key, value in candidates.items():
         trial = copy.deepcopy(base)
         trial.setdefault("rules", {})[str(key)] = value
+        if key == "duck":
+            _duck_companion(trial)
         problems = _worth_saying(validate_spec(settled(trial)))
         if problems:
             # Every reason once: several validator lines can read as one sentence.
             refused[str(key)] = list(dict.fromkeys(plain_problems(problems, trial)))
     return {"refused": refused, "asked": True}
+
+
+def _duck_companion(trial: dict[str, Any]) -> None:
+    """What adding the duck changes beside it, as the page's `RULE_COMPANIONS.duck` does it
+    (generation 42, N4c; `tests/test_duck_page.py` holds the two together): the piece it names,
+    added as a duck with no moves where the draft has none of that letter; mate turned into
+    the royal's capture; an odd `max_plies` made even. So the menu is asked about the duck
+    as the card arrives, not about the bare rule."""
+    rules = trial.setdefault("rules", {})
+    duck = rules.get("duck")
+    if not isinstance(duck, dict):
+        return
+    if rules.get("win", "checkmate") == "checkmate":
+        rules["win"] = "royal_capture"
+    if isinstance(rules.get("max_plies"), int) and rules["max_plies"] % 2:
+        rules["max_plies"] += 1
+    pieces = trial.setdefault("pieces", [])
+    if isinstance(duck.get("piece"), str) and not any(
+        isinstance(piece, dict) and piece.get("id") == duck["piece"] for piece in pieces
+    ):
+        pieces.append({"id": duck["piece"], "name": "duck", "value": 0, "moves": []})
 
 
 # ------------------------------------------------------------------ how the players take turns

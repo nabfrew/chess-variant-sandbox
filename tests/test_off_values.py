@@ -22,6 +22,7 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.schema import (
     CONTACT_LINK_OFF_VALUES,
+    DUCK_OFF_VALUES,
     MOVE_OFF_VALUES,
     NPC_OFF_VALUES,
     PIECE_OFF_VALUES,
@@ -89,6 +90,10 @@ def _turns_back(spec: dict[str, Any]) -> None:
         npc.setdefault("turns_back", False)
 
 
+def _goes(spec: dict[str, Any]) -> None:
+    spec["rules"]["duck"].setdefault("goes", "anywhere")
+
+
 def _own(spec: dict[str, Any]) -> None:
     for link in spec["rules"]["contacts"]["links"]:
         link.setdefault("own", False)
@@ -112,6 +117,7 @@ CASES = [
     ("pieces[].moves[].path", "rulesets/chess.json", _straight),
     ("rules.npcs[].respawn", "archive/wolves.json", _respawn),
     ("rules.npcs[].turns_back", "archive/wolves.json", _turns_back),
+    ("rules.duck.goes", "tests/_duck_chess.json", _goes),
 ]
 
 
@@ -124,6 +130,7 @@ def test_every_off_value_has_a_case() -> None:
         **{f"rules.portals[].{key}": 1 for key in PORTAL_OFF_VALUES},
         **{f"rules.contacts.links[].{key}": 1 for key in CONTACT_LINK_OFF_VALUES},
         **{f"rules.npcs[].{key}": 1 for key in NPC_OFF_VALUES},
+        **{f"rules.duck.{key}": 1 for key in DUCK_OFF_VALUES},
     }
     assert set(named) == {where for where, _, _ in CASES}
 

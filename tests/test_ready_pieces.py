@@ -95,6 +95,8 @@ SURVEY: dict[str, list[dict[str, Any]]] = {
                  slide([[0, 1]], "none", range=2, min_range=2, mode="move",
                        condition={"from_rank": 1})],
     "anchor": [], "bomb": [], "crown": [], "eye": [K],
+    # Generation 42 (N4c): the duck, moved only by `rules.duck`, has no moves of its own.
+    "duck": [],
     "ghost": [leap([[0, d] for d in range(1, 8)] + [[d, d] for d in range(1, 8)])],
     "hourglass": [Q], "rock": KING_STEPS, "paper": KING_STEPS, "scissors": KING_STEPS,
 }
@@ -155,6 +157,11 @@ def _spec(slug: str, with_rules: bool = True) -> dict[str, Any]:
     pieces = [piece]
     placements = [{"piece": "X", "player": 0, "squares": ["d3"]},
                   {"piece": "X", "player": 1, "squares": ["a7" if hexy else "b8"]}]
+    # Generation 42 (N4c): the duck is never placed (its rule moves it onto the board), and
+    # needs no check beside it, so its game is won by the royal's capture.
+    duck = "duck" in (entry.get("rules") or {}) and with_rules
+    if duck:
+        placements = []
     if not piece.get("royal"):
         pieces.append(king)
         placements += [{"piece": "K", "player": 0, "squares": ["a1"]},
@@ -166,7 +173,7 @@ def _spec(slug: str, with_rules: bool = True) -> dict[str, Any]:
                        {"piece": "M", "player": 1, "squares": ["h8"]}]
     royals = [p["id"] for p in pieces if p.get("royal")]
     rules: dict[str, Any] = {"win": "checkmate", "max_plies": 200}
-    if len(royals) > 1 or (piece.get("royal") and not piece["moves"]):
+    if len(royals) > 1 or (piece.get("royal") and not piece["moves"]) or duck:
         rules["win"] = "royal_capture"
     if with_rules:
         rules.update(_resolve(entry.get("rules", {}), "X", royals))

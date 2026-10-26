@@ -283,7 +283,8 @@ def verdicts(
     """
     text, played = _question(engine, variant, state, start, moves)
     answer = referee.ending(text, played)
-    return Ending.ours(engine.terminal(state)), Ending.theirs(answer, state.side_to_move)
+    side = fairy_position.their_side(engine.spec, state)
+    return Ending.ours(engine.terminal(state)), Ending.theirs(answer, side)
 
 
 # Our endings by a clock, and the `rules` key of each.
@@ -359,7 +360,7 @@ def _a_mate_their_clock_drew(
         answer = referee.ending(unclocked, [])
     except Exception:  # noqa: BLE001 - an answer it cannot give admits nothing
         return False
-    return Ending.theirs(answer, state.side_to_move).same(ours)
+    return Ending.theirs(answer, fairy_position.their_side(engine.spec, state)).same(ours)
 
 
 def _question(
@@ -398,7 +399,11 @@ def check_results(
             reasons=list(error.reasons),
         )
 
-    engine = Engine(spec)
+    engine: Any = Engine(spec)
+    if engine.spec.duck is not None:
+        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): a duck game is asked about at turn
+        # starts, a move being both halves there (`_Turns`).
+        engine = _Turns(engine)
     check = ResultCheck(
         ruleset_hash=engine.spec.hash,
         name=engine.spec.name,
@@ -477,9 +482,70 @@ class _Line:
 
 
 def _spell(engine: Engine, variant: Variant, state: GameState, move: int) -> str:
+    if isinstance(engine, _Turns):
+        piece, duck, ended = _Turns.halves(move)
+        if ended:
+            # Our game ended on the piece move, with no duck half. Their word for it needs
+            # a duck square, and the vacated origin is one every such move leaves empty.
+            origin, target, _, _ = decode_move(piece)
+            width = engine.spec.width
+            head = fairy_position.uci_of(
+                engine.spec, state, piece, variant.chars, variant.promotion_suffix
+            )
+            return f"{head},{_name(target, width)}{_name(origin, width)}"
+        return fairy_position.turn_word(
+            engine.spec, state, piece, duck, variant.chars, variant.promotion_suffix
+        )
     return fairy_position.uci_of(
         engine.spec, state, move, variant.chars, variant.promotion_suffix
     )
+
+
+def _name(square: int, width: int) -> str:
+    return f"{chr(ord('a') + square % width)}{square // width + 1}"
+
+
+class _Turns:
+    """A duck game's engine with a turn for a move (generation 42, N4c, §4.6).
+
+    Their move is both halves of our turn, so the result check walks our turns: each legal
+    move here is one of our piece moves with one of the duck moves our engine then offers,
+    packed into one integer (the piece move in the low 32 bits, so `decode_move` reads it),
+    or the piece move alone where it ended our game. Every move and every ending is still
+    our engine's; this only pairs them. Everything else is the engine's own.
+    """
+
+    _ENDED = 1 << 63
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._engine, name)
+
+    @classmethod
+    def halves(cls, move: int) -> tuple[int, int, bool]:
+        """The piece move, the duck move (0 where none) and whether the first ended it."""
+        return move & 0xFFFFFFFF, (move >> 32) & 0x7FFFFFFF, bool(move & cls._ENDED)
+
+    def legal_moves(self, state: GameState) -> list[int]:
+        engine = self._engine
+        turns: list[int] = []
+        for piece in engine.legal_moves(state):
+            half = engine.apply(state, piece)
+            if engine.terminal(half) is not None:
+                turns.append(piece | self._ENDED)
+                continue
+            turns.extend(piece | duck << 32 for duck in engine.legal_moves(half))
+        return turns
+
+    def apply(self, state: GameState, move: int) -> GameState:
+        piece, duck, ended = self.halves(move)
+        half = self._engine.apply(state, piece)
+        return half if ended else self._engine.apply(half, duck)
+
+    def terminal(self, state: GameState, legal: Any = None) -> Outcome | None:
+        return self._engine.terminal(state)
 
 
 def _play_out(
@@ -651,7 +717,7 @@ class _Asker:
             answer = self.referee.ending(text, played)
         except Exception as error:  # noqa: BLE001 - a crash in there is a difference
             return self._differ(key, text, played, ours, f"nothing: it failed ({error})")
-        theirs = Ending.theirs(answer, state.side_to_move)
+        theirs = Ending.theirs(answer, fairy_position.their_side(self.engine.spec, state))
         if ours.same(theirs):
             if ours.over:
                 self.check.agreed[ours.how] = self.check.agreed.get(ours.how, 0) + 1

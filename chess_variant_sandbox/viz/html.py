@@ -32,6 +32,13 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.engine import Engine, GameState
+from chess_variant_sandbox.engine.moves import (
+    DUCK_PASS,
+    DUCK_PLACE,
+    MOVE_DUCK,
+    move_promotion,
+    move_type,
+)
 from chess_variant_sandbox.spec import spec_hash
 from chess_variant_sandbox.tournament.play import replay
 from chess_variant_sandbox.tournament.record import GameRecord
@@ -51,6 +58,17 @@ from chess_variant_sandbox.viz.wrapped import (
 )
 
 
+def _duck_squares(move: int) -> dict[str, Any]:
+    """A duck move's squares to mark (generation 42): none of the pass's, only a placement's
+    target; empty for every other move, which keeps its own."""
+    if move_type(move) != MOVE_DUCK:
+        return {}
+    how = move_promotion(move)
+    if how == DUCK_PASS:
+        return {"from": None, "to": None}
+    return {"from": None} if how == DUCK_PLACE else {}
+
+
 def render_game(
     spec: dict[str, Any], record: GameRecord, out_path: str | Path, icons: bool = True
 ) -> Path:
@@ -67,6 +85,9 @@ def render_game(
                 "text": engine.describe_move(state, move),
                 "from": move & 0xFF,
                 "to": (move >> 8) & 0xFF,
+                # Generation 42 (N4c): a duck placement has no origin to mark, and the pass
+                # no square at all; the text says each (`describe_move`).
+                **_duck_squares(move),
                 # What the wild-piece phase did after this move (schema 9), as the core
                 # logged it: one ``{from, to, eaten}`` per wild piece that walked. The
                 # page splits the ply into beats from it; empty for every ruleset

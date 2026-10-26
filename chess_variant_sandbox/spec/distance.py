@@ -36,6 +36,8 @@ from chess_variant_sandbox.spec.schema import (
     STOCK_UNLIMITED,
     WRAP_PAIRS,
     absent_squares,
+    duck_goes,
+    duck_piece,
     facing_turns,
     npc_pounce,
     npc_respawn,
@@ -309,6 +311,12 @@ _SCALES: dict[str, float] = {
     # Generation 41 (N3d). Whether a wild piece splits (`npcs[].split`): without it a guard and
     # its hydra twin read as one game.
     "npcs_split": 1.0,
+    # Generation 42 (N4b). Whether every turn ends with a duck move (`rules.duck`), and whether
+    # the duck goes by its type's moves rather than anywhere: without them chess and Duck chess
+    # differ only in one moveless piece type, and a classic duck and its walking twin read as
+    # one game.
+    "has_duck": 1.0,
+    "duck_by_moves": 1.0,
     # Q1011: the nineteen features added from schema 26 on, computed in `features` and left
     # out of this table, so `distance` never read them: a queen that freezes and one that
     # disarms measured 0.0 apart. `test_every_feature_has_a_scale` holds the two lists
@@ -464,6 +472,10 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         **_contact_features(pieces, rules.get("contacts")),
         **_facing_features(pieces),
         **_npc_features(pieces, rules.get("npcs")),
+        "has_duck": 1.0 if duck_piece(rules) is not None else 0.0,
+        "duck_by_moves": (
+            1.0 if duck_piece(rules) is not None and duck_goes(rules) == "by_moves" else 0.0
+        ),
         "promotes_on_entry": 1.0 if rules.get("promote_on_entry") else 0.0,
         "no_repetition_draw": (
             1.0 if rules.get("repetition_draw") == REPETITION_NEVER else 0.0

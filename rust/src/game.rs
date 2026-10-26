@@ -43,6 +43,9 @@ pub use turning::heading_from;
 // Generation 39 (N3b, `docs/plan-npc.md` §4.3): wild pieces that pounce, step 1 of the phase.
 #[path = "pounce.rs"]
 mod pounce;
+// Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, the second half of every turn.
+#[path = "duck.rs"]
+mod duck;
 
 /// What one entry of the phase log is (`Game::npc_log`'s fourth field): a wild piece's step
 /// along its route, `(from, to, eaten)`.
@@ -1863,8 +1866,8 @@ impl<'t> Game<'t> {
     fn npc_here(&self) -> SquareSet {
         let mut here = SquareSet::EMPTY;
         for &square in &self.t.npc_squares {
-            let value = self.board[square as usize];
-            if value != 0 && self.t.owner_of(value) == WILD {
+            // Generation 42: the duck may stand on a route square and never walks it.
+            if self.t.is_wild_piece(self.board[square as usize]) {
                 here.set(square as usize);
             }
         }
@@ -2009,6 +2012,10 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn npc_phase_of_make(&mut self) -> bool {
+        // Generation 42 (N4b): a duck game's piece half runs no phase; the duck half does.
+        if self.t.duck.is_some() && !self.duck_owed() {
+            return self.duck_piece_half();
+        }
         if self.t.respawn.is_some() {
             self.respawn_save();
         }
@@ -2245,9 +2252,14 @@ impl<'t> Game<'t> {
         let origin = move_from(m);
         let target = move_to(m);
         let kind = move_kind(m);
-        // Schema 22: a fold's own move touches no square of the board byte.
-        if kind == MOVE_FOLD {
-            self.make_fold(m);
+        // Schema 22: a fold's own move touches no square of the board byte. Generation 42:
+        // the duck's half is its own function too. One comparison on the hot path for both.
+        if kind >= MOVE_FOLD {
+            if kind == MOVE_FOLD {
+                self.make_fold(m);
+            } else {
+                self.make_duck(m);
+            }
             return;
         }
         let player = self.side;
@@ -2480,6 +2492,8 @@ impl<'t> Game<'t> {
         // check count, the material clock and the irreversibility test below. It runs
         // before the key's en passant terms because it may close that window.
         let npc_log = self.npc_log.len() as u32;
+        // Generation 42 (N4b): under the duck the phase belongs to the turn's end, after the
+        // duck half (`make_duck`), never to the piece move: `npc_phase_of_make` asks.
         let phase_ate = t.has_npcs && self.npc_phase_of_make();
 
         // Read after the phase, which clears the `unmoved` bit of every square it writes:
@@ -2730,8 +2744,12 @@ impl<'t> Game<'t> {
     pub fn unmake(&mut self) {
         let undo = self.undo.pop().expect("unmake without a matching make");
         self.history.pop();
-        if undo.kind == MOVE_FOLD {
-            self.unmake_fold(&undo);
+        if undo.kind >= MOVE_FOLD {
+            if undo.kind == MOVE_FOLD {
+                self.unmake_fold(&undo);
+            } else {
+                self.unmake_duck(&undo);
+            }
             return;
         }
 
@@ -3041,6 +3059,10 @@ impl<'t> Game<'t> {
     /// node on the path, which is the difference between one allocation per ply and
     /// one per node.
     pub fn generate_pseudo_legal(&self, out: &mut Vec<u32>) {
+        // Generation 42 (N4b): a duck half lists the duck's moves alone.
+        if self.duck_owed() {
+            return self.push_duck_moves(out);
+        }
         // Schema 22: one dispatch per call to a copy monomorphised on whether the game has
         // folds, so chess and every game without them run the walks they always ran
         // (`docs/archive/plan-portals-2.md` §3.4).
@@ -4349,6 +4371,11 @@ impl<'t> Game<'t> {
     /// empties a list the rest shortened, the list is made again without it, so the rest
     /// alone never leaves a player without a move. One test in every game without a rest.
     pub fn generate_legal(&mut self, out: &mut Vec<u32>) {
+        // Generation 42 (N4b): a duck half lists the duck's moves alone, unfiltered: a duck
+        // game has no check, the duck never rests, and portals are refused beside it.
+        if self.duck_owed() {
+            return self.push_duck_moves(out);
+        }
         let base = out.len();
         self.generate_checked(out, base);
         if self.t.rest.is_some() {
@@ -4845,7 +4872,12 @@ impl<'t> Game<'t> {
             }
         }
 
-        if !self.history.is_empty() && self.repetition_count() >= t.repetition_draw {
+        // Generation 42 (N4b): repetition is asked only at a turn's start, never with a duck
+        // move owed.
+        if !self.history.is_empty()
+            && !self.duck_owed()
+            && self.repetition_count() >= t.repetition_draw
+        {
             return Some(Outcome {
                 winner: -1,
                 reason: Reason::Repetition,
@@ -4858,7 +4890,11 @@ impl<'t> Game<'t> {
     #[inline]
     fn clock_run_out(&self) -> Option<Reason> {
         let t = self.t;
-        if self.halfmove >= t.no_progress_draw {
+        // Generation 42 (N4b): the clocks are asked only at a turn's start (`max_plies` is
+        // even beside the duck, so the ply limit falls there anyway).
+        if self.duck_owed() {
+            None
+        } else if self.halfmove >= t.no_progress_draw {
             Some(Reason::NoProgress)
         } else if self.ply >= t.max_plies {
             Some(Reason::PlyLimit)

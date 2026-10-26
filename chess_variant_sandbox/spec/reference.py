@@ -399,8 +399,9 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "Pieces nobody owns",
         "Wild pieces that walk a fixed route, one step after every move, eat what they may, "
-        "and pay a bounty to whoever takes them.",
-        ("rules.npcs",),
+        "and pay a bounty to whoever takes them; and the duck, which every turn ends by "
+        "moving to an empty square, where nothing may take it.",
+        ("rules.npcs", "rules.duck"),
     ),
     (
         "Chess's own rules",

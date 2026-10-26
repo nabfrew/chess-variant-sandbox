@@ -59,6 +59,14 @@ MOVE_PORTAL = 7
 # board byte changes, since a fold stands on no square of it (``GameState.folds``); bits
 # 25-31 hold the end (its index among the portal ends, ``move_fold``).
 MOVE_FOLD = 8
+# Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck's move, the second half of every turn
+# under ``rules.duck``. The promotion field says how (``DUCK_STEP``, ``DUCK_PLACE``,
+# ``DUCK_PASS``); a placement and a pass have origin equal to target, as a drop does. Takes
+# nothing, on any reading of the board.
+MOVE_DUCK = 9
+DUCK_STEP = 0
+DUCK_PLACE = 1
+DUCK_PASS = 2
 
 # Q1007c (`docs/plan-schema-31.md` §3.7): a flag, not a kind. A commanded move is a
 # ``MOVE_NORMAL`` (or ``MOVE_ROTATE``) made by the side to move with a piece of the
@@ -76,6 +84,7 @@ MOVE_TYPE_NAMES = {
     MOVE_SWEEP: "sweep",
     MOVE_PORTAL: "portal",
     MOVE_FOLD: "fold",
+    MOVE_DUCK: "duck",
 }
 
 

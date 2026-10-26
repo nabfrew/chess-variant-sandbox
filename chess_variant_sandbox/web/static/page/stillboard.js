@@ -259,7 +259,9 @@ function stillPieceHtml(preview, value, x, y, cell) {
   const stride = preview.sideStride || preview.nTypes;
   const type = (value - 1) % preview.nTypes, player = Math.floor((value - 1) / stride);
   const facing = Math.floor(((value - 1) % stride) / preview.nTypes);
-  const icon = player > 1 ? null : ((preview.icons || [])[type] || [])[player];
+  // Generation 42 (N4c): the duck is nobody's, but drawn as its type's own drawing.
+  const wild = player > 1, duck = wild && preview.duck === type;
+  const icon = wild && !duck ? null : ((preview.icons || [])[type] || [])[duck ? 0 : player];
   if (icon) {
     const heading = (preview.directional || [])[type]
       ? (preview.facingAngles || [])[player] : null;

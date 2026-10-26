@@ -18,6 +18,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 The designer's piece sections are now one picker. Press a piece to see its drawing, a few words about it
 and how it moves, then add it; this works by touch on a phone too. Each piece's card folds to a single line.
 
+### The duck
+
+A game can now have a duck: a piece nobody owns that every player must move after their own move, as in
+duck chess. On the board, the squares it can go to light up once you have moved. The designer has a card for it, choosing where
+it starts.
+
 ### Wild pieces that pounce, and a hydra that splits
 
 A wild piece can now pounce: it takes a piece of the player who just moved that it attacks, or one that

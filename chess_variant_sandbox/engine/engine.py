@@ -42,9 +42,12 @@ from chess_variant_sandbox.engine.compile import (
     facing_quarter_turns,
 )
 from chess_variant_sandbox.engine.moves import (
+    DUCK_PASS,
+    DUCK_PLACE,
     MOVE_CASTLE,
     MOVE_COMMANDED,
     MOVE_DROP,
+    MOVE_DUCK,
     MOVE_EN_PASSANT,
     MOVE_FOLD,
     MOVE_NORMAL,
@@ -542,6 +545,13 @@ class Engine:
                 f"{spec.piece_ids[promoted % spec.n_types]}@"
                 f"{_square_name(target, spec.width)}"
             )
+        if kind == MOVE_DUCK:
+            # Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck's half, in words.
+            if promoted == DUCK_PASS:
+                return "the duck has nowhere to go"
+            if promoted == DUCK_PLACE:
+                return f"the duck lands on {_square_name(target, spec.width)}"
+            return f"the duck to {_square_name(target, spec.width)}"
         if kind == MOVE_FOLD:
             # Schema 22: a fold's own move names its group and end, as a momentum end's
             # does (``2a:e3-f3``); a piece may be standing on either square.
@@ -839,6 +849,7 @@ class Engine:
         folds: Iterable[str] = (),
         respawn: Iterable[int] = (),
         heading_back: Iterable[str] = (),
+        duck_owed: bool = False,
     ) -> GameState:
         """Build a position directly, for tests, puzzles, and CLI setup.
 
@@ -851,6 +862,8 @@ class Engine:
         idle, and a half standing short starts its clock in the next phase.
         ``heading_back`` (generation 38) names the turning-back wild pieces walking their line
         back; the rest walk it forward. A square holding no such piece is dropped.
+        ``duck_owed`` (generation 42) builds a duck game's position at its duck half; left
+        false, the side to move owes its piece move. Place the duck as ``("D", 2)``.
         """
         spec = self.spec
         board = bytearray(spec.n_squares)
@@ -885,9 +898,24 @@ class Engine:
                 if board[square] and spec.owner_of(board[square]) == 2
                 and spec.npcs is not None and spec.npcs.on_line(square)
             )),
+            # Generation 42: a duck game's turn is two halves; 2 owes the piece move.
+            remaining=(1 if duck_owed else 2) if spec.duck is not None else 1,
         )
         key = self._compute_hash(state)
         return state.with_(key=key, repetition=(key,))
+
+    def duck_owed(self, state: GameState) -> bool:
+        """Generation 42 (N4b): whether ``state``'s side to move owes its duck move, the
+        second half of its turn (`Game::duck_owed`, read off the same two facts)."""
+        return self.spec.duck is not None and state.remaining == 1
+
+    def duck_square(self, state: GameState) -> int | None:
+        """Generation 42: the duck's square, or ``None`` while it is off the board."""
+        duck = self.spec.duck
+        if duck is None:
+            return None
+        value = self.spec.encode_piece(2, duck.piece_type)
+        return next((sq for sq, held in enumerate(state.board) if held == value), None)
 
     def _square_index(self, name: str) -> int:
         file = ord(name[0].lower()) - ord("a")

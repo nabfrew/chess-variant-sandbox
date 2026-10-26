@@ -2757,6 +2757,8 @@ function checkDraft() {
       // The pairs' sentences and warnings, the refusals that name them, and whether
       // another pair can go in (P3).
       drawPortalSays();
+      // The duck's rule in words and its refusals (generation 42, N4c).
+      drawDuckSays();
       // Which rules cannot go in this game, asked once the draft is one. A card reads
       // the opening position for the piece it needs, so this waits for the check.
       if (answer.valid) loadRefusals();

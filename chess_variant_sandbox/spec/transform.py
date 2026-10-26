@@ -340,6 +340,11 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
             if isinstance(rules.get("scoring"), dict) and rules["scoring"].get("count") == "points":
                 rules.pop("scoring", None)
 
+    # Generation 42 (N4b): the duck goes with its type.
+    duck = rules.get("duck")
+    if isinstance(duck, dict) and duck.get("piece") == piece_id:
+        rules.pop("duck")
+
     # Schema 21: an end's filter forgets the dropped piece (a portal's own moves are its
     # group's since spelling 31, so no group goes with a piece).
     if isinstance(rules.get("portals"), list):

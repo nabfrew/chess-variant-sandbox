@@ -104,6 +104,7 @@ RULE_KINDS: dict[str, str] = {
     "no_progress_draw": "clock",
     "drops": "hand",
     "npcs": "wild",
+    "duck": "wild",
     "turn": "turn",
     "simultaneous": "turn",
 }
@@ -142,6 +143,7 @@ RULE_WORDS: dict[str, str] = {
     "no_progress_draw": "how long without progress before a draw",
     "drops": "putting captured pieces back on the board",
     "npcs": "the pieces that belong to nobody",
+    "duck": "the neutral piece each turn ends by moving",
     "turn": "how many moves a turn is",
     "simultaneous": "whether both players move at once, and who survives a collision",
 }
@@ -495,6 +497,7 @@ _PIECE_POSITIONS: dict[str, Any] = {
         "no_doubled": _IDS, "no_mate": _IDS, "stock": _KEYED, "region": _KEYED,
     },
     "npcs": [{"piece": _ID, "immune": _IDS}],
+    "duck": {"piece": _ID},
     # Schema 21: an end's `carries`, on a pair keyed by the end, on a map's end a list.
     "portals": [{"piece": _ID, "carries": {_ANY: _IDS}, "ends": [{"carries": _IDS}]}],
     "strike": {

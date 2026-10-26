@@ -606,6 +606,10 @@ _EVERY_RULESET += sorted(Path(__file__).parent.glob("_turning_*.json"))
 # N3b: no committed or archived game has a wild piece that pounces until N7's showcase lands, so
 # the pounce test spec (hounds and lurkers in chess) joins it.
 _EVERY_RULESET += sorted(Path(__file__).parent.glob("_pounce_*.json"))
+# N4b: no committed or archived game has a duck until N6's showcase lands, so the two duck test
+# specs (the classic duck in chess to the king's capture; a shielding duck beside pacing wolves)
+# join it.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_duck_*.json"))
 
 
 def test_the_walk_below_reads_the_whole_corpus() -> None:

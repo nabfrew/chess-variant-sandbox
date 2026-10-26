@@ -966,6 +966,9 @@ RULES = """
      the striping above it, which is why it is stated after. */
   .moves div.on { background: var(--now); color: var(--ink); font-weight: 600; }
   .hand { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  /* Generation 42 (N4c): the duck waiting off the board, in the hand's strip. */
+  .hand .duck-tray { width: 32px; height: 32px; flex: none; }
+  .hand .duck-tray + span { flex: 1 1 0; min-width: 0; }
   .verdict { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-ctl);
              border: 1px solid var(--note); font-weight: 600; }
   /* Ruled out by a gate: the verdict's box in the colour of *bad*. */

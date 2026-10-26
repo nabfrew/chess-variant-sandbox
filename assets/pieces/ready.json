@@ -562,6 +562,21 @@
    ],
    "note": "It promotes on the far rank only if the game says so: rules.promotion, which names what it may become."
   },
+  "duck": {
+   "name": "duck",
+   "id": "D",
+   "value": 0,
+   "reading": "Duck chess's neutral blocker (T. Paulden, 2016): nobody's piece, set down by the player after every move",
+   "description": "A bird nobody owns, which never moves by itself: with its rule on, each player puts it on any empty square after every move, and nothing can take it.",
+   "moves": [],
+   "rules": {
+    "duck": {
+     "piece": "@self"
+    }
+   },
+   "rules_say": "It is moved only under rules.duck, a rule of the whole game: after each move the same player moves it to an empty square. Without that rule it is a plain piece that never moves.",
+   "note": "It is never placed: leave it off the board, where it waits for the first move. The duck has no check beside it, so the game is won by taking the royal piece, not by mate."
+  },
   "emperor": {
    "name": "emperor",
    "id": "K",
@@ -2535,7 +2550,6 @@
   "banner": "no canonical move",
   "bell": "no canonical move",
   "drop": "terrain, not a piece: its reading is walls (rules.obstacles)",
-  "duck": "Duck chess's neutral blocker, moved by the player after every move: the language has no second half of a turn (plan-pieces-moves.md §2.4)",
   "fish": "no canonical move",
   "flame": "no canonical move",
   "gem": "no canonical move",

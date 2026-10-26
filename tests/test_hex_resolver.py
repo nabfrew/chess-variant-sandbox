@@ -306,6 +306,8 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "npcs_pounce",  # N3b
     "npcs_pounce_attackers",  # N3c
     "npcs_split",  # N3d
+    "has_duck",  # N4b
+    "duck_by_moves",  # N4b
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",

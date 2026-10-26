@@ -279,6 +279,8 @@ _RULES_TRANSLATED = frozenset(
         "check_limit",
         "checkmate",
         "drops",
+        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): the classic duck, `wallingRule = duck`.
+        "duck",
         "en_passant",
         "explode_on_capture",
         "extinction",
@@ -366,6 +368,9 @@ _RULE_OBJECT_KEYS: dict[str, frozenset[str]] = {
     # `leave` by name. Over there `flagMove` gives the other side one more move after a
     # flag is reached, which is not leaving (`general-fairy-fork.md`).
     "reach": frozenset({"mirror", "on", "piece", "result", "safe", "squares"}),
+    # Generation 42 (N4c): `piece` is the wall `position.py` writes as `*`; `start` and `goes`
+    # are read off the compiled `DuckRule` by `_check_duck`, which refuses all but the classic.
+    "duck": frozenset({"goes", "piece", "start"}),
 }
 
 
@@ -402,9 +407,13 @@ def _check_unsupported_rules(
         reasons.append("rules.territory: no square changes hands in Fairy-Stockfish")
     if compiled.scoring is not None:
         reasons.append("rules.scoring: a clock there runs out to a draw, never to a count")
-    if compiled.turn is not None:
+    if compiled.duck is not None:
+        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): asked before `rules.turn`, since a
+        # duck game's compiled turn is two moves, which is the duck's half and crosses.
+        _check_duck(compiled, reasons)
+    elif compiled.turn is not None:
         reasons.append("rules.turn: a side moves once per turn in Fairy-Stockfish")
-    if compiled.has_capture_matrix:
+    if _capture_matrix_beside_duck(compiled):
         reasons.append(
             "piece.captures: what a piece may take is not a property a piece can have there"
         )
@@ -557,6 +566,52 @@ def _check_unsupported_rules(
         )
 
     _check_unconsidered_rules(rules, reasons)
+
+
+def _check_duck(compiled: CompiledSpec, reasons: list[str]) -> None:
+    """The duck crosses in its classic form only (generation 42, N4c, §4.6).
+
+    `wallingRule = duck` there is a wall every move sets down anew on any empty square but
+    the one it stands on, starting off the board, which is our `goes: "anywhere"` with no
+    `start`. Its letter is `*`, a wall's, so it has no sight, and nothing over there moves
+    between turns. Each other form is refused by name, read off the compiled `DuckRule`.
+    """
+    duck = compiled.duck
+    assert duck is not None
+    if duck.by_moves:
+        reasons.append(
+            'rules.duck.goes "by_moves": the duck there goes to any empty square, never by '
+            "a piece's moves"
+        )
+    if duck.start >= 0:
+        reasons.append(
+            "rules.duck.start: the duck there starts off the board, and the first move "
+            "puts it down"
+        )
+    if compiled.sight is not None and compiled.sight.entries[duck.piece_type]:
+        reasons.append("rules.duck with a sight: the duck there is a wall, which sees nothing")
+    if compiled.npcs is not None:
+        reasons.append(
+            "rules.duck beside rules.npcs: nothing there moves between turns, so the wild "
+            "phase after the duck's half has no counterpart"
+        )
+
+
+def _capture_matrix_beside_duck(compiled: CompiledSpec) -> bool:
+    """Whether the capture matrix restricts anything the duck does not (generation 42).
+
+    The compiler clears the duck's row and column (nothing takes it, it takes nothing),
+    which over there is what a wall is; any other cleared cell is `piece.captures`.
+    """
+    if compiled.duck is None:
+        return compiled.has_capture_matrix
+    duck = compiled.duck.piece_type
+    return any(
+        not allowed
+        for taker, row in enumerate(compiled.capture_allowed)
+        for taken, allowed in enumerate(row)
+        if duck not in (taker, taken)
+    )
 
 
 def _check_unconsidered_rules(rules: dict[str, Any], reasons: list[str]) -> None:
@@ -1235,7 +1290,12 @@ def piece_slots(
     slots: dict[int, str] = {}
     taken: set[str] = set()
     slot = 0
+    duck = compiled.duck.piece_type if compiled.duck is not None else None
     for index, piece in enumerate(source["pieces"]):
+        if index == duck:
+            # Generation 42 (N4c): the duck is a wall there (`wallingRule = duck`, written
+            # `*`), so it takes no slot and has no definition line.
+            continue
         if index == king:
             slots[index] = "king"
             continue
@@ -1420,6 +1480,8 @@ def _piece_lines(
         return lines
 
     for index, piece in enumerate(source["pieces"]):
+        if index not in slots:
+            continue  # the duck (generation 42): a wall, with no definition line
         notation = _betza_for(
             piece,
             compiled=compiled,
@@ -1730,6 +1792,10 @@ def _rule_lines(
     lines.extend(_drop_lines(compiled, chars, slots, reasons))
     lines.extend(_demotion_lines(compiled, chars, notes))
 
+    if compiled.duck is not None:
+        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): every move ends by setting the wall
+        # down on any empty square but its own (`_check_duck` refused every other duck).
+        lines.append("wallingRule = duck")
     if compiled.must_capture:
         lines.append("mustCapture = true")
     if compiled.forbid_check:

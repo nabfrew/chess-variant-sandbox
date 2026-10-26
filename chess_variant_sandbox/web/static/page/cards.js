@@ -260,6 +260,9 @@ const CARD_DEFAULTS = {
   'rules.promotion[]': card => CARD_DEFAULTS['rules.promotion'](card),
   'rules.obstacles': card => Object.assign({}, card, { squares: [openSquare(false)] }),
   'rules.reach': card => Object.assign({}, card, { squares: [openSquare(true)] }),
+  // Generation 42 (N4c): the duck names the draft's duck, or the letter a new one takes
+  // (`duckPieceId`); adding the rule makes it (`RULE_COMPANIONS.duck`).
+  'rules.duck': card => Object.assign({}, card, { piece: duckPieceId(false) }),
   // A second wild piece is most often another of the first one's kind (the wolves walk,
   // step 13), so it arrives as the entry above it, on a square nothing names yet.
   'rules.npcs[]': card => Object.assign({}, card, { route: [openSquare(false)] },
@@ -780,6 +783,12 @@ function rulesCardsHtml(out) {
     // The portals have a card of their own, in sentences, one per pair (P3, D4); the
     // generated one stays reachable as the game's text.
     if (key === 'portals' && Array.isArray(rules.portals)) return portalCardsHtml(out);
+    // Generation 42 (N4c, `docs/plan-npc.md` §4.6): the duck has a card of its own, its start
+    // picked on the board and the rule read back in words (`duckCardHtml`).
+    if (key === 'duck' && rules.duck && typeof rules.duck === 'object' && !Array.isArray(rules.duck)
+        && byKey.duck && byKey.duck.control === 'card') {
+      return duckCardHtml(out, byKey.duck);
+    }
     const fixed = model.fixed.includes(key);
     // One paragraph says what the rule is (the wolves walk, step 4): the rule's own words
     // where it has them. A list, card or map rule's description is about the whole rule
@@ -1326,7 +1335,8 @@ function wireCards(form) {
     node.onclick = event => {
       event.preventDefault();
       const root = node.dataset.crootPick, path = JSON.parse(node.dataset.cpick);
-      const next = Object.assign({ root, path, fromCard: true },
+      const next = Object.assign({ root, path, fromCard: true,
+                                   single: node.dataset.csingle === '1' },
                                  pickNamed(root, path, node.dataset.clabel));
       const same = PICKING && PICKING.root === next.root
         && JSON.stringify(PICKING.path) === JSON.stringify(next.path);
@@ -1336,6 +1346,14 @@ function wireCards(form) {
       drawVerdict();
       // The clicks go on the board, which may be a long way up the page (Q854).
       if (PICKING) boardToPick();
+    };
+  });
+  // Generation 42 (N4c): the duck back off the board, its classic start.
+  form.querySelectorAll('[data-cduckoff]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      if (PICKING && JSON.stringify(PICKING.path) === '["duck","start"]') PICKING = null;
+      structural('rules', rules => { if (rules.duck) delete rules.duck.start; });
     };
   });
   form.querySelectorAll('[data-cshow]').forEach(node => {
@@ -1388,7 +1406,87 @@ function wireCards(form) {
 // sent to make by the validator's refusal.
 const RULE_COMPANIONS = {
   simultaneous: rules => { if (rules.win === 'checkmate') rules.win = 'royal_capture'; },
+  // Generation 42 (N4c, §4.6): the duck has no check beside it (a move's legality would hang
+  // on the duck move after it), so mate becomes the royal's capture; its clock counts both
+  // halves, so an odd length becomes the next even one; and it needs a piece nobody owns,
+  // which is found among the draft's unplaced pieces or added as a duck with no moves.
+  duck: rules => {
+    if (rules.win === undefined || rules.win === 'checkmate') rules.win = 'royal_capture';
+    if (Number.isInteger(rules.max_plies) && rules.max_plies % 2) rules.max_plies += 1;
+    rules.duck = { piece: duckPieceId(true) };
+  },
 };
+
+// The draft's duck piece for a new duck rule: an unplaced, unroyal piece called a duck, or a
+// new one (`D` where it is free) with no moves of its own, as the classic duck is written.
+// `make` adds the new one to the draft; without it this only names the letter, which is the
+// rule's default (`CARD_DEFAULTS['rules.duck']`) and the menu's candidate: the server's trial
+// adds the piece as this would (`designing._duck_companion`).
+function duckPieceId(make) {
+  const placed = new Set(((DRAFT.setup || {}).placements || []).map(p => p.piece));
+  const pieces = DRAFT.pieces || [];
+  const free = pieces.find(p => !placed.has(p.id) && !p.royal
+    && String(p.name || '').toLowerCase() === 'duck');
+  if (free) return free.id;
+  const taken = new Set(pieces.map(p => p.id));
+  const id = ['D', ...'UQWXYZABCEFGHIJKLMNOPRSTV'].find(letter => !taken.has(letter)) || 'D';
+  if (make) (DRAFT.pieces = pieces).push({ id, name: 'duck', value: 0, moves: [] });
+  return id;
+}
+
+// The duck's rule in words and its refusals, from the last check's answer.
+function duckSaysHtml(answer) {
+  return (answer.says || []).map(line => `<div class="small cardSays">${esc(line)}</div>`).join('')
+    + (answer.errors || []).map(line => `<div class="error small">${esc(line)}</div>`).join('');
+}
+
+// Again, in place, once a check comes back: the form is not drawn again for it.
+function drawDuckSays() {
+  const box = typeof document !== 'undefined' && document.getElementById
+    ? document.getElementById('dDuckSays') : null;
+  if (!box) return;
+  box.innerHTML = duckSaysHtml((DRAFT_CHECK && DRAFT_CHECK.duck) || {});
+}
+
+// The duck's card (generation 42, N4c, `docs/plan-npc.md` §4.6): which piece it is, where it
+// starts (a square picked on the board, or off the board, the classic), how it goes, and
+// the rule read back in a player's words with the refusals that are the duck's, both from
+// the server's check (`designing.duck_answer`). The page names only the square clicked.
+function duckCardHtml(out, field) {
+  const duck = DRAFT.rules.duck;
+  const fields = Object.fromEntries((field.fields || []).map(f => [f.key, f]));
+  out.push({ path: ['duck'], control: 'card', raw: null, required: true });
+  const sub = key => fields[key]
+    ? fieldHtml(fields[key], duck[key], ['duck', key], 'rules', out) : '';
+  const answer = (typeof DRAFT_CHECK !== 'undefined' && DRAFT_CHECK && DRAFT_CHECK.duck) || {};
+  const start = typeof duck.start === 'string' ? duck.start : '';
+  out.push({ path: ['duck', 'start'], control: 'text', raw: start, required: false });
+  const picking = PICKING && PICKING.root === 'rules'
+    && JSON.stringify(PICKING.path) === '["duck","start"]';
+  const startLabel = fields.start ? fields.start.label : 'where the duck starts';
+  return `<div class="ruleCard duckCard" data-rule="duck">
+    <i hidden ${cattrs('rules', ['duck'], 'card', true)}></i>
+    <div class="cardHead"><b>${esc(ruleTitle('duck', field.label))}</b><button class="cardShow"
+      data-cshow="duck" title="the engine plays games of this draft and stops where this rule changes one">show me</button><button class="cardDrop"
+      data-cdel="${esc(JSON.stringify(['duck']))}" data-croot-del="rules"
+      title="remove this rule">&times;</button></div>
+    ${saysHtml(ruleSays('duck'))}
+    <div id="dDuckSays">${duckSaysHtml(answer)}</div>
+    ${sub('piece')}
+    <div class="field"><span>${esc(startLabel)}</span>
+      <div class="row small">${start ? `on <b>${esc(start)}</b>`
+        : "off the board: the first player's first duck move puts it on any empty square"}
+        <button data-cpick="${esc(JSON.stringify(['duck', 'start']))}" data-croot-pick="rules"
+          data-clabel="the duck's start" data-csingle="1" class="${picking ? 'on' : ''}"
+          title="click one empty square on the opening board">${
+          picking ? 'done picking' : 'pick a square on the board'}</button>
+        ${start ? '<button data-cduckoff="1" title="the classic: it starts off the board">off the board</button>' : ''}
+      </div>
+      <input hidden ${cattrs('rules', ['duck', 'start'], 'text', false)} value="${esc(start)}">
+    </div>
+    ${sub('goes')}
+  </div>`;
+}
 
 // ---------------------------------------------------------------- a changed letter
 
@@ -1474,7 +1572,9 @@ function squareIndex(name, W) {
 function pickedSquares(W) {
   if (!PICKING) return null;
   const target = rootTarget(PICKING.root);
-  const list = target ? getIn(target, PICKING.path) : null;
+  const held = target ? getIn(target, PICKING.path) : null;
+  // A single square (generation 42's duck start) is a list of one.
+  const list = typeof held === 'string' ? [held] : held;
   return { moves: (Array.isArray(list) ? list : []).map(name => squareIndex(name, W))
     .filter(i => i >= 0), takes: [] };
 }
@@ -1512,6 +1612,19 @@ function pickSquare(square) {
   if (!PICKING || !preview || offBoard(preview, square)) return;
   const W = preview.width;
   const name = squareName(square % W, Math.floor(square / W));
+  if (PICKING.single) {
+    // One square, not a list (generation 42's duck start): a click sets it, a click on the
+    // square it holds clears it, and the pick is done either way.
+    const { root, path, label } = PICKING;
+    PICKING = null;
+    structural(root, target => {
+      const same = getIn(target, path) === name;
+      if (same) dropIn(target, path); else setIn(target, path, name);
+      benchSay(same ? `Took ${name} away: ${label} is off the board.` : `Set ${label} to ${name}.`);
+    });
+    drawBoardSide();
+    return;
+  }
   structural(PICKING.root, target => {
     const list = getIn(target, PICKING.path);
     const next = Array.isArray(list) ? list.slice() : [];

@@ -62,6 +62,7 @@ from chess_variant_sandbox.spec.schema import (
     beats_of,
     can_double_step,
     castling_spans,
+    duck_piece,
     has_equal_speed_opponent,
     has_rests,
     has_sights,
@@ -440,6 +441,7 @@ def _still_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     found = spec.get("rules")
     rules: dict[str, Any] = found if isinstance(found, dict) else {}
     wild = {npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)}
+    wild.add(duck_piece(rules))  # generation 42: the duck's moves are `loose-a-duck`'s
     placed = {
         placement.get("piece")
         for placement in (spec.get("setup") or {}).get("placements") or []
@@ -648,7 +650,9 @@ def _restrict_a_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     One type at a time, in both directions, because a step that could only tighten would
     walk every candidate to a game where nothing captures anything.
     """
-    candidates = [p for p in pieces(spec) if p.get("id")]
+    # Generation 42 (N4b): the duck takes nothing and nothing may name it in a capture list.
+    duck = duck_piece(spec.get("rules"))
+    candidates = [p for p in pieces(spec) if p.get("id") and p.get("id") != duck]
     if len(candidates) < 2:
         return None  # a dominance relation needs something to dominate
     piece = rng.choice(candidates)
@@ -862,6 +866,8 @@ def _move_a_placement(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _drop_royalty(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Change what winning means: capture the royal rather than mate it, or the reverse."""
+    if duck_piece(spec.get("rules")) is not None:
+        return None  # generation 42 (N4b): refused beside the duck (the duck is for a game without check)
     rules = spec.setdefault("rules", {})
     current = rules.get("win", "checkmate")
     if royal_id(spec) is None:
@@ -1171,6 +1177,8 @@ def _lengthen_the_turn(spec: dict[str, Any], rng: random.Random) -> str | None:
     `moves: 1` -- a turn of one move has several spellings and `complexity._RULE_ACTIVE`
     exists because of it.
     """
+    if duck_piece(spec.get("rules")) is not None:
+        return None  # generation 42 (N4b): refused beside the duck (a turn already has its two halves)
     rules = spec.setdefault("rules", {})
     if rules.get("turn"):
         strip_rule(spec, "turn")
@@ -1375,6 +1383,8 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     no legal move at all -- every position has exactly the moves it had before, and only
     what they do is different.
     """
+    if duck_piece(spec.get("rules")) is not None:
+        return None  # generation 42 (N4b): refused beside the duck (a strike)
     if _commands(spec):
         return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
@@ -1434,6 +1444,8 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     left to the validator, on the module's own rule: what is checked here is what would
     otherwise make *every* draw a rejection.
     """
+    if duck_piece(spec.get("rules")) is not None:
+        return None  # generation 42 (N4b): refused beside the duck (a strike)
     if _commands(spec):
         return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
@@ -1585,6 +1597,8 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
     an entry, and takes the table with its last link. A deletion can remove the only link
     that kept a target alive, so it settles `choose` as `transform.settle_landing` does.
     """
+    if duck_piece(spec.get("rules")) is not None:
+        return None  # generation 42 (N4b): refused beside the duck (contacts)
     if _commands(spec):
         return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
@@ -1749,6 +1763,8 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
     than left to the validator, on the module's own rule: what is checked here is what
     would otherwise make *every* draw a rejection.
     """
+    if duck_piece(spec.get("rules")) is not None:
+        return None  # generation 42 (N4b): refused beside the duck (a blast)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import set_explosion
@@ -1917,6 +1933,8 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules a round has no use for are dropped (a wild piece's pounce among them). Out: the rule, every `beats` and the tie go,
     and the royal capture win stays, which an alternating game plays as it is.
     """
+    if duck_piece(spec.get("rules")) is not None:
+        return None  # generation 42 (N4b): refused beside the duck (nobody is the mover in a round)
     if _commands(spec):
         return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     rules = spec.setdefault("rules", {})
@@ -3426,6 +3444,8 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     being taken off (half the draws), and a new strike may be rifle given to one type (the
     archers). *Arm everyone*: a strike with ``by`` loses it, every piece striking again.
     """
+    if duck_piece(spec.get("rules")) is not None:
+        return None  # generation 42 (N4b): refused beside the duck (a strike)
     if _commands(spec):
         return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
@@ -3547,6 +3567,8 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     is a spec holding a rule the validator refuses beside a sweep: both would make every
     draw a rejection.
     """
+    if duck_piece(spec.get("rules")) is not None:
+        return None  # generation 42 (N4b): refused beside the duck (a sweep)
     if _commands(spec):
         return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
@@ -3805,6 +3827,122 @@ def _set_the_hounds(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+_DUCK_STEP = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}
+_DUCK_SHIELD = {
+    "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1, "through": True,
+    "effect": "shield", "whose": "any",
+}
+
+
+def _loose_a_duck(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Add a duck, take it away, or change how it goes, where it starts or what it shields
+    (generation 42, N4b's ``rules.duck``, `docs/plan-npc.md` §4.6).
+
+    In a game without a duck: a new moveless type (a spare id) becomes the classic duck, which
+    the mover puts on any empty square after every move. The duck is refused beside check, so a
+    checkmate game becomes one won by taking the royal piece (``forbid_check`` and
+    ``check_limit`` dropped), and an odd ply limit is made even; the validator decides the rest
+    (rounds, a turn, portals, a blast, a strike, a sweep). In a game with one, one of four, at
+    random: the duck goes (its type with it, since nothing else may name it); it walks by a
+    king's step instead of going anywhere, or anywhere again; it starts on an empty square, or
+    off the board again; its type shields the eight squares round it, or no longer does. A new
+    duck walks, starts on a square or shields a quarter of the time each, so one edit reaches
+    each of those from a game without a duck.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    trial = copy.deepcopy(spec)
+    trial_rules = trial.setdefault("rules", {})
+    pid = duck_piece(rules)
+    if pid is None:
+        taken = {piece.get("id") for piece in pieces(spec)}
+        spare = [letter for letter in "D" + _SPARE_IDS if letter not in taken]
+        if not spare or royal_id(spec) is None and trial_rules.get("win") != "annihilation":
+            return None
+        pid = spare[0]
+        trial["pieces"].append({"id": pid, "name": "duck", "value": 0, "moves": []})
+        trial_rules["duck"] = {"piece": pid}
+        said = "every turn ends with the mover putting a duck, which nothing takes, on any empty square"
+        if trial_rules.get("win", "checkmate") == "checkmate":
+            trial_rules["win"] = "royal_capture"
+            trial_rules.pop("checkmate", None)
+            said += ", and the game is now won by taking the royal piece rather than mating it"
+        trial_rules.pop("forbid_check", None)
+        trial_rules.pop("check_limit", None)
+        plies = trial_rules.get("max_plies", 400)
+        if isinstance(plies, int) and plies % 2:
+            trial_rules["max_plies"] = plies + 1
+        # A quarter of the time each, the new duck walks, starts on a square, or shields.
+        added = trial["pieces"][-1]
+        if rng.random() < 0.25:
+            trial_rules["duck"]["goes"] = "by_moves"
+            added["moves"] = [copy.deepcopy(_DUCK_STEP)]
+            said += "; it walks a king's step instead of going anywhere"
+        if rng.random() < 0.25:
+            added["sight"] = [copy.deepcopy(_DUCK_SHIELD)]
+            said += "; it shields the eight squares round it"
+        if rng.random() < 0.25:
+            board = trial.get("board") or {}
+            width, height = board.get("width"), board.get("height")
+            if isinstance(width, int) and isinstance(height, int):
+                for square in rng.sample(range(width * height), width * height):
+                    name = "abcdefghijklmnop"[square % width] + str(square // width + 1)
+                    trial_rules["duck"]["start"] = name
+                    if not validate_spec(trial):
+                        said += f"; it starts on {name}"
+                        break
+                else:
+                    trial_rules["duck"].pop("start")
+    else:
+        duck = trial_rules["duck"]
+        piece = next(p for p in pieces(trial) if p.get("id") == pid)
+        choice = rng.randrange(4)
+        if choice == 0:
+            del trial_rules["duck"]
+            trial["pieces"] = [p for p in trial["pieces"] if p.get("id") != pid]
+            said = "the duck is gone: a turn is one move again"
+        elif choice == 1:
+            if duck.get("goes") == "by_moves":
+                duck.pop("goes")
+                piece["moves"] = []
+                said = "the duck goes to any empty square again"
+            else:
+                duck["goes"] = "by_moves"
+                piece["moves"] = [copy.deepcopy(_DUCK_STEP)]
+                said = "the duck walks a king's step instead of going anywhere"
+        elif choice == 2:
+            if "start" in duck:
+                duck.pop("start")
+                said = "the duck starts off the board again"
+            else:
+                board = trial.get("board") or {}
+                width, height = board.get("width"), board.get("height")
+                if not isinstance(width, int) or not isinstance(height, int):
+                    return None
+                squares = [
+                    "abcdefghijklmnop"[square % width] + str(square // width + 1)
+                    for square in range(width * height)
+                ]
+                rng.shuffle(squares)
+                for name in squares:
+                    duck["start"] = name
+                    if not validate_spec(trial):
+                        break
+                else:
+                    return None
+                said = f"the duck starts on {duck['start']}"
+        elif piece.get("sight"):
+            piece.pop("sight")
+            said = "the duck no longer shields the pieces round it"
+        else:
+            piece["sight"] = [copy.deepcopy(_DUCK_SHIELD)]
+            said = "the duck shields the eight squares round it: nothing may take a piece there"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -3819,6 +3957,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("wild-eyes", _wild_eyes),
     Operator("pace-a-line", _pace_a_line),
     Operator("set-the-hounds", _set_the_hounds),
+    Operator("loose-a-duck", _loose_a_duck),
     Operator("promote-what-arrives", _promote_what_arrives),
     Operator("promote-on-leaving", _promote_on_leaving),
     Operator("count-each-kind", _count_each_kind),

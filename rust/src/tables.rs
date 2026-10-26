@@ -61,6 +61,15 @@ pub const MOVE_PORTAL: u32 = 7;
 /// a fold -- landed on it and came out on the end it leads to, its target (schema 24) --
 /// carries the end it went in by plus one in the same bits.
 pub const MOVE_FOLD: u32 = 8;
+/// Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck's move, the second half of every
+/// turn under `rules.duck`. The promotion field says how: `DUCK_STEP` the standing duck
+/// moves from origin to target, `DUCK_PLACE` it is put on the target from off the board
+/// (origin equals target, as a drop's), `DUCK_PASS` it has nowhere to go (origin equals
+/// target, the duck's square or 0; never read). Takes nothing, on any reading.
+pub const MOVE_DUCK: u32 = 9;
+pub const DUCK_STEP: u32 = 0;
+pub const DUCK_PLACE: u32 = 1;
+pub const DUCK_PASS: u32 = 2;
 /// The owner a portal end's board byte belongs to: the third block, nobody's, which a wild
 /// piece uses too. The validator refuses the two rules together, so a game's third block
 /// holds one or the other (`compile.PortalRule`).
@@ -629,6 +638,22 @@ pub struct ReachRule {
     /// in `Game::goal_left_by`; a piece standing on a goal decides nothing. False for
     /// every ruleset before it, which is the boundary's inert default.
     pub leaves: bool,
+}
+
+/// Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck. One piece nobody owns, in the
+/// third owner's block at facing 0, which the mover moves every turn as the turn's second
+/// half (the compiled turn is two moves; `remaining` 1 is the duck half). Its square is read
+/// off the board (`Game::duck_square`), never kept.
+pub struct DuckRule {
+    /// The duck's board byte: `WILD * side_stride + piece_type + 1`.
+    pub value: u8,
+    /// Its declared type, whose frame-0 leap and slide entries a `by_moves` duck walks.
+    pub piece_type: usize,
+    /// `goes: "by_moves"`; false is `"anywhere"`.
+    pub by_moves: bool,
+    /// The squares a duck may stand on: every square of the board but a wall or an absent
+    /// cell, which the compiler knows and the core does not.
+    pub squares: SquareSet,
 }
 
 /// Turn rule: how many moves a turn is, and how the opening ramps up to it.
@@ -1283,6 +1308,12 @@ pub struct Tables {
     /// Generation 39 (N3b, `docs/plan-npc.md` §4.3): wild pieces that pounce, `None` for
     /// every game in which no `npcs` entry says `pounce`.
     pub pounce: Option<Box<PounceTables>>,
+    /// Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, `None` for every game without
+    /// `rules.duck`.
+    pub duck: Option<Box<DuckRule>>,
+    /// The duck's byte, or 0 without a duck: what `is_wild_piece` tells a wild piece from the
+    /// duck by, since both stand in the third owner's block.
+    pub duck_byte: u8,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -1392,6 +1423,13 @@ impl Tables {
     #[inline(always)]
     pub fn owner_of(&self, value: u8) -> usize {
         self.value_owner[value as usize] as usize
+    }
+
+    /// Whether `value` is a wild piece (`rules.npcs`): the third owner's byte, and not the
+    /// duck's (generation 42), which stands in the same block and never walks a route.
+    #[inline(always)]
+    pub fn is_wild_piece(&self, value: u8) -> bool {
+        value != 0 && self.owner_of(value) == WILD && value != self.duck_byte
     }
 
     #[inline(always)]
@@ -2270,7 +2308,15 @@ impl Tables {
                 "wild pieces and portals share the third owner's block; the validator                  refuses the two together",
             ));
         }
-        let n_owners = if has_npcs || has_portals { 3 } else { 2 };
+        // Generation 42 (N4b): the duck stands in the third block too. `[type, by_moves,
+        // squares...]`, empty without a duck.
+        let duck_field: Vec<u32> = field(source, keys::DUCK)?;
+        if !duck_field.is_empty() && has_portals {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "the duck and portals share the third owner's block; the validator refuses the two together",
+            ));
+        }
+        let n_owners = if has_npcs || has_portals || !duck_field.is_empty() { 3 } else { 2 };
         let npc_next: Vec<i16> = field::<Vec<i32>>(source, keys::NPC_NEXT)?
             .into_iter()
             .map(|square| square as i16)
@@ -2466,6 +2512,8 @@ impl Tables {
             respawn: None,
             npc_lines: None,
             pounce: None,
+            duck: None,
+            duck_byte: 0,
             entry_promotion,
             piece_values,
             must_capture,
@@ -2532,14 +2580,30 @@ impl Tables {
             )));
         }
 
+        // Generation 42 (N4b): the duck.
+        if let [piece_type, by_moves, squares @ ..] = duck_field.as_slice() {
+            let piece_type = *piece_type as usize;
+            if piece_type >= tables.n_types || squares.iter().any(|&square| square as usize >= tables.n_squares) {
+                return Err(pyo3::exceptions::PyValueError::new_err("the duck's tables do not fit this board"));
+            }
+            let mut set = SquareSet::EMPTY;
+            for &square in squares {
+                set.set(square as usize);
+            }
+            let value = (WILD * tables.side_stride + piece_type + 1) as u8;
+            tables.duck_byte = value;
+            tables.duck = Some(Box::new(DuckRule { value, piece_type, by_moves: *by_moves != 0, squares: set }));
+        } else if !duck_field.is_empty() {
+            return Err(pyo3::exceptions::PyValueError::new_err("a duck field too short to name its type"));
+        }
+
         // What the bounties on the board come to at ply zero. Read off the opening
         // position rather than off `npc_bounty`, because a bounty is stated per *route*
         // and a route is several squares.
         if tables.has_npcs {
             tables.npc_bounty_total = (0..tables.n_squares)
                 .filter(|square| {
-                    let value = tables.initial_board[*square];
-                    value != 0 && tables.owner_of(value) == WILD
+                    tables.is_wild_piece(tables.initial_board[*square])
                 })
                 .map(|square| tables.npc_bounty[square])
                 .sum();
@@ -2547,7 +2611,7 @@ impl Tables {
             let mut seen: Vec<usize> = Vec::new();
             for square in 0..tables.n_squares {
                 let value = tables.initial_board[square];
-                if value == 0 || tables.owner_of(value) != WILD || tables.npc_next[square] < 0 {
+                if !tables.is_wild_piece(value) || tables.npc_next[square] < 0 {
                     continue;
                 }
                 let mut lowest = square;
@@ -2601,6 +2665,7 @@ impl Tables {
         if has_portals {
             tables.portals = Some(Box::new(Self::portal_tables(source, &tables)?));
         }
+
 
         let sim_rule: Vec<u32> = field(source, keys::SIM_RULE)?;
         if !sim_rule.is_empty() {
@@ -3238,6 +3303,7 @@ pub mod keys {
         DROPS_REGIONS => "drops_regions",
         DROPS_STOCK => "drops_stock",
         DROPS_UNLIMITED => "drops_unlimited",
+        DUCK => "duck",
         ENTRY_PROMOTION => "entry_promotion",
         EP_PASS_FLAT => "ep_pass_flat",
         EP_PASS_INDEX => "ep_pass_index",

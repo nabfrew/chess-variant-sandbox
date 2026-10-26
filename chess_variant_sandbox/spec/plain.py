@@ -178,6 +178,21 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "Claiming this many squares wins outright. 0 leaves the claiming to another rule, "
         "such as 'who wins when a clock runs out' comparing the ground each side holds.",
     ),
+    "rules.duck.piece": (
+        "the duck",
+        "The piece every turn ends by moving: after each move the same player moves it to an "
+        "empty square. Nobody owns it, nothing may take it and it takes nothing.",
+    ),
+    "rules.duck.start": (
+        "where the duck starts",
+        "An empty square it starts on. Leave it empty and it starts off the board, and the "
+        "first player's first duck move puts it on any empty square.",
+    ),
+    "rules.duck.goes": (
+        "how the duck goes",
+        "Anywhere sends it to any empty square but its own; by its moves walks it the way its "
+        "piece moves. With nowhere to go it stays and the turn ends.",
+    ),
     "rules.turn.moves": ("moves a turn", None),
     "rules.turn.ramp": (
         "the opening turns",

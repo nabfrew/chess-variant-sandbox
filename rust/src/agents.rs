@@ -22,7 +22,7 @@ use crate::net::{Net, NetEvaluator};
 use crate::rng::PyRandom;
 use crate::tables::{
     move_kind, move_from, move_promotion, move_to, Tables, MOVE_CASTLE, MOVE_DROP,
-    MOVE_EN_PASSANT, MOVE_FOLD, MOVE_PORTAL, MOVE_PROMOTION, MOVE_ROTATE, MOVE_SWEEP,
+    MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_PORTAL, MOVE_PROMOTION, MOVE_ROTATE, MOVE_SWEEP,
 };
 
 // Schema 26 (Q918b): the players for rounds, a child of this module so they share the
@@ -970,10 +970,12 @@ impl Player {
         // is the square the turning piece stands on, and a file-based castling can send
         // the king to its own rook's square -- a quiescence search that chased either
         // would never come to rest.
-        // Schema 22: a fold moved onto a piece takes nothing either.
+        // Schema 22: a fold moved onto a piece takes nothing either. Generation 42: nor does
+        // the duck, whose pass names its own square.
         if kind != MOVE_ROTATE
             && kind != MOVE_CASTLE
             && kind != MOVE_FOLD
+            && kind != MOVE_DUCK
             && game.board[move_to(m)] != 0
         {
             return true;
@@ -1151,7 +1153,7 @@ fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> f64 {
     // the target would order both ahead of every quiet move by the value of the mover's
     // own piece.
     let kind = move_kind(m);
-    if kind == MOVE_ROTATE || kind == MOVE_CASTLE || kind == MOVE_FOLD {
+    if kind == MOVE_ROTATE || kind == MOVE_CASTLE || kind == MOVE_FOLD || kind == MOVE_DUCK {
         return 0.0;
     }
     let n_types = t.n_types;

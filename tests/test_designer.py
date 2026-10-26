@@ -974,6 +974,9 @@ function addEverySubCard(templates, adds) {
 # P3's portal tool's to place on the board (`docs/archive/plan-portals.md` D2, Q772); until then
 # the validator says so, on every template.
 _PORTAL_SQUARES = "must be a square on the board"
+# Generation 42 (N4c): no template refuses the duck. Its card arrives with a duck of its own
+# (`RULE_COMPANIONS.duck`): an unplaced piece with no moves, mate turned to the royal's capture
+# and an odd length made even, as N4b's refusals here (a placed piece, checkmate) asked.
 _CANNOT = {
     "skirmish": {
         "bare_royal": "no piece is marked royal",

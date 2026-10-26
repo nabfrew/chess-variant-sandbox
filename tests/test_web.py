@@ -4471,9 +4471,12 @@ class TestThePageIsStillJavaScript:
         from page_text import PAGE
 
         assert "--p2:" in PAGE and "--p2-ink:" in PAGE
-        # Once in the play board's `drawPiece`, once in the designer preview's.
+        # Once in the play board's `drawPiece`, once in the designer preview's. Generation 42
+        # (N4c): the duck, a third-owner piece too, is the one that wears its type's drawing,
+        # and only by the first seat's entry (`duck ? 0 : player`), never the owner's.
         assert PAGE.count("'var(--p2)'") == 2
         assert PAGE.count("player > 1") == 2
+        assert PAGE.count("[duck ? 0 : player]") == 1 and PAGE.count("pair[duck ? 0 :") == 1
 
 
 class TestTheLoadingIndicator:
@@ -6667,7 +6670,10 @@ class TestWhatReachesThePage:
         # (`redrawPicker`), and its chips and list redrawn in place (`redrawPickList`). Every
         # name, slug, sentence and picture's data URI through `esc`; the line under a tile is
         # built as text nodes (`placePickAbout`).
-        assert len(sites) == 153
+        # 155 since N4c: the duck's strip in the hand (`duckTrayHtml`: constant words, the
+        # pass's move number and the duck's drawing) and the duck card's words redrawn after a
+        # check (`drawDuckSays`, each server sentence through `esc`).
+        assert len(sites) == 155
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -11139,8 +11145,9 @@ class TestBuildingAGameByHand:
         # `simultaneous` left the set with Q918e's four round showcases (2026-10-15).
         # `bare_royal` left it on 2026-10-21, when Q994p's `archive/the-golem-well`, a
         # model's design from RULES.md alone, became the first library spec to use it.
+        # `duck` (generation 42, N4b) joined it; N6's *shepherd's duck* takes it out.
         assert _RULES_KEYS - seen == {
-            "checkmate", "turn",
+            "checkmate", "turn", "duck",
         }, "the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(
@@ -11174,6 +11181,8 @@ class TestBuildingAGameByHand:
             },
             # Schema 19 (Q771): a pair moved like a portal piece the draft gains below.
             "portals": [{"piece": "O", "orange": "c3", "blue": "d4"}],
+            # Generation 42 (N4b): a duck the draft gains below, in a game won by taking.
+            "duck": {"piece": "U"},
         }
         for key, value in cases.items():
             draft = json.loads(json.dumps(base))
@@ -11183,6 +11192,9 @@ class TestBuildingAGameByHand:
                 draft["rules"]["drops"] = {"from_captures": True}
             if key == "portals":
                 draft["pieces"].append({"id": "O", "name": "portal", "value": 0, "moves": []})
+            if key == "duck":
+                draft["pieces"].append({"id": "U", "name": "duck", "value": 0, "moves": []})
+                draft["rules"]["win"] = "royal_capture"
             problems = validate_spec(designing.settled(draft))
             assert not any("schema" in problem for problem in problems), (key, problems)
 

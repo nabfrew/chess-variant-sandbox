@@ -41,6 +41,7 @@ from chess_variant_sandbox.spec.legacy_names import LEGACY_NAMES
 from chess_variant_sandbox.spec.schema import (
     CONTACT_LINK_OFF_VALUES,
     DEFAULT_RANGE,
+    DUCK_OFF_VALUES,
     MOVE_OFF_VALUES,
     NPC_OFF_VALUES,
     PIECE_OFF_VALUES,
@@ -189,7 +190,8 @@ def drop_off_values(spec: dict[str, Any]) -> None:
     ``sight: []``, a move's ``path: "straight"`` (T1), a line of sight's ``through:
     false``, ``rules.simultaneous``'s ``tie: "both"``, ``swap: "chase"`` and ``both:
     "draw"``, a portal group's ``kind: "momentum"``, a contact link's ``own: false`` and a wild-piece
-    entry's ``respawn: 0`` (N1) and ``turns_back: false`` (N5). The validator accepts each and every reader takes it
+    entry's ``respawn: 0`` (N1) and ``turns_back: false`` (N5), and ``rules.duck``'s ``goes:
+    "anywhere"`` (N4b). The validator accepts each and every reader takes it
     as the key's absence. Shared by the normal form and `spelling.current_spelling`, so a
     spec that writes one is named as, and tidied to, the game without it.
     """
@@ -214,6 +216,8 @@ def drop_off_values(spec: dict[str, Any]) -> None:
             _drop_off(link, CONTACT_LINK_OFF_VALUES)
     for npc in _dicts(rules.get("npcs")):
         _drop_off(npc, NPC_OFF_VALUES)
+    if isinstance(rules.get("duck"), dict):
+        _drop_off(rules["duck"], DUCK_OFF_VALUES)
 
 
 def _drop_off(where: dict[str, Any], off_values: dict[str, Any]) -> None:

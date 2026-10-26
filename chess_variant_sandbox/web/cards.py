@@ -80,6 +80,8 @@ PIECE_PATHS = frozenset({
     "rules.contacts.immune",
     "rules.npcs[].piece",
     "rules.npcs[].immune",
+    # Generation 42 (N4b): the duck's type, a menu on the duck's card (N4c, `cards.js`).
+    "rules.duck.piece",
 
     # Schema 21: which pieces may go in by an end.
     "rules.portals[].carries.orange",
@@ -105,6 +107,8 @@ TEXT_PATHS = frozenset({
     "rules.portals[].blue",
     # Schema 21: a map's end, typed as written until Q843b's designer places it.
     "rules.portals[].ends[].at",
+    # Generation 42 (N4b): the duck's start; the duck's card (N4c) picks it on the board.
+    "rules.duck.start",
 })
 
 # What the hand-written form already edits. Every other key gets a generated field.

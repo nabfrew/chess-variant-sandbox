@@ -141,8 +141,8 @@ impl<'t> Game<'t> {
         let t = self.t;
         let mut standing = self.occupied[WILD];
         for square in self.occupied[WILD].iter() {
-            let value = self.board[square];
-            if value == 0 || t.owner_of(value) != WILD {
+            // Generation 42: the duck is in the third owner's set too, and never a wild piece.
+            if !t.is_wild_piece(self.board[square]) {
                 standing.clear(square);
             }
         }

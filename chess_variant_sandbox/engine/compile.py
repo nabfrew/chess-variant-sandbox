@@ -584,6 +584,64 @@ class TurnRule:
 
 
 @dataclass(frozen=True)
+class DuckRule:
+    """The duck (generation 42, N4b, `docs/plan-npc.md` §4.6): one piece nobody owns, which
+    the mover moves as the second half of every turn.
+
+    * ``piece_type`` -- its declared type, standing in the third owner's block at facing 0;
+    * ``by_moves`` -- ``goes: "by_moves"``: it walks its type's frame-0 leap and slide entries
+      (the validator refuses moves that read differently for the two players, so frame 0 is
+      both players'); ``False`` is ``"anywhere"``, any empty square but its own;
+    * ``start`` -- its opening square, or -1: off the board, put on by the first duck move;
+    * ``squares`` -- the squares it may stand on, ascending: every square but a wall or an
+      absent cell, which only the compiler knows.
+
+    Beside it the compiled turn is two moves (`_compile`), the duck's column of the capture
+    matrix is cleared (nothing takes it) and so is its row (it takes nothing).
+    """
+
+    piece_type: int
+    by_moves: bool
+    start: int
+    squares: tuple[int, ...]
+
+
+def _compile_duck(
+    rules: dict[str, Any], index_of: dict[str, int], width: int, height: int,
+    obstacles: frozenset[int],
+) -> DuckRule | None:
+    """`DuckRule` for a spec with ``rules.duck``, ``None`` otherwise."""
+    duck = rules.get("duck")
+    if not isinstance(duck, dict):
+        return None
+    start = -1
+    if isinstance(duck.get("start"), str):
+        coords = parse_square(duck["start"], width, height)
+        assert coords is not None  # guaranteed by validation
+        start = coords[1] * width + coords[0]
+    return DuckRule(
+        piece_type=index_of[duck["piece"]],
+        by_moves=duck.get("goes", "anywhere") == "by_moves",
+        start=start,
+        squares=tuple(square for square in range(width * height) if square not in obstacles),
+    )
+
+
+def _clear_duck_captures(
+    matrix: tuple[tuple[bool, ...], ...], duck: DuckRule | None
+) -> tuple[tuple[bool, ...], ...]:
+    """Generation 42: nothing takes the duck (its column cleared) and it takes nothing (its
+    row cleared). The matrix it was handed without a duck."""
+    if duck is None:
+        return matrix
+    kind = duck.piece_type
+    return tuple(
+        tuple(allowed and victim != kind and attacker != kind for victim, allowed in enumerate(row))
+        for attacker, row in enumerate(matrix)
+    )
+
+
+@dataclass(frozen=True)
 class TerritoryRule:
     """Squares that remember who moved onto them.
 
@@ -1229,6 +1287,10 @@ def _compile_sights(
         npc.get("piece") for npc in (listed_npcs if isinstance(listed_npcs, list) else [])
         if isinstance(npc, dict)
     }
+    # Generation 42 (N4b): the duck stands in the same block and sees as a wild piece does.
+    listed_duck = rules.get("duck") if isinstance(rules, dict) else None
+    if isinstance(listed_duck, dict):
+        wild_ids.add(listed_duck.get("piece"))
     wild_seeing = [
         piece_type for piece_type, piece in enumerate(pieces)
         if piece["id"] in wild_ids and sights.get(piece["id"])
@@ -1609,6 +1671,9 @@ class CompiledSpec:
     # Generation 39 (N3b, `docs/plan-npc.md` §4.3): wild pieces that pounce, or ``None`` -- every
     # game in which no ``npcs`` entry says ``pounce``, whose boundary keys for it cross empty.
     pounce: PounceRule | None = None
+    # Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, or ``None`` -- every game without
+    # ``rules.duck``, whose boundary key for it crosses empty.
+    duck: DuckRule | None = None
 
     @property
     def rest_max(self) -> int:
@@ -2011,17 +2076,22 @@ def _compile(
     dedup = frames.dedup
     leap_dirs, slide_dirs, hop_dirs = frames.leap_dirs, frames.slide_dirs, frames.hop_dirs
 
-    capture_allowed = _apply_portal_immunity(
-        _apply_npc_immunity(
-            _build_capture_matrix(pieces, index_of), rules, piece_ids, index_of
+    duck = _compile_duck(rules, index_of, width, height, obstacles)
+    capture_allowed = _clear_duck_captures(
+        _apply_portal_immunity(
+            _apply_npc_immunity(
+                _build_capture_matrix(pieces, index_of), rules, piece_ids, index_of
+            ),
+            declared_types,
+            {index_of[piece["id"]] for piece in movement},
         ),
-        declared_types,
-        {index_of[piece["id"]] for piece in movement},
+        duck,
     )
     npcs = _compile_npcs(rules, pieces, index_of, width, height, orientation)
-    # A third owner's block for wild pieces (schema 9) or for portals (schema 19), which
-    # are nobody's too; the validator refuses the two together.
-    n_owners = 3 if npcs is not None or has_portals else 2
+    # A third owner's block for wild pieces (schema 9), for portals (schema 19) or for the
+    # duck (generation 42), which are nobody's too; the validator refuses portals beside
+    # either.
+    n_owners = 3 if npcs is not None or has_portals or duck is not None else 2
     promotions = _settle_on_leaving(
         _compile_promotions(rules.get("promotion"), index_of, width, height, orientation),
         leaps, slides, hops, sweeps, facing_axes, n_facings,
@@ -2029,6 +2099,7 @@ def _compile(
     board, unmoved = _build_initial_position(
         spec, index_of, width, height, n_types, n_facings, facing_initial, npcs,
         _portal_starts(spec, declared_types, width, height),
+        duck,
     )
     digest = spec_hash(spec)
     simultaneous = rules.get("simultaneous")
@@ -2090,7 +2161,7 @@ def _compile(
         n_types,
         n_facings,
         npcs=npcs,
-        third_block=has_portals,
+        third_block=has_portals or duck is not None,
         momentum=(leap_dirs, slide_dirs, hop_dirs) if has_portals else None,
         dirs_out=attack_dirs,
         facing_axes=facing_axes,
@@ -2211,7 +2282,9 @@ def _compile(
         ),
         scoring=_compile_scoring(rules.get("scoring"), width, height, orientation),
         territory=_compile_territory(rules.get("territory")),
-        turn=_compile_turn(rules.get("turn")),
+        # Generation 42 (N4b): a duck game's turn is two moves, the piece's and the duck's
+        # (the validator refuses `rules.turn` beside it).
+        turn=TurnRule(moves=2, lengths=()) if duck is not None else _compile_turn(rules.get("turn")),
         wrap=wrap,
         obstacles=obstacles,
         absent=absent,
@@ -2219,6 +2292,7 @@ def _compile(
         grid_copies=_compile_grid_copies(shape, width, height, wrap),
         strike=strike,
         npcs=npcs,
+        duck=duck,
         n_owners=n_owners,
         entry_promotion=_compile_entry_promotion(
             bool(rules.get("promote_on_entry", False)), promotions, n_types, width, height
@@ -3511,6 +3585,7 @@ def _build_initial_position(
     facing_initial: tuple[int, ...] = (),
     npcs: NpcRule | None = None,
     portal_starts: tuple[tuple[int, int], ...] = (),
+    duck: DuckRule | None = None,
 ) -> tuple[bytes, int]:
     board = bytearray(width * height)
     # Schema 19: the portal ends, each its own internal type in the third owner's block
@@ -3557,6 +3632,9 @@ def _build_initial_position(
     if npcs is not None:
         for square, piece_type in npcs.starts:
             board[square] = (WILD * n_facings) * n_types + piece_type + 1
+    # Generation 42: the duck, where it starts on the board, carries no bit either.
+    if duck is not None and duck.start >= 0:
+        board[duck.start] = (WILD * n_facings) * n_types + duck.piece_type + 1
     return bytes(board), unmoved
 
 

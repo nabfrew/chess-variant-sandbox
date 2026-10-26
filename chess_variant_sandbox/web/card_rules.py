@@ -182,6 +182,9 @@ def preview(engine: Any, state: Any, spec: dict[str, Any]) -> dict[str, Any]:
         # Q852: every wild piece's walk in order, its starts and its jumps
         # (`viz.walks`), so a still draws where each goes. Absent without wild pieces.
         **({"walks": walks} if (walks := walk_payload(spec, engine.spec)) else {}),
+        # Generation 42 (N4c): the duck's type, drawn as its own drawing though nobody owns
+        # it (`stillPieceHtml`). Absent without a duck.
+        **({"duck": engine.spec.duck.piece_type} if engine.spec.duck is not None else {}),
         # Schema 30 (Q999g): the effects a line of sight puts on the opening position, the
         # core's answer (`Engine.effects`) as ``[[square, bits], ...]`` for the squares whose
         # piece is under one (1 frozen, 2 disarmed, 4 shielded), so a still draws the badges

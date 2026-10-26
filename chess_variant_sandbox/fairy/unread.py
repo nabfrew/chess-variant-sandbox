@@ -178,6 +178,17 @@ def reasons(config: str, unread: Iterable[str]) -> list[str]:
         entry = UNREAD.get(key)
         if entry is not None and entry[0](written):
             continue
+        if key == "wallingRule" and written.get(key) == "duck":
+            # Generation 42 (N4c, `docs/plan-npc.md` §4.6): no `UNREAD` entry, on purpose. The
+            # 2021 build has no duck at all, so a duck game has no opponent there; it is
+            # named, since the moves are verified against `pyffish` instead.
+            said.append(
+                "the installed Fairy-Stockfish has no duck: it does not read "
+                "wallingRule = duck, so it would play the game without one, and a duck game "
+                "has no Fairy-Stockfish opponent until a newer build (its moves verify "
+                "against pyffish)"
+            )
+            continue
         if key.startswith("doubleStepRegion") and _custom_initial(written):
             # Named, not "does not read": what refuses is the build's custom-piece `i`.
             sentence = (

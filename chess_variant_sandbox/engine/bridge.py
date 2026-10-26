@@ -799,6 +799,12 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "strike_landing_index": strike_landing_index,
         "strike_rebirth": strike_rebirth,
         "contact_mover_flips": contact_mover_flips,
+        # Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, ``[type, by_moves, squares...]``,
+        # empty without one.
+        "duck": (
+            [spec.duck.piece_type, int(spec.duck.by_moves), *spec.duck.squares]
+            if spec.duck is not None else []
+        ),
         # Wild pieces
         "has_npcs": npcs is not None,
         "npc_next": npc_next,
@@ -1038,6 +1044,8 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "has_sweep": False,
     "attack_sweep": [],
     "attack_path_modes": [],
+    # Generation 42 (N4b). Empty unless the spec has a duck.
+    "duck": [],
     "has_npcs": False,
     "npc_next": [],
     "npc_bounty": [],

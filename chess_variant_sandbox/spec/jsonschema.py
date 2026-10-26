@@ -1363,6 +1363,44 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "piece region."
                 ),
             },
+            "duck": _object(
+                {
+                    "piece": {
+                        "type": "string",
+                        "description": (
+                            "The duck's type: a declared, non-royal piece that no player "
+                            "owns and nothing else names. Every turn is the mover's move and "
+                            "then the mover's duck move: the same player moves the duck, "
+                            "which may not stay where it is. It stands, blocks lines and "
+                            "screens a hop; nothing may capture it and it captures nothing. "
+                            "Only beside win 'royal_capture', 'annihilation' or 'none' (no "
+                            "check rule), never in rounds or beside turn, portals, a blast, "
+                            "a strike, contacts or a sweep; max_plies must be even (each "
+                            "half is a ply)."
+                        ),
+                    },
+                    "start": {
+                        "type": "string",
+                        "description": (
+                            "Where the duck starts: an empty square. Leave it out and it "
+                            "starts off the board, and the first player's first duck move "
+                            "puts it on any empty square (Duck chess's opening)."
+                        ),
+                    },
+                    "goes": {
+                        "type": "string",
+                        "enum": ["anywhere", "by_moves"],
+                        "description": (
+                            "'anywhere' (the default, Duck chess): to any empty square but "
+                            "its own; its type is then written moves: []. 'by_moves': by "
+                            "its type's moves, which must read the same for both players and "
+                            "land on empty squares. With nowhere to go the duck passes."
+                        ),
+                    },
+                },
+                required=["piece"],
+                strict=strict,
+            ),
             "simultaneous": _object(
                 {
                     "tie": {

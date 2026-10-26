@@ -190,6 +190,11 @@ _RULE_COSTS: dict[str, float] = {
     # Generation 41's `npcs[].split` (N3d) is not costed either: a clause of the pounce's
     # sentence (and a cap), the same capture told with "and a new one grows there" added.
     "npcs": 2.5,
+    # Generation 42 (N4b, `docs/plan-npc.md` §4.6). The duck is two things a player is told:
+    # a turn has a second half (the `turn` sentence, 1.0), and a piece nobody owns stands in the
+    # way, uncapturable, wherever the mover puts it (an actor, as a wild piece is, but with no
+    # walk, no meal and no bounty to learn). `goes` and `start` are clauses of it, not costed.
+    "duck": 2.0,
     # Schema 9. One sentence -- "a pawn dropped or struck onto the far rank is a queen at
     # once" -- and an exception rather than a parameter of `promotion`: it changes what a
     # drop and a strike *do* in one part of the board, and a player who has not been told

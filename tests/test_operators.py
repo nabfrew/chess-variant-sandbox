@@ -90,7 +90,7 @@ _NUMBER_WORDS = {
     25: "twenty_five", 26: "twenty_six", 27: "twenty_seven", 28: "twenty_eight",
     29: "twenty_nine", 30: "thirty", 31: "thirty_one", 32: "thirty_two", 33: "thirty_three",
     34: "thirty_four", 35: "thirty_five", 36: "thirty_six", 37: "thirty_seven",
-    38: "thirty_eight", 39: "thirty_nine", 40: "forty", 41: "forty_one",
+    38: "thirty_eight", 39: "thirty_nine", 40: "forty", 41: "forty_one", 42: "forty_two",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -2031,7 +2031,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 41
+_FEATURES_ARE_FOR_SCHEMA = 42
 
 
 @dataclass(frozen=True)
@@ -2441,6 +2441,47 @@ def _parent_pacing_wolves() -> dict:
     return wolves
 
 
+def _wins_by_taking(spec: dict) -> bool:
+    """A game won by taking the royal piece: where a duck enters in one edit."""
+    return (spec.get("rules") or {}).get("win") == "royal_capture"
+
+
+def _parent_duck() -> dict:
+    """Chess won by taking the king, with the classic duck (N4b, `plan-npc.md` §4.6)."""
+    chess = _chess()
+    chess["rules"]["win"] = "royal_capture"
+    chess["pieces"].append({"id": "D", "name": "duck", "value": 0, "moves": []})
+    chess["rules"]["duck"] = {"piece": "D"}
+    return chess
+
+
+def _parent_walking_duck() -> dict:
+    """The duck chess above, its duck walking a king's step."""
+    duck = _parent_duck()
+    duck["pieces"][-1]["moves"] = [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}
+    ]
+    duck["rules"]["duck"]["goes"] = "by_moves"
+    return duck
+
+
+def _parent_standing_duck() -> dict:
+    """The duck chess above, its duck starting on d4."""
+    duck = _parent_duck()
+    duck["rules"]["duck"]["start"] = "d4"
+    return duck
+
+
+def _parent_shielding_duck() -> dict:
+    """The duck chess above, its duck shielding the eight squares round it."""
+    duck = _parent_duck()
+    duck["pieces"][-1]["sight"] = [{
+        "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1, "through": True,
+        "effect": "shield", "whose": "any",
+    }]
+    return duck
+
+
 def _parent_splitting_wolves() -> dict:
     """*Wolves* whose wolves pounce on what attacks them and split, up to six (N3d,
     `plan-npc.md` §4.5)."""
@@ -2581,10 +2622,25 @@ def _armies_differ(spec: dict) -> bool:
 # so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
 # and `straighten` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    "N3d split": _Feature(
-        "npcs", frozenset({"rules.npcs.split"}), True, "wolves+split",
-        _parent_splitting_wolves,
-        likely=lambda spec: bool(spec.get("rules", {}).get("npcs")),
+    # Generation 42 (N4b, `plan-npc.md` §4.6): four names. No committed game has a duck, so each
+    # is entered by `loose-a-duck` adding one (a type with it, so none keeps the army), most
+    # cheaply on a game already won by taking the king; the three options are left by the same
+    # operator with the duck standing.
+    "N4b duck": _Feature(
+        None, frozenset({"rules.duck"}), False, "chess+duck", _parent_duck,
+        likely=_wins_by_taking,
+    ),
+    "N4b duck by_moves": _Feature(
+        "duck", frozenset({"rules.duck.goes.by_moves"}), False, "chess+walking duck",
+        _parent_walking_duck, likely=_wins_by_taking,
+    ),
+    "N4b duck start": _Feature(
+        "duck", frozenset({"rules.duck.start"}), False, "chess+standing duck",
+        _parent_standing_duck, likely=_wins_by_taking,
+    ),
+    "N4b duck sight": _Feature(
+        "duck", frozenset({"pieces.sight.duck"}), False, "chess+shielding duck",
+        _parent_shielding_duck, likely=_wins_by_taking,
     ),
 }
 
@@ -2596,9 +2652,15 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # N3d's name. *The hydra* (N7, `plan-npc.md` §6.2) carries it: its hydras split. N7
-    # deletes this row.
-    "N3d split": "owed: N7, the hydra (plan-npc.md §6.2)",
+    # N4b's four names. *The shepherd's duck* (N6, `plan-npc.md` §6.1) carries the classic duck
+    # and its shield; N6 deletes those two rows. No registered showcase walks the duck or starts
+    # it on a square (§6.1's duck goes anywhere from off the board), so those two wait for a
+    # task that registers one (`schema-showcase-coverage.md` rows 93 and 94).
+    "N4b duck": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
+    "N4b duck sight": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
+    "N4b duck by_moves": "owed: none registered (plan-npc.md §6.1's duck goes anywhere)",
+    "N4b duck start": "owed: none registered (plan-npc.md §6.1's duck starts off the board)",
+    # N3d's name went to `_NO_SHOWCASE_ON_PURPOSE` when N4b retired its `_FEATURES` row.
     # N3c's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3d retired its `_FEATURES` row.
     # N3b's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3c retired its `_FEATURES` row.
     # N5's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3b retired its `_FEATURES` row.
@@ -2707,6 +2769,9 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     39: frozenset({"rules.npcs.pounce.prey"}),
     40: frozenset({"rules.npcs.pounce.attackers"}),
     41: frozenset({"rules.npcs.split"}),
+    42: frozenset({
+        "rules.duck", "rules.duck.goes.by_moves", "rules.duck.start", "pieces.sight.duck",
+    }),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2715,6 +2780,9 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 41's name (N3d), owed in `_SHOWCASE_OWED` until generation 42 (N4b) retired its
+    # `_FEATURES` row. N7 deletes this row when *the hydra* lands.
+    "schema 41: rules.npcs.split": "owed: N7, the hydra (plan-npc.md §6.2)",
     # Generation 40's name (N3c), owed in `_SHOWCASE_OWED` until generation 41 (N3d) retired its
     # `_FEATURES` row. N7 deletes this row when *the hydra* lands.
     "schema 40: rules.npcs.pounce.attackers": "owed: N7, the hydra (plan-npc.md §6.2)",
@@ -3973,6 +4041,8 @@ _PINNED_SCALES: dict[str, float] = {
     "npcs_pounce": 1.0,
     "npcs_pounce_attackers": 1.0,
     "npcs_split": 1.0,
+    "has_duck": 1.0,
+    "duck_by_moves": 1.0,
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
     "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
     "beats_share": 1.0, "simultaneous_swap_collides": 1.0, "simultaneous_both_score": 1.0,
@@ -4043,14 +4113,15 @@ class TestDistanceIsPinnedToTheNumber:
         features (Q1011 brought it to 100: Q1007a's `lame_rider_share` was the 81st), 101 since
         T1's `turning_share`, 102 since A1's `strikers_share`, 103 since N1's
         `npcs_come_back`, 104 since N2's `npcs_see`, 105 since N5's `npcs_turn_back`, 106
-        since N3b's `npcs_pounce`, 107 since N3c's `npcs_pounce_attackers` and 108 since N3d's
-        `npcs_split`, is 0.011419, which rounds to 0.0114 and not to 0.01142."""
+        since N3b's `npcs_pounce`, 107 since N3c's `npcs_pounce_attackers`, 108 since N3d's
+        `npcs_split` and 110 since N4b's `has_duck` and `duck_by_moves`, is 0.011211, which
+        rounds to 0.0112 and not to 0.01121."""
         chess = _chess()
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0114
+        assert distance(chess, twin) == 0.0112
 
 
 def _one_leap_beside_a_stone() -> dict:

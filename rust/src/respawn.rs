@@ -28,8 +28,8 @@ impl<'t> Game<'t> {
         half.route
             .iter()
             .filter(|square| {
-                let value = self.board[**square as usize];
-                value != 0 && t.owner_of(value) == WILD
+                // Generation 42: the duck on a route square is not one of its pieces.
+                t.is_wild_piece(self.board[**square as usize])
             })
             .count()
     }

@@ -197,8 +197,12 @@ def verify(
     if not _agree_here(engine, variant, backend, state, result):
         return result
 
-    for level in range(1, depth + 1):
-        ours = engine.perft(state, level)
+    # Generation 42 (N4c, `docs/plan-npc.md` §4.6): a duck game's turn is two of our plies and
+    # one move of theirs, so the ladder compares at turn ends only, our perft(2k) with their
+    # perft(k), and a depth that ends mid-turn is rounded up to the turn's end.
+    turns = engine.spec.duck is not None
+    for level in range(1, (depth + 1) // 2 + 1 if turns else depth + 1):
+        ours = engine.perft(state, 2 * level if turns else level)
         theirs = backend.perft(_fen(engine, variant, state), level)
         result.positions += ours
         if ours != theirs:
@@ -242,7 +246,11 @@ def _walk(
             legal = engine.legal_moves(state)
             if not legal or engine.terminal(state, legal) is not None:
                 break
-            if not _agree_here(engine, variant, backend, state, result):
+            # A duck game is compared at turn starts only: a position owing the duck's half
+            # has no FEN there, where a move is both halves.
+            if not engine.duck_owed(state) and not _agree_here(
+                engine, variant, backend, state, result
+            ):
                 return
             state = engine.apply(state, rng.choice(legal))
 
@@ -256,12 +264,16 @@ def _agree_here(
 ) -> bool:
     """Whether the two engines offer the same moves in this one position."""
     text = _fen(engine, variant, state)
-    ours = sorted(
-        fairy_position.uci_of(
-            engine.spec, state, move, variant.chars, variant.promotion_suffix
+    enders: set[str] = set()
+    if engine.spec.duck is not None:
+        ours, enders = _turn_words(engine, variant, state)
+    else:
+        ours = sorted(
+            fairy_position.uci_of(
+                engine.spec, state, move, variant.chars, variant.promotion_suffix
+            )
+            for move in engine.legal_moves(state)
         )
-        for move in engine.legal_moves(state)
-    )
     if len(set(ours)) != len(ours):
         result.ok = False
         result.fen = text
@@ -279,6 +291,13 @@ def _agree_here(
         result.reasons.append(f"the engine failed on this position: {error}")
         return False
     result.positions += 1
+    if enders:
+        # A piece move that ends our game has no duck half: it stands for every word of
+        # theirs that starts with it, and there must be at least one.
+        ended = [word for word in theirs if word.split(",")[0] in enders]
+        missing = enders - {word.split(",")[0] for word in ended}
+        theirs = sorted(set(theirs) - set(ended))
+        ours = sorted([*ours, *missing])
     extra = _tolerated(variant, backend, text, ours, theirs)
     if extra:
         result.drop_mates += 1
@@ -297,6 +316,28 @@ def _agree_here(
         )
         return False
     return True
+
+
+def _turn_words(
+    engine: Engine, variant: Variant, state: GameState
+) -> tuple[list[str], set[str]]:
+    """Our turns from a duck game's turn start, as their words (generation 42, N4c, §4.6).
+
+    Each piece move with each duck move our engine then offers (`position.turn_word`),
+    read ply by ply off our engine; and apart, the piece moves that end our game, which
+    have no duck half here and are matched by prefix (`_agree_here`).
+    """
+    words: list[str] = []
+    enders: set[str] = set()
+    spec, chars, suffix = engine.spec, variant.chars, variant.promotion_suffix
+    for move in engine.legal_moves(state):
+        half = engine.apply(state, move)
+        if engine.terminal(half) is not None:
+            enders.add(fairy_position.turn_word(spec, state, move, None, chars, suffix))
+            continue
+        for duck in engine.legal_moves(half):
+            words.append(fairy_position.turn_word(spec, state, move, duck, chars, suffix))
+    return sorted(words), enders
 
 
 def _tolerated(

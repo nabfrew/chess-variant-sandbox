@@ -1388,8 +1388,12 @@ function drawPiece(piece, x, y, cell, square) {
   const cx = x + cell / 2, cy = y + cell / 2;
   // An icon pair is one drawing per player and has no third entry, so a wild piece
   // (owner 2, schema 9) is always the lettered disc, in the third tint.
-  const pair = piece.player > 1 ? null : (SESSION.ruleset.icons || [])[piece.type];
-  const icon = pair ? pair[piece.player] : null;
+  // Generation 42 (N4c): the duck is nobody's too, but it is drawn as its type's own drawing
+  // (the first seat's), since there is one duck and its picture is the rule's.
+  const wild = piece.player > 1;
+  const duck = wild && piece.type === SESSION.ruleset.duck;
+  const pair = wild && !duck ? null : (SESSION.ruleset.icons || [])[piece.type];
+  const icon = pair ? pair[duck ? 0 : piece.player] : null;
   const tag = square === undefined ? '' : ` data-piece="${square}"`;
   // Schema 19: a portal end is drawn by the board (`portalGlyph`, the vortex of Q838b): its
   // pair's colour and, where there are several, its number; whose pieces may go in, by its
@@ -1694,6 +1698,10 @@ function drawBoard(previous) {
   }
   const dropTargets = DROP === null ? new Set()
     : new Set(SESSION.moves.filter(m => m.drop === DROP).map(m => m.to));
+  // Generation 42 (N4c, `docs/plan-npc.md` §4.6): with the duck owed, every square it may go
+  // to is lit at once, with no first click on the duck, and its own square is ringed.
+  const duckLit = duckTargets();
+  const duckRing = duckMode() ? SESSION.duck : null;
   const last = AT ? AT.lastMove : SESSION.lastMove;
   const colour = tint();
   const walls = new Set(SESSION.obstacles || []);
@@ -1812,7 +1820,7 @@ function drawBoard(previous) {
       out += `<circle cx="${x + cell / 2}" cy="${y + cell / 2}" r="${cell * 0.13}"
                fill="${way}" stroke="var(--portal-edge)" stroke-width="${cell * 0.03}"
                data-square="${square}" data-through="1"/>`;
-    } else if (targets.has(square) || dropTargets.has(square)) {
+    } else if (targets.has(square) || dropTargets.has(square) || duckLit.has(square)) {
       out += `<circle cx="${x + cell / 2}" cy="${y + cell / 2}"
                r="${piece ? cell * 0.44 : cell * 0.13}" fill="${piece ? 'none' : 'var(--dot)'}"
                stroke="var(--dot)" stroke-width="${cell * 0.05}" opacity="0.8"
@@ -1824,6 +1832,12 @@ function drawBoard(previous) {
                  fill="${way}" stroke="var(--portal-edge)" stroke-width="${cell * 0.025}"
                  data-square="${square}" data-through="1"/>`;
       }
+    }
+    if (real && square === duckRing) {
+      out += cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--held-halo)"
+               stroke-width="${cell * 0.12}" opacity="0.9" pointer-events="none"`, 0.06)
+        + cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--duck)"
+               stroke-width="${cell * 0.065}" pointer-events="none" data-duck-ring="1"`, 0.06);
     }
     if (entries.has(square)) {
       out += `<circle cx="${x + cell / 2}" cy="${y + cell / 2}" r="${cell * 0.47}" fill="none"
@@ -1896,6 +1910,9 @@ function drawBoard(previous) {
   if (held) out += heldHtml(held, cell, W, H, rules.wrap);
   // A move through a portal, in its two legs (§4), over the squares it tinted.
   out += portalLegsHtml(last, cell, W, H) + foldLegsHtml(last, cell, W, H);
+  // Generation 42 (N4c): the duck's flight on the ply on screen, its own arrow.
+  const flight = duckFlightHtml(last, cell);
+  out += flight;
 
   svg.innerHTML = markDefs(SQUARE_MARKS, 'board') + wood.defs() + out;
   // A piece is drawn `pointer-events="none"`, the held move's faded one too, so a tap on
@@ -1963,6 +1980,7 @@ function drawBoard(previous) {
     ...effectLegendKinds(affected),
     ...(ordered.length ? ['order'] : []),
     ...(announced ? ['announced'] : []),
+    ...(flight ? ['duckFlight'] : []),
   ]);
   drawCoords(cell, outside);
   fitBoard();
@@ -3109,7 +3127,8 @@ function drawPane() {
     // leaves the panel scrolled to a position nobody is looking at.
     const rows = moveRows();
     const want = AT ? (AT.kind === 'phase' ? 'phase' : 'move') : null;
-    const here = AT ? rows.findIndex(r => r.plies === AT.plies && r.kind === want) : -1;
+    const here = AT ? rows.findIndex(r => (r.plies === AT.plies || r.also === AT.plies)
+      && r.kind === want) : -1;
     pane.innerHTML = rows.map((r, i) => {
       const names = (r.stripe ? ['stripe'] : []).concat(r.kind === 'phase' ? ['phase'] : [],
                                                         r.kind === 'result' ? ['result'] : [],
@@ -3207,6 +3226,35 @@ function moveRows() {
       rows.push({ plies: i, kind: 'phase', stripe: stripe,
                   took: second.phase.some(step => step.eaten),
                   html: esc(phaseText(second.phase, beat ? beat.walkers : null)) });
+    }
+    if (outcome) rows.push({ plies: last + 1, kind: 'result', stripe: false,
+                             html: `<b>${esc(verdictText(outcome))}</b>` });
+    return rows;
+  }
+  // Generation 42 (N4c, §4.6): a duck game writes a turn on one line, its piece move and
+  // the duck's half (`duckRowHtml`); the review still steps a ply at a time, and either ply
+  // of the turn finds its row. The wild pieces' walk, after the duck's half, goes under it.
+  if (SESSION.ruleset.duck !== null && SESSION.ruleset.duck !== undefined) {
+    let i = 0, turn = 0;
+    while (i < SESSION.history.length) {
+      const m = SESSION.history[i];
+      const duck = SESSION.history[i + 1] && SESSION.history[i + 1].pass !== undefined
+        ? SESSION.history[i + 1] : null;
+      const end = duck ? i + 1 : i;
+      const stripe = turn % 2 === 0;
+      rows.push({ plies: end + 1, also: i + 1, kind: 'move', stripe: stripe, html: `${
+        stripe ? `${Math.floor(turn / 2) + 1}.` : '&nbsp;&nbsp;&hellip;'} ${duckRowHtml(m, duck)}${
+        signHtml(duck || m, end === last ? outcome : null)}${liftedHtml(m)}${lookedHtml(m)}${
+        corrMovedDayHtml(i)}` });
+      const walked = (duck || m).phase || [];
+      if (walked.length) {
+        const beat = split.get(end + 1);
+        rows.push({ plies: end + 1, kind: 'phase', stripe: stripe,
+                    took: walked.some(step => step.eaten),
+                    html: esc(phaseText(walked, beat ? beat.walkers : null)) });
+      }
+      i = end + 1;
+      turn += 1;
     }
     if (outcome) rows.push({ plies: last + 1, kind: 'result', stripe: false,
                              html: `<b>${esc(verdictText(outcome))}</b>` });
@@ -3683,8 +3731,11 @@ function drawStrip() {
     status.innerHTML = roundStatusHtml();
   } else {
     ended(false);
-    const more = SESSION.remaining > 1
-      ? ` - ${SESSION.remaining} moves left this turn` : '';
+    // Generation 42 (N4c, §4.6): a duck game's turn is two halves, said as what to do next,
+    // never as moves left.
+    const more = SESSION.ruleset.duck !== null && SESSION.ruleset.duck !== undefined
+      ? (SESSION.duckOwed ? ' - now move the duck' : '')
+      : SESSION.remaining > 1 ? ` - ${SESSION.remaining} moves left this turn` : '';
     const check = SESSION.inCheck ? checkPill() : '';
     // "thinking" is also written by `maybeAgent` as it asks. A redraw while the answer
     // is on its way (a flip, a toggle) says it again rather than blanking the strip, and
@@ -3747,6 +3798,10 @@ function drawHand() {
   const mine = ((AT ? AT.hands : SESSION.hands) || [])[owner] || [];
   const held = mine.map((count, type) => [type, count]).filter(([, count]) => count > 0);
   const droppable = new Set(SESSION.moves.filter(m => m.drop !== undefined).map(m => m.drop));
+  // Generation 42 (N4c): with the duck owed, the strip is the duck's: the duck waiting off the
+  // board, or the pass where it is the one move.
+  const tray = duckTrayHtml();
+  if (tray) { hand.innerHTML = tray; wireDuckTray(hand); return; }
   if (!held.length) { hand.innerHTML = ''; return; }
 
   // Schema 18e (Q785): a held piece may come back as its other face, a second button on
@@ -3773,6 +3828,81 @@ function drawHand() {
       drawBoard();
     };
   });
+}
+
+// ----- the duck (generation 42, N4c, `docs/plan-npc.md` §4.6)
+//
+// A duck game's turn is two plies: the piece move, picked as any move is, and then the same
+// player's duck move. Between them the board is in duck mode: every square the duck may go
+// to is lit at once (there is one duck, so the lit squares are the whole choice), its own
+// square is ringed, and the strip says *now move the duck*. Off the board, the duck waits in
+// the hand's strip. The pass is a button, shown only when it is the one legal move: the page
+// never plays a person's move for them. Every target is the core's (`SESSION.moves`).
+function duckMode() {
+  if (!SESSION || AT || !SESSION.duckOwed || SESSION.outcome || SESSION.awaitingAgent) return false;
+  if (SESSION.seats[SESSION.sideToMove] !== 'human') return false;
+  const between = SESSION.correspondence;
+  return !(between && between.you !== SESSION.sideToMove);
+}
+
+function duckTargets() {
+  if (!duckMode()) return new Set();
+  return new Set(SESSION.moves.filter(m => m.kind === 'duck' && !m.pass).map(m => m.to));
+}
+
+function duckPassMove() {
+  return duckMode() ? SESSION.moves.find(m => m.kind === 'duck' && m.pass) || null : null;
+}
+
+// The duck's own drawing, as the board draws it (a piece nobody owns).
+function duckPieceSvg() {
+  const rules = SESSION.ruleset;
+  const stride = rules.sideStride || rules.nTypes;
+  const piece = pieceOf(2 * stride + rules.duck + 1);
+  return `<svg class="duck-tray" viewBox="0 0 10 10" aria-hidden="true">${
+    drawPiece(piece, 0, 0, 10)}</svg>`;
+}
+
+function duckTrayHtml() {
+  if (!duckMode()) return '';
+  const pass = duckPassMove();
+  if (pass) {
+    return `<button class="duck-pass" data-duck-pass="${pass.move}">${
+      'the duck has nowhere to go: pass'}</button>`;
+  }
+  if (SESSION.duck !== null && SESSION.duck !== undefined) return '';
+  return `${duckPieceSvg()}<span class="muted u-as-center">the duck waits off the board:
+    click a lit square to put it there</span>`;
+}
+
+function wireDuckTray(hand) {
+  hand.querySelectorAll('[data-duck-pass]').forEach(node => {
+    node.onclick = () => send(Number(node.dataset.duckPass));
+  });
+}
+
+// The duck's flight on a ply (`last`, a history entry): a short solid arrow of its own olive
+// from its old square to its new one, over the board; nothing for a placement from off the
+// board, a pass or any other move. Off the entry's own squares, never a board diff.
+function duckFlightHtml(last, cell) {
+  if (!last || last.pass === undefined || last.from === null || last.to === null) return '';
+  const a = squareXY(last.from, cell, FRAME), b = squareXY(last.to, cell, FRAME);
+  const ax = a[0] + cell / 2, ay = a[1] + cell / 2, bx = b[0] + cell / 2, by = b[1] + cell / 2;
+  const length = Math.hypot(bx - ax, by - ay);
+  if (!(length > cell * 0.6)) return '';
+  const ux = (bx - ax) / length, uy = (by - ay) / length;
+  return announceLine(ax + ux * cell * 0.3, ay + uy * cell * 0.3, bx - ux * cell * 0.3,
+                      by - uy * cell * 0.3, cell, 'duckFlight', 'var(--duck)');
+}
+
+// A duck game's turn on one line of the move list (§4.6): *e4 · duck d5*, the duck's half in
+// its square's name, or *passes* where it had nowhere to go.
+function duckRowHtml(m, duck) {
+  if (!duck) return esc(m.text);
+  const W = SESSION.ruleset.width;
+  const where = duck.pass ? 'passes'
+    : squareName(duck.to % W, Math.floor(duck.to / W));
+  return `${esc(m.text)} <span class="muted">&middot;</span> duck ${esc(where)}`;
 }
 
 function clickSquare(square) {
@@ -3808,6 +3938,17 @@ function clickSquare(square) {
   if (SESSION.round && ROUND_SENDING) return;
   if ((between || SESSION.round) && CORR_HELD !== null && corrRepick(square)) return;
   NOTE = '';
+
+  // Generation 42 (N4c, `docs/plan-npc.md` §4.6): with the duck owed, a click on a lit square
+  // is that duck move, and every other click says what is owed. The moves are the core's.
+  if (SESSION.duckOwed) {
+    const duck = SESSION.moves.find(m => m.kind === 'duck' && !m.pass && m.to === square);
+    if (duck) return send(duck.move);
+    NOTE = duckPassMove() ? 'the duck has nowhere to go: pass it with the button under the board'
+      : 'now move the duck: click one of the lit squares';
+    drawBoard();
+    return;
+  }
 
   if (DROP !== null) {
     const drop = SESSION.moves.find(m => m.drop === DROP && m.to === square);

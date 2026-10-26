@@ -853,6 +853,7 @@ _RULES_KEYS = {
     "promote_on_entry",
     "portals",
     "simultaneous",
+    "duck",
 }
 _OBSTACLES_KEYS = {"squares", "mirror", "blocks_leaps"}
 _STRIKE_KEYS = {
@@ -998,6 +999,8 @@ MOVE_OFF_VALUES: dict[str, Any] = {"path": "straight"}
 # N1: a wild-piece entry's (``rules.npcs[]``): ``respawn: 0`` is a piece that, once taken, is gone.
 # N5: ``turns_back: false`` is a route walked as a cycle, as every route was before the key.
 NPC_OFF_VALUES: dict[str, Any] = {"respawn": 0, "turns_back": False}
+# N4b: ``rules.duck``'s: ``goes: "anywhere"`` is the classic duck, as is leaving it out.
+DUCK_OFF_VALUES: dict[str, Any] = {"goes": "anywhere"}
 
 # Generation 36 (N1, `docs/plan-npc.md` §4.1): the longest clock a respawning wild piece may
 # have, in phases. Bounds the clocks' keys (one per value per half).
@@ -1051,7 +1054,7 @@ def _check_rest_coherence(
     ]
     if not written:
         return
-    wild = _never_moved(rules)
+    wild = _wild_ids(rules)
     for index, piece in written:
         value = piece["rest"]
         if (
@@ -1500,6 +1503,8 @@ def _check_sight_coherence(
             )
         pid = piece.get("id")
         on_wild = pid in wild
+        # Generation 42: the duck sees as a wild piece does, and is named as itself.
+        noun = "the duck (rules.duck)" if pid == duck_piece(rules) else "a wild piece (rules.npcs)"
         for number, entry in enumerate(sight):
             loc = f"{where}[{number}]"
             if not isinstance(entry, dict):
@@ -1530,19 +1535,19 @@ def _check_sight_coherence(
                 # three limits.
                 if whose in ("enemy", "own"):
                     errors.append(
-                        f"{loc}.whose is {whose!r} on a wild piece (rules.npcs), which has no "
+                        f"{loc}.whose is {whose!r} on {noun}, which has no "
                         "side; use 'any'"
                     )
                 if effect == "command":
                     errors.append(
-                        f"{loc} is a command on a wild piece (rules.npcs): nobody commands for "
+                        f"{loc} is a command on {noun}: nobody commands for "
                         "it; use freeze, disarm or shield"
                     )
                 if not reads_alike_for_both(
                     entry.get("vectors"), entry.get("symmetry", "none"), orientation
                 ):
                     errors.append(
-                        f"{loc} reads differently for the two players: a wild piece has no "
+                        f"{loc} reads differently for the two players: {noun.split(' (')[0]} has no "
                         "forward of its own, so its sight must be the same seen from either side "
                         "(use a symmetry that covers both, such as rotate4 or dihedral8)"
                     )
@@ -1560,7 +1565,9 @@ def _check_sight_coherence(
                             errors.append(f"{loc}.affects entry {named!r} is not a declared piece")
                         elif named in wild:
                             errors.append(
-                                f"{loc}.affects names {named!r}, a wild piece (rules.npcs), which "
+                                f"{loc}.affects names {named!r}, "
+                                + ("the duck (rules.duck)" if named == duck_piece(rules) else "a wild piece (rules.npcs)")
+                                + ", which "
                                 "nothing affects"
                             )
                         elif named in royal and effect == "command":
@@ -1664,12 +1671,19 @@ def piece_speeds(spec_or_pieces: Any) -> dict[str, int]:
     return speeds
 
 
-def _never_moved(rules: Any) -> set[str]:
-    """The declared types no player ever moves: the wild pieces (a portal is no declared
-    type since spelling 31)."""
+def _wild_ids(rules: Any) -> set[str]:
+    """The declared types of the wild pieces (``rules.npcs``)."""
     listed = rules.get("npcs") if isinstance(rules, dict) else None
     wild = {npc.get("piece") for npc in _listed(listed) if isinstance(npc, dict)}
     return {pid for pid in wild if isinstance(pid, str)}
+
+
+def _never_moved(rules: Any) -> set[str]:
+    """The declared types no player owns: the wild pieces and (generation 42) the duck, which
+    the players move but never as their own piece (a portal is no declared type since
+    spelling 31)."""
+    duck = duck_piece(rules)
+    return _wild_ids(rules) | ({duck} if duck is not None else set())
 
 
 def speed_ranks_in_use(spec: dict[str, Any]) -> list[int]:
@@ -1732,7 +1746,7 @@ def _check_speed_coherence(
         )
         return
     malformed = False
-    wild = _never_moved(rules)
+    wild = _wild_ids(rules)
     for index, piece in written:
         value = piece["speed"]
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -3236,6 +3250,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_contact_coherence(pieces, rules, errors)
     _check_sweep_coherence(pieces, rules, errors)
     _check_npc_coherence(spec, pieces, rules, errors)
+    _check_duck_coherence(spec, pieces, rules, errors)
     _check_entry_promotion_coherence(spec, rules, errors)
     _check_only_lost_coherence(spec, rules, errors)
     _check_extinction_coherence(spec, rules, errors)
@@ -3247,7 +3262,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     # Portals (schema 19) are nobody's too, and each pair adds two internal types.
     _check_facing_coherence(
         pieces, errors,
-        owners=3 if rules.get("npcs") or rules.get("portals") else 2,
+        owners=3 if rules.get("npcs") or rules.get("portals") or rules.get("duck") else 2,
         extra_types=portal_extra_types(rules),
     )
     _check_fixed_facings(spec, pieces, errors)
@@ -4421,6 +4436,277 @@ def _check_npc_split(npcs: list[Any], rules: dict[str, Any], errors: list[str]) 
                 f"rules.npcs[{index}].respawn beside split: a hydra that both grows and comes "
                 "back would have two counts of how many it should have; give it one"
             )
+
+
+# Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck's keys and how it goes.
+_DUCK_KEYS = {"piece", "start", "goes"}
+DUCK_GOES = ("anywhere", "by_moves")
+
+
+def duck_piece(rules: Any) -> str | None:
+    """The duck's type id under ``rules.duck``, or ``None``. The one reader of the key's
+    piece, for the validator and every surface."""
+    duck = rules.get("duck") if isinstance(rules, dict) else None
+    piece = duck.get("piece") if isinstance(duck, dict) else None
+    return piece if isinstance(piece, str) else None
+
+
+def duck_goes(rules: Any) -> str:
+    """How the duck goes: ``"anywhere"`` (the default, the classic) or ``"by_moves"``."""
+    duck = rules.get("duck") if isinstance(rules, dict) else None
+    goes = duck.get("goes", "anywhere") if isinstance(duck, dict) else "anywhere"
+    return goes if isinstance(goes, str) else "anywhere"
+
+
+def _validate_duck(
+    duck: Any, piece_ids: list[str], width: int, height: int, errors: list[str]
+) -> None:
+    """``rules.duck``'s shape: an object naming a declared piece, an optional start square
+    and how it goes."""
+    if duck is None:
+        return
+    if not isinstance(duck, dict):
+        errors.append("rules.duck must be an object (piece, and optionally start and goes)")
+        return
+    _check_keys(duck, _DUCK_KEYS, "rules.duck", errors, required={"piece"})
+    piece = duck.get("piece")
+    if "piece" in duck and (not isinstance(piece, str) or piece not in piece_ids):
+        errors.append(f"rules.duck.piece {piece!r} is not a declared piece")
+    if "start" in duck:
+        start = duck["start"]
+        if not isinstance(start, str) or parse_square(start, width, height) is None:
+            errors.append(f"rules.duck.start {start!r} is not a square on this board")
+    if "goes" in duck and duck["goes"] not in DUCK_GOES:
+        errors.append(f"rules.duck.goes must be one of {DUCK_GOES}, got {duck['goes']!r}")
+
+
+def _check_duck_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """The duck against everything else in the spec (`docs/plan-npc.md` §4.6), each refusal
+    by name. Thirteen:
+
+    1. a check rule (checkmate, ``forbid_check``, ``check_limit``): a move's legality would
+       depend on the duck move after it;
+    2. rounds (``rules.simultaneous``, a spy game's too): nobody is the mover;
+    3. ``rules.turn``: a turn already has its two halves;
+    4. portals: the third owner's block;
+    5. ``explode_on_capture``, ``strike`` or ``contacts``: an uncapturable piece in a blast or
+       a strike would be a second rule;
+    6. a sweep;
+    7. a duck type that is royal, captures, or has a facing, rest, speed, spy, a region, a move
+       condition or a capture-only move;
+    8. ``goes: "by_moves"`` on moves that read differently for the two players;
+    9. ``goes: "by_moves"`` on a type with no moves (I1's, `plan-pieces-moves.md` §4.3);
+    10. moves on a duck that goes anywhere: never read, write ``moves: []``;
+    11. its type anywhere but ``rules.duck``;
+    12. a start the opening does not leave empty;
+    13. an odd ``max_plies``.
+    """
+    duck = rules.get("duck")
+    if not isinstance(duck, dict):
+        return
+    pid = duck_piece(rules)
+    by_id = {p["id"]: p for p in pieces if isinstance(p, dict) and isinstance(p.get("id"), str)}
+    piece = by_id.get(pid) if pid is not None else None
+
+    asks = []
+    if rules.get("win", "checkmate") == "checkmate":
+        asks.append('"win": "checkmate"')
+    if rules.get("forbid_check") is True:
+        asks.append('"forbid_check": true')
+    if rules.get("check_limit"):
+        asks.append("rules.check_limit")
+    for rule in asks:
+        errors.append(
+            f"rules.duck beside {rule}: a move's legality would depend on the duck move after "
+            'it; the duck is for a game without check ("win": "royal_capture", "annihilation" '
+            'or "none")'
+        )
+    if "simultaneous" in rules:
+        errors.append(
+            "rules.duck in a game in rounds (rules.simultaneous): both players move at once, "
+            "and nobody is the mover"
+        )
+    if "turn" in rules:
+        errors.append("rules.duck beside rules.turn: a turn already has its two halves")
+    if rules.get("portals"):
+        errors.append(
+            "rules.duck beside rules.portals: a portal end and the duck share the third "
+            "owner's block"
+        )
+    for key in ("explode_on_capture", "strike", "contacts"):
+        if rules.get(key):
+            errors.append(
+                f"rules.duck beside rules.{key}: an uncapturable piece in a blast or a strike "
+                "would be a second rule"
+            )
+    if any(
+        isinstance(p, dict) and any(
+            isinstance(m, dict) and m.get("kind") == "sweep" for m in _listed(p.get("moves"))
+        )
+        for p in pieces
+    ):
+        errors.append(
+            "rules.duck beside a sweep: a sweep removes what lies on its line, and nothing "
+            "takes the duck"
+        )
+    max_plies = rules.get("max_plies", 400)
+    if isinstance(max_plies, int) and not isinstance(max_plies, bool) and max_plies % 2:
+        errors.append(
+            f"rules.max_plies {max_plies} is odd beside the duck: the clock would stop a game "
+            "between a move and its duck move (each half is a ply; use an even number)"
+        )
+
+    if piece is None:
+        return
+    loc = f"rules.duck.piece {pid!r}"
+    if piece.get("royal"):
+        errors.append(f"{loc} is royal; the duck is nobody's, and nothing takes it")
+    if _listed(piece.get("captures")):
+        errors.append(
+            f"{loc} has captures; the duck takes nothing (write captures: [] or leave it out)"
+        )
+    for key, why in (
+        ("facing", "the duck has no forward"),
+        ("rest", "the duck moves every turn"),
+        ("speed", "the duck is never in rounds"),
+        ("spy", "the duck is nobody's"),
+        ("region", "the duck has no rank of its own"),
+    ):
+        if key in piece and not stated_off(piece, key, PIECE_OFF_VALUES):
+            errors.append(f"{loc} has a {key}: {why}")
+    moves = [m for m in _listed(piece.get("moves")) if isinstance(m, dict)]
+    setup = spec.get("setup")
+    orientation = (
+        str(setup.get("orientation", "mirror")) if isinstance(setup, dict) else "mirror"
+    )
+    for number, move in enumerate(moves):
+        where = f"{loc} (moves[{number}])"
+        if "condition" in move:
+            errors.append(
+                f"{where} has a move condition: the duck has no rank or first move of its own"
+            )
+        if move.get("mode", "both") == "capture":
+            errors.append(
+                f"{where} is a capture-only move: the duck moves only onto empty squares"
+            )
+    if duck_goes(rules) == "by_moves":
+        if not moves:
+            errors.append(
+                'rules.duck.goes "by_moves" on a type with no moves: a duck that could never '
+                "move would pass every turn; use 'anywhere', or give it moves"
+            )
+        for number, move in enumerate(moves):
+            if not reads_alike_for_both(
+                move.get("vectors"), move.get("symmetry", "none"), orientation
+            ):
+                errors.append(
+                    f'rules.duck.goes "by_moves" on {pid!r}, whose moves[{number}] reads '
+                    "differently for the two players: the duck has no forward (use a symmetry "
+                    "that covers both, such as rotate4 or dihedral8)"
+                )
+    elif moves:
+        errors.append(
+            f"{loc} has moves, and a duck that goes anywhere never reads them; write moves: []"
+        )
+
+    for where in _duck_named_elsewhere(pid, pieces, rules, setup):
+        errors.append(
+            f"{loc} is named in {where}; there is one duck, and only rules.duck moves it"
+        )
+
+    start = duck.get("start")
+    board = spec.get("board")
+    if isinstance(start, str) and isinstance(board, dict):
+        width, height = board.get("width"), board.get("height")
+        if isinstance(width, int) and isinstance(height, int):
+            coords = parse_square(start, width, height)
+            if coords is not None and (
+                coords[1] * width + coords[0]
+                in _opening_squares(spec, rules, width, height, orientation)
+            ):
+                errors.append(
+                    f"rules.duck.start {start} is a square the opening does not leave empty"
+                )
+
+
+def _duck_named_elsewhere(
+    pid: str | None, pieces: list[Any], rules: dict[str, Any], setup: Any
+) -> list[str]:
+    """Where the duck's type is named outside ``rules.duck``: the setup, a hand, a
+    promotion, a wild piece, a goal, castling, a capture list or a demotion."""
+    found: list[str] = []
+    placements = setup.get("placements") if isinstance(setup, dict) else None
+    for index, placement in enumerate(_listed(placements)):
+        if isinstance(placement, dict) and placement.get("piece") == pid:
+            found.append(f"setup.placements[{index}]")
+    drops = rules.get("drops")
+    if isinstance(drops, dict) and isinstance(drops.get("stock"), dict) and pid in drops["stock"]:
+        found.append("rules.drops.stock")
+    promotion = rules.get("promotion")
+    for entry in promotion if isinstance(promotion, list) else [promotion]:
+        if not isinstance(entry, dict):
+            continue
+        named = entry.get("piece") == pid
+        try:
+            first, second = promotion_targets(entry)
+            named = named or pid in first or pid in second
+        except (KeyError, TypeError):
+            pass
+        if named:
+            found.append("rules.promotion")
+    for index, npc in enumerate(_listed(rules.get("npcs"))):
+        if isinstance(npc, dict) and (
+            npc.get("piece") == pid or pid in _listed(npc.get("immune"))
+        ):
+            found.append(f"rules.npcs[{index}]")
+    reach = rules.get("reach")
+    if isinstance(reach, dict) and reach.get("piece") == pid:
+        found.append("rules.reach")
+    extinction = rules.get("extinction")
+    if isinstance(extinction, dict) and pid in _listed(extinction.get("pieces")):
+        found.append("rules.extinction")
+    castling = rules.get("castling")
+    if isinstance(castling, dict) and pid in (castling.get("king"), castling.get("rook")):
+        found.append("rules.castling")
+    for other in pieces:
+        if not isinstance(other, dict) or other.get("id") == pid:
+            continue
+        if pid in _listed(other.get("captures")):
+            found.append(f"pieces {other.get('id')!r} captures")
+        if other.get("promoted_from") == pid:
+            found.append(f"pieces {other.get('id')!r} promoted_from")
+    return found
+
+
+def _opening_squares(
+    spec: dict[str, Any], rules: dict[str, Any], width: int, height: int, orientation: str
+) -> set[int]:
+    """Every square the opening fills or forbids: the placements (mirrors included), the
+    wild pieces' starts, the walls and absent cells."""
+    setup = spec.get("setup")
+    taken: set[int] = set()
+    if isinstance(setup, dict):
+        mirrored = bool(setup.get("mirror", True))
+        for placement in _listed(setup.get("placements")):
+            if not isinstance(placement, dict):
+                continue
+            for name in _listed(placement.get("squares")):
+                coords = parse_square(name, width, height) if isinstance(name, str) else None
+                if coords is None:
+                    continue
+                file, rank = coords
+                taken.add(rank * width + file)
+                if mirrored:
+                    other_file, other_rank = reflect_square(file, rank, width, height, orientation)
+                    taken.add(other_rank * width + other_file)
+    taken |= {square for _, _, square in npc_starts(rules, width, height, orientation)}
+    taken |= set(obstacle_squares(rules, width, height, orientation))
+    board = spec.get("board")
+    if isinstance(board, dict):
+        taken |= set(absent_squares(board))
+    return taken
 
 
 def _check_entry_promotion_coherence(
@@ -5955,6 +6241,7 @@ def _validate_rules(
     _validate_strike(rules.get("strike"), piece_ids, errors)
     _validate_contacts(rules.get("contacts"), piece_ids, errors, promoting_piece_ids(rules))
     _validate_npcs(rules.get("npcs"), piece_ids, width, height, errors, rules)
+    _validate_duck(rules.get("duck"), piece_ids, width, height, errors)
     _validate_portals(rules.get("portals"), width, height, errors)
     _validate_territory(rules.get("territory"), width, height, errors)
     _validate_scoring(

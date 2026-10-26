@@ -184,6 +184,11 @@ LIGHT: dict[str, str] = {
     # in a deep teal, cased in `held-halo`: apart from the held move's pine in hue and
     # weight, and from the standoffs' umber and cobalt and the clash's wine (`FLOORS`).
     "announced": "#00606e",
+    # Generation 42 (N4c, `docs/plan-npc.md` §4.6): the duck's flight on the last ply, a solid
+    # arrow in a deep olive cased in `held-halo`: apart from the announced teal, the held
+    # pine, the standoffs' umber and cobalt and the clash's wine (`FLOORS`). It rings the
+    # duck's square in duck mode too.
+    "duck": "#4a5200",
     # Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.6): a piece under a line of sight's effect
     # wears a badge on `held-halo`, and a piece's sight tints the squares it sees in the same
     # colour. A deep ice blue for frozen (a snowflake), a rust for disarmed (a broken blade),
@@ -300,6 +305,7 @@ DARK: dict[str, str] = {
     "clash": "#851a56", "rest": "#40464f",
     "order": "#251f48",
     "announced": "#005a66",
+    "duck": "#434a00",
     "frozen": "#0b4774", "disarmed": "#7e300e", "shielded": "#185a31",
     "commanded": "#622984",
     "scrim": "rgba(0, 0, 0, .6)",
@@ -379,6 +385,8 @@ FLOORS: tuple[tuple[str, str, float], ...] = (
     ("order", "held-halo", 4.5),
     # An announced move's arrow (Q935c), on the same casing.
     ("announced", "held-halo", 4.5),
+    # The duck's flight (N4c), on the same casing.
+    ("duck", "held-halo", 4.5),
     # A line of sight's badges (Q999c): each glyph is the casing's colour on its disc.
     ("held-halo", "frozen", 4.5),
     ("held-halo", "disarmed", 4.5),

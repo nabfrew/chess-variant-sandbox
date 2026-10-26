@@ -477,7 +477,12 @@ class TestTheFingerprintsPointAtSomething:
 # `engine/state.py`'s `"copy"` kind, `engine/compile.py`'s `PounceRule.split`; see
 # `FROZEN_ANALYSIS`). No library game pounces, so no number can move. It was "82b519ad88a2ec81"
 # after N3c; the replay after N3d (R36) re-scores under it.
-FROZEN_METRICS = "fdac473216822a6e"
+#
+# **Moved 2026-10-26 by N4b (the duck)**: `spec/complexity.py`'s `rules.duck` cost (2.0) and the
+# `analysis` files it reads (see `FROZEN_ANALYSIS`). No library game has a duck, so no number
+# can move. It was "fdac473216822a6e" after N3d (R36's stamp); the next library replay re-scores
+# under it.
+FROZEN_METRICS = "9f35f8d5328f71d5"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -776,7 +781,13 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 #
 # **Moved 2026-10-26 by N3d**: the wild tally's `copies` (`WILD_COUNTS`), the `"copy"` phase kind
 # and `PounceRule.split`. It was "e5eae30f2bac5ff7" after N3c.
-FROZEN_ANALYSIS = "5baf21c0ef18e834"
+#
+# **Moved 2026-10-26 by N4b (the duck)**: `tournament/analysis.py`'s `GameAnalysis.duck` (written
+# only where a duck stands, so no library game's `analysis.json` moves) and its duck-aware
+# readers (`_mover_kind`, `_takes`, the wild tally's count of wild pieces), `engine/engine.py`'s
+# duck words and helpers, `engine/moves.py`'s `MOVE_DUCK` and `engine/compile.py`'s `DuckRule`. It
+# was "5baf21c0ef18e834" after N3d (R36's stamp).
+FROZEN_ANALYSIS = "087563291466a060"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

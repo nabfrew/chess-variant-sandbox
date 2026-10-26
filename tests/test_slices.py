@@ -400,6 +400,23 @@ LIBRARY = test_index_quality.RUNS
 # but the six games' `.games[i].wild (added)`; the replaced measurements, with the stamp this
 # window held, are kept under each game's `runs/<hash>/previous/`
 # (`docs/reference/replay-2026-10-29.md`).
+#
+# **Opened 2026-10-26 by N4b** (the duck): `spec/complexity.py`'s cost for `rules.duck`, the
+# analysis pass's `duck` tally and its duck-aware readers, `engine/engine.py`'s duck helpers and
+# words and `engine/compile.py`'s `DuckRule` move `analysis` and so `metrics` (`FROZEN_ANALYSIS`,
+# `FROZEN_METRICS`), and the core's duck half moves the build fingerprint. No library game has a
+# duck, so no number should move. The window is the stamp R36 left the library; **the next
+# library replay empties it** (the coordinator decides it after N4c).
+#
+# **Emptied 2026-10-26 by R37**, that replay: all 103 library games re-certified from a sample of
+# 128 of each run's 1,024 games on core `774f4d9c5cb34e9a` (412 runs, none refused, the six NPC
+# games' first certificate since R36 replayed them), then re-analysed and re-scored under
+# `metrics` "9f35f8d5328f71d5" and `analysis` "087563291466a060". N4b also moved `agents_source`
+# (`agents/minimax.py`), which decides nothing here: `players` reads equal on both sides on all
+# 103. No library game has a duck; no record, analysis, score, interval or verdict moved (105,472
+# records equal; 1,751 of 1,751 files byte-equal); the replaced measurements, with the stamp this
+# window held, are kept under each game's `runs/<hash>/previous/`
+# (`docs/reference/replay-2026-10-30.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

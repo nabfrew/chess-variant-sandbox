@@ -940,6 +940,12 @@ const MARK_KINDS = {
   announced: { colour: 'var(--announced)', shape: 'announce', name: 'solid arrow',
                ink: 'var(--ink)',
                label: 'the move announced this round: it is made, whatever the other player answers' },
+  // Generation 42 (N4c, `docs/plan-npc.md` §4.6): where the duck flew from on the last ply, a
+  // solid arrow of its own olive from its old square to its new one (`duckFlightHtml`, off
+  // the history entry's own `from` and `to`), never on one square; the row is the legend's.
+  // A placement from off the board and the pass draw none.
+  duckFlight: { colour: 'var(--duck)', shape: 'announce', name: 'olive arrow', ink: 'var(--ink)',
+                label: 'where the duck was moved from, and to, on the last move' },
   // Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.6): a piece under a line of sight's effect,
   // off the core's effect bits on the position on screen (`Engine.effects`): a small badge
   // on the square's left corners, clear of the rested piece's sign and the order disc. A
@@ -1082,7 +1088,9 @@ const SEEN_OPACITY = 0.3;
 // An announced move's arrow (schema 27, Q935c), from `(x1, y1)` to its tip at `(x2, y2)`: a
 // solid shaft and a filled head in `--announced`, cased in `--held-halo` as the held move's
 // arrow is, so it reads on both woods; solid where the held move's is dashed.
-function announceLine(x1, y1, x2, y2, cell) {
+// `name` and `colour` are the mark's (`announced` by default; generation 42's `duckFlight`
+// draws the duck's flight in the same shape, in `--duck`).
+function announceLine(x1, y1, x2, y2, cell, name = 'announced', colour = 'var(--announced)') {
   const f = n => n.toFixed(3);
   const length = Math.hypot(x2 - x1, y2 - y1);
   if (!length) return '';
@@ -1093,12 +1101,12 @@ function announceLine(x1, y1, x2, y2, cell) {
   const tip = `M${f(back[0] + wing[0])} ${f(back[1] + wing[1])}L${f(x2)} ${f(y2)}L${
     f(back[0] - wing[0])} ${f(back[1] - wing[1])}Z`;
   const line = `x1="${f(x1)}" y1="${f(y1)}" x2="${f(back[0])}" y2="${f(back[1])}"`;
-  return `<g data-mark="announced" pointer-events="none" stroke-linecap="round"
+  return `<g data-mark="${name}" pointer-events="none" stroke-linecap="round"
       stroke-linejoin="round"><line ${line} stroke="var(--held-halo)"
       stroke-width="${f(cell * 0.17)}" opacity="0.9"/><path d="${tip}" fill="var(--held-halo)"
       stroke="var(--held-halo)" stroke-width="${f(cell * 0.1)}" opacity="0.9"/><line ${line}
-      stroke="var(--announced)" stroke-width="${f(cell * 0.09)}"/><path d="${tip}"
-      fill="var(--announced)" stroke="var(--announced)" stroke-width="${f(cell * 0.03)}"/></g>`;
+      stroke="${colour}" stroke-width="${f(cell * 0.09)}"/><path d="${tip}"
+      fill="${colour}" stroke="${colour}" stroke-width="${f(cell * 0.03)}"/></g>`;
 }
 
 // A swap's meeting between the middles of two squares (schema 27): a short link in
@@ -1488,7 +1496,8 @@ function squareBadge(x, y, cell, marks, view, tag) {
     // An announced move (schema 27): only the legend comes here; on a board the arrow runs
     // between the two squares (`announcedHtml`). Corner to corner, as an arrow's key.
     if (kind.shape === 'announce') {
-      out += announceLine(x + cell * 0.15, y + cell * 0.85, x + cell * 0.88, y + cell * 0.12, cell);
+      out += announceLine(x + cell * 0.15, y + cell * 0.85, x + cell * 0.88, y + cell * 0.12, cell,
+                          mark.kind, kind.colour);
       continue;
     }
     if (kind.shape === 'rest') {

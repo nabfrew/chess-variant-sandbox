@@ -1127,6 +1127,8 @@ class TestARuleNobodyConsideredIsRefusedRatherThanDropped:
         schema_keys = {
             "castling": schema._CASTLING_KEYS,
             "drops": schema._DROPS_KEYS,
+            # Generation 42 (N4c): the classic duck crosses as `wallingRule = duck`.
+            "duck": schema._DUCK_KEYS,
             "explode_on_capture": schema._EXPLODE_KEYS,
             "extinction": schema._EXTINCTION_KEYS,
             "obstacles": schema._OBSTACLES_KEYS,

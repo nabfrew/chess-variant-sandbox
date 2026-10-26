@@ -105,8 +105,8 @@ impl<'t> Game<'t> {
         let t = self.t;
         let standing = self.heading_back;
         for square in standing.iter() {
-            let value = self.board[square];
-            if value == 0 || t.owner_of(value) != WILD {
+            // Generation 42: a duck put down where a taken piece stood carries no heading.
+            if !t.is_wild_piece(self.board[square]) {
                 self.set_heading(square, false);
             }
         }
@@ -259,8 +259,8 @@ pub fn heading_from(t: &Tables, board: &[u8], given: &[u16]) -> SquareSet {
     for &square in given {
         let square = square as usize;
         if square < t.n_squares && lines.squares.get(square) {
-            let value = board[square];
-            if value != 0 && t.owner_of(value) == WILD {
+            // Generation 42: the duck carries no heading.
+            if t.is_wild_piece(board[square]) {
                 set.set(square);
             }
         }

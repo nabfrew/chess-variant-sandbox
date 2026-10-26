@@ -21,7 +21,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_PROMOTION, decode_move
+from chess_variant_sandbox.engine.moves import (
+    DUCK_PASS,
+    MOVE_DROP,
+    MOVE_PROMOTION,
+    decode_move,
+)
 from chess_variant_sandbox.engine.state import NO_SQUARE, GameState
 from chess_variant_sandbox.fairy.variant import board_letters
 
@@ -55,7 +60,7 @@ def fen(
         board += f"[{_pocket_field(compiled, state, chars)}]"
     fields = [
         board,
-        "w" if state.side_to_move == 0 else "b",
+        "w" if their_side(compiled, state) == 0 else "b",
         _castling_field(compiled, state, king) if castling else "-",
         _square_name(state.ep_target, compiled.width) if state.ep_target != NO_SQUARE else "-",
     ]
@@ -68,8 +73,21 @@ def fen(
         remaining = [max(check_limit - state.checks[player], 0) for player in (0, 1)]
         fields.append(f"{remaining[0]}+{remaining[1]}")
     fields.append(str(state.halfmove))
-    fields.append(str(state.ply // 2 + 1))
+    # Generation 42 (N4c): a duck game's turn is two of our plies and one move of theirs.
+    fields.append(str(state.ply // (4 if compiled.duck is not None else 2) + 1))
     return " ".join(fields)
+
+
+def their_side(compiled: CompiledSpec, state: GameState) -> int:
+    """The side to move as their engine sees ``state`` (generation 42, N4c).
+
+    Ours, except in a duck game ended on a piece move, before the duck's half our engine
+    never asks for: their move is both halves, so there the turn is over and the other side
+    is to move. The result check reads both engines' verdicts from this side.
+    """
+    if compiled.duck is not None and state.remaining == 1:
+        return 1 - state.side_to_move
+    return state.side_to_move
 
 
 def _board_field(
@@ -92,7 +110,13 @@ def _board_field(
     folds into the same set.
     """
     letters = board_letters(compiled, chars)
-    walls = compiled.obstacles
+    walls = set(compiled.obstacles)
+    # Generation 42 (N4c, `docs/plan-npc.md` §4.6): the duck is a wall there (`wallingRule =
+    # duck`), written `*` where it stands; off the board it is not written at all.
+    duck = compiled.duck
+    if duck is not None:
+        value = compiled.encode_piece(2, duck.piece_type)
+        walls.update(sq for sq, held in enumerate(state.board) if held == value)
     rows: list[str] = []
     for rank in range(compiled.height - 1, -1, -1):
         row = ""
@@ -224,6 +248,32 @@ def uci_of(
         else:
             text += chars[promoted].lower()
     return text
+
+
+def turn_word(
+    compiled: CompiledSpec,
+    state: GameState,
+    move: int,
+    duck_move: int | None,
+    chars: list[str] | tuple[str, ...],
+    promotion_suffix: str = "piece",
+) -> str:
+    """A duck game's turn as their one word (generation 42, N4c, `docs/plan-npc.md` §4.6).
+
+    Their move is both halves: our piece move, then ``,``, its target and the square our duck
+    move puts the duck on (``e2e4,e4d5``; castling ``e1g1,g1b1``). ``duck_move`` None is a
+    piece move that ended our game, which has no duck half here: its word is the prefix
+    alone, which every word of theirs for that piece move starts with (`verify` matches it
+    so). Spelled from our two moves, never parsed from theirs.
+    """
+    head = uci_of(compiled, state, move, chars, promotion_suffix)
+    if duck_move is None:
+        return head
+    width = compiled.width
+    _, target, _, _ = decode_move(move)
+    _, duck_target, _, how = decode_move(duck_move)
+    lands = target if how == DUCK_PASS else duck_target
+    return f"{head},{_square_name(target, width)}{_square_name(lands, width)}"
 
 
 def move_of(
