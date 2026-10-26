@@ -1051,6 +1051,26 @@ of 0.977 (0.953), the top three's games 0.917 decided, graded games 98.7 plies a
 87.9, the first seat 0.509 of decided games. Pawns took 1.22 anchors a graded game, 1.64 between
 the strongest. `tests/test_showcase_anchors.py` holds the mechanism.
 
+## `the-menagerie.json` — generations 37 and 42, wild pieces that see and the duck that walks (N8; retired)
+
+2026-10-26, built, measured and **retired without joining**, by the call registered before its
+first measured game (`docs/plan-npc.md` §6.3): a showcase that misses any of V2 to V4 retires,
+and is not tuned after the miss. Its file is `tests/_retired_the_menagerie.json`,
+`tests/test_showcase_menagerie.py` holds V1 on it, and its runs are kept.
+
+- **`the-menagerie`** (`3ab2ce41d4c9`): chess on 8 by 9 won by taking the king, a duck that
+  starts on e5 and walks a king's step (`goes: "by_moves"`, `start`), and six wild pieces that
+  eat nothing and pace their lines, turning back at a block and returning eight phases after
+  they are taken: gorgons freezing the eight squares round them (a4-d4, a6-d6), sirens
+  disarming them (h4-e4, h6-e6), dryads shielding them (a5-c5, h5-f5). **0.816 [0.787,
+  0.837], viable 4-0**, seat level (0.513), the ladder read in every run; V2 met by far (a move
+  taken away by a freeze at 0.874 of graded turns, a disarm 0.760, a shield 0.336; 5.2 wild
+  pieces turned by the duck a game), V4 met, top3 decided 0.750, but V3's index bar is 0.840.
+  In play the effects bind everywhere, and they also strand: 0.122 of graded games (0.281 of
+  the strong band's) end in stalemate, a side whose last pieces stand frozen round a gorgon,
+  and the duck is walked to the edge when it is not herding (on the middle three ranks after
+  only 0.272 of duck moves). Its weakest family was depth (0.56).
+
 ## `the-hydra.json` — generations 39 to 41, wild pieces that pounce and split (N7)
 
 2026-10-26, **in the library** (`0f126fe608ef`). The showcase of `docs/plan-npc.md` §6.2,

@@ -92,6 +92,8 @@ ALLOWED: tuple[Route, ...] = (
         "signed in or not, the handle, the role -- nothing rated, and cheap (Q199)",
     ),
     Route("GET", "/api/library", "the listing, with the roster and the metric legend"),
+    Route("GET", "/api/stories", "the landing's stories' games, replayed through the engine: "
+          "each frame's squares and what its move did (LP4); the same for everybody"),
     Route("GET", "/api/game/<hash>", "one game: rules, pieces, measurement, opponents"),
     Route(
         "GET",

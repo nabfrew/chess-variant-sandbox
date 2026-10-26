@@ -1784,6 +1784,147 @@ RULES = """
   .tabs { margin-bottom: 10px; }
   .tabpane { max-height: 58vh; overflow-y: auto; }"""
 
+# LP4 (`docs/plan-landing.md` §3.2, direction B, the mock-up's `b.css` on the site's tokens):
+# the question and its turning endings beside the game each became; then one idea, start to
+# finish, the board pinned at 1400 beside six steps and a board in steps 2 and 4 on a phone;
+# the three beats (the failure played before its verdict, the card's words struck and
+# replaced, the fix played before its verdict and the paired qualities). The board's motion
+# is `motion.js`'s; what moves here is CSS (a turning clause, a struck word, a growing bar),
+# and under reduced motion nothing does.
+RULES += """
+  .landingB .heroB { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 48px;
+                     margin: 16px 0 40px; }
+  .landingB .heroB .landingTitle { font-size: 46px; line-height: 52px; letter-spacing: -.01em;
+                         margin: 0 0 14px; }
+  .landingB .heroB .wcbi { display: block; color: var(--muted); }
+  .landingB .heroB .clauses { display: grid; min-height: 156px; }
+  .landingB .heroB .clause { grid-area: 1 / 1; align-self: start; opacity: 0; transform: translateY(24px);
+    transition: opacity .55s ease, transform .55s cubic-bezier(.2, .8, .2, 1);
+    text-decoration: underline; text-decoration-color: var(--family);
+    text-decoration-thickness: 5px; text-underline-offset: 8px; text-decoration-skip-ink: none; }
+  .landingB .heroB .clause.on { opacity: 1; transform: none; }
+  .landingB .heroB .clause.off { opacity: 0; transform: translateY(-24px); }
+  .landingB .heroB .landingLead { font-size: 19px; line-height: 28px; max-width: 34em; }
+  .landingB .heroB .landingWays a.button { min-height: var(--ctl-h-lg); padding: 10px 20px; font-size: 17px; }
+  .landingB .heroShow { margin: 0; min-width: 0; }
+  .landingB .heroStage { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .landingB .heroState { grid-area: 1 / 1; opacity: 0; transform: scale(.97) rotate(-.6deg);
+               pointer-events: none; transition: opacity .7s ease, transform .7s ease; }
+  .landingB .heroState.on { opacity: 1; transform: none; pointer-events: auto; }
+  .landingB .heroBoard { max-width: 440px; }
+  .landingB .heroBoard:empty { aspect-ratio: 1; }
+  .landingB .heroState figcaption { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+                          margin-top: 10px; }
+  .landingB .heroState figcaption a { font-weight: 600; }
+  .landingB .familyChip { display: inline-flex; align-items: center; gap: 6px; }
+  .landingB .familyChip .swatch, .landingB .ruleCard .swatch { width: 10px; height: 10px; border-radius: 3px;
+                                           flex: none; background: var(--family); }
+  .landingB .heroDots { margin-top: 8px; gap: 6px; align-items: center; }
+  .landingB .heroDot { width: 12px; height: 12px; min-height: 0; padding: 0; border-radius: 50%;
+             border: 1px solid var(--edge); background: transparent; }
+  .landingB .heroDot.on { background: var(--ink); border-color: var(--ink); }
+  .landingB .journey { margin: 8px 0 40px; }
+  .landingB .journeyTitle { font-size: 30px; line-height: 36px; margin: 0 0 16px; }
+  .landingB .journeyGrid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; }
+  .landingB .pin { position: sticky; top: 16px; align-self: start; margin: 0; }
+  .landingB .pinStatus { min-height: 40px; display: flex; align-items: center; font-weight: 600; }
+  .landingB .pinTray, .landingB .beatTray { gap: 10px; align-items: center; min-height: 26px; margin-top: 8px; }
+  .landingB .pinVerdict { margin-top: 10px; min-height: 44px; border-radius: 8px; padding: 10px 12px;
+                background: var(--sunk); opacity: 0; transform: translateY(6px);
+                transition: opacity .4s, transform .4s; }
+  .landingB .pinVerdict.shown { opacity: 1; transform: none; }
+  .landingB .pinVerdict.bad { color: var(--bad); }
+  .landingB .pinVerdict.good { color: var(--good); }
+  .landingB .beats { list-style: none; margin: 0; padding: 0; }
+  .landingB .beat { min-height: 60vh; padding: 20px 0 20px 24px; border-left: 3px solid var(--line);
+          opacity: .4; transition: opacity .5s, border-color .5s; }
+  .landingB .beat.active, .landingB .beat.seenAll { opacity: 1; border-left-color: var(--act); }
+  .landingB .beat h3 { font-size: 25px; line-height: 32px; margin: 6px 0 12px; max-width: 24em; }
+  .landingB .beat p { margin: 10px 0 0; max-width: 40em; }
+  .landingB .beatNo { color: var(--muted); margin: 0; font-size: 14px; }
+  .landingB .beatBoard, .landingB .beatTray { display: none; }
+  .landingB .say { position: relative; padding-left: 30px; }
+  .landingB .say::before { position: absolute; left: 0; top: 0; font-family: var(--f-mono); }
+  .landingB .say.bad::before { content: "\\2717"; color: var(--bad); }
+  .landingB .say.good::before { content: "\\2713"; color: var(--good); }
+  .landingB .say.change::before { content: "\\2192"; color: var(--ink); }
+  .landingB .ruleCard { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line);
+              border-left: 4px solid var(--family); border-radius: 8px; padding: 8px 10px;
+              background: var(--panel); max-width: 30em; margin-top: 10px; }
+  .landingB .ruleCard .swatch { margin-top: 6px; }
+  .landingB .ruleCard > div { display: flex; flex-direction: column; }
+  .landingB .ruleCode { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--sunk);
+              overflow-x: auto; font: 13px/19px var(--f-mono); max-width: 40em; }
+  .landingB .ruleCode.diff del { color: var(--bad); }
+  .landingB .ruleCode.diff ins { color: var(--good); text-decoration: none; font-weight: 600; }
+  .landingB .ruleCard.edit del, .landingB .swap del { text-decoration: none; color: var(--muted);
+    background: linear-gradient(var(--bad), var(--bad)) no-repeat 0 58% / 0 2px;
+    transition: background-size .7s ease .3s, color .7s ease .3s; }
+  .landingB .ruleCard.edit ins, .landingB .swap ins { text-decoration: none; font-weight: 600;
+    color: var(--good); display: inline-block; opacity: 0; transform: translateY(6px);
+    transition: opacity .45s ease 1.05s, transform .45s ease 1.05s; }
+  .landingB .beat.seen .ruleCard.edit del, .landingB .beat.seenAll .ruleCard.edit del, .landingB .swap.go del { background-size: 100% 2px; }
+  .landingB .beat.seen .ruleCard.edit ins, .landingB .beat.seenAll .ruleCard.edit ins, .landingB .swap.go ins { opacity: 1; transform: none; }
+  .landingB .playWords { margin-top: 10px; color: var(--muted); min-height: 20px; }
+  .landingB .playCtl { margin-top: 6px; gap: 6px; }
+  .landingB .playCtl button { min-width: 44px; }
+  .landingB .verdictBlock { transition: opacity .5s, transform .5s; }
+  .landingB .verdictBlock.pending { opacity: 0; transform: translateY(8px); visibility: hidden; }
+  .landingB .out { border-left: 3px solid var(--bad); padding-left: 10px; }
+  .landingB .out.good { border-left-color: var(--good); }
+  .landingB .verdict-word-bad { color: var(--bad); }
+  .landingB .verdict-word-good { color: var(--good); }
+  .landingB .exampleNote { border-left: 3px solid var(--act); padding-left: 10px; }
+  .landingB .quickSaid { margin: 8px 0 0; padding-left: 20px; }
+  .landingB .pairBars { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 12px;
+              align-items: center; margin-top: 14px; max-width: 30em; font-size: 14px; }
+  .landingB .pairBar { position: relative; height: 10px; }
+  .landingB .pairBar b, .landingB .pairBar i { position: absolute; left: 0; right: 0; transform-origin: left;
+    --v: 0; transform: scaleX(var(--v)); transition: transform .9s cubic-bezier(.2, .7, .2, 1);
+    border-radius: 3px; }
+  .landingB .pairBar b { top: 0; bottom: 0; background: var(--meter); opacity: .3; }
+  .landingB .pairBar i { top: 3px; bottom: 3px; background: var(--meter); }
+  .landingB .pairBar .low { background: var(--bad); }
+  .landingB .verdictBlock.pending .pairBar b, .landingB .verdictBlock.pending .pairBar i { transform: scaleX(0); }
+  .landingB .pairKey .key { display: inline-block; width: 16px; height: 6px; border-radius: 3px;
+                  background: var(--meter); margin: 0 6px 0 12px; }
+  .landingB .pairKey .key.faint { opacity: .3; margin-left: 0; }
+  .landingB .ladder { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; }
+  .landingB .ladder span { border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px;
+                 background: var(--panel); }
+  .landingB .ladder i { font-style: normal; color: var(--muted); font-size: 13px; margin-left: 4px; }
+  .landingB .challengeLink { background: var(--sunk); border-radius: 8px; padding: 8px 10px; max-width: 24em; }
+  .landingB .handCount { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+  .landingB .swap .handCount, .landingB .swap .muted { margin-left: 6px; }
+  @media (max-width: 900px) {
+    .landingB .heroB { grid-template-columns: minmax(0, 1fr); gap: 16px; margin: 4px 0 28px; }
+    .landingB .heroB .landingTitle { font-size: 30px; line-height: 36px; }
+    .landingB .heroB .clauses { min-height: 108px; }
+    .landingB .heroB .clause { text-decoration-thickness: 3px; text-underline-offset: 5px; }
+    .landingB .heroB .landingLead { font-size: 17px; line-height: 25px; }
+    .landingB .heroB .landingWays a.button { padding: 8px 16px; font-size: 16px; }
+    .landingB .heroShow { max-width: 360px; }
+    .landingB .journeyGrid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .landingB .pin { display: none; }
+    .landingB .beat { min-height: 0; opacity: 1; padding: 14px 0 18px 14px; border-left-color: var(--act); }
+    .landingB .beat h3 { font-size: 21px; line-height: 27px; }
+    .landingB .beatBoard { display: block; max-width: 300px; margin-top: 12px; }
+    .landingB .beatTray { display: flex; flex-wrap: wrap; }
+    .landingB .journeyTitle { font-size: 24px; line-height: 30px; }
+  }
+  /* Reduced motion: nothing turns, plays, grows or is pinned; each game's board sits in its
+     own step, stepped by press, and every edit and verdict shows at once. */
+  @media (prefers-reduced-motion: reduce) {
+    .landingB *, .landingB *::before, .landingB *::after {
+      transition: none !important; animation: none !important; }
+    .landingB .pin { display: none; }
+    .landingB .journeyGrid { grid-template-columns: minmax(0, 1fr); }
+    .landingB .beat { min-height: 0; opacity: 1; border-left-color: var(--act); }
+    .landingB .beatBoard { display: block; max-width: 360px; margin-top: 12px; }
+    .landingB .beatTray { display: flex; flex-wrap: wrap; }
+  }
+  .landingB .beatTray:empty, .landingB .pinTray:empty { display: none; }"""
+
 # LP2: each family of rules on the landing's wall of words reads its colour from its own
 # class (choice E1 of `docs/plan-landing.md` §4: the map's per-kind hues), made from
 # `landing.BLOCKS` so a row and its colour are named in one place.

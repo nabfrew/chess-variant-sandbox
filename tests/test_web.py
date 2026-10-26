@@ -6673,7 +6673,13 @@ class TestWhatReachesThePage:
         # 155 since N4c: the duck's strip in the hand (`duckTrayHtml`: constant words, the
         # pass's move number and the duck's drawing) and the duck card's words redrawn after a
         # check (`drawDuckSays`, each server sentence through `esc`).
-        assert len(sites) == 155
+        # 161 since LP4: the landing's hero boards and the story's boards (`heroStill`,
+        # `drawStoryFrame`: the still board's own markup), the hand under a board and its
+        # swap in the pinned tray (`storyTray`: piece and side names through `esc`, counts),
+        # the ladder and its people's-scale sentences (names and sentences through `esc`),
+        # and the blast's fireball (`blastFire`: numbers and token names), with the board's
+        # ghosts and swirls moved from `board.js` to `motion.js` unchanged.
+        assert len(sites) == 161
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -8567,10 +8573,14 @@ class TestTheBoardAnimation:
     def animation(self) -> str:
         from page_text import PAGE
 
+        # LP4: the table and the motion itself are `motion.js`, which every page that draws a
+        # game moving shares; the play board's diff of two positions is `board.js`'s.
         start = PAGE.index("const PACE = {")
+        motion = PAGE[start:PAGE.index("\n}\n", PAGE.index("function portalFlight(")) + 3]
+        board = PAGE.index("// " + "-" * 63 + " the animation")
         # And a round's reveal (Q918c, `simultaneous.js`), which reads the same table.
         rounds = PAGE.index("function animateRound(")
-        return PAGE[start:PAGE.index("the side panel", start)] + PAGE[
+        return motion + PAGE[board:PAGE.index("the side panel", board)] + PAGE[
             rounds:PAGE.index("\n}\n", rounds)]
 
     def pace(self) -> dict[str, float]:
@@ -8605,12 +8615,14 @@ class TestTheBoardAnimation:
         """The arrival time is the travel's own duration rather than a second guess at
         it, and both halves of the capture are delayed by it -- including the ring, which
         is the half that reads at a glance. The explosion animation has the same
-        property: its four elements (ghost, fireball, two blast rings) all wait for the
-        blow, giving six total uses of the delay."""
+        property (LP4, the landing mock-up's blast): the fireball over the area waits for the
+        blow, and so does each piece it took, which burns a breath after it."""
         body = self.animation()
         assert "return duration;" in body, "travel has to say how long it took"
         assert "const flight = travel(" in body and "flight * PACE.impact" in body
-        assert body.count("delay: blow.at") == 6, "capture (2) and explosion (4) all wait"
+        assert body.count("delay: blow.at") == 2, "the capture's two halves wait"
+        assert "const start = blow.at + PACE.blastLag;" in body, "a piece the blast took waits"
+        assert "blows.has(center) ? blows.get(center).at : lastBlow" in body, "so does its fire"
         # A victim with no attacker of its own -- an en passant pawn, a bystander in an
         # explosion -- still dies of the move that killed it rather than instantly.
         assert "blows.get(sq) || { at: lastBlow, dx: 0, dy: 0 }" in body
@@ -8661,8 +8673,11 @@ class TestTheBoardAnimation:
         # `animateChange`'s one, a board that changed shape (reduced motion returns
         # `portalStill`'s duration, Q836), and the trip through a portal's three: an end
         # with no glyph to pulse, and a move `portalStill` has no crossfade for, twice; and
-        # since Q843d the trip through a fold's one, a fold with no pool to pulse.
-        assert head.count("return 0;") == 5
+        # since Q843d the trip through a fold's one, a fold with no pool to pulse. Since LP4
+        # the end with no glyph is `motion.js`'s `portalPulse`, shared with the landing.
+        assert head.count("return 0;") == 4
+        pulse = body[body.index("function portalPulse("):]
+        assert "if (!glyph || typeof glyph.animate !== 'function') return 0;" in pulse
         # `animateMove`'s three: nothing changed, a pure rotation, and the end of it --
         # all through the one expression that builds what the phase reads back.
         assert head.count("return nothing();") == 3

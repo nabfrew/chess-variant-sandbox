@@ -155,7 +155,11 @@ function boardPreview(preview, map, drawn, bench) {
                   portalNamer(preview.pieceIds, preview.pieceNames)).label });
           out += has(marked.dim, square) ? `<g opacity="0.4">${glyph}</g>` : glyph;
         } else {
-          out += stillPieceHtml(preview, value, x, y, cell);
+          // A board the landing plays a game on (`preview.motion`, LP4) holds each piece in a
+          // group of its own, so its motion (`motion.js`) has one element per piece to move.
+          out += preview.motion
+            ? `<g data-piece="${square}">${stillPieceHtml(preview, value, x, y, cell)}</g>`
+            : stillPieceHtml(preview, value, x, y, cell);
           if (foldEnd && (groups > 1 || !!bench)) out += foldBadgeHtml(foldEnd, x, y, cell);
         }
       }

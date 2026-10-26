@@ -769,36 +769,6 @@ def _ingredients_html(version: str) -> str:
         f"</div></details>")
 
 
-# The page's headline and its first paragraph: what the site is, in its first readable words.
-# The site draws both outside the template too (`drawn_intro`, G4 of `docs/plan-growth.md`),
-# and `web/page/front.py` makes the front page's description of them.
-HEADLINE = "Invent a chess-like game, play it straight away, and see how it measures up."
-LEAD = "A vibe-coded playground for designing chess-like strategy games."
-
-# The two ways in that every reader is offered, before `landing.js` adds the reader's own.
-_WAYS = (
-    '<a class="button primary" href="/game">See the games</a>'
-    '<a class="button" href="#/design">Build your own</a>'
-)
-
-
-def drawn_intro() -> str:
-    """The headline, the first paragraph and the two ways in, outside the `<template>` (G4).
-
-    The site puts this in `#view` at `/`, so a reader without script, and a crawler, reads
-    what the site is. It is the start of the hero's own markup, so when `landing.js` clones
-    the template over it the headline lands where it already stood and a person sees the
-    landing they always saw; only the board and the reader's own way in arrive with it.
-    """
-    return (
-        '<div class="landing"><section class="landingHero"><div class="landingIntro">'
-        f'<h2 class="landingTitle">{_e(HEADLINE)}</h2>'
-        f'<p class="landingLead">{_e(LEAD)}</p>'
-        f'<div class="row landingWays">{_WAYS}</div>'
-        "</div></section></div>"
-    )
-
-
 # LP3 (`docs/plan-landing.md` §4.2): *How the score works*, the score's long explanation as
 # a view of its own, `#/score` on both servers. It carries the landing's two sections as
 # they were, *The computer checks that a game works* and *The score*, with the ingredients,
@@ -891,96 +861,361 @@ def shelves_html() -> str:
         + f'<p class="muted small shelvesScore">{SHELVES_SCORE}</p></div>')
 
 
-def html_page(version: str = DEFAULT_WEIGHTS) -> str:
-    """The landing page's markup: the opening board's place, then the sections in order."""
-    hero = (
-        '<section class="landingHero">'
+# ------------------------------------------------------------------ the hero (LP4)
+
+# LP4 (`docs/plan-landing.md` §3.2, direction B): the page opens on a question, *Wouldn't it
+# be cool if…*, whose ending turns over every few seconds (`landing.js`), each ending
+# underlined in its family's colour beside the game that idea became, drawn from the
+# listing's still. The story's own idea leads (`web/stories.py`, the hero's clause), and these
+# follow, leaving out the story's family. Each game is a listed library game
+# (`tests/test_landing_story.py` holds it), found in the listing by its name.
+QUESTION = "Wouldn't it be cool if…"
+
+
+@dataclass(frozen=True)
+class Idea:
+    """One ending of the hero's question, and the library game it became."""
+
+    family: str  # a row of `BLOCKS`
+    clause: str
+    chip: str
+    game: str  # the game's name in the library
+
+
+HERO_IDEAS: tuple[Idea, ...] = (
+    Idea("the board", "the left and right edges were joined?", "the board: edges that join",
+         "cylinder chess"),
+    Idea("pieces nobody owns",
+         "two golems nobody owns walked the middle, eating what stood in their way?",
+         "pieces nobody owns", "the golem well"),
+    Idea("the board", "there were doors across the board that either player could move?",
+         "portals the players move", "ferry"),
+    Idea("how a game is won", "walking your king to the centre won the game?",
+         "winning by arriving", "king of the hill"),
+    Idea("who moves, and when", "both players moved at once, in secret?",
+         "both players move at once", "breather"),
+)
+
+LEAD = (
+    "Every one of those is a game here, built from one palette of rules. Put your idea "
+    "together the same way: the site plays it at once, tells you how it plays, and gives you "
+    "an opponent.")
+NO_ACCOUNT = "No account needed to build or to play."
+START = "Start building a game"
+PLAY_TODAY = "Play today's game"
+
+# What a search result and a link preview say of the front page after the question with the
+# first story's ending (`web/page/front.py`): what the site does, in the lead's words. Fixed
+# text, so the page's description is the same whichever stories hold.
+DESCRIPTION_TAIL = (
+    "Build one from a palette of rules; the site plays it at once and gives you an opponent.")
+
+
+def question(clause: str) -> str:
+    """The question with one ending, as a sentence."""
+    return f"Wouldn't it be cool if {clause}"
+
+_FAMILY_HUE = {block.family: block.hue for block in BLOCKS}
+
+
+def _ideas(story: dict[str, Any] | None) -> list[dict[str, str]]:
+    """The hero's endings in order: the story's own first, then the others, leaving out its
+    family (§3.2)."""
+    ideas = []
+    if story is not None:
+        hero = story["hero"]
+        ideas.append({"hue": story["hue"], "clause": hero["clause"], "chip": hero["chip"],
+                      "game": hero["game"], "at": "" if hero["at"] is None else str(hero["at"])})
+    family = story["family"] if story is not None else None
+    for idea in HERO_IDEAS:
+        if idea.family != family:
+            ideas.append({"hue": _FAMILY_HUE[idea.family], "clause": idea.clause,
+                          "chip": idea.chip, "game": idea.game, "at": ""})
+    return ideas
+
+
+def headline(story: dict[str, Any] | None) -> str:
+    """The question with its leading ending, as one line of text."""
+    ideas = _ideas(story)
+    return question(ideas[0]["clause"]) if ideas else QUESTION
+
+
+def _ways() -> str:
+    return (f'<a class="button primary" href="#/design">{_e(START)}</a>'
+            f'<a class="button" href="/game" data-today>{_e(PLAY_TODAY)}</a>')
+
+
+def _hero(story: dict[str, Any] | None) -> str:
+    ideas = _ideas(story)
+    clauses = "".join(
+        f'<span class="clause {idea["hue"]}{" on" if n == 0 else ""}">{_e(idea["clause"])}</span>'
+        for n, idea in enumerate(ideas))
+    states = "".join(
+        f'<div class="heroState {idea["hue"]}{" on" if n == 0 else ""}" data-game="{_e(idea["game"])}"'
+        f'{(" data-at=" + chr(34) + idea["at"] + chr(34)) if idea["at"] else ""}>'
+        '<div class="heroBoard" data-board></div>'
+        f'<figcaption class="small"><span class="chip familyChip"><span class="swatch" '
+        f'aria-hidden="true"></span>{_e(idea["chip"])}</span> '
+        f'<a href="/game" data-name>{_e(idea["game"])}</a></figcaption></div>'
+        for n, idea in enumerate(ideas))
+    dots = "".join(
+        f'<button type="button" class="heroDot{" on" if n == 0 else ""}" '
+        f'aria-label="{_e(idea["chip"])}"></button>' for n, idea in enumerate(ideas))
+    return (
+        '<section class="landingHero heroB">'
         '<div class="landingIntro">'
-        f'<h2 class="landingTitle">{_e(HEADLINE)}</h2>'
+        f'<h2 class="landingTitle"><span class="wcbi">{_e(QUESTION)}</span> '
+        f'<span class="clauses" id="heroClauses" aria-live="polite">{clauses}</span></h2>'
         f'<p class="landingLead">{_e(LEAD)}</p>'
-        '<div class="row landingWays">'
-        + _WAYS +
-        # Q723: everybody meets this page, so the third way in is the reader's own: the
-        # door for a visitor to the site, a member's page for a member, and on the local
-        # application neither (`landing.js` removes what does not apply).
-        '<a class="button" href="/signin" data-needs="visitor">Sign in</a>'
-        '<a class="button" href="/profile" data-needs="member">Your page</a>'
-        # Q760: and for a member, the way to everybody else.
-        '<a class="button" href="/players" data-needs="member">Find players</a></div>'
-        f'<p class="muted small landingScroll">What it is, below; and <a href="{SCORE_ROUTE}">'
-        f"{_e(SCORE_TITLE.lower())}</a>.</p>"
+        f'<div class="row landingWays">{_ways()}</div>'
+        f'<p class="muted small">{_e(NO_ACCOUNT)}</p>'
         "</div>"
-        '<figure class="landingShow" id="landingShow">'
-        '<div class="landingBoard" id="landingBoard" aria-hidden="true"></div>'
-        # Q741: the day's game is named as the day's (`landing.js`).
-        '<figcaption class="small" id="landingCaption" data-today="Today&#39;s game">'
-        "Some of the games here, each a different mix of rules.</figcaption>"
-        '<div class="row landingShowControls">'
-        '<button type="button" class="quiet" id="landingPause" hidden>pause</button>'
-        '<button type="button" class="quiet" id="landingNext" hidden>another game</button>'
-        "</div></figure></section>")
-    parts = [
-        _new_section(),
-        _picks_section(),
-        _members_section(),
-        _section("intent", "What this is", (
-            "<p>A <b>vibe-coded playground for designing chess-like strategy games</b>. "
-            "Vibe-coded means it was built by describing it, in plain language, to an AI that "
-            "wrote the code, so expect a rough edge here and there. If it had been hand "
-            "crafted, it would have been immaculate, obviously.</p>"
-            "<p>It is a place to invent games, play them, and find the ones worth playing. "
-            "Chess is here too, as a familiar point of comparison.</p>")),
-        # LP2: the palette as a wall of words (B's, §3.2), in place of the paragraph that
-        # named a few of its rules. G8's link to the rule language is in its lead.
-        _section("palette", WALL_HEADING, _wall_html(), classes="landingWall"),
-        _section("play", "Play any of them now, against the computer", (
-            "<p>Every game is playable in the browser straight away, against computer "
-            "players from gentle to strong. No account is needed: a practice game has undo "
-            "and restart, and counts for nothing. A game you are designing can be played the "
-            "same way, before it is saved.</p>")),
-        _section("people", "Play other people, by correspondence", (
-            "<p>Members can challenge each other to a game by correspondence: each of you "
-            "moves when it suits you, the site keeps the board, and it can send an email "
-            "when it is your move. A game is lost by the player to move after "
-            f"{CORRESPONDENCE_IDLE_SAID}. "
-            "With an account your games count: you get a rating on each game, and beating "
-            "the strongest computer player on a game puts your name on it. Joining is by "
-            "invitation for now.</p>"
-            # Q760: a member is shown the way to find somebody to play.
-            '<p data-needs="member"><a href="/players">Find a member</a> by name, open '
-            "their page to see the games they made and played, and challenge them from "
-            "there.</p>"), needs="accounts"),
-        # LP3: the two sections that said how a game is checked and scored are their own
-        # view now, *How the score works* (`#/score`, `score_html`); the landing keeps one
-        # short section that points there until LP4 rebuilds the page.
-        _section("scoring", SCORE_TITLE, f"<p>{SCORE_POINTER}</p>"),
-        _section("more", "And more", (
-            '<ul class="landingFeatures">'
-            '<li><a href="/game">The library</a>: every game, with a search, filters by the '
-            "kind of game, and sorting by any ingredient of the score.</li>"
-            '<li><a href="#/map">The map</a>: the games laid out by how alike they are, in '
-            "communities of games more like each other than like the rest.</li>"
-            '<li><a href="#/design">The designer</a>: start from a blank board, a template '
-            "or any game in the library, and save and publish what you make.</li>"
-            f'<li><a href="{RULES_PAGE}">The rule language</a>: every rule a game can use, '
-            "written down, with what makes a valid game and what makes a good one.</li>"
-            '<li data-needs="round"><a href="#/round">The monthly round</a>: members put games forward and vote '
-            "on them.</li>"
-            '<li data-needs="accounts"><a href="/badges">Badges</a> for things done, and a '
-            "page for each member with their games and ratings.</li>"
-            "<li>A computer player that learned a game from its own play, offered on a game or "
-            "two as an experiment.</li>"
-            '<li><a href="#/whats-new">What\'s new</a>: every change, newest first.</li>'
-            "</ul>")),
+        '<figure class="heroShow" id="heroShow">'
+        f'<div class="heroStage" id="heroStage">{states}</div>'
+        f'<div class="row heroDots" role="group" aria-label="which idea">{dots}'
+        '<button type="button" class="quiet" id="heroPause">pause</button></div>'
+        "</figure></section>")
+
+
+def drawn_intro(story: dict[str, Any] | None = None) -> str:
+    """The question, its lead and the two ways in, outside the `<template>` (G4).
+
+    The site puts this in `#view` at `/`, so a reader without script, and a crawler, reads
+    what the site is: the question with the leading story's ending, written whole. It is the
+    start of the hero's own markup, so when `landing.js` clones the template over it the
+    headline lands where it already stood."""
+    if story is None and _CURRENT["stories"]:
+        story = _CURRENT["stories"][0]
+    ideas = _ideas(story)
+    clause = (f'<span class="clauses"><span class="clause {ideas[0]["hue"]} on">'
+              f'{_e(ideas[0]["clause"])}</span></span>') if ideas else ""
+    return (
+        '<div class="landing"><section class="landingHero heroB"><div class="landingIntro">'
+        f'<h2 class="landingTitle"><span class="wcbi">{_e(QUESTION)}</span> {clause}</h2>'
+        f'<p class="landingLead">{_e(LEAD)}</p>'
+        f'<div class="row landingWays">{_ways()}</div>'
+        "</div></section></div>"
+    )
+
+
+# ------------------------------------------------------------------ the journey (LP4)
+
+# §2.1: one idea, start to finish, in six steps, written from a story `web/stories.py`
+# rendered: every sentence and number is the record's or its games' own (rule 3, and the
+# provisional rule: a story with a number that is not current is not in the pool, so never
+# drawn). The games' frames are not here: `landing.js` asks `/api/stories` for them and
+# plays them on the steps' boards; the verdicts stay hidden (`pending`) until each game ends.
+JOURNEY_TITLE = "One idea, start to finish"
+STEP_NAMES = ("an idea, as a rule", "what goes wrong", "the one change", "what it changes",
+              "play it against the computer", "challenge a friend")
+LADDER_SAID = "Computer opponents, from the gentlest to the hardest."
+CHANGE_NOTE = "Every save is its own game with its own answer, and undo is one key."
+CHALLENGE_SAID = "Send a link. Move when it suits you."
+CHALLENGE_LINE = (
+    "A challenge link is for one game, taken up by one person. The site keeps the board and "
+    "can email whoever is to move; a game is lost by the player to move after "
+    f"{CORRESPONDENCE_IDLE_SAID}.")
+CHALLENGE_ASK = "Members, by invitation for now."
+
+
+def _linked(text: str, names: dict[str, str]) -> str:
+    """`text` escaped, each game name in `names` made a link to the game's own page."""
+    said = _e(text)
+    for name, digest in names.items():
+        if name:
+            said = said.replace(_e(name), f'<a href="/game/{_e(digest)}">{_e(name)}</a>', 1)
+    return said
+
+
+def _verdict(side: dict[str, Any], good: bool, quote: str = "") -> str:
+    """A game's answer, in the site's words with its basis, or a constructed one's example
+    line and the designer's quick answers."""
+    if side.get("example"):
+        quick = side.get("quick") or {}
+        said = "".join(f"<li>{_e(line)}</li>" for line in quick.get("said") or [])
+        return (f'<p class="small exampleNote">{_e(side["name"])}: {_e(side["line"])}</p>'
+                f'<ul class="small quickSaid">{said}</ul>'
+                f'<p class="muted small">{_e(quick.get("when", ""))}</p>')
+    name = f'<a href="/game/{_e(str(side["hash"]))}">{_e(side["name"])}</a>'
+    words = _failings(list(side.get("words") or []))
+    mark = ("verdict-word-good", "it stays in") if good else ("verdict-word-bad", "ruled out")
+    out = (f'<p class="small">The site\'s answer for {name}, measured in minutes: '
+           f'<b class="{mark[0]}">{mark[1]}</b>.'
+           + (f' <span class="muted">{_e(words)}.</span>' if words and not good else "")
+           + f'</p><p class="muted small"><span class="mono" data-line>{_e(side["line"])}</span> '
+           f'· <a href="{SCORE_ROUTE}">{_e(SCORE_TITLE.lower())}</a></p>')
+    if good and quote:
+        out += f'<p class="small muted"><q>{_e(quote)}</q></p>'
+    if good and side.get("lean"):
+        out += f'<p class="small muted">The site adds: {_e(side["lean"])}.</p>'
+    return out
+
+
+def _failings(words: list[str]) -> str:
+    """The site's words for the tests a game failed, one a run (`run 1: ...`): the first run's
+    whole, and where every run failed the same test, said once more for all of them."""
+    if not words:
+        return ""
+    tests = {said.split(": ", 1)[-1].split(",")[0] for said in words}
+    if len(words) > 1 and len(tests) == 1:
+        return f"{words[0]}; the same in all {len(words)} runs"
+    return "; ".join(words)
+
+
+def _quick(side: dict[str, Any]) -> str:
+    """The designer's quick answers on the failed game (a library story's step 2)."""
+    quick = side.get("quick")
+    if not quick or side.get("example"):
+        return ""
+    lines = "".join(
+        f'<p class="out small{"" if said.startswith("✗") else " good"}">{_e(said)}</p>'
+        for said in quick.get("said") or [])
+    when = str(quick.get("when", ""))
+    return (f'<p class="muted small">{_e(when[:1].upper() + when[1:])}:</p>{lines}'
+            '<p class="muted small">A first answer in a second; a fuller one in minutes.</p>')
+
+
+def _bars(failed: dict[str, Any], fixed: dict[str, Any]) -> str:
+    """The six qualities, the failed game's faint and the fixed one's solid on one bar each;
+    a constructed story has none (§2.1). The bars' lengths are set by `landing.js` from
+    `data-v`, never by a style attribute."""
+    if failed.get("example") or fixed.get("example"):
+        return ""
+    rows = []
+    for name in _BAR_ORDER:
+        a, b = failed["qualities"].get(name), fixed["qualities"].get(name)
+        if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+            continue
+        rows.append(
+            f'<span>{_e(name)}</span><span class="pairBar"><b data-v="{a:.4f}"></b>'
+            f'<i data-v="{b:.4f}"></i></span><span class="mono small">{a:.2f} → {b:.2f}</span>')
+    if not rows:
+        return ""
+    return (f'<div class="pairBars" aria-label="{_e(failed["name"])} faint, {_e(fixed["name"])} '
+            f'solid">{"".join(rows)}</div>'
+            f'<p class="small muted pairKey"><span class="key faint"></span>{_e(failed["name"])} '
+            f'<span class="key"></span>{_e(fixed["name"])}</p>')
+
+
+def _play(which: str, beat: dict[str, Any], verdict: str) -> str:
+    return (
+        f'<p class="muted">{_e(beat["lead"])}</p>'
+        f'<div class="beatBoard" data-board="{which}"></div>'
+        f'<div class="beatTray row" data-tray="{which}"></div>'
+        f'<p class="small mono playWords" data-words="{which}"></p>'
+        f'<div class="row playCtl" data-ctl="{which}">'
+        '<button type="button" class="quiet" data-step="back" aria-label="one step back">‹</button>'
+        '<button type="button" class="quiet" data-step="play">play</button>'
+        '<button type="button" class="quiet" data-step="next" aria-label="one step on">›</button>'
+        "</div>"
+        f'<div class="verdictBlock pending" data-answer="{which}">'
+        f'<p class="small"><b>{_e(beat["end"])}</b></p>{verdict}'
+        f'<p class="muted small">The board is {_e(beat["source"])}.</p></div>')
+
+
+def _step(n: int, body: str, classes: str = "") -> str:
+    more = f" {classes}" if classes else ""
+    return (f'<li class="beat{more}" data-beat="{n}">'
+            f'<p class="beatNo mono">{n} · {_e(STEP_NAMES[n - 1])}</p>{body}</li>')
+
+
+_BAR_ORDER = ("depth", "drama", "decisions", "pacing", "variety", "balance")
+
+
+def story_html(story: dict[str, Any]) -> str:
+    """One story's journey, the six steps of §2.1, from `stories.render`'s record."""
+    failed, fixed, card = story["failed"], story["fixed"], story["card"]
+    names = {failed["name"]: str(failed["hash"])} if not story["example"] else {}
+    hue = story["hue"]
+    before = card.get("before") or ""
+    lines = story["change"]["lines"]
+    diff = "  ".join(
+        (f'<del>{_e(line["del"])}</del>' if line["del"] else "")
+        + (" " if line["del"] and line["ins"] else "")
+        + (f'<ins>{_e(line["ins"])}</ins>' if line["ins"] else "") for line in lines)
+    steps = [
+        _step(1, f'<h3>{_e(story["idea"])}</h3><p class="muted">{_linked(story["note"], names)}</p>'
+                 f'<div class="ruleCard {hue}"><span class="swatch" aria-hidden="true"></span>'
+                 f'<div><b>{_e(card["title"])}</b><span class="small muted">{_e(card["lead"])} '
+                 f'{_e(card["was"])}{_e(card["tail"])}</span></div></div>'
+                 + (f'<pre class="ruleCode"><code>{_e(before)}</code></pre>' if before else "")),
+        _step(2, f'<h3 class="say bad">{_e(story["wrong"]["say"])}</h3>'
+                 + _play("wrong", story["wrong"], _quick(failed) + _verdict(failed, False))),
+        _step(3, f'<h3 class="say change">{_e(story["change"]["say"])}</h3>'
+                 f'<div class="ruleCard edit {hue}"><span class="swatch" aria-hidden="true"></span>'
+                 f'<div><b>{_e(card["title"])}</b><span class="small">{_e(card["lead"])} '
+                 f'<del>{_e(card["was"])}</del> <ins>{_e(card["now"])}</ins>{_e(card["tail"])}'
+                 f'</span></div></div><pre class="ruleCode diff"><code>{diff}</code></pre>'
+                 f'<p class="muted small">{_e(CHANGE_NOTE)}</p>', "change"),
+        _step(4, f'<h3 class="say good">{_e(story["right"]["say"])}</h3>'
+                 + _play("right", story["right"],
+                         _verdict(fixed, True, story.get("quote") or "")
+                         + _bars(failed, fixed))),
+        _step(5, f'<h3>{_e(LADDER_SAID)}</h3>'
+                 f'<div class="ladder" data-ladder="{_e(str(fixed["hash"]))}"></div>'
+                 f'<p class="small muted">'
+                 + ("Every draft can be played at once, an example like this one too. "
+                    if story["example"] else
+                    f'Each one on <a href="/game/{_e(str(fixed["hash"]))}">{_e(fixed["name"])}</a>, '
+                    "as its page offers them. ")
+                 + "A practice game has undo and restart and needs no account; a rated game "
+                 "needs one.</p>"),
+        _step(6, f'<h3>{_e(CHALLENGE_SAID)}</h3>'
+                 '<p class="challengeLink small"><span class="muted">the site\'s address</span> '
+                 '<span class="mono">/c/…</span></p>'
+                 f'<p class="small">{_e(CHALLENGE_LINE)}</p>'
+                 f'<p class="small muted" data-needs="accounts">{_e(CHALLENGE_ASK)} '
+                 '<a href="/request-invitation">Ask for one</a>.</p>'),
     ]
     return (
-        '<div class="landing" id="landing">'
-        + hero + "".join(parts)
+        f'<section class="journey {hue}" id="journey" data-story="{_e(story["key"])}">'
+        f'<h2 class="journeyTitle">{_e(JOURNEY_TITLE)}</h2>'
+        '<div class="journeyGrid">'
+        '<figure class="pin" aria-hidden="true"><div class="pinStatus mono small" id="pinWords">'
+        '</div><div class="pinBoard" id="pinBoard"></div><div class="pinTray row" id="pinTray">'
+        '</div><div class="pinVerdict mono small" id="pinVerdict"></div></figure>'
+        f'<ol class="beats" id="beats">{"".join(steps)}</ol></div></section>')
+
+
+def html_page(version: str = DEFAULT_WEIGHTS,
+              stories: list[dict[str, Any]] | None = None) -> str:
+    """The landing page's markup: the hero, the first holding story's journey (LP4; LP6
+    draws every story in the pool), the wall of words, and the contact line. With no story
+    holding, the journey is left out and the hero still turns."""
+    story = stories[0] if stories else None
+    journey = story_html(story) if story is not None else ""
+    return (
+        '<div class="landing landingB" id="landing">'
+        + _hero(story) + journey
+        + _section("palette", WALL_HEADING, _wall_html(), classes="landingWall")
         + f'<div class="landingFoot" id="{CONTACT_ID}"><p>{CONTACT_LINE}</p></div>'
         + "</div>")
 
 
+# The page's markup, drawn from the stories the server last rendered (`use`): the page package
+# draws `current_html()` into every page's `<template id="landingPage">`. Before any server
+# has rendered its stories (a test's page, a server not yet warm) the landing has no journey.
+_CURRENT: dict[str, Any] = {"stories": [], "html": ""}
+
+
+def use(stories: list[dict[str, Any]]) -> str:
+    """Draw the landing from `stories` (`stories.render`'s holding ones), and keep it as the
+    one every page carries from now on."""
+    _CURRENT["stories"] = list(stories)
+    _CURRENT["html"] = html_page(stories=list(stories))
+    return _CURRENT["html"]
+
+
+def current_html() -> str:
+    if not _CURRENT["html"]:
+        _CURRENT["html"] = html_page(stories=_CURRENT["stories"])
+    return _CURRENT["html"]
+
+
+def current_stories() -> list[dict[str, Any]]:
+    return list(_CURRENT["stories"])
+
+
 # The page's markup, made once: the weights file does not change under a running server.
-HTML = html_page()
 SCORE_HTML = score_html()
 SHELVES_HTML = shelves_html()

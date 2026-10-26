@@ -7,7 +7,7 @@ inside a `<template>`. The site now answers each with its own head (a title, a d
 and a canonical address) and its own view:
 
 - **`/`** carries the landing's headline and first paragraph in `#view`
-  (`landing.drawn_intro`), the start of the hero's own markup, so the template the router
+  (`landing.drawn_intro`, the question with the leading story's ending), the start of the hero's own markup, so the template the router
   clones over it lands the headline where it stood: a person sees the landing unchanged.
 - **`/game`** carries every listed game as a link to its own address inside `<noscript>`,
   read by a reader without script and by a crawler, and never drawn where the router runs.
@@ -24,7 +24,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from html import escape
 
-from chess_variant_sandbox.web import landing
+from chess_variant_sandbox.web import landing, stories
 from chess_variant_sandbox.web.page import page, picture
 from chess_variant_sandbox.web.page.shell import NAME
 
@@ -37,8 +37,9 @@ HOME_TITLE = NAME
 GAMES_TITLE = f"Games · {NAME}"
 """The games' title, as `core.js`'s `viewTitle` names the view (*Games*) and `setTitle` writes it."""
 
-HOME_DESCRIPTION = f"{landing.HEADLINE} {landing.LEAD}"
-"""The search result's line for the front page: its own headline and first paragraph."""
+HOME_DESCRIPTION = f"{landing.question(stories.STORIES[0].clause)} {landing.DESCRIPTION_TAIL}"
+"""The search result's line for the front page (LP4): the question with the first story's
+ending, as the hero leads with it, and what the site does. The same whichever stories hold."""
 
 GAMES_DESCRIPTION = (
     "Every chess-like game here, each playable in the browser against the computer: search "

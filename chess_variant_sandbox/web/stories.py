@@ -446,7 +446,9 @@ def _did(engine: Engine, state: Any, after: Any, move: int) -> dict[str, Any]:
         item["drop"] = target
     else:
         item["from"] = origin
-    if kind == MOVE_PROMOTION or promotion:
+    # A drop's move carries the dropped type where a promotion carries the new one, so a
+    # drop is never a promotion.
+    if kind != MOVE_DROP and (kind == MOVE_PROMOTION or promotion):
         item["promotion"] = True
     trip = portal_transit(engine, state, move)
     if trip:
@@ -599,6 +601,20 @@ def replay(spec: dict[str, Any], played: Played) -> dict[str, Any]:
     }
 
 
+# A game replayed once per spec and record in a process: the server reads the stories again
+# whenever a measurement moves, and the games themselves do not.
+_REPLAYED: dict[tuple[str, Played], dict[str, Any]] = {}
+
+
+def replayed(spec: dict[str, Any], played: Played) -> dict[str, Any]:
+    """`replay`, kept by the spec's hash and the whole record of the game (its ending
+    included), handed out as a copy."""
+    key = (spec_hash(spec), played)
+    if key not in _REPLAYED:
+        _REPLAYED[key] = replay(spec, played)
+    return copy.deepcopy(_REPLAYED[key])
+
+
 # ------------------------------------------------------------------ what the site says
 
 
@@ -700,7 +716,7 @@ def _quick(blob: str) -> dict[str, Any]:
     second = ("The eight-game check finds a winner in "
               + (f"all {games}" if decisive == games else f"{decisive} of its {games}")
               + " games." if screened.get("passed") else
-              "A searching player cannot win it: " + " ".join(screened.get("reasons") or []))
+              f"✗ {_screen_name()}: " + " ".join(screened.get("reasons") or []))
     return {
         "hash": checked.get("hash"),
         "playable": checked.get("playable"),
@@ -713,8 +729,21 @@ def _quick(blob: str) -> dict[str, Any]:
     }
 
 
+def _screen_name() -> str:
+    """The designer's name for the eight-game check (`candidacy`'s rung), which a failed
+    check is said under, with a ✗, as the designer shows it."""
+    from chess_variant_sandbox.web import candidacy
+
+    return next(rung["name"] for rung in candidacy._local_rungs(0, "") if rung["key"] == "screen")
+
+
 def quick_answers(spec: dict[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(_quick(json.dumps(spec, sort_keys=True)))
+
+
+# A library game's quick answers are the designer's on its own rules, said as the designer
+# says them while a draft is edited (LP4: stones' step 2 quotes them).
+LIBRARY_QUICK_WHEN = "the designer, as you edit, under a second"
 
 
 EXAMPLE_LINE = "an example · not measured"
@@ -772,8 +801,8 @@ def render_story(story: Story, app: Roots,
         _validates(fixed_spec, fixed_name)
     if not differ_by_change(failed_spec, fixed_spec, story.changes):
         raise StoryError(f"{failed_name} and {fixed_name} differ by more than the change")
-    wrong = replay(failed_spec, story.wrong.game)
-    right = replay(fixed_spec, story.right.game)
+    wrong = replayed(failed_spec, story.wrong.game)
+    right = replayed(fixed_spec, story.right.game)
     if story.kind == LIBRARY:
         (failed_path, failed_source), (fixed_path, fixed_source) = where
         before = verdict(read_score(app, story.wrong.game.hash, failed_spec, failed_path,
@@ -787,6 +816,7 @@ def render_story(story: Story, app: Roots,
             raise StoryError(f"{failed_name} is no longer ruled out")
         if not after["viable"]:
             raise StoryError(f"{fixed_name} no longer stays in")
+        before["quick"] = {**quick_answers(failed_spec), "when": LIBRARY_QUICK_WHEN}
     else:
         before = _example(failed_name, failed_spec)
         after = _example(fixed_name, fixed_spec)
@@ -836,6 +866,19 @@ def render_story(story: Story, app: Roots,
         "quote": story.quote if story.quote in str(fixed_spec.get("description", "")) else "",
         "pieceArt": art,
     }
+
+
+def inputs(app: Roots) -> tuple[tuple[str, int], ...]:
+    """What `render` reads that can change under a running server: every file in each
+    library story's games' `runs/<hash>/`, with its time of change."""
+    found: list[tuple[str, int]] = []
+    for story in STORIES:
+        for played in (story.wrong.game, story.right.game):
+            folder = Path(app.runs_dir) / played.hash
+            if folder.is_dir():
+                found += [(str(path), path.stat().st_mtime_ns)
+                          for path in sorted(folder.glob("*.json"))]
+    return tuple(found)
 
 
 def render(app: Roots) -> dict[str, Any]:

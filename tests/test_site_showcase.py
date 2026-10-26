@@ -183,12 +183,12 @@ GAME = {"hash": "abc123", "name": "Ada's <game>", "by": "ada", "mark": {"d": "",
 
 
 class TestThePage:
-    def test_the_section_is_the_sites_and_comes_straight_after_the_board(self) -> None:
-        page = landing.HTML
+    def test_the_section_is_the_sites_and_sits_in_the_band_of_shelves(self) -> None:
+        """Since LP3 the shelf is in the band `/game` opens on; the landing has none (LP4)."""
+        page = landing.SHELVES_HTML
         section = re.search(r'<section [^>]*id="landing-members"[^>]*>', page)
         assert section is not None and 'data-needs="accounts"' in section.group(0)
-        assert page.index('id="landing-members"') < page.index('id="landing-intent"')
-        assert page.index("landingHero") < page.index('id="landing-members"')
+        assert 'id="landing-members"' not in landing.html_page()
         assert landing.MEMBERS_HEADING in page and "Build your own" in page
 
     def test_a_filled_shelf_names_the_game_its_maker_and_a_way_to_play(self) -> None:
@@ -238,14 +238,15 @@ class TestThePage:
         assert shelf.index("takePieceArt(data)") < shelf.index("thumbHtml(game)")
         assert PAGE.count("PIECE_ART = ") == 2  # the declaration and `takePieceArt`
 
-    def test_the_days_game_is_named_as_the_days(self) -> None:
-        assert 'data-today="Today&#39;s game"' in landing.HTML
-        named = _in_page(
-            "", "landingGames({ games: [{ hash: 'a', name: 'A', still: {} },"
-            " { hash: 'b', name: 'B', still: {} }], firstStep: { hash: 'b', sentence: 's' },"
-            " launchSet: [{ hash: 'a', sentence: 't' }] }).map(e => [e.game.hash, e.today])",
-        )
-        assert named == [["b", True], ["a", False]]
+    def test_the_landings_door_is_todays_game(self) -> None:
+        """LP4: the hero's *Play today's game* is the day's game the server named
+        (`firstStep`), its own page, and `/game` until the listing says which."""
+        from page_text import PAGE
+
+        assert 'href="/game" data-today>' in landing.html_page()
+        body = PAGE[PAGE.index("async function showLanding()"):]
+        body = body[:body.index("\n}\n")]
+        assert "today.href = gamePath(data.firstStep.hash)" in body
 
 
 # ------------------------------------------------------------ the pieces the shelf draws

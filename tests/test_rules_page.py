@@ -225,7 +225,10 @@ class TestTheMarkdownFileIsUnchanged:
 
 class TestTheWaysIn:
     def test_the_landing_page_links_it(self) -> None:
-        assert landing.HTML.count(f'href="{rules_page.PATH}"') == 2
+        # LP4: the wall of words' lead links the rule language, and every word its section.
+        drawn = landing.html_page()
+        assert f'href="{rules_page.PATH}"' in drawn
+        assert drawn.count(f'href="{rules_page.PATH}#') == sum(len(b.words) for b in landing.BLOCKS)
 
     def test_the_designer_links_the_page_and_the_file(self) -> None:
         kit = designing.rule_file_kit()

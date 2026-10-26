@@ -446,16 +446,11 @@ class TestFindingAMemberOverHTTP:
         for path in ("/credits", "/privacy", "/signin"):
             assert people not in site.browser().get(path).text, path
 
-    def test_the_application_and_the_landing_page_lead_to_it(self) -> None:
+    def test_the_application_leads_to_it(self) -> None:
+        """Since LP4 the landing offers two ways in, to build and to play (direction B); a
+        member finds people from the header's *People*, on every page."""
         from page_text import PAGE
 
-        from chess_variant_sandbox.web import landing
-
-        landing_page = landing.html_page()
-        assert '<a class="button" href="/players" data-needs="member">Find players</a>' in (
-            landing_page
-        )
-        assert '<p data-needs="member"><a href="/players">Find a member</a>' in landing_page
         # The application's header adds *People* for a member, and names on its pages
         # are links to their members' pages (`personHtml`).
         assert "link('/players', 'People')" in PAGE

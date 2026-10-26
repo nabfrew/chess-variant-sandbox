@@ -161,9 +161,9 @@ class TestTheFirstStepOnThePage:
         from chess_variant_sandbox.web import landing
 
         assert "function wireTodaysGame(panel, step)" in PAGE
-        assert "Play the computer" in landing.HTML
-        assert "A harder one: " in landing.HTML
-        assert html.escape(landing.TODAY_LABEL) in landing.HTML
+        assert "Play the computer" in landing.SHELVES_HTML
+        assert "A harder one: " in landing.SHELVES_HTML
+        assert html.escape(landing.TODAY_LABEL) in landing.SHELVES_HTML
         # The page picks no game and no opponent: it reads both off `firstStep`.
         assert "step.opponents.gentle" in PAGE
         assert "featured_name" not in PAGE
@@ -287,7 +287,7 @@ class TestTheNewGamesAndTheSpotlight:
 
         from chess_variant_sandbox.web import landing
 
-        assert f"data-newest>{html.escape(landing.NEW_ALL)}</a>" in landing.HTML
+        assert f"data-newest>{html.escape(landing.NEW_ALL)}</a>" in landing.SHELVES_HTML
         body = PAGE[PAGE.index("function fillNewShelf(data)"):]
         body = body[:body.index("\n}\n")]
         assert "BROWSE.sort = 'added'" in body and "BROWSE.descending = true" in body
@@ -321,9 +321,9 @@ class TestTheNewGamesAndTheSpotlight:
         body = body[:body.index("\n}\n")]
         assert "scoreTag(game)" in body
         assert "fmt(" not in body and ".index" not in body
-        assert 'id="landing-new"' in landing.HTML
-        assert 'id="landingSpotlight"' in landing.HTML
-        assert landing.NEW_HEADING in landing.HTML
+        assert 'id="landing-new"' in landing.SHELVES_HTML
+        assert 'id="landingSpotlight"' in landing.SHELVES_HTML
+        assert landing.NEW_HEADING in landing.SHELVES_HTML
 
     def test_an_older_shelf_is_never_called_new(self) -> None:
         """With no card `fresh`, the heading and the lead take their `data-older` words."""
@@ -334,8 +334,8 @@ class TestTheNewGamesAndTheSpotlight:
         body = PAGE[PAGE.index("function fillNewShelf(data)"):]
         body = body[:body.index("\n}\n")]
         assert "card.fresh" in body and "dataset.older" in body
-        assert f'data-older="{html.escape(landing.NEW_OLDER_HEADING)}"' in landing.HTML
-        assert f'data-older="{html.escape(landing.NEW_OLDER_LEAD)}"' in landing.HTML
+        assert f'data-older="{html.escape(landing.NEW_OLDER_HEADING)}"' in landing.SHELVES_HTML
+        assert f'data-older="{html.escape(landing.NEW_OLDER_LEAD)}"' in landing.SHELVES_HTML
         assert "new" not in landing.NEW_OLDER_HEADING.lower()
         for words in (landing.NEW_LEAD, landing.NEW_OLDER_LEAD, landing.NEW_OLDER_HEADING):
             assert site_words.hits(words) == [], words
@@ -391,7 +391,7 @@ class TestThisMonthsGame:
 
         # On the landing page's picks row since Q788.
         assert "fill('landingMonth', data && data.monthGame" in PAGE
-        assert html.escape(landing.MONTH_LABEL) in landing.HTML
+        assert html.escape(landing.MONTH_LABEL) in landing.SHELVES_HTML
         assert "month_name" not in PAGE
 
 

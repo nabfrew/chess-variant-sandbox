@@ -210,6 +210,13 @@ RETIRED_PREVIEWS = {
     # retires a miss. Kept here because its V1 mechanism tests read it
     # (`tests/test_showcase_capture_the_flag.py`).
     "capture-the-flag": "407af145c5d6",
+    # N8 (2026-10-26, `docs/plan-npc.md` §6.3): the showcase of a wild piece's sight (freeze,
+    # disarm, shield) and of the duck that walks by its moves from a start square, chess on 8 by
+    # 9 with a herd of six effect-carrying wild pieces and a walking duck, built, measured and
+    # retired before it ever joined: the index missed V3's 0.840 (0.816), and the call
+    # registered before its first measured game retires a miss. Kept here because its V1
+    # mechanism tests read it (`tests/test_showcase_menagerie.py`).
+    "the-menagerie": "3ab2ce41d4c9",
 }
 
 # Retired previews kept byte for byte though the validator now refuses them, so a test can hold

@@ -748,7 +748,9 @@ function animateRound(svg, before, after, reveal, cell, W, H, view) {
     const [x, y] = at(square);
     const blow = blows.get(square) || { at: landed, dx: 0, dy: 0 };
     busy = Math.max(busy, ex && !blows.has(square)
-      ? explode(svg, piece, x, y, cell, blow) : capture(svg, piece, x, y, cell, blow));
+      ? Math.max(blastFire(svg, [square], cell, view, blow.at),
+                 burn(svg, piece, x, y, cell, blow, null))
+      : capture(svg, piece, x, y, cell, blow));
   }
   return { busy: busy, landed: landed, doomed: new Map() };
 }
@@ -913,7 +915,9 @@ function animateOrdered(svg, before, after, story, cell, W, H, view) {
     const [x, y] = at(square);
     const blow = blows.get(square) || { at: near(square), dx: 0, dy: 0 };
     busy = Math.max(busy, ex && !blows.has(square)
-      ? explode(svg, piece, x, y, cell, blow) : capture(svg, piece, x, y, cell, blow));
+      ? Math.max(blastFire(svg, [square], cell, view, blow.at),
+                 burn(svg, piece, x, y, cell, blow, null))
+      : capture(svg, piece, x, y, cell, blow));
   }
   // The lost move's arrow over every piece and ghost, the one taken under it included.
   if (over) svg.appendChild(over);

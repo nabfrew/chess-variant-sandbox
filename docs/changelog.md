@@ -18,6 +18,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 The designer's piece sections are now one picker. Press a piece to see its drawing, a few words about it
 and how it moves, then add it; this works by touch on a phone too. Each piece's card folds to a single line.
 
+### A new front page
+
+The front page now opens on a question, "Wouldn't it be cool if...", with its endings turning, then plays
+one game's story out on the board in six steps: a rule that failed, the change, and the rule that worked. Under reduced motion
+nothing moves and you step through it yourself.
+
 ### A new game: the hydra
 
 Chess with a hydra in the middle of the board that grows a new head onto any piece that attacks it, and

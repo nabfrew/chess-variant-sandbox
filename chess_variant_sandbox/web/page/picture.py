@@ -42,7 +42,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.web import landing
+from chess_variant_sandbox.web import landing, stories
 from chess_variant_sandbox.web.page import shell
 from chess_variant_sandbox.web.page.tokens import GRAIN_DK, GRAIN_LT, LIGHT, WALNUT, noise
 
@@ -181,7 +181,7 @@ def source() -> str:
         '<svg class="mark" viewBox="0 0 16 16" shape-rendering="crispEdges">'
         f'<path fill="{LIGHT["ink"]}" d="{shell.mark_path()}"/></svg>'
         f"<h1>{escape(shell.NAME)}</h1>"
-        f'<p class="line">{escape(landing.HEADLINE)}</p>'
+        f'<p class="line">{escape(landing.question(stories.STORIES[0].clause))}</p>'
         "</div>"
         f'<div class="board">{squares}</div>'
         "</body></html>\n"

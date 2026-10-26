@@ -302,19 +302,25 @@ class TestTheFrontDoors:
         view = _view(page)
         words = " ".join(unescape(re.sub(r"<[^>]+>", " ", view)).split())
         # The first readable words in the view are what the site is.
-        assert words.startswith(f"{landing.HEADLINE} {landing.LEAD}"), words
-        assert landing.HEADLINE in page.readable and landing.LEAD in page.readable
+        # LP4: the question with the leading story's ending (none holding: the first
+        # idea's), then the lead.
+        said = " ".join(unescape(re.sub(r"<[^>]+>", " ", landing.drawn_intro())).split())
+        assert words.startswith(said), words
+        assert landing.QUESTION in page.readable and landing.LEAD in page.readable
         assert page.title == front.HOME_TITLE
-        assert page.meta("description") == front.HOME_DESCRIPTION
+        assert unescape(page.meta("description")) == front.HOME_DESCRIPTION
 
     def test_the_drawn_words_are_the_heros_own_markup(self) -> None:
         """The router clones the template over the drawn words, so the headline lands where
         it already stood: what is drawn is the start of the hero's markup, word for word."""
         drawn = landing.drawn_intro()
-        # Up to the two ways in every reader is offered; the template adds the reader's own.
-        start = drawn[drawn.index('<section class="landingHero">'):drawn.index("</a></div>") + 4]
-        assert start in landing.HTML
-        assert landing.HTML.index(start) == landing.HTML.index('<section class="landingHero">')
+        html = landing.current_html()
+        # Up to the question's first ending, and then the lead and the two ways in.
+        start = drawn[drawn.index('<section class="landingHero heroB">'):drawn.index("</span>") + 7]
+        assert start in html
+        assert html.index(start) == html.index('<section class="landingHero heroB">')
+        rest = drawn[drawn.index('<p class="landingLead">'):drawn.index("</a></div>") + 10]
+        assert rest in html
 
     def test_no_link_points_at_a_missing_anchor(self, site: Site) -> None:
         """LP3: the score's sections left the landing for `#/score`. Every fragment a page

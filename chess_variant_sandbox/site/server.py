@@ -1295,12 +1295,15 @@ class SiteApp(App):
         return self.listing.get(read)
 
     def home_page(self) -> str:
-        """`/`: the single page, with its head and the landing's headline drawn in."""
+        """`/`: the single page, with its head and the landing's headline drawn in, the
+        landing drawn from the stories as they read now (LP4, `App.stories`)."""
+        self.stories()
         return front.home(seo.site_base())
 
     def games_page(self) -> str:
         """`/game`: the single page, with its head and every listed game drawn in for a
         reader without script."""
+        self.stories()
         listed = self.listed_pages()
         known = self.known()
         # G6: every listed game's picture, asked for once per listing, so the deploy's warm

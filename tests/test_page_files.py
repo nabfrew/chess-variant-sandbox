@@ -282,7 +282,8 @@ class TestTheApplicationServesThem:
     def test_the_page_names_only_what_is_served(self, app: App) -> None:
         [(status, headers, body)] = _get(app, "/")
         assert status == 200 and headers["Cache-Control"] == "no-store"
-        assert body == page.PAGE.encode("utf-8")
+        # LP4: the landing in the page is drawn from this server's stories as they read now.
+        assert body == page.page().encode("utf-8")
         assert "<script>" not in body.decode("utf-8") and "<style" not in body.decode("utf-8")
 
 

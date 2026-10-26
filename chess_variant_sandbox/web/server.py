@@ -39,11 +39,13 @@ from chess_variant_sandbox.web import (
     cards,
     changelog,
     designing,
+    landing,
     launch,
     library,
     opponents,
     piece_library,
     refreshing,
+    stories,
 )
 from chess_variant_sandbox.web.evolving import Runs
 from chess_variant_sandbox.web.human import HUMAN, HumanGame, HumanRecord, picker_ratings
@@ -326,6 +328,11 @@ class App:
         # request landing while it still runs could each pay the smoke gate and the
         # Fairy-Stockfish translation for the same spec (Q418).
         self._warming = threading.Lock()
+        # LP4: the landing's stories, as `stories.render` last read them, and what they were
+        # read from (`stories.inputs`), so a measurement that moves re-reads them.
+        self._stories: dict[str, Any] | None = None
+        self._stories_from: tuple[Any, ...] | None = None
+        self._stories_lock = threading.Lock()
 
     def known(self) -> dict[str, library.Game]:
         """The last listing, read now if none has been.
@@ -367,6 +374,36 @@ class App:
             self._games = {game.hash: game for game in games}
             self._read = True
             return games
+
+    def stories(self) -> dict[str, Any]:
+        """LP4: the landing's stories (`web/stories.py`), the holding ones drawn into the
+        landing every page carries (`landing.use`). Read again when a file under one of their
+        games' `runs/<hash>/` changes, so a re-score that breaks a pair takes the story off the
+        page at the next request, and a provisional number never shows."""
+        with self._stories_lock:
+            found = stories.inputs(self)
+            if self._stories is None or found != self._stories_from:
+                rendered = stories.render(self)
+                landing.use(rendered["stories"])
+                self._stories, self._stories_from = rendered, found
+            return self._stories
+
+    def stories_payload(self) -> dict[str, Any]:
+        """`GET /api/stories`: each holding story's two games, replayed through the engine,
+        as the landing plays them (the frames and what each move did, `stories.replay`),
+        with the pieces' drawings. The words and numbers are in the page's markup."""
+        rendered = self.stories()
+        art: dict[str, Any] = {}
+        games = {}
+        for story in rendered["stories"]:
+            art.update(story.get("pieceArt") or {})
+            games[story["key"]] = {
+                "wrong": story["wrong"]["game"], "right": story["right"]["game"],
+                "hue": story["hue"], "example": story["example"],
+                "failed": story["failed"]["name"], "fixed": story["fixed"]["name"],
+                "failedLine": story["failed"]["line"], "fixedLine": story["fixed"]["line"],
+            }
+        return {"pool": rendered["pool"], "games": games, "pieceArt": art}
 
     def library_payload(self) -> dict[str, Any]:
         """Everything `GET /api/library` answers: the listing, banded, with the coverage
@@ -546,6 +583,8 @@ class App:
             return {"signedIn": False, "handle": None, "admin": False, "accounts": False}
         if parts == ["api", "library"]:
             return self.library_payload()
+        if parts == ["api", "stories"]:
+            return self.stories_payload()
         if parts == ["api", "graph"]:
             return self.graph()
         if parts == ["api", "changelog"]:
@@ -1440,7 +1479,9 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
             # A game's own address (G3) is the page too; the site draws the game into it
             # for a reader without script, and here the router draws it as it always has.
             if parsed.path in PAGE_PATHS or game_page.digest_of(parsed.path) is not None:
-                # Drawn per request: it names each script by its current bytes' digest.
+                # Drawn per request: it names each script by its current bytes' digest, and
+                # carries the landing drawn from the stories as they read now (LP4).
+                app.stories()
                 self._send(200, page().encode("utf-8"), "text/html; charset=utf-8")
                 return
             held = assets.answer(parsed.path)
@@ -1778,6 +1819,12 @@ def warm(app: App) -> threading.Thread:
         reference = library.reference_of(known)
         for game in known:
             library.piece_maps(game, reference)
+        # LP4: the landing's stories, replayed and their quick answers asked once, so the
+        # first visitor's page does not wait on them.
+        try:
+            app.stories()
+        except Exception as error:  # noqa: BLE001 - a story that fails must not kill the server
+            print(f"the landing's stories could not be read: {error}")
 
     thread = threading.Thread(target=read, name="library", daemon=True)
     thread.start()

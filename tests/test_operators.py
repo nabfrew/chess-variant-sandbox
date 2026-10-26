@@ -2653,13 +2653,14 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
     # N4b's two names left. `rules.duck` and the duck's sight went on 2026-10-26, when N6
-    # archived *the shepherd's duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1). No
-    # registered showcase walks the duck or starts it on a square: §6.1's draft fixes the classic
-    # duck from off the board, and only its respawn and ranks were tunable, so N6 could carry
-    # neither without changing what was registered; they wait for a task that registers one
+    # archived *the shepherd's duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1),
+    # whose duck goes anywhere from off the board. N8 registered *the menagerie* for both
+    # (§6.3: a duck that starts on e5 and walks a king's step); it was measured the same day
+    # and retired by its registered call, the index 0.816 [0.787, 0.837] under V3's 0.840
+    # (`tests/_retired_the_menagerie.json`). Both wait for a duck game that scores as a game
     # (`schema-showcase-coverage.md` rows 93 and 94).
-    "N4b duck by_moves": "owed: none registered (plan-npc.md §6.1's duck goes anywhere)",
-    "N4b duck start": "owed: none registered (plan-npc.md §6.1's duck starts off the board)",
+    "N4b duck by_moves": "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)",
+    "N4b duck start": "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)",
     # N3d's name went to `_NO_SHOWCASE_ON_PURPOSE` when N4b retired its `_FEATURES` row.
     # N3c's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3d retired its `_FEATURES` row.
     # N3b's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3c retired its `_FEATURES` row.
@@ -2787,12 +2788,21 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # 38's `rules.npcs.turns_back` (N5) went on 2026-10-26, when N6 archived *the shepherd's
     # duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1).
     # Generation 37's names (N2), owed in `_SHOWCASE_OWED` until generation 38 (N5) retired
-    # their `_FEATURES` rows. *The shepherd's duck* (N6) carried the shield beside wild pieces;
-    # neither registered showcase gives a wild type a sight (§6's drafts are fixed but for their
-    # tunable numbers), so the three wild effects are owed by a showcase task not yet queued.
-    "schema 37: pieces.sight.wild.freeze": "owed: no task yet (plan-npc.md §6 registers no wild sight)",
-    "schema 37: pieces.sight.wild.disarm": "owed: no task yet (plan-npc.md §6 registers no wild sight)",
-    "schema 37: pieces.sight.wild.shield": "owed: no task yet (plan-npc.md §6 registers no wild sight)",
+    # their `_FEATURES` rows. *The shepherd's duck* (N6) carried the shield beside wild pieces.
+    # N8 built *the menagerie* for the three wild effects (`plan-npc.md` §6.3: gorgons, sirens
+    # and dryads that freeze, disarm and shield the squares round them): each bound at a third
+    # to nine tenths of graded turns, but the index, 0.816 [0.787, 0.837], missed V3's 0.840,
+    # and it retired by its registered call (`tests/_retired_the_menagerie.json`). A game that
+    # closes these rows is a wild-sight game that scores as a game.
+    "schema 37: pieces.sight.wild.freeze": (
+        "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)"
+    ),
+    "schema 37: pieces.sight.wild.disarm": (
+        "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)"
+    ),
+    "schema 37: pieces.sight.wild.shield": (
+        "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)"
+    ),
     # Generation 34's two names (T1) were owed here until their showcases landed, both
     # 2026-10-25 (`plan-pieces-moves.md` §5.7): T2's `archive/crooked-bishops.json` deleted
     # `...path.zigzag`'s row and T3's `archive/circling-queen.json` `...path.circle`'s.

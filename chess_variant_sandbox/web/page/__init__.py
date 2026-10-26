@@ -102,7 +102,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent.parent / "static" / "page"
 
 # The views in the order they load: the order they were concatenated in, kept.
 _ORDER = (
-    "core", "wrapped", "wood", "stillboard", "browse", "graph", "explorer", "upkeep", "detail",
+    "core", "wrapped", "wood", "stillboard", "motion", "browse", "graph", "explorer", "upkeep", "detail",
     "design", "teaching", "cards", "portals", "measure", "board", "simultaneous", "runs", "whatsnew",
     "round", "proven", "landing",
     "boot",
@@ -168,10 +168,13 @@ _TOP = f"""</head>
   </header>
   <div id="view">"""
 
-_BOTTOM = f"""</div>
+def _bottom() -> str:
+    """The page's foot: the footer, and the landing (LP4: drawn from the stories the server
+    last rendered, `landing.current_html`), the band of shelves and the score's view."""
+    return f"""</div>
   {footer()}
 </div>
-<template id="landingPage">{landing.HTML}</template>
+<template id="landingPage">{landing.current_html()}</template>
 <template id="shelvesBand">{landing.SHELVES_HTML}</template>
 <template id="scoreView">{landing.SCORE_HTML}</template>
 """
@@ -184,7 +187,7 @@ def page(title: str = NAME, head: str = "", view: str = "") -> str:
     and the router replaces once it draws. `head` and `view` are markup the caller has
     already escaped; with neither, this is `PAGE`. Drawn per call, because the scripts'
     names are their bytes' digests and a development server's files can change under it."""
-    return (_head(title, head) + _TOP + view + _BOTTOM + script_tags(SCRIPTS)
+    return (_head(title, head) + _TOP + view + _bottom() + script_tags(SCRIPTS)
             + "</body>\n</html>\n")
 
 

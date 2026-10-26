@@ -37,8 +37,8 @@ MODEL = cards.card_model()
 
 
 def _wall() -> str:
-    start = landing.HTML.index('id="landing-palette"')
-    return landing.HTML[start:landing.HTML.index("</section>", start)]
+    start = landing.html_page().index('id="landing-palette"')
+    return landing.html_page()[start:landing.html_page().index("</section>", start)]
 
 
 def _sections() -> dict[str, str]:

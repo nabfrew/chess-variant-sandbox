@@ -42,25 +42,27 @@ def _ingredient(name: str) -> str:
     return found[1]
 
 
+HTML = landing.html_page()
+"""The landing with no story holding: the hero and the wall (a story's journey is held by
+`tests/test_landing_story.py`, which renders one)."""
+
+
 class TestTheMarkup:
     def test_the_page_carries_it_as_a_template(self) -> None:
         assert page.PAGE.count('<template id="landingPage">') == 1
-        assert landing.HTML in page.PAGE
+        assert landing.current_html() in page.page()
 
     def test_its_script_loads_before_the_boot(self) -> None:
         routes = list(page.SCRIPTS)
         assert routes.index("/static/page/landing.js") == routes.index("/static/page/boot.js") - 1
 
-    def test_the_sections_in_the_order_asked(self) -> None:
-        keys = re.findall(r'<section class="landingPart(?: landingWall)?" id="landing-([a-z]+)"', landing.HTML)
-        assert keys == ["intent", "palette", "play", "people", "scoring", "more"]
-        assert landing.HTML.index('class="landingHero"') < landing.HTML.index('id="landing-intent"')
-
-    def test_the_intention_in_the_users_words(self) -> None:
-        assert "vibe-coded playground for designing chess-like strategy games" in landing.HTML
-        # The user's words, 2026-10-13: the next sentence in the same paragraph.
-        assert ("wrote the code, so expect a rough edge here and there. If it had been hand "
-                "crafted, it would have been immaculate, obviously.</p>") in landing.HTML
+    def test_the_parts_in_the_order_asked(self) -> None:
+        """LP4 (direction B): the question, then the story (when one holds), then the wall
+        of words, then the contact line; the old sections left with LP3 and LP4 (§4.2)."""
+        assert HTML.index('class="landingHero heroB"') < HTML.index('id="landing-palette"')
+        assert HTML.index('id="landing-palette"') < HTML.index(f'id="{landing.CONTACT_ID}"')
+        for gone in ("intent", "play", "people", "scoring", "more", "new", "picks", "members"):
+            assert f'id="landing-{gone}"' not in HTML
 
     def test_the_score_is_an_estimate_and_its_ingredients_start_shut(self) -> None:
         score = landing.SCORE_HTML[landing.SCORE_HTML.index('id="landing-score"'):]
@@ -70,36 +72,21 @@ class TestTheMarkup:
         details = re.search(r'<details[^>]*id="landingIngredients"[^>]*>', landing.SCORE_HTML)
         assert details and " open" not in details[0]
 
-    def test_the_landing_points_at_how_the_score_works(self) -> None:
-        """LP3: the two long sections left the landing for `#/score`; the landing says what
-        the score is in one paragraph and links there, from its hero too."""
+    def test_the_scores_sections_are_their_own_view(self) -> None:
         for gone in landing.SCORE_ANCHORS:
-            assert f'id="{gone}"' not in landing.HTML
-        hero = landing.HTML[:landing.HTML.index('id="landing-intent"')]
-        assert f'<a href="{landing.SCORE_ROUTE}">' in hero
-        short = re.search(r'id="landing-scoring">(.*?)</section>', landing.HTML, re.S)
-        assert short and f'<a href="{landing.SCORE_ROUTE}">{landing.SCORE_TITLE}</a>' in short[1]
+            assert f'id="{gone}"' not in HTML
 
     def test_the_games_are_one_tap_away(self) -> None:
-        hero = landing.HTML[:landing.HTML.index('id="landing-intent"')]
-        assert '<a class="button primary" href="/game">See the games</a>' in hero
-        assert '<li><a href="/game">The library</a>' in landing.HTML
-
-    def test_the_third_way_in_is_the_readers_own(self) -> None:
-        """Q723: everybody meets the page, so *Sign in* is a visitor's and a member is
-        offered their own page in its place; `landing.js` removes the one that does not
-        apply, and both on the local application, which has no accounts."""
-        hero = landing.HTML[:landing.HTML.index('id="landing-intent"')]
-        assert '<a class="button" href="/signin" data-needs="visitor">Sign in</a>' in hero
-        assert '<a class="button" href="/profile" data-needs="member">Your page</a>' in hero
-        assert "visitor: ACCOUNTS && !VIEWER, member: ACCOUNTS && !!VIEWER" in LANDING
+        hero = HTML[:HTML.index('id="landing-palette"')]
+        assert '<a class="button" href="/game" data-today>Play today&#x27;s game</a>' in hero
+        assert '<a class="button" href="/game">See the games</a>' in HTML
 
     def test_the_contact_line_points_at_the_github_profile_and_names_no_email(self) -> None:
         """Q720: the user's words, *"Refer to my github"*. A profile link, no address to
         harvest, nothing fetched: a plain link the visitor follows or not."""
         assert landing.CONTACT == "https://github.com/nabfrew"
         foot = re.search(rf'<div class="landingFoot" id="{landing.CONTACT_ID}">(.*?)</div>',
-                         landing.HTML, re.S)
+                         HTML, re.S)
         assert foot, "the contact line sits in the place Q718 kept for it"
         assert f'<a href="{landing.CONTACT}" rel="noopener">{landing.CONTACT_SAID}</a>' in foot[1]
         assert "@" not in foot[1] and "<img" not in foot[1] and "<script" not in foot[1]
@@ -111,9 +98,9 @@ class TestTheMarkup:
         assert f"const CONTACT = '{landing.CONTACT}';" in core
         assert "link(CONTACT, 'contact')" in core
 
-    def test_the_site_only_parts_say_so(self) -> None:
-        assert 'id="landing-people" data-needs="accounts"' in landing.HTML
-        assert '<li data-needs="round"><a href="#/round">' in landing.HTML
+    def test_a_part_the_server_has_not_got_goes(self) -> None:
+        assert "visitor: ACCOUNTS && !VIEWER, member: ACCOUNTS && !!VIEWER" in LANDING
+        assert "dropUnoffered(view);" in LANDING
 
 
 class TestTheShelvesAndTheScoreMove:
@@ -343,18 +330,22 @@ class TestTheWayIn:
         assert server.PAGE_PATHS == ("/", "/index.html", "/game")
 
 
-class TestTheBoard:
-    def test_it_draws_with_the_cards_own_still_board(self) -> None:
-        assert "thumbHtml(entry.game)" in LANDING
-        assert "function boardPreview" not in LANDING and "squareXY" not in LANDING
+class TestTheHero:
+    def test_it_draws_the_listings_still_with_its_marks(self) -> None:
+        """LP4: each idea's game as the listing's still, through the still board, with the
+        marks a thumbnail leaves off (no `plain`)."""
+        hero = LANDING[LANDING.index("function heroStill(game)"):]
+        hero = hero[:hero.index("\n}\n")]
+        assert "boardPreview(" in hero and "plain" not in hero
+        assert "squareXY" not in hero
 
     def test_it_stands_still_under_reduced_motion_and_offers_a_pause(self) -> None:
-        assert "const moving = !STILL.matches && named.length > 1;" in LANDING
-        assert 'id="landingPause"' in landing.HTML
+        assert "if (STILL.matches || states.length < 2) { pause.hidden = true; return; }" in LANDING
+        assert 'id="heroPause"' in HTML
         from chess_variant_sandbox.web.page.style import STYLE
 
-        reduced = STYLE[STYLE.index("@media (prefers-reduced-motion: reduce)"):]
-        assert ".landingBoard .settle { opacity: 1; animation: none; }" in reduced
+        reduced = STYLE[STYLE.index("@media (prefers-reduced-motion: reduce) {\n    .landingB"):]
+        assert "transition: none !important; animation: none !important;" in reduced
 
     def test_it_plays_no_move(self) -> None:
         for word in ("/api/session", "legal", "apply"):
@@ -363,7 +354,7 @@ class TestTheBoard:
 
 class TestTheWords:
     def test_the_page_passes_the_words_guard(self) -> None:
-        for markup in (landing.HTML, landing.SCORE_HTML, landing.SHELVES_HTML):
+        for markup in (HTML, landing.SCORE_HTML, landing.SHELVES_HTML):
             assert site_words.hits(site_words.visible(markup)) == []
 
     def test_the_script_passes_the_words_guard(self) -> None:
@@ -374,7 +365,7 @@ class TestTheWords:
         from chess_variant_sandbox.site import quota
 
         assert landing.CORRESPONDENCE_IDLE_SAID == quota.CORRESPONDENCE_IDLE_SAID
-        assert landing.CORRESPONDENCE_IDLE_SAID in landing.HTML
+        assert landing.CORRESPONDENCE_IDLE_SAID in landing.CHALLENGE_LINE
 
     def test_the_players_and_games_are_the_measuring_runs(self) -> None:
         count = len(corpus.CANONICAL_AGENTS)
@@ -467,14 +458,16 @@ class TestOnTheWire:
         from test_site_admin import _running_site
 
         from chess_variant_sandbox.site import admin, pages
-        from chess_variant_sandbox.web.page import PAGE as SERVED
 
-        # The single page from its template on: the landing, then every script, in order.
-        tail = SERVED[SERVED.index('<template id="landingPage">'):]
         with _running_site() as site:
             browsers = {"visitor": site.browser(), "member": site.signed_in("ada"),
                         "admin": site.signed_in("root", admin.ADMIN)}
             first: dict[str, str] = {}
+            browsers["visitor"].get("/")
+            # The single page from its template on: the landing as the site drew it from its
+            # stories (LP4), then every script, in order.
+            served = page.page()
+            tail = served[served.index('<template id="landingPage">'):]
             for who, browser in browsers.items():
                 for path in ("/", "/game", "/game?from=mail"):
                     answer = browser.get(path)

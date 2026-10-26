@@ -1,24 +1,14 @@
 // The landing page (Q718): what everybody meets at `/`, signed in or not (Q723); the games
 // are at `/game`.
 //
-// The words are the server's: `web/landing.py` makes the page once and the single page
-// carries it as `<template id="landingPage">`, so this file draws no sentence of its own
-// beyond a game's name and the server's one sentence about it. It clones the template into
-// the view, hides what this server has not got (`data-needs`), fills the newest games and
-// the picks row from the listing (Q788: games, sentences and days are the server's, each
-// score the library card's own pill), and starts the opening board.
-//
-// **The opening board** is the club room's quiet board: one game's opening position at a
-// time, drawn by the still board the library's cards use (`thumbHtml`, so the wood and the
-// pieces are the cards' own), its pieces set down one after another, held, then the next
-// game. It shows the starting games, today's first. It plays no move, so the page decides
-// nothing about any game (rule 3). Under `prefers-reduced-motion` it is one still board,
-// with *another game* to step by hand; otherwise *pause* stops it, as anything that moves
-// on its own for more than five seconds must offer. It stops when the view changes and
-// waits while the tab is hidden, so a phone in a pocket spends nothing on it.
-
-// How long one game's board is held, and how far apart its pieces are set down.
-const LANDING_HOLD = 6500, LANDING_STEP = 45, LANDING_FADE = 500;
+// The words are the server's: `web/landing.py` draws the page (LP4, direction B of
+// `docs/plan-landing.md`: the question and its turning endings, then one story start to
+// finish, then the wall of words) from the stories `web/stories.py` rendered, and the single
+// page carries it as `<template id="landingPage">`. This file clones it into the view, hides
+// what this server has not got (`data-needs`), draws the hero's games from the listing, and
+// plays the story's two games from `/api/stories` with the board motion every page shares
+// (`motion.js`). It draws no sentence of its own beyond a move's words and a hand's count,
+// and works out nothing about any game (rule 3).
 
 async function showLanding() {
   stopPolling();
@@ -31,10 +21,14 @@ async function showLanding() {
   document.querySelectorAll('#sections a').forEach(link => link.removeAttribute('aria-current'));
   dropUnoffered(view);
   wireWallRails();
-  // The board waits for the listing; the words above and below it do not.
+  startJourney();
+  // The hero's boards and today's game wait for the listing; the words do not.
   const data = await api('/api/library').catch(() => null);
-  fillShelves(data);
-  if (data) startLandingBoard(landingGames(data));
+  if (!data) return;
+  takePieceArt(data);
+  const today = view.querySelector('[data-today]');
+  if (today && data.firstStep && data.firstStep.hash) today.href = gamePath(data.firstStep.hash);
+  startHero(data);
 }
 
 // A visitor to the site is offered *Sign in*, a member their own page in its place (Q723);
@@ -47,8 +41,8 @@ function dropUnoffered(root) {
   });
 }
 
-// The five shelves, wherever they are drawn: on the landing until LP4, and as the band at
-// the top of `/game` (LP3, `browse.js`'s `showShelves`), from the same listing.
+// The five shelves, as the band at the top of `/game` (LP3, `browse.js`'s `showShelves`),
+// from the listing; the landing carries none since LP4.
 function fillShelves(data) {
   if (data) takePieceArt(data);
   fillNewShelf(data);
@@ -249,88 +243,457 @@ function fillMembersShelf(data) {
   }
 }
 
-// The games the board shows, in order: today's game, then the starting games, each with
-// the sentence the server wrote for it. Where the server sends no starting games (the
-// local application) the first few games in the listing that have a board.
-function landingGames(data) {
-  const games = data.games || [];
-  takePieceArt(data);
-  const byHash = new Map(games.map(game => [game.hash, game]));
-  const named = [];
-  const add = (hash, sentence, today) => {
-    const game = byHash.get(hash);
-    if (game && game.still && !named.some(entry => entry.game === game)) {
-      named.push({ game: game, sentence: sentence || '', today: !!today });
-    }
-  };
-  if (data.firstStep) add(data.firstStep.hash, data.firstStep.sentence, true);
-  (data.launchSet || []).forEach(card => add(card.hash, card.sentence));
-  if (!named.length) games.slice(0, 12).forEach(game => add(game.hash, ''));
-  return named;
+// ------------------------------------------------------------------ the hero (LP4)
+//
+// `docs/plan-landing.md` §3.2: *Wouldn't it be cool if…* with its ending turning over every
+// few seconds, the story's own first, each beside the library game that idea became, drawn
+// from the listing's still with its marks (the seams, the walls, the walks, the goals, a
+// hand). The words and the order are the server's (`landing._hero`); this finds each game
+// in the listing by its name and draws it. It pauses on hover, on a press of a dot, with
+// *pause*, and while the tab is hidden; under reduced motion it never turns by itself.
+const HERO_TURN = 3800;
+
+function heroStill(game) {
+  const still = game && game.still;
+  if (!still) return '';
+  const icons = (still.icons || []).map(pair => (pair || []).map(icon =>
+    icon && PIECE_ART[icon.stem]
+      ? { href: PIECE_ART[icon.stem], rotate: icon.rotate, stem: icon.stem } : null));
+  return boardPreview(Object.assign({}, still, { icons: icons, hash: game.hash }), null);
 }
 
-function startLandingBoard(named) {
-  const mount = document.getElementById('landingBoard');
-  if (!mount || !named.length) return;
-  const caption = document.getElementById('landingCaption');
-  const pause = document.getElementById('landingPause');
-  const next = document.getElementById('landingNext');
-  const moving = !STILL.matches && named.length > 1;
-  let at = 0, paused = false, timer = null;
-  const onScreen = () => document.body.contains(mount);
-
-  const draw = (settle) => {
-    const entry = named[at];
-    const still = entry.game.still;
-    // A board taller than it is wide is narrowed, so every game fits the same square.
-    const wide = Math.min(100, 100 * still.width / Math.max(1, still.height));
-    mount.innerHTML = `<div class="landingSlide ${styleClass(`width:${wide}%`)}">${
-      thumbHtml(entry.game)}</div>`;
-    if (settle) {
-      mount.querySelectorAll('svg image, svg circle, svg text').forEach((piece, n) => {
-        piece.style.animationDelay = (n * LANDING_STEP) + 'ms';
-        piece.classList.add('settle');
-      });
+function startHero(data) {
+  const show = document.getElementById('heroShow');
+  if (!show) return;
+  const games = new Map(((data && data.games) || []).map(game => [game.name, game]));
+  const clauses = [...document.querySelectorAll('#heroClauses .clause')];
+  const states = [...show.querySelectorAll('.heroState')];
+  const dots = [...show.querySelectorAll('.heroDot')];
+  const pause = document.getElementById('heroPause');
+  states.forEach(state => {
+    const game = games.get(state.dataset.game);
+    const link = state.querySelector('[data-name]');
+    if (game) {
+      state.querySelector('[data-board]').innerHTML = heroStill(game);
+      if (link) link.href = gamePath(game.hash);
     }
-    // The day's game says so (Q741), in the template's word, so the board's first game
-    // is not read as one more of the starting games.
-    const today = entry.today && caption.dataset.today
-      ? `<span class="muted">${esc(caption.dataset.today)} &middot; </span>` : '';
-    caption.innerHTML = `${today}<a href="/game/${esc(entry.game.hash)}"><b>${
-      esc(entry.game.name)}</b></a>${entry.sentence ? ': ' + esc(entry.sentence) : ''}`;
+  });
+  let at = 0, timer = null, held = false;
+  const turn = i => {
+    const was = at;
+    at = (i + states.length) % states.length;
+    clauses.forEach((c, n) => {
+      c.classList.toggle('on', n === at);
+      c.classList.toggle('off', n === was && n !== at);
+    });
+    states.forEach((s, n) => s.classList.toggle('on', n === at));
+    dots.forEach((d, n) => d.classList.toggle('on', n === at));
   };
-
-  const advance = () => {
+  const onScreen = () => document.body.contains(show);
+  const stop = () => {
+    if (timer) clearInterval(timer);
     timer = null;
-    if (!onScreen()) return;
-    if (paused || document.hidden) { timer = setTimeout(advance, LANDING_HOLD); return; }
-    const slide = mount.querySelector('.landingSlide');
-    if (slide) slide.classList.add('leaving');
-    setTimeout(() => {
-      if (!onScreen()) return;
-      at = (at + 1) % named.length;
-      draw(true);
-      timer = setTimeout(advance, LANDING_HOLD);
-    }, LANDING_FADE);
+    pause.textContent = 'play';
+    pause.setAttribute('aria-pressed', 'true');
   };
+  const play = () => {
+    stop();
+    pause.textContent = 'pause';
+    pause.setAttribute('aria-pressed', 'false');
+    timer = setInterval(() => {
+      if (!onScreen()) { stop(); return; }
+      if (!held && !document.hidden) turn(at + 1);
+    }, HERO_TURN);
+  };
+  dots.forEach((dot, n) => dot.addEventListener('click', () => { stop(); turn(n); }));
+  pause.addEventListener('click', () => (timer ? stop() : play()));
+  show.addEventListener('mouseenter', () => { held = true; });
+  show.addEventListener('mouseleave', () => { held = false; });
+  if (STILL.matches || states.length < 2) { pause.hidden = true; return; }
+  play();
+}
 
-  draw(moving);
-  if (named.length > 1) {
-    next.hidden = false;
-    next.onclick = () => {
-      if (timer) clearTimeout(timer);
-      at = (at + 1) % named.length;
-      draw(moving && !paused);
-      if (moving) timer = setTimeout(advance, LANDING_HOLD);
-    };
+// ------------------------------------------------------------------ the journey (LP4)
+//
+// §2.1-§2.2: the story's two games, *what goes wrong* and *what it changes*, played on the
+// steps' boards with the rule drawn as it acts (`motion.js`), each verdict shown only once its
+// game has ended. Every position is one the engine produced and every event (a move's two
+// squares, a drop, a portal's two ends, a blast's area and what it cleared) is the server's,
+// sent by `/api/stories` (`stories.replay`); this lays the positions out and draws the way
+// between them, and works out nothing about the game (rule 3). At 1400 one board is pinned
+// beside the steps and shows the step in view; on a phone (and under reduced motion, where
+// nothing is pinned) steps 2 and 4 carry their own boards.
+
+// A game's positions in order: the start, then each frame shown, with the squares it changed
+// laid onto the one before.
+function storyFrames(game) {
+  let board = game.start.board.slice();
+  let hands = game.start.hands || null;
+  let counts = null;
+  const out = [{ n: 0, board: board, hands: hands, counts: counts, item: null, key: true }];
+  for (const item of game.frames) {
+    board = board.slice();
+    for (const [square, value] of item.set) board[square] = value;
+    hands = item.hands || hands;
+    counts = item.counts || counts;
+    out.push({ n: item.n, move: item.move, board: board, hands: hands, counts: counts,
+      item: item, key: !!item.key });
   }
-  if (moving) {
-    pause.hidden = false;
-    pause.onclick = () => {
-      paused = !paused;
-      pause.textContent = paused ? 'play' : 'pause';
-      pause.setAttribute('aria-pressed', String(paused));
-    };
-    timer = setTimeout(advance, LANDING_HOLD);
+  return out;
+}
+
+// The still payload for a frame: the game's own start, its pieces where the frame has them.
+function storyPreview(game, frame, art) {
+  const icons = (game.start.icons || []).map(pair => (pair || []).map(icon =>
+    icon && art[icon.stem] ? { href: art[icon.stem], rotate: icon.rotate, stem: icon.stem } : null));
+  return Object.assign({}, game.start, { board: frame.board, icons: icons, hash: game.hash,
+    handsUsed: false, motion: true });
+}
+
+// Draw `frame` on `mount`, and the way from `prev` to it when there is motion to show and
+// motion is wanted. Returns how long the motion takes.
+function drawStoryFrame(mount, game, frame, prev, art, still) {
+  // A plain turn moves within the story's pace; the turn the rule acts (a portal, a blast)
+  // takes the time its motion needs (§2.2).
+  const most = Math.max(90, game.pace * 0.9);
+  const preview = storyPreview(game, frame, art);
+  mount.innerHTML = boardPreview(preview, null);
+  const svg = mount.querySelector('svg');
+  if (!svg) return 0;
+  const W = preview.width, H = preview.height, cell = 100 / Math.max(W, H);
+  const view = flatView(W, H, FLIPPED, preview.lattice, boardCut(preview.absent, preview.wrap));
+  const at = square => squareXY(square, cell, view);
+  motionDrawer(svg, (value, x, y, size) => stillPieceHtml(preview, value, x, y, size));
+  const item = frame.item;
+  // The marks a still frame keeps, under the pieces: the move's two squares lit, a portal's
+  // two ends, a blast's whole area.
+  const lit = !item ? [] : item.blast ? item.blast.area
+    : [item.from, item.to].concat(item.portal || []).filter(sq => sq !== undefined);
+  for (const square of lit) {
+    const cellGroup = svg.querySelector(`[data-square="${square}"]`);
+    if (!cellGroup) continue;
+    const [x, y] = at(square);
+    const mark = document.createElementNS(SVGNS, 'rect');
+    mark.setAttribute('x', x);
+    mark.setAttribute('y', y);
+    mark.setAttribute('width', cell);
+    mark.setAttribute('height', cell);
+    mark.setAttribute('fill', item.blast ? 'var(--fx-fire)' : 'var(--hl-last)');
+    mark.setAttribute('opacity', item.blast ? '0.3' : '0.4');
+    mark.setAttribute('data-mark', item.blast ? 'blast' : 'last');
+    cellGroup.insertBefore(mark, cellGroup.children[1] || null);
   }
+  if (still || !prev || !item) return 0;
+  if (item.cut) {
+    svg.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 450, easing: 'ease-out' });
+    return 450;
+  }
+  const before = prev.board;
+  const node = square => svg.querySelector(`[data-piece="${square}"]`);
+  if (item.drop !== undefined) {
+    const piece = node(item.drop);
+    if (!piece) return 0;
+    const [x, y] = at(item.drop);
+    return stoneDrop(piece, x, y, cell, 0, Math.max(most, Math.min(PACE.drop, game.pace * 2)));
+  }
+  if (item.from === undefined) return 0;
+  const [fx, fy] = at(item.from), [tx, ty] = at(item.to);
+  if (item.portal) {
+    const [ex, ey] = at(item.portal[0]), [ox, oy] = at(item.portal[1]);
+    const arriving = node(item.to);
+    if (!arriving) return 0;
+    const look = { ink: 'var(--pair-1)', mark: '', pair: '', end: '' };
+    const trip = portalFlight(svg, arriving, before[item.from], {
+      ex, ey, fx, fy, tx, ty, idx: ex - fx, idy: ey - fy, odx: tx - ox, ody: ty - oy,
+      arc: false, wrapped: false, portal: item.portal[0], portalOut: item.portal[1],
+      lookIn: look, lookOut: look }, cell, view);
+    if (before[item.to]) capture(svg, before[item.to], tx, ty, cell, trip.blow);
+    return trip.landed;
+  }
+  if (item.blast) {
+    // The bomb's flight: the capturer travels to its target (a ghost, where the blast took
+    // it too), then the fireball over the area and every piece it took thrown outward.
+    const arriving = node(item.to);
+    let flight;
+    if (arriving) {
+      flight = travel(arriving, fx - tx, fy - ty, false);
+    } else {
+      const bomb = ghostAt(svg, before[item.from], tx, ty, cell);
+      flight = travel(bomb, fx - tx, fy - ty, false);
+      bomb.animate([{ opacity: 1 }, { opacity: 0 }],
+        { duration: PACE.blastLag * 2, delay: flight * PACE.impact, fill: 'forwards' });
+    }
+    const hit = flight * PACE.impact;
+    let busy = blastFire(svg, item.blast.area, cell, view, hit);
+    for (const square of item.blast.cleared.concat(arriving ? [] : [item.to])) {
+      if (!before[square]) continue;
+      const [x, y] = at(square);
+      busy = Math.max(busy, burn(svg, before[square], x, y, cell, { at: hit, dx: 0, dy: 0 }, [tx, ty]));
+    }
+    return busy;
+  }
+  const moving = node(item.to);
+  if (!moving) return 0;
+  const flight = travel(moving, fx - tx, fy - ty, false, 0, most);
+  if (before[item.to]) {
+    const ghost = before[item.to];
+    const done = capture(svg, ghost, tx, ty, cell, { at: flight * PACE.impact, dx: tx - fx, dy: ty - fy });
+    svg.appendChild(moving);
+    return Math.max(flight, done);
+  }
+  return flight;
+}
+
+// What the rule keeps count of, under a board: the pieces in hand, or the ground each side holds.
+function storyTray(game, frame) {
+  const start = game.start;
+  const sides = start.sides || ['white', 'black'];
+  const name = side => side.charAt(0).toUpperCase() + side.slice(1);
+  if (frame.counts) {
+    return frame.counts.map((count, p) => `<span class="handCount">${esc(name(sides[p]))} ${count}</span>`)
+      .join('') + '<span class="muted small">squares held</span>';
+  }
+  if (!frame.hands) return '';
+  // `unlimited` is the compiled stock's word per type: true where a hand never runs out.
+  const unlimited = new Set((start.unlimited || []).map((never, type) => (never === true ? type : -1))
+    .filter(type => type >= 0));
+  const types = [];
+  (start.hands || []).forEach(hand => (hand || []).forEach((count, type) => {
+    if ((count > 0 || unlimited.has(type)) && !types.includes(type)) types.push(type);
+  }));
+  return types.map(type => {
+    const piece = (start.pieceNames || [])[type] || (start.pieceIds || [])[type] || '';
+    return `<span class="muted small">${esc(piece)}s in hand</span>` + frame.hands.map((hand, p) =>
+      `<span class="handCount">${esc(name(sides[p]))} ${unlimited.has(type) ? '∞' : (hand[type] || 0)}</span>`)
+      .join('');
+  }).join('');
+}
+
+const STORY = { active: 1, players: {}, data: null };
+
+function pinShown() {
+  const pin = document.querySelector('#journey .pin');
+  return !!pin && pin.offsetParent !== null;
+}
+
+class StoryPlayer {
+  constructor(which, game, art, line, good) {
+    this.which = which;
+    this.game = game;
+    this.art = art;
+    this.line = line;
+    this.good = good;
+    const frames = storyFrames(game);
+    // Under reduced motion only the key frames, stepped by press, opening on the moment the
+    // rule acts; otherwise every frame, played.
+    this.frames = STILL.matches ? frames.filter(f => f.key) : frames;
+    const moment = this.frames.findIndex(f => f.n === game.moment);
+    this.at = STILL.matches ? Math.max(0, moment) : 0;
+    this.timer = null;
+    this.played = false;
+    this.ended = false;
+    this.root = document.querySelector(`[data-ctl="${which}"]`).closest('.beat');
+    this.board = this.root.querySelector(`[data-board="${which}"]`);
+    this.words = this.root.querySelector(`[data-words="${which}"]`);
+    this.tray = this.root.querySelector(`[data-tray="${which}"]`);
+    this.verdict = this.root.querySelector(`[data-answer="${which}"]`);
+    this.button = this.root.querySelector('[data-step="play"]');
+    this.button.hidden = STILL.matches;
+    this.root.querySelector('[data-step="back"]').addEventListener('click', () => {
+      this.stop(); this.show(this.at - 1, true);
+    });
+    this.root.querySelector('[data-step="next"]').addEventListener('click', () => {
+      this.stop(); this.show(this.at + 1, STILL.matches);
+    });
+    this.button.addEventListener('click', () => (this.timer ? this.stop()
+      : this.play(this.at >= this.frames.length - 1 ? 0 : undefined)));
+    this.show(this.at, true);
+    if (STILL.matches) this.done();
+  }
+  pinned() { return STORY.active === (this.which === 'wrong' ? 2 : 4) && pinShown(); }
+  show(i, still) {
+    const prev = this.frames[this.at];
+    this.at = Math.max(0, Math.min(this.frames.length - 1, i));
+    const frame = this.frames[this.at];
+    const from = prev === frame ? null : prev;
+    let motion = 0;
+    const boards = [this.board];
+    if (this.pinned()) boards.push(document.getElementById('pinBoard'));
+    for (const mount of boards) {
+      if (mount.offsetParent === null) continue;
+      motion = Math.max(motion, drawStoryFrame(mount, this.game, frame, from, this.art, still));
+    }
+    const words = frame.n ? `turn ${frame.n}: ${frame.move}${frame.item && frame.item.cut ? ' (later)' : ''}`
+      : 'turn 0: the start';
+    this.words.textContent = words;
+    this.tray.innerHTML = storyTray(this.game, frame);
+    if (this.pinned()) {
+      document.getElementById('pinWords').textContent = words;
+      document.getElementById('pinTray').innerHTML = storyTray(this.game, frame);
+    }
+    if (this.at === this.frames.length - 1) this.done();
+    return motion;
+  }
+  done() {
+    this.stop();
+    this.ended = true;
+    this.verdict.classList.remove('pending');
+    if (this.pinned()) pinVerdict(this.good ? 'good' : 'bad', this.line);
+  }
+  stop() {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (!STILL.matches) this.button.textContent = 'play';
+  }
+  play(from) {
+    this.stop();
+    if (from !== undefined) this.show(from, true);
+    this.button.textContent = 'pause';
+    const step = () => {
+      this.timer = null;
+      if (!document.body.contains(this.root)) return;
+      if (document.hidden) { this.button.textContent = 'play'; return; }
+      if (this.at >= this.frames.length - 1) { this.done(); return; }
+      const motion = this.show(this.at + 1, false);
+      const frame = this.frames[this.at];
+      // The turn the rule acts (a portal, a blast) gets the time its motion needs and a
+      // breath after it; any other turn takes the story's pace.
+      const acts = frame.item && (frame.item.portal || frame.item.blast);
+      const wait = Math.max(this.game.pace, acts ? motion + 350 : motion)
+        + (frame.item && frame.item.cut ? 600 : 0);
+      if (this.at < this.frames.length - 1) {
+        this.timer = setTimeout(step, wait);
+        this.button.textContent = 'pause';
+      }
+    };
+    this.timer = setTimeout(step, 500);
+  }
+  start() {
+    if (STILL.matches || (this.played && this.at >= this.frames.length - 1)) {
+      this.show(this.at, true);
+      return;
+    }
+    if (this.played) { this.play(); return; }  // scrolled away mid-game: carry on
+    this.played = true;
+    this.play(0);
+  }
+}
+
+function pinVerdict(kind, line) {
+  const box = document.getElementById('pinVerdict');
+  if (!box) return;
+  box.className = 'pinVerdict mono small' + (kind ? ' shown ' + kind : '');
+  box.textContent = kind ? line : '';
+}
+
+// The pinned board's six states (1400): the failed game's start, its game, the fixed game's
+// start with the change shown in the tray, its game, then its first two moves.
+function storyBeat(n) {
+  STORY.active = n;
+  document.querySelectorAll('#journey .beat').forEach(beat => {
+    const on = Number(beat.dataset.beat) === n;
+    beat.classList.toggle('active', on);
+    if (on) beat.classList.add('seen');  // the card's edit stays made
+  });
+  const players = STORY.players;
+  for (const [which, player] of Object.entries(players)) {
+    if ((which === 'wrong' ? 2 : 4) !== n) player.stop();
+  }
+  if (!players.wrong || !pinShown()) {
+    if (n === 2 && players.wrong) players.wrong.start();
+    if (n === 4 && players.right) players.right.start();
+    return;
+  }
+  if (n === 2 || n === 4) {
+    const player = n === 2 ? players.wrong : players.right;
+    pinVerdict(null, '');
+    player.show(player.at, true);
+    player.start();
+    if (player.ended) pinVerdict(player.good ? 'good' : 'bad', player.line);
+    return;
+  }
+  const right = players.right, wrong = players.wrong;
+  const frames = n === 1 ? storyFrames(wrong.game) : storyFrames(right.game);
+  const at = { 1: 0, 3: 0, 5: 1, 6: 2 }[n];
+  const game = n === 1 ? wrong.game : right.game;
+  const frame = frames[Math.min(at, frames.length - 1)];
+  drawStoryFrame(document.getElementById('pinBoard'), game, frame, null, right.art, true);
+  const words = { 1: `${STORY.data.failed}, as it starts`, 3: `${STORY.data.fixed}, as it starts`,
+    5: frame.n ? `turn ${frame.n}: ${frame.move}` : '', 6: frame.n ? `turn ${frame.n}: ${frame.move}, by correspondence` : '' }[n];
+  document.getElementById('pinWords').textContent = words;
+  const tray = document.getElementById('pinTray');
+  tray.innerHTML = storyTray(game, frame);
+  pinVerdict(n >= 5 ? (right.good ? 'good' : 'bad') : null, right.line);
+  if (n === 3) {
+    // The change, in the tray: the failed game's hand struck, the fixed one's arriving.
+    const was = storyTray(wrong.game, storyFrames(wrong.game)[0]);
+    const now = storyTray(right.game, frame);
+    if (was && now && was !== now && !STILL.matches) {
+      tray.innerHTML = `<span class="swap"><del>${was}</del> <ins>${now}</ins></span>`;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const swap = tray.querySelector('.swap');
+        if (swap) swap.classList.add('go');
+      }));
+    }
+  }
+}
+
+// The six qualities' bars: each one's length from its number, a CSSOM custom property.
+function drawPairBars(root) {
+  root.querySelectorAll('.pairBar [data-v]').forEach(bar => {
+    const v = Number(bar.dataset.v);
+    bar.style.setProperty('--v', String(v));
+    bar.classList.toggle('low', v < 0.25);
+  });
+}
+
+// Step 5: the fixed game's computer opponents as its own page offers them, and, on the site,
+// the page's own sentences placing them on people's scale (`standing.peopleScale.said`, shown
+// once enough people are rated there), read from the game's own payload, so every name and
+// number is the page's.
+function fillLadder(root) {
+  const ladder = root.querySelector('[data-ladder]');
+  if (!ladder) return;
+  api('/api/game/' + encodeURIComponent(ladder.dataset.ladder)).then(game => {
+    const offered = ((game && game.opponents) || []).filter(one => one.agent !== 'human');
+    ladder.innerHTML = offered.map(one => `<span>${esc(one.name || one.agent)}</span>`).join('');
+    const said = (((game && game.standing) || {}).peopleScale || {}).said || [];
+    if (said.length) {
+      ladder.insertAdjacentHTML('afterend',
+        `<p class="small muted">${said.map(line => esc(line)).join(' ')}</p>`);
+    }
+  }).catch(() => {});
+}
+
+async function startJourney() {
+  const journey = document.getElementById('journey');
+  if (!journey) return;
+  drawPairBars(journey);
+  fillLadder(journey);
+  const data = await api('/api/stories').catch(() => null);
+  if (!document.body.contains(journey)) return;
+  const story = data && data.games && data.games[journey.dataset.story];
+  if (!story) return;
+  STORY.data = story;
+  const art = data.pieceArt || {};
+  STORY.players = {
+    wrong: new StoryPlayer('wrong', story.wrong, art, story.failedLine, false),
+    right: new StoryPlayer('right', story.right, art, story.fixedLine, true),
+  };
+  const beats = journey.querySelectorAll('.beat');
+  if (STILL.matches || !('IntersectionObserver' in window)) {
+    beats.forEach(beat => beat.classList.add('seenAll'));
+    return;
+  }
+  storyBeat(1);
+  // The step nearest the middle of the screen sets the pinned board; on a phone a step's
+  // own board plays its game when it comes into view.
+  const watch = new IntersectionObserver(entries => {
+    if (!document.body.contains(journey)) { watch.disconnect(); return; }
+    for (const entry of entries) if (entry.isIntersecting) storyBeat(Number(entry.target.dataset.beat));
+  }, { rootMargin: '-45% 0px -45% 0px' });
+  beats.forEach(beat => watch.observe(beat));
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) Object.values(STORY.players).forEach(player => player.stop());
+  });
 }
