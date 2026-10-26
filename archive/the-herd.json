@@ -1,0 +1,411 @@
+{
+  "schema_version": 31,
+  "name": "the herd",
+  "description": "Chess on a board one rank taller, with a small herd of creatures in the open ground between the armies, each casting a spell on the four squares beside it: in front, behind and to either side, never the diagonals. A gorgon on one wing of the middle rank freezes its neighbours, kings among them. A frozen piece cannot move and threatens nothing. A siren on the other wing disarms them, so they may still move but cannot capture or threaten. Two dryads, one on the fourth rank from each side, shield theirs, and nothing may take a shielded piece. The creatures take nothing themselves. After every turn each walks one step along its own short stretch of rank, turns at the end and walks back, and turns round early when anything stands in its way; a player may take one, and it comes back to the start of its walk eight turns later. The duck is the sheepdog. Nobody owns it and nothing can take it; it starts on the very centre of the board, and every turn ends with the player who has just moved walking it one king's step onto an empty square, so that, put in a creature's path, it turns it back. Each turn asks two questions: what to move, and where to drive the herd, whether the gorgon onto the other side's defenders or its king, the siren onto a piece about to strike, or a dryad beside a piece of your own under threat, knowing the opponent will drive it back. The game is won by taking the king, not by mate, and a player left with no move at all, for instance with every piece frozen, has lost.",
+  "board": {
+    "width": 8,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "duck",
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "gorgon",
+      "value": 2,
+      "captures": [],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "range": 1,
+          "through": true,
+          "effect": "freeze",
+          "whose": "any"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "siren",
+      "value": 2,
+      "captures": [],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "range": 1,
+          "through": true,
+          "effect": "disarm",
+          "whose": "any"
+        }
+      ]
+    },
+    {
+      "id": "Y",
+      "name": "dryad",
+      "value": 2,
+      "captures": [],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "range": 1,
+          "through": true,
+          "effect": "shield",
+          "whose": "any"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "loss",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 600,
+    "no_progress_draw": 100,
+    "duck": {
+      "piece": "D",
+      "start": "e5",
+      "goes": "by_moves"
+    },
+    "npcs": [
+      {
+        "piece": "G",
+        "route": [
+          "a5",
+          "b5",
+          "c5"
+        ],
+        "turns_back": true,
+        "respawn": 8
+      },
+      {
+        "piece": "S",
+        "route": [
+          "h5",
+          "g5",
+          "f5"
+        ],
+        "turns_back": true,
+        "respawn": 8
+      },
+      {
+        "piece": "Y",
+        "route": [
+          "c4",
+          "d4",
+          "e4",
+          "f4"
+        ],
+        "mirror": true,
+        "turns_back": true,
+        "respawn": 8
+      }
+    ],
+    "scoring": {
+      "count": "material"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-26",
+    "origin": "designed",
+    "source": "docs/plan-npc.md, N9: the second showcase for a wild piece's sight (freeze, disarm and shield) and for the duck that walks by its moves from a start square (section 6.4), after the menagerie retired (section 6.3)",
+    "history": "Section 6.4 of docs/plan-npc.md, registered 2026-10-26 before any measured game: chess on 8 by 9 won by taking the king, stalemate a loss, a duck that starts on e5 and walks a king's step, and four wild pieces that eat nothing, touch the four squares beside them and pace their lines (a gorgon freezing on a5-c5 and a siren disarming on h5-f5, alone on the middle rank; dryads shielding on c4-f4 and c6-f6), turning back at a block and returning eight phases after they are taken. Built on the menagerie's lesson (its stalemate draws and smothering effects); registered as drafted after a draft read in self-play at 1600 and 6400 nodes.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}

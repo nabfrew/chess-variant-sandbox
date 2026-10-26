@@ -1,0 +1,111 @@
+{
+  "schema_version": 31,
+  "name": "chess with galloping knights",
+  "description": "A knight that keeps going when the ground is open. Each knight still makes chess's jump, over anything in its way, but it may also gallop on: jump after jump in the same direction, in a straight slanting line. A gallop has to be clear all the way. Every jump in it passes one square, the square one step along the jump's longer side, as a horse in Chinese chess is blocked, and a piece of either colour on that square stops the gallop there; so does any piece on a square the gallop lands on along the way, and an enemy piece on its last square is taken. So the knight is two pieces at once. Behind a closed pawn chain it is the familiar short-range jumper, but when the board opens up it reaches across it on angles no other piece uses, forking, pinning and giving check from far away. Shutting a gallop down takes only one piece on one square of its line, which makes every pawn move a question: open the position for your own knights, or keep it closed against your opponent's. A knight that could ride with nothing able to block it in between would take a pawn on the first move of the game; this one has to wait for the board to open. Everything else is chess.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {
+          "kind": "slide",
+          "vectors": [[0, 1]],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {"from_rank": 1}
+        },
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "galloping knight",
+      "value": 4,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"},
+        {
+          "kind": "lame",
+          "vectors": [[1, 2]],
+          "symmetry": "dihedral8",
+          "range": 0,
+          "min_range": 2,
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[1, 0], [1, 1]],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "en_passant": true,
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "N": "knight"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-26",
+    "origin": "designed",
+    "source": "docs/plan-schema-31.md, Q1023: L1, the showcase for schema 31's lame rider, `lame` with `range` and `min_range` (section 6.4)",
+    "history": "L1 of docs/plan-schema-31.md section 6.4, registered 2026-10-26 before any measured game: chess (4c1922ffae26) with the knight keeping its leap and gaining a lame rider over [1, 2] by dihedral8 from its second jump on (range 0, min_range 2), so the first jump is chess's and every further jump is blocked on its leg as the xiangqi horse is. Chosen by Q1023 over draft B (the whole move a lame rider, cfea33e382a0), on their draft reads; the piece named galloping knight, valued 4, drawn as a knight.",
+    "parents": ["4c1922ffae26"]
+  }
+}

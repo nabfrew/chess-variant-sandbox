@@ -452,6 +452,16 @@ record is
 `docs/reference/engine-and-spec-record.md`
 §*Schema 13*.
 
+## `short-sweeping-bishop-chess.json` — the sweep with a range
+
+LPD, `c7c6907901b3`, 2026-10-26. Sweeping bishop chess with one change: the bishop's sweep
+has `"range": 3`, so it lands at most three squares along its diagonal. The parent is lost on
+White's first move (`Bf1` sweeps e2 to b5, four squares, and mates through d7); three is the
+largest range that closes that line, and the smallest that keeps the sweep in play (range 2
+seldom passed over a piece in self-play). Written as the landing page's fourth pair
+(`docs/plan-landing.md` §5 LPD); its candidates, pre-registration and measurement are in
+`docs/reference/landing-fourth-pair.md`.
+
 ## `rifle.json`, `circe.json`, `andernach.json`, `kamikaze.json` — schema 17, what a capture leaves behind
 
 Q540's four showcases (2026-10-09), each chess with one rule added and nothing else, and
@@ -995,6 +1005,25 @@ strongest players the second seat took 40 of 59 decided games, a lean just over 
 the seat check tolerates though not refused; over every graded game the seat is level (0.499).
 `tests/test_showcases_q1007e.py` holds the mechanism.
 
+## `chess-with-galloping-knights.json` — schema 31, a lame rider on chess (Q1023)
+
+2026-10-26, **in the library** (`69f1e486af87`). L1 of `docs/plan-schema-31.md` §6.4, the lame
+rider's showcase: chess with the knight keeping its leap and gaining a lame rider over `[1, 2]`
+from its second jump on (`range: 0`, `min_range: 2`), so a single jump is chess's and every
+jump of a gallop is blocked on its leg, as the xiangqi horse is, and by a piece on a landing it
+passes. Named *galloping knight*, valued 4, drawn as a knight. Its slide twin is
+`chess-with-nightriders.json`: the same lines with nothing between landings able to block, which
+take e7 on move one; the gallop keeps chess's twenty opening moves. Chosen over draft B (the whole
+move a lame rider, `cfea33e382a0`, knights boxed in at the start) on the draft reads. Measured
+2026-10-26: **0.899 [0.878, 0.926], viable 4-0**, every registered bar met: 0.226 of the knight's
+graded moves gallop two jumps or more (0.165 between the two strongest players), and at 0.482 of
+graded side-turns the nightrider would have had a knight move a piece on a leg denies here; the
+top three's games 0.931 decided, graded games 78.1 plies, the first seat 0.494 of decided games.
+Every prediction held (the index within 0.05 of the nightrider's 0.900; games longer than its
+75.2 plies; the knight's first capture at a median ply 17, against the nightrider's 5).
+`tests/test_showcase_galloping_knights.py` holds the mechanism, against `test_lame_rider`'s
+oracle, with a check at a gallop answered by a block on a leg.
+
 ## `chess-with-commanding-knights.json`, `chess-with-a-spellbinding-king.json` — schema 31, pieces the opponent may move (Q1007f; both retired)
 
 2026-10-24, built, measured and **retired without joining**, by the call registered before their
@@ -1050,6 +1079,31 @@ set aside: no piece ever took one. Fairy-Stockfish has no reading of `captures`.
 of 0.977 (0.953), the top three's games 0.917 decided, graded games 98.7 plies against chess's
 87.9, the first seat 0.509 of decided games. Pawns took 1.22 anchors a graded game, 1.64 between
 the strongest. `tests/test_showcase_anchors.py` holds the mechanism.
+
+## `the-herd.json` — generations 37 and 42, wild pieces that see and the duck that walks (N9)
+
+2026-10-26, **in the library** (`2135109e8191`). The showcase of `docs/plan-npc.md` §6.4, the
+second attempt at the five features *the menagerie* (below) left owed, registered before any
+measured game: chess on 8 by 9 won by taking the king, in which a player with no move at all
+loses; a gorgon alone on a5-c5 that freezes the four squares beside it (the kings included), a
+siren alone on h5-f5 that disarms them, and two dryads on c4-f4 and c6-f6 that shield them, all
+eating nothing, pacing their lines, turning back at a block and returning eight turns after they
+are taken; and a duck that starts on e5 and is walked a king's step by the mover at the end of
+every turn, the sheepdog that turns the herd. It shows a wild type's freeze, disarm and shield
+and the duck's `goes: "by_moves"` and `start` in one game. Built on the menagerie's lesson: its
+draws were stalemates of a side frozen round a gorgon, and six creatures freezing and disarming
+the eight squares round them smothered the game (depth 0.56), so stalemate is a loss here, the
+herd is four, and each creature touches only its four orthogonal neighbours. Registered as
+drafted after a self-play read. Fairy-Stockfish has no counterpart of a wild piece, so the
+sight oracle is V1's second reading. Measured 2026-10-26: **0.920 [0.892, 0.941], viable
+4-0**, every registered bar met: a move of the side to move's taken away by the gorgon at 0.270
+of graded turns (0.330 between the two strongest players), by the siren at 0.160, by a dryad at
+0.250, 2.5 creatures turned by the duck a graded game (5.0), the top three's games 0.951
+decided, graded games 126.0 plies (both halves of each turn counted) against chess's 87.9, the
+first seat 0.518 of decided games. A side frozen out of every move ends 0.028 of graded games
+(0.063 between the strongest), every one now decided; depth rose from the menagerie's 0.56 to
+0.70-0.90 a run. `tests/test_showcase_herd.py` holds the mechanism, and
+`docs/reference/herd-study.py` reads the runs.
 
 ## `the-menagerie.json` — generations 37 and 42, wild pieces that see and the duck that walks (N8; retired)
 

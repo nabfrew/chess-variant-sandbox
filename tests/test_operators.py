@@ -2652,15 +2652,11 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # N4b's two names left. `rules.duck` and the duck's sight went on 2026-10-26, when N6
-    # archived *the shepherd's duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1),
-    # whose duck goes anywhere from off the board. N8 registered *the menagerie* for both
-    # (§6.3: a duck that starts on e5 and walks a king's step); it was measured the same day
-    # and retired by its registered call, the index 0.816 [0.787, 0.837] under V3's 0.840
-    # (`tests/_retired_the_menagerie.json`). Both wait for a duck game that scores as a game
-    # (`schema-showcase-coverage.md` rows 93 and 94).
-    "N4b duck by_moves": "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)",
-    "N4b duck start": "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)",
+    # N4b's four names went by 2026-10-26: `rules.duck` and the duck's sight when N6 archived
+    # *the shepherd's duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1), and
+    # `rules.duck.goes.by_moves` and `rules.duck.start` when N9 archived *the herd*
+    # (`archive/the-herd.json`, §6.4, a duck that starts on e5 and walks a king's step), after
+    # N8's *menagerie* (§6.3) retired on the index.
     # N3d's name went to `_NO_SHOWCASE_ON_PURPOSE` when N4b retired its `_FEATURES` row.
     # N3c's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3d retired its `_FEATURES` row.
     # N3b's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3c retired its `_FEATURES` row.
@@ -2788,37 +2784,20 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # 38's `rules.npcs.turns_back` (N5) went on 2026-10-26, when N6 archived *the shepherd's
     # duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1).
     # Generation 37's names (N2), owed in `_SHOWCASE_OWED` until generation 38 (N5) retired
-    # their `_FEATURES` rows. *The shepherd's duck* (N6) carried the shield beside wild pieces.
-    # N8 built *the menagerie* for the three wild effects (`plan-npc.md` §6.3: gorgons, sirens
-    # and dryads that freeze, disarm and shield the squares round them): each bound at a third
-    # to nine tenths of graded turns, but the index, 0.816 [0.787, 0.837], missed V3's 0.840,
-    # and it retired by its registered call (`tests/_retired_the_menagerie.json`). A game that
-    # closes these rows is a wild-sight game that scores as a game.
-    "schema 37: pieces.sight.wild.freeze": (
-        "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)"
-    ),
-    "schema 37: pieces.sight.wild.disarm": (
-        "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)"
-    ),
-    "schema 37: pieces.sight.wild.shield": (
-        "N8: the menagerie retired, index 0.816, V3's bar 0.840 (plan-npc.md §6.3)"
-    ),
+    # their `_FEATURES` rows. *The shepherd's duck* (N6) carried the shield beside wild pieces;
+    # `pieces.sight.wild.freeze`, `.disarm` and `.shield` went on 2026-10-26, when N9 archived
+    # *the herd* (`archive/the-herd.json`, `plan-npc.md` §6.4: a gorgon, a siren and two dryads
+    # touching the four squares beside them), after N8's *menagerie* (§6.3) retired on the index.
     # Generation 34's two names (T1) were owed here until their showcases landed, both
     # 2026-10-25 (`plan-pieces-moves.md` §5.7): T2's `archive/crooked-bishops.json` deleted
     # `...path.zigzag`'s row and T3's `archive/circling-queen.json` `...path.circle`'s.
     # Generation 33's name (I1) was here from I2's retirement of *capture the flag*
     # (`plan-pieces-moves.md` §4.7, index 0.790 against V3's 0.800) until 2026-10-25, when I3
     # archived the second showcase, *anchors* (`archive/anchors.json`, §4.8, 0.894).
-    # Generation 32's two names (Q1007a), owed in `_SHOWCASE_OWED` until generation 33 retired
-    # their `_FEATURES` rows. R1 (`plan-schema-31.md` §6.1) was to carry the lame rider; the user
-    # made its rook the slide reading (2026-10-23), and Q1007e kept R1b, a slide, over R1c, the
-    # lame one. Neither R1 nor R3 can carry it without changing a fixed move rule.
-    "schema 32: pieces.moves.lame.range": (
-        "owed: R1c, the lame draft of plan-schema-31.md §6.1, was not kept; no showcase uses it"
-    ),
-    "schema 32: pieces.moves.lame.min_range": (
-        "owed: no showcase registered in plan-schema-31.md §6 uses min_range on a lame rider"
-    ),
+    # Generation 32's two names (Q1007a), `pieces.moves.lame.range` and `.min_range`, were owed
+    # here from Q1007e (which kept R1b, a slide, over R1c, the lame draft) until 2026-10-26, when
+    # Q1023 archived L1, *chess with galloping knights* (`archive/chess-with-galloping-knights.json`,
+    # `plan-schema-31.md` §6.4: the knight's leap plus a lame rider from its second jump on).
     # Generation 31's two names (Q1007c). Q1007f built and measured their showcases K1 and K2
     # (`plan-schema-31.md` §6.3, 2026-10-24): both viable and fair, both missed V2 (a commanded
     # move offered too rarely), so both retired by the call registered before their first

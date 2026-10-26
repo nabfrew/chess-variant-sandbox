@@ -429,6 +429,9 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/horse-archers": "352d33d9f6b29010",  # A2, generation 35; `strikers_share` 1/6 (the knights of six capturing types)
     "archive/the-shepherds-duck": "78dea89553770ad7",  # N6, generations 36 to 38 and 42
     "archive/the-hydra": "ebc692c2d1509cbb",  # N7, generations 39 to 41
+    "archive/the-herd": "bc1e91a0f50ed3cb",  # N9, generations 37 and 42
+    "archive/short-sweeping-bishop-chess": "980b6362973afb82",  # LPD, schema 31
+    "archive/chess-with-galloping-knights": "582fe0dfb371a0e8",  # Q1023, schema 31
     "archive/anchors": "b57b92f43654cb71",  # I3, generation 33
     "archive/madrasi": "b6e19675623090e2",  # Q999d, schema 30
     "archive/chess-with-a-sheltering-king": "e7321c09e075fea8",  # Q999d, schema 30

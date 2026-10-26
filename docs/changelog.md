@@ -18,6 +18,16 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 The designer's piece sections are now one picker. Press a piece to see its drawing, a few words about it
 and how it moves, then add it; this works by touch on a phone too. Each piece's card folds to a single line.
 
+### A new game: chess with galloping knights
+
+A knight can keep jumping in a straight line, one knight's leap after another, until a piece blocks a
+square it passes.
+
+### A new game: the herd
+
+Chess on a board one rank longer, won by taking the king, where a duck starting in the centre is walked one
+step each turn to herd a gorgon that freezes, a siren that disarms and two dryads that shield the pieces beside them.
+
 ### A new front page
 
 The front page now opens on a question, "Wouldn't it be cool if...", with its endings turning, then plays

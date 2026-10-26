@@ -1,0 +1,235 @@
+{
+  "schema_version": 31,
+  "name": "short sweeping bishop chess",
+  "description": "Chess in which the bishop sweeps, but only a short way. Instead of stopping at the first piece on its diagonal, it may land on any square up to three steps along it, and every piece it passes over is removed, its own included. A bishop that clears its own lines at the cost of whatever of its army stands in the way makes every pawn in front of it a question: a shield worth keeping, or a door worth burning. Because pieces in between do not stop it, a bishop within three squares of the enemy king through other pieces is giving check, and that check cannot be blocked, only escaped or answered by taking the bishop. With no limit the idea breaks chess on the first move: the f1 bishop sweeps its own pawn on e2 to land on b5 and mates the king behind the pawn on d7, four squares away. Three squares is the limit that keeps the bishop's clearing move and closes that door, so a sweeping check has to be set up, and can be seen coming.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "sweep",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both",
+          "range": 3
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-26",
+    "origin": "human",
+    "source": "LPD, docs/plan-landing.md §5: the one-change fix for sweeping bishop chess, written for the landing page's fourth story",
+    "history": "LPD, 2026-10-26: one change to sweeping bishop chess (42bd7d06828d), the bishop's sweep given range 3. Chosen over range 2 (the sweep almost never passed over a piece in 1,600-node self-play), range 4 (still mate on the first move) and a bishop that may not capture pawns (two changes of meaning). Pre-registered in docs/reference/landing-fourth-pair.md before any measured game. Perft(1) is 26: chess's 20 plus three sweeps per bishop."
+  }
+}

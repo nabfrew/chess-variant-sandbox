@@ -213,6 +213,12 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q21, 2026-09-14: schema 13's showcase, chess with sweeping bishops. The only spec in
     # the tree that compiles a sweep table, so this row pins that path.
     "archive/chess-sweeping-bishops.json": ("42bd7d06828d", "de55d69b00587dc2"),
+    # LPD, 2026-10-26: its one-change fix, the sweep given range 3 (the landing's fourth pair).
+    "archive/short-sweeping-bishop-chess.json": ("c7c6907901b3", "f47ff465aa55f168"),
+    # Q1023, 2026-10-26: L1, chess with galloping knights, schema 31's lame rider (`range`,
+    # `min_range`; `docs/plan-schema-31.md` §6.4; `tests/test_showcase_galloping_knights.py`),
+    # from `4c1922ffae26`. New.
+    "archive/chess-with-galloping-knights.json": ("69f1e486af87", "e11db59559c33321"),
     "archive/marchfield.json": ("0be72e61ef24", "3a2d5a7fddb76113"),
     # Schema 10's seven showcases (Q101, 2026-09-07), rows 23--30 of
     # `docs/reference/schema-showcase-coverage.md`. Frozen *at* schema 10 rather than
@@ -509,6 +515,12 @@ FROZEN: dict[str, tuple[str, str]] = {
     # generations 39 to 41 (`docs/plan-npc.md` §6.2; `tests/test_showcase_hydra.py`), from
     # `4c1922ffae26`. New.
     "archive/the-hydra.json": ("0f126fe608ef", "2fa09f528586afbd"),
+    # N9, 2026-10-26: the herd, chess on 8 by 9 won by taking the king with stalemate a loss, a
+    # duck that starts on e5 and walks a king's step, and four wild pieces touching the four
+    # squares beside them (a gorgon freezing, a siren disarming, two dryads shielding), generations
+    # 37 and 42 (`docs/plan-npc.md` section 6.4; `tests/test_showcase_herd.py`), from
+    # `4c1922ffae26`. New.
+    "archive/the-herd.json": ("2135109e8191", "a8d032c3aafb1648"),
 }
 
 
