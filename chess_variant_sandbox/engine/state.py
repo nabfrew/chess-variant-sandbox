@@ -167,8 +167,9 @@ class Outcome:
         return {"winner": self.winner, "reason": self.reason}
 
 
-# The core's phase-log kinds (`game::PHASE_STEP`, `PHASE_RETURN`, `PHASE_TURN`), by code.
-PHASE_KINDS = ("step", "return", "turn")
+# The core's phase-log kinds (`game::PHASE_STEP`, `PHASE_RETURN`, `PHASE_TURN`,
+# `PHASE_POUNCE`, `PHASE_COPY`), by code.
+PHASE_KINDS = ("step", "return", "turn", "pounce", "copy")
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +194,10 @@ class PhaseStep:
     # or ``"return"``, a taken wild piece coming back onto ``target`` (``origin`` is the same
     # square: it came from nowhere on the board); or ``"turn"`` (generation 38, N5), a
     # turning-back piece that found its way blocked and turned round: a step the other way, or
-    # ``origin == target`` where it waits, turned.
+    # ``origin == target`` where it waits, turned; or ``"pounce"`` (generation 39, N3b), a
+    # pouncer moving from ``origin`` onto the piece of the mover's it took on ``target``; or
+    # ``"copy"`` (generation 41, N3d), a splitting pouncer on ``origin`` growing a copy of
+    # itself on ``target``, eating the attacker there (the parent stays where it is).
     kind: str = "step"
 
     @classmethod

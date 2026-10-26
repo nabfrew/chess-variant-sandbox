@@ -379,6 +379,8 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::generate_checked": "the pin shortcut's single-royal premise",
         "game.rs::restrict": "`forbid_check`'s filter, over standing royals",
         "game.rs::is_forbidden_drop_mate": "whether a drop checks a standing royal",
+        "pounce.rs::in_check_by_pass": "generation 39: the pass test's check, over standing "
+        "royals",
     },
 }
 

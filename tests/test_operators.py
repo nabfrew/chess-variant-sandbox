@@ -90,7 +90,7 @@ _NUMBER_WORDS = {
     25: "twenty_five", 26: "twenty_six", 27: "twenty_seven", 28: "twenty_eight",
     29: "twenty_nine", 30: "thirty", 31: "thirty_one", 32: "thirty_two", 33: "thirty_three",
     34: "thirty_four", 35: "thirty_five", 36: "thirty_six", 37: "thirty_seven",
-    38: "thirty_eight",
+    38: "thirty_eight", 39: "thirty_nine", 40: "forty", 41: "forty_one",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -2031,7 +2031,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 38
+_FEATURES_ARE_FOR_SCHEMA = 41
 
 
 @dataclass(frozen=True)
@@ -2441,6 +2441,32 @@ def _parent_pacing_wolves() -> dict:
     return wolves
 
 
+def _parent_splitting_wolves() -> dict:
+    """*Wolves* whose wolves pounce on what attacks them and split, up to six (N3d,
+    `plan-npc.md` §4.5)."""
+    wolves = load_spec(ROOT / "archive" / "wolves.json")
+    for npc in wolves["rules"]["npcs"]:
+        npc["pounce"] = "attackers"
+        npc["split"] = 6
+    return wolves
+
+
+def _parent_guarding_wolves() -> dict:
+    """*Wolves* whose wolves pounce on what attacks them (N3c, `plan-npc.md` §4.4)."""
+    wolves = load_spec(ROOT / "archive" / "wolves.json")
+    for npc in wolves["rules"]["npcs"]:
+        npc["pounce"] = "attackers"
+    return wolves
+
+
+def _parent_hunting_wolves() -> dict:
+    """*Wolves* whose wolves pounce on what they attack (N3b, `plan-npc.md` §4.3)."""
+    wolves = load_spec(ROOT / "archive" / "wolves.json")
+    for npc in wolves["rules"]["npcs"]:
+        npc["pounce"] = "prey"
+    return wolves
+
+
 def _parent_archers() -> dict:
     """Chess whose bishops shoot (A1, `plan-pieces-moves.md` §6.7): rifle's strike given to the
     bishops alone."""
@@ -2555,9 +2581,9 @@ def _armies_differ(spec: dict) -> bool:
 # so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
 # and `straighten` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    "N5 turns back": _Feature(
-        "npcs", frozenset({"rules.npcs.turns_back"}), True, "wolves-royal-capture+turns-back",
-        _parent_pacing_wolves,
+    "N3d split": _Feature(
+        "npcs", frozenset({"rules.npcs.split"}), True, "wolves+split",
+        _parent_splitting_wolves,
         likely=lambda spec: bool(spec.get("rules", {}).get("npcs")),
     ),
 }
@@ -2570,9 +2596,12 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # N5's name. *The shepherd's duck* (N6, `plan-npc.md` §6.1) carries it: its wolves pace
-    # their lines and the duck steers them. N6 deletes this row.
-    "N5 turns back": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
+    # N3d's name. *The hydra* (N7, `plan-npc.md` §6.2) carries it: its hydras split. N7
+    # deletes this row.
+    "N3d split": "owed: N7, the hydra (plan-npc.md §6.2)",
+    # N3c's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3d retired its `_FEATURES` row.
+    # N3b's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3c retired its `_FEATURES` row.
+    # N5's name went to `_NO_SHOWCASE_ON_PURPOSE` when N3b retired its `_FEATURES` row.
     # N2's four names went to `_NO_SHOWCASE_ON_PURPOSE` when N5 retired their `_FEATURES` rows.
     # I1's one name went with I2's retirement to `_NO_SHOWCASE_ON_PURPOSE`, and from there with
     # I3's *anchors* (`archive/anchors.json`, 2026-10-25). A1's one name,
@@ -2675,6 +2704,9 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
         "pieces.sight.shield.beside_npcs",
     }),
     38: frozenset({"rules.npcs.turns_back"}),
+    39: frozenset({"rules.npcs.pounce.prey"}),
+    40: frozenset({"rules.npcs.pounce.attackers"}),
+    41: frozenset({"rules.npcs.split"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2683,6 +2715,15 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 40's name (N3c), owed in `_SHOWCASE_OWED` until generation 41 (N3d) retired its
+    # `_FEATURES` row. N7 deletes this row when *the hydra* lands.
+    "schema 40: rules.npcs.pounce.attackers": "owed: N7, the hydra (plan-npc.md §6.2)",
+    # Generation 39's name (N3b), owed in `_SHOWCASE_OWED` until generation 40 (N3c) retired its
+    # `_FEATURES` row. N7 deletes this row when *the hydra* lands.
+    "schema 39: rules.npcs.pounce.prey": "owed: N7, the hydra (plan-npc.md §6.2)",
+    # Generation 38's name (N5), owed in `_SHOWCASE_OWED` until generation 39 (N3b) retired its
+    # `_FEATURES` row. N6 deletes this row when *the shepherd's duck* lands.
+    "schema 38: rules.npcs.turns_back": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
     # Generation 37's names (N2), owed in `_SHOWCASE_OWED` until generation 38 (N5) retired
     # their `_FEATURES` rows. *The shepherd's duck* (N6) carries the shield beside wild pieces;
     # neither registered showcase gives a wild type a sight (§6's drafts are fixed but for their
@@ -3929,6 +3970,9 @@ _PINNED_SCALES: dict[str, float] = {
     "npcs_share_a_walk": 1.0, "lame_rider_share": 1.0, "turning_share": 1.0,
     "strikers_share": 1.0, "npcs_come_back": 1.0, "npcs_see": 1.0,
     "npcs_turn_back": 1.0,
+    "npcs_pounce": 1.0,
+    "npcs_pounce_attackers": 1.0,
+    "npcs_split": 1.0,
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
     "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
     "beats_share": 1.0, "simultaneous_swap_collides": 1.0, "simultaneous_both_score": 1.0,
@@ -3998,14 +4042,15 @@ class TestDistanceIsPinnedToTheNumber:
         to 58, over 90) and the special rules (3 to 4, over 6): the mean over the 100
         features (Q1011 brought it to 100: Q1007a's `lame_rider_share` was the 81st), 101 since
         T1's `turning_share`, 102 since A1's `strikers_share`, 103 since N1's
-        `npcs_come_back`, 104 since N2's `npcs_see` and 105 since N5's `npcs_turn_back`, is
-        0.011746, which rounds to 0.0117 and not to 0.01175."""
+        `npcs_come_back`, 104 since N2's `npcs_see`, 105 since N5's `npcs_turn_back`, 106
+        since N3b's `npcs_pounce`, 107 since N3c's `npcs_pounce_attackers` and 108 since N3d's
+        `npcs_split`, is 0.011419, which rounds to 0.0114 and not to 0.01142."""
         chess = _chess()
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0117
+        assert distance(chess, twin) == 0.0114
 
 
 def _one_leap_beside_a_stone() -> dict:

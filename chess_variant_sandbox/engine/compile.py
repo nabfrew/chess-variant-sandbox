@@ -29,6 +29,7 @@ from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.schema import (
     DEFAULT_RANGE,
     MAX_MOVES_PER_TURN,
+    POUNCE_KINDS,
     REPETITION_NEVER,
     STOCK_UNLIMITED,
     WRAP_PAIRS,
@@ -39,8 +40,10 @@ from chess_variant_sandbox.spec.schema import (
     has_speeds,
     hex_distance,
     npc_immune_attackers,
+    npc_pounce,
     npc_respawn,
     npc_routes,
+    npc_split,
     npc_starts,
     npc_turns_back,
     obstacle_squares,
@@ -662,6 +665,50 @@ class NpcRule:
     def on_line(self, square: int) -> bool:
         """Whether ``square`` is on a turning-back entry's line (generation 38)."""
         return bool(self.prev) and self.prev[square] >= 0
+
+
+# Generation 40 (N3c): ``PounceRule.kind``'s code for a type that pounces on its attackers,
+# the core's ``POUNCE_ATTACKERS``; the analysis tally reads it off the compiled rule.
+POUNCE_ATTACKERS = POUNCE_KINDS.index("attackers") + 1
+
+
+@dataclass(frozen=True)
+class PounceRule:
+    """Wild pieces that pounce (generation 39, N3b, `docs/plan-npc.md` §3.2, §4.3), resolved.
+
+    ``kind[type]``: 0 for a type that does not pounce, else ``POUNCE_KINDS.index(kind) + 1``
+    (two entries of one type must agree, the validator says). The **prey order** -- a royal,
+    then the higher declared value, then the nearer, then the mover's reading order -- is
+    three tables, so the core sorts nothing geometric:
+
+    * ``value_rank[type]``: the type's place among the declared values, highest 0, equal
+      values equal;
+    * ``reading_rank[player][square]``: the square's place in that player's reading order.
+      Player 0 reads rank ascending, then file ascending; player 1 reads the image of each of
+      player 0's squares under ``schema.reflect_square`` with the setup's orientation, the one
+      reflection the spec already places the second army by, so a position and its mirror
+      image choose mirror-image victims;
+    * ``distance[a * n_squares + b]``: king's distance, the lattice's own on a hexagon.
+
+    ``reach[type][origin]``: a ``"prey"`` pouncing type's captures from ``origin`` as ``(target, prefix,
+    window, screens)``, the attack sources' own frame-0 entries (player 0, facing 0: a pounce
+    is refused on a type whose moves read differently for the two players, a facing, a
+    region or a move condition) grouped by origin instead of by target. A source that needs
+    an unmoved piece never fires for a wild piece and is left out. ``()`` for a type that
+    does not pounce on its prey (an ``"attackers"`` pouncer reads the players' own inverse
+    table, generation 40). The attack table itself is not touched (§3.3), which is what keeps every
+    other game's tables what they were.
+    """
+
+    kind: tuple[int, ...]
+    value_rank: tuple[int, ...]
+    reading_rank: tuple[tuple[int, ...], tuple[int, ...]]
+    distance: tuple[int, ...]
+    reach: tuple[tuple[tuple[tuple[int, tuple[int, ...], tuple[int, ...], int], ...], ...], ...]
+    # Generation 41 (N3d, `docs/plan-npc.md` §4.5): ``split[type]``, the most wild pieces of a
+    # splitting type standing at once (0 for a type that does not split), or ``()`` where no
+    # type splits, so a pounce game without the rule compiles to what it compiled before.
+    split: tuple[int, ...] = ()
 
 
 # Schema 19 (Q771): the eight king's directions a transit can come out in, in this fixed
@@ -1559,6 +1606,9 @@ class CompiledSpec:
     # game in which no type sees, whose boundary keys for the rule all cross empty. An effect
     # is a function of the board, so the rule adds no state and no key.
     sight: SightRule | None = None
+    # Generation 39 (N3b, `docs/plan-npc.md` §4.3): wild pieces that pounce, or ``None`` -- every
+    # game in which no ``npcs`` entry says ``pounce``, whose boundary keys for it cross empty.
+    pounce: PounceRule | None = None
 
     @property
     def rest_max(self) -> int:
@@ -2219,6 +2269,10 @@ def _compile(
         sight=_compile_sights(
             spec, pieces, index_of, n_types, n_facings, facing_axes, n_squares, width, height,
             orientation, wrap, obstacles, blocks_leaps, radius, royal_types, multi_royal,
+        ),
+        pounce=_compile_pounce(
+            rules, index_of, tuple(float(p.get("value", 1)) for p in pieces), attack_sources,
+            width, height, orientation, board_spec.get("lattice", "square") == "hex",
         ),
     )
     if obstacles:
@@ -4828,6 +4882,67 @@ def _compile_npcs(
         next=tuple(nxt), bounty=tuple(bounty), piece=tuple(piece_of), starts=starts,
         respawn=_respawn_halves(rules, width, height, orientation),
         prev=tuple(prev) if any(npc_turns_back(npc) for npc in npcs) else (),
+    )
+
+
+def _compile_pounce(
+    rules: dict[str, Any],
+    index_of: dict[str, int],
+    piece_values: tuple[float, ...],
+    attack_sources: tuple[tuple[tuple[AttackSource, ...], ...], ...],
+    width: int,
+    height: int,
+    orientation: str,
+    hexagonal: bool,
+) -> PounceRule | None:
+    """Generation 39 (N3b): the pounce tables (``PounceRule``), or ``None`` where no entry
+    pounces, which is every game before the rule."""
+    npcs = rules.get("npcs")
+    n_types = len(piece_values)
+    kind = [0] * n_types
+    for npc in npcs if isinstance(npcs, list) else []:
+        stated = npc_pounce(npc)
+        if stated is not None:
+            kind[index_of[npc["piece"]]] = POUNCE_KINDS.index(stated) + 1
+    if not any(kind):
+        return None
+    n_squares = width * height
+    values = sorted(set(piece_values), reverse=True)
+    value_rank = tuple(values.index(value) for value in piece_values)
+    second = [0] * n_squares
+    for square in range(n_squares):
+        file, rank = reflect_square(square % width, square // width, width, height, orientation)
+        second[rank * width + file] = square
+    distance = []
+    for a in range(n_squares):
+        for b in range(n_squares):
+            dx, dy = b % width - a % width, b // width - a // width
+            distance.append(hex_distance(dx, dy) if hexagonal else max(abs(dx), abs(dy)))
+    # Generation 40 (N3c): only a ``"prey"`` pouncer reads its own reach; an ``"attackers"``
+    # one reads the players' inverse table, which is already compiled.
+    prey = POUNCE_KINDS.index("prey") + 1
+    reach: list[list[list[tuple[int, tuple[int, ...], tuple[int, ...], int]]]] = [
+        [[] for _ in range(n_squares)] if kind[piece_type] == prey else []
+        for piece_type in range(n_types)
+    ]
+    for target in range(n_squares):
+        for origin, value, prefix, window, screens, unmoved, _, sweep, _ in attack_sources[0][target]:
+            piece_type = value - 1  # player 0, facing 0
+            if piece_type < n_types and kind[piece_type] == prey and not unmoved and not sweep:
+                reach[piece_type][origin].append((target, tuple(prefix), tuple(window), screens))
+    # Generation 41 (N3d, §4.5): the cap per type (entries of one type agree, the validator
+    # says), empty where nothing splits.
+    split = [0] * n_types
+    for npc in npcs if isinstance(npcs, list) else []:
+        if npc_split(npc):
+            split[index_of[npc["piece"]]] = npc_split(npc)
+    return PounceRule(
+        split=tuple(split) if any(split) else (),
+        kind=tuple(kind),
+        value_rank=value_rank,
+        reading_rank=(tuple(range(n_squares)), tuple(second)),
+        distance=tuple(distance),
+        reach=tuple(tuple(tuple(entries) for entries in per_type) for per_type in reach),
     )
 
 

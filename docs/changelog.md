@@ -18,6 +18,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 The designer's piece sections are now one picker. Press a piece to see its drawing, a few words about it
 and how it moves, then add it; this works by touch on a phone too. Each piece's card folds to a single line.
 
+### Wild pieces that pounce, and a hydra that splits
+
+A wild piece can now pounce: it takes a piece of the player who just moved that it attacks, or one that
+attacks it. The choice is always the same for the same position: a king first, then the most valuable piece, then the nearest.
+And a wild piece can split like a hydra, leaving a copy of itself on the square of each piece that attacks it, up to a cap.
+
 ### Wild pieces with auras, and wild pieces you can steer
 
 A wild piece can now freeze, disarm or shield the pieces next to it, alike for both players. And a wild piece

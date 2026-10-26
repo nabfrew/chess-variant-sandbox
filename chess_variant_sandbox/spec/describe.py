@@ -39,7 +39,9 @@ from chess_variant_sandbox.spec.schema import (
     absent_squares,
     has_speeds,
     is_simultaneous,
+    npc_pounce,
     npc_respawn,
+    npc_split,
     npc_turns_back,
     obstacle_squares,
     path_of,
@@ -2322,9 +2324,54 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
                 if survivors
                 else " Nothing may take it."
             )
+        # Generation 39 (N3b, `docs/plan-npc.md` §4.3): the pounce, after what it eats.
+        pounce = ""
+        if npc_pounce(npc) == "attackers":
+            # Generation 40 (N3c, `docs/plan-npc.md` §4.4): it takes what attacks it.
+            pounce = (
+                " It pounces on its attackers: after each move, before any wild piece steps, it "
+                "takes a piece of the player who has just moved that attacks it (one that could "
+                f"capture it if it were that piece's turn, and that a {name} may capture; a "
+                "frozen or disarmed piece attacks nothing), moving onto it, and does not step "
+                "that turn; with several, it takes a royal piece first, then the most valuable, "
+                "then the nearest, then the one nearest the mover's first rank and furthest to "
+                "the mover's left. So no piece it may take can end a move attacking it, and it "
+                "is taken only by a piece that already attacks it when its owner comes to move: "
+                "one whose line the other player's move opened, or one it stepped next to. A "
+                "royal piece that "
+                "attacks it is in check from it. Off its route it stands where it landed until "
+                "it pounces again, and back on its route it walks on."
+            )
+            if npc_split(npc):
+                # Generation 41 (N3d, `docs/plan-npc.md` §4.5): the mitosis.
+                pounce += (
+                    f" It splits, up to {npc_split(npc)}: while fewer than that many wild "
+                    f"{name}s stand (at most {npc_split(npc)}, counted as the phase goes, so "
+                    "two of them share the room), it stays where it is and a new one grows on "
+                    "the square of each piece it would take, in the same order, eating it; past "
+                    "the room it moves onto the next as above, and any after that are spared. A "
+                    "new one is a wild piece like it in every way and acts from the next move."
+                )
+        elif npc_pounce(npc) == "prey":
+            pounce = (
+                f" It pounces: after each move, before any wild piece steps, it takes a piece "
+                f"of the player who has just moved that it attacks by the {name}'s own moves, "
+                "moving onto it, and does not step that turn; with several, it takes a royal "
+                "piece first, then the most valuable, then the nearest, then the one nearest "
+                "the mover's first rank and furthest to the mover's left. A royal piece it "
+                "attacks is in check from it. Off its route it stands where it landed until it "
+                "pounces again, and back on its route it walks on."
+            )
         lines.append(
-            f"A wild {name} belongs to neither player. It {walk}.{more} {eats}.{taken} "
-            f"{worth}{mirrored}{_respawn_words(npc, route, also, rules)}"
+            f"A wild {name} belongs to neither player. It {walk}.{more} {eats}.{taken}"
+            f"{pounce} {worth}{mirrored}{_respawn_words(npc, route, also, rules)}"
+        )
+    pouncers = [npc for npc in npcs if npc_pounce(npc) is not None]
+    if len(pouncers) > 1 or any(npc.get("mirror") or npc.get("also_at") for npc in pouncers):
+        lines.append(
+            "When several wild pieces could pounce after one move, they go in turn, the one "
+            "standing nearest the mover's first rank (then furthest to the mover's left) "
+            "first, each on the board the ones before it left; then the rest step."
         )
     # Generation 37 (N2, `docs/plan-npc.md` §4.2): the rule a shield beside wild pieces needs.
     if any(sight.effect == "shield" for sights in piece_sights(spec).values() for sight in sights):

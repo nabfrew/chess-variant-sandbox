@@ -536,14 +536,16 @@ class TestBatchedGenerations:
         on how many operators there are: Q452's `promote-on-leaving` turned seed 0's first
         draw into a `restrict-a-capture` child the gates reject, and the test then compared
         nothing. So it takes the first seed whose first child is measured, which any
-        operator set has within a few. The search starts at 3, the first such seed under
-        Q452's 34 operators, so the test costs two runs until the next operator moves it.
+        operator set has within a few. The search starts at 11, the first such seed since
+        N3b's `set-the-hounds` (it was 3 from Q452's 34 operators until then; seeds 3 to 10
+        no longer measure their first child), so the test costs two runs until the next
+        operator moves it.
         """
 
         def measured(archive: Archive) -> dict[str, Entry]:
             return {e.hash: e for e in archive.entries if e.parent and e.status == "evaluated"}
 
-        for seed in range(3, 11):
+        for seed in range(11, 19):
             alone = measured(self._seeded(tmp_path / f"a{seed}", batch=1, seed=seed))
             if alone:
                 break

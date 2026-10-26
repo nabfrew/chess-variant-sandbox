@@ -46,10 +46,13 @@ from chess_variant_sandbox.spec.schema import (
     DEFAULT_RANGE,
     FACING_NAMES,
     HEX_SYMMETRIES,
+    POUNCE_KINDS,
     REPETITION_NEVER,
     REST_MAX,
     SIGHT_EFFECTS,
     SIGHT_MAX,
+    SPLIT_MAX,
+    SPLIT_MIN,
     SQUARE_SYMMETRIES,
     TURNING_PATHS,
     _any_equal_speed_meeting,
@@ -64,7 +67,10 @@ from chess_variant_sandbox.spec.schema import (
     has_sights,
     has_speeds,
     is_simultaneous,
+    npc_pounce,
     npc_respawn,
+    npc_split,
+    npc_start_count,
     npc_turns_back,
     obstacle_squares,
     opening_counts,
@@ -925,6 +931,8 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
         return None  # a hand is refused beside a rule that takes several pieces at once
     if _counts_own_kinds(rules):
         return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
+    if any(npc_split(npc) for npc in rules.get("npcs") or ()):
+        return None  # generation 41 (N3d): copies would mint pieces for a capture hand
     if spy_ids(spec):
         return None  # schema 27: a hand that fills from captures or holds a spy gives one back
     promotion = rules.get("promotion")
@@ -1906,7 +1914,7 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Make both players move at once, or make them alternate again (schema 26).
 
     Into rounds: the checkmate win becomes royal capture (there is no check), and the
-    rules a round has no use for are dropped. Out: the rule, every `beats` and the tie go,
+    rules a round has no use for are dropped (a wild piece's pounce among them). Out: the rule, every `beats` and the tie go,
     and the royal capture win stays, which an alternating game plays as it is.
     """
     if _commands(spec):
@@ -1934,6 +1942,12 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
     drops = trial_rules.get("drops")
     if isinstance(drops, dict):
         drops.pop("no_mate", None)
+    # Generation 39 (N3b): a pounce is refused in rounds (no colour-blind order between two
+    # players who both moved), so the wild pieces only walk there.
+    for npc in trial_rules.get("npcs") or []:
+        if isinstance(npc, dict):
+            npc.pop("pounce", None)
+            npc.pop("split", None)  # generation 41 (N3d): only beside a pounce
     trial_rules["simultaneous"] = {}
     # The rest of §4's refusals (a sweep, a moved portal, a strike that stays or chooses,
     # a long turn, a royal in a placement stock) are designs of their own: not applied.
@@ -3731,6 +3745,66 @@ def _pace_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+def _set_the_hounds(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make one kind of wild piece pounce, or none (generation 39, N3b's ``npcs[].pounce``,
+    `docs/plan-npc.md` §4.3; generation 40, N3c's ``"attackers"``, §4.4; generation 41, N3d's
+    ``split``, §4.5).
+
+    In a game where some wild piece pounces, none does any more. Otherwise one wild type,
+    chosen at random, pounces on every entry that walks it (entries of one type must agree),
+    on its prey or on its attackers, chosen at random too (on its attackers, half the time it
+    splits too, up to a cap drawn from its starts to ``SPLIT_MAX``),
+    and the returns and lines refused beside a pounce are dropped from every entry, so the
+    walks go round and a taken wild piece is gone; the validator decides the rest (a type whose
+    moves read differently for the two players, rounds, ``forbid_check``).
+    """
+    rules = spec.get("rules") or {}
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list) or not npcs:
+        return None
+    trial = copy.deepcopy(spec)
+    if any(npc_pounce(npc) is not None for npc in npcs):
+        for npc in trial["rules"]["npcs"]:
+            if isinstance(npc, dict):
+                npc.pop("pounce", None)
+                npc.pop("split", None)
+        said = "the wild pieces no longer pounce on what they attack"
+    else:
+        kinds = sorted({
+            npc["piece"] for npc in npcs if isinstance(npc, dict) and isinstance(npc.get("piece"), str)
+        })
+        if not kinds:
+            return None
+        kind = rng.choice(kinds)
+        style = rng.choice(POUNCE_KINDS)
+        starts = sum(
+            npc_start_count(npc) for npc in npcs if isinstance(npc, dict) and npc.get("piece") == kind
+        )
+        cap = (
+            rng.randint(max(SPLIT_MIN, starts), SPLIT_MAX)
+            if style == "attackers" and starts <= SPLIT_MAX and rng.random() < 0.5 else 0
+        )
+        for npc in trial["rules"]["npcs"]:
+            if not isinstance(npc, dict):
+                continue
+            npc.pop("respawn", None)
+            npc.pop("turns_back", None)
+            if npc.get("piece") == kind:
+                npc["pounce"] = style
+                if cap:
+                    npc["split"] = cap
+        said = (
+            f"after each move a wild {kind} pounces on a piece of the mover's "
+            f"{'it attacks' if style == 'prey' else 'that attacks it'}, before the wild pieces step"
+            + (f", growing a copy on each attacker's square while fewer than {cap} stand" if cap else "")
+        )
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -3744,6 +3818,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("bring-them-back", _bring_them_back),
     Operator("wild-eyes", _wild_eyes),
     Operator("pace-a-line", _pace_a_line),
+    Operator("set-the-hounds", _set_the_hounds),
     Operator("promote-what-arrives", _promote_what_arrives),
     Operator("promote-on-leaving", _promote_on_leaving),
     Operator("count-each-kind", _count_each_kind),

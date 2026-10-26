@@ -855,6 +855,84 @@ impl LineTables {
     }
 }
 
+/// One capture a pouncing type could make from a square (generation 39, N3b): the target and
+/// the path it needs, as an attack source's (`prefix_len` leading squares empty, the rest the
+/// window holding exactly `screens` pieces, of anybody's).
+#[derive(Clone, Copy)]
+pub struct ReachEntry {
+    pub target: u16,
+    pub screens: u8,
+    pub prefix_len: u16,
+    pub path_len: u16,
+    pub path_start: u32,
+}
+
+/// Generation 39 (N3b, `docs/plan-npc.md` §3.2, §4.3): wild pieces that pounce, as the
+/// compiler resolved them (`compile.PounceRule`). `None` on `Tables` for every game in which
+/// no `npcs` entry says `pounce`. The core sorts nothing geometric: the prey order is three
+/// tables and the reach a forward list per type and square (`pounce.rs`).
+pub struct PounceTables {
+    /// `[type]`: 0 for a type that does not pounce, else `POUNCE_PREY` or `POUNCE_ATTACKERS`.
+    pub kind: Vec<u8>,
+    /// Whether any type pounces on its attackers (generation 40, N3c): only then does the
+    /// phase's snapshot list the mover's frozen and disarmed pieces.
+    pub attackers: bool,
+    /// `[type]`: the type's place among the declared values, highest 0, equal values equal.
+    pub value_rank: Vec<u8>,
+    /// `[player * n_squares + square]`: the square's place in that player's reading order.
+    pub reading: Vec<u16>,
+    /// `[a * n_squares + b]`: king's distance (the lattice's own on a hexagon).
+    pub distance: Vec<u8>,
+    /// `[type * n_squares + origin]` .. `+ 1`: that type's captures from `origin` in `targets`.
+    pub targets_index: Vec<u32>,
+    pub targets: Vec<ReachEntry>,
+    pub paths: Vec<u16>,
+    /// `[square]`: the type whose route the square is on, -1 off every route (`NpcRule.piece`).
+    /// A wild piece walks a route only where the route is its own type's (§3.3).
+    pub piece: Vec<i8>,
+    /// `[type]`: what taking a wild piece of the type pays, read off the routes' bounties at
+    /// load (one per type, the validator says), 0.0 for a type no route carries.
+    pub bounty: Vec<f64>,
+    /// `[type]`: the most wild pieces of a splitting type standing at once (generation 41,
+    /// N3d, `docs/plan-npc.md` §4.5), 0 for a type that does not split; empty where nothing
+    /// splits.
+    pub split: Vec<u8>,
+    pub n_squares: usize,
+}
+
+/// `PounceTables::kind` of a type that takes the pieces it attacks (`"prey"`).
+pub const POUNCE_PREY: u8 = 1;
+/// `PounceTables::kind` of a type that takes the pieces attacking it (`"attackers"`,
+/// generation 40, N3c).
+pub const POUNCE_ATTACKERS: u8 = 2;
+
+impl PounceTables {
+    /// `ty`'s captures from `origin`.
+    #[inline]
+    pub fn targets_from(&self, ty: usize, origin: usize) -> &[ReachEntry] {
+        let slot = ty * self.n_squares + origin;
+        &self.targets[self.targets_index[slot] as usize..self.targets_index[slot + 1] as usize]
+    }
+
+    #[inline]
+    pub fn path(&self, entry: &ReachEntry) -> &[u16] {
+        let start = entry.path_start as usize;
+        &self.paths[start..start + entry.path_len as usize]
+    }
+
+    /// Whether a wild piece of type `ty` pounces.
+    #[inline]
+    pub fn pounces(&self, ty: usize) -> bool {
+        self.kind[ty] != 0
+    }
+
+    /// The split cap of type `ty` (generation 41, N3d), 0 for a type that does not split.
+    #[inline]
+    pub fn split_cap(&self, ty: usize) -> usize {
+        self.split.get(ty).copied().unwrap_or(0) as usize
+    }
+}
+
 /// The spy (schema 27, Q935a; `docs/plan-spy.md` §2.4), as the compiler resolved it
 /// (`compile.SpyRule`). The core reads it and decides nothing: the phase is a function of
 /// the board and the side to move (`Game::phase`).
@@ -1202,6 +1280,9 @@ pub struct Tables {
     /// Generation 38 (N5, `docs/plan-npc.md` §4.7): wild pieces that turn back, `None` for
     /// every game in which no `npcs` entry says `turns_back`.
     pub npc_lines: Option<Box<LineTables>>,
+    /// Generation 39 (N3b, `docs/plan-npc.md` §4.3): wild pieces that pounce, `None` for
+    /// every game in which no `npcs` entry says `pounce`.
+    pub pounce: Option<Box<PounceTables>>,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -1554,6 +1635,17 @@ impl Tables {
     #[inline(always)]
     pub fn is_promoting(&self, piece_type: usize) -> bool {
         self.promo_flags[piece_type]
+    }
+
+    /// What taking the wild piece `value` standing on `square` pays: the bounty of the route the
+    /// square is on, or, in a pounce game (generation 39), of the piece's type, since a pouncer
+    /// leaves its route (entries of one type agree on it, the validator says).
+    #[inline]
+    pub fn wild_bounty(&self, value: u8, square: usize) -> f64 {
+        match self.pounce.as_deref() {
+            None => self.npc_bounty[square],
+            Some(pounce) => pounce.bounty[self.type_of(value)],
+        }
     }
 
     /// Whether a piece type is royal. One load, for the callers that ask per piece per
@@ -2373,6 +2465,7 @@ impl Tables {
             sight: None,
             respawn: None,
             npc_lines: None,
+            pounce: None,
             entry_promotion,
             piece_values,
             must_capture,
@@ -2494,6 +2587,15 @@ impl Tables {
             tables.respawn = Some(Box::new(Self::respawn_tables(&tables, &npc_respawn, zobrist_respawn)?));
         } else if !zobrist_respawn.is_empty() {
             return Err(pyo3::exceptions::PyValueError::new_err("respawn keys without a respawn"));
+        }
+
+        // Generation 39 (N3b): the pounce tables, every one empty unless an entry pounces.
+        let pounce_kind: Vec<u8> = field::<Vec<u32>>(source, keys::POUNCE_KIND)?
+            .into_iter()
+            .map(|kind| kind as u8)
+            .collect();
+        if !pounce_kind.is_empty() {
+            tables.pounce = Some(Box::new(Self::pounce_tables(&tables, source, pounce_kind)?));
         }
 
         if has_portals {
@@ -2682,6 +2784,97 @@ impl Tables {
             squares.set(square);
         }
         Ok(LineTables { prev, squares, zobrist })
+    }
+
+    /// Generation 39 (N3b): read the pounce tables, each checked for its size. A pounce needs
+    /// wild pieces, and is refused beside a line and a respawn (`schema._check_npc_pounce`),
+    /// whose phases do not list a pouncer.
+    fn pounce_tables(tables: &Tables, source: &Bound<'_, PyDict>, kind: Vec<u8>) -> PyResult<PounceTables> {
+        let bad = |what: &str| {
+            pyo3::exceptions::PyValueError::new_err(format!("the pounce tables do not fit this board: {what}"))
+        };
+        let n = tables.n_squares;
+        let n_types = tables.n_types;
+        if !tables.has_npcs || tables.npc_lines.is_some() || tables.respawn.is_some() {
+            return Err(bad("a pounce beside no wild piece, a line or a respawn"));
+        }
+        let value_rank: Vec<u8> = field::<Vec<u32>>(source, keys::POUNCE_VALUE_RANK)?
+            .into_iter()
+            .map(|rank| rank.min(255) as u8)
+            .collect();
+        let reading: Vec<u16> = field::<Vec<u32>>(source, keys::POUNCE_READING)?
+            .into_iter()
+            .map(|rank| rank as u16)
+            .collect();
+        let distance: Vec<u8> = field::<Vec<u32>>(source, keys::POUNCE_DISTANCE)?
+            .into_iter()
+            .map(|steps| steps.min(255) as u8)
+            .collect();
+        let targets_index: Vec<u32> = field(source, keys::POUNCE_REACH_INDEX)?;
+        let flat: Vec<u32> = field(source, keys::POUNCE_REACH)?;
+        let paths: Vec<u16> = field::<Vec<u32>>(source, keys::POUNCE_PATHS)?
+            .into_iter()
+            .map(|square| square as u16)
+            .collect();
+        let piece: Vec<i8> = field::<Vec<i32>>(source, keys::NPC_PIECE)?
+            .into_iter()
+            .map(|ty| ty as i8)
+            .collect();
+        if kind.len() != n_types
+            || value_rank.len() != n_types
+            || reading.len() != 2 * n
+            || distance.len() != n * n
+            || targets_index.len() != n_types * n + 1
+            || piece.len() != n
+            || !flat.len().is_multiple_of(5)
+        {
+            return Err(bad("a table of the wrong size"));
+        }
+        let targets: Vec<ReachEntry> = flat
+            .chunks_exact(5)
+            .map(|chunk| ReachEntry {
+                target: chunk[0] as u16,
+                path_start: chunk[1],
+                path_len: chunk[2] as u16,
+                prefix_len: chunk[3] as u16,
+                screens: chunk[4] as u8,
+            })
+            .collect();
+        let in_bounds = targets.iter().all(|entry| {
+            (entry.target as usize) < n
+                && entry.path_start as usize + entry.path_len as usize <= paths.len()
+                && entry.prefix_len <= entry.path_len
+        }) && targets_index.windows(2).all(|pair| pair[0] <= pair[1])
+            && *targets_index.last().expect("sized above") as usize == targets.len()
+            && paths.iter().all(|square| (*square as usize) < n);
+        if !in_bounds {
+            return Err(bad("a reach entry off the board"));
+        }
+        let mut bounty = vec![0.0; n_types];
+        for (square, ty) in piece.iter().enumerate() {
+            if *ty >= 0 && (*ty as usize) < n_types {
+                bounty[*ty as usize] = tables.npc_bounty[square];
+            }
+        }
+        if kind.iter().any(|k| *k > POUNCE_ATTACKERS) {
+            return Err(bad("a pounce of no kind the core knows"));
+        }
+        let attackers = kind.contains(&POUNCE_ATTACKERS);
+        // Generation 41 (N3d): the split caps, only on a type that pounces on its attackers.
+        let split: Vec<u8> = field::<Vec<u32>>(source, keys::POUNCE_SPLIT)?
+            .into_iter()
+            .map(|cap| cap.min(255) as u8)
+            .collect();
+        if !split.is_empty()
+            && (split.len() != n_types
+                || split.iter().zip(&kind).any(|(cap, k)| *cap != 0 && *k != POUNCE_ATTACKERS))
+        {
+            return Err(bad("a split on a type that does not pounce on its attackers"));
+        }
+        Ok(PounceTables {
+            kind, attackers, value_rank, reading, distance, targets_index, targets, paths, piece, bounty, split,
+            n_squares: n,
+        })
     }
 
     /// Generation 36 (N1): read the respawning halves, each checked against the board. The
@@ -3177,6 +3370,15 @@ pub mod keys {
         ZOBRIST_RESPAWN => "zobrist_respawn",
         NPC_PREV => "npc_prev",
         ZOBRIST_HEADING => "zobrist_heading",
+        NPC_PIECE => "npc_piece",
+        POUNCE_KIND => "pounce_kind",
+        POUNCE_VALUE_RANK => "pounce_value_rank",
+        POUNCE_READING => "pounce_reading",
+        POUNCE_DISTANCE => "pounce_distance",
+        POUNCE_REACH_INDEX => "pounce_reach_index",
+        POUNCE_REACH => "pounce_reach",
+        POUNCE_PATHS => "pounce_paths",
+        POUNCE_SPLIT => "pounce_split",
         ZOBRIST_SIM => "zobrist_sim",
         ZOBRIST_PIECES => "zobrist_pieces",
         ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",

@@ -541,6 +541,26 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         for every, starts in (npcs.respawn if npcs is not None else ())
         for value in (every, len(starts), *starts)
     ]
+    # Generation 39 (N3b, `docs/plan-npc.md` §4.3): the pounce tables, every one empty unless an
+    # entry pounces. The reach is ``[target, path_start, path_len, prefix_len, screens]`` per
+    # entry into ``pounce_paths``, indexed per (type, origin); ``npc_piece`` (each square's route
+    # type, -1 off every route) crosses only beside a pounce, where a wild piece can stand on a
+    # route that is not its own.
+    pounce = spec.pounce
+    pounce_reach_index: list[int] = []
+    pounce_reach: list[int] = []
+    pounce_paths: list[int] = []
+    if pounce is not None:
+        pounce_reach_index.append(0)
+        for per_type in pounce.reach:
+            for origin in range(spec.n_squares):
+                for target, prefix, window, screens in per_type[origin] if per_type else ():
+                    pounce_reach.extend(
+                        (target, len(pounce_paths), len(prefix) + len(window), len(prefix), screens)
+                    )
+                    pounce_paths.extend(prefix)
+                    pounce_paths.extend(window)
+                pounce_reach_index.append(len(pounce_reach) // 5)
 
     # --- Promotion on entering play (schema 9) ---
     # One table, `[player][piece_type][square]` flattened in that order, holding the
@@ -791,6 +811,21 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # keys, both empty unless an entry turns back.
         "npc_prev": list(npcs.prev) if npcs is not None else [],
         "zobrist_heading": list(spec.zobrist_heading),
+        # Generation 39 (N3b, `docs/plan-npc.md` §4.3): the pounce tables, all empty unless an
+        # entry pounces.
+        "npc_piece": list(npcs.piece) if npcs is not None and pounce is not None else [],
+        "pounce_kind": list(pounce.kind) if pounce is not None else [],
+        "pounce_value_rank": list(pounce.value_rank) if pounce is not None else [],
+        "pounce_reading": [
+            rank for player in pounce.reading_rank for rank in player
+        ] if pounce is not None else [],
+        "pounce_distance": list(pounce.distance) if pounce is not None else [],
+        "pounce_reach_index": pounce_reach_index,
+        "pounce_reach": pounce_reach,
+        "pounce_paths": pounce_paths,
+        # Generation 41 (N3d, `docs/plan-npc.md` §4.5): the cap per type, empty unless a type
+        # splits.
+        "pounce_split": list(pounce.split) if pounce is not None else [],
         # Promotion on entering play
         "entry_promotion": entry_promotion,
         # Portals (schema 19)
@@ -1012,6 +1047,17 @@ _INERT_DEFAULTS: dict[str, Any] = {
     # Generation 38 (N5). Empty unless an `npcs` entry says `turns_back`.
     "npc_prev": [],
     "zobrist_heading": [],
+    # Generation 39 (N3b). Empty unless an `npcs` entry says `pounce`.
+    "npc_piece": [],
+    "pounce_kind": [],
+    "pounce_value_rank": [],
+    "pounce_reading": [],
+    "pounce_distance": [],
+    "pounce_reach_index": [],
+    "pounce_reach": [],
+    "pounce_paths": [],
+    # Generation 41 (N3d). Empty unless an `npcs` entry says `split`.
+    "pounce_split": [],
     "entry_promotion": [],
     # Schema 19 (Q771). Empty and false unless the spec has portals.
     "has_portals": False,

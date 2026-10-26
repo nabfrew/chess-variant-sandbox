@@ -336,11 +336,26 @@ function wildOnesWords(id) {
     // Generation 36 (N1): a taken one comes back.
     const every = Number.isInteger(npc.respawn) && npc.respawn > 0 ? npc.respawn : 0;
     const back = every ? `, and comes back ${every} move${every === 1 ? '' : 's'} after it is taken` : '';
-    if (npc.route.length === 1) return `${stands}${mirrored} never moves${back}`;
+    // Generation 41 (N3d): a hydra, growing a copy on each attacker's square up to its cap.
+    const cap = npc.pounce === 'attackers' && Number.isInteger(npc.split) && npc.split >= 2 ? npc.split : 0;
+    const splits = cap ? `, growing a new one on each attacker's square while fewer than ${cap} stand` : '';
+    if (npc.route.length === 1) {
+      const pounces = npc.pounce === 'prey'
+        ? ' until it pounces on a piece of the side that just moved that it attacks'
+        // Generation 40 (N3c): a guard, taking what attacks it of the mover's.
+        : npc.pounce === 'attackers'
+          ? ' until it pounces on a piece of the side that just moved that attacks it' : '';
+      return `${stands}${mirrored} never moves${pounces}${splits}${back}`;
+    }
     // Generation 38 (N5): a line paced to its end and back, turning where it is blocked.
     const paces = npc.turns_back === true
       ? ', to its end and back, turning round wherever it is blocked' : '';
-    return `${stands}${mirrored} ${walks} ${walkWords(npc.route)}${paces}${back}`;
+    // Generation 39 (N3b): a hunter, taking what it attacks of the mover's.
+    const hunts = npc.pounce === 'prey'
+      ? ', pouncing first on any piece of the side that just moved that it attacks'
+      : npc.pounce === 'attackers'
+        ? ', pouncing first on any piece of the side that just moved that attacks it' : '';
+    return `${stands}${mirrored} ${walks} ${walkWords(npc.route)}${paces}${hunts}${splits}${back}`;
   });
 }
 

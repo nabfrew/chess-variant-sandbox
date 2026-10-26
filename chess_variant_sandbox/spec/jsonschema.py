@@ -1074,6 +1074,47 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                                 "reach.safe). Leave it out (or write false) for a cycle."
                             ),
                         },
+                        "pounce": {
+                            "type": "string",
+                            "enum": ["prey", "attackers"],
+                            "description": (
+                                "\"prey\": after each move, before the wild pieces step, this "
+                                "piece takes a piece of the player who has just moved that it "
+                                "attacks by its own type's capture moves, moving onto it; with "
+                                "several, a royal first, then the higher value, then the "
+                                "nearer, then the square nearest the mover's first rank and "
+                                "furthest to the mover's left. A royal it attacks is in check. "
+                                "\"attackers\": instead it takes a piece of the player who has "
+                                "just moved that attacks it (one that could take it, and that "
+                                "its type may take; a frozen or disarmed piece attacks "
+                                "nothing), chosen in the same order; a royal that attacks it "
+                                "is in check, so nothing walks up to it, and it falls to a "
+                                "piece that already attacks it when its owner moves. "
+                                "Off its route it stands until it pounces again, and back on "
+                                "it it walks on. Not in rounds, not beside respawn, "
+                                "turns_back or forbid_check; its type's moves must read the "
+                                "same for both players (no facing, region, move condition or "
+                                "owner-named hop screen), and every entry of one type must "
+                                "agree on pounce and bounty."
+                            ),
+                        },
+                        "split": {
+                            "type": "integer",
+                            "minimum": 2,
+                            "maximum": 8,
+                            "description": (
+                                "Only beside pounce \"attackers\": the most wild pieces of "
+                                "this type that may stand at once. When it has attackers to "
+                                "take, a copy of it grows on each attacker's square in the "
+                                "pounce order, eating it, while fewer than this many stand "
+                                "(counted as the phase goes, so two of the type share the "
+                                "room); past the room it moves onto the next as a plain "
+                                "pouncer does, and the rest are spared. A copy is the same "
+                                "wild piece in every way and acts from the next phase. Not "
+                                "below the type's starts, not beside respawn or drops that "
+                                "fill a hand from captures; every entry of one type must agree."
+                            ),
+                        },
                         "bounty": {
                             "type": "number",
                             "minimum": 0,

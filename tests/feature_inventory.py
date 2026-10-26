@@ -31,14 +31,16 @@ from chess_variant_sandbox.spec.schema import (
     has_rests,
     has_speeds,
     keeping_link_holds,
+    npc_pounce,
     npc_respawn,
+    npc_split,
     npc_turns_back,
     promoting_piece_ids,
     uses_sweep,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 38
+LAST_BUMP = 41
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -836,6 +838,21 @@ def _schema_thirty_eight_uses(spec: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _schema_thirty_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 39 added, by name (N3b, `docs/plan-npc.md`
+    §4.3; numbered by order of landing, bumping no version).
+
+    * ``rules.npcs.pounce.prey`` -- a wild piece pounces on a piece of the player who has just
+      moved that it attacks, by the prey order; check from it is the pass test.
+    """
+    rules = spec.get("rules")
+    npcs = rules.get("npcs") if isinstance(rules, dict) else None
+    for npc in npcs if isinstance(npcs, list) else ():
+        if npc_pounce(npc) == "prey":
+            return {"rules.npcs.pounce.prey"}
+    return set()
+
+
 def _hex_symmetries_used(spec: dict[str, Any]) -> set[str]:
     """Schema 18b's names for the hexagon's turns, wherever a descriptor writes one."""
     written: list[Any] = []
@@ -857,6 +874,36 @@ def _hex_symmetries_used(spec: dict[str, Any]) -> set[str]:
 def uses(version: int, spec: dict[str, Any]) -> set[str]:
     """The names schema ``version`` added that ``spec`` uses (9 to `LAST_BUMP`)."""
     return set(_COLLECTORS[version](spec))
+
+
+def _schema_forty_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 40 added, by name (N3c, `docs/plan-npc.md`
+    §4.4; numbered by order of landing, bumping no version).
+
+    * ``rules.npcs.pounce.attackers`` -- a wild piece pounces on a piece of the player who has
+      just moved that attacks it, by the prey order; check from it is the pass test.
+    """
+    rules = spec.get("rules")
+    npcs = rules.get("npcs") if isinstance(rules, dict) else None
+    for npc in npcs if isinstance(npcs, list) else ():
+        if npc_pounce(npc) == "attackers":
+            return {"rules.npcs.pounce.attackers"}
+    return set()
+
+
+def _schema_forty_one_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 41 added, by name (N3d, `docs/plan-npc.md`
+    §4.5; numbered by order of landing, bumping no version).
+
+    * ``rules.npcs.split`` -- an ``"attackers"`` pouncer grows a copy of itself on each
+      attacker's square while its type stands under the cap, then lunges as before.
+    """
+    rules = spec.get("rules")
+    npcs = rules.get("npcs") if isinstance(rules, dict) else None
+    for npc in npcs if isinstance(npcs, list) else ():
+        if npc_split(npc):
+            return {"rules.npcs.split"}
+    return set()
 
 
 _COLLECTORS = {
@@ -890,4 +937,7 @@ _COLLECTORS = {
     36: _schema_thirty_six_uses,
     37: _schema_thirty_seven_uses,
     38: _schema_thirty_eight_uses,
+    39: _schema_thirty_nine_uses,
+    40: _schema_forty_uses,
+    41: _schema_forty_one_uses,
 }

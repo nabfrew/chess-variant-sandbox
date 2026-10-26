@@ -603,6 +603,9 @@ _EVERY_RULESET += sorted(Path(__file__).parent.glob("_sight_wild_*.json"))
 # so the two turning test specs (pacing wolves in chess to the king's capture; a round game's
 # pacing knight) join it.
 _EVERY_RULESET += sorted(Path(__file__).parent.glob("_turning_*.json"))
+# N3b: no committed or archived game has a wild piece that pounces until N7's showcase lands, so
+# the pounce test spec (hounds and lurkers in chess) joins it.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_pounce_*.json"))
 
 
 def test_the_walk_below_reads_the_whole_corpus() -> None:

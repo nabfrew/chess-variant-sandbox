@@ -41,6 +41,7 @@ from chess_variant_sandbox.engine.compile import (
     WILD,
     CompiledSpec,
     HexCopy,
+    PounceRule,
     PromotionRule,
     ReachRule,
     WrapRule,
@@ -53,7 +54,7 @@ from chess_variant_sandbox.engine.moves import (
     move_to,
     move_type,
 )
-from chess_variant_sandbox.spec.schema import WRAP_PAIRS
+from chess_variant_sandbox.spec.schema import POUNCE_KINDS, WRAP_PAIRS
 
 
 def goal_payload(reach: ReachRule | None) -> list[list[int]] | None:
@@ -155,6 +156,16 @@ def walls_payload(compiled: CompiledSpec) -> dict[str, list[int]]:
         "obstacles": sorted(compiled.obstacles - compiled.absent),
         "absent": sorted(compiled.absent),
     }
+
+
+def pounce_kinds_payload(pounce: PounceRule | None) -> list[str | None] | None:
+    """Each type's pounce kind, by name, as the board payloads send it (generation 40, N3c):
+    ``None`` for a type that does not pounce, and ``None`` for the whole where nothing does.
+    The compiled ``PounceRule.kind`` read back through ``POUNCE_KINDS``, so the page words a
+    pounce by the rule the core played, never by the spec's spelling."""
+    if pounce is None:
+        return None
+    return [POUNCE_KINDS[kind - 1] if kind else None for kind in pounce.kind]
 
 
 def portal_payload(compiled: CompiledSpec) -> dict[str, Any] | None:

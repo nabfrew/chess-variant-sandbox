@@ -463,7 +463,21 @@ class TestTheFingerprintsPointAtSomething:
 # packing of the headings and `make_state(heading_back=...)`; see `FROZEN_ANALYSIS`). No library
 # game writes `npcs[].turns_back`, so no number can move. It was "69b24f7e39c6bc91" after N2;
 # the next library replay (R35, for N2 and N5 together) re-scores under it.
-FROZEN_METRICS = "c5a6b2b99d42a76f"
+#
+# **Moved 2026-10-26 by N3b (wild pieces that pounce)**: the `analysis` files it reads
+# (`tournament/analysis.py`'s `GameAnalysis.wild` tally, `engine/state.py`'s `"pounce"` phase
+# kind; see `FROZEN_ANALYSIS`). No library game pounces, and no metric reads the tally, so no
+# number can move. It was "c5a6b2b99d42a76f" after R35; the replay after N3d re-scores under it.
+#
+# **Moved 2026-10-26 by N3c (pounce on attackers)**: the `analysis` files it reads (the wild
+# tally's `pounces_on_attackers`; see `FROZEN_ANALYSIS`). No library game pounces, so no number
+# can move. It was "47cdf8cd6a324b18" after N3b; the replay after N3d re-scores under it.
+#
+# **Moved 2026-10-26 by N3d (split)**: the `analysis` files it reads (the wild tally's `copies`,
+# `engine/state.py`'s `"copy"` kind, `engine/compile.py`'s `PounceRule.split`; see
+# `FROZEN_ANALYSIS`). No library game pounces, so no number can move. It was "82b519ad88a2ec81"
+# after N3c; the replay after N3d (R36) re-scores under it.
+FROZEN_METRICS = "fdac473216822a6e"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -751,7 +765,18 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # `FROZEN_METRICS`); a game without `turns_back` is analysed byte for byte as before
 # (`tests/test_speed.py`'s round digest). It was "a2baeaa95170685f" after N2; the next library
 # replay (R35) is the re-analysis.
-FROZEN_ANALYSIS = "63ae2694b7785b01"
+#
+# **Moved 2026-10-26 by N3b**: `tournament/analysis.py`'s `GameAnalysis.wild` (written for every
+# alternating game with wild pieces, so the six library wild games' `analysis.json` gain the key
+# at the re-analysis) and `engine/state.py`'s `"pounce"` kind (see `FROZEN_METRICS`). It was
+# "63ae2694b7785b01" after R35; the replay after N3d is the re-analysis.
+#
+# **Moved 2026-10-26 by N3c**: the wild tally's `pounces_on_attackers` (`WILD_COUNTS`), read off
+# `engine/compile.py`'s `POUNCE_ATTACKERS`. It was "c74b20716e75e488" after N3b.
+#
+# **Moved 2026-10-26 by N3d**: the wild tally's `copies` (`WILD_COUNTS`), the `"copy"` phase kind
+# and `PounceRule.split`. It was "e5eae30f2bac5ff7" after N3c.
+FROZEN_ANALYSIS = "5baf21c0ef18e834"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

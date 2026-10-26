@@ -161,7 +161,10 @@ FACING_NAMES = ("forward", "right", "backward", "left")
 # pawn going backward. See ``_check_fixed_facings``.
 _FACING_KEYS = {"axes", "initial", "turns"}
 # ``immune`` is schema 10 (Q78) and is documented at ``REPETITION_NEVER`` below.
-_NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at", "respawn", "turns_back"}
+_NPC_KEYS = {
+    "piece", "route", "bounty", "mirror", "immune", "also_at", "respawn", "turns_back", "pounce",
+    "split",
+}
 
 # Schema 19 (Q771, `docs/archive/plan-portals.md` §1): pairs of portals. A piece whose move ends on
 # an end open to its player comes out one king's step beyond the other end, in the
@@ -4200,6 +4203,8 @@ def _check_npc_coherence(
             "wild piece that eats does not explode"
         )
     _check_npc_turns_back(npcs, rules, errors)
+    _check_npc_pounce(npcs, by_id, rules, orientation, errors)
+    _check_npc_split(npcs, rules, errors)
 
     if turn_is_long(rules):
         errors.append(
@@ -4264,6 +4269,157 @@ def _check_npc_turns_back(npcs: list[Any], rules: dict[str, Any], errors: list[s
                 f"{loc} beside {rule}: the square a turning piece threatens depends on what "
                 'blocks it; turning back is for a game without check ("win": '
                 '"royal_capture", "annihilation" or "none", no forbid_check, no safe goal)'
+            )
+
+
+def _check_npc_pounce(
+    npcs: list[Any],
+    by_id: dict[str, Any],
+    rules: dict[str, Any],
+    orientation: str,
+    errors: list[str],
+) -> None:
+    """Generation 39 (N3b, `docs/plan-npc.md` §4.3): a pouncing entry against the rest.
+
+    * **rounds** -- both players have just moved, and no order between two equal pieces of
+      different players is colour-blind;
+    * **a type whose moves read differently for the two players**, **a facing**, **a region**
+      or **a move condition** -- each a question about whose forward or whose rank, and a
+      wild piece has neither; **a hop whose screen names an owner** -- a wild piece has no
+      own or enemy;
+    * **a type that attacks nothing** (no capture move, or ``captures: []``) -- it would never
+      pounce;
+    * **two entries of one type that disagree on pounce or bounty** -- a pouncer leaves its
+      route, so what it does and pays is read off its type, not its square;
+    * **respawn** and **turns_back** anywhere beside a pounce -- a pouncer leaves its route, so
+      the board no longer says which walk it belongs to, and a pouncer off its route has no
+      line to head along;
+    * **forbid_check** -- whether a move gives check would be the opponent's pass test inside
+      this move's filter.
+
+    Portals, strike, explosions, contacts, a sweep and a long turn are refused beside every
+    wild piece already.
+    """
+    pouncing = [(index, npc) for index, npc in enumerate(npcs) if npc_pounce(npc) is not None]
+    if not pouncing:
+        return
+    first_loc = f"rules.npcs[{pouncing[0][0]}].pounce"
+    if "simultaneous" in rules:
+        errors.append(
+            f"{first_loc} in a game in rounds (rules.simultaneous): both players have just "
+            "moved, and no order between two equal pieces of different players is colour-blind"
+        )
+    if rules.get("forbid_check") is True:
+        errors.append(
+            f"{first_loc} beside forbid_check: whether a move gives check would be the "
+            "opponent's pass test inside this move's filter"
+        )
+    for index, npc in enumerate(npcs):
+        if not isinstance(npc, dict):
+            continue
+        if npc_respawn(npc):
+            errors.append(
+                f"rules.npcs[{index}].respawn beside a pounce ({first_loc}): a pouncer leaves "
+                "its route, so the board no longer says which walk it belongs to"
+            )
+        if npc_turns_back(npc):
+            errors.append(
+                f"rules.npcs[{index}].turns_back beside a pounce ({first_loc}): a pouncer off "
+                "its route has no line to head along"
+            )
+    seen: set[str] = set()
+    for index, npc in pouncing:
+        piece_id = npc.get("piece")
+        piece = by_id.get(piece_id) if isinstance(piece_id, str) else None
+        if not isinstance(piece, dict) or piece_id in seen:
+            continue
+        seen.add(piece_id)
+        loc = f"rules.npcs[{index}].pounce"
+        if "facing" in piece:
+            errors.append(f"{loc} on {piece_id!r}, which has a facing: a wild piece has no forward")
+        if "region" in piece:
+            errors.append(f"{loc} on {piece_id!r}, which has a region: a wild piece has no rank of its own")
+        moves = piece.get("moves")
+        moves = [move for move in moves if isinstance(move, dict)] if isinstance(moves, list) else []
+        for number, move in enumerate(moves):
+            where = f"{loc} on {piece_id!r} (moves[{number}])"
+            if not reads_alike_for_both(move.get("vectors"), move.get("symmetry", "none"), orientation):
+                errors.append(
+                    f"{where}, whose move reads differently for the two players: a wild piece "
+                    "has no forward (use a symmetry that covers both, such as rotate4 or dihedral8)"
+                )
+            if "condition" in move:
+                errors.append(f"{where}, whose move has a condition: a wild piece has no rank or first move of its own")
+            if move.get("screen", "any") != "any":
+                errors.append(f"{where}, a hop whose screen names an owner: a wild piece has no own or enemy")
+        if piece.get("captures") == []:
+            errors.append(f"{loc} on {piece_id!r}, which takes nothing: it would never pounce")
+        elif npc_pounce(npc) == "prey" and not any(
+            move.get("mode", "both") != "move" for move in moves
+        ):
+            # Generation 40 (N3c): an ``"attackers"`` pouncer takes by its capture list alone,
+            # moving onto what attacks it, so it needs no capture move of its own.
+            errors.append(f"{loc} on {piece_id!r}, which attacks nothing: it would never pounce")
+    for piece_id in sorted(seen):
+        entries = [npc for npc in npcs if isinstance(npc, dict) and npc.get("piece") == piece_id]
+        if len({npc_split(npc) for npc in entries}) > 1:
+            errors.append(
+                f"rules.npcs has two wild {piece_id!r} that disagree on split; the cap is counted "
+                "over the type, so it is a fact about the type"
+            )
+        if len({npc_pounce(npc) for npc in entries}) > 1:
+            errors.append(
+                f"rules.npcs has two wild {piece_id!r} that disagree on pounce; a pouncer leaves "
+                "its route, so what it does is a fact about its type"
+            )
+        value = (by_id.get(piece_id) or {}).get("value", 1)
+        if len({npc.get("bounty", value) for npc in entries}) > 1:
+            errors.append(
+                f"rules.npcs has two wild {piece_id!r} that disagree on bounty; a pouncer leaves "
+                "its route, so what taking it pays is a fact about its type"
+            )
+
+
+def _check_npc_split(npcs: list[Any], rules: dict[str, Any], errors: list[str]) -> None:
+    """Generation 41 (N3d, `docs/plan-npc.md` §4.5): a splitting entry against the rest.
+
+    * **split without pounce "attackers"** -- the copies grow on the attackers' squares;
+    * **split below the type's starts** (every entry of the type counted) -- it would start
+      over its cap;
+    * **split beside drops that fill a hand from captures** -- copies would mint pieces for
+      hands without limit;
+    * **respawn beside split** (§4.1) -- a hydra that both grows and comes back would have two
+      counts of how many it should have. The wider *respawn beside a pounce* refuses it too.
+    """
+    splitting = [(index, npc) for index, npc in enumerate(npcs) if npc_split(npc)]
+    if not splitting:
+        return
+    drops = rules.get("drops")
+    if isinstance(drops, dict) and drops and drops.get("from_captures", True) is not False:
+        errors.append(
+            f"rules.npcs[{splitting[0][0]}].split beside drops that fill a hand from captures: "
+            "copies would mint pieces for hands without limit"
+        )
+    for index, npc in splitting:
+        loc = f"rules.npcs[{index}].split"
+        if npc_pounce(npc) != "attackers":
+            errors.append(
+                f"{loc} without pounce \"attackers\": a copy grows on the square of a piece "
+                "that attacked it, so only a piece that pounces on its attackers splits"
+            )
+        starts = sum(
+            npc_start_count(other) for other in npcs
+            if isinstance(other, dict) and other.get("piece") == npc.get("piece")
+        )
+        if npc_split(npc) < starts:
+            errors.append(
+                f"{loc} is {npc_split(npc)}, below the {starts} wild {npc.get('piece')!r} the "
+                "game starts with: it would start over its cap"
+            )
+        if npc_respawn(npc):
+            errors.append(
+                f"rules.npcs[{index}].respawn beside split: a hydra that both grows and comes "
+                "back would have two counts of how many it should have; give it one"
             )
 
 
@@ -6376,6 +6532,52 @@ def npc_turns_back(npc: Any) -> bool:
     return isinstance(npc, dict) and npc.get("turns_back") is True
 
 
+# Generation 39 (N3b, `docs/plan-npc.md` §4.3): what a pouncing wild piece takes. ``"prey"``:
+# the pieces of the player who has just moved that it attacks. ``"attackers"`` (generation 40,
+# N3c, §4.4): the pieces of the player who has just moved that attack it. The order is the
+# core's (`PounceTables::kind` is the index plus one).
+POUNCE_KINDS = ("prey", "attackers")
+
+
+def npc_pounce(npc: Any) -> str | None:
+    """A wild-piece entry's ``pounce`` (generation 39, N3b, `docs/plan-npc.md` §4.3): one of
+    ``POUNCE_KINDS``, or None where it writes none or something the validator refuses. The one
+    reader, for the compiler, the words and the operators."""
+    if not isinstance(npc, dict):
+        return None
+    kind = npc.get("pounce")
+    return kind if isinstance(kind, str) and kind in POUNCE_KINDS else None
+
+
+# Generation 41 (N3d, `docs/plan-npc.md` §4.5): the bounds of ``npcs[].split``, the most
+# pieces of a splitting type standing at once.
+SPLIT_MIN = 2
+SPLIT_MAX = 8
+
+
+def npc_split(npc: Any) -> int:
+    """A wild-piece entry's ``split`` (generation 41, N3d, `docs/plan-npc.md` §4.5): the most
+    pieces of its type that may stand at once, a copy growing on each attacker's square while
+    there is room; 0 where it writes none or something the validator refuses. The one reader,
+    for the compiler, the words and the operators."""
+    if not isinstance(npc, dict):
+        return 0
+    cap = npc.get("split")
+    if isinstance(cap, bool) or not isinstance(cap, int) or not SPLIT_MIN <= cap <= SPLIT_MAX:
+        return 0
+    return cap
+
+
+def npc_start_count(npc: Any) -> int:
+    """How many wild pieces an entry puts on the board at ply zero: its route's first square
+    and each ``also_at``, twice under ``mirror``."""
+    if not isinstance(npc, dict):
+        return 0
+    also = npc.get("also_at")
+    count = 1 + (len(also) if isinstance(also, list) else 0)
+    return count * (2 if npc.get("mirror") is True else 1)
+
+
 def npc_starts(
     rules: Any, width: int, height: int, orientation: str = "mirror"
 ) -> list[tuple[int, str, int]]:
@@ -6538,6 +6740,19 @@ def _validate_npcs(
             errors.append(
                 f"{loc}.turns_back must be a boolean: true walks the route as a line, first "
                 "to last and back, turning round wherever the way is blocked"
+            )
+
+        if "pounce" in npc and npc_pounce(npc) is None:
+            errors.append(
+                f"{loc}.pounce must be one of {POUNCE_KINDS}: \"prey\" takes the pieces of the "
+                "player who has just moved that it attacks, \"attackers\" the ones that attack it"
+            )
+
+        if "split" in npc and npc_split(npc) == 0:
+            errors.append(
+                f"{loc}.split must be a whole number from {SPLIT_MIN} to {SPLIT_MAX}: the most "
+                "pieces of this type that may stand at once, a copy growing on each attacker's "
+                "square while there is room"
             )
 
         _validate_npc_immune(npc, loc, rules or {}, piece_ids, errors)

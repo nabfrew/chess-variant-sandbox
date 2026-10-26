@@ -51,6 +51,7 @@ from chess_variant_sandbox.viz.wrapped import (
     goal_payload,
     portal_payload,
     portal_transit,
+    pounce_kinds_payload,
     walls_payload,
     wrap_payload,
     zone_payload,
@@ -414,6 +415,10 @@ class Session:
                 "lattice": engine.spec.lattice,
                 "pieceIds": list(engine.spec.piece_ids),
                 "pieceNames": list(engine.spec.piece_names),
+                # Generation 40 (N3c): each type's compiled pounce kind, or ``None`` where
+                # nothing pounces: the phase's words tell a pounce on an attacker from one
+                # on prey by it, the log's kind being one for both.
+                "pounceKinds": pounce_kinds_payload(engine.spec.pounce),
                 # Schema 18e (Q785): each hand slot's other face, or -1, compiled; `None`
                 # where a held piece comes back as itself only. The hand draws a button
                 # per face from it, so the picker never reads `promoted_from`.

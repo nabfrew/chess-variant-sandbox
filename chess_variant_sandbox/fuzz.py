@@ -397,20 +397,35 @@ def every_npc_stands_on_its_own_route(engine: Engine, state: Any) -> None:
     stepping onto another rather than waiting (two become one, so a route holds fewer --
     or, before schema 23, two on one loop), and a wild byte appearing where no route runs.
     Schema 23's ``also_at`` starts several on one route, so the bound is the route's count
-    of starts rather than one. Cheap when nothing is wild: one `is None`.
+    of starts rather than one. A pouncing type (generation 39) may stand anywhere, no more of
+    it than started, or than its split cap (generation 41). Cheap when nothing is wild: one
+    `is None`.
     """
     spec = engine.spec
     npcs = spec.npcs
     if npcs is None:
         return
+    # Generation 39 (N3b): a pouncer leaves its route, so a pouncing type may stand anywhere,
+    # and the bound is per type: no more of it than started.
+    pouncing = (
+        {t for t, kind in enumerate(spec.pounce.kind) if kind} if spec.pounce is not None else set()
+    )
+    started: dict[int, int] = {}
     allowed: dict[int, int] = {}
-    for start, _ in npcs.starts:
+    for start, piece_type in npcs.starts:
+        if piece_type in pouncing:
+            started[piece_type] = started.get(piece_type, 0) + 1
+            continue
         key = _route_key(npcs, start)
         allowed[key] = allowed.get(key, 0) + 1
     on_route: dict[int, list[int]] = {}
+    standing: dict[int, int] = {}
     for square in range(spec.n_squares):
         value = state.board[square]
         if value == 0 or spec.owner_of(value) != WILD:
+            continue
+        if spec.type_of(value) in pouncing:
+            standing[spec.type_of(value)] = standing.get(spec.type_of(value), 0) + 1
             continue
         if npcs.next[square] < 0:
             raise OracleFailure(f"a wild piece stands on square {square}, where no route runs")
@@ -426,6 +441,19 @@ def every_npc_stands_on_its_own_route(engine: Engine, state: Any) -> None:
             raise OracleFailure(
                 f"{len(squares)} wild pieces walk one route, on squares {squares}, which "
                 f"started {allowed.get(key, 0)}"
+            )
+    # Generation 41 (N3d): a splitting type grows copies, up to its cap and no further.
+    split = spec.pounce.split if spec.pounce is not None else ()
+    for piece_type, count in standing.items():
+        cap = split[piece_type] if split else 0
+        if cap and count > cap:
+            raise OracleFailure(
+                f"{count} wild {spec.piece_ids[piece_type]!r} stand, over its split cap of {cap}"
+            )
+        if not cap and count > started.get(piece_type, 0):
+            raise OracleFailure(
+                f"{count} wild {spec.piece_ids[piece_type]!r} stand, and "
+                f"{started.get(piece_type, 0)} started"
             )
 
 

@@ -41,6 +41,7 @@ from chess_variant_sandbox._core import REGRET_ITERATIONS, regret_solve
 from chess_variant_sandbox.agents import native_spec
 from chess_variant_sandbox.agents.evaluation import WIN_SCORE, Evaluator
 from chess_variant_sandbox.engine import Engine, GameState, SpyPhase
+from chess_variant_sandbox.engine.compile import POUNCE_ATTACKERS
 from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
     MOVE_COMMANDED,
@@ -139,6 +140,11 @@ class GameAnalysis:
     # side-turn in each of `REST_SERIES`, as the core answers it (`Engine.rest_turn`).
     # ``None`` for a game without a rest, and then absent from the file, as ``rounds`` is.
     rest: dict[str, list[int]] | None = None
+    # Generation 39 (N3b, `docs/plan-npc.md` §4.3): what the wild pieces did (`WILD_COUNTS`),
+    # read off the phase log's kinds as the pass replays each move, with the pounces' victims
+    # by type. ``None`` for a game without wild pieces (and for a game in rounds), and then
+    # absent from the file, as ``rounds`` is.
+    wild: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -151,6 +157,8 @@ class GameAnalysis:
             del data["sight"]
         if self.rest is None:
             del data["rest"]
+        if self.wild is None:
+            del data["wild"]
         return data
 
     @classmethod
@@ -500,6 +508,53 @@ def _count_rest(
         tally[key].append(value)
 
 
+# Generation 39 (N3b, `docs/plan-npc.md` §4.3): the wild tally, per game. The phase log's
+# entries by kind (``steps_eating`` the steps that ate, then every pounce, return and turn),
+# the wild pieces players took, and the most standing at once; beside it ``pounced``, the
+# pounces' victims by type in the spec's piece order. N1 left returns uncounted; they are here.
+# Generation 40 (N3c, §4.4): ``pounces_on_attackers``, the pounces by a type that takes what
+# attacks it, read off the compiled kind of the piece standing on the pounce's origin before the
+# move (a player's move never puts a wild piece anywhere, and a pouncer only leaves its square).
+# Generation 41 (N3d, §4.5): ``copies``, the heads a splitting pouncer grew (each one ate an
+# attacker); the heads standing and taken are ``most_standing`` and ``taken_by_players``.
+WILD_COUNTS = (
+    "steps_eating", "pounces", "pounces_on_attackers", "copies", "returns", "turns",
+    "taken_by_players", "most_standing",
+)
+
+
+def _wild_tally(engine: Engine) -> dict[str, Any] | None:
+    if engine.spec.npcs is None:
+        return None
+    return {**dict.fromkeys(WILD_COUNTS, 0), "pounced": [0] * engine.spec.n_types}
+
+
+def _count_wild(
+    engine: Engine, wild: dict[str, Any], board: bytes, move: int, after: GameState, phase: Any
+) -> None:
+    spec = engine.spec
+    target = board[move_to(move)]
+    if _takes(board, move) and target and spec.owner_of(target) == 2:
+        wild["taken_by_players"] += 1
+    for step in phase:
+        if step.kind == "step":
+            wild["steps_eating"] += int(step.eaten != 0)
+        elif step.kind == "pounce":
+            wild["pounces"] += 1
+            wild["pounced"][spec.type_of(step.eaten)] += 1
+            pouncer = board[step.origin]
+            if spec.pounce is not None and spec.pounce.kind[spec.type_of(pouncer)] == POUNCE_ATTACKERS:
+                wild["pounces_on_attackers"] += 1
+        elif step.kind == "copy":
+            wild["copies"] += 1
+        elif step.kind == "return":
+            wild["returns"] += 1
+        elif step.kind == "turn":
+            wild["turns"] += 1
+    standing = sum(1 for value in after.board if value and spec.owner_of(value) == 2)
+    wild["most_standing"] = max(wild["most_standing"], standing)
+
+
 def _analyse_game(
     engine: Engine, evaluator: Evaluator, record: GameRecord, epsilon: float
 ) -> GameAnalysis:
@@ -529,6 +584,11 @@ def _analyse_game(
     walked = 0
     sight = _sight_tally(engine)
     rest = _rest_tally(engine)
+    wild = _wild_tally(engine)
+    if wild is not None:
+        wild["most_standing"] = sum(
+            1 for value in state.board if value and engine.spec.owner_of(value) == 2
+        )
 
     for index, move in enumerate(record.moves):
         board = state.board
@@ -558,7 +618,11 @@ def _analyse_game(
                 # consistently.
                 capture_counts.append(sum(1 for m in legal if _takes(board, m)))
 
-        state = engine.apply(state, move)
+        if wild is None:
+            state = engine.apply(state, move)
+        else:
+            state, phase = engine.apply_with_phase(state, move)
+            _count_wild(engine, wild, board, move, state, phase)
         walked += 1
         position_keys.append(state.key)
         if state.key in seen_keys:
@@ -581,6 +645,7 @@ def _analyse_game(
         position_keys=position_keys,
         sight=sight,
         rest=rest,
+        wild=wild,
     )
 
 

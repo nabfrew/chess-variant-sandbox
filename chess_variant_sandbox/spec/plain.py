@@ -335,6 +335,22 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "it may not take, it turns round and walks the other way, so blocking it steers it. "
         "Only in a game where the royal is taken rather than checkmated.",
     ),
+    "rules.npcs.pounce": (
+        "pounces on",
+        "Whether it hunts: 'prey' makes it take, after each move and before any wild piece "
+        "steps, a piece of the player who has just moved that it attacks by its own moves, "
+        "moving onto it. With several in reach it takes a royal first, then the most valuable, "
+        "then the nearest. A royal it attacks is in check. Off its walk it stands until it "
+        "pounces again. 'attackers' makes it take instead a piece of the player who has just "
+        "moved that attacks it, so nothing may walk up to it; it falls only to a piece that "
+        "already attacks it when its owner comes to move.",
+    ),
+    "rules.npcs.split": (
+        "splits, up to",
+        "Only for a piece that pounces on its attackers: the most of its kind that may stand at "
+        "once. While there is room, a new one grows on the square of each piece that attacks "
+        "it, eating it, and it stays where it is; past the room it moves onto the next as usual.",
+    ),
     "rules.npcs.bounty": (
         "worth taking",
         "What a player gains by taking it, counted when 'who wins when a clock runs out' "

@@ -342,12 +342,17 @@ const nameOf = value => {
   const piece = pieceOf(value);
   return piece ? DATA.pieceNames[piece.type] || DATA.pieceIds[piece.type] : null;
 };
+// Generation 40 (N3c): the compiled pounce kind of a wild piece's type, for its words.
+const pounceOf = value => {
+  const piece = pieceOf(value);
+  return piece ? (DATA.pounceKinds || [])[piece.type] || null : null;
+};
 document.getElementById('moves').innerHTML = BEATS
   .map((beat, index) => {
     if (beat.kind === 'start') return '';
     const i = beat.ply - 1;
     const said = beat.kind === 'phase'
-      ? esc(phaseWords(beat.steps, beat.walkers, nameOf, W))
+      ? esc(phaseWords(beat.steps, beat.walkers, nameOf, W, pounceOf))
       : `${i % 2 === 0 ? `${Math.floor(i / 2) + 1}.` : '&nbsp;&nbsp;&hellip;'} ${
         esc(DATA.moves[i].text)}`;
     return `<div class="move${beat.kind === 'phase' ? ' phase' : ''}" data-beat="${index}">${

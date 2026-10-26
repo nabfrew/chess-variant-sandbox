@@ -2667,7 +2667,8 @@ function plyBeats(after, last) {
   for (let i = steps.length - 1; i >= 0; i--) {
     const step = steps[i];
     walkers[i] = mid[step.to];
-    mid[step.from] = mid[step.to];
+    // Generation 41 (N3d): a copy came from nowhere; its parent stays where it stood.
+    if (step.kind !== 'copy') mid[step.from] = mid[step.to];
     mid[step.to] = step.eaten;
   }
   return [{ kind: 'move', board: mid, steps: null },
@@ -2682,13 +2683,18 @@ function plyBeats(after, last) {
 //
 //   and the wolf on c6 steps to c5
 //   and the wolf on c4 takes the bishop on c5
+//   and the hound on b4 pounces on the knight on c3
+//   and the hydra on d4 takes the bishop on g7 that attacked it
+//   and a new hydra grows on e5 from the one on d4, eating the knight
 //   and the wolf on a4 steps to b5, h4 to g5, a5 to b4 and h5 to g4
 //
 // The last form is a run of quiet steps by pieces of one name, which is most plies of a
 // game with several wild pieces on patrol: the name once, then the squares. A capture is
 // always said in full, because it is the step a reader is looking for. Plain text, for
-// the caller to escape.
-function phaseWords(steps, walkers, nameOf, W) {
+// the caller to escape. `pounceOf`, where given, is a board value to the compiled pounce
+// kind of its type (`pounceKinds`), which is how a pounce on an attacker is told from one
+// on prey: the log's kind is one for both.
+function phaseWords(steps, walkers, nameOf, W, pounceOf) {
   const at = square => squareName(square % W, Math.floor(square / W));
   const clauses = [];
   let walking = null;       // the name of the piece whose quiet steps are being listed
@@ -2701,6 +2707,14 @@ function phaseWords(steps, walkers, nameOf, W) {
       walking = null;
       return;
     }
+    // Generation 41 (N3d): a splitting pouncer growing a copy of itself on an attacker's
+    // square, eating it; the parent stays where it is.
+    if (step.kind === 'copy') {
+      clauses.push('a new ' + who + ' grows on ' + at(step.to) + ' from the one on '
+                   + at(step.from) + ', eating the ' + (nameOf(step.eaten) || 'piece'));
+      walking = null;
+      return;
+    }
     // Generation 38 (N5): a turning-back piece blocked ahead, turned round.
     if (step.kind === 'turn') {
       clauses.push('the ' + who + ' on ' + at(step.from) + ' turns round'
@@ -2708,6 +2722,17 @@ function phaseWords(steps, walkers, nameOf, W) {
                       : step.eaten ? ' and takes the ' + (nameOf(step.eaten) || 'piece') + ' on '
                         + at(step.to)
                       : ' and steps to ' + at(step.to)));
+      walking = null;
+      return;
+    }
+    // Generation 39 (N3b): a pouncer taking a piece of the mover's it attacked.
+    if (step.kind === 'pounce') {
+      // Generation 40 (N3c): a pouncer taking a piece of the mover's that attacked it.
+      const guards = !!(pounceOf && walkers && walkers[i] && pounceOf(walkers[i]) === 'attackers');
+      clauses.push('the ' + who + ' on ' + at(step.from)
+                   + (guards ? ' takes the ' : ' pounces on the ')
+                   + (nameOf(step.eaten) || 'piece') + ' on ' + at(step.to)
+                   + (guards ? ' that attacked it' : ''));
       walking = null;
       return;
     }

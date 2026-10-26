@@ -380,6 +380,26 @@ LIBRARY = test_index_quality.RUNS
 # or verdict moved (105,472 records equal outside the clock; 1,751 of 1,751 files byte-equal); the
 # replaced measurements, with the stamp this window held, are kept under each game's
 # `runs/<hash>/previous/` (`docs/reference/replay-2026-10-28.md`).
+#
+# **Opened 2026-10-26 by N3b** (wild pieces that pounce): `tournament/analysis.py`'s wild tally
+# and `engine/state.py`'s `"pounce"` kind move `analysis` and so `metrics` (`FROZEN_ANALYSIS`,
+# `FROZEN_METRICS`), and the core's pounce phase and pass test move the build fingerprint. No
+# library game pounces, so no number should move; the six wild games' `analysis.json` gain the
+# `wild` key. The window is the stamp R35 left the library; **the replay after N3d empties it**.
+# N3c (pounce on attackers) moved both again (the tally's `pounces_on_attackers`, and the core);
+# the window still holds R35's stamp, which is what the library was scored under.
+# N3d (split) moved both again (the tally's `copies`, the `"copy"` kind, and the core); the
+# window still holds R35's stamp.
+#
+# **Emptied 2026-10-26 by R36**, that replay: 97 library games re-certified from a sample of 128
+# of each run's 1,024 games on core `2cf4bab8b7f84052` (388 runs, none refused); the six games
+# with wild pieces replayed whole (their 24 runs refused at the sample's analysis comparison, the
+# pass now writing the `wild` tally), their 6,144 records equal outside `duration_ms`; all 103
+# re-analysed and re-scored under `metrics` "fdac473216822a6e" and `analysis` "5baf21c0ef18e834".
+# No library game pounces or splits; no record, score, interval or verdict moved, and no analysis
+# but the six games' `.games[i].wild (added)`; the replaced measurements, with the stamp this
+# window held, are kept under each game's `runs/<hash>/previous/`
+# (`docs/reference/replay-2026-10-29.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

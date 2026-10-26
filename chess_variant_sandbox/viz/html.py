@@ -44,6 +44,7 @@ from chess_variant_sandbox.viz.wrapped import (
     goal_payload,
     portal_payload,
     portal_transit,
+    pounce_kinds_payload,
     walls_payload,
     wrap_payload,
     zone_payload,
@@ -155,6 +156,10 @@ def _write_page(
         "lattice": engine.spec.lattice,
         "pieceIds": list(engine.spec.piece_ids),
         "pieceNames": list(engine.spec.piece_names),
+        # Generation 40 (N3c): each type's compiled pounce kind (``"prey"``, ``"attackers"``
+        # or ``None``), or ``None`` where nothing pounces: the phase's words tell a pounce on
+        # an attacker from one on prey by it, the log's kind being one for both.
+        "pounceKinds": pounce_kinds_payload(engine.spec.pounce),
         "nTypes": engine.spec.n_types,
         # A whole army's worth of board values, the headings a facing piece is drawn at,
         # and which pieces may be turned to a heading at all.

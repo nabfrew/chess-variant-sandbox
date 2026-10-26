@@ -182,6 +182,13 @@ _RULE_COSTS: dict[str, float] = {
     # Generation 38's `npcs[].turns_back` (N5) is not costed either: a clause of the same
     # sentence (it paces its walk and turns round where blocked), the waiting rule a player was
     # already told with a direction added.
+    #
+    # Generation 39's `npcs[].pounce` (N3b) is not costed either: a clause of the same sentence
+    # (it takes what it attacks of the mover's, in a stated order), a wild piece's capture told
+    # in the words a player's capture already is.
+    #
+    # Generation 41's `npcs[].split` (N3d) is not costed either: a clause of the pounce's
+    # sentence (and a cap), the same capture told with "and a new one grows there" added.
     "npcs": 2.5,
     # Schema 9. One sentence -- "a pawn dropped or struck onto the far rank is a queen at
     # once" -- and an exception rather than a parameter of `promotion`: it changes what a

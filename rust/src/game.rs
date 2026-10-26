@@ -40,6 +40,9 @@ pub use respawn::respawn_clocks_from;
 #[path = "turning.rs"]
 mod turning;
 pub use turning::heading_from;
+// Generation 39 (N3b, `docs/plan-npc.md` §4.3): wild pieces that pounce, step 1 of the phase.
+#[path = "pounce.rs"]
+mod pounce;
 
 /// What one entry of the phase log is (`Game::npc_log`'s fourth field): a wild piece's step
 /// along its route, `(from, to, eaten)`.
@@ -49,6 +52,13 @@ pub const PHASE_RETURN: u8 = 1;
 /// A turning-back piece that found its way blocked and turned round (generation 38):
 /// `(from, to, eaten)` for its step the other way, `(square, square, 0)` where it waits.
 pub const PHASE_TURN: u8 = 2;
+/// A pouncer taking its prey (generation 39, N3b): `(from, to, eaten)`, the pouncer's square,
+/// the victim's and the victim's byte. `unmake` puts it back as it puts back a step.
+pub const PHASE_POUNCE: u8 = 3;
+/// A splitting pouncer growing a copy of itself on an attacker's square (generation 41, N3d,
+/// `docs/plan-npc.md` §4.5): `(parent, square, eaten)`, the parent's square, the copy's and the
+/// attacker's byte. `unmake` puts back only the eaten byte, as for a return.
+pub const PHASE_COPY: u8 = 4;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Reason {
@@ -1063,6 +1073,14 @@ impl<'t> Game<'t> {
     /// an attack through a portal (schema 19), which asks it of the entry square.
     #[inline(always)]
     fn source_path_clear(&self, player: usize, source: &AttackSource) -> bool {
+        self.path_clear_on(&self.board, player, source)
+    }
+
+    /// `source_path_clear` on a given board (generation 40, N3c): the pass test asks it of
+    /// its copy, after the pounces before it (`pounce.rs`). One statement of a player's path,
+    /// so the hot path above is this, inlined on `self.board`.
+    #[inline(always)]
+    pub(super) fn path_clear_on(&self, board: &[u8; MAX_SQUARES], player: usize, source: &AttackSource) -> bool {
         let t = self.t;
         {
             let path = t.attack_path(source);
@@ -1077,7 +1095,7 @@ impl<'t> Game<'t> {
             // rather than skipped: `occupied` is the blocking test, `screens` the
             // permission one, and a hop that wants a friendly screen is not attacking
             // through an enemy one.
-            let occupied = window.iter().filter(|s| self.board[**s as usize] != 0).count();
+            let occupied = window.iter().filter(|s| board[**s as usize] != 0).count();
             if occupied != source.screens as usize {
                 return false;
             }
@@ -1089,14 +1107,14 @@ impl<'t> Game<'t> {
                 window
                     .iter()
                     .filter(|s| {
-                        let occupant = self.board[**s as usize] as u16;
+                        let occupant = board[**s as usize] as u16;
                         occupant != 0
                             && screen_matches(source.screen_owner, occupant, low, high)
                     })
                     .count()
             };
             usable == source.screens as usize
-                && prefix.iter().all(|s| self.board[*s as usize] == 0)
+                && prefix.iter().all(|s| board[*s as usize] == 0)
         }
     }
 
@@ -1447,6 +1465,11 @@ impl<'t> Game<'t> {
     /// The definition `in_check` memoises, and what every `debug_assert` above compares
     /// a remembered answer against.
     fn compute_in_check(&self, player: usize) -> bool {
+        // Generation 39 (N3b, `docs/plan-npc.md` §4.3): the side to move in a pounce game is in
+        // check by the pass test.
+        if self.t.pounce.is_some() && player == self.side {
+            return self.in_check_by_pass(player);
+        }
         if self.t.multi_royal {
             return self.royal_squares(player).iter().any(|&royal| {
                 self.threatened(1 - player, royal)
@@ -1932,6 +1955,10 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn npc_phase(&mut self) -> bool {
+        // Generation 39 (N3b): a game with a pounce plays its own phase (`pounce.rs`).
+        if self.t.pounce.is_some() {
+            return self.pounce_phase();
+        }
         // Generation 38 (N5): a game with a line plays its own phase (`turning.rs`).
         if self.t.npc_lines.is_some() {
             return self.npc_phase_lines();
@@ -2002,9 +2029,10 @@ impl<'t> Game<'t> {
                 self.npc_log.pop().expect("npc log shorter than its base");
             let value = self.board[to];
             self.put(to, eaten);
-            // A return (generation 36) came from nowhere, so nothing goes back. A turn
-            // (generation 38) is a step, and a turned wait puts its piece back where it is.
-            if kind != PHASE_RETURN {
+            // A return (generation 36) and a copy (generation 41) came from nowhere, so
+            // nothing goes back. A turn (generation 38) is a step, and a turned wait puts its
+            // piece back where it is.
+            if kind != PHASE_RETURN && kind != PHASE_COPY {
                 self.put(from, value);
             }
         }
@@ -2081,6 +2109,9 @@ impl<'t> Game<'t> {
         if !self.t.has_npcs {
             return phases;
         }
+        if self.t.pounce.is_some() {
+            return self.pounce_coming_phases(count);
+        }
         let mut saved = Saved::new();
         // Generation 36: the clocks move on a phase at a time, on a copy.
         let mut clocks = self.respawn.clone();
@@ -2130,6 +2161,9 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn npc_phase_for_filter(&mut self, saved: &mut Saved) {
+        if self.t.pounce.is_some() {
+            return self.pounce_phase_for_filter(saved);
+        }
         if self.t.npc_lines.is_some() {
             return self.npc_phase_for_filter_lines(saved);
         }
@@ -2438,7 +2472,7 @@ impl<'t> Game<'t> {
         // on a struct `make` writes at every node of every search, and chess -- which has
         // no wild piece and never reads it -- paid for it in perft.
         if t.has_npcs && captured != 0 && t.owner_of(captured) == WILD {
-            self.points[player] += t.npc_bounty[captured_square];
+            self.points[player] += t.wild_bounty(captured, captured_square);
         }
 
         // The phase (schema 9): every wild piece walks, after the player's move is
@@ -2781,7 +2815,7 @@ impl<'t> Game<'t> {
         // reliable witness -- and what the move was paid is the same question `make`
         // asked of the same two fields.
         if self.t.has_npcs && undo.captured != 0 && self.t.owner_of(undo.captured) == WILD {
-            self.points[self.side] -= self.t.npc_bounty[undo.captured_square];
+            self.points[self.side] -= self.t.wild_bounty(undo.captured, undo.captured_square);
         }
         if self.t.reach_leaves {
             self.goal_left_by =

@@ -2838,7 +2838,9 @@ function animatePhase(svg, phase, board, beat, cell, W, H, view) {
     // Generation 36 (N1): a taken wild piece coming back onto its start comes from nowhere
     // on the board, so it fades in where it stands, held invisible until its beat, and
     // strikes whatever it eats there as a step would.
-    if (step.kind === 'return') {
+    // Generation 41 (N3d): a copy grown by a splitting pouncer comes from nowhere on the
+    // board too (its parent stays put), so it grows in the same way on the square it ate.
+    if (step.kind === 'return' || step.kind === 'copy') {
       const appear = PACE.travelMin;
       node.animate([{ opacity: 0 }, { opacity: 1 }],
                    { duration: appear, delay: start, fill: 'backwards', easing: 'ease-out' });
@@ -3237,7 +3239,12 @@ function phaseText(steps, walkers) {
     return piece ? (rules.pieceNames || [])[piece.type] || (rules.pieceIds || [])[piece.type]
                  : null;
   };
-  return phaseWords(steps, walkers, nameOf, rules.width);
+  // Generation 40 (N3c): the compiled pounce kind of a wild piece's type, for its words.
+  const pounceOf = value => {
+    const piece = pieceOf(value);
+    return piece ? (rules.pounceKinds || [])[piece.type] || null : null;
+  };
+  return phaseWords(steps, walkers, nameOf, rules.width, pounceOf);
 }
 
 // What to call a side, and who is sitting on it. A seat is an agent string --
