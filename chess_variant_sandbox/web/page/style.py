@@ -1825,6 +1825,7 @@ RULES += """
   .landingB .heroB .clause.off { opacity: 0; transform: translateY(-24px); }
   .landingB .heroB .landingLead { font-size: 19px; line-height: 28px; max-width: 34em; }
   .landingB .heroB .landingWays a.button { min-height: var(--ctl-h-lg); padding: 10px 20px; font-size: 17px; }
+  .landingB .landingWays a[hidden] { display: none; }
   .landingB .heroShow { margin: 0; min-width: 0; }
   .landingB .heroStage { display: grid; grid-template-columns: minmax(0, 1fr); }
   .landingB .heroState { grid-area: 1 / 1; opacity: 0; transform: scale(.97) rotate(-.6deg);
@@ -1908,9 +1909,9 @@ RULES += """
   .landingB .pairKey .key { display: inline-block; width: 16px; height: 6px; border-radius: 3px;
                   background: var(--meter); margin: 0 6px 0 12px; }
   .landingB .pairKey .key.faint { opacity: .3; margin-left: 0; }
-  .landingB .ladder { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; }
-  .landingB .ladder span { border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px;
-                 background: var(--panel); }
+  .landingB .ladder { display: flex; flex-wrap: wrap; gap: 4px 0; min-height: 24px; }
+  .landingB .ladder span + span::before { content: "\\2192"; color: var(--muted); margin: 0 8px; }
+  .landingB .playThis { margin-top: 14px; gap: 10px; align-items: center; }
   .landingB .ladder i { font-style: normal; color: var(--muted); font-size: 13px; margin-left: 4px; }
   .landingB .challengeLink { background: var(--sunk); border-radius: 8px; padding: 8px 10px; max-width: 24em; }
   .landingB .handCount { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
@@ -1927,6 +1928,7 @@ RULES += """
     .landingB .heroB .clause { text-decoration-thickness: 3px; text-underline-offset: 5px; }
     .landingB .heroB .landingLead { font-size: 17px; line-height: 25px; }
     .landingB .heroB .landingWays a.button { padding: 8px 16px; font-size: 16px; }
+    .landingB .heroB .landingWays .todayWay { display: none; }
     .landingB .heroShow { max-width: 360px; }
     .landingB .journeyGrid { grid-template-columns: minmax(0, 1fr); gap: 0; }
     .landingB .pin { display: none; }

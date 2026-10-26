@@ -22,18 +22,82 @@ async function showLanding() {
   dropUnoffered(view);
   wireWallDoors();
   wireWallRails();
+  // The hero's boards and today's game wait for the listing; the words and the doors do not.
+  const listing = api('/api/library').catch(() => null);
+  wirePlayDoors(view, listing);
   startJourney();
   // LP6: a reload or a step back to the same story comes back where the reader was in it
   // (kept by the head's `story.js`; the router has just put the view at its top).
   const back = typeof window.landingScroll === 'function' ? window.landingScroll() : null;
   if (back) window.scrollTo(0, back);
-  // The hero's boards and today's game wait for the listing; the words do not.
-  const data = await api('/api/library').catch(() => null);
+  const data = await listing;
   if (!data) return;
   takePieceArt(data);
   const today = view.querySelector('[data-today]');
   if (today && data.firstStep && data.firstStep.hash) today.href = gamePath(data.firstStep.hash);
+  // A server with no day's game (the local application) has only the list behind *Play today's
+  // game*; beside a story's own door, which starts a board, it goes.
+  else if (today && view.querySelector('.landingWays a[data-play]')) today.hidden = true;
   startHero(data);
+}
+
+// LP9 (`docs/reference/landing-cold-read.md` §3, R6): every door to play on the landing lands
+// on a started board. A story's door (`data-play`, `landing.play_door`) starts a practice game
+// of its fixed game against the gentlest computer player the game's own page offers, the
+// visitor in the story's seat (`data-seat`); *Play today's game* starts the day's game against
+// the gentlest the server named for it (`firstStep`, as the games page's own button does). A
+// press asking for a new tab, and a game with no opponent to seat, follow the link instead: the
+// game's page, with the seat chosen (`?seat=`, `detail.js`). The page picks no move and no
+// game; the opponents are the server's and the session is the core's (rule 3).
+function wirePlayDoors(root, listing) {
+  const plain = event => !(event.button || event.metaKey || event.ctrlKey || event.shiftKey
+    || event.altKey);
+  root.querySelectorAll('a[data-play]').forEach(door => {
+    door.addEventListener('click', event => {
+      if (!plain(event)) return;
+      event.preventDefault();
+      playNow(door, door.dataset.play, Number(door.dataset.seat) || 0);
+    });
+  });
+  const today = root.querySelector('[data-today]');
+  if (!today) return;
+  today.addEventListener('click', async event => {
+    if (!plain(event)) return;
+    event.preventDefault();
+    pending('Starting the game…');
+    const data = await listing;
+    const step = data && data.firstStep;
+    const gentle = step && step.opponents && step.opponents.gentle;
+    if (step && step.hash && gentle) return playNow(today, step.hash, 0, gentle.agent);
+    clearPending();
+    goPath(step && step.hash ? gamePath(step.hash) : GAMES_PATH);
+  });
+}
+
+// The gentlest computer player a game's page offers: the one it names for a first game, else
+// the first of its ladder (weakest first), else the first it offers at all.
+async function gentlestAgent(hash) {
+  const game = await detailFor(hash);
+  const offered = ((game && game.opponents) || []).filter(one => one.agent !== 'human');
+  const first = game && game.firstGame && game.firstGame.gentle;
+  if (first && offered.some(one => one.agent === first.agent)) return first.agent;
+  const one = offered.find(o => o.store === 'ladder') || offered[0];
+  return one ? one.agent : null;
+}
+
+async function playNow(door, hash, seat, agent) {
+  if (door.getAttribute('aria-busy') === 'true') return;
+  door.setAttribute('aria-busy', 'true');
+  pending('Starting the game…');
+  try {
+    const against = agent || await gentlestAgent(hash);
+    if (!against) { clearPending(); location.href = door.getAttribute('href'); return; }
+    await startPractice(hash, against, seat);
+  } catch (error) {
+    fail(error, door);
+  } finally {
+    door.removeAttribute('aria-busy');
+  }
 }
 
 // The template holds every story in the pool, each as one part (its hero and its journey,
@@ -368,7 +432,19 @@ function startHero(data) {
   show.addEventListener('mouseenter', () => { held = true; });
   show.addEventListener('mouseleave', () => { held = false; });
   if (STILL.matches || states.length < 2) { pause.hidden = true; return; }
+  // LP9: a drawn story's hero holds on the story's own ending (a turning clause read as the
+  // page changing under the reader, `landing-cold-read.md` §3 item 5); its dots and *play*
+  // still turn it. With no story it turns until the reader first scrolls or taps.
+  if (show.closest('.storyPart')) { stop(); return; }
   play();
+  const settle = event => {
+    if (event && event.target && event.target.closest && event.target.closest('#heroShow')) return;
+    window.removeEventListener('scroll', settle);
+    document.removeEventListener('pointerdown', settle, true);
+    if (onScreen()) stop();
+  };
+  window.addEventListener('scroll', settle, { passive: true });
+  document.addEventListener('pointerdown', settle, true);
 }
 
 // ------------------------------------------------------------------ the journey (LP4)
@@ -591,8 +667,13 @@ function pinShown() {
 }
 
 class StoryPlayer {
-  constructor(which, game, art, line, good) {
+  // `hold`: the game opens on the turn its rule acts and holds there until the reader presses
+  // play (LP9: step 2's moment, the door's turn 1 or the sweep's mate, was played past before
+  // the reader looked).
+  constructor(which, game, art, line, good, hold) {
     this.which = which;
+    this.hold = !!hold;
+    this.holding = false;
     this.game = game;
     this.art = art;
     this.line = line;
@@ -669,6 +750,7 @@ class StoryPlayer {
   }
   play(from) {
     this.stop();
+    this.holding = false;
     if (from !== undefined) this.show(from, true);
     this.button.textContent = 'pause';
     const step = () => {
@@ -695,9 +777,23 @@ class StoryPlayer {
       this.show(this.at, true);
       return;
     }
-    if (this.played) { this.play(); return; }  // scrolled away mid-game: carry on
+    if (this.played) {  // scrolled away mid-game: carry on, or stay on the moment
+      if (this.holding) this.show(this.at, true); else this.play();
+      return;
+    }
     this.played = true;
+    if (this.hold) { this.holdOnMoment(); return; }
     this.play(0);
+  }
+  // The turn before the moment, then the moment's own move played once, and a hold there.
+  holdOnMoment() {
+    const moment = Math.max(0, this.frames.findIndex(f => f.n === this.game.moment));
+    this.holding = true;
+    this.show(Math.max(0, moment - 1), true);
+    if (!moment) return;
+    setTimeout(() => {
+      if (this.holding && !this.timer && document.body.contains(this.root)) this.show(moment, false);
+    }, 500);
   }
 }
 
@@ -799,7 +895,7 @@ async function startJourney() {
   STORY.data = story;
   const art = data.pieceArt || {};
   STORY.players = {
-    wrong: new StoryPlayer('wrong', story.wrong, art, story.failedLine, false),
+    wrong: new StoryPlayer('wrong', story.wrong, art, story.failedLine, false, true),
     right: new StoryPlayer('right', story.right, art, story.fixedLine, true),
   };
   const beats = journey.querySelectorAll('.beat');

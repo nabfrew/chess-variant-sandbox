@@ -205,6 +205,13 @@ async function showGame(hash) {
       api('/api/session', { hash, seats: [WATCH_AGENT, WATCH_AGENT] })
         .then(open_).catch(error => fail(error, 'watchIt'));
     };
+    // LP9: `?seat=<side>` (a landing story's play door, followed as a link) seats you on that
+    // side and brings *start a game* into view, one press from a board.
+    const asked = askedSeat(game);
+    if (asked === 1 && first.value === 'human' && second.value !== 'human') {
+      document.getElementById('swap').click();
+    }
+    if (asked !== null) start.scrollIntoView({ block: 'center' });
   }
   wireCarryOn();
   wirePlayPerson(game, hash);
@@ -235,6 +242,19 @@ async function showGame(hash) {
       if (state.state === 'running') pollRating(hash);
     }).catch(() => {});
   }
+}
+
+// The seat the address asks for (`?seat=`): a side's name as this game calls it, or *first*
+// or *second*; 0 or 1, or null when it asks for none or one this game has not got.
+function askedSeat(game) {
+  let said = null;
+  try { said = new URLSearchParams(location.search).get('seat'); } catch (error) { return null; }
+  if (!said) return null;
+  said = said.toLowerCase();
+  const names = (game.sides || ['white', 'black']).map(name => String(name).toLowerCase());
+  const at = names.indexOf(said);
+  if (at >= 0) return at;
+  return said === 'first' ? 0 : said === 'second' ? 1 : null;
 }
 
 // ------------------------------------------------------------- the start position

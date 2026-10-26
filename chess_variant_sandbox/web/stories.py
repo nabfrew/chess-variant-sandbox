@@ -185,6 +185,10 @@ class Story:
     quote: str = ""
     # A constructed story's two spec files under `web/stories/`.
     files: tuple[str, str] | None = None
+    # The seat the story is about, 0 the first player and 1 the second (LP9): its play doors
+    # seat the visitor there (`?seat=<side>` on the fixed game's page), so the door story's
+    # visitor plays Black, whose door it now is.
+    seat: int = 0
 
 
 STORIES: tuple[Story, ...] = (
@@ -260,6 +264,7 @@ STORIES: tuple[Story, ...] = (
             game=Played(hash="58afebca2286", seed=0, line=252, ending=(1, "checkmate"),
                         keys="events", pace=380, moment=28)),
         quote="Shut to White, the race is Black's, and the door proves worth more than the tempo",
+        seat=1,
     ),
     Story(
         key="blast", title="a blast", family="what a capture does", kind=LIBRARY,
@@ -895,6 +900,7 @@ def render_story(story: Story, app: Roots,
                 "game": game}
 
     art = {**wrong.pop("pieceArt"), **right.pop("pieceArt")}
+    sides = right["start"].get("sides") or ["white", "black"]
     return {
         "key": story.key,
         "title": story.title,
@@ -923,6 +929,8 @@ def render_story(story: Story, app: Roots,
         "fixed": after,
         # Quoted only while the fixed game's own description still says it.
         "quote": story.quote if story.quote in str(fixed_spec.get("description", "")) else "",
+        # Whose seat the story is about, by its place and by the side's name on the board.
+        "seat": {"index": story.seat, "side": str(sides[story.seat])},
         "pieceArt": art,
     }
 

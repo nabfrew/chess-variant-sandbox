@@ -13,6 +13,16 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### More positions to solve
+
+Seventeen more games now have proven positions to try: a moment where one move wins and the quick players miss it.
+
+### From the front page to a first move in three taps
+
+Each story on the front page now has its own play button that opens a game already under way, with you on the
+side the story is about. The story's board waits on the moment that matters until you press play, and the headline stops turning
+once a story is shown.
+
 ### Start a game from any rule on the front page
 
 Every word on the front page's wall of rules, and each story's rule card, now has a way to start a game with

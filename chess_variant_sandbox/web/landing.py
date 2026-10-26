@@ -963,9 +963,39 @@ def headline(story: dict[str, Any] | None) -> str:
     return question(ideas[0]["clause"]) if ideas else QUESTION
 
 
-def _ways() -> str:
-    return (f'<a class="button primary" href="#/design">{_e(START)}</a>'
-            f'<a class="button" href="/game" data-today>{_e(PLAY_TODAY)}</a>')
+# LP9 (`docs/reference/landing-cold-read.md` §3): a story's play doors start a practice game of
+# its fixed game at once, the visitor in the seat the story is about (`landing.js`
+# `wirePlayDoors`). Without the script each is a link to the game's page with that seat chosen
+# (`?seat=<side>`, honoured by `detail.js`). In the hero the story's door stands beside
+# *Play today's game*, and at 375 in its place, so a visitor who wants to move first meets the
+# story's own game rather than leaving for another.
+PLAY_STORY = "Play {name}"
+PLAY_THIS = "Play this game"
+
+
+def seat_link(digest: str, side: str) -> str:
+    """The fixed game's page with the story's seat chosen for the visitor."""
+    return f"/game/{digest}?seat={quote(side)}"
+
+
+def play_door(story: dict[str, Any] | None, words: str, classes: str = "button") -> str:
+    """A door that starts a practice game of the story's fixed game in the story's seat, or
+    nothing for no story or a constructed one (its game is no library game)."""
+    if story is None or story.get("example"):
+        return ""
+    fixed = story["fixed"]
+    seat = story.get("seat") or {"index": 0, "side": "white"}
+    digest = str(fixed["hash"])
+    return (f'<a class="{classes}" href="{_e(seat_link(digest, seat["side"]))}" '
+            f'data-play="{_e(digest)}" data-seat="{int(seat["index"])}">'
+            f'{_e(words.format(name=fixed["name"]))}</a>')
+
+
+def _ways(story: dict[str, Any] | None = None) -> str:
+    door = play_door(story, PLAY_STORY, "button storyWay")
+    today = "button todayWay" if door else "button"
+    return (f'<a class="button primary" href="#/design">{_e(START)}</a>' + door
+            + f'<a class="{today}" href="/game" data-today>{_e(PLAY_TODAY)}</a>')
 
 
 def _hero(story: dict[str, Any] | None) -> str:
@@ -992,7 +1022,7 @@ def _hero(story: dict[str, Any] | None) -> str:
         f'<h2 class="landingTitle"><span class="wcbi">{_e(QUESTION)}</span> '
         f'<span class="clauses" id="heroClauses" aria-live="polite">{clauses}</span></h2>'
         f'<p class="landingLead">{_e(LEAD)}</p>'
-        f'<div class="row landingWays">{_ways()}</div>'
+        f'<div class="row landingWays">{_ways(story)}</div>'
         f'<p class="muted small">{_e(NO_ACCOUNT)}</p>'
         "</div>"
         '<figure class="heroShow" id="heroShow">'
@@ -1043,6 +1073,12 @@ JOURNEY_TITLE = "One idea, start to finish"
 STEP_NAMES = ("an idea, as a rule", "what goes wrong", "the one change", "what it changes",
               "play it against the computer", "challenge a friend")
 LADDER_SAID = "Computer opponents, from the gentlest to the hardest."
+PLAY_THIS_SAID = "You play {side}, against the gentlest, in a practice game."
+
+
+def play_this_said(story: dict[str, Any]) -> str:
+    seat = story.get("seat") or {"side": "white"}
+    return PLAY_THIS_SAID.format(side=_capital(str(seat["side"])))
 CHANGE_NOTE = "Every save is its own game with its own answer, and undo is one key."
 CHALLENGE_SAID = "Send a link. Move when it suits you."
 CHALLENGE_LINE = (
@@ -1226,7 +1262,11 @@ def story_html(story: dict[str, Any], others: list[dict[str, Any]] | None = None
                     f'Each one on <a href="/game/{_e(str(fixed["hash"]))}">{_e(fixed["name"])}</a>, '
                     "as its page offers them. ")
                  + "A practice game has undo and restart and needs no account; a rated game "
-                 "needs one.</p>"),
+                 "needs one.</p>"
+                 # LP9: one plain way in, the gentlest opponent, in the story's seat.
+                 + (f'<div class="row playThis">{play_door(story, PLAY_THIS)}'
+                    f'<span class="small muted">{_e(play_this_said(story))}</span></div>'
+                    if not story["example"] else "")),
         _step(6, f'<h3>{_e(CHALLENGE_SAID)}</h3>'
                  '<p class="challengeLink small"><span class="muted">the site\'s address</span> '
                  '<span class="mono">/c/…</span></p>'

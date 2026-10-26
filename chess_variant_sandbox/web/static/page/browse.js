@@ -218,12 +218,18 @@ function startPracticeOn(button, hash, agent) {
   if (!button) return;
   button.onclick = () => {
     button.disabled = true;
-    pending('Starting the game…');
-    const body = { hash: hash, seats: ['human', agent] };
-    if (ACCOUNTS) body.mode = 'sandbox';
-    api('/api/session', body).then(open_)
-      .catch(error => { button.disabled = false; fail(error, button); });
+    startPractice(hash, agent, 0).catch(error => { button.disabled = false; fail(error, button); });
   };
+}
+
+// A practice game of `hash` against `agent`, you in seat `seat` (0 first, 1 second), opened
+// once the server has started it. LP9: the landing's story doors start theirs through this
+// too, in the seat their story is about.
+function startPractice(hash, agent, seat) {
+  pending('Starting the game…');
+  const body = { hash: hash, seats: seat === 1 ? [agent, 'human'] : ['human', agent] };
+  if (ACCOUNTS) body.mode = 'sandbox';
+  return api('/api/session', body).then(open_);
 }
 
 // ---------------------------------------------------------------------------------------

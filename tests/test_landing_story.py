@@ -364,3 +364,62 @@ def test_each_storys_card_is_a_door_into_the_designer(drawn: str,
         assert (f'<p class="storyDoor small"><a href="{door}">{landing.DOOR_SAID}</a></p>'
                 in part), story["key"]
         assert part.count('class="storyDoor') == 1
+
+
+# ------------------------------------------------------------------ the play doors (LP9)
+
+
+def test_each_storys_play_doors_start_its_fixed_game_in_its_seat(
+        drawn: str, rendered: dict[str, Any]) -> None:
+    """LP9 (`landing-cold-read.md` §3): the hero and step 5 each carry one door that starts the
+    fixed game, the visitor in the story's seat, a link to the game's page with that seat
+    chosen; the door story's is Black."""
+    seats = {story["key"]: story["seat"] for story in rendered["stories"]}
+    assert seats["door"] == {"index": 1, "side": "black"}
+    assert seats["sweep"]["index"] == 0
+    for story in rendered["stories"]:
+        part = _part(drawn, story["key"])
+        fixed = story["fixed"]
+        seat = story["seat"]
+        door = (f'href="/game/{fixed["hash"]}?seat={seat["side"]}" data-play="{fixed["hash"]}" '
+                f'data-seat="{seat["index"]}"')
+        assert part.count(door) == 2, story["key"]
+        hero = part[:part.index('id="journey"')]
+        assert f'class="button storyWay" {door}' in hero
+        assert 'class="button todayWay" href="/game" data-today' in hero
+        five = part[part.index('data-beat="5"'):part.index('data-beat="6"')]
+        assert f'class="button" {door}>{landing.PLAY_THIS}</a>' in five
+        assert landing._e(landing.play_this_said(story)) in five
+        assert hero.count("button primary") == 1 and "button primary" not in five
+
+
+def test_without_a_story_the_hero_keeps_todays_door_alone() -> None:
+    hero = landing.html_page(stories=[])
+    assert "data-play" not in hero
+    assert '<a class="button" href="/game" data-today>' in hero
+
+
+def test_the_doors_ask_the_server_for_the_session_and_its_opponent() -> None:
+    """The landing seats the gentlest opponent the game's page offers and starts the game
+    through the games page's own `startPractice`: it picks no move and no game (rule 3)."""
+    landing_js = (STATIC / "landing.js").read_text(encoding="utf-8")
+    browse_js = (STATIC / "browse.js").read_text(encoding="utf-8")
+    assert "await startPractice(hash, against, seat);" in landing_js
+    assert "seats: seat === 1 ? [agent, 'human'] : ['human', agent]" in browse_js
+    assert "detailFor(hash)" in landing_js and "game.firstGame && game.firstGame.gentle" in landing_js
+
+
+def test_the_game_page_honours_the_seat() -> None:
+    detail_js = (STATIC / "detail.js").read_text(encoding="utf-8")
+    assert "const asked = askedSeat(game);" in detail_js
+    assert "new URLSearchParams(location.search).get('seat')" in detail_js
+    assert "start.scrollIntoView({ block: 'center' })" in detail_js
+
+
+def test_step_two_holds_on_its_moment_and_the_hero_on_its_story() -> None:
+    landing_js = (STATIC / "landing.js").read_text(encoding="utf-8")
+    assert "new StoryPlayer('wrong', story.wrong, art, story.failedLine, false, true)" in landing_js
+    assert "new StoryPlayer('right', story.right, art, story.fixedLine, true)" in landing_js
+    assert "if (this.hold) { this.holdOnMoment(); return; }" in landing_js
+    assert "if (show.closest('.storyPart')) { stop(); return; }" in landing_js
+    assert "window.addEventListener('scroll', settle, { passive: true });" in landing_js
