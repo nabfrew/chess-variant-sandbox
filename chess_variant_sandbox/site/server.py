@@ -434,6 +434,15 @@ class SiteApp(App):
         if len(parts) >= 3 and parts[:2] == ("api", "design"):
             # A killed game is no designer's starting point and has no progress page.
             self._playable(parts[-1])
+        if len(parts) == 3 and parts[:2] == ("api", "design"):
+            # UP7: the designer opens a member's own draft as itself (`?as=draft`), its
+            # name, words and parent kept, only where this answer says the rules are the
+            # reader's (`drafts.yours`); anybody else's, or a library game, is a copy.
+            found = super().get(path, asked)
+            if self.viewer is not None:
+                with self._connection() as connection:
+                    found["yours"] = drafts.yours(connection, parts[2], self.viewer)
+            return found
         if len(parts) == 4 and parts[:3] == ("api", "design", "standing"):
             found = super().get(path, asked)
             with self._connection() as connection:

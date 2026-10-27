@@ -324,6 +324,13 @@ _OWN = """
   .mini.door { background: none; box-shadow: none; border: 1.5px dashed var(--edge);
                text-align: center; align-content: center; min-height: 120px; }
   .mini.door p { margin: 0; font-size: 13px; color: var(--muted); }
+  /* UP7: a next step taken in the designer is a link a thumb can find. */
+  a.stepGo { display: inline-block; padding: 6px 0; font-weight: 600; }
+  /* UP7: the frame waits for its payload (`profile.js` `frameDrawn`), so nothing shifts
+     under a thumb; without scripts it is drawn at once, as it always was. */
+  #own-wait { display: none; }
+  .js #own-view.waits > * { display: none; }
+  .js #own-view.waits > #own-wait { display: block; }
   .rungDots { display: flex; gap: 4px; margin-top: 2px; }
   .rungDots i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); }
   .rungDots i.done { background: var(--good); border-color: var(--good); }
@@ -879,7 +886,10 @@ def profile(
         '<span class="grow"></span><span class="bandLinks" id="band-links"></span></div>\n'
         # L2 of `docs/archive/plan-launch.md` §3.2 and UP2: for a member with nothing here
         # yet, what they can do: build a game first, today's game beside it.
-        '<div id="own-view">\n'
+        # UP7: the frame is held back until `/api/profile` has drawn (`frameDrawn`), one
+        # quiet line in its place, so the first screen does not shift under a thumb.
+        '<div id="own-view" class="waits">\n'
+        '<p class="under" id="own-wait" role="status">Reading your page…</p>\n'
         '<div id="start"></div>\n'
         # UP2 (direction B, §3.2): *Waiting on you* first, a row each with a small board
         # and one action, the quiet lines under them; beside it the member's published

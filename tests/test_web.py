@@ -14472,7 +14472,7 @@ class TestMeasuringOnThisComputer:
         start = PAGE.index("function loadStanding(hash)")
         assert "hereStood(standing);" in PAGE[start:PAGE.index("function runScreen(", start)]
         assert PAGE.count('<div id="dHere">${hereHtml(check)}</div>') == 1
-        start = PAGE.index("async function showDesigner(from, rule)")
+        start = PAGE.index("async function showDesigner(from, rule, how)")
         assert "hereLookup();" in PAGE[start:PAGE.index("function benchMode(", start)]
         start = PAGE.index("function drawVerdict()")
         body = PAGE[start:PAGE.index("function footbarFixed()", start)]

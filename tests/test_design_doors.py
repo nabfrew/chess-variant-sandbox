@@ -124,7 +124,7 @@ class TestTheLinks:
 
 class TestThePage:
     def test_the_router_reads_the_key_off_the_address(self) -> None:
-        assert "showDesigner(parts[1] || '', routeQuery.get('rule'))" in PAGE
+        assert "showDesigner(parts[1] || '', routeQuery.get('rule')," in PAGE
         assert "split('?')[0]" in PAGE
 
     def test_the_designer_takes_the_door_through_its_own_add_paths(self) -> None:

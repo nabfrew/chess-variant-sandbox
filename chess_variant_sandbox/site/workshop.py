@@ -199,6 +199,40 @@ def step(found: Kept, said: str) -> str:
     return f"Next: {drafts.READING_TICK}, from the designer."
 
 
+MEASURE = "measure"
+"""`stepAt` for a draft whose next step is the score from the designer's computer: the
+designer's `&at=measure`, which opens the draft at its *measure it here* (UP7)."""
+
+MEASURE_NOTE = "Measuring takes a few minutes, and it is easier on a computer."
+"""The one line under that step (UP7, `user-page-cold-read.md` finding 2): a phone reader
+otherwise guessed it, from the designer's own phone note."""
+
+
+def step_at(found: Kept, said: str) -> str:
+    """Where in the designer a game's next step is taken: `MEASURE`, or the empty string
+    for a step that is not the measuring one (`step` says them all in words)."""
+    if found.level != stages.DRAFT or said == stages.WAITING:
+        return ""
+    return MEASURE if found.screened and found.reading not in ("checked", "checking") else ""
+
+
+def featured(word: str, count: int) -> str:
+    """The kicker over the game shown large (`FEATURED`), saying when it is one of several
+    at its level: *One of your 2 games on trial* (UP7, the cold read's finding 3)."""
+    kicker = FEATURED.get(word, "")
+    if not kicker or count < 2:
+        return kicker
+    return f"One of your {count} games {FEATURED_SEVERAL[word]}"
+
+
+FEATURED_SEVERAL = {
+    stages.ON_TRIAL: "on trial",
+    stages.SHORTLISTED: "shortlisted",
+    stages.LIBRARY: "in the library",
+}
+"""`FEATURED`'s place, for a kicker over one of several games there."""
+
+
 def columns(groups: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """The workshop's columns, each with its word, its line and the hashes standing in it
     in `stages.yours`' order. Empty when the person has made no game: a path with nothing
@@ -214,7 +248,7 @@ def columns(groups: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     order += sorted(set(held) - set(order))
     return [
         {"word": word, "says": COLUMN_SAYS.get(word, stages.SAYS.get(word, "")),
-         "games": held.get(word, []), "feature": FEATURED.get(word, "")}
+         "games": held.get(word, []), "feature": featured(word, len(held.get(word, [])))}
         for word in order
         if word in COLUMNS or held.get(word)
     ]
@@ -317,8 +351,9 @@ def designs(
     art: dict[str, str],
     current: provisional.Current = provisional.one_run,
 ) -> None:
-    """Add each game's `still`, `track`, `column`, `step`, `rungs`, `parent` and `change` to
-    `stages.yours`' groups, in place, gathering the drawings into `art`."""
+    """Add each game's `still`, `track`, `column`, `step` (with `stepAt` and `stepNote`),
+    `rungs`, `parent` and `change` to `stages.yours`' groups, in place, gathering the
+    drawings into `art`."""
     rows = kept_rows(connection, owner, current)
 
     def stored(digest: str) -> library.Game | None:
@@ -337,6 +372,8 @@ def designs(
             game["track"] = stages.track(found.level)
             game["column"] = column(found)
             game["step"] = step(found, str(game.get("next") or ""))
+            game["stepAt"] = step_at(found, str(game.get("next") or ""))
+            game["stepNote"] = MEASURE_NOTE if game["stepAt"] == MEASURE else ""
             game["rungs"] = rungs(found)
             game["parent"] = made_from
             game["change"] = change(parent_spec, found.spec)

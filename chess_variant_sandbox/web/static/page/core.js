@@ -1606,7 +1606,11 @@ function render() {
   }
   // The designer takes an optional ruleset to start from, which is what "make one like
   // this" on a game's page links to. With none it starts from a template.
-  if (parts[0] === 'design') return showDesigner(parts[1] || '', routeQuery.get('rule')).catch(fail);
+  // UP7: `?as=draft` opens your own draft as itself, `&at=measure` at its measuring step.
+  if (parts[0] === 'design') {
+    return showDesigner(parts[1] || '', routeQuery.get('rule'),
+      { as: routeQuery.get('as'), at: routeQuery.get('at') }).catch(fail);
+  }
   if (parts[0] === 'opponent' && parts[1]) return showBotBuilder(parts[1]).catch(fail);
   if (parts[0] === 'run' && parts[1] && RUN && RUN.id === parts[1]) return showRun(RUN);
   return showLibrary().catch(fail);

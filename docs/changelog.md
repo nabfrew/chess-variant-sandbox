@@ -13,6 +13,13 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### Your draft, one tap from its next step
+
+Opening your own draft in the designer now opens the draft itself, with its name and words, instead of a copy. Its
+next step on your page, a score measured on your computer, is now a link that lands on the button that measures it,
+with a note that measuring takes a few minutes and is easier on a computer. A game on trial says how many of yours
+are on trial, and your page no longer shifts while it loads.
+
 ### Your own page, rebuilt as a workshop
 
 Your own page now opens with what waits on you, each with a small board and one button, beside the game of yours

@@ -2591,7 +2591,7 @@ class TestTheDesignersLayout:
         """F10: the template picker was in the form, under the board on a phone."""
         from page_text import PAGE
 
-        start = PAGE.index("async function showDesigner(from, rule)")
+        start = PAGE.index("async function showDesigner(from, rule, how)")
         body = PAGE[start : PAGE.index("\nfunction ", start + 1)]
         assert body.index("${startFromHtml(kit)}") < body.index('<div class="designer bench')
         draw = PAGE.index("function drawDesigner()")

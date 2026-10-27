@@ -67,7 +67,8 @@ async function designKit() {
   return DESIGN_KIT;
 }
 
-async function showDesigner(from, rule) {
+async function showDesigner(from, rule, how) {
+  const asked = how || {};
   stopPolling();
   // A game that was in hand went with the markup it was drawn into, whether this is a
   // return from the board page or a fresh editor.
@@ -86,21 +87,16 @@ async function showDesigner(from, rule) {
   ]);
   // LP7: `#/design?rule=<key>`, a door at one rule (`openDoor`); its sentence is said once.
   DOOR_SAID = null;
+  // UP7: where the page is asked to arrive (`&at=measure`), reached once it is drawn.
+  DRAFT_AT = asked.at === 'measure' ? 'measure' : '';
   const door = typeof rule === 'string' ? await openDoor(kit, rule) : null;
+  if (door) DRAFT_OWN = '';
   if (door || DOOR_SAID) {
     // The door made the draft, or said there was none and left the one in hand.
     if (!DRAFT) takeDraft(heldDraft(), kit.templates[0].spec);
-  } else if (from && (from !== DRAFT_FROM || AFRESH)) {
+  } else if (from && (from !== DRAFT_FROM || AFRESH || asked.as === 'draft')) {
     AFRESH = false;
-    const source = await api('/api/design/' + from);
-    DRAFT = forkOf(source, from);
-    resetPortalState();
-    DRAFT_FROM = from;
-    // What the game you started from *is*, so the editor can say what changing a rule
-    // costs before anything has been changed rather than after it has been saved.
-    DRAFT_PARENT = source;
-    DRAFT_PIECE = 0;
-    keepDraft();
+    await openGame(from, asked.as === 'draft');
     // The address goes back to the plain designer once the copy is made. Left on
     // `#/design/<hash>`, a reload (which a phone does whenever it restores a tab) made
     // the copy again over every edit since, and the held draft was never read.
@@ -119,6 +115,8 @@ async function showDesigner(from, rule) {
     <p class="muted small u-maxw-70ch">
       A game here is a board, some pieces, where they start and how it ends. Anything
       you build can be played at once and saved as your draft.
+      ${DRAFT_OWN ? `This is your draft <b>${esc(DRAFT.name || 'your game')}</b>, as you
+        saved it; a save keeps its name and words unless you change them.` : ''}
       ${DRAFT_FROM ? `Started from <b>${esc(
         (DRAFT_PARENT && DRAFT_PARENT.name) || nameOf(DRAFT_FROM) || DRAFT_FROM)}</b>.` : ''}
     </p>
@@ -3031,7 +3029,8 @@ function keepDraft() {
     // The spellings a rule card is showing ride along (Q541): one taken and not yet
     // filled in writes no key into the draft, so the draft alone cannot say it.
     window.sessionStorage.setItem(DRAFT_KEY,
-      JSON.stringify({ spec: DRAFT, from: DRAFT_FROM, spellings: CHOSEN_SPELLING }));
+      JSON.stringify({ spec: DRAFT, from: DRAFT_FROM, spellings: CHOSEN_SPELLING,
+        own: DRAFT_OWN, kept: NAME_KEPT }));
   } catch (error) { /* the draft lives in the page instead */ }
 }
 
@@ -3058,6 +3057,92 @@ function heldDraft() {
 // The parent's own provenance goes (it names *its* parents and authors, which this draft
 // is not), and the one parent this was copied from is said in the schema's own words,
 // `provenance.parents`, which is outside the mechanics hash (Q642).
+// UP7 (`docs/reference/user-page-cold-read.md`, finding 1): the workshop's *open in the
+// designer* on a member's own draft is `#/design/<hash>?as=draft`, and opens the draft as
+// itself: its rules, its name and its words as the store keeps them, and the game it was
+// made from as `DRAFT_FROM`, so a save is a re-save of the same game under the same name
+// and the same parent. Only where the server says the rules are the reader's (`yours`,
+// `drafts.yours`); anything else, asked that way or not, is a copy (`forkOf`).
+let DRAFT_OWN = '';   // the hash of the reader's own draft opened as itself, or ''
+let DRAFT_AT = '';    // where the designer was asked to arrive: 'measure', or ''
+
+async function openGame(from, asDraft) {
+  if (DRAFT) snapshotDraft();
+  const source = await api('/api/design/' + from);
+  const own = asDraft && source && source.yours ? source.yours : null;
+  resetPortalState();
+  DRAFT_PIECE = 0;
+  if (!own) {
+    DRAFT = forkOf(source, from);
+    DRAFT_OWN = '';
+    DRAFT_FROM = from;
+    // What the game you started from *is*, so the editor can say what changing a rule
+    // costs before anything has been changed rather than after it has been saved.
+    DRAFT_PARENT = source;
+    keepDraft();
+    return source;
+  }
+  const draft = JSON.parse(JSON.stringify(source.spec));
+  draft.name = own.name || source.name || draft.name;
+  draft.description = own.description || '';
+  DRAFT = draft;
+  DRAFT_OWN = from;
+  DRAFT_FROM = own.parent || '';
+  // Its own name is not a borrowed one, though the library lists it under that name.
+  NAME_KEPT = String(draft.name || '').trim().toLowerCase();
+  DRAFT_PARENT = DRAFT_FROM
+    ? await api('/api/design/' + DRAFT_FROM).catch(() => null) : null;
+  keepDraft();
+  return source;
+}
+
+// Once the measuring control stands where it will stay (inside *Publish*, once the standing
+// for this draft has come), it is scrolled to and focused, once: on a phone it is about
+// the designer's eleventh screen. Where this copy offers no measuring here, the publish
+// panel is the place instead, once the manifest has answered.
+// The panel is drawn again as the rest of the page settles (the rungs, the standing's
+// timer), which takes the focus with the old button; for a few seconds after, until the
+// reader touches anything, the new button is given it back and kept in view (`held`).
+const REACH_HOLD = 6000;
+let REACH_UNTIL = 0;
+
+function reachAsked() {
+  if (DRAFT_AT === 'held') return holdReached();
+  if (DRAFT_AT !== 'measure') return;
+  if (!DRAFT_HASH || !DRAFT_STANDING || DRAFT_STANDING.hash !== DRAFT_HASH) return;
+  const button = document.getElementById('dHereGo');
+  const settled = typeof HERE_ASKED !== 'undefined' && HERE_ASKED;
+  const target = button || (settled
+    ? document.getElementById('dPublish') || document.getElementById('dLadder') : null);
+  if (!target) return;
+  DRAFT_AT = button ? 'held' : '';
+  if (button) {
+    REACH_UNTIL = Date.now() + REACH_HOLD;
+    const letGo = () => { if (DRAFT_AT === 'held') DRAFT_AT = ''; };
+    for (const kind of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
+      if (window.addEventListener) window.addEventListener(kind, letGo, { once: true, capture: true });
+    }
+  }
+  bringTo(target, !button);
+}
+
+function holdReached() {
+  if (Date.now() > REACH_UNTIL) { DRAFT_AT = ''; return; }
+  const button = document.getElementById('dHereGo');
+  if (!button) return;
+  const box = button.getBoundingClientRect ? button.getBoundingClientRect() : null;
+  const away = !box || box.top < 0 || box.bottom > (window.innerHeight || 0);
+  if (document.activeElement === button && !away) return;
+  bringTo(button, false, !away);
+}
+
+function bringTo(target, mark, stay) {
+  if (!stay && target.scrollIntoView) target.scrollIntoView({ block: 'center' });
+  if (!target.focus) return;
+  if (mark && target.setAttribute) target.setAttribute('tabindex', '-1');
+  try { target.focus({ preventScroll: true }); } catch (error) { target.focus(); }
+}
+
 function forkOf(source, from) {
   const draft = JSON.parse(JSON.stringify(source.spec));
   draft.name = freshName((source.name || draft.name || 'a game') + ' variant');
@@ -3190,6 +3275,7 @@ function takeLoadedSpec(spec, how) {
   resetPortalState();
   FRESH_PIECE = null;
   if (how.fresh) {
+    DRAFT_OWN = '';
     DRAFT_FROM = '';
     DRAFT_PARENT = null;
   }
@@ -3241,6 +3327,7 @@ function wireStartFrom() {
     DRAFT = fromTemplate(found.spec);
     resetPortalState();
     FRESH_PIECE = null;
+    DRAFT_OWN = '';
     DRAFT_FROM = '';
     DRAFT_PARENT = null;
     DRAFT_PIECE = 0;
@@ -3266,6 +3353,9 @@ function takeDraft(held, template) {
   DRAFT = held ? JSON.parse(JSON.stringify(held.spec)) : fromTemplate(template);
   DRAFT_FROM = held ? (held.from || '') : '';
   DRAFT_PARENT = null;
+  // UP7: a draft of your own opened as itself stays so over a reload, name kept and all.
+  DRAFT_OWN = held && typeof held.own === 'string' ? held.own : '';
+  if (held && typeof held.kept === 'string' && held.kept) NAME_KEPT = held.kept;
   const spellings = held && held.spellings;
   CHOSEN_SPELLING = spellings && typeof spellings === 'object' && !Array.isArray(spellings)
     ? spellings : {};
@@ -4489,6 +4579,14 @@ function saveDraft() {
       box.innerHTML = DRAFT_SAVED;
       showSaved(box);
       askHint(kept.hash);
+      // UP7: a draft of your own opened as itself stays itself, the game it was made
+      // from still its parent, so saving it again (new words, say) is a re-save of the
+      // same game and not a copy of it that changed no rule.
+      if (DRAFT_OWN) {
+        DRAFT_OWN = kept.hash;
+        keepDraft();
+        return loadStanding(kept.hash);
+      }
       // The saved game is the parent of whatever this draft becomes next, so the next
       // save extends the lineage rather than forking the original again.
       DRAFT_FROM = kept.hash;

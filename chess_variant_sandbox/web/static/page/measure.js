@@ -9,7 +9,8 @@
 let HERE_MANIFEST,    // `/browser/manifest.json`: undefined until asked, null where there is none
     HERE = null,      // the measurement in hand, running or finished
     HERE_CHOSEN = 0,  // the worker count picked, kept across redraws
-    HERE_TICK = null; // redraws the clock while a measurement runs
+    HERE_TICK = null, // redraws the clock while a measurement runs
+    HERE_ASKED = false; // the manifest has answered, a build or none (UP7, `reachAsked`)
 
 // Where the artefact and the worker are served (B4). `let` so a test can point them at a
 // directory of its own.
@@ -63,6 +64,7 @@ function hereLookup() {
   HERE_MANIFEST = null;
   hereManifest().then(manifest => {
     HERE_MANIFEST = manifest;
+    HERE_ASKED = true;
     redrawHere();
   });
 }
@@ -626,4 +628,6 @@ function wireHere() {
     if (saving && typeof saving.then === 'function') saving.then(again, again);
     else again();
   };
+  // UP7: the profile's *Next* link asks for this control; it is reached once it stands.
+  if (typeof reachAsked === 'function') reachAsked();
 }

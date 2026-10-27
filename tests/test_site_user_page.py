@@ -179,7 +179,8 @@ class TestTheWorkshop:
         assert ["/#/design", "Start a new game", "button primary"] in drawn["links"]
         # *Try another change* opens the designer on a copy of the game it was made from.
         assert ["/#/design/pppp", "three stones", ""] in drawn["links"]
-        assert ["/#/design/aaaa", "open in the designer", "go"] in drawn["links"]
+        # UP7: your own draft opens as itself, never as a copy of it.
+        assert ["/#/design/aaaa?as=draft", "open in the designer", "go"] in drawn["links"]
 
     def test_with_something_waiting_start_a_new_game_is_not_a_primary(self) -> None:
         drawn = _pipe([{"level": "Draft", "games": [GAME]}], COLUMNS, lead=False)

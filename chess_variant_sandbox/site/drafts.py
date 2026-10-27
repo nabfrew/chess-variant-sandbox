@@ -204,6 +204,35 @@ def restatable(connection: Any, digest: str, owner: int) -> str:
     return ""
 
 
+def yours(connection: Any, digest: str, owner: int) -> dict[str, Any] | None:
+    """These rules as `owner`'s own game, for the designer to open as itself (UP7).
+
+    `None` where the store holds no row for them, the row is somebody else's, or the game
+    was taken off the site: those open as a copy. Otherwise the row's `name` and spec's
+    `description` (what a re-save keeps), its `parent` (the empty string for a game made
+    from nothing, or from a game the store does not hold), and `restates`, whether a save
+    may still give it new words (`restatable`).
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select owner, name, spec->>'description', parent, revoked, deleted from games"
+            " where hash = %s",
+            (digest,),
+        )
+        found = cursor.fetchone()
+    if found is None:
+        return None
+    who, name, description, parent, revoked, deleted = found
+    if who is None or int(who) != owner or revoked is not None or deleted is not None:
+        return None
+    return {
+        "name": str(name or ""),
+        "description": str(description or ""),
+        "parent": str(parent or ""),
+        "restates": not restatable(connection, digest, owner),
+    }
+
+
 GONE = "Nothing about it changes."
 """`restatable`'s answer for rules taken off the site: no words change, and `why` says
 the rest."""

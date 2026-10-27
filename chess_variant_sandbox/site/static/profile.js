@@ -783,7 +783,7 @@ function miniCard(game) {
   card.appendChild(name);
   for (const sentence of game.change || []) card.appendChild(el('p', 'change', sentence));
   if ((game.rungs || []).length) card.appendChild(rungDots(game.rungs));
-  if (game.step) card.appendChild(el('p', 'facts', game.step));
+  stepTo(card, game);
   // Q599: how many voters chose each fixed tag, a count and never who.
   const tagged = game.tagCounts || [];
   if (tagged.length) {
@@ -792,10 +792,32 @@ function miniCard(game) {
   }
   if (game.inDesigner) {
     const open = el('a', 'go', 'open in the designer');
-    open.href = DESIGN + game.hash;
+    open.href = DESIGN + game.hash + AS_DRAFT;
     card.appendChild(open);
   }
   return card;
+}
+
+// UP7 (`docs/reference/user-page-cold-read.md`, findings 1 and 2). Your own game opens in
+// the designer as itself (`?as=draft`; the designer asks the server whether it is yours),
+// never as a copy; *Try another change* is the one way to a copy. A next step taken at the
+// designer's measuring control (`stepAt`, the server's) is a link that opens the draft
+// there, with the server's one line on what measuring asks (`stepNote`).
+const AS_DRAFT = '?as=draft';
+const AT_MEASURE = '&at=measure';
+
+function stepTo(card, game) {
+  if (!game.step) return;
+  if (game.stepAt !== 'measure') {
+    card.appendChild(el('p', 'facts', game.step));
+    return;
+  }
+  const line = el('p', 'facts');
+  const link = el('a', 'stepGo', game.step);
+  link.href = DESIGN + game.hash + AS_DRAFT + AT_MEASURE;
+  line.appendChild(link);
+  card.appendChild(line);
+  if (game.stepNote) card.appendChild(el('p', 'under', game.stepNote));
 }
 
 // The designer's rungs as dots, each named by its title, in the marks the designer draws.
@@ -1058,7 +1080,7 @@ function drawFeatured(groups, columns) {
   card.appendChild(name);
   card.appendChild(stillNode(shown.still, shown.hash, null, true));
   card.appendChild(trackList(shown.track || []));
-  if (shown.step) card.appendChild(el('p', 'facts', shown.step));
+  stepTo(card, shown);
   where.appendChild(card);
   return shown;
 }
@@ -1192,4 +1214,14 @@ document.getElementById('out').addEventListener('click', async (event) => {
   try { await post('/api/signout', {}); } catch (error) { say(error.message); return; }
   window.location.href = '/';
 });
-draw();
+
+// UP7 (`docs/reference/user-page-cold-read.md`, finding 5): the server draws the page's
+// frame held back (`#own-view.waits`), one quiet line in its place, and the frame comes in
+// once, whole, when the first answer from `/api/profile` has drawn, or has failed and said
+// why, so nothing above a thumb moves while the page fills.
+function frameDrawn() {
+  const own = document.getElementById('own-view');
+  if (own && own.classList) own.classList.remove('waits');
+}
+
+draw().catch(error => say(String((error && error.message) || error))).finally(frameDrawn);
