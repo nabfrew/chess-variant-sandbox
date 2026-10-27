@@ -271,8 +271,6 @@ class TestTheTour:
         ]
         reading = _read(rows)
         assert milestones.EVERY_GAME not in {kind for kind, _ in _kinds(reading)}
-        board = reading.still_open[0]
-        assert [kind.untried for kind in board.kinds] == [(), ("beta",)]
 
     def test_an_unrated_game_is_not_asked_for(self) -> None:
         tables = {**TABLES, "gamma": {}}
@@ -355,41 +353,6 @@ class TestHighestPerson:
     def test_counted_across_games(self) -> None:
         tables = {game: self._table((ADA, 1300.0, 60.0)) for game in ("alpha", "beta")}
         assert milestones.highest_count(ADA, tables) == 2
-
-
-class TestStillOpen:
-    def test_grouped_by_every_axis_in_grid_order(self) -> None:
-        still = _read([]).still_open
-        assert [axis.axis for axis in still] == [axis.name for axis in grid.AXES]
-
-    def test_a_bin_no_rated_game_sits_in_is_left_out(self) -> None:
-        board, army = _read([]).still_open[:2]
-        assert [kind.bin for kind in board.kinds] == ["small", "medium"]
-        assert [kind.bin for kind in army.kinds] == ["spare"]
-
-    def test_a_newcomer_has_everything_open_and_no_kind_tried(self) -> None:
-        board = _read([]).still_open[0]
-        assert [
-            (kind.tried, kind.untried, kind.unwon, kind.unbeaten) for kind in board.kinds
-        ] == [
-            (False, ("alpha",), ("alpha",), ("alpha",)),
-            (False, ("beta",), ("beta",), ("beta",)),
-        ]
-
-    def test_a_loss_moves_a_game_from_untried_to_unwon(self) -> None:
-        rows = [_row("beta", _person(ADA), _computer(WEAK), 0.0, 1)]
-        medium = _read(rows).still_open[0].kinds[1]
-        assert (medium.tried, medium.untried, medium.unwon) == (True, (), ("beta",))
-
-    def test_somebody_elses_clear_takes_a_game_off_the_unbeaten_list(self) -> None:
-        rows = [_row("alpha", _person(BOB), _computer(TOP), 1.0, 1)]
-        small = _read(rows, ADA).still_open[0].kinds[0]
-        assert (small.untried, small.unbeaten) == (("alpha",), ())
-
-    def test_a_win_below_the_top_leaves_it_unbeaten_but_won(self) -> None:
-        rows = [_row("alpha", _person(ADA), _computer(WEAK), 1.0, 1)]
-        small = _read(rows).still_open[0].kinds[0]
-        assert (small.untried, small.unwon, small.unbeaten) == ((), (), ("alpha",))
 
 
 # --------------------------------------------------------- A3, the overall page

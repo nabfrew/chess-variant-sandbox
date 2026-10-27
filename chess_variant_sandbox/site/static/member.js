@@ -4,7 +4,11 @@
 // challenge by handle through Q571's own route, `/api/challenge`. Nothing counts down: the
 // challenge waits until it is answered or withdrawn (test 2), and the site sends nothing
 // but the challenge itself (test 3).
-const { handle } = JSON.parse(document.getElementById('page-data').textContent);
+const { handle, stills, pieceArt } = JSON.parse(document.getElementById('page-data').textContent);
+
+// UP4: each game's board, the server's still drawn by the application's still board
+// (`still.js` `fillStills`), into the box the server left for it.
+fillStills(document.querySelector('main'), stills, pieceArt);
 
 const opener = document.getElementById('challenge-open');
 const sheet = document.getElementById('challenge-sheet');
@@ -14,6 +18,17 @@ const cancel = document.getElementById('challenge-cancel');
 if (opener && sheet && send && cancel) {
   opener.addEventListener('click', () => { sheet.hidden = false; opener.hidden = true; });
   cancel.addEventListener('click', () => { sheet.hidden = true; opener.hidden = false; });
+  // UP4: *Challenge ‹handle› to it* under a game they made opens the same sheet with that
+  // game chosen, and brings it into view.
+  for (const ask of document.querySelectorAll('[data-challenge-game]')) {
+    ask.addEventListener('click', () => {
+      document.getElementById('challenge-game').value = ask.getAttribute('data-challenge-game');
+      sheet.hidden = false;
+      opener.hidden = true;
+      sheet.scrollIntoView({ block: 'center' });
+      document.getElementById('challenge-game').focus();
+    });
+  }
   send.addEventListener('click', async () => {
     send.disabled = true;
     const body = {

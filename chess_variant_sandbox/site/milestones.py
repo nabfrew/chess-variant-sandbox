@@ -38,11 +38,11 @@ this person's rating on a game and its top computer player's.
 
 A try for the tour means what a try means on the profile, a counted match against a
 computer player (`unbeaten.UNTRIED`). So a game the tour counts as tried never shows as
-untried under *still open*.
+untried on the profile.
 
 M4 and M6 read the table and the library as they stand now. A rung or a game added later
-reopens them for everyone, present or away, and the new rung or game shows under *still
-open*. Every other line is fixed once its match is recorded.
+reopens them for everyone, present or away, and the new rung or game is one more to
+play. Every other line is fixed once its match is recorded.
 
 ## The designer's four (D1 to D4)
 
@@ -112,6 +112,30 @@ KINDS = (
     PERSON_BOTH_SEATS,
     *DESIGNER_KINDS,
 )
+
+# What each milestone is called on the page, and how its line joins the game it was
+# completed on. Box A2 of `docs/archive/plan-meta-game.md`. The keys are the kinds
+# `/api/profile` sends, which `site/milestones.py` names; a test holds the two sets
+# together, and a kind with no entry here draws under its own key rather than
+# disappearing.
+#
+# The preposition is the difference between a milestone on a game -- *Both seats, on
+# courier* -- and one across the library, where the game is only where the last piece of
+# it landed.
+HEADINGS: dict[str, tuple[str, str]] = {
+    BOTH_SEATS: ("Both sides", "on"),
+    WHOLE_LADDER: ("Every computer player beaten", "on"),
+    FIRST_HERE: ("The first game played here", "on"),
+    EVERY_GAME: ("The tour", "completed on"),
+    EVERY_KIND: ("One of every kind", "completed on"),
+    FIRST_PERSON: ("Against a person", "on"),
+    PERSON_BOTH_SEATS: ("Both sides against people", "completed on"),
+    # D1 to D4, the designer's lines: each is the first of its kind, on the game it was.
+    FIRST_DRAFT: ("First draft kept", "on"),
+    PASSES_SCREEN: ("Passes the playability check", "on"),
+    PLAYED_BY_OTHERS: ("Played by somebody else", "on"),
+    FORKED: ("Built on by somebody else", "on"),
+}
 
 # Each rule in a visitor's words (`docs/archive/plan-understanding.md` §3.3, S13): *rated game*
 # for a leaderboard match, *side* for a seat, *every computer player this game has now*
@@ -184,29 +208,6 @@ class Milestone:
 
 
 @dataclass(frozen=True)
-class OpenKind:
-    """One bin of one grid axis, as *still open for you* shows it.
-
-    The three lists follow the plan's wording, so they overlap. An untried game is also
-    not yet won, and an *Unbeaten* game appears whatever this person's state on it.
-    """
-
-    bin: str
-    tried: bool
-    untried: tuple[str, ...]
-    unwon: tuple[str, ...]
-    unbeaten: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class OpenAxis:
-    """One grid axis and every bin of it that holds a rated game, in `grid.AXES` order."""
-
-    axis: str
-    kinds: tuple[OpenKind, ...]
-
-
-@dataclass(frozen=True)
 class Rungs:
     """M4 counted, as the profile's table shows it. One rated game's *n of k rungs*."""
 
@@ -238,7 +239,6 @@ class Reading:
     """
 
     milestones: tuple[Milestone, ...]
-    still_open: tuple[OpenAxis, ...]
     highest: int
     rungs: dict[str, Rungs]
     distance: dict[str, Distance]
@@ -341,7 +341,7 @@ def read_from(
     designs: Iterable[Design] = (),
     tries: Iterable[Try] = (),
 ) -> Reading:
-    """This person's milestones, what is still open for them, and S2's count.
+    """This person's milestones, the table's two columns, and S2's count.
 
     `rows` is every leaderboard row on the site, `tables` every game's rating table, and
     `cells` each rated game's `grid.descriptor`. `designs` and `tries` are what the
@@ -354,7 +354,6 @@ def read_from(
     made = designer_from(user, designs, tries)
     return Reading(
         milestones=tuple(sorted((*played, *made), key=_newest_first)),
-        still_open=still_open_from(user, counted, tables, cells),
         highest=highest_count(user, tables),
         rungs=rungs_from(user, counted, tables),
         distance=distance_from(user, tables),
@@ -383,43 +382,6 @@ def milestones_from(
     found += _line(FIRST_PERSON, people[0] if people else None)
     found += _line(PERSON_BOTH_SEATS, _each_seat([p for p in people if p.score == 1.0]))
     return tuple(sorted(found, key=_newest_first))
-
-
-def still_open_from(
-    user: int, rows: Iterable[match_rows.Row], tables: Tables, cells: Cells
-) -> tuple[OpenAxis, ...]:
-    """The rated games not yet tried, not yet won and still *Unbeaten*, grouped by axis.
-
-    States come from `unbeaten.record_from` and the tag from `unbeaten.tags_from`, so a
-    game reads the same here as on the profile's table and the game's card.
-    """
-    counted = _counted(rows)
-    rated = _rated(tables)
-    records = {game: unbeaten.record_from(game, user, counted) for game in rated}
-    tags = unbeaten.tags_from(rated, counted, tables)
-    kinds = _kinds(rated, cells)
-
-    found: list[OpenAxis] = []
-    for index, axis in enumerate(grid.AXES):
-        groups: list[OpenKind] = []
-        for value, name in enumerate(axis.bins):
-            games = kinds.get((index, value), [])
-            if not games:
-                continue
-            groups.append(
-                OpenKind(
-                    bin=name,
-                    tried=any(records[game].state != unbeaten.UNTRIED for game in games),
-                    untried=tuple(g for g in games if records[g].state == unbeaten.UNTRIED),
-                    unwon=tuple(
-                        g for g in games
-                        if records[g].state in (unbeaten.UNTRIED, unbeaten.TRIED)
-                    ),
-                    unbeaten=tuple(g for g in games if tags[g].unbeaten is True),
-                )
-            )
-        found.append(OpenAxis(axis=axis.name, kinds=tuple(groups)))
-    return tuple(found)
 
 
 def rungs_from(user: int, rows: Iterable[match_rows.Row], tables: Tables) -> dict[str, Rungs]:
@@ -804,7 +766,7 @@ def _kinds(rated: Sequence[str], cells: Cells) -> dict[tuple[int, int], list[str
     """The rated games in each bin of each axis, keyed by axis index and bin.
 
     A game with no cell covers no bin, so *every kind* is not held open by a game nobody
-    can play any more and a deleted game is in nobody's *still open* list.
+    can play any more.
     """
     found: dict[tuple[int, int], list[str]] = {}
     for game in rated:

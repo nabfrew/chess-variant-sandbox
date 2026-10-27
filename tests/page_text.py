@@ -90,6 +90,14 @@ def inlined(html: str) -> str:
     return _SHEET.sub(sheet, _RUN.sub(block, html))
 
 
+def site_own(html: str) -> str:
+    """A site page `inlined`, less the application's board motion (`motion.js`, UP5), which
+    writes its ghosts and blasts as markup the page never asks for: `/profile` calls it only
+    through `stillMove`, which writes none (`test_site_user_page_motion`). What is left is
+    the site's own scripts and the still board, where no name is ever written as markup."""
+    return inlined(html).replace(view("motion"), "")
+
+
 def script_of(html: str) -> str:
     """Every script a page runs, in order, as one program: a file's text for a `src`, an
     inline body as it stands, and nothing for a JSON data tag, which never runs."""

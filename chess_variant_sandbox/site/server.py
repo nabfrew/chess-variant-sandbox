@@ -50,7 +50,6 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from chess_variant_sandbox import corpus
-from chess_variant_sandbox.loop import grid
 from chess_variant_sandbox.measurement import Basis
 from chess_variant_sandbox.site import (
     admin,
@@ -73,6 +72,7 @@ from chess_variant_sandbox.site import (
     identity,
     inviting,
     kept,
+    lately,
     leaderboard,
     legality,
     mail,
@@ -1488,17 +1488,12 @@ class SiteApp(App):
         which is the name the store holds for it -- nobody's counts move when a game's
         rules go.
 
-        `milestones` and `stillOpen` are the meta-game's, box A2 of
-        `docs/archive/plan-meta-game.md`.
+        `milestones` are the meta-game's, box A2 of `docs/archive/plan-meta-game.md`.
         `milestones.read_from` wants every leaderboard row on the site rather than this
         person's, because *the first human game here* and the *Unbeaten* tag are decided
         by other people's games, so the whole set is read once here and handed to the tag
         reader as well. `rungs` and `distance` are the table's two new columns, and both
         read this person's rows alone.
-
-        Every game named under `stillOpen` is a rated game, and `games` carries every
-        rated game, so the page resolves a hash to a name from the payload it already
-        holds rather than being sent each name twice.
 
         `carryOn` is B2 of `docs/archive/plan-ux.md`: this person's unfinished rated
         games, anywhere on the site, each with the address that opens it. `openable` is
@@ -1592,6 +1587,11 @@ class SiteApp(App):
             ]
             workshop.waiting(connection, carry_on, art, shut)
             workshop.challenged(connection, asked["forYou"], known, self.runs_dir, art)
+            # UP3: *Lately*, what happened on this person's games and in them, dated,
+            # newest first, the last 20 (`site/lately.py`); nothing unread, nothing counted.
+            late = lately.read(
+                connection, viewer, running=between, lines=reading.milestones, held=held
+            )
             # R9b: this person's own solved marks on proven positions, by game.
             marked = proven.games_marked(connection, viewer)
             proven_names = browse.names(connection, sorted(marked))
@@ -1670,6 +1670,8 @@ class SiteApp(App):
                 {**badges.line(award), "name_of": named.get(award.game or "", "")}
                 for award in held
             ],
+            # UP3. *Lately*: `{when, kind, parts}` lines, newest first (`site/lately.py`).
+            "lately": late,
             # B2 of `docs/archive/plan-ux.md`. The games this person left running, newest
             # first, so the one they were last at is the first one offered back.
             "carryOn": carry_on,
@@ -1701,29 +1703,15 @@ class SiteApp(App):
             # Q719. *Invite somebody*: how many invitations `/admin` left this person to
             # send, absent for somebody never given any.
             "invites": invites_box,
-            # S6 of `docs/archive/plan-understanding.md` §3.3: each axis headed by the question
-            # it asks and each kind in the game page's own words (`kind_words`), the
-            # grid's bin keys kept beside them for the reader that wants a key.
-            "stillOpen": [
-                {
-                    "axis": axis.axis,
-                    "asks": kind_words(axis.axis)[0],
-                    "kinds": [
-                        {"bin": kind.bin, "words": kind_words(axis.axis, kind.bin)[1],
-                         "tried": kind.tried,
-                         "untried": list(kind.untried), "unwon": list(kind.unwon),
-                         "unbeaten": list(kind.unbeaten)}
-                        for kind in axis.kinds
-                    ],
-                }
-                for axis in reading.still_open
-            ],
         }
 
     def member(self, handle: str, viewer: int) -> dict[str, Any] | None:
-        """What `/players/<handle>` draws (R1, Q596), or None for a handle with no page."""
+        """What `/players/<handle>` draws (R1, Q596), or None for a handle with no page.
+
+        UP4: with the listing, so each game they made and each favourite has its board."""
+        known = self.known()
         with self._connection() as connection:
-            return members.read(connection, handle, viewer)
+            return members.read(connection, handle, viewer, known, self.runs_dir)
 
     def _favourites(self, body: dict[str, Any]) -> Any:
         """Tick or untick *show my five-star games on my page* (R1); the box as it stands."""
@@ -3099,28 +3087,6 @@ def _carry_on(found: matches.Row, user: int) -> dict[str, Any]:
     }
 
 
-def kind_words(axis: str, bin_name: str = "") -> tuple[str, str]:
-    """One axis of the kind-of-game grid as a visitor reads it: its question, capitalised
-    (*How the game is won*), and one bin's meaning cut to its first clause (*won by
-    claiming enough of the board*).
-
-    The words are the game page's own kind cards' (`loop/grid.axis_vocabulary`, which a
-    game's *What kind of game it is* panel draws), so the profile and the game page say a
-    kind one way (S6). The cut is at the first clause because a list line is not the
-    card: the card's whole sentence says why a kind matters, and a line names it. An axis
-    or bin the grid does not have reads as its key, as it did before.
-    """
-    for entry in grid.axis_vocabulary():
-        if entry["axis"] != axis:
-            continue
-        asks = str(entry["asks"])
-        means = next((str(b["means"]) for b in entry["bins"] if b["bin"] == bin_name), "")
-        for cut in (" -- ", ", so ", ", where "):
-            means = means.split(cut)[0]
-        return asks[:1].upper() + asks[1:], means or bin_name
-    return axis, bin_name
-
-
 def _opponent_label(agent: str) -> str:
     """That player's name off the ladder, and *the computer* where the ladder has none.
 
@@ -3364,7 +3330,11 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                 else:
                     self._html(pages.admin(viewer.handle, app.players_listed(), user=viewer.id))
             else:
-                self._html(pages.profile(viewer.handle, app.players_listed(), user=viewer.id))
+                # UP4: *as members see it*, the member page's own sections on this page.
+                self._html(pages.profile(
+                    viewer.handle, app.players_listed(), user=viewer.id,
+                    showcase=app.member(viewer.handle, viewer.id) if viewer.handle else None,
+                ))
 
         def _member(self, handle: str) -> None:
             """A member's page (R1, Q596). A visitor goes to the door, whatever the handle,

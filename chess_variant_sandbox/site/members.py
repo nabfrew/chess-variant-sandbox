@@ -40,6 +40,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.site import (
@@ -54,8 +55,11 @@ from chess_variant_sandbox.site import (
     milestones,
     rating,
     stages,
+    votes,
+    workshop,
 )
-from chess_variant_sandbox.web import opponents
+from chess_variant_sandbox.web import library, opponents
+from chess_variant_sandbox.web.page.game import first_sentence
 
 RECENT = 8
 """How many finished games *Games ‹handle› played lately* lists (§6.2)."""
@@ -270,12 +274,28 @@ def _result(found: matches.Row, user: int) -> str:
     return "won" if score > 0.5 else "lost"
 
 
-def read(connection: Any, handle: str, viewer: int) -> dict[str, Any] | None:
+def read(
+    connection: Any,
+    handle: str,
+    viewer: int,
+    known: Mapping[str, library.Game] | None = None,
+    runs_dir: Path | None = None,
+) -> dict[str, Any] | None:
     """Everything `/players/<handle>` draws, or None for a handle with no page (a 404).
 
     `viewer` is the signed-in member asking; `own` says whether it is their own page,
     which drops *Challenge* and adds the way to their settings. What the page shows of
     the person is the same for every member, the person included.
+
+    UP4 (`docs/plan-user-page.md` §5, the showcase): `known` is the site's listing, and
+    each game they made gains its board (`still`, the listing's own, `None` for a game
+    the listing cannot draw), the first sentence of its description and its votes
+    (`stars`: the mean and the count, `None` where nobody has voted, never a nought);
+    each favourite gains its board; the drawings come once, in `pieceArt`. A game the
+    tree's listing does not hold (a member's own, kept in the store) is drawn from the
+    store's copy of its rules, as the user page's workshop draws it (`workshop.game_for`,
+    with `runs_dir`). Only games already shown gain anything, so no board can show a
+    draft.
     """
     found = find(connection, handle)
     if found is None:
@@ -351,6 +371,36 @@ def read(connection: Any, handle: str, viewer: int) -> dict[str, Any] | None:
         }
         for digest in sorted(mine_shown, key=newest)
     ]
+    listing = known or {}
+    art: dict[str, str] = {}
+    games_of: dict[str, library.Game | None] = {}
+
+    def game_of(digest: str) -> library.Game | None:
+        if digest not in games_of:
+            games_of[digest] = (
+                workshop.game_for(connection, digest, listing, runs_dir)
+                if runs_dir is not None else listing.get(digest)
+            )
+        return games_of[digest]
+
+    def board(digest: str) -> dict[str, Any] | None:
+        game = game_of(digest)
+        if game is None:
+            return None
+        art.update(library.piece_art(game))
+        return library.still(game)
+
+    voted = votes.by_game(connection, [game["game"] for game in designed])
+    for game in designed:
+        digest = str(game["game"])
+        listed = game_of(digest)
+        held_stars = voted.get(digest, votes.NONE)
+        game["still"] = board(digest)
+        game["description"] = first_sentence(listed.description) if listed else ""
+        game["stars"] = (
+            {"mean": round(float(held_stars.mean), 1), "count": held_stars.count}
+            if held_stars.voted and held_stars.mean is not None else None
+        )
 
     badges_shown = [
         {**badges.line(award), "name_of": names.get(award.game or "", "")}
@@ -379,6 +429,8 @@ def read(connection: Any, handle: str, viewer: int) -> dict[str, Any] | None:
         )
         if favourites_on else []
     )
+    for game in favourites:
+        game["still"] = board(str(game["game"]))
 
     own = user == viewer
     challenge = None
@@ -429,4 +481,5 @@ def read(connection: Any, handle: str, viewer: int) -> dict[str, Any] | None:
             ],
             "computers": most(with_computers)[:PLAYS_WITH],
         },
+        "pieceArt": art,
     }

@@ -152,8 +152,8 @@ class TestWhatAnotherMemberReads:
         page = _page(store, "ada", bea)
         assert "Secret draft" not in page
         assert "<h2>Games ada made</h2>" in page and "Out on trial" in page
-        assert f'href="/game/{shown}"' in page and "· On trial" in page
-        assert re.search(r"· published \d{1,2} [A-Z][a-z]{2} \d{4}", page)
+        assert f'href="/game/{shown}"' in page and '<span class="pill">On trial</span>' in page
+        assert re.search(r"published \d{1,2} [A-Z][a-z]{2} \d{4}", page)
 
     def test_a_cancelled_game_is_no_event(
         self, store: Scratch
@@ -176,7 +176,9 @@ class TestWhatAnotherMemberReads:
         store.connection.commit()
         reading = members.read(store.connection, "ada", bea)
         assert reading is not None
-        assert reading["favourites"] == [{"game": SHORT_HASH, "name": SHORT["name"]}]
+        assert reading["favourites"] == [
+            {"game": SHORT_HASH, "name": SHORT["name"], "still": None}
+        ]
         assert "<h2>Favourite games</h2>" in pages.member(reading, "bea", viewer=bea)
 
     def test_no_rank_no_place_no_last_seen(self, store: Scratch) -> None:

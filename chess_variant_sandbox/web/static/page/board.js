@@ -1376,6 +1376,9 @@ function fitPortals(svg) {
   }
 }
 
+// The ghost a capture leaves on the play board is drawn by `drawPiece` (`motion.js`).
+MOTION_PIECE = drawPiece;
+
 // Always a <g>, even for the letter fallback, so the animation has one element per piece
 // to move and the two-node fallback does not have to be special-cased.
 function drawPiece(piece, x, y, cell, square) {

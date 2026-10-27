@@ -89,6 +89,10 @@ const MOTION_DRAWERS = new WeakMap();
 function motionDrawer(svg, draw) {
   MOTION_DRAWERS.set(svg, draw);
 }
+// ... and on an svg with none: the play board's `drawPiece`, which `board.js` hands over as it
+// loads, so a page that loads this file without the play board (the user page, UP5) names
+// nothing it lacks.
+let MOTION_PIECE = null;
 
 // A blast (LP4; the landing mock-up's, which replaced the play board's ring per victim): one
 // fireball over the whole area the rule's table names, swelling and fading, and each piece
@@ -141,6 +145,23 @@ function burn(svg, piece, x, y, cell, blow, from) {
   ], { duration: PACE.blastBurn, delay: start, easing: 'ease-in', fill: 'forwards' });
   run.onfinish = () => ghost.remove();
   return start + PACE.blastBurn;
+}
+
+// A still board's last move played once (UP5, `docs/plan-user-page.md` §5, the user page's
+// waiting games): the piece standing on `last.to` in a still drawn with `preview.motion`
+// slides there from `last.from` (`travel`), or drops in from a hand where the move had no
+// origin (`stoneDrop`). `preview` is the payload the still was drawn from, so the geometry is
+// the drawing's own, as the landing's stories ask it. Returns how long it takes, 0 where the
+// drawing has no piece there.
+function stillMove(svg, preview, last) {
+  const piece = svg && svg.querySelector(`[data-piece="${last.to}"]`);
+  if (!piece) return 0;
+  const W = preview.width, H = preview.height, cell = 100 / Math.max(W, H);
+  const view = flatView(W, H, FLIPPED, preview.lattice, boardCut(preview.absent, preview.wrap));
+  const [tx, ty] = squareXY(last.to, cell, view);
+  if (last.from === null || last.from === undefined) return stoneDrop(piece, tx, ty, cell);
+  const [fx, fy] = squareXY(last.from, cell, view);
+  return travel(piece, fx - tx, fy - ty, false);
 }
 
 // A piece arriving from a hand: it drops in from above and settles. `delay` holds it unseen
@@ -218,7 +239,7 @@ function capture(svg, piece, x, y, cell, blow) {
 // not started leaves its element showing its own style.
 function ghostAt(svg, piece, x, y, cell) {
   const ghost = document.createElementNS(SVGNS, 'g');
-  ghost.innerHTML = (MOTION_DRAWERS.get(svg) || drawPiece)(piece, x, y, cell);
+  ghost.innerHTML = (MOTION_DRAWERS.get(svg) || MOTION_PIECE)(piece, x, y, cell);
   ghost.setAttribute('pointer-events', 'none');
   ghost.style.transformOrigin = `${x + cell / 2}px ${y + cell / 2}px`;
   svg.appendChild(ghost);

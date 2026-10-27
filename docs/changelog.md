@@ -18,6 +18,13 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 Your own page now opens with what waits on you, each with a small board and one button, beside the game of yours
 furthest along. Below, your games sit in columns from draft to the library, each saying what changed and what comes
 next. It lists only the games you have played, empty counts are gone, and a new member's page opens on building a game.
+A dated *Lately* list beside your record says what happened: moves, finished games, challenges, badges, and votes and
+first plays on your games.
+
+A member's page now shows each game they have published as a card with its board, its idea, its level, its votes and
+how many people have tried it, with a button to challenge them to it; their favourites appear as small boards. Your own
+page can show you exactly what other members see. When a game waiting on you comes into view, its last move slides in
+once; nothing moves if your device asks for reduced motion.
 
 ### From a story to a game and back
 

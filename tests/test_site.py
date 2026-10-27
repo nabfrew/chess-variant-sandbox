@@ -61,7 +61,6 @@ import pytest
 import site_store
 
 from chess_variant_sandbox import cli
-from chess_variant_sandbox.loop import grid
 from chess_variant_sandbox.site import (
     admin,
     awards,
@@ -2692,7 +2691,7 @@ def _every_page() -> dict[str, str]:
     return {
         "/join": page_text.inlined(site_pages.join("code-1")),
         "/signin": page_text.inlined(site_pages.signin()),
-        "/profile": page_text.inlined(site_pages.profile("ada")),
+        "/profile": page_text.site_own(site_pages.profile("ada")),
         "/players": page_text.inlined(site_pages.players("ada")),
         "/admin": page_text.inlined(site_pages.admin("boss")),
         "/credits": page_text.inlined(site_pages.credits()),
@@ -2779,7 +2778,7 @@ class TestOneShell:
         # UP0: your own page carries the same button as every other page, marked current.
         assert (f'<span class="muted small" id="who">'
                 f'{site_pages._member_button("ada", here=True)}</span>'
-                in page_text.inlined(site_pages.profile("ada")))
+                in page_text.site_own(site_pages.profile("ada")))
         assert f'{site_pages._member_button("boss")}</span>' in page_text.inlined(site_pages.admin("boss"))
         assert f'{site_pages._member_button("ada")}</span>' in page_text.inlined(site_pages.players("ada"))
         for path in ("/signin", "/join", "/credits", "/privacy", "/terms", "/badges",
@@ -2810,7 +2809,7 @@ class TestOneShell:
         assert "go.append('your page', chevron);" in PAGE
 
     def test_an_admin_reading_their_profile_is_offered_the_maintainers_page(self) -> None:
-        page = page_text.inlined(site_pages.profile("ada"))
+        page = page_text.site_own(site_pages.profile("ada"))
         assert "'/api/me'" in page and "me.admin" in page
         assert "link.textContent = 'Maintenance';" in page
 
@@ -2846,14 +2845,14 @@ class TestTheLinksOpenTheGame:
     G3: every game now has its own address, `/game/<hash>`, which is what they write."""
 
     def test_both_pages_write_the_routers_own_address(self) -> None:
-        for page in (page_text.inlined(site_pages.profile("ada")), page_text.inlined(site_pages.admin("boss"))):
+        for page in (page_text.site_own(site_pages.profile("ada")), page_text.inlined(site_pages.admin("boss"))):
             assert "const GAME = '/game/';" in page
             assert "link.href = GAME + " in page
             assert "'/#' + game.hash" not in page
         # Every link the profile draws -- a table row, a milestone line, a game named
         # under *still open* -- comes out of the one builder, so there is one place the
         # address can be wrong.
-        profile = _script_of(page_text.inlined(site_pages.profile("ada")))
+        profile = _script_of(page_text.site_own(site_pages.profile("ada")))
         assert profile.count("link.href = GAME") == 1
         assert "function gameLink(hash, name)" in profile
 
@@ -2871,7 +2870,7 @@ class TestTheProfileIsInOrder:
     morning wherever the library happened to load it."""
 
     def _ordered(self, games: list[dict[str, Any]]) -> list[str]:
-        script = _script_of(page_text.inlined(site_pages.profile("ada")))
+        script = _script_of(page_text.site_own(site_pages.profile("ada")))
         found = re.search(
             r"const UNNAMED = .*?\nfunction inOrder\(games\) \{.*?\n\}\n", script, re.S
         )
@@ -2907,7 +2906,7 @@ class TestTheProfileIsInOrder:
         beaten, the rungs and the distance to the top -- are columns on a desk and lines
         under the game's name on a phone. Nothing is hidden at either width; the cell
         and the line carry the same sentence."""
-        page = page_text.inlined(site_pages.profile("ada"))
+        page = page_text.site_own(site_pages.profile("ada"))
         assert '<table class="record" id="record">' in page
         assert "<th>game</th><th>played</th><th>won</th>" in page
         assert "@media (max-width: 760px)" in page
@@ -2980,7 +2979,7 @@ class TestThePages:
 
     def test_the_profile_draws_the_counts_and_the_rungs_through_text_nodes(self) -> None:
         """No `innerHTML` anywhere in the site's own pages (§6)."""
-        page = page_text.inlined(site_pages.profile("ada"))
+        page = page_text.site_own(site_pages.profile("ada"))
         assert "innerHTML" not in page
         assert "textContent" in page
         for count in ("games tried", "games won", "strongest beaten"):
@@ -4724,7 +4723,7 @@ async function fetch() { return {ok: false, json: async () => ({})}; }
 
 def _rendered(runner: str) -> Any:
     """Run the profile's whole script over that DOM and read back what it printed."""
-    return _in_node(_DOM + _script_of(page_text.inlined(site_pages.profile("ada"))), runner)
+    return _in_node(_DOM + _script_of(page_text.site_own(site_pages.profile("ada"))), runner)
 
 
 def _done(lines: list[dict[str, Any]], held: list[dict[str, Any]] | None = None) -> Any:
@@ -4856,7 +4855,7 @@ class TestTheProfileDrawsTheMetaGame:
         assert set(site_pages._MILESTONE_LINES) == set(milestones.KINDS)
 
     def test_nothing_on_the_page_is_written_as_markup(self) -> None:
-        assert "innerHTML" not in page_text.inlined(site_pages.profile("ada"))
+        assert "innerHTML" not in page_text.site_own(site_pages.profile("ada"))
 
     def test_a_line_names_its_milestone_its_game_its_date_and_its_seat(self) -> None:
         said = _done(self.LINES)
@@ -4878,7 +4877,7 @@ class TestTheProfileDrawsTheMetaGame:
         """Choice F1 of `docs/plan-user-page.md` §4 (UP2): *still open* is the one line under
         the record that names the library's filters (`drawUntried`, UP0's), never the
         library again grouped by kind of game."""
-        page = page_text.inlined(site_pages.profile("ada"))
+        page = page_text.site_own(site_pages.profile("ada"))
         assert "Still open for you" not in page and "drawStillOpen" not in page
         assert 'id="open"' not in page and 'id="untried"' in page
         assert "drawUntried(payload.games, payload.counts.tried > 0);" in page
@@ -5111,7 +5110,7 @@ class TestTheProfileDrawsBadges:
     def test_the_way_to_the_list_of_rules_is_on_the_page_whatever_you_hold(self) -> None:
         """The link is markup rather than something the script draws, so a person with
         no badge is not a person with no way to the rules (§3, test 7)."""
-        page = page_text.inlined(site_pages.profile("ada"))
+        page = page_text.site_own(site_pages.profile("ada"))
         assert 'href="/badges"' in page
         assert "drawDone" in page
 
@@ -5245,7 +5244,7 @@ class TestTheProfileRouteCarriesTheMetaGame:
             cursor.execute("select id from users where handle = %s", (handle,))
             return int(cursor.fetchone()[0])
 
-    def test_the_payload_carries_both_columns_the_lines_and_what_is_open(
+    def test_the_payload_carries_both_columns_and_the_lines(
         self, site: Site
     ) -> None:
         browser = _joined(site, "ada")
@@ -5281,26 +5280,10 @@ class TestTheProfileRouteCarriesTheMetaGame:
         line = kinds[milestones.BOTH_SEATS]
         assert line["game"] == played
         assert line["name"] and line["rule"] == milestones.RULES[milestones.BOTH_SEATS]
+        # Choice F1 (UP2, UP3): *still open* is UP0's one line, read off `games`, so the
+        # payload no longer sends the library again by kind.
+        assert "stillOpen" not in payload
 
-        # The untried game is what is still open, under the axes its own spec puts it
-        # on. The played game is not, and no line names a game the payload cannot name.
-        opened = {
-            hash_
-            for axis in payload["stillOpen"]
-            for kind in axis["kinds"]
-            for hash_ in kind["untried"]
-        }
-        assert opened == {untried}
-        assert payload["stillOpen"], "a person with an untried game has something open"
-        assert {axis["axis"] for axis in payload["stillOpen"]} <= {
-            axis.name for axis in grid.AXES
-        }
-        # S6: each axis carries its question and each kind its words, the game page's
-        # own kind cards', so nothing reads as a grid key.
-        for axis in payload["stillOpen"]:
-            assert axis["asks"][0].isupper() and axis["asks"] != axis["axis"]
-            for kind in axis["kinds"]:
-                assert kind["words"] and " " in kind["words"], kind
 
     def test_the_game_page_says_how_far_each_computer_player_sits_from_you(
         self, site: Site
@@ -6000,14 +5983,14 @@ class TestTheProfileOffersAnOpenGameBack:
         assert _carry([])["said"] == ""
 
     def test_the_section_sits_above_the_table(self) -> None:
-        page = page_text.inlined(site_pages.profile("ada"))
+        page = page_text.site_own(site_pages.profile("ada"))
         assert page.index('id="carry"') < page.index('<table class="record" id="record">')
         assert "drawCarryOn(payload.carryOn || []);" in page
 
     def test_nothing_on_it_is_written_as_markup(self) -> None:
         """A game's name is whatever somebody called it, and it reaches the page as a
         text node like every other name here."""
-        assert "innerHTML" not in page_text.inlined(site_pages.profile("ada"))
+        assert "innerHTML" not in page_text.site_own(site_pages.profile("ada"))
 
 
 class TestTheModeMenuSaysWhatHappens:

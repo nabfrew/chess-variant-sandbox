@@ -1,4 +1,4 @@
-const { LINES, SHOWN } = JSON.parse(document.getElementById('page-data').textContent);
+const { LINES, SHOWN, SHOWCASE } = JSON.parse(document.getElementById('page-data').textContent);
 // What each game is called, by hash. Built from the payload's own game rows, which
 // cover every rated game, so *still open* can send hashes alone and every one of them
 // resolves here.
@@ -8,44 +8,12 @@ let NAMES = {};
 // because *deleted game* is a name a game could in principle be given.
 let DELETED = new Set();
 
-// UP2: the three globals the application's `core.js` gives its still board, which this page
-// loads without it (`pages.BOARD_SCRIPTS`): no board here is turned round, the drawings
-// arrive with the payload (`pieceArt`, as the listing sends them), and every name a board
-// writes goes through `esc`, as it does on the application's pages.
-let FLIPPED = false;
-let PIECE_ART = {};
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
+// UP2: `FLIPPED`, `PIECE_ART`, `esc` and `stillNode` are `still.js`'s, loaded before this.
 function el(tag, className, said) {
   const it = document.createElement(tag);
   if (className) it.className = className;
   if (said !== undefined) it.textContent = said;
   return it;
-}
-
-// UP2: a position as the application's still board draws it (`stillboard.js`
-// `boardPreview`, the one drawing of a board; this page works out no square). `still` is a
-// payload the server drew (a game's opening, or a running game's position replayed through
-// the engine) with each piece's drawing named by stem; `last` is the engine's last move,
-// tinted as the play board tints it; `hand` keeps the hand strip under the board. A thumbnail
-// (`plain`) draws no marks and names no square. The board's string is the only markup this
-// page puts in: every name in it went through `esc`, and nothing else here is written as
-// markup. Absent where there is no position, or no board script (a test's stand-in DOM).
-function stillNode(still, hash, last, hand) {
-  const box = el('div', 'stillBox');
-  if (!still || typeof boardPreview !== 'function' || !document.createRange) return box;
-  const icons = (still.icons || []).map(pair => (pair || []).map(icon =>
-    icon && PIECE_ART[icon.stem]
-      ? { href: PIECE_ART[icon.stem], rotate: icon.rotate, stem: icon.stem } : null));
-  const drawn = boardPreview(Object.assign({}, still, {
-    icons, hash, plain: true, last: last || null, handsUsed: !!hand && !!still.handsUsed,
-  }), null);
-  box.setAttribute('aria-hidden', 'true');
-  box.appendChild(document.createRange().createContextualFragment(drawn));
-  return box;
 }
 
 function cell(row, text, className) {
@@ -297,7 +265,7 @@ function carryItem(entry) {
     title = el('b', '', name);
   }
   const row = waitRow('Left running \u00b7 rated, against the computer', title,
-    entry.openable ? stillNode(entry.position, entry.game, entry.lastMove) : null);
+    entry.openable ? waitingBoard(entry.position, entry.game, entry.lastMove, moveKey(entry)) : null);
   // S8: a named opponent always (the server's `label`), and turns, each player's move
   // being one.
   words(row.facts, 'Against ' + (entry.label || 'the computer') + ', playing '
@@ -313,6 +281,46 @@ function carryItem(entry) {
     row.acts.appendChild(go);
   }
   return row.item;
+}
+
+// UP5, `docs/plan-user-page.md` §5: the user page's one motion. A waiting game's board, its
+// last move (the engine's `lastMove`, the session's own history entry) played once, the
+// first time the board comes into view: the piece slides from where it stood to where it
+// landed (`travel`), or a piece from a hand drops in (`stoneDrop`), with the board motion
+// every page shares (`motion.js`). Nothing else on the page moves: a capture's blow, a
+// portal's journey and a round's reveal are left to the tint, which says them already. Under
+// `prefers-reduced-motion` nothing moves at all, asked at the moment the board is seen. Where
+// a square is drawn is `motion.js`'s to ask the drawing (`stillMove`); which squares the move
+// joined is the engine's.
+const SEEN = new Set();  // the moves already played on this page, so a redraw does not replay one
+function stillMoving() {
+  try { return !window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch (e) { return false; }
+}
+function waitingBoard(still, hash, last, key) {
+  const plays = !!last && last.to !== null && last.to !== undefined && last.portal === undefined
+    && last.foldIn === undefined && !last.reveal && !last.pass;
+  const box = stillNode(still, hash, last, false, plays);
+  if (plays && key !== undefined) slideOnSight(box, still, last, key);
+  return box;
+}
+function slideOnSight(box, still, last, key) {
+  if (SEEN.has(key) || typeof stillMove !== 'function' || typeof IntersectionObserver !== 'function'
+      || !stillMoving()) return;
+  const sight = new IntersectionObserver(seen => {
+    if (!seen.some(one => one.isIntersecting)) return;
+    sight.disconnect();
+    if (SEEN.has(key) || !stillMoving()) return;
+    SEEN.add(key);
+    stillMove(box.querySelector('svg'), still, last);
+  }, { threshold: 0.6 });
+  sight.observe(box);
+}
+
+// UP5: which move a waiting row's board plays once (`still.js` `waitingBoard`): the game and
+// its last move, so a redraw of the row after an answer does not play the same move again.
+function moveKey(entry) {
+  return entry.id + ':' + JSON.stringify(entry.lastMove || null);
 }
 
 // UP2: one row of *Waiting on you*: a small board, what is waiting (`kicker`), the game's
@@ -375,7 +383,7 @@ function drawBetween(between) {
       const name = el('a', '', entry.name || nameOf(entry.game));
       name.href = PLAY + entry.id;
       const row = waitRow('Your move \u00b7 by correspondence', name,
-        stillNode(entry.position, entry.game, entry.lastMove), true);
+        waitingBoard(entry.position, entry.game, entry.lastMove, moveKey(entry)), true);
       opponentLine(row.facts, entry);
       const go = el('a', 'button main', 'Make your move');
       go.href = PLAY + entry.id;
@@ -621,7 +629,7 @@ function drawChallenges(asked) {
     const list = el('ul', 'waitRows');
     for (const entry of forYou) {
       const row = waitRow('A challenge for you', gameLink(entry.game, entry.name),
-        stillNode(entry.position, entry.game, entry.lastMove));
+        waitingBoard(entry.position, entry.game, entry.lastMove));
       const mark = window.memberMark && window.memberMark(entry.fromMark, 18);
       if (mark) row.facts.appendChild(mark);
       person(bold(row.facts, ''), entry.from);
@@ -937,6 +945,46 @@ function drawDone(lines, held) {
   where.appendChild(list);
 }
 
+// UP3 (choice C1): *Lately*, the server's lines (`site/lately.py`), dated and newest first
+// as they arrive. Each sentence is the server's, in order: words, a game (linked as every
+// game on this page is) or a person (linked to their page). Nothing is marked unread,
+// counted or kept: the page reads no last visit and writes none. Absent with no line.
+// The newest `LATE_SHOWN` lead; the rest are under *Earlier*, folded on a phone (where the
+// list stands above the record and every line is a screen's worth of scrolling) and open on
+// a desk, where it stands beside the record.
+const LATE_SHOWN = 2;
+function wide() {
+  try { return !!window.matchMedia && window.matchMedia('(min-width: 1101px)').matches; }
+  catch (error) { return false; }
+}
+function drawLately(lines) {
+  const section = document.getElementById('lately');
+  const lead = document.getElementById('late-lines');
+  const more = document.getElementById('late-more');
+  const earlier = document.getElementById('late-earlier');
+  if (!section || !lead) return;
+  lead.replaceChildren();
+  if (earlier) earlier.replaceChildren();
+  lines.forEach((line, index) => {
+    const where = index < LATE_SHOWN || !earlier ? lead : earlier;
+    const item = el('li');
+    item.appendChild(el('span', 'when', day(line.when)));
+    const said = el('span');
+    for (const part of line.parts || []) {
+      if (typeof part === 'string') words(said, part);
+      else if (part.game !== undefined) said.appendChild(gameLink(part.game, part.name));
+      else if (part.person !== undefined) person(said, part.person);
+    }
+    item.appendChild(said);
+    where.appendChild(item);
+  });
+  if (more) {
+    more.hidden = lines.length <= LATE_SHOWN;
+    more.open = wide();
+  }
+  section.hidden = !lines.length;
+}
+
 // R9b (`site/proven.py`): the proven positions this person solved, theirs alone. A count
 // of their own marks against what the game offers, never anybody else's, and nothing at
 // all until there is a mark (§1.5: no empty heading). Since Q993b each game names its share
@@ -1074,15 +1122,48 @@ async function draw() {
   drawUntried(payload.games, payload.counts.tried > 0);
   drawDone(payload.milestones || [], payload.badges || []);
   drawProven(payload.proven || [], payload.provenShare);
-  document.getElementById('record-part').hidden = !payload.counts.tried
-    && !(payload.proven || []).length;
+  const record = document.getElementById('record-part');
+  record.hidden = !payload.counts.tried && !(payload.proven || []).length;
+  drawLately(payload.lately || []);
+  // Side by side only while both halves hold something.
+  document.getElementById('late-part').classList.toggle('lone',
+    record.hidden || document.getElementById('lately').hidden);
 }
 
-// The band's way to your page as other members see it (R1), the server's address.
+// The band's way to your page as other members see it (R1, UP4). With the page's own
+// sections drawn under `#members-view` by the server (`pages.showcase`, the very function
+// `/players/<handle>` draws with), the band is a switch, *your view · as members see it*;
+// without them, a link to the page's address. `#as-members` in the address opens on it.
 function drawBand(address) {
   const where = document.getElementById('band-links');
   if (!where) return;
   where.replaceChildren();
+  const theirs = document.getElementById('members-view');
+  if (theirs && SHOWCASE) {
+    const own = document.getElementById('own-view');
+    const group = el('span', 'viewSwitch');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'whose view');
+    const mine = el('button', '', 'your view');
+    const shown = el('button', '', 'as members see it');
+    for (const button of [mine, shown]) button.type = 'button';
+    const pick = (members) => {
+      own.hidden = members;
+      theirs.hidden = !members;
+      mine.classList.toggle('on', !members);
+      shown.classList.toggle('on', members);
+      mine.setAttribute('aria-pressed', String(!members));
+      shown.setAttribute('aria-pressed', String(members));
+      if (members) fillStills(theirs, SHOWCASE.stills, SHOWCASE.pieceArt);
+    };
+    mine.addEventListener('click', () => pick(false));
+    shown.addEventListener('click', () => pick(true));
+    group.appendChild(mine);
+    group.appendChild(shown);
+    where.appendChild(group);
+    pick(window.location.hash === '#as-members');
+    return;
+  }
   if (!address) return;
   const link = el('a', '', 'your page as members see it ›');
   link.href = address;

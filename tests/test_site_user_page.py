@@ -106,16 +106,20 @@ class TestThePageDrawsBoardsWithTheApplicationsStillBoard:
         page = site_pages.profile("ada")
         routes = [f"/static/page/{name}" for name in site_pages.BOARD_SCRIPTS]
         at = [page.index(route) for route in routes]
-        assert at == sorted(at) and at[-1] < page.index("/static/site/profile")
+        assert at == sorted(at) and at[-1] < page.index("/static/site/still")
+        assert page.index("/static/site/still") < page.index("/static/site/profile")
         assert site_pages.BOARD_SCRIPTS == ("wrapped", "wood", "stillboard")
 
     def test_the_board_is_the_only_markup_and_comes_from_board_preview(self) -> None:
         """Every name on the page is a text node; the one string put in as markup is the
         board `boardPreview` drew, every name in which went through `esc`."""
-        assert "innerHTML" not in page_text.inlined(site_pages.profile("ada"))
+        assert "innerHTML" not in page_text.site_own(site_pages.profile("ada"))
         assert "insertAdjacentHTML" not in PROFILE
-        assert PROFILE.count("createContextualFragment(") == 1
-        body = PROFILE[PROFILE.index("function stillNode"):]
+        # UP4: the adapter is `still.js`, shared with a member's page.
+        still = (site_pages.SCRIPT_DIR / "still.js").read_text(encoding="utf-8")
+        assert "createContextualFragment(" not in PROFILE
+        assert still.count("createContextualFragment(") == 1
+        body = still[still.index("function stillNode"):]
         body = body[: body.index("\n}\n")]
         assert "createContextualFragment(drawn)" in body and "= boardPreview(" in body
 

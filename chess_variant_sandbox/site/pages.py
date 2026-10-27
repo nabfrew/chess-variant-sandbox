@@ -46,7 +46,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.site import asking, quota, routes, seo, terms
+from chess_variant_sandbox.site import asking, milestones, quota, routes, seo, terms
 from chess_variant_sandbox.site import badges as site_badges
 from chess_variant_sandbox.viz import pieces
 from chess_variant_sandbox.web.page import (
@@ -242,8 +242,25 @@ _OWN = """
                                                        color: var(--muted); }
   p.found { font-size: 15px; margin: 0 0 12px; }
   /* A member's page (Q760): the sections' lines a little larger than the small print. */
-  main.member ul.lines li { font-size: 15px; line-height: 22px; }
+  main.member ul.lines li, .showcase ul.lines li { font-size: 15px; line-height: 22px; }
   main.member select { max-width: 100%; }
+  /* UP4, the showcase: the games a member made as cards with their boards, their
+     favourites as smaller ones; the same on `/players/<handle>` and in `/profile`'s *as
+     members see it*. */
+  .showCards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+               gap: 16px; margin: 4px 0 8px; }
+  .showCards.favs { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .showCard { background: var(--paper) 0 0 / 180px, var(--panel); border: 1px solid var(--line);
+              border-radius: var(--r-panel); box-shadow: var(--shadow); padding: 14px;
+              display: grid; gap: 8px; align-content: start; justify-items: start; min-width: 0; }
+  .showCard h3 { font-size: 20px; line-height: 26px; margin: 0; }
+  .showCard .stillBox { width: 100%; max-width: 300px; }
+  .showCards.favs .stillBox { max-width: 200px; }
+  .showCard .idea { margin: 0; font-size: 14px; line-height: 20px; }
+  .showCard .facts { margin: 0; font-size: 13px; line-height: 18px; color: var(--muted); }
+  .showCard .row { margin: 2px 0 0; }
+  .whoBand .viewSwitch button { font-size: 14px; }
+  main.profile .showcase h2 { margin-top: 30px; }
 
   /* UP2, your own page as the workshop (docs/plan-user-page.md §3.2): what waits on you
      beside your published game, the path every game takes with your games on it, then
@@ -321,6 +338,18 @@ _OWN = """
   ul.dated .when { font: 13px/21px var(--f-mono); color: var(--muted); }
   ul.dated .rule { display: block; font-size: 13px; line-height: 18px; color: var(--muted); }
 
+  /* UP3: *Lately* beside the record on a desk, above it on anything narrower. */
+  .twoUp { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
+           gap: 0 32px; align-items: start; }
+  .twoUp.lone { grid-template-columns: minmax(0, 1fr); }
+  ul.dated.late { gap: 8px; }
+  ul.dated.late li { grid-template-columns: 6.5rem minmax(0, 1fr); font-size: 14px;
+                     line-height: 20px; }
+  ul.dated.late .when { font-size: 12px; line-height: 20px; }
+  details.lateMore { margin-top: 8px; }
+  details.lateMore > summary { cursor: pointer; font-size: 14px; color: var(--muted); }
+  details.lateMore[open] > summary { display: none; }
+
   details.settings { margin-top: 34px; }
   details.settings > summary { cursor: pointer; font-family: var(--f-head); font-size: 20px;
                                font-weight: 600; }
@@ -338,6 +367,9 @@ _OWN = """
     .mini:not(.door) { grid-template-columns: 96px minmax(0, 1fr); align-items: start; }
     .mini:not(.door) > .stillBox { grid-row: 1 / span 6; }
   }
+  @media (max-width: 1100px) {
+    .twoUp { grid-template-columns: minmax(0, 1fr); }
+  }
   @media (max-width: 900px) {
     .hero { grid-template-columns: minmax(0, 1fr); }
     .feature .stillBox { max-width: 100%; }
@@ -348,6 +380,8 @@ _OWN = """
     .waitRow .acts { grid-column: 1 / -1; justify-content: flex-start; }
     .pipeCol.first { grid-template-columns: minmax(0, 1fr); }
     ul.dated li { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    ul.dated.late li { display: block; }
+    ul.dated.late .when { margin-right: 8px; }
     .settingsGrid { grid-template-columns: minmax(0, 1fr); }
   }
 
@@ -387,7 +421,7 @@ SCRIPTS: dict[str, Path] = {
     for name in (
         "post", "game-link", "play-link",
         "join", "signin", "profile", "players", "suggestions", "admin", "challenge",
-        "member", "ask",
+        "member", "ask", "still",
     )
 }
 # Named by their digests, for a year, as the application's are (G12, `web/page/assets.py`).
@@ -402,33 +436,15 @@ assets.serve_files(SCRIPTS)
 # supplies the three globals the application's `core.js` would (`FLIPPED`, `PIECE_ART`,
 # `esc`).
 BOARD_SCRIPTS = ("wrapped", "wood", "stillboard")
+# UP5: the board motion every page shares (`motion.js`), after the still board, on the one
+# page that plays a move (`/profile`: a waiting game's last move, once, as it comes into view).
+MOTION_SCRIPTS = ("motion",)
 
 
 TAGLINE = shell.TAGLINE  # the application's header line, one spelling for both
 
-# What each milestone is called on the page, and how its line joins the game it was
-# completed on. Box A2 of `docs/archive/plan-meta-game.md`. The keys are the kinds
-# `/api/profile` sends, which `site/milestones.py` names; a test holds the two sets
-# together, and a kind with no entry here draws under its own key rather than
-# disappearing.
-#
-# The preposition is the difference between a milestone on a game -- *Both seats, on
-# courier* -- and one across the library, where the game is only where the last piece of
-# it landed.
-_MILESTONE_LINES: dict[str, tuple[str, str]] = {
-    "both-seats": ("Both sides", "on"),
-    "whole-ladder": ("Every computer player beaten", "on"),
-    "first-here": ("The first game played here", "on"),
-    "every-game": ("The tour", "completed on"),
-    "every-kind": ("One of every kind", "completed on"),
-    "first-person": ("Against a person", "on"),
-    "person-both-seats": ("Both sides against people", "completed on"),
-    # D1 to D4, the designer's lines: each is the first of its kind, on the game it was.
-    "first-draft": ("First draft kept", "on"),
-    "passes-screen": ("Passes the playability check", "on"),
-    "played-by-others": ("Played by somebody else", "on"),
-    "forked": ("Built on by somebody else", "on"),
-}
+# Each milestone's heading and preposition (`milestones.HEADINGS`, which *Lately* says too).
+_MILESTONE_LINES = milestones.HEADINGS
 
 # How many untried games one *still open* line names before it says how many are left.
 # The line is there so a person can pick one, not so the library can be listed twice.
@@ -492,6 +508,7 @@ def _shell(
     description: str,
     path: str | None = None,
     boards: bool = False,
+    motion: bool = False,
 ) -> str:
     """One page, in the application's shell.
 
@@ -512,11 +529,13 @@ def _shell(
     A page with no script gets no `<script>` tag at all, and no page gets a script body:
     `scripts` names files under `site/static/`, loaded in order, and `data` is what the
     server hands them. `boards` loads the application's still board first (`BOARD_SCRIPTS`),
-    for a page that draws a game's position, as JSON in a tag that never runs. `<` is written `\\u003c` there,
+    for a page that draws a game's position, and `motion` the board motion after it
+    (`MOTION_SCRIPTS`), as JSON in a tag that never runs. `<` is written `\\u003c` there,
     so no value can close the tag.
     """
     tail = script_tags([
         *(f"{PAGE_SCRIPT_PREFIX}{name}.js" for name in (BOARD_SCRIPTS if boards else ())),
+        *(f"{PAGE_SCRIPT_PREFIX}{name}.js" for name in (MOTION_SCRIPTS if motion else ())),
         *(f"{SCRIPT_PREFIX}{name}.js" for name in scripts),
     ])
     base = seo.site_base()
@@ -826,7 +845,13 @@ def challenge_link(token: str) -> str:
     )
 
 
-def profile(handle: str, players: bool = False, *, user: int | None = None) -> str:
+def profile(
+    handle: str,
+    players: bool = False,
+    *,
+    user: int | None = None,
+    showcase: dict[str, Any] | None = None,
+) -> str:
     """The three counts, this person's record on every rated game, and the meta-game.
 
     The handle is the one string here that somebody chose, and it is escaped. Everything
@@ -842,6 +867,10 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
     Above the table sits *games you left running* (`docs/archive/plan-ux.md` B2), which is
     the only part of the page about something unfinished. Each line links to the board,
     and a line whose rules the store will not hand back draws no link.
+
+    UP4 (direction B): `showcase` is `members.read` of this person, and the band's switch
+    *your view · as members see it* turns the page into exactly that page's sections,
+    drawn here by the same function (`_showcase`), so the two cannot differ.
     """
     body = (
         # UP2: the member's mark large beside the handle, the page's one piece of identity
@@ -850,6 +879,7 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
         '<span class="grow"></span><span class="bandLinks" id="band-links"></span></div>\n'
         # L2 of `docs/archive/plan-launch.md` §3.2 and UP2: for a member with nothing here
         # yet, what they can do: build a game first, today's game beside it.
+        '<div id="own-view">\n'
         '<div id="start"></div>\n'
         # UP2 (direction B, §3.2): *Waiting on you* first, a row each with a small board
         # and one action, the quiet lines under them; beside it the member's published
@@ -869,6 +899,15 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
         '<section id="mine"></section>\n'
         # Q503a: the games a save had listed, back to Draft, with the reason.
         '<div id="drafts"></div>\n'
+        # UP3 (choice C1): *Lately* beside *Your record*, what happened on your games and
+        # in them, dated, newest first; nothing unread and nothing counted.
+        '<div class="twoUp" id="late-part">\n'
+        '<section id="lately" hidden><h2>Lately</h2>\n'
+        '<p class="lead leadIn">What happened on your games and in them, newest first.</p>\n'
+        '<ul class="dated late" id="late-lines"></ul>\n'
+        # The older lines, folded on a phone and open beside the record on a desk.
+        '<details class="lateMore" id="late-more" hidden><summary>Earlier</summary>\n'
+        '<ul class="dated late" id="late-earlier"></ul></details></section>\n'
         '<section id="record-part"><h2 id="record-head">Your record</h2>\n'
         '<div class="counts" id="counts"></div>\n'
         '<table class="record" id="record"><thead><tr><th>game</th><th>played</th><th>won</th>'
@@ -885,7 +924,7 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
         # filters, which is all of *still open* the page says.
         '<p class="under" id="untried"></p>\n'
         # R9b (Q605): this person's own solved marks on proven positions, in one line.
-        '<div id="proven"></div></section>\n'
+        '<div id="proven"></div></section></div>\n'
         '<div id="done"></div>\n'
         # Always here, badges or none. A rule shown only to whoever has met it is a
         # hidden rule (§3, test 7), so the way to the list cannot depend on the reader.
@@ -902,10 +941,14 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
         '<div class="setting" id="invite"></div>\n'
         "</div></details>\n"
         '<p class="note" id="note"></p>\n'
-        '<div class="row"><button id="out">sign out</button></div>'
+        '<div class="row"><button id="out">sign out</button></div></div>\n'
+        + _as_members(handle, showcase)
     )
-    scripts = ("post", "game-link", "play-link", "profile")
-    data = {"LINES": _MILESTONE_LINES, "SHOWN": _SHOWN}
+    scripts = ("post", "game-link", "play-link", "still", "profile")
+    data = {
+        "LINES": _MILESTONE_LINES, "SHOWN": _SHOWN,
+        "SHOWCASE": _showcase_data(showcase) if showcase else None,
+    }
     # The corner names the reader with the same button as on every other page (UP0: a
     # way back that looked different from the place it leads read as two places), marked
     # as the page you are on.
@@ -913,7 +956,24 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
         f"{handle} on Chess variant sandbox", body, scripts, kind="wide profile",
         corner=_who(handle, user, linked=True, here=True),
         data=data, players=players, description=PROFILE_SAYS, path="/profile",
-        boards=True,
+        boards=True, motion=True,
+    )
+
+
+def _as_members(handle: str, reading: dict[str, Any] | None) -> str:
+    """UP4: `/profile`'s *as members see it*, hidden until the band's switch shows it: the
+    member page's lead and exactly its sections (`_showcase`), with the way to the page at
+    its own address. Nothing where this person has no page."""
+    if not reading:
+        return ""
+    address = escape(routes.MEMBERS + str(reading["handle"]), quote=True)
+    return (
+        '<div id="members-view" hidden>\n'
+        + _since(reading)
+        + f'<p class="under">{PREVIEW_SAYS.format(name=escape(handle))} '
+        f'<a href="{address}">Open it at its own address</a>.</p>\n'
+        + _showcase(reading, preview=True)
+        + "</div>\n"
     )
 
 
@@ -1077,40 +1137,89 @@ def _not_yet(handle: str, reading: dict[str, Any]) -> str:
     return f'<p class="under" id="not-yet">{" ".join(said)}</p>\n'
 
 
-def member(
-    reading: dict[str, Any], reader: str, players: bool = False, *, viewer: int | None = None
-) -> str:
-    """`/players/<handle>`, a member's page (R1, `docs/archive/plan-return.md` §6.2; Q760).
+def _stars_html(stars: dict[str, Any] | None) -> str:
+    """*★ 4.5 from 2 votes*, or nothing where nobody has voted (absent is not zero)."""
+    if not stars or not stars.get("count"):
+        return ""
+    count = int(stars["count"])
+    return f'★ {float(stars["mean"]):.1f} from {count} vote{"" if count == 1 else "s"}'
 
-    Drawn whole by the server from `members.read`, every string escaped. Only a member
-    reads it (a visitor is sent to the door before this runs), and every member reads the
-    same page about a person, the person included; their own copy adds one line pointing
-    at their own page, where the settings are, and drops *Challenge*.
 
-    Q760's order: the header with *Challenge*, the games they made (newest first), the
-    games they played lately, what they have done, then the two opt-in or derived
-    sections; and one plain paragraph naming what there is nothing of yet.
+def _still_html(digest: str, game: dict[str, Any]) -> str:
+    """Where a game's board goes: the page's script draws the server's still into it with
+    the application's `stillboard.js`. Nothing where the listing could not draw one."""
+    if not game.get("still"):
+        return ""
+    return f'<div class="stillBox" data-still="{escape(digest, quote=True)}"></div>'
+
+
+def _made_card(game: dict[str, Any], handle: str, challengeable: bool) -> str:
+    """UP4: one game they made, as a card: its level, its name, its board, the first
+    sentence of its description, its votes with their count, the day it was published,
+    how many other people have tried it, and *Challenge ‹handle› to it* for another
+    member where the game can be started."""
+    digest = str(game["game"])
+    tried = int(game.get("tried") or 0)
+    facts = [
+        part for part in (
+            _stars_html(game.get("stars")),
+            f"published {_day(game['published'])}" if game.get("published") is not None else "",
+            f'{tried} {"person has" if tried == 1 else "people have"} tried it' if tried else "",
+        ) if part
+    ]
+    idea = (
+        f'<p class="idea">{escape(str(game["description"]))}</p>'
+        if game.get("description") else ""
+    )
+    ask = (
+        '<div class="row"><button type="button" class="askTo" '
+        f'data-challenge-game="{escape(digest, quote=True)}">'
+        f"Challenge {escape(handle)} to it</button></div>"
+        if challengeable else ""
+    )
+    return (
+        '<article class="showCard">'
+        f'<span class="pill">{escape(str(game["level"]))}</span>'
+        f'<h3>{_game_link(digest, str(game["name"]))}</h3>'
+        f"{_still_html(digest, game)}{idea}"
+        + (f'<p class="facts">{" · ".join(facts)}.</p>' if facts else "")
+        + f"{ask}</article>\n"
+    )
+
+
+def _cards(cards: list[str], kind: str = "") -> str:
+    if not cards:
+        return ""
+    return f'<div class="showCards{" " + kind if kind else ""}">\n' + "".join(cards) + "</div>"
+
+
+PREVIEW_SAYS = (
+    "This is your page as other members see it; visitors cannot see it. Another member "
+    "also sees <em>Challenge {name}</em> at the top and under each game you made."
+)
+"""What `/profile`'s *as members see it* says above the sections it shares (UP4)."""
+
+
+def _showcase(reading: dict[str, Any], *, preview: bool = False) -> str:
+    """UP4: a member's page's sections, from `members.read`, every string escaped.
+
+    The one drawing of them: `/players/<handle>` draws these, and `/profile`'s *as members
+    see it* draws exactly these (`preview`), so the two cannot disagree about what other
+    members see. `preview` drops the *Challenge ‹handle› to it* buttons, which nobody can
+    press on their own games; the profile says so above them (`PREVIEW_SAYS`).
     """
     handle = str(reading["handle"])
-    user = int(reading["user"])
     name = escape(handle)
     people = reading.get("playsWith") or {}
-    header = (
-        f"<h1>{marks.svg(user, 40)}{name}</h1>\n"
-        f'<p class="lead">Member since {escape(str(reading["since"]))}.'
-        + (f" {escape(str(reading['finished']))}" if reading.get("finished") else "")
-        + "</p>\n"
+    challenge = reading.get("challenge") or {}
+    startable = (
+        set() if preview or challenge.get("paused")
+        else {str(game["game"]) for game in challenge.get("theirs") or []}
     )
-    if reading.get("own"):
-        header += (
-            '<p class="under">This is your page as other members see it. Visitors '
-            'cannot see it. <a href="/profile">Your own page</a> has your settings, your '
-            "games in progress and your challenges.</p>\n"
-        )
-    # The note sits under the button, so the word that a challenge went is where the
-    # eye already is, not at the foot of a long page.
-    header += _challenge_html(handle, reading.get("challenge")) + '<p class="note" id="note"></p>\n'
-    designed = _items([_made_html(game) for game in reading.get("designed", [])])
+    designed = _cards([
+        _made_card(game, handle, str(game["game"]) in startable)
+        for game in reading.get("designed", [])
+    ])
     played = _items([_played_html(game) for game in reading.get("played", [])])
     done_lines: list[tuple[str, str]] = []
     for line in reading.get("milestones", []):
@@ -1134,10 +1243,12 @@ def member(
         ))
     done_lines.sort(key=lambda pair: pair[0], reverse=True)
     done = _items([line for _, line in done_lines])
-    favourites = _items([
-        _game_link(str(game["game"]), str(game["name"]))
+    favourites = _cards([
+        '<article class="showCard">'
+        f'<h3>{_game_link(str(game["game"]), str(game["name"]))}</h3>'
+        f'{_still_html(str(game["game"]), game)}</article>\n'
         for game in reading.get("favourites", [])
-    ])
+    ], "favs")
     with_people = [
         _member_link(str(person["handle"]), int(person["id"]))
         for person in people.get("people", [])
@@ -1149,8 +1260,8 @@ def member(
         with_lines.append(
             "Computer players: " + ", ".join(escape(str(c)) for c in people["computers"]) + "."
         )
-    body = (
-        header
+    return (
+        '<div class="showcase">\n'
         + _section(
             f"Games {handle} made",
             designed,
@@ -1173,18 +1284,74 @@ def member(
             "they have finished most rated games against, most first.",
         )
         + _not_yet(handle, reading)
+        + "</div>\n"
+    )
+
+
+def _showcase_data(reading: dict[str, Any]) -> dict[str, Any]:
+    """What a page's script needs to draw the showcase's boards: each still by its game,
+    and the drawings once (`pieceArt`), as the listing sends them."""
+    shown = [*reading.get("designed", []), *reading.get("favourites", [])]
+    return {
+        "stills": {str(game["game"]): game["still"] for game in shown if game.get("still")},
+        "pieceArt": reading.get("pieceArt") or {},
+    }
+
+
+def _since(reading: dict[str, Any]) -> str:
+    """*Member since ‹month›.*, and the abandonment line once there is one."""
+    return (
+        f'<p class="lead">Member since {escape(str(reading["since"]))}.'
+        + (f" {escape(str(reading['finished']))}" if reading.get("finished") else "")
+        + "</p>\n"
+    )
+
+
+def member(
+    reading: dict[str, Any], reader: str, players: bool = False, *, viewer: int | None = None
+) -> str:
+    """`/players/<handle>`, a member's page (R1, `docs/archive/plan-return.md` §6.2; Q760).
+
+    Drawn whole by the server from `members.read`, every string escaped. Only a member
+    reads it (a visitor is sent to the door before this runs), and every member reads the
+    same page about a person, the person included; their own copy adds one line pointing
+    at their own page, where the settings are, and drops *Challenge*.
+
+    Q760's order: the header with *Challenge*, the games they made (newest first), the
+    games they played lately, what they have done, then the two opt-in or derived
+    sections; and one plain paragraph naming what there is nothing of yet. UP4: the games
+    they made and their favourites are cards with boards (`_showcase`), drawn by the
+    application's `stillboard.js` through `still.js`.
+    """
+    handle = str(reading["handle"])
+    user = int(reading["user"])
+    name = escape(handle)
+    header = f"<h1>{marks.svg(user, 40)}{name}</h1>\n" + _since(reading)
+    if reading.get("own"):
+        header += (
+            '<p class="under">This is your page as other members see it. Visitors '
+            'cannot see it. <a href="/profile">Your own page</a> has your settings, your '
+            "games in progress and your challenges.</p>\n"
+        )
+    # The note sits under the button, so the word that a challenge went is where the
+    # eye already is, not at the foot of a long page.
+    header += _challenge_html(handle, reading.get("challenge")) + '<p class="note" id="note"></p>\n'
+    body = (
+        header
+        + _showcase(reading)
         + '<p class="under"><a href="/players">Find another member</a></p>'
     )
     return _shell(
         f"{handle} on Chess variant sandbox",
         body,
-        ("post", "member") if reading.get("challenge") else (),
+        ("post", "still", "member"),
         kind="wide member",
         corner=_who(reader, viewer, linked=True),
-        data={"handle": handle} if reading.get("challenge") else None,
+        data={"handle": handle, **_showcase_data(reading)},
         players=players,
         description=MEMBER_SAYS.format(handle=handle),
         path=routes.MEMBERS + handle,
+        boards=True,
     )
 
 
