@@ -521,6 +521,10 @@ def rule_words(key: str) -> str:
         return "pieces of different speeds, the faster moving first in a round"
     if key == "piece.rest":
         return "pieces that rest for some turns after they move"
+    if key == "piece.bounty":
+        return "pieces whose taking pays a bounty in points"
+    if key == "piece.price":
+        return "pieces a player may buy from a market, hire or bribe"
     if key == "piece.sight":
         return "pieces that freeze, disarm or shield what they see"
     if key.startswith("board.lattice."):

@@ -1,4 +1,4 @@
-"""The declared Python oracle for turning paths (T1, `docs/plan-pieces-moves.md` §5.2).
+"""The declared Python oracle for turning paths (T1, `docs/archive/plan-pieces-moves.md` §5.2).
 
 `pieces[].moves[].path`: a slide whose path turns as it goes. ``circle`` starts with any of
 the move's directions and takes the next one round at every step, always the same way, either

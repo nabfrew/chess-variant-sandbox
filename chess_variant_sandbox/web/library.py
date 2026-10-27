@@ -1845,6 +1845,7 @@ def far_from_chess(game: Game) -> list[str]:
     what the page already shows of it (the pieces' royal mark, the kind card's ending, the
     opening position's owners), so the offer to watch first says what the page says."""
     from chess_variant_sandbox.spec.describe import describe_pieces
+    from chess_variant_sandbox.spec.schema import neutral_ids
 
     reasons: list[str] = []
     try:
@@ -1861,9 +1862,16 @@ def far_from_chess(game: Game) -> list[str]:
             # A portal end (schema 19) stands in the third owner's block too, and is
             # nobody's piece: the board, not a wild piece (Q772d).
             ends = {end["type"] for end in (shape.get("portals") or {}).get("ends") or []}
-            if any(value and (value - 1) // stride > 1 and (value - 1) % types not in ends
-                   for value in shape["board"]):
+            # TC7 (`docs/plan-turncoat.md` §5.8): a piece placed for nobody stands there too,
+            # and is no wild piece: it walks no route, and a player may move or hire it.
+            ids = [piece.get("id") for piece in game.spec.get("pieces") or []]
+            neutral = {ids.index(pid) for pid in neutral_ids(game.spec) if pid in ids}
+            third = {(value - 1) % types for value in shape["board"]
+                     if value and (value - 1) // stride > 1} - ends
+            if third - neutral:
                 reasons.append("it has wild pieces that belong to neither side")
+            if third & neutral:
+                reasons.append("it has pieces that belong to neither side")
     except Exception:  # noqa: BLE001 - a page must survive one unloadable spec
         return []
     return reasons

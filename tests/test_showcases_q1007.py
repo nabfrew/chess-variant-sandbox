@@ -1,4 +1,4 @@
-"""V1, the mechanism of Q1007f's command showcases (`docs/plan-schema-31.md` §6.3).
+"""V1, the mechanism of Q1007f's command showcases (`docs/archive/plan-schema-31.md` §6.3).
 
 **K1**, *chess with commanding knights* (`adc1a91b0a83`): chess, and every enemy piece a knight
 could jump to (kings excepted) may also be moved by the knight's owner, to empty squares only.

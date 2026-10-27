@@ -3,7 +3,7 @@
     "height": 8,
     "width": 8
   },
-  "description": "Test spec (N1, docs/plan-npc.md §4.1): wolf hunt whose wolves come back to their dens four moves of each player after being taken. Not a showcase; N6 is.",
+  "description": "Test spec (N1, docs/archive/plan-npc.md §4.1): wolf hunt whose wolves come back to their dens four moves of each player after being taken. Not a showcase; N6 is.",
   "name": "wolf hunt, returning",
   "pieces": [
     {

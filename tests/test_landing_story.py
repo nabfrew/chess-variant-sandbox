@@ -1,4 +1,4 @@
-"""The landing's hero and its story, on direction B's template (`docs/plan-landing.md` box LP4).
+"""The landing's hero and its story, on direction B's template (`docs/archive/plan-landing.md` box LP4).
 
 What is held here without a browser: the hero's question leads with the first holding story's
 idea and turns through the other families' games, each a listed library game; the first story's

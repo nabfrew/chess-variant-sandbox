@@ -1,4 +1,4 @@
-"""Wild pieces that turn back (generation 38, N5, `docs/plan-npc.md` §4.7).
+"""Wild pieces that turn back (generation 38, N5, `docs/archive/plan-npc.md` §4.7).
 
 An entry with ``turns_back: true`` walks its route as a line, first to last and back. A piece
 faces forward at the start; landing on an end turns it into the line; a step blocked ahead turns

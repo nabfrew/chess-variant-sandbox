@@ -144,6 +144,7 @@ RULE_KEY_SETS: dict[tuple[str, ...], set[str]] = {
     ("wrap",): schema._WRAP_KEYS,
     ("npcs",): schema._NPC_KEYS,
     ("duck",): schema._DUCK_KEYS,
+    ("purse",): schema._PURSE_KEYS,
     # A portal group is a pair or a map, and one card offers both spellings. Its `moves`
     # (spelling 31, Q1007b) are the card's hand-drawn move rows, as a piece's are, not a
     # generated field (`cards._hand_drawn_group_moves`; `test_designer_portals` holds them).

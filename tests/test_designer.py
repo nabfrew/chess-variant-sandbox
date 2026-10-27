@@ -987,11 +987,17 @@ _CANNOT = {
         "promotion": "may not include the promoting piece itself",
         "contacts": "an ordinary capture written the long way",
         "portals": _PORTAL_SQUARES,
+        # TC5: the generated purse card arrives with an empty market (TC7's purse card fills
+        # and prices it).
+        "purse": "nothing to spend on",
     },
     "kingly": {
         "en_passant": "the promoting piece it is defined against, has none",
         "promote_on_entry": "nothing enters play except by moving",
         "portals": _PORTAL_SQUARES,
+        # TC5: the generated purse card arrives with an empty market (TC7's purse card fills
+        # and prices it).
+        "purse": "nothing to spend on",
     },
     "race": {
         "bare_royal": "no piece is marked royal",
@@ -1000,6 +1006,9 @@ _CANNOT = {
         "en_passant": "requires rules.promotion",
         "promote_on_entry": "needs rules.promotion",
         "portals": _PORTAL_SQUARES,
+        # TC5: the generated purse card arrives with an empty market (TC7's purse card fills
+        # and prices it).
+        "purse": "nothing to spend on",
     },
 }
 
@@ -2616,7 +2625,7 @@ class TestTheDesignersLayout:
 
 
 class TestAJumpMayBeRiddenAgain:
-    """Q1007a (`docs/plan-schema-31.md` §2.5): a move whose every direction is longer than one
+    """Q1007a (`docs/archive/plan-schema-31.md` §2.5): a move whose every direction is longer than one
     square offers *jumps again*: once (a leap, or a blockable leap of one jump), again and
     stopped only where it lands (a slide over the jump, the nightrider), or again and also
     stopped on the square each jump passes (a blockable leap with a range, the lame rider)."""

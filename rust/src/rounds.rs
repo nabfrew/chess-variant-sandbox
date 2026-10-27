@@ -801,6 +801,11 @@ impl<'t> Game<'t> {
             if t.has_npcs && t.owner_of(taken.victim) == WILD {
                 self.points[taken.captor] += t.npc_bounty[taken.square];
             }
+            // TC4 (`docs/plan-turncoat.md` §5.1): a type's bounty, for any piece but the
+            // captor's own. Into the tally alone: a purse is never beside a round.
+            if !t.piece_bounty.is_empty() && t.owner_of(taken.victim) != taken.captor {
+                self.points[taken.captor] += t.piece_bounty[t.type_of(taken.victim)];
+            }
             if taken.strikes {
                 self.strike_after(taken, touched);
             }
@@ -914,8 +919,11 @@ impl<'t> Game<'t> {
         let mover = self.board[origin];
         let (becomes, mover_becomes, flips) = self.meeting(plan.piece_type, victim, player);
         let as_type = if mover_becomes >= 0 { mover_becomes as usize } else { t.type_of(mover) };
+        // TC1: a flip is the one change of allegiance, `rehome_value`'s; TC2: the mover as it
+        // stands (or as it now is, when it changed type), so it keeps its heading.
         let attacker = if flips {
-            t.arriving_value(1 - player, as_type, origin)
+            let now = if mover_becomes >= 0 { t.entering_value(player, as_type) } else { mover };
+            t.rehome_value(now, 1 - player, origin)
         } else if mover_becomes >= 0 {
             t.arriving_value(player, as_type, origin)
         } else {
@@ -946,8 +954,15 @@ impl<'t> Game<'t> {
             && (mover_becomes >= 0 || flips)
         {
             let as_type = if mover_becomes >= 0 { mover_becomes as usize } else { t.type_of(standing) };
-            let owner = if flips { 1 - taken.captor } else { taken.captor };
-            self.write(taken.square, t.arriving_value(owner, as_type, taken.square));
+            let value = if flips {
+                // TC1: a flip is the one change of allegiance, `rehome_value`'s; TC2: the
+                // captor as it stands (or as it now is), so it keeps its heading.
+                let now = if mover_becomes >= 0 { t.entering_value(taken.captor, as_type) } else { standing };
+                t.rehome_value(now, 1 - taken.captor, taken.square)
+            } else {
+                t.arriving_value(taken.captor, as_type, taken.square)
+            };
+            self.write(taken.square, value);
         }
         if becomes < 0 {
             return;

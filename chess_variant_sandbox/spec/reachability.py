@@ -49,7 +49,11 @@ def pieces_a_player_can_hold(spec: dict[str, Any]) -> set[str]:
     setup = spec.get("setup")
     placements = setup.get("placements") if isinstance(setup, dict) else None
     for placement in placements if isinstance(placements, list) else []:
-        if isinstance(placement, dict) and _in(placement.get("piece"), declared):
+        # TC3: a placement for nobody is no player's; a captured one reaches a hand below.
+        if (
+            isinstance(placement, dict) and _in(placement.get("piece"), declared)
+            and placement.get("player") != "nobody"
+        ):
             held.add(placement["piece"])
     stock = (rules.get("drops") or {}).get("stock")
     if isinstance(stock, dict):

@@ -27,6 +27,7 @@ from chess_variant_sandbox.spec.schema import (
     NPC_OFF_VALUES,
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
+    PURSE_OFF_VALUES,
     SIGHT_OFF_VALUES,
     SIMULTANEOUS_OFF_VALUES,
 )
@@ -99,12 +100,19 @@ def _own(spec: dict[str, Any]) -> None:
         link.setdefault("own", False)
 
 
+def _bribe(spec: dict[str, Any]) -> None:
+    spec["rules"]["purse"]["bribe"] = False
+
+
 # (where it is written, the game it is written on, the edit). Every off value of every place.
 CASES = [
     ("pieces[].rest", "tests/_simultaneous_gardner.json", _piece("rest", 0)),
     ("pieces[].speed", "tests/_simultaneous_gardner.json", _piece("speed", 0)),
     ("pieces[].spy", "tests/_simultaneous_gardner.json", _piece("spy", False)),
     ("pieces[].sight", "rulesets/chess.json", _piece("sight", [])),
+    ("pieces[].control", "rulesets/chess.json", _piece("control", "stands")),
+    ("pieces[].bounty", "rulesets/chess.json", _piece("bounty", 0)),
+    ("pieces[].price", "rulesets/chess.json", _piece("price", 0)),
     ("pieces[].sight[].through", "archive/madrasi.json", _through),
     ("pieces[].sight[].captures_own", "tests/_command_k1.json", _captures_own),
     ("rules.simultaneous.tie", "tests/_simultaneous_gardner.json", _simultaneous("tie", "both")),
@@ -118,6 +126,7 @@ CASES = [
     ("rules.npcs[].respawn", "archive/wolves.json", _respawn),
     ("rules.npcs[].turns_back", "archive/wolves.json", _turns_back),
     ("rules.duck.goes", "tests/_duck_chess.json", _goes),
+    ("rules.purse.bribe", "tests/_purse_market.json", _bribe),
 ]
 
 
@@ -131,6 +140,7 @@ def test_every_off_value_has_a_case() -> None:
         **{f"rules.contacts.links[].{key}": 1 for key in CONTACT_LINK_OFF_VALUES},
         **{f"rules.npcs[].{key}": 1 for key in NPC_OFF_VALUES},
         **{f"rules.duck.{key}": 1 for key in DUCK_OFF_VALUES},
+        **{f"rules.purse.{key}": 1 for key in PURSE_OFF_VALUES},
     }
     assert set(named) == {where for where, _, _ in CASES}
 

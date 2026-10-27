@@ -1,4 +1,4 @@
-"""V1 of T2's showcase *crooked bishops* (`docs/plan-pieces-moves.md` §5.7, Z1): the mechanism,
+"""V1 of T2's showcase *crooked bishops* (`docs/archive/plan-pieces-moves.md` §5.7, Z1): the mechanism,
 without players.
 
 Chess with each bishop's slide given ``path: "zigzag"``: diagonal steps turning to a neighbouring

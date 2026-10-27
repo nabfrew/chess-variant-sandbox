@@ -49,7 +49,9 @@ from chess_variant_sandbox.engine.compile import (
 from chess_variant_sandbox.engine.engine import _square_name as square_name
 from chess_variant_sandbox.engine.moves import (
     MOVE_PORTAL,
+    MOVE_SWEEP,
     move_fold,
+    move_from,
     move_portal,
     move_to,
     move_type,
@@ -295,6 +297,22 @@ def portal_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
         "portalOutName": square_name(out, spec.width),
         "exitDir": row.index(target) if target in row else None,
     }
+
+
+def sweep_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
+    """Schema 13: the squares a sweep cleared, in the order it passed over them, read off
+    the position it is played in, or ``None`` for any move that is not a ``MOVE_SWEEP``.
+
+    Two positions cannot say a sweep took them -- the same squares empty under a capture
+    and a blast -- so the page's sweep animation (``motion.js`` `sweepCut`) reads ``swept``
+    and works out nothing: the path is the compiler's (`CompiledSpec.sweep_path`), as the
+    move's text is.
+    """
+    if move_type(move) != MOVE_SWEEP:
+        return None
+    path = engine.spec.sweep_path(state.board, move_from(move), move_to(move))
+    swept = [square for square in path if state.board[square]]
+    return {"swept": swept} if swept else None
 
 
 # The JavaScript half, a plain file beside this one: the application serves it as one of

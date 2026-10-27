@@ -417,6 +417,22 @@ LIBRARY = test_index_quality.RUNS
 # records equal; 1,751 of 1,751 files byte-equal); the replaced measurements, with the stamp this
 # window held, are kept under each game's `runs/<hash>/previous/`
 # (`docs/reference/replay-2026-10-30.md`).
+#
+# **Opened 2026-10-27 by TC1** (`docs/plan-turncoat.md` §3): `MOVE_COMMANDED` renamed
+# `MOVE_FOREIGN` in `engine/moves.py`, `engine/engine.py` and `tournament/analysis.py`, and
+# `engine/compile.py`'s `ControlRule`, move `analysis` and so `metrics` (`FROZEN_ANALYSIS`,
+# `FROZEN_METRICS`), and the core moves the build fingerprint. A rename and a derived table: every
+# spec hash and tables fingerprint is unchanged, so no number should move. The window is the stamp
+# R37 left the library; **the next library replay or re-certification empties it**.
+#
+# **Emptied 2026-10-27 by RC1**, that replay: 108 of the 109 library games re-certified from a
+# sample of 128 of each run's 1,024 games on core `2bc384e68ed037fa` (432 runs, none refused);
+# *the shepherds duck*'s four runs were refused on its records' old name (*the shepherd's duck*,
+# renamed by N6 with no mechanics moved) and played whole, every record equal outside the name.
+# All re-analysed and re-scored under `metrics` "f1828082d034126a" and `analysis`
+# "c14ee0bda2bdf7b3". No index, interval or verdict moved; the replaced measurements, with the
+# stamp this window held, are kept under each game's `runs/<hash>/previous/`
+# (`docs/reference/replay-2026-10-31.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

@@ -989,6 +989,11 @@ RULES = """
   /* Generation 42 (N4c): the duck waiting off the board, in the hand's strip. */
   .hand .duck-tray { width: 32px; height: 32px; flex: none; }
   .hand .duck-tray + span { flex: 1 1 0; min-width: 0; }
+  /* TC7: a market piece drawn on its button, beside its letter and price; a disabled one
+     (the engine offers no buy of it) is the greyed button every disabled control is. */
+  .hand button.buy { display: inline-flex; align-items: center; gap: 4px; }
+  .hand .buy-face { width: 22px; height: 22px; flex: none; }
+  .hand button.buy:disabled .buy-face { opacity: .45; }
   .verdict { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-ctl);
              border: 1px solid var(--note); font-weight: 600; }
   /* Ruled out by a gate: the verdict's box in the colour of *bad*. */
@@ -1810,7 +1815,7 @@ RULES = """
   .tabs { margin-bottom: 10px; }
   .tabpane { max-height: 58vh; overflow-y: auto; }"""
 
-# LP4 (`docs/plan-landing.md` §3.2, direction B, the mock-up's `b.css` on the site's tokens):
+# LP4 (`docs/archive/plan-landing.md` §3.2, direction B, the mock-up's `b.css` on the site's tokens):
 # the question and its turning endings beside the game each became; then one idea, start to
 # finish, the board pinned at 1400 beside six steps and a board in steps 2 and 4 on a phone;
 # the three beats (the failure played before its verdict, the card's words struck and
@@ -1966,12 +1971,12 @@ RULES += """
   .landingB .beatTray:empty, .landingB .pinTray:empty { display: none; }"""
 
 # LP2: each family of rules on the landing's wall of words reads its colour from its own
-# class (choice E1 of `docs/plan-landing.md` §4: the map's per-kind hues), made from
+# class (choice E1 of `docs/archive/plan-landing.md` §4: the map's per-kind hues), made from
 # `landing.BLOCKS` so a row and its colour are named in one place.
 RULES += "".join(f"\n  .{block.hue} {{ --family: var(--{block.colour}); }}"
                  for block in BLOCKS)
 
-# LP6 (`docs/plan-landing.md` §4.1): the headline the server draws at `/` holds every holding
+# LP6 (`docs/archive/plan-landing.md` §4.1): the headline the server draws at `/` holds every holding
 # story's ending in the pool's order (`landing.drawn_intro`); it shows the one `story.js` put
 # on `<html>` by its place in the pool (`data-story-at`), and the first without the script.
 # By place, never by key, so no story is named here.

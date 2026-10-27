@@ -25,7 +25,7 @@ checkmate) the moves that leave the mover's royal attacked on the board they mak
 rest) less the resting pieces' moves unless that leaves none. The engine is asked only for the
 twin's pseudo-legal lists and for the board a move makes; it is never asked what an effect does.
 
-**Command** (Q1007c, `docs/plan-schema-31.md` §3.2, §3.3, §3.7): the side to move may also move
+**Command** (Q1007c, `docs/archive/plan-schema-31.md` §3.2, §3.3, §3.7): the side to move may also move
 each opponent's piece a command binds and no freeze does. Its quiet moves are the owner's own
 pseudo-legal moves of that piece, asked of the twin with the owner to move (no window, no hand),
 that land on an empty square or turn in place: never a castling, an en passant, a drop or a
@@ -46,7 +46,7 @@ a sweep, so only freeze and disarm meet one. The board a sweep makes is the engi
 every move; a sweep over the mover's only royal (friendly pieces are swept too) leaves it
 without one, and under checkmate that move is refused rather than played.
 
-**Wild pieces** (generation 37, N2, `docs/plan-npc.md` §4.2): a wild piece's sight (``whose``
+**Wild pieces** (generation 37, N2, `docs/archive/plan-npc.md` §4.2): a wild piece's sight (``whose``
 ``"any"``) reads the third owner's frame of the forward lines and touches both players' pieces;
 effects never touch a wild piece. **A wild piece never takes a shielded piece**: the oracle plays
 the phase itself, on the board the move leaves (the twin's move with the twin's phase taken back
@@ -73,9 +73,9 @@ from chess_variant_sandbox.engine.compile import (
 )
 from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
-    MOVE_COMMANDED,
     MOVE_DROP,
     MOVE_EN_PASSANT,
+    MOVE_FOREIGN,
     MOVE_NORMAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
@@ -89,8 +89,8 @@ NO_SQUARE = -1
 
 def normalise(moves: list[int]) -> list[int]:
     """A legal list with its commanded moves (Q1007c) sorted at the end, the rest in order."""
-    return [m for m in moves if not m & MOVE_COMMANDED] + sorted(
-        m for m in moves if m & MOVE_COMMANDED
+    return [m for m in moves if not m & MOVE_FOREIGN] + sorted(
+        m for m in moves if m & MOVE_FOREIGN
     )
 
 
@@ -380,7 +380,7 @@ class SightOracle:
             if origin in bound and (
                 kind == MOVE_ROTATE or (kind == MOVE_NORMAL and not board[target])
             ):
-                found.add(move | MOVE_COMMANDED)
+                found.add(move | MOVE_FOREIGN)
         stride = spec.n_facings * spec.n_types
         for origin in bound:
             if not effects[origin] & SIGHT_COMMAND_OWN or effects[origin] & SIGHT_DISARM:
@@ -397,7 +397,7 @@ class SightOracle:
                 recoloured = dataclasses.replace(asked, board=bytes(probe))
                 for move in self.twin.pseudo_legal_moves(recoloured):
                     if decode_move(move)[:3] == (origin, victim, MOVE_NORMAL):
-                        found.add(move | MOVE_COMMANDED)
+                        found.add(move | MOVE_FOREIGN)
         return sorted(found)
 
     def _must_capture(self, state: GameState, moves: list[int]) -> list[int]:

@@ -13,6 +13,15 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### Pieces with a price, and pieces nobody owns
+
+A game can now give each player a purse of coins. Coins come from
+bounties on captured pieces, and they buy pieces from a market, hire a piece that belongs to nobody, or bribe one of the
+opponent's pieces over to your side. The play page shows each player's coins, the market's pieces with their prices
+(greyed out when you can't afford them), and *hire* and *bribe* buttons on a piece you pick. A piece that belongs to nobody
+can be held by whichever player has the most pieces beside it; it wears a gold ring in that player's colour while they
+do. The designer can set a starting row as nobody's.
+
 ### Every kind of rule, easy to tell apart
 
 "What a piece is worth" is now claret, no longer a lavender close to "pieces in hand", and "who moves" is a warm
@@ -62,6 +71,13 @@ The offline replay now draws the wild creatures with their pictures too.
 Every piece in the library's games now has a picture instead of a letter. Ten new creatures (among them the wolf, the
 kraken, the hydra and the golem) join the designer's piece menu, and the wild creatures that belong to neither player
 show their picture on a small amber disc.
+
+### A sweep cuts its way through
+
+When a piece sweeps down a line, the board now shows it: a blade of light trails behind the
+sweeper, and each piece in its path is sliced in two as the sweeper passes, the halves thrown
+apart in a spray of sparks. You'll see it in your own games and in the sweep story on the front
+page. Before, swept pieces were knocked off like any capture.
 
 ### More positions to solve
 
@@ -2216,7 +2232,6 @@ three games on it earns *Speaks from experience*, which never reads the stars yo
 
 A player now earns *Well read* at half, three quarters and all of the rule building blocks
 that the rated games between them use, counted over the games they have finished.
-
 
 Saving a game on the site now records the designer badges. They are for using a quarter, a
 half or three quarters of the rule building blocks across your listed games, for having both

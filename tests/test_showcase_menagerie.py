@@ -1,5 +1,5 @@
 """N8: *the menagerie*, the showcase of a wild piece's sight (freeze, disarm, shield) and of the duck
-that walks by its moves from a start square (`docs/plan-npc.md` §6.3).
+that walks by its moves from a start square (`docs/archive/plan-npc.md` §6.3).
 
 Chess on 8 by 9 won by taking the king, a duck that starts on e5 and walks a king's step, and six
 wild pieces that eat nothing and pace their lines: gorgons freezing the eight squares round them,

@@ -30,15 +30,22 @@ from chess_variant_sandbox.spec.schema import (
     DEFAULT_RANGE,
     MAX_MOVES_PER_TURN,
     POUNCE_KINDS,
+    PURSE_MAX,
     REPETITION_NEVER,
     STOCK_UNLIMITED,
     WRAP_PAIRS,
     SpecError,
     absent_squares,
     beats_of,
+    bribe_ids,
+    control_geometry,
     has_rests,
     has_speeds,
     hex_distance,
+    hire_ids,
+    is_nobodys,
+    majority_ids,
+    neutral_ids,
     npc_immune_attackers,
     npc_pounce,
     npc_respawn,
@@ -49,6 +56,8 @@ from chess_variant_sandbox.spec.schema import (
     obstacle_squares,
     parse_square,
     path_of,
+    piece_bounties,
+    piece_prices,
     piece_rests,
     piece_sights,
     piece_speeds,
@@ -59,6 +68,9 @@ from chess_variant_sandbox.spec.schema import (
     portal_movement_types,
     promotion_squares,
     promotion_targets,
+    purse_market,
+    purse_rule,
+    purse_squares,
     reach_reflection,
     reflect_square,
     sight_affected_ids,
@@ -130,6 +142,31 @@ def facing_quarter_turns(facing: int, n_facings: int) -> int:
     than one index at a time -- see ``CompiledSpec.facing_step``.
     """
     return facing * (4 // n_facings)
+
+
+def _coat_facing(headings: tuple[tuple[int, ...], ...]) -> tuple[tuple[int, ...], ...]:
+    """TC2 (`docs/plan-turncoat.md` §6): which facing index keeps a piece's heading when it
+    changes sides on the board, ``[from_owner][facing] -> facing`` for the other owner.
+
+    Facing indices are relative to the owner's forward (``frame_index``), so keeping the
+    heading is a new index, read off the frames' own vectors -- ``facing_headings``, the
+    rotation and then the player's reflection `_compile_square` puts every vector through.
+    Under ``"rotate"`` forward becomes backward and right becomes left; under ``"mirror"``
+    forward becomes backward and right stays right. The core looks the answer up and
+    computes nothing (rule 4). Every lattice the language has has a matching index for
+    every facing (a reflection or a half turn maps the four headings onto themselves), so
+    a missing one is a compiler bug, not a spec to refuse.
+    """
+    coat: list[tuple[int, ...]] = []
+    for owner in (0, 1):
+        theirs = headings[1 - owner]
+        row = []
+        for heading in headings[owner]:
+            if heading not in theirs:
+                raise AssertionError(f"no facing of the other owner points at {heading} degrees")
+            row.append(theirs.index(heading))
+        coat.append(tuple(row))
+    return tuple(coat)
 
 
 def _rotate(dx: int, dy: int, quarters: int) -> tuple[int, int]:
@@ -585,7 +622,7 @@ class TurnRule:
 
 @dataclass(frozen=True)
 class DuckRule:
-    """The duck (generation 42, N4b, `docs/plan-npc.md` §4.6): one piece nobody owns, which
+    """The duck (generation 42, N4b, `docs/archive/plan-npc.md` §4.6): one piece nobody owns, which
     the mover moves as the second half of every turn.
 
     * ``piece_type`` -- its declared type, standing in the third owner's block at facing 0;
@@ -639,6 +676,129 @@ def _clear_duck_captures(
         tuple(allowed and victim != kind and attacker != kind for victim, allowed in enumerate(row))
         for attacker, row in enumerate(matrix)
     )
+
+
+# TC1 (`docs/plan-turncoat.md` §3.2): who moves a piece nobody owns, by its type -- the
+# **control kind** the core reads for a byte in the third owner's block (`Tables::value_kind`).
+# 0 is no kind: a type no nobody's piece is ever of. Mirrored by `rust/src/tables.rs`'s
+# `CONTROL_*`. `NEUTRAL` (a nobody's piece that stands) and `MAJORITY` (moved by the majority
+# holder) are TC3's, read off `NeutralRule`.
+CONTROL_NONE = 0
+CONTROL_ROUTE = 1
+CONTROL_DUCK = 2
+CONTROL_PORTAL = 3
+CONTROL_NEUTRAL = 4
+CONTROL_MAJORITY = 5
+
+
+@dataclass(frozen=True)
+class ControlRule:
+    """Who moves each type's pieces when nobody owns them (TC1, `docs/plan-turncoat.md` §3).
+
+    A piece has an **allegiance** (which owner block its byte sits in: a player's, or nobody's)
+    and a **control** (who may move it now). A player's piece is controlled by its owner, plus
+    whatever a sight grants (``command``); nobody's piece by its type's ``kind`` here:
+    ``CONTROL_ROUTE`` walked by the phase (``rules.npcs``), ``CONTROL_DUCK`` moved by the mover
+    on the duck half (``rules.duck``), ``CONTROL_PORTAL`` a portal end, moved by its group's
+    rule. One entry per type; the core expands it per board byte of the third block.
+
+    Read off today's rules alone: the third block holds wild pieces, the duck (both may share
+    it) or portal ends (refused beside either), and every non-duck type a wild game could set in
+    it is a route walker, which is what ``Tables::is_wild_piece`` always answered. ``None`` when
+    nobody owns anything (``n_owners`` 2), so a two-army game crosses an empty table.
+    """
+
+    kind: tuple[int, ...]
+
+
+def _compile_control(
+    n_types: int, n_owners: int, npcs: NpcRule | None, duck: DuckRule | None,
+    portals: PortalRule | None, neutrals: NeutralRule | None = None,
+) -> ControlRule | None:
+    """`ControlRule` for a game with a third owner's block, ``None`` otherwise. TC3's
+    neutral kinds come from `NeutralRule`, which the validator refuses beside the other
+    three, so a type has one kind."""
+    if n_owners < 3:
+        return None
+    if neutrals is not None:
+        return ControlRule(kind=neutrals.kind)
+    kind = [CONTROL_ROUTE if npcs is not None else CONTROL_NONE] * n_types
+    if portals is not None:
+        for piece_type in portals.end_types:
+            kind[piece_type] = CONTROL_PORTAL
+    if duck is not None:
+        kind[duck.piece_type] = CONTROL_DUCK
+    return ControlRule(kind=tuple(kind))
+
+
+@dataclass(frozen=True)
+class NeutralRule:
+    """TC3 (`docs/plan-turncoat.md` §4): pieces nobody owns from the setup, and who may move
+    them.
+
+    ``kind`` is each type's control kind in the third owner's block: ``CONTROL_MAJORITY`` for
+    a type with ``control: "majority"`` that some placement puts there, ``CONTROL_NEUTRAL``
+    for any other type placed there (it stands), ``CONTROL_NONE`` for the rest.
+    ``neighbours[piece_type][square]`` is what *next to* means for a majority type standing
+    on ``square`` (its control's geometry, or the king's step, through `_compile_square`, so
+    walls, absent cells and wrap are resolved here), empty for every other type. The core
+    counts each player's pieces over that list and computes no square (rule 4).
+    """
+
+    kind: tuple[int, ...]
+    neighbours: tuple[tuple[tuple[int, ...], ...], ...]
+
+    @property
+    def has_majority(self) -> bool:
+        return CONTROL_MAJORITY in self.kind
+
+
+def _compile_neutrals(
+    spec: dict[str, Any], pieces: list[dict[str, Any]],
+    width: int, height: int, orientation: str, wrap: WrapRule | None,
+    obstacles: frozenset[int], radius: int,
+) -> NeutralRule | None:
+    """`NeutralRule`, or ``None`` when no placement is nobody's (every game before TC3)."""
+    placed = neutral_ids(spec)
+    if not placed:
+        return None
+    held = majority_ids(spec)
+    hex_lattice = spec["board"].get("lattice") == "hex"
+    kind = [CONTROL_NONE] * len(pieces)
+    neighbours: list[tuple[tuple[int, ...], ...]] = [() for _ in pieces]
+    for piece_type, piece in enumerate(pieces):
+        pid = piece["id"]
+        if pid not in placed:
+            continue
+        kind[piece_type] = CONTROL_MAJORITY if pid in held else CONTROL_NEUTRAL
+        if pid not in held:
+            continue
+        neighbours[piece_type] = _next_to(
+            piece, hex_lattice, width, height, orientation, wrap, obstacles, radius,
+        )
+    return NeutralRule(kind=tuple(kind), neighbours=tuple(neighbours))
+
+
+def _next_to(
+    piece: dict[str, Any], hex_lattice: bool,
+    width: int, height: int, orientation: str, wrap: WrapRule | None,
+    obstacles: frozenset[int], radius: int,
+) -> tuple[tuple[int, ...], ...]:
+    """``[square]`` -> the squares *next to* a piece of this type standing there
+    (`docs/plan-turncoat.md` §4.2): its control's geometry, or the lattice's king's step,
+    landed through `_compile_square` (walls, absent cells, wrap). Shared by majority control
+    (TC3) and a hire's or a bribe's adjacency (TC6)."""
+    vectors, symmetry = control_geometry(piece, hex_lattice)
+    step = {"moves": [{
+        "kind": "leap", "vectors": [list(v) for v in vectors], "symmetry": symmetry,
+    }]}
+    per_square: list[tuple[int, ...]] = []
+    for square in range(width * height):
+        built = _compile_square(
+            step, 0, square, width, height, orientation, wrap, obstacles, False, 0, radius,
+        )
+        per_square.append(tuple(sorted({t for entry in built[0] for t in entry[0]})))
+    return tuple(per_square)
 
 
 @dataclass(frozen=True)
@@ -705,12 +865,12 @@ class NpcRule:
     bounty: tuple[float, ...]
     piece: tuple[int, ...]
     starts: tuple[tuple[int, int], ...]
-    # Generation 36 (N1, `docs/plan-npc.md` §4.1): ``(every, starts)`` per respawning half --
+    # Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): ``(every, starts)`` per respawning half --
     # an entry with ``respawn``, then its mirrored half -- in ``rules.npcs`` order, which is
     # the order the phase's step 3 returns them in. ``starts`` are the half's own, first free
     # first. ``()`` when no entry comes back, which is every game before the rule.
     respawn: tuple[tuple[int, tuple[int, ...]], ...] = ()
-    # Generation 38 (N5, `docs/plan-npc.md` §4.7): a turning-back entry's route is a **line**,
+    # Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): a turning-back entry's route is a **line**,
     # walked first to last and back. ``prev[square]`` is the square a piece walking it back
     # steps to: the previous square of its line, the square itself at the line's first square
     # (nothing before it, as ``next`` holds the square itself at the line's last), and ``-1``
@@ -732,7 +892,7 @@ POUNCE_ATTACKERS = POUNCE_KINDS.index("attackers") + 1
 
 @dataclass(frozen=True)
 class PounceRule:
-    """Wild pieces that pounce (generation 39, N3b, `docs/plan-npc.md` §3.2, §4.3), resolved.
+    """Wild pieces that pounce (generation 39, N3b, `docs/archive/plan-npc.md` §3.2, §4.3), resolved.
 
     ``kind[type]``: 0 for a type that does not pounce, else ``POUNCE_KINDS.index(kind) + 1``
     (two entries of one type must agree, the validator says). The **prey order** -- a royal,
@@ -763,7 +923,7 @@ class PounceRule:
     reading_rank: tuple[tuple[int, ...], tuple[int, ...]]
     distance: tuple[int, ...]
     reach: tuple[tuple[tuple[tuple[int, tuple[int, ...], tuple[int, ...], int], ...], ...], ...]
-    # Generation 41 (N3d, `docs/plan-npc.md` §4.5): ``split[type]``, the most wild pieces of a
+    # Generation 41 (N3d, `docs/archive/plan-npc.md` §4.5): ``split[type]``, the most wild pieces of a
     # splitting type standing at once (0 for a type that does not split), or ``()`` where no
     # type splits, so a pounce game without the rule compiles to what it compiled before.
     split: tuple[int, ...] = ()
@@ -1093,6 +1253,104 @@ def _compile_speeds(
     return tuple(speed)
 
 
+@dataclass(frozen=True)
+class PurseRule:
+    """TC4 and TC5 (`docs/plan-turncoat.md` §5.2, §5.4): coins each player holds, part of the
+    position, and the market they buy from (``rules.purse``).
+
+    ``start`` is both players' opening amount, 0 to ``PURSE_MAX``. A bounty paid under the
+    rule also fills the payee's purse, capped at ``PURSE_MAX`` (what passes the cap is
+    lost). ``zobrist[player * (PURSE_MAX + 1) + amount]`` is the key of ``player`` holding
+    ``amount``, drawn last of all and only under the rule (`_build_zobrist`), so no other
+    game's key moves.
+
+    The market (TC5): ``market[i]`` is a type a player may buy and ``price[i]`` what it
+    costs; ``squares[player][i]`` the empty-or-not squares a bought ``market[i]`` may be
+    placed on (`schema.purse_squares`: the region, reflected, less walls and absent cells,
+    inside the type's own region), ascending. The core picks the empty ones and computes no
+    square.
+
+    Hiring and bribing (TC6, §5.5): ``hire[type]`` is what hiring a nobody's piece of the type
+    costs (its price; 0 where it cannot be hired) and ``bribe[type]`` what bribing an enemy
+    piece of it costs (twice its price; 0 where it cannot be bribed), each over every type or
+    **empty when nothing can be hired** (or bribed). ``neighbours[type][square]`` is what
+    *next to* means for such a type (`_next_to`), empty for every other type and empty
+    altogether when neither list is: the hirer or briber needs a piece of theirs on one.
+    """
+
+    start: int
+    zobrist: tuple[int, ...]
+    market: tuple[int, ...] = ()
+    price: tuple[int, ...] = ()
+    squares: tuple[tuple[tuple[int, ...], ...], tuple[tuple[int, ...], ...]] = ((), ())
+    hire: tuple[int, ...] = ()
+    bribe: tuple[int, ...] = ()
+    neighbours: tuple[tuple[tuple[int, ...], ...], ...] = ()
+
+    @property
+    def bribes(self) -> bool:
+        """Whether an enemy piece can be bought (``rules.purse.bribe`` with a priced type)."""
+        return bool(self.bribe)
+
+
+def _compile_purse(
+    spec: dict[str, Any], pieces: list[dict[str, Any]], index_of: dict[str, int],
+    zobrist: tuple[int, ...],
+    width: int, height: int, orientation: str, wrap: WrapRule | None,
+    obstacles: frozenset[int], radius: int,
+) -> PurseRule | None:
+    """``CompiledSpec.purse`` from ``rules.purse`` (TC5, TC6), or ``None`` without one."""
+    purse = purse_rule(spec)
+    if purse is None:
+        return None
+    market = purse_market(spec)
+    prices = piece_prices(spec)
+    hired = hire_ids(spec)
+    bribed = bribe_ids(spec)
+    hire = [0] * len(pieces)
+    bribe = [0] * len(pieces)
+    neighbours: list[tuple[tuple[int, ...], ...]] = [() for _ in pieces]
+    hex_lattice = spec["board"].get("lattice") == "hex"
+    for piece_type, piece in enumerate(pieces):
+        pid = piece.get("id")
+        if pid in hired:
+            hire[piece_type] = prices[pid]
+        if pid in bribed:
+            bribe[piece_type] = 2 * prices[pid]
+        if pid in hired or pid in bribed:
+            neighbours[piece_type] = _next_to(
+                piece, hex_lattice, width, height, orientation, wrap, obstacles, radius,
+            )
+    contested = bool(hired or bribed)
+    return PurseRule(
+        start=int(purse["start"]),
+        zobrist=zobrist,
+        market=tuple(index_of[pid] for pid in market),
+        price=tuple(prices[pid] for pid in market),
+        squares=(
+            tuple(tuple(sorted(purse_squares(spec, pid, 0))) for pid in market),
+            tuple(tuple(sorted(purse_squares(spec, pid, 1))) for pid in market),
+        ),
+        hire=tuple(hire) if hired else (),
+        bribe=tuple(bribe) if bribed else (),
+        neighbours=tuple(neighbours) if contested else (),
+    )
+
+
+def _compile_bounties(
+    pieces: list[dict[str, Any]], index_of: dict[str, int], n_types: int
+) -> tuple[int, ...]:
+    """``CompiledSpec.bounty``: each type's ``pieces[].bounty`` (TC4), 0 where none is
+    written, over every type (a portal end's is 0), or **empty when no type carries one**."""
+    bounties = piece_bounties(pieces)
+    if not bounties:
+        return ()
+    bounty = [0] * n_types
+    for pid, worth in bounties.items():
+        bounty[index_of[pid]] = worth
+    return tuple(bounty)
+
+
 def _compile_rests(
     pieces: list[dict[str, Any]], index_of: dict[str, int], n_types: int
 ) -> tuple[int, ...]:
@@ -1111,7 +1369,7 @@ def _compile_rests(
 SIGHT_FREEZE = 1
 SIGHT_DISARM = 2
 SIGHT_SHIELD = 4
-# Q1007c (`docs/plan-schema-31.md` §3.7): the piece's opponent may also move it, and with
+# Q1007c (`docs/archive/plan-schema-31.md` §3.7): the piece's opponent may also move it, and with
 # ``captures_own`` make it take its own side's (non-royal) pieces. One command source carries
 # ``SIGHT_COMMAND`` alone or with ``SIGHT_COMMAND_OWN``.
 SIGHT_COMMAND = 8
@@ -1275,7 +1533,7 @@ def _compile_sights(
             frame_lines.append(type_lines)
         lines.append(frame_lines)
 
-    # Generation 37 (N2, `docs/plan-npc.md` §4.2): a wild piece's sight. A wild piece stands
+    # Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): a wild piece's sight. A wild piece stands
     # in the third owner's one frame (its byte is `WILD * n_facings * n_types + type + 1`), its
     # lines read the same for both players (the validator refuses one that does not), so they
     # are compiled in player 0's frame, and its ``whose`` is ``"any"``: one source per seen
@@ -1668,12 +1926,26 @@ class CompiledSpec:
     # game in which no type sees, whose boundary keys for the rule all cross empty. An effect
     # is a function of the board, so the rule adds no state and no key.
     sight: SightRule | None = None
-    # Generation 39 (N3b, `docs/plan-npc.md` §4.3): wild pieces that pounce, or ``None`` -- every
+    # Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): wild pieces that pounce, or ``None`` -- every
     # game in which no ``npcs`` entry says ``pounce``, whose boundary keys for it cross empty.
     pounce: PounceRule | None = None
-    # Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, or ``None`` -- every game without
+    # Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck, or ``None`` -- every game without
     # ``rules.duck``, whose boundary key for it crosses empty.
     duck: DuckRule | None = None
+    # TC1 (`docs/plan-turncoat.md` §3.2): each type's control kind in the third owner's block,
+    # or ``None`` -- every game in which nobody owns anything, whose boundary key crosses empty.
+    control: ControlRule | None = None
+    # TC3 (`docs/plan-turncoat.md` §4): pieces nobody owns from the setup, or ``None`` -- every
+    # game without a ``player: "nobody"`` placement, whose boundary keys for it cross empty.
+    neutrals: NeutralRule | None = None
+    # TC4 (`docs/plan-turncoat.md` §5.1): [piece_type] -> what taking a piece of that type
+    # pays the player whose move took it (``pieces[].bounty``), 0 for none, over every type;
+    # **empty when no type carries one**, so no other game's tables move. A wild piece's
+    # bounty stays its route's (``npcs.bounty``).
+    bounty: tuple[int, ...] = ()
+    # TC4 and TC5 (§5.2, §5.4): the purse and its market, from ``rules.purse``, or ``None``
+    # -- every game without one. See ``PurseRule``.
+    purse: PurseRule | None = None
 
     @property
     def rest_max(self) -> int:
@@ -1803,6 +2075,18 @@ class CompiledSpec:
         are ones it can never be in.
         """
         return self.n_facings // self.facing_axes[piece_type]
+
+    @property
+    def coat_facing(self) -> tuple[tuple[int, ...], ...]:
+        """TC2 (`docs/plan-turncoat.md` §6): ``[from_owner][facing] -> facing`` under the other
+        owner that points the same way on the board. Empty where nothing faces.
+
+        A piece that changes sides on the board keeps its heading: its colour changes, its
+        arrow does not. See ``_coat_facing``.
+        """
+        if not self.has_facing:
+            return ()
+        return _coat_facing(self.facing_headings())
 
     def has_royalty(self) -> bool:
         return bool(self.royal_types)
@@ -2091,7 +2375,13 @@ def _compile(
     # A third owner's block for wild pieces (schema 9), for portals (schema 19) or for the
     # duck (generation 42), which are nobody's too; the validator refuses portals beside
     # either.
-    n_owners = 3 if npcs is not None or has_portals or duck is not None else 2
+    # TC3: and for pieces nobody owns from the setup (refused beside the other three).
+    neutrals = _compile_neutrals(
+        spec, pieces, width, height, orientation, wrap, obstacles, radius,
+    )
+    n_owners = (
+        3 if npcs is not None or has_portals or duck is not None or neutrals is not None else 2
+    )
     promotions = _settle_on_leaving(
         _compile_promotions(rules.get("promotion"), index_of, width, height, orientation),
         leaps, slides, hops, sweeps, facing_axes, n_facings,
@@ -2105,7 +2395,7 @@ def _compile(
     simultaneous = rules.get("simultaneous")
     (
         zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim, zob_rest,
-        zob_respawn, zob_heading,
+        zob_respawn, zob_heading, zob_purse,
     ) = (
         _build_zobrist(
             digest, n_squares, n_types, width, n_facings, n_owners,
@@ -2118,6 +2408,7 @@ def _compile(
             heading_squares=tuple(
                 square for square in range(n_squares) if npcs is not None and npcs.on_line(square)
             ),
+            purse=purse_rule(spec) is not None,
         )
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
@@ -2161,7 +2452,7 @@ def _compile(
         n_types,
         n_facings,
         npcs=npcs,
-        third_block=has_portals or duck is not None,
+        third_block=has_portals or duck is not None or neutrals is not None,
         momentum=(leap_dirs, slide_dirs, hop_dirs) if has_portals else None,
         dirs_out=attack_dirs,
         facing_axes=facing_axes,
@@ -2334,12 +2625,19 @@ def _compile(
         zobrist_colour=zob_colour,
         zobrist_turn=zob_turn,
         portals=portals,
+        control=_compile_control(n_types, n_owners, npcs, duck, portals, neutrals),
+        neutrals=neutrals,
         simultaneous=_compile_simultaneous(rules, declared_pieces, index_of, n_types, zob_sim),
         spy=_compile_spy(declared_pieces, index_of, board, n_types, n_facings),
         rest=_compile_rests(declared_pieces, index_of, n_types),
         zobrist_rest=zob_rest,
         zobrist_respawn=zob_respawn,
         zobrist_heading=zob_heading,
+        bounty=_compile_bounties(declared_pieces, index_of, n_types),
+        purse=_compile_purse(
+            spec, pieces, index_of, zob_purse,
+            width, height, orientation, wrap, obstacles, radius,
+        ),
         sight=_compile_sights(
             spec, pieces, index_of, n_types, n_facings, facing_axes, n_squares, width, height,
             orientation, wrap, obstacles, blocks_leaps, radius, royal_types, multi_royal,
@@ -2513,7 +2811,7 @@ def _lame_ride(
 
     Jump after jump along the step, each one blocked at its leg (``_lame_path``, the
     language's one notion of "the way past") and each landing ending the ride when
-    occupied, captured if it may be (Q1007a, `docs/plan-schema-31.md` §2.2). Expressed as a
+    occupied, captured if it may be (Q1007a, `docs/archive/plan-schema-31.md` §2.2). Expressed as a
     slide whose legs carry no mode: the generator already walks off a ray the moment it
     meets an occupied square it cannot use, which is exactly what being blocked means, and
     the attack inversion gives each landing every square before it, legs included.
@@ -2574,7 +2872,7 @@ def _turning_rides(
     confine: frozenset[int] | None,
     obstacles: frozenset[int],
 ) -> list[tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]]:
-    """Every path of one turning slide from one square (T1, `docs/plan-pieces-moves.md` §5.2):
+    """Every path of one turning slide from one square (T1, `docs/archive/plan-pieces-moves.md` §5.2):
     ``(squares, modes, steps)`` per path, ``steps`` the index into ``steps`` of the direction
     that reached each square (for the momentum signs).
 
@@ -3597,8 +3895,20 @@ def _build_initial_position(
     mirror = setup.get("mirror", True)
     rotate = setup.get("orientation", "mirror") == "rotate"
 
+    nobodys: list[tuple[int, int]] = []
     for placement in setup["placements"]:
         piece_type = index_of[placement["piece"]]
+        if is_nobodys(placement):
+            # TC3: placed after the unmoved mask, as a wild piece is (no first move, no
+            # castling right), in the third block at facing 0; mirrored, still nobody's.
+            for square_name in placement["squares"]:
+                coords = parse_square(square_name, width, height)
+                assert coords is not None  # guaranteed by validation
+                images = {coords}
+                if mirror:
+                    images.add(reflect_square(*coords, width, height, "rotate" if rotate else "mirror"))
+                nobodys.extend((rank * width + file, piece_type) for file, rank in images)
+            continue
         player = placement.get("player", 0)
         # Which way these pieces start pointing: the placement's answer where it gives
         # one, the piece type's otherwise. Relative to each army's own forward, which is
@@ -3629,6 +3939,8 @@ def _build_initial_position(
     # because the bit is a castling right and a first-move permission and a wild piece
     # has neither. Placing them earlier would set a bit that the phase then clears on
     # its first step, and `rights_changed` would call every opening ply irreversible.
+    for square, piece_type in nobodys:
+        board[square] = (WILD * n_facings) * n_types + piece_type + 1
     if npcs is not None:
         for square, piece_type in npcs.starts:
             board[square] = (WILD * n_facings) * n_types + piece_type + 1
@@ -4518,7 +4830,7 @@ def _compile_strike(
     switching = frozenset(
         index_of[p] for p in strike.get("switches_sides") or [] if p in index_of
     )
-    # A1 (`docs/plan-pieces-moves.md` §6.2): only a capture by a listed type strikes, so
+    # A1 (`docs/archive/plan-pieces-moves.md` §6.2): only a capture by a listed type strikes, so
     # every other mover's row is plain capture. `None` is every type, the rule as it was.
     by = strike.get("by")
     strikers = (
@@ -5217,6 +5529,7 @@ def _build_zobrist(
     rest_max: int = 0,
     respawn_keys: int = 0,
     heading_squares: tuple[int, ...] = (),
+    purse: bool = False,
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
@@ -5226,6 +5539,7 @@ def _build_zobrist(
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, tuple[int, ...], tuple[int, ...]] | None,
+    tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
@@ -5291,15 +5605,19 @@ def _build_zobrist(
     # game's key moves. Where schema 27's rested squares were drawn: after the standoff's in
     # a round game, and in an alternating game (which has no standoff) after the folds.
     resting = tuple(rng.getrandbits(64) for _ in range(rest_max * 2 * n_squares))
-    # Generation 36 (N1, `docs/plan-npc.md` §4.1): the respawn clocks, one key per running
+    # Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): the respawn clocks, one key per running
     # value of each half's clock, drawn last of all and only where an entry comes back, so no
     # other game's key moves.
     respawn = tuple(rng.getrandbits(64) for _ in range(respawn_keys))
-    # Generation 38 (N5, `docs/plan-npc.md` §4.7): a wild piece walking its line back, one key
+    # Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): a wild piece walking its line back, one key
     # per line square in ascending order, laid out board-sized (0 off every line), drawn last
     # of all and only where an entry turns back, so no other game's key moves.
     heading: tuple[int, ...] = ()
     if heading_squares:
         drawn = {square: rng.getrandbits(64) for square in heading_squares}
         heading = tuple(drawn.get(square, 0) for square in range(n_squares))
-    return pieces, side, ep, colours, turns, bar, fold, sim, resting, respawn, heading
+    # TC4 (`docs/plan-turncoat.md` §5.2): the purse, one key per (player, amount), amount 0
+    # to ``PURSE_MAX``, drawn last of all and only under the rule, so no other game's key
+    # moves.
+    coins = tuple(rng.getrandbits(64) for _ in range(2 * (PURSE_MAX + 1))) if purse else ()
+    return pieces, side, ep, colours, turns, bar, fold, sim, resting, respawn, heading, coins

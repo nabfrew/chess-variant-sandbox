@@ -1,4 +1,4 @@
-"""The landing's stories as data (`docs/plan-landing.md` §2.1, §2.2, box LP1).
+"""The landing's stories as data (`docs/archive/plan-landing.md` §2.1, §2.2, box LP1).
 
 Each story is an idea that fails and the one change that mends it, told in three beats a
 visitor can follow without reading a number: **what goes wrong** (a game of the idea played
@@ -57,9 +57,9 @@ from typing import Any, Protocol
 
 from chess_variant_sandbox.engine.compile import WILD
 from chess_variant_sandbox.engine.engine import Engine
-from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_PROMOTION, MOVE_SWEEP, decode_move
+from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_PROMOTION, decode_move
 from chess_variant_sandbox.spec.canonical import MECHANIC_KEYS, load_spec, spec_hash
-from chess_variant_sandbox.viz.wrapped import portal_transit, square_name
+from chess_variant_sandbox.viz.wrapped import portal_transit, square_name, sweep_transit
 from chess_variant_sandbox.web.landing import BLOCKS
 
 HERE = Path(__file__).resolve().parent / "stories"
@@ -514,11 +514,11 @@ def _did(engine: Engine, state: Any, after: Any, move: int) -> dict[str, Any]:
     trip = portal_transit(engine, state, move)
     if trip:
         item["portal"] = [trip["portal"], trip["portalOut"]]
-    if kind == MOVE_SWEEP:
-        # The squares the sweep cleared besides its landing square: its compiled path, read
-        # against the two positions as a blast's are.
-        item["sweep"] = [i for i in c.sweep_path(state.board, origin, target)
-                         if state.board[i] and not after.board[i]]
+    # The squares the sweep cleared besides its landing square, in path order: the play
+    # board's own list (`viz.wrapped.sweep_transit`), so the story cuts the same pieces down.
+    cleared = sweep_transit(engine, state, move)
+    if cleared:
+        item["sweep"] = cleared["swept"]
     explosion = c.explosion
     if (explosion is not None and kind != MOVE_DROP and state.board[target]
             and not after.board[target]):

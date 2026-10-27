@@ -1,5 +1,5 @@
 """The `command` effect on the page, in the designer and in the analysis tallies (Q1007d,
-`docs/plan-schema-31.md` §3.9).
+`docs/archive/plan-schema-31.md` §3.9).
 
 What is held here, by behaviour:
 
@@ -40,7 +40,7 @@ from test_web import _in_page
 from chess_variant_sandbox.agents.evaluation import Evaluator
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import SIGHT_COMMAND, SIGHT_COMMAND_OWN
-from chess_variant_sandbox.engine.moves import MOVE_COMMANDED, move_from
+from chess_variant_sandbox.engine.moves import MOVE_FOREIGN, move_from
 from chess_variant_sandbox.spec import validate_spec
 from chess_variant_sandbox.tournament import analysis as analysis_pass
 from chess_variant_sandbox.tournament.analysis import (
@@ -108,7 +108,7 @@ class TestTheServer:
         session.play(next(m for m in engine.legal_moves(state)
                           if engine.describe_move(state, m) == "Nf6-g8"))
         snap = session.snapshot()
-        commanded = [m for m in snap["moves"] if m["move"] & MOVE_COMMANDED]
+        commanded = [m for m in snap["moves"] if m["move"] & MOVE_FOREIGN]
         assert commanded, "white may move the pawns its knight commands"
         assert {m["from"] for m in commanded} == {_square("c7"), _square("e7")}
         assert all(m["text"].startswith("~") for m in commanded)
@@ -120,7 +120,7 @@ class TestTheServer:
         snap = session.snapshot()
         bits = snap["effects"][_square("e2")]
         assert bits & SIGHT_COMMAND and bits & SIGHT_COMMAND_OWN
-        texts = [m["text"] for m in snap["moves"] if m["move"] & MOVE_COMMANDED]
+        texts = [m["text"] for m in snap["moves"] if m["move"] & MOVE_FOREIGN]
         assert "~Qe2xb5" in texts  # the queen made to take its own bishop
 
     def test_a_commanded_move_is_said_with_its_mark_in_history_and_replay(
@@ -139,7 +139,7 @@ class TestTheServer:
         spec = _spec("k1")
         k1 = _session(spec)
         _k1_after(k1, ["Nb1-c3", "Ng8-f6", "Nc3-d5", "Nf6-g8"])
-        commanded = next(m for m in k1.snapshot()["moves"] if m["move"] & MOVE_COMMANDED)
+        commanded = next(m for m in k1.snapshot()["moves"] if m["move"] & MOVE_FOREIGN)
         k1.play(commanded["move"])
         assert k1.snapshot()["history"][-1]["text"] == commanded["text"]
         record = GameRecord(ruleset_hash=k1.game.hash, ruleset_name=spec["name"], seed=0,
@@ -153,7 +153,7 @@ class TestTheServer:
         session = _session(spec)
         snap = session.snapshot()
         assert not any(bits & (SIGHT_COMMAND | SIGHT_COMMAND_OWN) for bits in snap["effects"])
-        assert not any(m["move"] & MOVE_COMMANDED for m in snap["moves"])
+        assert not any(m["move"] & MOVE_FOREIGN for m in snap["moves"])
 
 
 # ------------------------------------------------------------------ the page's half
@@ -303,7 +303,7 @@ class TestTheTallies:
                 effects = engine.effects(state)
                 mine = [b for sq, b in enumerate(effects.bits)
                         if b and engine.spec.owner_of(state.board[sq]) == state.side_to_move]
-                made = bool(move & MOVE_COMMANDED)
+                made = bool(move & MOVE_FOREIGN)
                 row = {key: tally[key][ply] for key in COMMAND_SERIES}
                 assert row == {
                     "commanded": sum(1 for b in mine if b & SIGHT_COMMAND),

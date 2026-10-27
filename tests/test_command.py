@@ -1,4 +1,4 @@
-"""Q1007c: the `command` effect, one test per decision of `docs/plan-schema-31.md` §3.
+"""Q1007c: the `command` effect, one test per decision of `docs/archive/plan-schema-31.md` §3.
 
 A fourth sight effect: the affected piece's **opponent** may also move it, to empty squares,
 and with ``captures_own`` make it take its own side's non-royal pieces. Royals are never
@@ -22,7 +22,7 @@ import pytest
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.bridge import canonical_tables
 from chess_variant_sandbox.engine.compile import SIGHT_COMMAND, SIGHT_COMMAND_OWN, compile_spec
-from chess_variant_sandbox.engine.moves import MOVE_COMMANDED, MOVE_ROTATE, decode_move
+from chess_variant_sandbox.engine.moves import MOVE_FOREIGN, MOVE_ROTATE, decode_move
 from chess_variant_sandbox.engine.state import NO_SQUARE, GameState
 from chess_variant_sandbox.spec import spec_hash, validate_spec
 
@@ -181,7 +181,7 @@ def test_a_command_that_can_never_bind_is_refused() -> None:
 
 def test_every_existing_sight_game_compiles_to_the_tables_it_had() -> None:
     """Inert: the new flag sits at its inert default, so no sight game's tables move. A game that
-    declares a command (Q1024's `chess-with-preaching-bishops`, `plan-schema-31.md` §6.5) is the
+    declares a command (Q1024's `chess-with-preaching-bishops`, `docs/archive/plan-schema-31.md` §6.5) is the
     flag's own showcase, not a game it could have moved."""
     for path in sorted((ROOT / "archive").glob("*.json")):
         spec = json.loads(path.read_text("utf-8"))
@@ -204,7 +204,7 @@ def test_a_check_is_answered_by_commanding_the_checker_away() -> None:
     built, state = position(k2(), K2_MATE)
     assert built.in_check(state, 0)
     moves = built.legal_moves(state)
-    assert moves and all(move & MOVE_COMMANDED for move in moves)
+    assert moves and all(move & MOVE_FOREIGN for move in moves)
     texts = commanded_texts(built, state)
     assert "~Qe2-c4" in texts
     # Or made to take its own protector, or another of its side.
@@ -219,7 +219,7 @@ def test_a_check_is_answered_by_commanding_the_checker_away() -> None:
 def test_a_commanded_move_is_found_by_its_text() -> None:
     built, state = position(k2(), K2_MATE)
     move = built.find_move(state, "~Qe2-c4")
-    assert move & MOVE_COMMANDED
+    assert move & MOVE_FOREIGN
     after = built.apply(state, move)
     assert after.board[square(built, "c4")] == state.board[square(built, "e2")]
     assert after.side_to_move == 1
@@ -250,7 +250,7 @@ def test_a_commanded_move_that_unblocks_its_own_side_is_not_offered() -> None:
     })
     origin = square(built, "e2")
     assert any(
-        move & MOVE_COMMANDED and move & 0xFF == origin
+        move & MOVE_FOREIGN and move & 0xFF == origin
         for move in built.pseudo_legal_moves(state)
     )
     assert commanded_texts(built, state) == []
@@ -263,7 +263,7 @@ def test_a_commanded_move_that_would_expose_the_commanders_royal_is_not_offered(
     })
     origin = square(built, "e4")
     assert any(
-        move & MOVE_COMMANDED and move & 0xFF == origin
+        move & MOVE_FOREIGN and move & 0xFF == origin
         for move in built.pseudo_legal_moves(state)
     )
     assert not any(text.startswith("~Be4") for text in built.move_texts(state))
@@ -349,7 +349,7 @@ def test_stalemate_is_not_declared_while_a_commanded_move_exists() -> None:
     assert plain.legal_moves(plain_state) == []
     built, state = position(k2(), placement)
     moves = built.legal_moves(state)
-    assert moves and all(move & MOVE_COMMANDED for move in moves)
+    assert moves and all(move & MOVE_FOREIGN for move in moves)
     assert built.terminal(state) is None
 
 
@@ -427,7 +427,7 @@ def test_a_commanded_turn_keeps_the_piece_its_owners() -> None:
     }, moved=("d5",))
     turns = [
         move for move in built.legal_moves(state)
-        if move & MOVE_COMMANDED and decode_move(move)[2] == MOVE_ROTATE
+        if move & MOVE_FOREIGN and decode_move(move)[2] == MOVE_ROTATE
     ]
     assert len(turns) == 3
     after = built.apply(state, turns[0])

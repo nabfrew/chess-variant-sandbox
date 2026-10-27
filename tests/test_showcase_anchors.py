@@ -1,4 +1,4 @@
-"""V1 of I3's showcase *anchors* (`docs/plan-pieces-moves.md` §4.8): the mechanism, without
+"""V1 of I3's showcase *anchors* (`docs/archive/plan-pieces-moves.md` §4.8): the mechanism, without
 players.
 
 Chess with two anchors a side (`moves: []`) on b3 and g3 (b6 and g6), which only a pawn may

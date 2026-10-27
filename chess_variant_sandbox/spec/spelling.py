@@ -44,7 +44,7 @@ both over the library and its re-spellings):
   keeps it. Q1008c kept it: *tunnel-horizontal*'s dead promotion is the rule its en passant
   is defined against, so dropping it would be refused, or change the game.
 
-4. Spelling 31 (Q1007b, `docs/plan-schema-31.md` §4.2): a portal group's moves are written on
+4. Spelling 31 (Q1007b, `docs/archive/plan-schema-31.md` §4.2): a portal group's moves are written on
    the group (``rules.portals[].moves``), not on a stand-in piece the group names by
    ``piece`` (`_portal_moves_on_groups`). The normal form writes them back as that stand-in
    (`normal._portal_moves_as_pieces`), so the converted file keeps its game's name and tables.

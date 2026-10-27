@@ -1,0 +1,40 @@
+{
+  "schema_version": 31,
+  "name": "the purse hire",
+  "description": "A six by six test game (TC6): two mercenaries stand between the armies for hire, and a purse filled by captures may also bribe an enemy knight or mercenary away at twice its price.",
+  "board": {"width": 6, "height": 6},
+  "pieces": [
+    {"id": "K", "name": "king", "royal": true, "value": 0, "moves": [
+      {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "dihedral8"}
+    ]},
+    {"id": "R", "name": "rook", "value": 5, "bounty": 3, "moves": [
+      {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4"}
+    ]},
+    {"id": "N", "name": "knight", "value": 3, "bounty": 2, "price": 4, "moves": [
+      {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}
+    ]},
+    {"id": "M", "name": "mercenary", "value": 3, "bounty": 2, "price": 2, "moves": [
+      {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "dihedral8"}
+    ]},
+    {"id": "P", "name": "pawn", "value": 1, "bounty": 1, "moves": [
+      {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+      {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+    ]}
+  ],
+  "setup": {"placements": [
+    {"piece": "K", "squares": ["c1"]},
+    {"piece": "R", "squares": ["a1"]},
+    {"piece": "N", "squares": ["b1"]},
+    {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2"]},
+    {"piece": "M", "player": "nobody", "squares": ["b3"]}
+  ]},
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["R", "N"]},
+    "max_plies": 120,
+    "repetition_draw": 3,
+    "no_progress_draw": 40,
+    "purse": {"start": 2, "bribe": true}
+  }
+}

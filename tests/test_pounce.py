@@ -1,4 +1,4 @@
-"""Wild pieces that pounce on prey (generation 39, N3b, `docs/plan-npc.md` §3, §4.3).
+"""Wild pieces that pounce on prey (generation 39, N3b, `docs/archive/plan-npc.md` §3, §4.3).
 
 An entry with ``pounce: "prey"``: after a move, before any wild piece steps, the pouncer takes a
 piece of the player who has just moved that it attacks by its own type's moves, moving onto it;

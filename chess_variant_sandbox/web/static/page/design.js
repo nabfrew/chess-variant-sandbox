@@ -147,7 +147,7 @@ async function showDesigner(from, rule, how) {
 
 // ------------------------------------------------ a door at a rule (LP7)
 //
-// `#/design?rule=<key>` (`docs/plan-landing.md` §5, box LP7): the designer opened on a copy of
+// `#/design?rule=<key>` (`docs/archive/plan-landing.md` §5, box LP7): the designer opened on a copy of
 // chess with one rule added, from a word of the landing's wall or a story's card. Which of the
 // designer's own add paths a key takes is the server's (`designing.doors`, in the kit): *add a
 // rule* for a rule's card, *how the players take turns* for rounds and several moves a turn,
@@ -1998,7 +1998,7 @@ function turnings(move) {
   return TURNINGS.filter(([value]) => own.includes(value) || value === move.symmetry);
 }
 
-// Q1007a (`docs/plan-schema-31.md` §2.5): a jump longer than one square may be ridden, jump
+// Q1007a (`docs/archive/plan-schema-31.md` §2.5): a jump longer than one square may be ridden, jump
 // after jump in its direction. Offered on a leap, a slide or a blockable leap whose every
 // direction is longer than one square, as one menu read off the descriptor: once (a leap, or
 // a blockable leap of one jump), again and stopped only where it lands (a slide over the jump,
@@ -2192,7 +2192,7 @@ const SIGHT_LINE_WORDS = [['ray', 'no: stops at the first piece'], ['aura', 'yes
 const NEW_SIGHT = { vectors: [[1, 0], [1, 1]], symmetry: 'rotate4', range: 1,
                     effect: 'freeze', whose: 'enemy' };
 
-// Generation 37 (N2, `docs/plan-npc.md` §4.2): a wild piece's type may see too, with its
+// Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): a wild piece's type may see too, with its
 // three limits: both sides' pieces (`whose` 'any', a wild piece has no side), no command
 // (nobody commands for it), and lines that read the same for both players (the validator
 // says so in words; the ring below does). Its new line of sight is the ring freezing both
@@ -2258,7 +2258,7 @@ function sightEditor(sight, piece, index) {
   const affects = sightTargets(sight).map(([id, name]) => `<label class="pick sightPick">
       <input type="checkbox" ${tag} data-sfield="affects" data-pid="${esc(id)}"${
       named.includes(id) ? ' checked' : ''}> ${esc(name)}</label>`).join('');
-  // Q1007d (`docs/plan-schema-31.md` §3.9): a command may make its pieces take their own side
+  // Q1007d (`docs/archive/plan-schema-31.md` §3.9): a command may make its pieces take their own side
   // (`captures_own`), a box beside the effect shown only while the effect is a command; ticked
   // writes `true`, unticked no key (`false` is the off value the schema takes as no key).
   const turncoat = sight.effect !== 'command' ? '' : `<label class="pick sightPick sightOwn"
@@ -2437,15 +2437,20 @@ function wireSights(form, changed) {
 
 function placementEditor(placement, index) {
   const ids = (DRAFT.pieces || []).map(p => p.id);
-  // Whose row this is, which only means something without a mirror: under one, the
-  // second player's army is the first player's reflected and the schema refuses a player.
+  // Whose row this is. Without a mirror, either player's; under one the second player's
+  // army is the first player's reflected and the schema refuses a player, so the row is
+  // the armies'. In both, TC7 (`docs/plan-turncoat.md` §4.1): *nobody*, pieces neither
+  // player owns (mirrored too under a mirror, still nobody's).
   const sides = (lastPreview() || {}).sides || ['first', 'second'];
-  const whose = (DRAFT.setup || {}).mirror === false
-    ? `<select data-place="${index}" data-pfield="player" class="u-w-88">
-        ${[0, 1].map(player => `<option value="${player}"${(placement.player || 0) === player
-          ? ' selected' : ''}>${esc(sides[player])}</option>`).join('')}
-      </select>`
-    : '';
+  const mirrored = (DRAFT.setup || {}).mirror !== false;
+  const owners = mirrored ? [[0, 'both']] : [[0, sides[0]], [1, sides[1]]];
+  owners.push(['nobody', 'nobody']);
+  const now = placement.player === undefined ? 0 : placement.player;
+  const whose = `<select data-place="${index}" data-pfield="player" class="u-w-88"
+      title="whose pieces these are; nobody's stand between the armies">
+      ${owners.map(([value, label]) => `<option value="${value}"${now === value
+        ? ' selected' : ''}>${esc(label)}</option>`).join('')}
+    </select>`;
   return `<div class="row u-gap-7 u-mb-6">
     ${whose}
     <select data-place="${index}" data-pfield="piece" class="u-w-88">
@@ -2656,7 +2661,9 @@ function wirePlacements(form) {
     const write = () => {
       const placement = DRAFT.setup.placements[index];
       if (field === 'player') {
-        if (Number(node.value) === 1) placement.player = 1; else delete placement.player;
+        if (node.value === 'nobody') placement.player = 'nobody';
+        else if (Number(node.value) === 1) placement.player = 1;
+        else delete placement.player;
       } else {
         placement[field] = field === 'squares'
           ? node.value.trim().split(/\s+/).filter(Boolean) : node.value;
@@ -2761,7 +2768,10 @@ function wireDesigner() {
   form.querySelector('#dMirror').onchange = e => {
     DRAFT.setup = DRAFT.setup || {};
     DRAFT.setup.mirror = e.target.checked;
-    if (e.target.checked) (DRAFT.setup.placements || []).forEach(p => { delete p.player; });
+    // A row for nobody stays nobody's: a mirror reflects it, still nobody's (TC7).
+    if (e.target.checked) {
+      (DRAFT.setup.placements || []).forEach(p => { if (p.player !== 'nobody') delete p.player; });
+    }
     PLACING = null;
     changed(true);
   };

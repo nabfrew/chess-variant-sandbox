@@ -298,8 +298,8 @@
   "provenance": {
     "added": "2026-10-26",
     "origin": "designed",
-    "source": "docs/plan-npc.md, N6: the showcase for the duck, its shield, wild pieces that turn back and wild pieces that return (section 6.1)",
-    "history": "Section 6.1 of docs/plan-npc.md, pre-registered 2026-10-25 before any of its rules was built and amended by N4a before any run (max_plies 600, each duck half a ply): chess won by taking the king, with the classic duck (any empty square, off the board at the start) shielding the eight squares round it, and a mirrored wolf pair pacing ranks 4 and 5 end to end that turns back, returns eight phases after it is taken, and pays a point under scoring.count points. Registered as drafted (respawn 8, ranks 4 and 5, the tunable numbers left at the draft's), after a draft read in self-play at 1600 and 6400 nodes.",
+    "source": "docs/archive/plan-npc.md, N6: the showcase for the duck, its shield, wild pieces that turn back and wild pieces that return (section 6.1)",
+    "history": "Section 6.1 of docs/archive/plan-npc.md, pre-registered 2026-10-25 before any of its rules was built and amended by N4a before any run (max_plies 600, each duck half a ply): chess won by taking the king, with the classic duck (any empty square, off the board at the start) shielding the eight squares round it, and a mirrored wolf pair pacing ranks 4 and 5 end to end that turns back, returns eight phases after it is taken, and pays a point under scoring.count points. Registered as drafted (respawn 8, ranks 4 and 5, the tunable numbers left at the draft's), after a draft read in self-play at 1600 and 6400 nodes.",
     "parents": [
       "4c1922ffae26"
     ]

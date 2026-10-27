@@ -1,4 +1,4 @@
-// The landing's story, drawn at random on each load (LP6, `docs/plan-landing.md` §4.1). A
+// The landing's story, drawn at random on each load (LP6, `docs/archive/plan-landing.md` §4.1). A
 // classic script in the single page's <head>, after the shell's: the server writes the pool
 // (`<html data-stories="...">`, the stories that still hold, the same bytes for everybody) and
 // this puts the one drawn on `<html>` as `data-story` (its key) and `data-story-at` (its place

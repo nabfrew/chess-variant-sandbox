@@ -1,4 +1,4 @@
-//! Wild pieces that pounce (generation 39, N3b, `docs/plan-npc.md` §3.1 to §3.3, §4.3): step 1
+//! Wild pieces that pounce (generation 39, N3b, `docs/archive/plan-npc.md` §3.1 to §3.3, §4.3): step 1
 //! of the wild-piece phase, and the pass test that is check in a pounce game.
 //!
 //! **The rule, stated once** (`Game::pounce_prey_on`). After a move, a `"prey"` pouncer looks

@@ -171,9 +171,10 @@ def test_a_freezing_queen_and_a_disarming_queen_measure_apart() -> None:
     disarming = _chess(Q=[dict(FREEZE_QUEEN, effect="disarm")])
     assert distance(freezing, disarming) > 0
     assert distance(freezing, disarming) == distance(disarming, freezing)
-    # one share each way: the freeze share and the disarm share, of the 108 features (100 at
-    # Q1011; T1, A1, N1, N2, N5, N3b, N3c and N3d added one each)
-    assert distance(freezing, disarming) == pytest.approx(2 * (1 / 6) / 108, abs=1e-4)
+    # one share each way: the freeze share and the disarm share, of the 120 features (100 at
+    # Q1011; T1, A1, N1, N2, N5, N3b, N3c and N3d added one each, N4b two, TC3 three, TC4 one,
+    # TC5 four, TC6 two)
+    assert distance(freezing, disarming) == pytest.approx(2 * (1 / 6) / 120, abs=1e-4)
 
 
 # --------------------------------------------------------------------------- relate.py

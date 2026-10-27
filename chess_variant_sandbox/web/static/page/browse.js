@@ -66,7 +66,7 @@ async function showLibrary() {
         data.previews.length === 1 ? '' : 's'}` : ''}`;
 
   // Q788 had this page open on the search and the filters, the shelves being the landing's.
-  // LP3 (`docs/plan-landing.md` §4.2, the user's decision of 2026-10-24) moves them here:
+  // LP3 (`docs/archive/plan-landing.md` §4.2, the user's decision of 2026-10-24) moves them here:
   // the landing becomes a story, and `/game` is where a visitor goes to find a game, so
   // the five shelves are one band at its top, above the search (`showShelves`). What waits
   // on a signed-in member (`forYou`) is theirs, not a highlight, and stays above it.

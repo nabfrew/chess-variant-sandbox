@@ -233,7 +233,7 @@ WORSE_HALF = (
 
 # ------------------------------------------------------------------ the palette, as words
 
-# LP2 (`docs/plan-landing.md` §3.2, direction B's *Your idea is in here somewhere*): every
+# LP2 (`docs/archive/plan-landing.md` §3.2, direction B's *Your idea is in here somewhere*): every
 # family of rules the language offers, one row each, and in each row the rules as words a
 # visitor might use for an idea. Each word is a rule the designer has a control for (`key`,
 # and inside its card `field` and the option `value` it means), says the designer's own name
@@ -376,7 +376,11 @@ BLOCKS: tuple[Block, ...] = (
 
 # A family of `RULES.md`'s that has no row, by its title, with the reason. Empty: every
 # family is on the wall.
-NOT_ON_THE_WALL: dict[str, str] = {}
+NOT_ON_THE_WALL: dict[str, str] = {
+    # TC5 (`docs/plan-turncoat.md` §5.8): the designer's purse card and the page's market tray
+    # are TC7's; the row goes on the wall with them, and this entry goes.
+    "Coins and a market": "the designer has no purse card yet (TC7, docs/plan-turncoat.md §5.8)",
+}
 
 WALL_HEADING = "Your idea is in here somewhere"
 WALL_LEAD = (
@@ -385,7 +389,7 @@ WALL_LEAD = (
     "it down.")
 WALL_BAND = "Your idea next."
 
-# LP7 (`docs/plan-landing.md` §5): each word, and each story's card, is a door into the
+# LP7 (`docs/archive/plan-landing.md` §5): each word, and each story's card, is a door into the
 # designer at its rule, `#/design?rule=<key>`; `web/designing.doors` says what each key opens.
 DOOR_SAID = "start a game with this rule"
 
@@ -782,7 +786,7 @@ def _ingredients_html(version: str) -> str:
         f"</div></details>")
 
 
-# LP3 (`docs/plan-landing.md` §4.2): *How the score works*, the score's long explanation as
+# LP3 (`docs/archive/plan-landing.md` §4.2): *How the score works*, the score's long explanation as
 # a view of its own, `#/score` on both servers. It carries the landing's two sections as
 # they were, *The computer checks that a game works* and *The score*, with the ingredients,
 # the tests that rule a game out and the provisional and re-certified marks, under the ids
@@ -876,7 +880,7 @@ def shelves_html() -> str:
 
 # ------------------------------------------------------------------ the hero (LP4)
 
-# LP4 (`docs/plan-landing.md` §3.2, direction B): the page opens on a question, *Wouldn't it
+# LP4 (`docs/archive/plan-landing.md` §3.2, direction B): the page opens on a question, *Wouldn't it
 # be cool if…*, whose ending turns over every few seconds (`landing.js`), each ending
 # underlined in its family's colour beside the game that idea became, drawn from the
 # listing's still. The story's own idea leads (`web/stories.py`, the hero's clause), and these

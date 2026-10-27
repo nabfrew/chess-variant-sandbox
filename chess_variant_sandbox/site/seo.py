@@ -167,7 +167,7 @@ LLMS_STORIES = (
 
 
 def story_lines(base: str, stories: Sequence[Mapping[str, Any]]) -> list[str]:
-    """`llms.txt`'s paragraph on the front page's stories (LP6, `docs/plan-landing.md` §4.1):
+    """`llms.txt`'s paragraph on the front page's stories (LP6, `docs/archive/plan-landing.md` §4.1):
     each holding story's pair in the pool's order, a library game by its name at its own
     address, a constructed one said to be an example made for the page, with no address.
     Nothing in it is random: the same stories hold, the same lines."""

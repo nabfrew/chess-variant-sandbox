@@ -1,5 +1,5 @@
 # compute-lease: heavy
-"""Play the landing's constructed examples (`docs/plan-landing.md` §2.1, LPR2; moved here by LP1).
+"""Play the landing's constructed examples (`docs/archive/plan-landing.md` §2.1, LPR2; moved here by LP1).
 
     uv run python chess_variant_sandbox/web/stories/make_examples.py
 

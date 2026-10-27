@@ -1,4 +1,4 @@
-"""The declared Python oracle for wild pieces that turn back (generation 38, N5, `docs/plan-npc.md` §4.7).
+"""The declared Python oracle for wild pieces that turn back (generation 38, N5, `docs/archive/plan-npc.md` §4.7).
 
 `rules.npcs[].turns_back`: the entry's route is a **line**, walked first to last and back. Each
 piece on it has a heading, forward at the start. In the phase it looks at the next square of its

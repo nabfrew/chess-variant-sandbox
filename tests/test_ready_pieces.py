@@ -2,7 +2,7 @@
 
 Every drawing in the library is either a ready piece or left out with a reason. Each ready
 piece compiles, alone and beside the game-wide rule it says it needs, and its moves are the
-reading `docs/plan-pieces-moves.md` §1 gives its drawing, in the spelling the survey's
+reading `docs/archive/plan-pieces-moves.md` §1 gives its drawing, in the spelling the survey's
 scratch specs proved with `validate` (§1.4's `gen.py`), or the committed game's own moves for
 the shogi and xiangqi drawings. A piece named here is a fixture of the catalogue's, not of
 the engine's: nothing under `engine/` reads this file.

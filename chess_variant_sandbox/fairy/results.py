@@ -401,7 +401,7 @@ def check_results(
 
     engine: Any = Engine(spec)
     if engine.spec.duck is not None:
-        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): a duck game is asked about at turn
+        # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): a duck game is asked about at turn
         # starts, a move being both halves there (`_Turns`).
         engine = _Turns(engine)
     check = ResultCheck(

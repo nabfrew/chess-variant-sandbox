@@ -1,7 +1,7 @@
 """The store's portal games in spelling 31, every row keeping its key (Q1007b).
 
 `0042_portal_moves.sql` rewrites `games.spec` in place as `spec/spelling.py::current_spelling`
-rewrites a file (`docs/plan-schema-31.md` §4.2): a group that names a stand-in piece takes its
+rewrites a file (`docs/archive/plan-schema-31.md` §4.2): a group that names a stand-in piece takes its
 moves as its own `moves`, the stand-in leaves `pieces`, and every stored spec is stamped 31. The
 deploy's names step (`deploy/names.py`) compares stored specs *before* migrations run, so it
 cannot see a rename made here; what it would have guarded is held here instead: after the

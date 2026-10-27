@@ -46,6 +46,7 @@ from chess_variant_sandbox.spec.schema import (
     NPC_OFF_VALUES,
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
+    PURSE_OFF_VALUES,
     SIGHT_OFF_VALUES,
     SIMULTANEOUS_OFF_VALUES,
     portal_stand_in_shape,
@@ -106,7 +107,7 @@ def normal_form(spec: dict[str, Any]) -> dict[str, Any]:
     5. A key written at its off value is dropped (`drop_off_values`, Q1008c): before
        Q1008c the validator refused each of these, so no game that had a name writes one.
     6. Portal moves are written in the shape every portal game was named in (spelling 31,
-       Q1007b, `docs/plan-schema-31.md` §4.3, `_portal_moves_as_pieces`): each group's
+       Q1007b, `docs/archive/plan-schema-31.md` §4.3, `_portal_moves_as_pieces`): each group's
        ``moves`` as a piece appended to ``pieces`` (`schema.portal_movement_types`) that the
        group names as its ``piece``. Not an authoring spelling, which the validator refuses;
        the old file and its conversion are one game under one name.
@@ -191,7 +192,7 @@ def drop_off_values(spec: dict[str, Any]) -> None:
     false``, ``rules.simultaneous``'s ``tie: "both"``, ``swap: "chase"`` and ``both:
     "draw"``, a portal group's ``kind: "momentum"``, a contact link's ``own: false`` and a wild-piece
     entry's ``respawn: 0`` (N1) and ``turns_back: false`` (N5), and ``rules.duck``'s ``goes:
-    "anywhere"`` (N4b). The validator accepts each and every reader takes it
+    "anywhere"`` (N4b), and ``rules.purse``'s ``bribe: false`` (TC6). The validator accepts each and every reader takes it
     as the key's absence. Shared by the normal form and `spelling.current_spelling`, so a
     spec that writes one is named as, and tidied to, the game without it.
     """
@@ -218,6 +219,8 @@ def drop_off_values(spec: dict[str, Any]) -> None:
         _drop_off(npc, NPC_OFF_VALUES)
     if isinstance(rules.get("duck"), dict):
         _drop_off(rules["duck"], DUCK_OFF_VALUES)
+    if isinstance(rules.get("purse"), dict):
+        _drop_off(rules["purse"], PURSE_OFF_VALUES)
 
 
 def _drop_off(where: dict[str, Any], off_values: dict[str, Any]) -> None:

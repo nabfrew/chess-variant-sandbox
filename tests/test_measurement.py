@@ -410,14 +410,14 @@ class TestTheFingerprintsPointAtSomething:
 #
 # **Moved 2026-10-23 by Q1007c (the command effect)**: `spec/complexity.py` charges half a rule
 # for a command's `captures_own` (`_SIGHT_TURNCOAT`), and `engine/engine.py`, `moves.py` and
-# `state.py` carry `MOVE_COMMANDED`, the `~` of `describe_move` and `Effects.commanded`. No
+# `state.py` carry `MOVE_FOREIGN`, the `~` of `describe_move` and `Effects.commanded`. No
 # library game declares a command, so no number should move. It was "a4f5513c93f74731" after
 # Q983b; R31's replay re-scores under it.
 #
 # **Moved 2026-10-23 by Q1007b (spelling 31, portal moves on the group)**: `spec/complexity.py`
 # counts each distinct `rules.portals[].moves` list as a piece type with its moves
 # (`_portal_movement`), the stand-in piece every portal game declared before the re-spelling,
-# so every portal game's counts and rule mass are what they were (`docs/plan-schema-31.md`
+# so every portal game's counts and rule mass are what they were (`docs/archive/plan-schema-31.md`
 # §4.3). No number should move. It was "6a665ced2b90fe0a" after Q1007c; R31's replay
 # re-scores under it.
 #
@@ -429,7 +429,7 @@ class TestTheFingerprintsPointAtSomething:
 #
 # **Moved 2026-10-23 by Q1007d (command in the tallies)**: `tournament/analysis.py` records
 # `COMMAND_SERIES` beside `SIGHT_SERIES`, only for a game whose sight commands, and
-# `_SIGHT_BITS` knows the command bits 8 and 16 (`docs/plan-schema-31.md` §3.9). No library
+# `_SIGHT_BITS` knows the command bits 8 and 16 (`docs/archive/plan-schema-31.md` §3.9). No library
 # game declares a command, and a sight game without one writes the keys it did, so no number
 # should move. It was "8e8d8c6ea96b7471" after Q1008d; the library replay after the detached
 # training campaign re-scores under it.
@@ -442,7 +442,7 @@ class TestTheFingerprintsPointAtSomething:
 #
 # **Moved 2026-10-25 by T1 (turning paths)**: `spec/complexity.py` charges a slide whose path
 # turns (`moves[].path` "circle" or "zigzag") one special rule per kind of turn
-# (`_path_extras`, `docs/plan-pieces-moves.md` §5.5). No library game writes a path, so no
+# (`_path_extras`, `docs/archive/plan-pieces-moves.md` §5.5). No library game writes a path, so no
 # number can move. It was "5a65f47b2629c080" after Q1020; the next library replay re-scores
 # under it.
 #
@@ -482,7 +482,32 @@ class TestTheFingerprintsPointAtSomething:
 # `analysis` files it reads (see `FROZEN_ANALYSIS`). No library game has a duck, so no number
 # can move. It was "fdac473216822a6e" after N3d (R36's stamp); the next library replay re-scores
 # under it.
-FROZEN_METRICS = "9f35f8d5328f71d5"
+#
+# **Moved 2026-10-27 by TC1 (`docs/plan-turncoat.md` §3)**: the `analysis` files it reads (see
+# `FROZEN_ANALYSIS`): `MOVE_COMMANDED` renamed `MOVE_FOREIGN` and `compile.ControlRule`. A
+# rename and a derived table, so no number can move. It was "9f35f8d5328f71d5" after N4b; the
+# next library replay re-scores under it.
+#
+# **Moved 2026-10-27 by TC3 (`docs/plan-turncoat.md` §4)**: `spec/complexity.py` charges a
+# nobody's placement (0.5) and majority control (1.0), `spec/reachability.py` counts a nobody's
+# placement as no player's, and the `analysis` files it reads (see `FROZEN_ANALYSIS`). No
+# library game has a piece nobody owns, so no number can move. It was "fab02a8ff6ed9031" after
+# TC1; the next library replay re-scores under it.
+#
+# **Moved 2026-10-27 by TC4 (`docs/plan-turncoat.md` §5.1)**: `spec/complexity.py` charges a
+# type's bounty (0.5), and the `analysis` files it reads (see `FROZEN_ANALYSIS`). No library
+# game has a type's bounty, so no number can move. It was "5d753ec2473c83c5" after TC3; the
+# next library replay re-scores under it.
+# **Moved 2026-10-27 by TC5 (`docs/plan-turncoat.md` §5.8)**: `spec/complexity.py` charges
+# `rules.purse` (2.0), and the `analysis` files it reads (see `FROZEN_ANALYSIS`). No library game
+# has a purse, so no number can move. It was "5d547731b92d34cf" after TC4.
+# **Moved 2026-10-27 by TC6 (`docs/plan-turncoat.md` §5.5)**: `spec/complexity.py` charges a hire
+# and a bribe (0.5 each), and the `analysis` files it reads (see `FROZEN_ANALYSIS`). No library
+# game hires or bribes, so no number can move. It was "d0443a03f4326165" after TC5.
+# **Moved 2026-10-27 by TC7 (`docs/plan-turncoat.md` §5.8)**: the `analysis` files it reads (see
+# `FROZEN_ANALYSIS`): the purse's and the neutrals' tallies, read by no component. No library
+# game has either, so no number can move. It was "d486d18f764a987d" after TC6.
+FROZEN_METRICS = "f1828082d034126a"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -787,7 +812,35 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # readers (`_mover_kind`, `_takes`, the wild tally's count of wild pieces), `engine/engine.py`'s
 # duck words and helpers, `engine/moves.py`'s `MOVE_DUCK` and `engine/compile.py`'s `DuckRule`. It
 # was "5baf21c0ef18e834" after N3d (R36's stamp).
-FROZEN_ANALYSIS = "087563291466a060"
+#
+# **Moved 2026-10-27 by TC1 (`docs/plan-turncoat.md` §3)**: `engine/moves.py`'s `MOVE_COMMANDED`
+# renamed `MOVE_FOREIGN` (and `move_commanded` `move_foreign`), read under the new name by
+# `engine/engine.py` and `tournament/analysis.py`, and `engine/compile.py`'s `ControlRule`. The
+# bit, its value and every reading of it are unchanged, so no library game's `analysis.json`
+# moves. It was "087563291466a060" after N4b.
+#
+# **Moved 2026-10-27 by TC3 (`docs/plan-turncoat.md` §4.3)**: `engine/engine.py` gains
+# `controller_of`, asking `Core.controller_of` who holds a neutral. Nothing in the pass calls it
+# yet (the tallies are TC7's), so no library game's `analysis.json` moves. It was
+# "2083dfb48b643d28" after TC1.
+#
+# **Moved 2026-10-27 by TC4 (`docs/plan-turncoat.md` §5.2)**: `engine/engine.py` and
+# `engine/state.py` carry the purse (`GameState.purse`, slot 11's twelfth element) and
+# `engine/compile.py` a type's bounty. No library game has either, so no `analysis.json`
+# moves. It was "c3b86c2d1abdc77f" after TC3.
+# **Moved 2026-10-27 by TC5 (`docs/plan-turncoat.md` §5.4)**: `engine/` compiles `rules.purse`
+# and writes a buy (`MOVE_BUY`, `N$e1`), `tournament/analysis.py` counts a buy as a move of the
+# type it places, and `agents/evaluation.py` prices coins. No library game has a purse, so no
+# `analysis.json` moves. It was "b9d79ae61a020f70" after TC4.
+# **Moved 2026-10-27 by TC6 (`docs/plan-turncoat.md` §5.5)**: `engine/` compiles hires and
+# bribes and writes one (`MOVE_HIRE`, `$Mc3`), `tournament/analysis.py` reads it as no capture
+# and no instance's move, and `agents/evaluation.py`'s coin rate reads hires and bribes. No
+# library game hires or bribes, so no `analysis.json` moves. It was "84fa1c6166a4f37f" after TC5.
+# **Moved 2026-10-27 by TC7 (`docs/plan-turncoat.md` §5.8)**: `tournament/analysis.py` records
+# `PURSE_SERIES` in a purse game and `NEUTRAL_SERIES` in a game with a piece nobody owns, each
+# absent from every other game's file. No library game has either, so no `analysis.json` moves.
+# It was "8a5eabc237002364" after TC6.
+FROZEN_ANALYSIS = "c14ee0bda2bdf7b3"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:
@@ -1722,8 +1775,8 @@ class TestTheTablesAreWhatAGameRestsOn:
         """A new field on the boundary is a named failure here, not a silent replay.
 
         This is the invariant that makes the canonicalisation trustworthy rather than
-        merely present. `_INERT_DEFAULTS` and `_ALWAYS_MEANINGFUL` must partition what
-        `build_tables` returns: a key in neither would be hashed unconditionally, so
+        merely present. `_INERT_DEFAULTS`, `_ALWAYS_MEANINGFUL` and `_DERIVED` must partition
+        what `build_tables` returns: a key in neither would be hashed unconditionally, so
         adding it at its inert default would move every ruleset's fingerprint at once
         and hand back the corpus replay this is built to remove.
         """
@@ -1733,7 +1786,8 @@ class TestTheTablesAreWhatAGameRestsOn:
         keys = set(bridge.build_tables(compile_spec(self._spec("chess"))))
         inert = set(bridge._INERT_DEFAULTS)
         assert not (inert & bridge._ALWAYS_MEANINGFUL), "a key cannot be both"
-        assert keys == inert | bridge._ALWAYS_MEANINGFUL
+        assert not ((inert | bridge._ALWAYS_MEANINGFUL) & bridge._DERIVED), "a key cannot be both"
+        assert keys == inert | bridge._ALWAYS_MEANINGFUL | bridge._DERIVED
 
     def test_a_new_key_at_its_inert_default_moves_no_fingerprint(self) -> None:
         """The property, exercised the way it will actually happen.

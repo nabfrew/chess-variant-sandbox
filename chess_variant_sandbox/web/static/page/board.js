@@ -41,6 +41,7 @@ function leaveBoard() {
   SHOWN = null;
   SELECTED = null;
   DROP = null;
+  BUY = null;
   HIGHLIGHT = null;
   PHASE = null;
   NOTE = '';
@@ -79,6 +80,7 @@ async function showBoard(snapshot, how) {
   SHOWN = null;
   SELECTED = null;
   DROP = null;
+  BUY = null;
   HIGHLIGHT = null;
   PHASE = null;
   NOTE = '';
@@ -774,6 +776,7 @@ function applySnapshot(snapshot, animate = true) {
   SESSION = snapshot;
   SELECTED = null;
   DROP = null;
+  BUY = null;
   NOTE = '';
   // A piece tapped to see what it sees (schema 30) belongs to the position it was tapped on.
   if (moved) SIGHT_TAP = null;
@@ -1680,7 +1683,8 @@ function drawBoard(previous) {
   // dots: a tap on one moves it there instead (Q740, `corrRepick`).
   const picked = SELECTED !== null ? SELECTED
     : held && DROP === null && held.from !== null ? held.from : null;
-  const targets = new Set(movesFrom(picked).map(m => m.to));
+  // TC7: a hire or a bribe stays on its square, so it is the strip's button, never a dot.
+  const targets = new Set(movesFrom(picked).filter(m => m.hire === undefined).map(m => m.to));
   if (held && SELECTED === null) { targets.delete(held.to); targets.delete(held.dest); }
   // Schema 19: the picked piece's ways through a portal (`docs/archive/plan-portals.md` §4). Each
   // square it comes out on takes a dot in the colour of the pair it goes in by (`through`),
@@ -1688,6 +1692,7 @@ function drawBoard(previous) {
   // go in by is ringed, since a tap there is a way in (`entries`, D6).
   const through = new Map(), direct = new Set(), entries = new Set();
   for (const m of movesFrom(picked)) {
+    if (m.hire !== undefined) continue;
     // Schema 24 (`docs/archive/plan-portals-2.md` §5.3R, the user: *"as simple as selecting which
     // square to land on, just as any other landing square"*): a move through a fold ends on
     // the far end, so that square takes the ordinary dot, or ring, like any landing; staying
@@ -1697,9 +1702,9 @@ function drawBoard(previous) {
     through.set(m.to, way ? `var(--pair-${way.end.pair})` : 'var(--dot)');
     entries.add(m.portal);
   }
-  const dropTargets = DROP === null ? new Set()
+  const dropTargets = DROP === null ? buyTargets()
     : new Set(SESSION.moves.filter(m => m.drop === DROP).map(m => m.to));
-  // Generation 42 (N4c, `docs/plan-npc.md` §4.6): with the duck owed, every square it may go
+  // Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): with the duck owed, every square it may go
   // to is lit at once, with no first click on the duck, and its own square is ringed.
   const duckLit = duckTargets();
   const duckRing = duckMode() ? SESSION.duck : null;
@@ -1716,7 +1721,8 @@ function drawBoard(previous) {
   // `ZONES` is the reader's own toggle, which is why it is read here on every draw.
   // The check is the position's, not the rules': the square of the royal piece the engine
   // said is attacked (`checkSquares`).
-  const SQUARE_MARKS = squareMarks(Object.assign({}, rules, { checked: checkSquares() }),
+  const SQUARE_MARKS = squareMarks(Object.assign({}, rules, { checked: checkSquares(),
+                                                             held: heldShown() }),
                                    { zone: !ZONES });
   // Each square its own piece of wood, cut at an offset hashed from the game and the
   // square (`wood.js`), so the same game is grained the same on every draw.
@@ -1961,6 +1967,7 @@ function drawBoard(previous) {
   if (!AT) SHOWN = { board: SESSION.board.slice(), colour: (SESSION.colour || []).slice() };
 
   drawHand();
+  drawPurses();
   drawStatus();
   drawPieceSays();
   drawReview();
@@ -2171,6 +2178,12 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
   let lastBlow = 0;
   // A piece that came through a portal, kept to be laid over the piece it takes (Q836).
   let traveller = null;
+  // Schema 13: the squares a sweep cleared, the engine's (`lastMove.swept`); a diff cannot
+  // tell them from a capture's. Each is cut down as the sweeper passes (`sweepCut`) rather
+  // than knocked off, and `cut` keeps them out of the capture loop below.
+  const swept = last && Array.isArray(last.swept) && !STILL.matches
+    ? last.swept.filter(sq => gone.includes(sq) && pieceOf(before[sq])) : [];
+  const cut = new Set();
   for (const [from, to] of pairs) {
     let node = swallowed.has(to) ? null : svg.querySelector(`[data-piece="${to}"]`);
     const [fx, fy] = at(from), [tx, ty] = at(to);
@@ -2220,6 +2233,11 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
     const flight = travel(node, -dx, -dy, arc);
     if (step.wrapped) {
       animateCrossing(svg, node, pieceOf(before[from]), fx, fy, dx, dy, cell, arc, flight);
+    }
+    if (swept.length && from === last.from && to === last.to) {
+      busy = Math.max(busy, sweepCut(svg, node, [fx, fy], [tx, ty],
+        swept.map(sq => [pieceOf(before[sq]), ...at(sq)]), cell, flight));
+      for (const sq of swept) cut.add(sq);
     }
     // Struck from the direction the piece actually arrived from, which through a seam
     // is the opposite of the way the two squares sit on screen.
@@ -2339,7 +2357,7 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
   };
 
   for (const sq of gone) {
-    if (moved.has(sq)) continue;
+    if (moved.has(sq) || cut.has(sq)) continue;
     const piece = pieceOf(before[sq]);
     if (!piece) continue;
     const [x, y] = at(sq);
@@ -2755,7 +2773,7 @@ function moveRows() {
     const stripe = i % 2 === 0;
     rows.push({ plies: i + 1, kind: 'move', stripe: stripe, html: `${
       stripe ? `${Math.floor(i / 2) + 1}.` : '&nbsp;&nbsp;&hellip;'} ${esc(m.text)}${
-      signHtml(m, i === last ? outcome : null)}${liftedHtml(m)}${lookedHtml(m)}${
+      signHtml(m, i === last ? outcome : null)}${liftedHtml(m)}${spentHtml(m)}${lookedHtml(m)}${
       corrMovedDayHtml(i)}` });
     if (!(m.phase || []).length) return;
     const beat = split.get(i + 1);
@@ -2925,7 +2943,7 @@ function seatHtml(player) {
       esc(seatLabel(player))}</a>`
       : `${mark}${esc(seatLabel(player))}`;
   return `<b>${esc(sideName(player))}</b>
-    <span class="muted">${label}</span>${initiativeHtml(player)}${
+    <span class="muted">${label}</span>${initiativeHtml(player)}${purseSlotHtml(player)}${
     strength ? `<div class="muted small">${esc(strength)}</div>` : ''}`;
 }
 
@@ -3403,7 +3421,11 @@ function drawHand() {
   // board, or the pass where it is the one move.
   const tray = duckTrayHtml();
   if (tray) { hand.innerHTML = tray; wireDuckTray(hand); return; }
-  if (!held.length) { hand.innerHTML = ''; return; }
+  // TC7 (`docs/plan-turncoat.md` §5.8): beside the hand, the market and the picked piece's
+  // hire or bribe, each from the engine's list.
+  const market = marketHtml(owner);
+  const hire = hireHtml();
+  if (!held.length && !market && !hire) { hand.innerHTML = ''; return; }
 
   // Schema 18e (Q785): a held piece may come back as its other face, a second button on
   // the same count. `dropFaces` is the compiled pair per slot (-1 for none), and `DROP`
@@ -3420,18 +3442,145 @@ function drawHand() {
         ${!AT && droppable.has(face) ? '' : 'disabled'}>${esc(ids[face])}${other ? ` (${esc(ids[type])})` : ''} x${count}</button>`);
     });
   });
-  hand.innerHTML = '<span class="muted u-as-center">in hand:</span>' +
-    buttons.join('');
+  hand.innerHTML = (held.length ? '<span class="muted u-as-center">in hand:</span>' +
+    buttons.join('') : '') + market + hire;
   hand.querySelectorAll('[data-drop]').forEach(node => {
     node.onclick = () => {
       DROP = DROP === Number(node.dataset.drop) ? null : Number(node.dataset.drop);
+      BUY = null;
       SELECTED = null;
       drawBoard();
     };
   });
+  wireMarket(hand);
 }
 
-// ----- the duck (generation 42, N4c, `docs/plan-npc.md` §4.6)
+// ----- the purse, the market, hiring and bribing (TC7, `docs/plan-turncoat.md` §5.8)
+//
+// Every coin count is the core's state (`purse`, on the snapshot and on each history entry,
+// so a step back shows the purses of its own position), every price the compiled rule's
+// (`ruleset.purse`, `web/play.py::market_payload`), and every purchase a move the engine
+// listed: a buy names its type (`buy`) and its square, a hire or bribe its piece's square
+// (`hire`, `cost`, `bribe`). The page offers what the list holds and works none of it out:
+// a market piece the list does not offer is drawn greyed, whatever the purse says.
+
+// Each player's coins on the position on screen; null without a purse.
+function purseShown() {
+  if (!SESSION || !SESSION.ruleset.purse) return null;
+  return (AT ? AT.purse : SESSION.purse) || SESSION.purse || null;
+}
+
+function coinsWord(n) {
+  return `${n} coin${n === 1 ? '' : 's'}`;
+}
+
+// Under each seat's name, the coins it holds; filled by `drawPurses` on every draw.
+function purseSlotHtml(player) {
+  if (!SESSION || !SESSION.ruleset.purse) return '';
+  return `<div class="small" data-purse="${player}"></div>`;
+}
+
+function drawPurses() {
+  const purse = purseShown();
+  if (!purse) return;
+  const rule = SESSION.ruleset.purse;
+  const spend = (rule.bribe || []).some(Boolean) ? 'buy, hire or bribe' : 'buy or hire';
+  document.querySelectorAll('[data-purse]').forEach(node => {
+    const n = purse[Number(node.dataset.purse)] || 0;
+    node.textContent = `purse: ${coinsWord(n)}`;
+    node.title = `coins to ${spend} pieces with; taking a piece with a bounty fills it, up to ${rule.cap}`;
+  });
+}
+
+// The squares a picked market piece may be bought onto: the engine's buys of that type.
+function buyTargets() {
+  if (BUY === null || !SESSION) return new Set();
+  return new Set(SESSION.moves.filter(m => m.buy === BUY).map(m => m.to));
+}
+
+// A piece of the market drawn as the board draws the buyer's own.
+function marketPieceSvg(type, owner) {
+  const rules = SESSION.ruleset;
+  const stride = rules.sideStride || rules.nTypes;
+  const piece = pieceOf(owner * stride + type + 1);
+  return `<svg class="buy-face" viewBox="0 0 10 10" aria-hidden="true">${
+    drawPiece(piece, 0, 0, 10)}</svg>`;
+}
+
+// The market tray: each piece for sale with its price, greyed where the engine offers no
+// buy of it (the purse is short, or there is no empty square in the region).
+function marketHtml(owner) {
+  const purse = SESSION.ruleset.purse;
+  if (!purse || !(purse.market || []).length) return '';
+  const buyable = new Set(SESSION.moves.filter(m => m.buy !== undefined).map(m => m.buy));
+  const coins = (purseShown() || [])[owner] || 0;
+  const names = SESSION.ruleset.pieceNames || [];
+  const ids = SESSION.ruleset.pieceIds;
+  const items = purse.market.map(item => {
+    const open = !AT && buyable.has(item.type);
+    const name = names[item.type] || ids[item.type];
+    const why = open ? `buy a ${name} for ${coinsWord(item.price)}, then click a lit square to put it there`
+      : item.price > coins ? `a ${name} costs ${coinsWord(item.price)}; ${sideName(owner)} has ${coinsWord(coins)}`
+        : `no ${name} can be bought now`;
+    return `<button class="buy${BUY === item.type ? ' on' : ''}" data-buy="${item.type}"
+      title="${esc(why)}" ${open ? '' : 'disabled'}>${marketPieceSvg(item.type, owner)}<span
+      >${esc(ids[item.type])} <span class="muted">${esc(String(item.price))}</span></span></button>`;
+  });
+  return `<span class="muted u-as-center" data-market>market (${esc(coinsWord(coins))}):</span>` +
+    items.join('');
+}
+
+// The picked piece's hire or bribe, as a button: the engine's move from its square.
+function hireHtml() {
+  if (AT || SELECTED === null) return '';
+  const names = SESSION.ruleset.pieceNames || [];
+  return movesFrom(SELECTED).filter(m => m.hire !== undefined).map(m => {
+    const verb = m.bribe ? 'bribe' : 'hire';
+    const name = names[m.hire] || SESSION.ruleset.pieceIds[m.hire];
+    const why = m.bribe ? `the other side's ${name} becomes yours for ${coinsWord(m.cost)}, twice its price`
+      : `the ${name} nobody owns becomes yours for ${coinsWord(m.cost)}`;
+    return `<button class="hire" data-hire="${m.move}" title="${esc(why)}">${
+      esc(`${verb} for ${m.cost}`)}</button>`;
+  }).join('');
+}
+
+function wireMarket(hand) {
+  hand.querySelectorAll('[data-buy]').forEach(node => {
+    node.onclick = () => {
+      const type = Number(node.dataset.buy);
+      BUY = BUY === type ? null : type;
+      DROP = null;
+      SELECTED = null;
+      drawBoard();
+    };
+  });
+  hand.querySelectorAll('[data-hire]').forEach(node => {
+    node.onclick = () => send(Number(node.dataset.hire));
+  });
+}
+
+// What a click on a piece whose only move is a hire or bribe says: where the button is.
+function hireNote(fromHere) {
+  if (!fromHere.length || !fromHere.every(m => m.hire !== undefined)) return '';
+  const m = fromHere[0];
+  return `${m.bribe ? 'bribe' : 'hire'} it for ${coinsWord(m.cost)} with the button under the board`;
+}
+
+// A purchase in the move list: what it cost, beside the engine's words (`N$e1`, `$Md4`).
+function spentHtml(move) {
+  if (!move || move.cost === undefined) return '';
+  const verb = move.buy !== undefined ? 'bought' : move.bribe ? 'bribed' : 'hired';
+  return ` <span class="muted small" data-spent>${esc(`${verb} for ${move.cost}`)}</span>`;
+}
+
+// TC7 (§4.3, §5.8): the pieces nobody owns that a player holds by majority on the position
+// on screen, `[square, player]` each, the core's answer (`Engine.controller_of`).
+function heldShown() {
+  if (!SESSION) return [];
+  return (AT ? AT.held : SESSION.held) || [];
+}
+
+// ----- the duck (generation 42, N4c, `docs/archive/plan-npc.md` §4.6)
 //
 // A duck game's turn is two plies: the piece move, picked as any move is, and then the same
 // player's duck move. Between them the board is in duck mode: every square the duck may go
@@ -3540,7 +3689,7 @@ function clickSquare(square) {
   if ((between || SESSION.round) && CORR_HELD !== null && corrRepick(square)) return;
   NOTE = '';
 
-  // Generation 42 (N4c, `docs/plan-npc.md` §4.6): with the duck owed, a click on a lit square
+  // Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): with the duck owed, a click on a lit square
   // is that duck move, and every other click says what is owed. The moves are the core's.
   if (SESSION.duckOwed) {
     const duck = SESSION.moves.find(m => m.kind === 'duck' && !m.pass && m.to === square);
@@ -3556,12 +3705,18 @@ function clickSquare(square) {
     if (drop) return send(drop.move);
     DROP = null;
   }
+  // TC7: a piece picked from the market goes onto a lit square of the buyer's region.
+  if (BUY !== null) {
+    const buy = SESSION.moves.find(m => m.buy === BUY && m.to === square);
+    if (buy) return send(buy.move);
+    BUY = null;
+  }
 
   // Schema 19: a tap on an end the picked piece can go in by is that way in (`takeWays`);
   // else a tap on a square it can reach is that move, or the choice among the moves that
   // reach it (`takeLanding`).
   const ways = movesFrom(SELECTED).filter(m => m.portal === square);
-  const candidates = movesFrom(SELECTED).filter(m => m.to === square);
+  const candidates = movesFrom(SELECTED).filter(m => m.to === square && m.hire === undefined);
   // Schema 22: a piece standing in a fold its side may move, and a square both can reach --
   // the piece's move or the fold's own -- is a choice of which to move, in the user's words
   // (`docs/archive/plan-portals-2.md` §5.3R): *Move the piece* or *Move the portal*, never both.
@@ -3603,6 +3758,7 @@ function clickSquare(square) {
   // Schema 20: a portal the player to move may move, picked just after it was moved, says
   // why the square it came from has no dot (Q838c). The bar is the core's (`portalBar`).
   NOTE = NOTE || barNote(square);
+  NOTE = NOTE || hireNote(fromHere);
   drawBoard();
 }
 
@@ -4157,6 +4313,7 @@ function chooseRotation(candidates) {
 function send(move) {
   SELECTED = null;
   DROP = null;
+  BUY = null;
   INSPECT = null;
   if (SESSION.correspondence || SESSION.round) { (SESSION.round ? roundHold : corrHold)(move); return; }
   const id = SESSION.id, before = SESSION.history.length;
@@ -4251,6 +4408,10 @@ function beatEntry(kind, board, steps, snapshot, plies, walkers, coming) {
     // Schema 29 (Q983b): the pieces resting on the position the ply left (the move's own
     // `resting`); nothing rests before the first move.
     resting: ((move && move.resting) || []).slice(),
+    // TC7 (§5.8): the purses and the held neutrals of the position the ply left (the move's
+    // own), else the snapshot's (the opening's, before any move); absent without the rules.
+    purse: ((move && move.purse) || snapshot.purse || []).slice(),
+    held: ((move ? move.held : snapshot.held) || []).slice(),
   };
 }
 
@@ -4354,6 +4515,7 @@ function showBeat(index) {
   PHASE = TIMELINE[at].steps;
   SELECTED = null;
   DROP = null;
+  BUY = null;
   drawBoard(from);
   drawPane();
 }
@@ -4689,6 +4851,7 @@ function corrPutBack() {
   corrForget();
   SELECTED = null;
   DROP = null;
+  BUY = null;
   NOTE = '';
   drawStatus();
   drawBoard();

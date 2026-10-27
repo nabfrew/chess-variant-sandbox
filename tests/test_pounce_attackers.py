@@ -1,4 +1,4 @@
-"""Wild pieces that pounce on their attackers (generation 40, N3c, `docs/plan-npc.md` §4.4).
+"""Wild pieces that pounce on their attackers (generation 40, N3c, `docs/archive/plan-npc.md` §4.4).
 
 An entry with ``pounce: "attackers"``: after a move, before any wild piece steps, the pouncer takes
 a piece of the player who has just moved that attacks it (its own capture moves, the capture

@@ -92,8 +92,8 @@
   "provenance": {
     "added": "2026-10-24",
     "origin": "designed",
-    "source": "docs/plan-schema-31.md, Q1007f: K1, the showcase for the command effect (section 6.3)",
-    "history": "K1 of docs/plan-schema-31.md section 6.3, pre-registered 2026-10-23 before the effect was built: chess (4c1922ffae26) with one key on the knight, a sight over its own eight jump squares that commands enemy pieces (to empty squares only), one change on the calibration baseline. Written by Q1007c as a test spec (tests/_command_k1.json, the same mechanics) and built by Q1007f (2026-10-24) exactly as registered.",
+    "source": "docs/archive/plan-schema-31.md, Q1007f: K1, the showcase for the command effect (section 6.3)",
+    "history": "K1 of docs/archive/plan-schema-31.md section 6.3, pre-registered 2026-10-23 before the effect was built: chess (4c1922ffae26) with one key on the knight, a sight over its own eight jump squares that commands enemy pieces (to empty squares only), one change on the calibration baseline. Written by Q1007c as a test spec (tests/_command_k1.json, the same mechanics) and built by Q1007f (2026-10-24) exactly as registered.",
     "parents": ["4c1922ffae26"]
   }
 }

@@ -1,4 +1,4 @@
-//! Wild pieces that turn back (generation 38, N5, `docs/plan-npc.md` §4.7): step 2 of the
+//! Wild pieces that turn back (generation 38, N5, `docs/archive/plan-npc.md` §4.7): step 2 of the
 //! wild-piece phase for a piece on a **line**.
 //!
 //! **The rule, stated once** (`Game::turn_step`). A turning-back entry's route is a line,

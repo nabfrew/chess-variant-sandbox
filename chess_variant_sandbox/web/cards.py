@@ -82,6 +82,8 @@ PIECE_PATHS = frozenset({
     "rules.npcs[].immune",
     # Generation 42 (N4b): the duck's type, a menu on the duck's card (N4c, `cards.js`).
     "rules.duck.piece",
+    # TC5 (`docs/plan-turncoat.md` §5.4): what the market sells (TC7 gives it its own card).
+    "rules.purse.market",
 
     # Schema 21: which pieces may go in by an end.
     "rules.portals[].carries.orange",
@@ -140,7 +142,7 @@ PIECE_ROW: dict[str, tuple[str, ...]] = {
 MOVE_KIND_ONLY: dict[str, tuple[str, ...]] = {
     "screen_range": ("hop",),
     "screen": ("hop",),
-    # T1: a path that turns is a slide's (`docs/plan-pieces-moves.md` §5.2).
+    # T1: a path that turns is a slide's (`docs/archive/plan-pieces-moves.md` §5.2).
     "path": ("slide",),
 }
 

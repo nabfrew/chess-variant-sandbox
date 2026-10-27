@@ -91,6 +91,7 @@ _NUMBER_WORDS = {
     29: "twenty_nine", 30: "thirty", 31: "thirty_one", 32: "thirty_two", 33: "thirty_three",
     34: "thirty_four", 35: "thirty_five", 36: "thirty_six", 37: "thirty_seven",
     38: "thirty_eight", 39: "thirty_nine", 40: "forty", 41: "forty_one", 42: "forty_two",
+    43: "forty_three", 44: "forty_four", 45: "forty_five", 46: "forty_six",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -379,7 +380,7 @@ class TestMutation:
         # elephant.
         parents.append(specs["xiangqi"])
         # T1's `straighten` takes out a path a game already has: chess with zigzag bishops,
-        # the mechanics of T2's `archive/crooked-bishops.json` (`plan-pieces-moves.md` §5.7).
+        # the mechanics of T2's `archive/crooked-bishops.json` (`docs/archive/plan-pieces-moves.md` §5.7).
         parents.append(_parent_crooked_bishops())
         # N5's `pace-a-line` needs wild pieces in a game without check, and no archived wild
         # game is one until N6: the turning wolves' test spec stands in.
@@ -1819,9 +1820,11 @@ _ONE_RULE_OUTSIDE = [
     ("E3-no-hand", _arrives(_by_a_stone), "P never reaches a hand", ["promote_on_entry"]),
     ("E2-empty-hand", _refused_outside(drops={}, promote_on_entry=True),
      "nothing enters play except by moving", ["promote_on_entry"]),
-    ("points-no-npcs", _refused_outside(scoring={"count": "points"}), "needs rules.npcs", ["scoring"]),
+    # TC4 widened the refusal: a type's bounty pays too (`docs/plan-turncoat.md` §5.1).
+    ("points-no-npcs", _refused_outside(scoring={"count": "points"}), '"points" needs a bounty',
+     ["scoring"]),
     ("points-no-bounty", _wild({"piece": "N", "route": ["d3"], "bounty": 0}, scoring="points"),
-     "needs a wild piece with a bounty", ["scoring"]),
+     '"points" needs a bounty', ["scoring"]),
     ("immune", _wild({"piece": "N", "route": ["c3"], "immune": ["K", "Q", "R", "B", "P"]}),
      "protects it from nothing", ["immune:N"]),
 ]
@@ -2031,7 +2034,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 42
+_FEATURES_ARE_FOR_SCHEMA = 46
 
 
 @dataclass(frozen=True)
@@ -2387,7 +2390,7 @@ def _parent_sight(piece_id: str, sight: dict) -> dict:
 
 
 def _parent_command() -> dict:
-    """K2 (`plan-schema-31.md` §6.3): the king commands every enemy piece beside it, and may
+    """K2 (`docs/archive/plan-schema-31.md` §6.3): the king commands every enemy piece beside it, and may
     make it take its own side."""
     return _parent_sight("K", {
         "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
@@ -2396,7 +2399,7 @@ def _parent_command() -> dict:
 
 
 def _parent_returning_wolves() -> dict:
-    """*Wolf hunt* whose wolves come back (N1, `plan-npc.md` §4.1): every entry of
+    """*Wolf hunt* whose wolves come back (N1, `docs/archive/plan-npc.md` §4.1): every entry of
     `archive/wolves-bounty` with ``respawn: 8``, four moves of each player."""
     hunt = load_spec(ROOT / "archive" / "wolves-bounty.json")
     for npc in hunt["rules"]["npcs"]:
@@ -2409,7 +2412,7 @@ _RING = {"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1, "throug
 
 
 def _parent_seeing_wolves(effect: str) -> Callable[[], dict]:
-    """*Wolves* whose wolves carry an aura of ``effect`` (N2, `plan-npc.md` §4.2)."""
+    """*Wolves* whose wolves carry an aura of ``effect`` (N2, `docs/archive/plan-npc.md` §4.2)."""
 
     def build() -> dict:
         wolves = load_spec(ROOT / "archive" / "wolves.json")
@@ -2433,7 +2436,7 @@ def _parent_sheltered_wolves() -> dict:
 
 def _parent_pacing_wolves() -> dict:
     """*Wolves* to the capture of the king, whose wolves pace their routes as lines and turn
-    back (N5, `plan-npc.md` §4.7): the rule is refused beside checkmate."""
+    back (N5, `docs/archive/plan-npc.md` §4.7): the rule is refused beside checkmate."""
     wolves = load_spec(ROOT / "archive" / "wolves.json")
     wolves["rules"]["win"] = "royal_capture"
     for npc in wolves["rules"]["npcs"]:
@@ -2447,11 +2450,81 @@ def _wins_by_taking(spec: dict) -> bool:
 
 
 def _parent_duck() -> dict:
-    """Chess won by taking the king, with the classic duck (N4b, `plan-npc.md` §4.6)."""
+    """Chess won by taking the king, with the classic duck (N4b, `docs/archive/plan-npc.md` §4.6)."""
     chess = _chess()
     chess["rules"]["win"] = "royal_capture"
     chess["pieces"].append({"id": "D", "name": "duck", "value": 0, "moves": []})
     chess["rules"]["duck"] = {"piece": "D"}
+    return chess
+
+
+def _parent_neutrals() -> dict:
+    """Chess with two condottieri nobody owns standing on c4 and f4 (mirrored to c5, f5)."""
+    chess = _chess()
+    chess["pieces"].append({
+        "id": "C", "name": "condottiere", "value": 3,
+        "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}],
+    })
+    chess["setup"]["placements"].append({"piece": "C", "player": "nobody", "squares": ["c4", "f4"]})
+    return chess
+
+
+def _parent_crowd() -> dict:
+    """The chess above, its condottieri moved by the majority next to them (TC3, §8.1's draft)."""
+    crowd = _parent_neutrals()
+    crowd["pieces"][-1]["control"] = "majority"
+    return crowd
+
+
+def _parent_orthogonal_crowd() -> dict:
+    """The crowd above, held by the majority of the four orthogonal neighbours."""
+    crowd = _parent_neutrals()
+    crowd["pieces"][-1]["control"] = {"majority": {"vectors": [[1, 0]], "symmetry": "rotate4"}}
+    return crowd
+
+
+def _parent_market() -> dict:
+    """Chess with a purse of 2 and a market selling knights for 3 (TC5, §5.4)."""
+    chess = _chess()
+    for piece in chess["pieces"]:
+        if piece["id"] == "N":
+            piece["price"] = 3
+    chess["rules"]["purse"] = {"start": 2, "market": ["N"]}
+    return chess
+
+
+def _parent_market_region() -> dict:
+    """The market above, bought pieces placed on either of the two back ranks."""
+    chess = _parent_market()
+    chess["rules"]["purse"]["region"] = [
+        f"{file}{rank}" for rank in (1, 2) for file in "abcdefgh"
+    ]
+    return chess
+
+
+def _parent_hire() -> dict:
+    """Chess with its two condottieri nobody owns for hire at 3, each player holding 2 coins
+    (TC6, §5.5)."""
+    chess = _parent_neutrals()
+    chess["pieces"][-1]["price"] = 3
+    chess["rules"]["purse"] = {"start": 2}
+    return chess
+
+
+def _parent_bribe() -> dict:
+    """The market above, knights bribable at twice their price (TC6, §5.5)."""
+    chess = _parent_market()
+    chess["rules"]["purse"]["bribe"] = True
+    return chess
+
+
+def _parent_bounty() -> dict:
+    """Chess whose knights pay a bounty of 3, the clock counting points (TC4, §5.1)."""
+    chess = _chess()
+    for piece in chess["pieces"]:
+        if piece["id"] == "N":
+            piece["bounty"] = 3
+    chess["rules"]["scoring"] = {"count": "points"}
     return chess
 
 
@@ -2484,7 +2557,7 @@ def _parent_shielding_duck() -> dict:
 
 def _parent_splitting_wolves() -> dict:
     """*Wolves* whose wolves pounce on what attacks them and split, up to six (N3d,
-    `plan-npc.md` §4.5)."""
+    `docs/archive/plan-npc.md` §4.5)."""
     wolves = load_spec(ROOT / "archive" / "wolves.json")
     for npc in wolves["rules"]["npcs"]:
         npc["pounce"] = "attackers"
@@ -2493,7 +2566,7 @@ def _parent_splitting_wolves() -> dict:
 
 
 def _parent_guarding_wolves() -> dict:
-    """*Wolves* whose wolves pounce on what attacks them (N3c, `plan-npc.md` §4.4)."""
+    """*Wolves* whose wolves pounce on what attacks them (N3c, `docs/archive/plan-npc.md` §4.4)."""
     wolves = load_spec(ROOT / "archive" / "wolves.json")
     for npc in wolves["rules"]["npcs"]:
         npc["pounce"] = "attackers"
@@ -2501,7 +2574,7 @@ def _parent_guarding_wolves() -> dict:
 
 
 def _parent_hunting_wolves() -> dict:
-    """*Wolves* whose wolves pounce on what they attack (N3b, `plan-npc.md` §4.3)."""
+    """*Wolves* whose wolves pounce on what they attack (N3b, `docs/archive/plan-npc.md` §4.3)."""
     wolves = load_spec(ROOT / "archive" / "wolves.json")
     for npc in wolves["rules"]["npcs"]:
         npc["pounce"] = "prey"
@@ -2509,7 +2582,7 @@ def _parent_hunting_wolves() -> dict:
 
 
 def _parent_archers() -> dict:
-    """Chess whose bishops shoot (A1, `plan-pieces-moves.md` §6.7): rifle's strike given to the
+    """Chess whose bishops shoot (A1, `docs/archive/plan-pieces-moves.md` §6.7): rifle's strike given to the
     bishops alone."""
     chess = _chess()
     chess["rules"]["strike"] = {
@@ -2519,7 +2592,7 @@ def _parent_archers() -> dict:
 
 
 def _parent_crooked_bishops() -> dict:
-    """Chess with zigzag bishops (T1, `plan-pieces-moves.md` §5.7, Z1): the bishop's own
+    """Chess with zigzag bishops (T1, `docs/archive/plan-pieces-moves.md` §5.7, Z1): the bishop's own
     descriptor with ``path: "zigzag"``."""
     chess = _chess()
     for move in next(p for p in chess["pieces"] if p["id"] == "B")["moves"]:
@@ -2528,7 +2601,7 @@ def _parent_crooked_bishops() -> dict:
 
 
 def _parent_lame_rider() -> dict:
-    """Chess with lame riding knights (Q1007a, `plan-schema-31.md` §2.2): each `[1, 2]` jump
+    """Chess with lame riding knights (Q1007a, `docs/archive/plan-schema-31.md` §2.2): each `[1, 2]` jump
     blocked on its leg, two jumps or more, the nearest landing passed over."""
     chess = _chess()
     next(p for p in chess["pieces"] if p["id"] == "N")["moves"] = [
@@ -2601,7 +2674,7 @@ def _armies_differ(spec: dict) -> bool:
     return len(set(first) & set(second)) < 2 and len(set(first) | set(second)) >= 2
 
 
-# Generation 37's inventory (N2, `plan-npc.md` §4.2): four names, each a modifier on a game with
+# Generation 37's inventory (N2, `docs/archive/plan-npc.md` §4.2): four names, each a modifier on a game with
 # wild pieces, so its host is `npcs`. `wild-eyes` enters the three wild effects (a wild type given
 # an aura) and leaves them (every wild aura taken away), and `blind-a-piece` leaves them too; the
 # shield beside wild pieces is entered by `wild-eyes` and `cast-a-gaze` (whose shield is no longer
@@ -2609,38 +2682,34 @@ def _armies_differ(spec: dict) -> bool:
 # army is kept. Generation 36's row (N1) retired with the generation; `bring-them-back` still
 # crosses it.
 #
-# Generation 36's inventory was (N1, `plan-npc.md` §4.1): one name, a modifier on a wild piece, so
+# Generation 36's inventory was (N1, `docs/archive/plan-npc.md` §4.1): one name, a modifier on a wild piece, so
 # its host is `npcs`. `bring-them-back` enters it (an entry given a clock) and leaves it (the
 # clock taken off), keeping the wild pieces; it names no type and adds none, so the army is
 # kept. Generation 35's row (A1) retired with the generation; `leave-something-behind` still
 # crosses it.
 #
-# Generation 35's inventory was (A1, `plan-pieces-moves.md` §6.5): one name, a modifier on the
+# Generation 35's inventory was (A1, `docs/archive/plan-pieces-moves.md` §6.5): one name, a modifier on the
 # strike, so its host is `strike`. `leave-something-behind` enters it (a standing rifle strike
 # is given to one capturing type, or a new strike is rifle given to one) and leaves it (the
 # list dropped, every piece striking again), keeping the strike. It names types and adds none,
 # so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
 # and `straighten` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    # Generation 42 (N4b, `plan-npc.md` §4.6): four names. No committed game has a duck, so each
-    # is entered by `loose-a-duck` adding one (a type with it, so none keeps the army), most
-    # cheaply on a game already won by taking the king; the three options are left by the same
-    # operator with the duck standing.
-    "N4b duck": _Feature(
-        None, frozenset({"rules.duck"}), False, "chess+duck", _parent_duck,
-        likely=_wins_by_taking,
+    # Generation 46 (TC6, `docs/plan-turncoat.md` §5.5): two names. No committed game has a
+    # piece nobody owns or a purse, so a hire is entered by `hire-a-sword` placing a new
+    # king-stepping type for nobody, priced, with a purse (a new type, so the army is not
+    # kept), and left by the same operator taking hiring away. A bribe is entered by
+    # `offer-a-bribe` (a purse opened where there is none, a placed type priced, bribes on),
+    # and left by the same operator turning bribes off with the market still standing; it
+    # names types and adds none, so the army is kept. Generation 45's rows (TC5) retired with
+    # the generation; `open-a-market` still crosses them.
+    "TC6 hire": _Feature(
+        None, frozenset({"pieces.price.hire"}), False, "chess+condottieri for hire",
+        _parent_hire,
     ),
-    "N4b duck by_moves": _Feature(
-        "duck", frozenset({"rules.duck.goes.by_moves"}), False, "chess+walking duck",
-        _parent_walking_duck, likely=_wins_by_taking,
-    ),
-    "N4b duck start": _Feature(
-        "duck", frozenset({"rules.duck.start"}), False, "chess+standing duck",
-        _parent_standing_duck, likely=_wins_by_taking,
-    ),
-    "N4b duck sight": _Feature(
-        "duck", frozenset({"pieces.sight.duck"}), False, "chess+shielding duck",
-        _parent_shielding_duck, likely=_wins_by_taking,
+    "TC6 bribe": _Feature(
+        "purse", frozenset({"rules.purse.bribe"}), True, "chess+market with bribes",
+        _parent_bribe,
     ),
 }
 
@@ -2652,8 +2721,18 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
+    # Generation 46 (TC6): *the condottieri* (TC10, `docs/plan-turncoat.md` §8.3) hires
+    # mercenaries nobody owns and bribes them away.
+    "TC6 hire": "TC10, the condottieri (docs/plan-turncoat.md §8.3)",
+    "TC6 bribe": "TC10, the condottieri (docs/plan-turncoat.md §8.3)",
+    # Generation 45's names (TC5) went to `_NO_SHOWCASE_ON_PURPOSE` when TC6 retired their
+    # `_FEATURES` rows, still owed by TC9.
+    # Generation 44's name (TC4) went to `_NO_SHOWCASE_ON_PURPOSE` when TC5 retired its
+    # `_FEATURES` row, still owed by TC9.
+    # Generation 43's three names (TC3) went to `_NO_SHOWCASE_ON_PURPOSE` when TC4 retired their
+    # `_FEATURES` rows, still owed by TC8.
     # N4b's four names went by 2026-10-26: `rules.duck` and the duck's sight when N6 archived
-    # *the shepherd's duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1), and
+    # *the shepherd's duck* (`archive/the-shepherds-duck.json`, `docs/archive/plan-npc.md` §6.1), and
     # `rules.duck.goes.by_moves` and `rules.duck.start` when N9 archived *the herd*
     # (`archive/the-herd.json`, §6.4, a duck that starts on e5 and walks a king's step), after
     # N8's *menagerie* (§6.3) retired on the index.
@@ -2665,7 +2744,7 @@ _SHOWCASE_OWED: dict[str, str] = {
     # I1's one name went with I2's retirement to `_NO_SHOWCASE_ON_PURPOSE`, and from there with
     # I3's *anchors* (`archive/anchors.json`, 2026-10-25). A1's one name,
     # `rules.strike.by`, went on 2026-10-25, when A2 archived its showcase, *the horse
-    # archers* (`archive/horse-archers.json`, `plan-pieces-moves.md` §6.7, the registered
+    # archers* (`archive/horse-archers.json`, `docs/archive/plan-pieces-moves.md` §6.7, the registered
     # fallback over *the archers*, whose bishops' strong self-play gave the first seat 18 of 18).
     # Schema 30's `through` went on 2026-10-22, when Q999d archived S2
     # (`archive/chess-with-a-sheltering-king`, `docs/archive/plan-passive.md` §6.1) beside S1 and S3
@@ -2769,6 +2848,13 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     42: frozenset({
         "rules.duck", "rules.duck.goes.by_moves", "rules.duck.start", "pieces.sight.duck",
     }),
+    43: frozenset({
+        "setup.placements.player.nobody", "pieces.control.majority",
+        "pieces.control.majority.geometry",
+    }),
+    44: frozenset({"pieces.bounty"}),
+    45: frozenset({"rules.purse", "pieces.price", "rules.purse.region"}),
+    46: frozenset({"pieces.price.hire", "rules.purse.bribe"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2777,29 +2863,49 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 45's names (TC5), owed in `_SHOWCASE_OWED` until generation 46 (TC6) retired
+    # their `_FEATURES` rows. Still owed: *the war chest* (TC9, `docs/plan-turncoat.md` §8.2)
+    # buys from a market, and each entry goes the day it lands.
+    "schema 45: rules.purse": "owed by TC9, the war chest (§8.2)",
+    "schema 45: pieces.price": "owed by TC9, the war chest (§8.2)",
+    "schema 45: rules.purse.region": (
+        "owed by TC9, the war chest, as a tunable, or no showcase on purpose with TC9's reason (§8.2)"
+    ),
+    # Generation 44's name (TC4), owed in `_SHOWCASE_OWED` until generation 45 (TC5) retired
+    # its `_FEATURES` row. Still owed: *the war chest* (TC9, `docs/plan-turncoat.md` §8.2) puts
+    # bounties on the chess army, and the entry goes the day it lands.
+    "schema 44: pieces.bounty": "owed by TC9, the war chest (§8.2)",
+    # Generation 43's names (TC3), owed in `_SHOWCASE_OWED` until generation 44 (TC4) retired
+    # their `_FEATURES` rows. Still owed: *the crowd* (TC8, `docs/plan-turncoat.md` §8.1) places
+    # neutrals with majority control, and each entry goes the day it lands.
+    "schema 43: setup.placements.player.nobody": "owed by TC8, the crowd (§8.1)",
+    "schema 43: pieces.control.majority": "owed by TC8, the crowd (§8.1)",
+    "schema 43: pieces.control.majority.geometry": (
+        "owed by TC8, the crowd, as a tunable, or no showcase on purpose with TC8's reason (§8.1)"
+    ),
     # Generation 39's `rules.npcs.pounce.prey` (N3b), 40's `...pounce.attackers` (N3c) and 41's
     # `rules.npcs.split` (N3d) went on 2026-10-26, when N7 archived *the hydra*
-    # (`archive/the-hydra.json`, `plan-npc.md` §6.2).
+    # (`archive/the-hydra.json`, `docs/archive/plan-npc.md` §6.2).
     # Generation 36's `rules.npcs.respawn` (N1), 37's `pieces.sight.shield.beside_npcs` (N2) and
     # 38's `rules.npcs.turns_back` (N5) went on 2026-10-26, when N6 archived *the shepherd's
-    # duck* (`archive/the-shepherds-duck.json`, `plan-npc.md` §6.1).
+    # duck* (`archive/the-shepherds-duck.json`, `docs/archive/plan-npc.md` §6.1).
     # Generation 37's names (N2), owed in `_SHOWCASE_OWED` until generation 38 (N5) retired
     # their `_FEATURES` rows. *The shepherd's duck* (N6) carried the shield beside wild pieces;
     # `pieces.sight.wild.freeze`, `.disarm` and `.shield` went on 2026-10-26, when N9 archived
-    # *the herd* (`archive/the-herd.json`, `plan-npc.md` §6.4: a gorgon, a siren and two dryads
+    # *the herd* (`archive/the-herd.json`, `docs/archive/plan-npc.md` §6.4: a gorgon, a siren and two dryads
     # touching the four squares beside them), after N8's *menagerie* (§6.3) retired on the index.
     # Generation 34's two names (T1) were owed here until their showcases landed, both
-    # 2026-10-25 (`plan-pieces-moves.md` §5.7): T2's `archive/crooked-bishops.json` deleted
+    # 2026-10-25 (`docs/archive/plan-pieces-moves.md` §5.7): T2's `archive/crooked-bishops.json` deleted
     # `...path.zigzag`'s row and T3's `archive/circling-queen.json` `...path.circle`'s.
     # Generation 33's name (I1) was here from I2's retirement of *capture the flag*
-    # (`plan-pieces-moves.md` §4.7, index 0.790 against V3's 0.800) until 2026-10-25, when I3
+    # (`docs/archive/plan-pieces-moves.md` §4.7, index 0.790 against V3's 0.800) until 2026-10-25, when I3
     # archived the second showcase, *anchors* (`archive/anchors.json`, §4.8, 0.894).
     # Generation 32's two names (Q1007a), `pieces.moves.lame.range` and `.min_range`, were owed
     # here from Q1007e (which kept R1b, a slide, over R1c, the lame draft) until 2026-10-26, when
     # Q1023 archived L1, *chess with galloping knights* (`archive/chess-with-galloping-knights.json`,
-    # `plan-schema-31.md` §6.4: the knight's leap plus a lame rider from its second jump on).
+    # `docs/archive/plan-schema-31.md` §6.4: the knight's leap plus a lame rider from its second jump on).
     # Generation 31's two names (Q1007c), `pieces.sight.command` and `.captures_own`, were here
-    # from Q1007f's retirement of K1 and K2 (`plan-schema-31.md` §6.3, 2026-10-24: a command
+    # from Q1007f's retirement of K1 and K2 (`docs/archive/plan-schema-31.md` §6.3, 2026-10-24: a command
     # offered too rarely) until 2026-10-26, when Q1024 archived P1, *chess with preaching
     # bishops* (`archive/chess-with-preaching-bishops.json`, §6.5: a bishop's aura commanding
     # enemy pawns, which may be made to take their own side; 0.885, every bar met).
@@ -4013,6 +4119,10 @@ _PINNED_SCALES: dict[str, float] = {
     "npcs_split": 1.0,
     "has_duck": 1.0,
     "duck_by_moves": 1.0,
+    "nobody_share": 1.0, "majority_share": 1.0, "majority_geometry": 1.0,
+    "bounty_share": 1.0,
+    "has_purse": 1.0, "purse_start": 1.0, "purse_region": 1.0, "price_share": 1.0,
+    "has_hire": 1.0, "has_bribe": 1.0,
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
     "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
     "beats_share": 1.0, "simultaneous_swap_collides": 1.0, "simultaneous_both_score": 1.0,
@@ -4084,14 +4194,17 @@ class TestDistanceIsPinnedToTheNumber:
         T1's `turning_share`, 102 since A1's `strikers_share`, 103 since N1's
         `npcs_come_back`, 104 since N2's `npcs_see`, 105 since N5's `npcs_turn_back`, 106
         since N3b's `npcs_pounce`, 107 since N3c's `npcs_pounce_attackers`, 108 since N3d's
-        `npcs_split` and 110 since N4b's `has_duck` and `duck_by_moves`, is 0.011211, which
-        rounds to 0.0112 and not to 0.01121."""
+        `npcs_split`, 110 since N4b's `has_duck` and `duck_by_moves`, 113 since TC3's
+        `nobody_share`, `majority_share` and `majority_geometry`, 114 since TC4's
+        `bounty_share`, 118 since TC5's `has_purse`, `purse_start`, `purse_region` and
+        `price_share` and 120 since TC6's `has_hire` and `has_bribe`, is 0.010276, which
+        rounds to 0.0103."""
         chess = _chess()
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0112
+        assert distance(chess, twin) == 0.0103
 
 
 def _one_leap_beside_a_stone() -> dict:

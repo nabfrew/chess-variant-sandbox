@@ -42,6 +42,7 @@ from chess_variant_sandbox.agents.features import VOCABULARY, builtin_vector, fe
 from chess_variant_sandbox.agents.heuristics import Heuristic, register_heuristic
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.engine import _pack
+from chess_variant_sandbox.engine.moves import MOVE_HIRE, move_type
 from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.tournament.play import play_game, play_game_python
 
@@ -322,6 +323,105 @@ def test_the_hexagon_seam_arm_changes_the_game() -> None:
     seamed = play_game(_hexagon("hex-glinski-flanks"), ("random", "random"), seed=5)
     plain = play_game(_hexagon("hex-glinski-hexagon"), ("random", "random"), seed=5)
     assert seamed.moves != plain.moves
+
+
+def _crowd() -> Engine:
+    """TC3 (`docs/plan-turncoat.md` §8.1's draft): chess with two condottieri nobody owns on
+    c4 and f4 (mirrored to c5 and f5), moved by the majority next to them. No committed
+    ruleset has a piece nobody owns."""
+    spec: dict[str, Any] = load_spec(RULESETS / "chess.json")
+    spec["pieces"].append({
+        "id": "C", "name": "condottiere", "value": 3, "control": "majority",
+        "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}],
+    })
+    spec["setup"]["placements"].append({"piece": "C", "player": "nobody", "squares": ["c4", "f4"]})
+    return Engine(spec)
+
+
+@pytest.mark.parametrize(
+    "agents", [("random", "random"), ("greedy", "random"), ("minimax:nodes=200", "greedy")],
+    ids=lambda pair: "-vs-".join(pair),
+)
+def test_a_held_neutral_is_played_the_same_way_on_both_sides(agents: tuple[str, str]) -> None:
+    """A held neutral's move is a `MOVE_FOREIGN` word whose piece is nobody's, and its capture
+    takes the mover's opponent's piece: the Python agents must read both as the core does."""
+    _assert_same_played(_crowd(), agents)
+
+
+def test_the_crowd_arm_changes_the_game() -> None:
+    """Otherwise the arm above would compare a game no neutral ever touched."""
+    crowd = play_game(_crowd(), ("random", "random"), seed=5)
+    plain = play_game(Engine(load_spec(RULESETS / "chess.json")), ("random", "random"), seed=5)
+    assert crowd.moves != plain.moves
+
+
+def _bounties() -> Engine:
+    """TC4 (`docs/plan-turncoat.md` §5.1): chess whose minor pieces and rooks pay a bounty, the
+    clock at 40 plies counting points. No committed ruleset carries a type's bounty."""
+    spec: dict[str, Any] = load_spec(RULESETS / "chess.json")
+    for piece in spec["pieces"]:
+        if piece["id"] in ("N", "B", "R"):
+            piece["bounty"] = 3 if piece["id"] != "R" else 5
+    spec["rules"]["scoring"] = {"count": "points"}
+    spec["rules"]["max_plies"] = 40
+    return Engine(spec)
+
+
+@pytest.mark.parametrize(
+    "agents", [("random", "random"), ("greedy", "random"), ("minimax:nodes=200", "greedy")],
+    ids=lambda pair: "-vs-".join(pair),
+)
+def test_a_bounty_game_is_played_the_same_way_on_both_sides(agents: tuple[str, str]) -> None:
+    """A capture's bounty is paid into the tally the clock's count reads: the Python agents
+    must see the same points the core pays."""
+    _assert_same_played(_bounties(), agents)
+
+
+def test_the_bounty_arm_reaches_the_points() -> None:
+    """Otherwise the arm above would compare games no bounty ever decided."""
+    engine = _bounties()
+    reasons = {play_game(engine, ("greedy", "random"), seed=seed).reason for seed in range(4)}
+    assert "scored" in reasons
+
+
+def _condottieri() -> Engine:
+    """TC6 (`docs/plan-turncoat.md` §5.5): chess with two mercenaries nobody owns for hire at
+    2, knights bribable at twice 3, captures paying bounties into a purse of 2. No committed
+    ruleset hires or bribes."""
+    spec: dict[str, Any] = load_spec(RULESETS / "chess.json")
+    spec["pieces"].append({
+        "id": "C", "name": "condottiere", "value": 3, "price": 2, "bounty": 2,
+        "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "dihedral8"}],
+    })
+    for piece in spec["pieces"]:
+        if piece["id"] in ("N", "B", "R", "P"):
+            piece["bounty"] = 1 if piece["id"] == "P" else 2
+        if piece["id"] == "N":
+            piece["price"] = 3
+    spec["setup"]["placements"].append({"piece": "C", "player": "nobody", "squares": ["b3", "g3"]})
+    spec["rules"]["purse"] = {"start": 2, "bribe": True}
+    return Engine(spec)
+
+
+@pytest.mark.parametrize(
+    "agents", [("random", "random"), ("greedy", "random"), ("minimax:nodes=200", "greedy")],
+    ids=lambda pair: "-vs-".join(pair),
+)
+def test_a_hiring_game_is_played_the_same_way_on_both_sides(agents: tuple[str, str]) -> None:
+    """A hire or a bribe is a `MOVE_HIRE` on the bought piece's square that changes its side
+    and spends the purse: the Python agents must read it as the core does."""
+    _assert_same_played(_condottieri(), agents)
+
+
+def test_the_condottieri_arm_hires() -> None:
+    """Otherwise the arm above would compare games nobody hired in."""
+    engine = _condottieri()
+    kinds = {
+        move_type(move)
+        for seed in range(4)
+        for move in play_game(engine, ("greedy", "random"), seed=seed).moves
+    }
+    assert MOVE_HIRE in kinds
 
 
 def _with_rules(name: str, version: int, **rules: Any) -> Engine:
@@ -1902,7 +2002,7 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
     hands back a field the package does not read. Nothing throws: `_unpack` takes the nine
     it knows (five until schema 20's `portal_bar`, six until schema 22's `folds`, eight
     until schema 29's `rest`, ten until generation 36's respawn clocks, eleven until
-    generation 38's headings) and drops the twelfth on the floor. It is caught because the position that goes
+    generation 38's headings, twelve until TC4's purse) and drops the thirteenth on the floor. It is caught because the position that goes
     back in is a field shorter than the one that came out, which is a comparison that
     needs no version number on either side to make.
     """
@@ -1915,7 +2015,7 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
 
     message = core_boundary_mismatch(newer, _unpack, _pack)
     assert message is not None
-    assert "slot 11 carries 12 fields where this package writes 11" in message
+    assert "slot 11 carries 13 fields where this package writes 12" in message
     assert "maturin develop --release" in message
 
 

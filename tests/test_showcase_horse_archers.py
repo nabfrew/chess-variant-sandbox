@@ -1,4 +1,4 @@
-"""A2: *the horse archers*, the shooting capture's showcase (`docs/plan-pieces-moves.md` §6.7).
+"""A2: *the horse archers*, the shooting capture's showcase (`docs/archive/plan-pieces-moves.md` §6.7).
 
 Chess whose knights shoot: `rules.strike` at rifle's reading with `by: ["N"]`, registered over
 *the archers* (the bishops) by the fallback rule written before the draft read. This is V1 on

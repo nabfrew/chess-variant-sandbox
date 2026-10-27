@@ -1,4 +1,4 @@
-"""I1: pieces that never move (`docs/plan-pieces-moves.md` §4).
+"""I1: pieces that never move (`docs/archive/plan-pieces-moves.md` §4).
 
 `moves: []` is legal on any piece. These tests hold the rule's three halves: the shapes that
 are mistakes are refused by name (§4.3, refusals 1 to 6 and the kept ones), the shapes that

@@ -1,4 +1,4 @@
-"""Wild pieces that see (generation 37, N2, `docs/plan-npc.md` §4.2).
+"""Wild pieces that see (generation 37, N2, `docs/archive/plan-npc.md` §4.2).
 
 A wild type may carry `pieces[].sight` with ``whose: "any"``: freeze, disarm or shield, on both
 players' pieces alike, read from the board as a player's sight is. A shield beside `rules.npcs`

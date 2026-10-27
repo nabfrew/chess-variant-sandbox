@@ -509,6 +509,15 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     # empty unless the rule uses them -- the inert default again.
     strike_rebirth = list(strike.rebirth) if strike else []
     contact_mover_flips = [int(flip) for flip in strike.mover_flips] if strike else []
+    # TC2 (`docs/plan-turncoat.md` §6): a piece that changes sides on the board keeps its
+    # heading, `[from_owner * n_facings + facing] -> facing` for the other owner. Crossed only
+    # where a facing game can change a piece's side (a switch, or TC6's bribe), so every other
+    # game's tables and fingerprint stay where they were.
+    bribes = spec.purse is not None and spec.purse.bribes
+    coat_facing = (
+        [facing for row in spec.coat_facing for facing in row]
+        if (contact_mover_flips or bribes) and spec.has_facing else []
+    )
 
     # --- Facing (schema 8) ---
     # Two arrays, both per piece type, and both empty for a spec in which nothing turns
@@ -541,7 +550,7 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         for every, starts in (npcs.respawn if npcs is not None else ())
         for value in (every, len(starts), *starts)
     ]
-    # Generation 39 (N3b, `docs/plan-npc.md` §4.3): the pounce tables, every one empty unless an
+    # Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): the pounce tables, every one empty unless an
     # entry pounces. The reach is ``[target, path_start, path_len, prefix_len, screens]`` per
     # entry into ``pounce_paths``, indexed per (type, origin); ``npc_piece`` (each square's route
     # type, -1 off every route) crosses only beside a pounce, where a wild piece can stand on a
@@ -788,6 +797,7 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "facing_axes": facing_axes,
         "facing_initial": facing_initial,
         "facing_turns": facing_turns,
+        "coat_facing": coat_facing,
         "has_strike": strike is not None,
         "strike_position": _STRIKE_POSITION[strike.position] if strike else 1,
         "strike_to": strike_to,
@@ -799,25 +809,45 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "strike_landing_index": strike_landing_index,
         "strike_rebirth": strike_rebirth,
         "contact_mover_flips": contact_mover_flips,
-        # Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, ``[type, by_moves, squares...]``,
+        # Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck, ``[type, by_moves, squares...]``,
         # empty without one.
         "duck": (
             [spec.duck.piece_type, int(spec.duck.by_moves), *spec.duck.squares]
             if spec.duck is not None else []
         ),
+        # TC1 (`docs/plan-turncoat.md` §3.2): each type's control kind in the third owner's
+        # block (`compile.ControlRule`), empty when nobody owns anything. Derived wholly from
+        # the wild, duck, portal and neutral keys, so the fingerprint leaves it out (`_DERIVED`).
+        "control_kind": list(spec.control.kind) if spec.control is not None else [],
+        # TC3 (`docs/plan-turncoat.md` §4): pieces nobody owns from the setup. Each type's
+        # neutral kind (`CONTROL_NEUTRAL` stands, `CONTROL_MAJORITY` moved by the majority
+        # holder, 0 otherwise), and the majority types' neighbours, flat by ``type *
+        # n_squares + square`` (`neighbour_index` the offsets, one past the last). All empty
+        # without a nobody's placement.
+        **_neutral_fields(spec),
+        # TC4 (`docs/plan-turncoat.md` §5.1, §5.2): each type's bounty, empty when no type
+        # carries one; the purse's opening amount, -1 without a purse, and its keys
+        # (`[player * (PURSE_MAX + 1) + amount]`), empty without one.
+        "piece_bounty": list(spec.bounty),
+        "purse_start": spec.purse.start if spec.purse is not None else -1,
+        "zobrist_purse": list(spec.purse.zobrist) if spec.purse is not None else [],
+        # TC5 (§5.4): the market, empty without a purse: each entry's type and price, and
+        # where a bought one may stand, flat by ``player * n_market + entry``
+        # (`purse_square_index` the offsets, one past the last).
+        **_market_fields(spec),
         # Wild pieces
         "has_npcs": npcs is not None,
         "npc_next": npc_next,
         "npc_bounty": npc_bounty,
-        # Generation 36 (N1, `docs/plan-npc.md` §4.1): the respawning halves and their
+        # Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): the respawning halves and their
         # clocks' keys, both empty unless an entry comes back.
         "npc_respawn": npc_respawn,
         "zobrist_respawn": list(spec.zobrist_respawn),
-        # Generation 38 (N5, `docs/plan-npc.md` §4.7): the lines' way back and the heading's
+        # Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): the lines' way back and the heading's
         # keys, both empty unless an entry turns back.
         "npc_prev": list(npcs.prev) if npcs is not None else [],
         "zobrist_heading": list(spec.zobrist_heading),
-        # Generation 39 (N3b, `docs/plan-npc.md` §4.3): the pounce tables, all empty unless an
+        # Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): the pounce tables, all empty unless an
         # entry pounces.
         "npc_piece": list(npcs.piece) if npcs is not None and pounce is not None else [],
         "pounce_kind": list(pounce.kind) if pounce is not None else [],
@@ -829,7 +859,7 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "pounce_reach_index": pounce_reach_index,
         "pounce_reach": pounce_reach,
         "pounce_paths": pounce_paths,
-        # Generation 41 (N3d, `docs/plan-npc.md` §4.5): the cap per type, empty unless a type
+        # Generation 41 (N3d, `docs/archive/plan-npc.md` §4.5): the cap per type, empty unless a type
         # splits.
         "pounce_split": list(pounce.split) if pounce is not None else [],
         # Promotion on entering play
@@ -946,6 +976,47 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
 # the board -- `promo_squares`, `immobile_squares`, `ep_pass_index` -- and those stay in
 # the fingerprint: their default is not one value, so dropping them would need a rule
 # about lengths rather than about values, and they are already in every stored basis.
+def _market_fields(spec: CompiledSpec) -> dict[str, list[int]]:
+    """TC5 (`docs/plan-turncoat.md` §5.4): the market's boundary keys, all empty without a
+    purse. ``purse_squares[purse_square_index[k]:purse_square_index[k + 1]]`` are the
+    squares entry ``k % n_market`` may be placed on by player ``k // n_market``."""
+    purse = spec.purse
+    if purse is None:
+        return {
+            "purse_market": [], "purse_price": [], "purse_square_index": [], "purse_squares": [],
+            "purse_hire": [], "purse_bribe": [], "purse_neighbour_index": [],
+            "purse_neighbour_squares": [],
+        }
+    index = [0]
+    squares: list[int] = []
+    for player in (0, 1):
+        for entry in purse.squares[player]:
+            squares.extend(entry)
+            index.append(len(squares))
+    # TC6 (§5.5): what a hire and a bribe cost per type, and what *next to* means for each
+    # such type, flat by ``type * n_squares + square`` (`purse_neighbour_index` the offsets,
+    # one past the last). All empty unless something can be hired or bribed.
+    near_index: list[int] = []
+    near: list[int] = []
+    if purse.neighbours:
+        near_index.append(0)
+        for piece_type in range(spec.n_types):
+            per_square = purse.neighbours[piece_type] if piece_type < len(purse.neighbours) else ()
+            for square in range(spec.n_squares):
+                near.extend(per_square[square] if per_square else ())
+                near_index.append(len(near))
+    return {
+        "purse_market": list(purse.market),
+        "purse_price": list(purse.price),
+        "purse_square_index": index,
+        "purse_squares": squares,
+        "purse_hire": list(purse.hire),
+        "purse_bribe": list(purse.bribe),
+        "purse_neighbour_index": near_index,
+        "purse_neighbour_squares": near,
+    }
+
+
 _INERT_DEFAULTS: dict[str, Any] = {
     "n_frames": 2,
     "facing_axes": [],
@@ -1036,6 +1107,8 @@ _INERT_DEFAULTS: dict[str, Any] = {
     # Schema 17 (Q540). Empty unless the position is `home`, or a type switches sides.
     "strike_rebirth": [],
     "contact_mover_flips": [],
+    # TC2. Empty unless a facing game switches sides.
+    "coat_facing": [],
     # Schema 13 (Q21). Empty unless a piece sweeps.
     "sweep_index": [],
     "sweep_refs": [],
@@ -1046,6 +1119,20 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "attack_path_modes": [],
     # Generation 42 (N4b). Empty unless the spec has a duck.
     "duck": [],
+    # TC4. Empty unless a type carries a bounty; -1 and empty without a purse.
+    "piece_bounty": [],
+    "purse_start": -1,
+    "zobrist_purse": [],
+    # TC5. Empty without a purse.
+    "purse_market": [],
+    "purse_price": [],
+    "purse_square_index": [],
+    "purse_squares": [],
+    # TC6. Empty unless something can be hired or bribed.
+    "purse_hire": [],
+    "purse_bribe": [],
+    "purse_neighbour_index": [],
+    "purse_neighbour_squares": [],
     "has_npcs": False,
     "npc_next": [],
     "npc_bounty": [],
@@ -1112,9 +1199,45 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "sight_srcs": [],
     "sight_paths": [],
     "sight_flags": [],
-    # Q1007c (`docs/plan-schema-31.md` §3.7). False unless a sight commands.
+    # Q1007c (`docs/archive/plan-schema-31.md` §3.7). False unless a sight commands.
     "sight_command": False,
+    # TC3 (`docs/plan-turncoat.md` §4). Empty unless a placement is nobody's.
+    "neutral_control": [],
+    "neighbour_index": [],
+    "neighbour_squares": [],
 }
+
+def _neutral_fields(spec: CompiledSpec) -> dict[str, list[int]]:
+    """TC3's boundary keys (`compile.NeutralRule`), empty without a nobody's placement."""
+    neutrals = spec.neutrals
+    if neutrals is None:
+        return {"neutral_control": [], "neighbour_index": [], "neighbour_squares": []}
+    index = [0]
+    squares: list[int] = []
+    for piece_type in range(spec.n_types):
+        per_square = neutrals.neighbours[piece_type]
+        for square in range(spec.n_squares):
+            squares.extend(per_square[square] if per_square else ())
+            index.append(len(squares))
+    return {
+        "neutral_control": list(neutrals.kind),
+        "neighbour_index": index if neutrals.has_majority else [],
+        "neighbour_squares": squares,
+    }
+
+
+# Keys that restate, in the core's shape, what other keys already say, and so add nothing to
+# *what this ruleset compiles to*: dropped from the fingerprint whatever their value, so that
+# restating a rule moves no stored basis. Such a key belongs here only while every value it
+# takes is a function of keys that are fingerprinted; one that comes to carry a rule of its
+# own (TC3's neutral kinds, read off `pieces[].control`) leaves this set in that change.
+#
+# `control_kind` (TC1, `docs/plan-turncoat.md` §3.2): the third block's control kinds, read
+# off `has_npcs`, `duck`, the portal keys and (TC3) `neutral_control` alone. TC3's neutral
+# kinds carry a rule of their own, and they cross fingerprinted under `neutral_control`
+# rather than by moving this key out of the set: a wild game's `control_kind` is not empty,
+# so fingerprinting it would move every wild game's stored basis for nothing.
+_DERIVED = frozenset({"control_kind"})
 
 # Keys that are part of what every game means, whatever rules it declares: the board's
 # shape, the movement and attack tables, the opening array, the ending clocks, the
@@ -1157,7 +1280,7 @@ def canonical_tables(spec: CompiledSpec) -> dict[str, Any]:
     return {
         key: value
         for key, value in tables.items()
-        if key not in _INERT_DEFAULTS or value != _INERT_DEFAULTS[key]
+        if key not in _DERIVED and (key not in _INERT_DEFAULTS or value != _INERT_DEFAULTS[key])
     }
 
 

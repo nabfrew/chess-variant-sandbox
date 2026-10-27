@@ -75,7 +75,7 @@ def _broken(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
         npcs=[{"piece": s["pieces"][0]["id"], "route": ["z1"]}]))
     made("a promotion off the board", lambda s: s["rules"].update(
         promotion={"piece": s["pieces"][0]["id"], "rank": 40}))
-    # T1 (`plan-pieces-moves.md` §5.3): a path that turns, where it cannot.
+    # T1 (`docs/archive/plan-pieces-moves.md` §5.3): a path that turns, where it cannot.
     made("a path on a leap", lambda s: s["pieces"][1]["moves"].append(
         {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "path": "circle"}))
     made("a circle with a gap", lambda s: s["pieces"][1]["moves"].append(
@@ -85,7 +85,7 @@ def _broken(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
     made("a one-step path", lambda s: s["pieces"][1]["moves"].append(
         {"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "path": "zigzag",
          "range": 1}))
-    # A1 (`plan-pieces-moves.md` §6.3): a strike given to some pieces, wrongly.
+    # A1 (`docs/archive/plan-pieces-moves.md` §6.3): a strike given to some pieces, wrongly.
     def shooting(s: dict[str, Any], by: list[str], **more: Any) -> None:
         royals = [p["id"] for p in s["pieces"] if p.get("royal")]
         s["rules"]["strike"] = {"effect": "capture", "position": "stay", "immune": royals,
@@ -464,7 +464,7 @@ class TestAPieceFieldNamesItsPiecesForEveryReader:
 
 
 class TestACommandsWords:
-    """Q1013 (`docs/plan-schema-31.md` §3): `spec.plain` words the fourth sight effect and its
+    """Q1013 (`docs/archive/plan-schema-31.md` §3): `spec.plain` words the fourth sight effect and its
     `captures_own` as it words freeze, disarm and shield, and the designer's sight rows read
     those words and no stand-in of their own (Q1007d's, gone). Pinned on a game whose knights
     command (K1, no turncoat capture) and one whose king commands with `captures_own` (K2)."""
@@ -562,7 +562,7 @@ class TestACommandsWords:
 
 
 class TestTheRulesArePlural:
-    """LP0 (`docs/plan-landing.md` §5). The validator's *the spec* is *the rules* to a
+    """LP0 (`docs/archive/plan-landing.md` §5). The validator's *the spec* is *the rules* to a
     visitor, and the verb after it stayed singular: *the rules states no ending of its
     own*. The fix is in the substitution (`plain.the_rules`), so every sentence built the
     same way agrees, and the refusal itself is unchanged: same problem, one for one."""

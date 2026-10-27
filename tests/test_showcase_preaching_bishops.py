@@ -1,4 +1,4 @@
-"""V1, the mechanism of Q1024's command showcase (`docs/plan-schema-31.md` §6.5).
+"""V1, the mechanism of Q1024's command showcase (`docs/archive/plan-schema-31.md` §6.5).
 
 **P1**, *chess with preaching bishops* (`91c2c24305e5`): chess, and every enemy pawn on one of a
 bishop's eight lines, at any distance and through any piece (an aura, `through`), may also be

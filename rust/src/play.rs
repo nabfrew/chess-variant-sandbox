@@ -11,7 +11,7 @@ use crate::agents::{AgentSpec, Player};
 use crate::eval::Evaluator;
 use crate::game::Game;
 use crate::rng::PyRandom;
-use crate::tables::{move_kind, Tables, MOVE_DUCK};
+use crate::tables::{move_kind, Tables, MOVE_BUY, MOVE_DUCK, MOVE_HIRE};
 
 pub struct GameOutput {
     pub moves: Vec<u32>,
@@ -210,8 +210,12 @@ pub fn play_from(
         game.make(m);
         if collect_series {
             // Generation 42 (N4b): a duck move leaves the no-progress clock alone, so the ply
-            // after a capture would read as a second one; a duck move takes nothing.
-            captures.push(u8::from(game.halfmove == 0 && move_kind(m) != MOVE_DUCK));
+            // after a capture would read as a second one; a duck move takes nothing. TC5: a buy
+            // resets the clock and takes nothing either, and (TC6) so does a hire or a bribe.
+            let kind = move_kind(m);
+            captures.push(u8::from(
+                game.halfmove == 0 && kind != MOVE_DUCK && kind != MOVE_BUY && kind != MOVE_HIRE,
+            ));
         }
         moves.push(m);
     };

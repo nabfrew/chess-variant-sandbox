@@ -6682,7 +6682,10 @@ class TestWhatReachesThePage:
         # the ladder and its people's-scale sentences (names and sentences through `esc`),
         # and the blast's fireball (`blastFire`: numbers and token names), with the board's
         # ghosts and swirls moved from `board.js` to `motion.js` unchanged.
-        assert len(sites) == 161
+        # 163 since the sweep's cut (`sweepCut`): the blade along the sweeper's line (numbers
+        # and token names) and each half of a cut piece (a clip of numbers and a counted id
+        # around the piece drawer's own markup, as `ghostAt` draws it).
+        assert len(sites) == 163
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -9022,7 +9025,7 @@ class TestTheBoardWithoutEdges:
         from page_text import PAGE
 
         assert (
-            "const SQUARE_MARKS = squareMarks(Object.assign({}, rules, { checked: checkSquares() }),"
+            "const SQUARE_MARKS = squareMarks(Object.assign({}, rules, { checked: checkSquares(),"
             in PAGE
         )
         assert "if (SQUARE_MARKS[square]) out += squareBadge(" in PAGE
@@ -11176,8 +11179,9 @@ class TestBuildingAGameByHand:
         # model's design from RULES.md alone, became the first library spec to use it.
         # `duck` (generation 42, N4b) joined it, and left on 2026-10-26 with N6's
         # `archive/the-shepherds-duck`.
+        # `purse` (TC5) joined it; TC9's *war chest* takes it out.
         assert _RULES_KEYS - seen == {
-            "checkmate", "turn",
+            "checkmate", "turn", "purse",
         }, "the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(
@@ -11213,6 +11217,8 @@ class TestBuildingAGameByHand:
             "portals": [{"piece": "O", "orange": "c3", "blue": "d4"}],
             # Generation 42 (N4b): a duck the draft gains below, in a game won by taking.
             "duck": {"piece": "U"},
+            # TC5: a purse selling the template's pawn, priced below.
+            "purse": {"start": 1, "market": ["P"]},
         }
         for key, value in cases.items():
             draft = json.loads(json.dumps(base))
@@ -11225,6 +11231,10 @@ class TestBuildingAGameByHand:
             if key == "duck":
                 draft["pieces"].append({"id": "U", "name": "duck", "value": 0, "moves": []})
                 draft["rules"]["win"] = "royal_capture"
+            if key == "purse":
+                for piece in draft["pieces"]:
+                    if piece["id"] == "P":
+                        piece["price"] = 1
             problems = validate_spec(designing.settled(draft))
             assert not any("schema" in problem for problem in problems), (key, problems)
 

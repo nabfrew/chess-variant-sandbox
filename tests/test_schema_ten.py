@@ -862,7 +862,7 @@ class TestAHandMayStartWithSomethingInIt:
 
     def test_the_gate_on_the_stock_is_lifted_by_i1(self) -> None:
         """Schema 10 admitted `moves: []` only for a piece `piece_has_stock` names. I1
-        (`docs/plan-pieces-moves.md` §4) lifted the gate: any piece may have no moves, and
+        (`docs/archive/plan-pieces-moves.md` §4) lifted the gate: any piece may have no moves, and
         the shapes of one that are mistakes are refused by name instead
         (`tests/test_moveless.py`). The predicate stays, for `rest`'s refusal."""
         assert piece_has_stock(_stone()["rules"], "S")
@@ -2104,7 +2104,7 @@ class TestTheBumpIsInertOnEveryRulesetThatDoesNotUseIt:
             # schema 10's collector because its moves are the empty list.
             "anchors": ["a piece with no moves of its own"],
             # N6's shepherds duck: a duck that goes anywhere writes its type's moves as the
-            # empty list (I1's honest spelling, `plan-npc.md` §4.6), never read.
+            # empty list (I1's honest spelling, `docs/archive/plan-npc.md` §4.6), never read.
             "the-shepherds-duck": ["a piece with no moves of its own"],
             # Q772a's two showcases whose portals nobody moves declared the portal type with
             # no moves until spelling 31 (Q1007b), which writes a portal's moves on its group

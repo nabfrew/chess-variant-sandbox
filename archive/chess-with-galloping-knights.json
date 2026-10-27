@@ -104,8 +104,8 @@
   "provenance": {
     "added": "2026-10-26",
     "origin": "designed",
-    "source": "docs/plan-schema-31.md, Q1023: L1, the showcase for schema 31's lame rider, `lame` with `range` and `min_range` (section 6.4)",
-    "history": "L1 of docs/plan-schema-31.md section 6.4, registered 2026-10-26 before any measured game: chess (4c1922ffae26) with the knight keeping its leap and gaining a lame rider over [1, 2] by dihedral8 from its second jump on (range 0, min_range 2), so the first jump is chess's and every further jump is blocked on its leg as the xiangqi horse is. Chosen by Q1023 over draft B (the whole move a lame rider, cfea33e382a0), on their draft reads; the piece named galloping knight, valued 4, drawn as a knight.",
+    "source": "docs/archive/plan-schema-31.md, Q1023: L1, the showcase for schema 31's lame rider, `lame` with `range` and `min_range` (section 6.4)",
+    "history": "L1 of docs/archive/plan-schema-31.md section 6.4, registered 2026-10-26 before any measured game: chess (4c1922ffae26) with the knight keeping its leap and gaining a lame rider over [1, 2] by dihedral8 from its second jump on (range 0, min_range 2), so the first jump is chess's and every further jump is blocked on its leg as the xiangqi horse is. Chosen by Q1023 over draft B (the whole move a lame rider, cfea33e382a0), on their draft reads; the piece named galloping knight, valued 4, drawn as a knight.",
     "parents": ["4c1922ffae26"]
   }
 }

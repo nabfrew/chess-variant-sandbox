@@ -863,7 +863,7 @@ class App:
         answer["words"] = str(made["words"])
         return answer
 
-    # The game a door into the designer copies (LP7, `docs/plan-landing.md` §5): chess, the
+    # The game a door into the designer copies (LP7, `docs/archive/plan-landing.md` §5): chess, the
     # game everybody knows, so the one rule added is the one thing that is new.
     DOOR_START = "chess.json"
 

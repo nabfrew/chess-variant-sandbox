@@ -100,8 +100,8 @@
   "provenance": {
     "added": "2026-10-26",
     "origin": "designed",
-    "source": "docs/plan-schema-31.md, Q1024: P1, the showcase for schema 31's command effect and its captures_own (section 6.5)",
-    "history": "P1 of docs/plan-schema-31.md section 6.5, registered 2026-10-26 before any measured game: chess (4c1922ffae26) with one key on the bishop, an aura over the queen's eight lines to the edge that commands enemy pawns and lets them be made to take their own side. Chosen by Q1024 from ten drafts after K1 and K2 (section 6.3) retired for a command too rarely offered: commanding every enemy piece drew by repetition (a command and its undoing repeat a position at will), commanding pawns alone does not, since a pawn never steps back.",
+    "source": "docs/archive/plan-schema-31.md, Q1024: P1, the showcase for schema 31's command effect and its captures_own (section 6.5)",
+    "history": "P1 of docs/archive/plan-schema-31.md section 6.5, registered 2026-10-26 before any measured game: chess (4c1922ffae26) with one key on the bishop, an aura over the queen's eight lines to the edge that commands enemy pawns and lets them be made to take their own side. Chosen by Q1024 from ten drafts after K1 and K2 (section 6.3) retired for a command too rarely offered: commanding every enemy piece drew by repetition (a command and its undoing repeat a position at will), commanding pawns alone does not, since a pawn never steps back.",
     "parents": ["4c1922ffae26"]
   }
 }

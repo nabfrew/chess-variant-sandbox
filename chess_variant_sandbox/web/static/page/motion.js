@@ -1,5 +1,5 @@
 // The board's motion, one copy for every page that draws a game moving (LP4,
-// `docs/plan-landing.md` §2.2 and §3.3): the play board (`board.js`, `simultaneous.js`) and
+// `docs/archive/plan-landing.md` §2.2 and §3.3): the play board (`board.js`, `simultaneous.js`) and
 // the landing's played stories (`landing.js`). A piece's travel, a capture's blow, a stone
 // dropping in, the portal journey and the blast are drawn here and nowhere else, so a change
 // to how a blast looks changes it on both pages (the user, 2026-10-24: *"The landing page
@@ -40,6 +40,13 @@ const PACE = {
   blastLag: 60,
   resist: 500,           // the shield shimmer on a piece that survived the blast
   rotate: 350,           // a piece turning to a new facing
+  // A sweep (schema 13, `sweepCut`): each piece it passes is cut and its halves thrown
+  // apart in this long, the cut's stroke flashing and its sparks flying in these long, and
+  // the blade left along the line fades in this long once the sweeper lands.
+  sweepSplit: 720,
+  sweepSlash: 280,
+  sweepSparks: 420,
+  sweepFade: 360,
   // A void move in a round (schema 26, Q918c): the piece steps toward the square it went
   // for and back, in this long, reaching this share of the way.
   voidStep: 460,
@@ -284,6 +291,132 @@ function strike(svg, ghost, x, y, cell, blow) {
   flash.onfinish = () => ring.remove();
 
   return blow.at + Math.max(PACE.strike, PACE.burst);
+}
+
+// A sweep (schema 13): not a blow on one square but an edge drawn down a line. A blade
+// streaks out behind the sweeper as it travels, and each piece it passes over is cut along
+// the line at the moment the sweeper's edge reaches it: a flash of the cut, sparks off
+// the edge, and the two halves thrown apart to either side, turning away and gone. Told apart from a capture's
+// knock and a blast's burn on purpose, because a sweep takes pieces nothing landed on.
+//
+// `mover` is the sweeper's node, which the blade is laid under; `from` and `to` its two
+// squares' corners on the drawing; `victims` is `[piece, x, y]` for each square the engine
+// says it cleared (`swept`, `viz.wrapped.sweep_transit`), in the order it passed them;
+// `flight` is how long `travel` gave the sweeper, and `delay` when it set off. Returns when
+// the last half is gone.
+let SWEEP_CUTS = 0;
+function sweepCut(svg, mover, from, to, victims, cell, flight, delay = 0) {
+  const draw = MOTION_DRAWERS.get(svg) || MOTION_PIECE;
+  const h = cell / 2;
+  const [ax, ay] = [from[0] + h, from[1] + h], [bx, by] = [to[0] + h, to[1] + h];
+  const length = Math.hypot(bx - ax, by - ay) || 1;
+  const ux = (bx - ax) / length, uy = (by - ay) / length, nx = -uy, ny = ux;
+  // Where the sweeper is at a share of its flight: `travel`'s easing for a straight move,
+  // cubic-bezier(.3, .7, .3, 1), solved for the moment it has covered `share` of the line.
+  const when = share => {
+    const bez = (u, p, q) => 3 * (1 - u) * (1 - u) * u * p + 3 * (1 - u) * u * u * q + u * u * u;
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 20; i++) {
+      const mid = (lo + hi) / 2;
+      if (bez(mid, 0.7, 1) < share) lo = mid; else hi = mid;
+    }
+    return delay + flight * bez((lo + hi) / 2, 0.3, 0.3);
+  };
+
+  // The blade: a broad faint wake and a bright edge inside it, drawn out from the origin as
+  // the sweeper goes, then thinning away once it has landed.
+  const blade = document.createElementNS(SVGNS, 'g');
+  blade.setAttribute('data-journey', 'sweep');
+  blade.setAttribute('pointer-events', 'none');
+  blade.innerHTML = [['var(--fx-edge)', 0.34, 0.4], ['var(--fx-blade)', 0.08, 0.95]]
+    .map(([ink, width, opacity]) =>
+      `<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${ink}" `
+      + `stroke-width="${cell * width}" stroke-linecap="round" opacity="${opacity}" `
+      + 'pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"/>').join('');
+  if (mover && mover.parentNode === svg) svg.insertBefore(blade, mover);
+  else svg.appendChild(blade);
+  for (const line of blade.querySelectorAll('line')) {
+    line.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }],
+      { duration: flight, delay, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' });
+  }
+  const fade = blade.animate([{ opacity: 1 }, { opacity: 0 }],
+    { duration: PACE.sweepFade, delay: delay + flight, easing: 'ease-in', fill: 'forwards' });
+  fade.onfinish = () => blade.remove();
+  let done = delay + flight + PACE.sweepFade;
+
+  for (const [piece, x, y] of victims) {
+    const cx = x + h, cy = y + h;
+    const at = when(Math.min(1, Math.max(0, ((cx - ax) * ux + (cy - ay) * uy) / length)));
+    // Two copies of the piece, each clipped to one side of the line through its centre, so
+    // that standing together they are the piece and nothing has happened yet.
+    const id = `sweep-cut-${++SWEEP_CUTS}`;
+    [1, -1].forEach((side, k) => {
+      const corner = (u, n) => `${cx + ux * u * cell + nx * n * cell},${cy + uy * u * cell + ny * n * cell}`;
+      const half = document.createElementNS(SVGNS, 'g');
+      half.setAttribute('data-journey', 'sweep-half');
+      half.setAttribute('pointer-events', 'none');
+      half.innerHTML = `<clipPath id="${id}-${k}"><polygon points="${corner(-1, 0)} ${corner(1, 0)} `
+        + `${corner(1, side)} ${corner(-1, side)}"/></clipPath>`
+        + `<g clip-path="url(#${id}-${k})">${draw(piece, x, y, cell)}</g>`;
+      half.style.transformOrigin = `${cx}px ${cy}px`;
+      svg.appendChild(half);
+      const ox = nx * side * cell, oy = ny * side * cell;
+      // A hitch as the edge goes through, then thrown apart, carried a little the way the
+      // sweeper went, each half turning away from the line.
+      const away = (k, turn) => `translate(${ox * k + ux * cell * k * 0.4}px, `
+        + `${oy * k + uy * cell * k * 0.4}px) rotate(${side * turn}deg)`;
+      const run = half.animate([
+        { opacity: 1, transform: away(0, 0), filter: 'brightness(1)' },
+        { opacity: 1, transform: away(0.08, 0), filter: 'brightness(1.8)', offset: 0.14 },
+        { opacity: 0.9, transform: away(0.45, 20), filter: 'brightness(1.2)', offset: 0.55 },
+        { opacity: 0, transform: away(0.8, 40), filter: 'brightness(1)' },
+      ], { duration: PACE.sweepSplit, delay: at, easing: 'cubic-bezier(.2,.6,.4,1)',
+           fill: 'forwards' });
+      run.onfinish = () => half.remove();
+    });
+    // The cut itself: a bright stroke along the line across the piece, there and gone.
+    const slash = document.createElementNS(SVGNS, 'line');
+    slash.setAttribute('x1', cx - ux * cell * 0.48);
+    slash.setAttribute('y1', cy - uy * cell * 0.48);
+    slash.setAttribute('x2', cx + ux * cell * 0.48);
+    slash.setAttribute('y2', cy + uy * cell * 0.48);
+    slash.setAttribute('stroke', 'var(--fx-blade)');
+    slash.setAttribute('stroke-width', cell * 0.06);
+    slash.setAttribute('stroke-linecap', 'round');
+    slash.setAttribute('pointer-events', 'none');
+    slash.setAttribute('pathLength', '1');
+    slash.setAttribute('stroke-dasharray', '1 1');
+    slash.style.opacity = '0';
+    svg.appendChild(slash);
+    // Drawn along the line the way the sweeper is going, held a moment, and gone.
+    const flash = slash.animate([
+      { opacity: 1, strokeDashoffset: 1 },
+      { opacity: 1, strokeDashoffset: 0, offset: 0.35 },
+      { opacity: 0, strokeDashoffset: 0 },
+    ], { duration: PACE.sweepSlash, delay: at, easing: 'ease-out', fill: 'forwards' });
+    flash.onfinish = () => slash.remove();
+    // Sparks off the edge, thrown on ahead along the line and fanning to either side.
+    for (let i = 0; i < 5; i++) {
+      const fan = (i - 2) * 0.45, reach = cell * (0.45 + 0.12 * (i % 3));
+      const spark = document.createElementNS(SVGNS, 'circle');
+      spark.setAttribute('cx', cx);
+      spark.setAttribute('cy', cy);
+      spark.setAttribute('r', cell * 0.035);
+      spark.setAttribute('fill', i % 2 ? 'var(--fx-edge)' : 'var(--fx-blade)');
+      spark.setAttribute('pointer-events', 'none');
+      spark.style.opacity = '0';
+      svg.appendChild(spark);
+      const sx = (ux + nx * fan) * reach, sy = (uy + ny * fan) * reach;
+      const fly = spark.animate([
+        { opacity: 1, transform: 'translate(0px, 0px)' },
+        { opacity: 0, transform: `translate(${sx}px, ${sy}px)` },
+      ], { duration: PACE.sweepSparks, delay: at, easing: 'cubic-bezier(.1,.8,.3,1)',
+           fill: 'forwards' });
+      fly.onfinish = () => spark.remove();
+    }
+    done = Math.max(done, at + Math.max(PACE.sweepSplit, PACE.sweepSparks));
+  }
+  return done;
 }
 // A resist shimmer: the piece was inside the blast radius but is immune to the
 // explosion. A translucent shield briefly pulses around it, so the player sees

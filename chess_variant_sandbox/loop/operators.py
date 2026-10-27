@@ -31,6 +31,7 @@ fix is machine-readable validation errors, not a parser.
 from __future__ import annotations
 
 import copy
+import json
 import random
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -47,6 +48,8 @@ from chess_variant_sandbox.spec.schema import (
     FACING_NAMES,
     HEX_SYMMETRIES,
     POUNCE_KINDS,
+    PRICE_MAX,
+    PURSE_MAX,
     REPETITION_NEVER,
     REST_MAX,
     SIGHT_EFFECTS,
@@ -63,11 +66,16 @@ from chess_variant_sandbox.spec.schema import (
     can_double_step,
     castling_spans,
     duck_piece,
+    format_square,
     has_equal_speed_opponent,
     has_rests,
     has_sights,
     has_speeds,
+    hire_ids,
+    is_nobodys,
     is_simultaneous,
+    majority_ids,
+    neutral_ids,
     npc_pounce,
     npc_respawn,
     npc_split,
@@ -78,7 +86,9 @@ from chess_variant_sandbox.spec.schema import (
     parse_square,
     path_of,
     path_refusals,
+    piece_bounties,
     piece_has_stock,
+    piece_prices,
     piece_rests,
     piece_sights,
     piece_speeds,
@@ -86,6 +96,9 @@ from chess_variant_sandbox.spec.schema import (
     portal_groups,
     portal_open_ends,
     promoting_piece_ids,
+    purse_bribes,
+    purse_market,
+    purse_rule,
     reach_reflection,
     reads_alike_for_both,
     reflect_square,
@@ -361,7 +374,7 @@ def _slide_becomes_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 
 def _ride_a_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
-    """Q1007a (`docs/plan-schema-31.md` §2.5): a lame leap rides, or a lame rider stops.
+    """Q1007a (`docs/archive/plan-schema-31.md` §2.5): a lame leap rides, or a lame rider stops.
 
     A single lame leap gains a ``range`` (0, 2 or 3 jumps, and now and then a ``min_range``
     of 2): jump after jump, each blocked on its leg. A lame rider loses both and is the
@@ -386,7 +399,7 @@ def _ride_a_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 
 def _bend_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
-    """T1 (`docs/plan-pieces-moves.md` §5.5): a straight slide's path turns, a circle or a
+    """T1 (`docs/archive/plan-pieces-moves.md` §5.5): a straight slide's path turns, a circle or a
     zigzag, wherever the validator lets that set of directions turn (`path_refusals`).
 
     Each child must pass the validator whole, which also refuses a path beside portals, on
@@ -429,7 +442,7 @@ def _straighten(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 
 def _still_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
-    """I1 (`docs/plan-pieces-moves.md` §4.5): a piece on the board stops moving, or one that
+    """I1 (`docs/archive/plan-pieces-moves.md` §4.5): a piece on the board stops moving, or one that
     never moves is given a king's step.
 
     Still: a non-royal type the setup places, that castles and promotes in no rule, loses
@@ -1000,8 +1013,11 @@ def _win_by_arrival(spec: dict[str, Any], rng: random.Random) -> str | None:
     not settle the stamp, so twelve schema-1 parents lost every child to `rules uses
     reach, added in schema 2`. 72 of 282 in the sweep.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
+    if majority_ids(spec):
+        return None
     if _commands(spec):
-        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
+        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     rules = spec.setdefault("rules", {})
     if rules.get("reach"):
         rules.pop("reach", None)
@@ -1154,6 +1170,12 @@ def _score_the_clock(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules = spec.setdefault("rules", {})
     if rules.get("scoring"):
         strip_rule(spec, "scoring")
+        # TC4: a type's bounty is paid into the points the count read; it goes with it,
+        # unless (TC5) a purse still pays it.
+        if piece_bounties(spec) and not isinstance(spec["rules"].get("purse"), dict):
+            for piece in pieces(spec):
+                piece.pop("bounty", None)
+            return "a game that runs out of clock is a draw again, and taking pays nothing"
         return "a game that runs out of clock is a draw again"
     set_scoring(spec)
     count = rules["scoring"]["count"]
@@ -1175,8 +1197,11 @@ def _claim_the_ground(spec: dict[str, Any], rng: random.Random) -> str | None:
     with nothing to count is a spec the validator rejects by name -- and an operator
     that produced one would spend a draw on a candidate that could never be played.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
+    if majority_ids(spec):
+        return None
     if _commands(spec):
-        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
+        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
@@ -1201,8 +1226,13 @@ def _lengthen_the_turn(spec: dict[str, Any], rng: random.Random) -> str | None:
     `moves: 1` -- a turn of one move has several spellings and `complexity._RULE_ACTIVE`
     exists because of it.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
+    if majority_ids(spec):
+        return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a turn already has its two halves)
+    if purse_rule(spec) is not None:
+        return None  # TC5 (`docs/plan-turncoat.md` §5.9): a purse is refused beside a long turn
     rules = spec.setdefault("rules", {})
     if rules.get("turn"):
         strip_rule(spec, "turn")
@@ -1407,10 +1437,13 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     no legal move at all -- every position has exactly the moves it had before, and only
     what they do is different.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
+    if neutral_ids(spec):
+        return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a strike)
     if _commands(spec):
-        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
+        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
@@ -1468,10 +1501,13 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     left to the validator, on the module's own rule: what is checked here is what would
     otherwise make *every* draw a rejection.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
+    if neutral_ids(spec):
+        return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a strike)
     if _commands(spec):
-        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
+        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import set_contacts
@@ -1621,10 +1657,13 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
     an entry, and takes the table with its last link. A deletion can remove the only link
     that kept a target alive, so it settles `choose` as `transform.settle_landing` does.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
+    if neutral_ids(spec):
+        return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (contacts)
     if _commands(spec):
-        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
+        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import merge_links, set_own_link, settle_landing
@@ -1787,6 +1826,11 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
     than left to the validator, on the module's own rule: what is checked here is what
     would otherwise make *every* draw a rejection.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
+    if majority_ids(spec):
+        return None
+    if purse_rule(spec) is not None:
+        return None  # TC5 (`docs/plan-turncoat.md` §5.9): who is paid for a blast's victims
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a blast)
     if _has_portals(spec):
@@ -1957,10 +2001,15 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules a round has no use for are dropped (a wild piece's pounce among them). Out: the rule, every `beats` and the tie go,
     and the royal capture win stays, which an alternating game plays as it is.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
+    if neutral_ids(spec):
+        return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (nobody is the mover in a round)
+    if purse_rule(spec) is not None:
+        return None  # TC5 (`docs/plan-turncoat.md` §5.9): two buyers in one round
     if _commands(spec):
-        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
+        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     rules = spec.setdefault("rules", {})
     if is_simultaneous(rules):
         del rules["simultaneous"]
@@ -2164,7 +2213,7 @@ def _tire_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 # Schema 30 (Q999a, `docs/archive/plan-passive.md` §4.3): lines of sight. Whose pieces each effect
 # touches when an operator casts it: an effect that restricts is cast on the enemy, a shield
-# on its own side. Q1007c (`docs/plan-schema-31.md` §3.8): a command on the enemy.
+# on its own side. Q1007c (`docs/archive/plan-schema-31.md` §3.8): a command on the enemy.
 _GAZE_WHOSE = {"freeze": "enemy", "disarm": "enemy", "shield": "own", "command": "enemy"}
 
 
@@ -2178,7 +2227,7 @@ def _shields(spec: dict[str, Any]) -> bool:
 
 def _commands(spec: dict[str, Any]) -> bool:
     """Whether a line of sight commands (Q1007c), beside which rounds, a reach, a territory, a
-    strike, a contact, a rest and a sweep are refused (`plan-schema-31.md` §3.6)."""
+    strike, a contact, a rest and a sweep are refused (`docs/archive/plan-schema-31.md` §3.6)."""
     return any(
         sight.effect == "command" for sights in piece_sights(spec).values() for sight in sights
     )
@@ -2342,7 +2391,7 @@ def _widen_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _turn_the_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Let one command make its pieces take their own side, or stop it doing so again (Q1007c's
-    `captures_own`, `docs/plan-schema-31.md` §3.3, §3.8). Only a command sight; each child must
+    `captures_own`, `docs/archive/plan-schema-31.md` §3.3, §3.8). Only a command sight; each child must
     pass the validator, so a turncoat capture nothing could make, or one beside a capture hand,
     is not drawn."""
     lines = [
@@ -2523,6 +2572,9 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
     again is cheaper than being clever. What is checked here is only what would make
     *every* draw a rejection.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
+    if neutral_ids(spec):
+        return None
     from chess_variant_sandbox.spec.schema import (
         absent_squares,
         obstacle_squares,
@@ -3468,15 +3520,18 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     Every royal is immune and never switches, which the validator requires; the switching
     pieces are every non-royal one, Andernach's reading.
 
-    A1 (`docs/plan-pieces-moves.md` §6.5) adds the strike's ``by`` both ways. *Arm one
+    A1 (`docs/archive/plan-pieces-moves.md` §6.5) adds the strike's ``by`` both ways. *Arm one
     piece*: a standing rifle strike is given to one capturing type at random instead of
     being taken off (half the draws), and a new strike may be rifle given to one type (the
     archers). *Arm everyone*: a strike with ``by`` loses it, every piece striking again.
     """
+    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
+    if neutral_ids(spec):
+        return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a strike)
     if _commands(spec):
-        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
+        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
@@ -3560,7 +3615,7 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
 def _arm_one_piece(
     spec: dict[str, Any], strike: dict[str, Any], rng: random.Random, adding: bool = False
 ) -> str | None:
-    """Give a rifle strike to one capturing type (A1, `plan-pieces-moves.md` §6.5).
+    """Give a rifle strike to one capturing type (A1, `docs/archive/plan-pieces-moves.md` §6.5).
 
     ``strike`` is the standing rule, or with ``adding`` the one about to be added. One of
     the types whose captures it reaches is drawn, and only where there are two or more, so
@@ -3599,7 +3654,7 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a sweep)
     if _commands(spec):
-        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
+        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     if is_simultaneous(spec) and not _movers(spec, "sweep"):
@@ -3668,7 +3723,7 @@ def _share_a_walk(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
-# Generation 37 (N2, `docs/plan-npc.md` §4.2): the effects a wild piece's sight may have, and its
+# Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): the effects a wild piece's sight may have, and its
 # one shape here, a ring of the eight squares round it that sees past pieces (an aura): a wild
 # piece has no forward, so its sight must read the same for both players, and the ring does.
 _WILD_EFFECTS = ("freeze", "disarm", "shield")
@@ -3677,7 +3732,7 @@ _WILD_RING = {"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1, "t
 
 def _wild_eyes(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Give a wild piece an aura, or take every wild aura away (generation 37, N2's sight on a
-    wild type, `docs/plan-npc.md` §4.2).
+    wild type, `docs/archive/plan-npc.md` §4.2).
 
     In a game where a wild type sees, no wild type does any more: the edit a designer makes is
     "the wild pieces are only pieces again". Otherwise one wild type, chosen at random, freezes,
@@ -3717,7 +3772,7 @@ def _wild_eyes(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _bring_them_back(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Make a wild piece come back once taken, or let it stay gone (generation 36, N1's
-    ``npcs[].respawn``, `docs/plan-npc.md` §4.1).
+    ``npcs[].respawn``, `docs/archive/plan-npc.md` §4.1).
 
     In a game where some wild piece comes back, none does any more: the edit a designer
     makes is "taken wild pieces stay gone", not one route of several. Otherwise one entry,
@@ -3753,7 +3808,7 @@ def _bring_them_back(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _pace_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Walk a wild piece's route as a line that turns back, or as a cycle again (generation
-    38, N5's ``npcs[].turns_back``, `docs/plan-npc.md` §4.7).
+    38, N5's ``npcs[].turns_back``, `docs/archive/plan-npc.md` §4.7).
 
     In a game where some wild piece turns back, none does any more: the edit is "the walks
     go round again", not one route of several. Otherwise one entry with a route of two or
@@ -3798,7 +3853,7 @@ def _pace_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _set_the_hounds(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Make one kind of wild piece pounce, or none (generation 39, N3b's ``npcs[].pounce``,
-    `docs/plan-npc.md` §4.3; generation 40, N3c's ``"attackers"``, §4.4; generation 41, N3d's
+    `docs/archive/plan-npc.md` §4.3; generation 40, N3c's ``"attackers"``, §4.4; generation 41, N3d's
     ``split``, §4.5).
 
     In a game where some wild piece pounces, none does any more. Otherwise one wild type,
@@ -3865,7 +3920,7 @@ _DUCK_SHIELD = {
 
 def _loose_a_duck(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Add a duck, take it away, or change how it goes, where it starts or what it shields
-    (generation 42, N4b's ``rules.duck``, `docs/plan-npc.md` §4.6).
+    (generation 42, N4b's ``rules.duck``, `docs/archive/plan-npc.md` §4.6).
 
     In a game without a duck: a new moveless type (a spare id) becomes the classic duck, which
     the mover puts on any empty square after every move. The duck is refused beside check, so a
@@ -3972,6 +4027,446 @@ def _loose_a_duck(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+_CROWD_STEP = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "dihedral8"}
+# TC3's object form: next to means the four orthogonal neighbours, not the king's eight.
+_CROWD_CROSS = {"majority": {"vectors": [[1, 0]], "symmetry": "rotate4"}}
+
+
+def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Put pieces nobody owns on the board, take them away, or change who may move them
+    (TC3, ``setup.placements[].player: "nobody"`` and ``pieces[].control``,
+    `docs/plan-turncoat.md` §4).
+
+    In a game without one: a new type (a spare id) stepping as a king is placed for nobody on
+    a random empty square in the half between the armies (mirrored, under a mirrored setup;
+    stated twice, square and image, otherwise), and half the time the player with more pieces
+    next to it may move it (``control: "majority"``; a quarter of those count only the four
+    orthogonal neighbours). In a game with some, one of three, at random: they go (their
+    placements, and a type nothing else places); majority control is given to one standing
+    type or taken from every type; or a majority type's neighbours swap between the king's
+    step and the orthogonal four. The validator decides the rest (rounds, wild pieces, the
+    duck, portals, a strike, contacts, and beside majority a territory, a goal, a blast, a
+    long turn).
+    """
+    trial = copy.deepcopy(spec)
+    placed = neutral_ids(spec)
+    setup = trial.get("setup") or {}
+    if not placed:
+        taken = {piece.get("id") for piece in pieces(spec)}
+        spare = [letter for letter in "C" + _SPARE_IDS if letter not in taken]
+        board = trial.get("board") or {}
+        width, height = board.get("width"), board.get("height")
+        if not spare or not isinstance(width, int) or not isinstance(height, int):
+            return None
+        pid = spare[0]
+        added: dict[str, Any] = {
+            "id": pid, "name": "condottiere", "value": 2, "moves": [copy.deepcopy(_CROWD_STEP)],
+        }
+        said = f"a {pid} that steps as a king stands on the board belonging to nobody"
+        if rng.random() < 0.5:
+            added["control"] = (
+                copy.deepcopy(_CROWD_CROSS) if rng.random() < 0.25 else "majority"
+            )
+            said += (
+                ", moved by whichever player has more pieces "
+                + ("orthogonally next to it" if isinstance(added["control"], dict) else "next to it")
+            )
+        trial["pieces"].append(added)
+        mirrored = setup.get("mirror", True) is not False
+        orientation = str(setup.get("orientation", "mirror"))
+        names = [
+            "abcdefghijklmnop"[square % width] + str(square // width + 1)
+            for square in range(width * (height // 2))
+        ]
+        rng.shuffle(names)
+        row: dict[str, Any] = {"piece": pid, "player": "nobody", "squares": []}
+        setup.setdefault("placements", []).append(row)
+        for name in names:
+            row["squares"] = [name]
+            if not mirrored:
+                coords = parse_square(name, width, height)
+                if coords is None:
+                    continue
+                file, rank = reflect_square(*coords, width, height, orientation)
+                image = "abcdefghijklmnop"[file] + str(rank + 1)
+                if image != name:
+                    row["squares"].append(image)
+            if not validate_spec(trial):
+                said += f", on {' and '.join(row['squares'])}" + (" and its mirror" if mirrored else "")
+                break
+        else:
+            return None
+    else:
+        by_id = {piece.get("id"): piece for piece in pieces(trial)}
+        held = sorted(pid for pid in placed if by_id.get(pid, {}).get("control", "stands") != "stands")
+        choice = rng.randrange(3)
+        if choice == 0:
+            setup["placements"] = [
+                row for row in setup.get("placements") or [] if not is_nobodys(row)
+            ]
+            still = {row.get("piece") for row in setup["placements"] if isinstance(row, dict)}
+            for pid in sorted(placed):
+                by_id[pid].pop("control", None)
+            trial["pieces"] = [
+                piece for piece in trial["pieces"]
+                if piece.get("id") not in placed or piece.get("id") in still
+                or not _unreferenced(trial, piece.get("id"))
+            ]
+            said = "nothing on the board belongs to nobody any more"
+        elif choice == 1:
+            if held:
+                for pid in held:
+                    by_id[pid].pop("control", None)
+                said = "nobody may move the pieces nobody owns any more: they only stand"
+            else:
+                pid = rng.choice(sorted(placed))
+                by_id[pid]["control"] = "majority"
+                said = f"a {pid} nobody owns may be moved by whichever player has more pieces next to it"
+        else:
+            if not held:
+                return None
+            pid = rng.choice(held)
+            if isinstance(by_id[pid]["control"], dict):
+                by_id[pid]["control"] = "majority"
+                said = f"a {pid} nobody owns is held by the majority of the eight squares round it"
+            else:
+                by_id[pid]["control"] = copy.deepcopy(_CROWD_CROSS)
+                said = f"a {pid} nobody owns is held by the majority of its four orthogonal neighbours"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _unreferenced(spec: dict[str, Any], pid: Any) -> bool:
+    """Whether nothing in ``spec`` but its own declaration names the piece ``pid``."""
+    others = [piece for piece in pieces(spec) if piece.get("id") != pid]
+    text = json.dumps({key: value for key, value in spec.items() if key != "pieces"}) + json.dumps(others)
+    return f'"{pid}"' not in text
+
+
+def _post_a_bounty(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Put a price on a piece's head, take it off, or move it (TC4, ``pieces[].bounty``,
+    `docs/plan-turncoat.md` §5.1).
+
+    In a game without one: a random non-royal type (never a wild type or the duck) is given a
+    bounty of its declared value, rounded and kept to 1 to 20, and the clock is made to count
+    points (``rules.scoring`` added with ``count: "points"``, or an existing count of points
+    kept; a game whose clock counts something else is left alone). In a game with some, one of
+    three, at random: every bounty goes (and a points count with nothing left to pay goes with
+    it); one type's bounty is raised or lowered by one to three; or it moves to another type.
+    The validator decides the rest.
+    """
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    wild = {
+        npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
+    } | {duck_piece(rules)}
+    candidates = [
+        piece for piece in pieces(trial)
+        if not piece.get("royal") and piece.get("id") not in wild
+    ]
+    paying = piece_bounties(trial)
+    # TC5: under a purse a bounty is paid into it, so no points count is needed.
+    purse = isinstance(rules.get("purse"), dict)
+    if not paying:
+        scoring = rules.get("scoring")
+        if isinstance(scoring, dict) and scoring.get("count") != "points" and not purse:
+            return None
+        if not candidates:
+            return None
+        piece = rng.choice(candidates)
+        value = piece.get("value", 1)
+        worth = max(1, min(20, round(value if isinstance(value, (int, float)) else 1)))
+        piece["bounty"] = worth
+        said = f"taking a {piece['id']} pays its taker {worth}"
+        if not isinstance(scoring, dict) and not purse:
+            rules["scoring"] = {"count": "points"}
+            said += ", and the points decide the game when the clock runs out"
+    else:
+        by_id = {piece.get("id"): piece for piece in pieces(trial)}
+        choice = rng.randrange(3)
+        if choice == 0:
+            for pid in paying:
+                by_id[pid].pop("bounty", None)
+            said = "taking a piece pays nothing any more"
+            # A points count left with nothing to pay is refused; it goes with the bounties.
+            if validate_spec(trial) and (rules.get("scoring") or {}).get("count") == "points":
+                rules.pop("scoring")
+                said += ", and the clock counts no points"
+        elif choice == 1:
+            pid = rng.choice(sorted(paying))
+            worth = paying[pid] + rng.choice((-3, -2, -1, 1, 2, 3))
+            worth = max(1, min(20, worth))
+            if worth == paying[pid]:
+                return None
+            by_id[pid]["bounty"] = worth
+            said = f"taking a {pid} pays {worth} now"
+        else:
+            pid = rng.choice(sorted(paying))
+            others = [piece for piece in candidates if piece.get("id") not in paying]
+            if not others:
+                return None
+            other = rng.choice(others)
+            other["bounty"] = by_id[pid].pop("bounty")
+            said = f"the bounty on {pid} moves to {other['id']}"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _two_back_ranks(spec: dict[str, Any]) -> list[str]:
+    """The first player's two back ranks by name, or ``[]`` on a board too small or malformed."""
+    board = spec.get("board") or {}
+    width, height = board.get("width"), board.get("height")
+    if not isinstance(width, int) or not isinstance(height, int) or height < 4:
+        return []
+    return [format_square(file, rank) for rank in (0, 1) for file in range(width)]
+
+
+def _open_a_market(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Give the players a purse and a market, close it, or change it (TC5, ``rules.purse``,
+    `docs/plan-turncoat.md` §5.4).
+
+    In a game without one: one or two random non-royal types that move (never a spy, a wild
+    type or the duck) go on sale at their declared value rounded (1 to 40), and each player
+    starts with 0 to 4 coins, placing on the first rank or (one time in three) on the two back
+    ranks. In a game with one, one of four, at random: the purse closes
+    (the prices go with it, and a bounty left with no points count to pay into); a price
+    moves by one or two; the opening coins move by one to three; or the region is named as
+    the first two ranks, or, where one is named, dropped back to the first rank. The
+    validator decides the rest.
+    """
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    purse = rules.get("purse")
+    by_id = {piece.get("id"): piece for piece in pieces(trial)}
+    if not isinstance(purse, dict):
+        wild = {
+            npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
+        } | {duck_piece(rules)}
+        candidates = sorted(
+            piece["id"] for piece in pieces(trial)
+            if not piece.get("royal") and piece.get("spy") is not True and piece.get("moves")
+            and piece.get("id") not in wild and isinstance(piece.get("id"), str)
+        )
+        if not candidates:
+            return None
+        sold = rng.sample(candidates, min(len(candidates), rng.choice((1, 2))))
+        for pid in sold:
+            value = by_id[pid].get("value", 1)
+            by_id[pid]["price"] = max(
+                1, min(PRICE_MAX, round(value if isinstance(value, (int, float)) else 1))
+            )
+        start = rng.randrange(5)
+        rules["purse"] = {"start": start, "market": sold}
+        said = (
+            f"each player starts with {start} coins and may buy "
+            + " or ".join(f"{pid} for {by_id[pid]['price']}" for pid in sold)
+        )
+        if rng.randrange(3) == 0:
+            region = _two_back_ranks(trial)
+            if region:
+                rules["purse"]["region"] = region
+                said += ", placing it on either of the two back ranks"
+    else:
+        choice = rng.randrange(4)
+        market = [pid for pid in purse.get("market") or [] if pid in by_id]
+        if choice == 0:
+            rules.pop("purse")
+            for piece in pieces(trial):
+                piece.pop("price", None)
+            said = "the market closes and nobody holds coins"
+            scoring = rules.get("scoring")
+            if piece_bounties(trial) and not (
+                isinstance(scoring, dict) and scoring.get("count") == "points"
+            ):
+                for piece in pieces(trial):
+                    piece.pop("bounty", None)
+                said += ", and taking pays nothing"
+        elif choice == 1:
+            if not market:
+                return None
+            pid = rng.choice(market)
+            old = by_id[pid].get("price", 1)
+            price = max(1, min(PRICE_MAX, old + rng.choice((-2, -1, 1, 2))))
+            if price == old:
+                return None
+            by_id[pid]["price"] = price
+            said = f"a {pid} costs {price} now"
+        elif choice == 2:
+            old = purse.get("start", 0)
+            start = max(0, min(PURSE_MAX, old + rng.choice((-3, -2, -1, 1, 2, 3))))
+            if start == old:
+                return None
+            purse["start"] = start
+            said = f"each player starts with {start} coins"
+        elif "region" in purse:
+            purse.pop("region")
+            said = "bought pieces go on the back rank again"
+        else:
+            region = _two_back_ranks(trial)
+            if not region:
+                return None
+            purse["region"] = region
+            said = "bought pieces may go on either of the two back ranks"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _settle_the_purse(trial: dict[str, Any]) -> str:
+    """After a hire or a bribe is taken away (TC6): drop the prices nothing charges any more,
+    and a purse left with nothing to spend on, with a bounty left with nothing to pay into.
+    Returns the words for what went, or ``""``."""
+    rules = trial.setdefault("rules", {})
+    purse = rules.get("purse")
+    if not isinstance(purse, dict):
+        return ""
+    charged = set(purse_market(trial)) | hire_ids(trial)
+    bribes = purse_bribes(trial)
+    for piece in pieces(trial):
+        if not bribes and piece.get("id") not in charged:
+            piece.pop("price", None)
+    if purse_market(trial) or hire_ids(trial) or bribes:
+        return ""
+    rules.pop("purse")
+    for piece in pieces(trial):
+        piece.pop("price", None)
+    said = ", and nobody holds coins any more"
+    scoring = rules.get("scoring")
+    if piece_bounties(trial) and not (
+        isinstance(scoring, dict) and scoring.get("count") == "points"
+    ):
+        for piece in pieces(trial):
+            piece.pop("bounty", None)
+        said += ", and taking pays nothing"
+    return said
+
+
+def _price_of(piece: dict[str, Any]) -> int:
+    value = piece.get("value", 1)
+    return max(1, min(PRICE_MAX, round(value if isinstance(value, (int, float)) else 1)))
+
+
+def _hire_a_sword(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Put a mercenary up for hire, take hiring away, or change its price (TC6, a
+    ``pieces[].price`` on a type placed for nobody, `docs/plan-turncoat.md` §5.5).
+
+    In a game with nothing for hire: a type placed for nobody is priced at its value (1 to
+    40), or, where nobody owns anything, a new king-stepping type (a spare id) is placed for
+    nobody between the armies as `gather-a-crowd` places one and priced at 2; and a purse of 1
+    to 4 coins is opened where there is none. In a game with some, one of two, at random:
+    hiring goes (the prices on the pieces nobody owns, unless a market or a bribe still reads
+    them, and a purse left with nothing to spend on); or one hired type's price moves by one
+    or two. The validator decides the rest.
+    """
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    hired = hire_ids(trial)
+    by_id = {piece.get("id"): piece for piece in pieces(trial)}
+    if not hired:
+        placed = sorted(neutral_ids(trial))
+        if placed:
+            pid = rng.choice(placed)
+            by_id[pid]["price"] = _price_of(by_id[pid])
+            said = f"a {pid} nobody owns may be hired for {by_id[pid]['price']}"
+        else:
+            crowd = copy.deepcopy(trial)
+            if _gather_a_crowd(crowd, random.Random(rng.randrange(1 << 30))) is None:
+                return None
+            new = [p for p in pieces(crowd) if p.get("id") not in by_id]
+            if len(new) != 1:
+                return None
+            new[0].pop("control", None)
+            new[0]["price"] = 2
+            trial["pieces"] = crowd["pieces"]
+            trial["setup"] = crowd["setup"]
+            pid = new[0]["id"]
+            said = f"a {pid} that steps as a king stands for nobody, for hire at 2"
+        if not isinstance(rules.get("purse"), dict):
+            start = rng.randrange(1, 5)
+            rules["purse"] = {"start": start}
+            said += f", and each player starts with {start} coins"
+    elif rng.randrange(2) == 0:
+        for pid in hired:
+            if pid not in purse_market(trial) and not purse_bribes(trial):
+                by_id[pid].pop("price", None)
+        if hire_ids(trial):
+            return None
+        said = "nobody's pieces are not for hire any more" + _settle_the_purse(trial)
+    else:
+        pid = rng.choice(sorted(hired))
+        old = by_id[pid]["price"]
+        price = max(1, min(PRICE_MAX, old + rng.choice((-2, -1, 1, 2))))
+        if price == old:
+            return None
+        by_id[pid]["price"] = price
+        said = f"hiring a {pid} costs {price} now"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _offer_a_bribe(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Let a player buy an enemy piece next to one of theirs at twice its price, or stop it
+    (TC6, ``rules.purse.bribe``, `docs/plan-turncoat.md` §5.5).
+
+    In a game without bribes: a purse of 1 to 4 coins is opened where there is none, one
+    non-royal type a player places that moves (never a spy, a wild type or the duck) is
+    priced at its value where no placed type has a price, and bribes go on. In a game with
+    them: bribes go off, with the prices nothing else reads and a purse left with nothing to
+    spend on. The validator decides the rest.
+    """
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    purse = rules.get("purse")
+    if purse_bribes(trial):
+        assert isinstance(purse, dict)
+        purse.pop("bribe")
+        said = "nobody may bribe an enemy piece any more" + _settle_the_purse(trial)
+    else:
+        said = "a player may bribe an enemy piece next to one of theirs at twice its price"
+        if not isinstance(purse, dict):
+            start = rng.randrange(1, 5)
+            purse = rules["purse"] = {"start": start}
+            said += f", each player starting with {start} coins"
+        setup = trial.get("setup") or {}
+        held = {
+            row.get("piece") for row in setup.get("placements") or []
+            if isinstance(row, dict) and not is_nobodys(row)
+        }
+        wild = {
+            npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
+        } | {duck_piece(rules)}
+        if not set(piece_prices(trial)) & held:
+            candidates = sorted(
+                piece["id"] for piece in pieces(trial)
+                if piece.get("id") in held and not piece.get("royal")
+                and piece.get("spy") is not True and piece.get("moves")
+                and piece.get("id") not in wild and isinstance(piece.get("id"), str)
+            )
+            if not candidates:
+                return None
+            pid = rng.choice(candidates)
+            by_id = {piece.get("id"): piece for piece in pieces(trial)}
+            by_id[pid]["price"] = _price_of(by_id[pid])
+            said += f" (a {pid} for {2 * by_id[pid]['price']})"
+        purse["bribe"] = True
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -3987,6 +4482,11 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("pace-a-line", _pace_a_line),
     Operator("set-the-hounds", _set_the_hounds),
     Operator("loose-a-duck", _loose_a_duck),
+    Operator("gather-a-crowd", _gather_a_crowd),
+    Operator("post-a-bounty", _post_a_bounty),
+    Operator("open-a-market", _open_a_market),
+    Operator("hire-a-sword", _hire_a_sword),
+    Operator("offer-a-bribe", _offer_a_bribe),
     Operator("promote-what-arrives", _promote_what_arrives),
     Operator("promote-on-leaving", _promote_on_leaving),
     Operator("count-each-kind", _count_each_kind),

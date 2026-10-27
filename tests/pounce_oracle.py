@@ -1,4 +1,4 @@
-"""The declared Python oracle for wild pieces that pounce (generation 39, N3b, `docs/plan-npc.md` §3, §4.3).
+"""The declared Python oracle for wild pieces that pounce (generation 39, N3b, `docs/archive/plan-npc.md` §3, §4.3).
 
 `rules.npcs[].pounce: "prey"`: after a move, before the wild pieces step, each pouncer takes a
 piece **of the player who has just moved** that it attacks by its own type's capture moves,

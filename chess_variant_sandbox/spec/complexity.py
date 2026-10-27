@@ -190,11 +190,16 @@ _RULE_COSTS: dict[str, float] = {
     # Generation 41's `npcs[].split` (N3d) is not costed either: a clause of the pounce's
     # sentence (and a cap), the same capture told with "and a new one grows there" added.
     "npcs": 2.5,
-    # Generation 42 (N4b, `docs/plan-npc.md` §4.6). The duck is two things a player is told:
+    # Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6). The duck is two things a player is told:
     # a turn has a second half (the `turn` sentence, 1.0), and a piece nobody owns stands in the
     # way, uncapturable, wherever the mover puts it (an actor, as a wild piece is, but with no
     # walk, no meal and no bounty to learn). `goes` and `start` are clauses of it, not costed.
     "duck": 2.0,
+    # TC5 (`docs/plan-turncoat.md` §5.8): a purse is a rule (coins, the cap, what fills it),
+    # 1.0; its market half a rule more (a purchase is a move, where it goes), and the prices
+    # half a rule (numbers on the pieces a player is taught to read). One charge, since the
+    # purse needs its market and its prices.
+    "purse": 2.0,
     # Schema 9. One sentence -- "a pawn dropped or struck onto the far rank is a queen at
     # once" -- and an exception rather than a parameter of `promotion`: it changes what a
     # drop and a strike *do* in one part of the board, and a player who has not been told
@@ -314,7 +319,7 @@ def _speed_extras(pieces: Any) -> float:
 _SIGHT_EFFECT = 1.0
 _SIGHT_PER_ENTRY = 0.25
 _SIGHT_AURA = 0.25
-# Q1007c (`docs/plan-schema-31.md` §3.8): a command is one more effect (1.0, above); a command
+# Q1007c (`docs/archive/plan-schema-31.md` §3.8): a command is one more effect (1.0, above); a command
 # that may make its pieces take their own side (`captures_own`) is half a rule more, once.
 _SIGHT_TURNCOAT = 0.5
 
@@ -341,7 +346,76 @@ def _sight_extras(pieces: Any) -> float:
     )
 
 
-# T1 (`docs/plan-pieces-moves.md` §5.5): a path that turns is one rule a player is taught
+# TC3 (`docs/plan-turncoat.md` §5.8): pieces nobody owns are half a rule a player is taught
+# (they block and either side may take them), and majority control a whole one (who holds a
+# neutral, the tie, what a held one may do), each once for the game. Read off the spelling,
+# as the rests and the sights are: a control the validator admits always has a nobody's
+# placement beside it.
+_NOBODYS = 0.5
+_MAJORITY = 1.0
+
+
+def _neutral_extras(spec: dict[str, Any], pieces: Any) -> float:
+    """What a game's pieces nobody owns cost: the placement once, majority control once."""
+    setup = spec.get("setup")
+    placements = setup.get("placements") if isinstance(setup, dict) else None
+    if not any(
+        isinstance(row, dict) and row.get("player") == "nobody"
+        for row in (placements if isinstance(placements, list) else [])
+    ):
+        return 0.0
+    held = any(
+        isinstance(piece, dict) and piece.get("control", "stands") != "stands"
+        for piece in (pieces if isinstance(pieces, list) else [])
+    )
+    return _NOBODYS + (_MAJORITY if held else 0.0)
+
+
+# TC4 (`docs/plan-turncoat.md` §5.8): a bounty is half a rule a player is taught (what taking
+# a piece pays, and to whom), charged once for the game whatever types carry one; the amounts
+# are numbers on the pieces, not more rules.
+_BOUNTY = 0.5
+
+
+def _bounty_extras(pieces: Any) -> float:
+    """What a game's bounties cost: half a rule once, if any type carries one."""
+    return _BOUNTY if any(
+        isinstance(piece, dict) and isinstance(piece.get("bounty"), int)
+        and not isinstance(piece.get("bounty"), bool) and piece["bounty"] > 0
+        for piece in (pieces if isinstance(pieces, list) else [])
+    ) else 0.0
+
+
+# TC6 (`docs/plan-turncoat.md` §5.8): a hire (a priced piece nobody owns, bought where it
+# stands by a player next to it) is half a rule, and a bribe (an enemy one, at twice the price)
+# half a rule more, each once for the game. Read off the spelling: a purse whose price sits on
+# a type placed for nobody hires, and `bribe: true` bribes.
+_HIRE = 0.5
+_BRIBE = 0.5
+
+
+def _hire_extras(spec: dict[str, Any], pieces: Any) -> float:
+    """What a game's hires and bribes cost: half a rule each, once."""
+    rules = spec.get("rules")
+    purse = rules.get("purse") if isinstance(rules, dict) else None
+    if not isinstance(purse, dict):
+        return 0.0
+    setup = spec.get("setup")
+    placements = setup.get("placements") if isinstance(setup, dict) else None
+    nobodys = {
+        row.get("piece") for row in (placements if isinstance(placements, list) else [])
+        if isinstance(row, dict) and row.get("player") == "nobody"
+    }
+    hired = any(
+        isinstance(piece, dict) and piece.get("id") in nobodys
+        and isinstance(piece.get("price"), int) and not isinstance(piece.get("price"), bool)
+        and piece["price"] > 0
+        for piece in (pieces if isinstance(pieces, list) else [])
+    )
+    return (_HIRE if hired else 0.0) + (_BRIBE if purse.get("bribe") is True else 0.0)
+
+
+# T1 (`docs/archive/plan-pieces-moves.md` §5.5): a path that turns is one rule a player is taught
 # about the slide it rides on (how it turns, that it never comes back on itself, that two
 # paths to one square are one move), charged once per kind of turn the game uses, on top of
 # the descriptor it already counts as. Read off the spelling, as the sights are.
@@ -616,6 +690,7 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
     special_rules = (
         _count_special_rules(rules) + _spy_extras(pieces) + _speed_extras(pieces)
         + _rest_extras(pieces) + _sight_extras(pieces) + _path_extras(pieces)
+        + _neutral_extras(spec, pieces) + _bounty_extras(pieces) + _hire_extras(spec, pieces)
     )
 
     # Schema 12: a `landing` set is charged as a descriptor is, per set and per expanded

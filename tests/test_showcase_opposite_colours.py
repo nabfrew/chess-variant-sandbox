@@ -1,6 +1,6 @@
 """The mechanism test of the first *opposite colours* (Q999b, `docs/archive/plan-passive.md` §6.5).
 
-Retired by Q1007e (2026-10-24, `docs/plan-schema-31.md` §6.1) when R1, the same game with
+Retired by Q1007e (2026-10-24, `docs/archive/plan-schema-31.md` §6.1) when R1, the same game with
 two-square riders as rook and queen, replaced it under its name; the file is kept whole as
 `tests/_retired_opposite_colours.json`, and its mechanism still holds. The game in
 `archive/opposite-colours.json` now is R1's (`tests/test_showcases_q1007e.py`).

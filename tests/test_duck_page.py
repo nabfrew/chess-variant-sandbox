@@ -1,4 +1,4 @@
-"""The duck on the page (generation 42, N4c, `docs/plan-npc.md` §4.6).
+"""The duck on the page (generation 42, N4c, `docs/archive/plan-npc.md` §4.6).
 
 The play session's side of the two-part move: the snapshot's `duckOwed` and `duck`, `_offer`'s
 duck entry, the history's, and the take-back that never leaves half a turn. The board's duck

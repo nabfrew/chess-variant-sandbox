@@ -197,7 +197,7 @@ def verify(
     if not _agree_here(engine, variant, backend, state, result):
         return result
 
-    # Generation 42 (N4c, `docs/plan-npc.md` §4.6): a duck game's turn is two of our plies and
+    # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): a duck game's turn is two of our plies and
     # one move of theirs, so the ladder compares at turn ends only, our perft(2k) with their
     # perft(k), and a depth that ends mid-turn is rounded up to the turn's end.
     turns = engine.spec.duck is not None

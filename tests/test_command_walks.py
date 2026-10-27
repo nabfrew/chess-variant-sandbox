@@ -1,6 +1,6 @@
 """Q1007c: the `command` effect's core held to the declared sight oracle over random games.
 
-`docs/plan-schema-31.md` §3.7 and §7 (Q1007c's acceptance): the core and `tests/sight_oracle.py`
+`docs/archive/plan-schema-31.md` §3.7 and §7 (Q1007c's acceptance): the core and `tests/sight_oracle.py`
 agree move list by move list over seeded random games of K1 (`tests/_command_k1.json`, chess with
 commanding knights), K2 (`_command_k2.json`, chess with a spellbinding king, `captures_own`) and a
 test spec with long turns, drops and a freeze beside two commands (`_command_turns.json`), and
@@ -25,7 +25,7 @@ import pytest
 from sight_oracle import SightOracle, normalise
 
 from chess_variant_sandbox.engine.compile import SIGHT_COMMAND_OWN
-from chess_variant_sandbox.engine.moves import MOVE_COMMANDED, decode_move
+from chess_variant_sandbox.engine.moves import MOVE_FOREIGN, decode_move
 from chess_variant_sandbox.engine.state import GameState
 
 HERE = Path(__file__).parent
@@ -61,7 +61,7 @@ def walk(name: str, games: int, plies: int = 200, judge: SightOracle | None = No
             compared += 1
             if not moves:
                 break
-            ordered = [m for m in moves if m & MOVE_COMMANDED]
+            ordered = [m for m in moves if m & MOVE_FOREIGN]
             turncoat = [
                 m for m in ordered
                 if decode_move(m)[0] != decode_move(m)[1] and state.board[decode_move(m)[1]]
@@ -70,7 +70,7 @@ def walk(name: str, games: int, plies: int = 200, judge: SightOracle | None = No
                 move = rng.choice(turncoat)
             else:
                 move = rng.choice(ordered if ordered and rng.random() < 1 / 3 else moves)
-            if move & MOVE_COMMANDED:
+            if move & MOVE_FOREIGN:
                 commanded += 1
                 _commanded_move_is_sound(judge, state, move)
             state = engine.apply(state, move)

@@ -153,7 +153,7 @@ function drawCounts(counts) {
 }
 
 // L2 and UP2, a page with nothing on it yet: the site's key idea first (*invite people to
-// make games*, `plan-landing.md`), so *Start building a game* is the one primary, *Play
+// make games*, `docs/archive/plan-landing.md`), so *Start building a game* is the one primary, *Play
 // today's game* beside it (the front page's own pick, `payload.today`, else the games),
 // and one line on what the page will hold. Not the library again by kind, and nothing that
 // counts down or counts what the person has not done. Absent once anything is here: a

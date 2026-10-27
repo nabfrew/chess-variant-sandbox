@@ -143,7 +143,7 @@ def script_tags(routes: Iterable[str]) -> str:
 
 
 def _head(title: str, head: str) -> str:
-    """The head; and on `<html>` the landing's pool (LP6, `docs/plan-landing.md` §4.1), the
+    """The head; and on `<html>` the landing's pool (LP6, `docs/archive/plan-landing.md` §4.1), the
     keys of the stories that hold now, in their order, which `story.js` (after the shell's
     script) draws one from before the first paint. The same bytes whichever it draws."""
     pool = " ".join(story["key"] for story in landing.current_stories())

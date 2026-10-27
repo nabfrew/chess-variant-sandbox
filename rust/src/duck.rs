@@ -1,4 +1,4 @@
-//! The duck (generation 42, N4b, `docs/plan-npc.md` §4.6): one piece nobody owns, which the
+//! The duck (generation 42, N4b, `docs/archive/plan-npc.md` §4.6): one piece nobody owns, which the
 //! mover moves as the second half of every turn.
 //!
 //! **The turn.** The compiler makes a duck game's turn two moves long (`TurnRule { moves: 2 }`),
@@ -38,7 +38,8 @@ impl<'t> Game<'t> {
     /// since nothing removes it). Read off the third owner's set, checked against the board.
     pub fn duck_square(&self) -> Option<usize> {
         let duck = self.t.duck.as_ref()?;
-        self.occupied[WILD].iter().find(|&square| self.board[square] == duck.value)
+        debug_assert!(self.t.kind_of(duck.value) == CONTROL_DUCK);
+        self.occupied[WILD].iter().find(|&square| self.t.kind_of(self.board[square]) == CONTROL_DUCK)
     }
 
     /// The duck's moves (see the module's note), appended to `out`. Never none.

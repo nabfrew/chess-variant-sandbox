@@ -28,7 +28,7 @@ from test_schema_twenty_four import _agrees, _core_fold_moves, _folds, _last_fol
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import WILD
-from chess_variant_sandbox.engine.moves import MOVE_COMMANDED, decode_move
+from chess_variant_sandbox.engine.moves import MOVE_FOREIGN, decode_move
 from chess_variant_sandbox.spec import validate_spec
 
 SLIDE_STEP = {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"}
@@ -233,7 +233,7 @@ def test_commanded_hoppers_agree_with_the_oracle(seed: int) -> None:
         assert normalise(moves) == judge.legal_moves(state), (seed, state.ply)
         if not moves:
             break
-        commanded = [m for m in moves if m & MOVE_COMMANDED]
+        commanded = [m for m in moves if m & MOVE_FOREIGN]
         unmoved = _unmoved(state)
         for move in commanded:
             origin, target, _, _ = decode_move(move)
@@ -261,5 +261,5 @@ def test_a_commanded_grasshopper_in_its_zone_hops_and_arrives_unpromoted() -> No
     moves = engine.legal_moves(state)
     assert normalise(moves) == judge.legal_moves(state)
     c2, a4 = engine._square_index("c2"), engine._square_index("a4")
-    hops = [m for m in moves if m & MOVE_COMMANDED and decode_move(m)[:2] == (c2, a4)]
+    hops = [m for m in moves if m & MOVE_FOREIGN and decode_move(m)[:2] == (c2, a4)]
     assert len(hops) == 1 and decode_move(hops[0])[2] == 0

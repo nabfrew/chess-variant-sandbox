@@ -1,4 +1,4 @@
-"""G7 of Q1023's showcase *chess with galloping knights* (`docs/plan-schema-31.md` §6.4, L1): the
+"""G7 of Q1023's showcase *chess with galloping knights* (`docs/archive/plan-schema-31.md` §6.4, L1): the
 mechanism, without players.
 
 Chess with the knight keeping its leap and riding lamely over ``[1, 2]`` from its second jump on

@@ -9,7 +9,8 @@ access. The layout is fixed here so the Rust core can reproduce it exactly.
     bits  8-15  destination square index
     bits 16-19  move type (see the MOVE_* constants)
     bits 20-24  promotion piece type index, meaningful only for MOVE_PROMOTION,
-                the dropped piece type for MOVE_DROP, and the new facing for
+                the dropped piece type for MOVE_DROP (and the bought one for
+                MOVE_BUY, TC5), and the new facing for
                 MOVE_ROTATE
     bits 25-31  landing index (schema 12): which entry of the compiled landing list a
                 struck piece is placed on under ``position: "choose"``, zero otherwise;
@@ -18,8 +19,9 @@ access. The layout is fixed here so the Rust core can reproduce it exactly.
                 under MOVE_FOLD (schema 22) the fold end that moves (its index among
                 the portal ends), and on an ordinary move in a fold game the fold end
                 it went through plus one (``move_fold``), zero for a direct move;
-                bit 30 (``MOVE_COMMANDED``, Q1007c) marks a commanded move, the side to
-                move moving one of the opponent's pieces (every other use of these
+                bit 30 (``MOVE_FOREIGN``; Q1007c's ``MOVE_COMMANDED``, renamed by TC1)
+                marks a foreign move, the side to move moving a piece that is not its
+                own -- today a commanded one, the opponent's (every other use of these
                 bits is refused beside a sight)
 
 Square indices are ``rank * width + file``, so the layout supports boards up to
@@ -59,20 +61,30 @@ MOVE_PORTAL = 7
 # board byte changes, since a fold stands on no square of it (``GameState.folds``); bits
 # 25-31 hold the end (its index among the portal ends, ``move_fold``).
 MOVE_FOLD = 8
-# Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck's move, the second half of every turn
+# Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck's move, the second half of every turn
 # under ``rules.duck``. The promotion field says how (``DUCK_STEP``, ``DUCK_PLACE``,
 # ``DUCK_PASS``); a placement and a pass have origin equal to target, as a drop does. Takes
 # nothing, on any reading of the board.
 MOVE_DUCK = 9
+# TC5 (`docs/plan-turncoat.md` §5.4): a piece bought from the market (``rules.purse``) onto
+# an empty square of the buyer's region. Origin equals target, as a drop's; the promotion
+# field holds the bought type, and its price leaves the buyer's purse. Takes nothing.
+MOVE_BUY = 10
+# TC6 (`docs/plan-turncoat.md` §5.5): a piece hired (nobody's, at its price) or bribed (the
+# opponent's, at twice it) where it stands, next to one of the buyer's pieces. Origin equals
+# target, the bought piece's square; the promotion field is 0. It becomes the buyer's and the
+# coins leave the buyer's purse. Takes nothing.
+MOVE_HIRE = 11
 DUCK_STEP = 0
 DUCK_PLACE = 1
 DUCK_PASS = 2
 
-# Q1007c (`docs/plan-schema-31.md` §3.7): a flag, not a kind. A commanded move is a
-# ``MOVE_NORMAL`` (or ``MOVE_ROTATE``) made by the side to move with a piece of the
-# opponent's that a ``command`` sight binds; the core sets the bit, and ``describe_move``
-# writes the move with a ``~`` before the piece.
-MOVE_COMMANDED = 1 << 30
+# Q1007c (`docs/archive/plan-schema-31.md` §3.7), renamed by TC1 (`docs/plan-turncoat.md`
+# §3.3): a flag, not a kind. A foreign move is a ``MOVE_NORMAL`` (or ``MOVE_ROTATE``) made by
+# the side to move with a piece that is not its own -- today one of the opponent's that a
+# ``command`` sight binds; the core sets the bit (`foreign.rs::push_foreign`), and
+# ``describe_move`` writes the move with a ``~`` before the piece.
+MOVE_FOREIGN = 1 << 30
 
 MOVE_TYPE_NAMES = {
     MOVE_NORMAL: "normal",
@@ -85,6 +97,8 @@ MOVE_TYPE_NAMES = {
     MOVE_PORTAL: "portal",
     MOVE_FOLD: "fold",
     MOVE_DUCK: "duck",
+    MOVE_BUY: "buy",
+    MOVE_HIRE: "hire",
 }
 
 
@@ -136,7 +150,7 @@ def decode_move(move: int) -> tuple[int, int, int, int]:
     return (move & 0xFF, (move >> 8) & 0xFF, (move >> 16) & 0xF, (move >> 20) & 0x1F)
 
 
-def move_commanded(move: int) -> bool:
-    """Q1007c: whether ``move`` is a commanded move (the side to move moving an opponent's
-    piece)."""
-    return bool(move & MOVE_COMMANDED)
+def move_foreign(move: int) -> bool:
+    """Whether ``move`` is a foreign move (TC1): the side to move moving a piece that is not
+    its own, today a commanded one (Q1007c)."""
+    return bool(move & MOVE_FOREIGN)

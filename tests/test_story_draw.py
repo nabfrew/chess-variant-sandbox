@@ -1,4 +1,4 @@
-"""A story at random on each load (`docs/plan-landing.md` box LP6, §4.1).
+"""A story at random on each load (`docs/archive/plan-landing.md` box LP6, §4.1).
 
 The server sends every visitor the same page, holding every story that still holds, with the
 pool on `<html data-stories>`; `web/static/story.js`, in the head after the shell's script,

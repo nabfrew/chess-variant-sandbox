@@ -1,4 +1,4 @@
-"""The mechanism tests of Q1007e's rider showcases (`docs/plan-schema-31.md` §6.1, §6.2).
+"""The mechanism tests of Q1007e's rider showcases (`docs/archive/plan-schema-31.md` §6.1, §6.2).
 
 **R1**, `archive/opposite-colours.json` since 2026-10-24: the colour-bound game whose rook rides
 any number of two-square jumps along files and ranks (a slide over `[2, 0]`), stopped only by a

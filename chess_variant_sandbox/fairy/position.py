@@ -111,7 +111,7 @@ def _board_field(
     """
     letters = board_letters(compiled, chars)
     walls = set(compiled.obstacles)
-    # Generation 42 (N4c, `docs/plan-npc.md` §4.6): the duck is a wall there (`wallingRule =
+    # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): the duck is a wall there (`wallingRule =
     # duck`), written `*` where it stands; off the board it is not written at all.
     duck = compiled.duck
     if duck is not None:
@@ -258,7 +258,7 @@ def turn_word(
     chars: list[str] | tuple[str, ...],
     promotion_suffix: str = "piece",
 ) -> str:
-    """A duck game's turn as their one word (generation 42, N4c, `docs/plan-npc.md` §4.6).
+    """A duck game's turn as their one word (generation 42, N4c, `docs/archive/plan-npc.md` §4.6).
 
     Their move is both halves: our piece move, then ``,``, its target and the square our duck
     move puts the duck on (``e2e4,e4d5``; castling ``e1g1,g1b1``). ``duck_move`` None is a

@@ -1,4 +1,4 @@
-"""T1: riders whose path turns, `pieces[].moves[].path` (`docs/plan-pieces-moves.md` §5).
+"""T1: riders whose path turns, `pieces[].moves[].path` (`docs/archive/plan-pieces-moves.md` §5).
 
 ``"circle"`` (the rose on the knight's eight, the ring on the king's eight) and ``"zigzag"``
 (the bolt, Betza's crooked bishop) on a ``slide``; ``"straight"`` is the off value. The

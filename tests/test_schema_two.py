@@ -610,6 +610,9 @@ _EVERY_RULESET += sorted(Path(__file__).parent.glob("_pounce_*.json"))
 # specs (the classic duck in chess to the king's capture; a shielding duck beside pacing wolves)
 # join it.
 _EVERY_RULESET += sorted(Path(__file__).parent.glob("_duck_*.json"))
+# TC5: no committed or archived game has a purse until TC9's showcase lands, so the market test
+# spec (pawns and knights bought onto the back rank) joins it.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_purse_*.json"))
 
 
 def test_the_walk_below_reads_the_whole_corpus() -> None:

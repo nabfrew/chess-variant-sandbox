@@ -184,7 +184,7 @@ LIGHT: dict[str, str] = {
     # in a deep teal, cased in `held-halo`: apart from the held move's pine in hue and
     # weight, and from the standoffs' umber and cobalt and the clash's wine (`FLOORS`).
     "announced": "#00606e",
-    # Generation 42 (N4c, `docs/plan-npc.md` §4.6): the duck's flight on the last ply, a solid
+    # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): the duck's flight on the last ply, a solid
     # arrow in a deep olive cased in `held-halo`: apart from the announced teal, the held
     # pine, the standoffs' umber and cobalt and the clash's wine (`FLOORS`). It rings the
     # duck's square in duck mode too.
@@ -195,16 +195,23 @@ LIGHT: dict[str, str] = {
     # a deep green for shielded (a shield): apart in hue and in shape, and from the rest's
     # slate and the order's indigo; each holds 4.5 : 1 on the casing (`FLOORS`).
     "frozen": "#0d4f80", "disarmed": "#8a3510", "shielded": "#1b6236",
-    # Q1007d (`docs/plan-schema-31.md` §3.9): a commanded piece's badge (a cross and strings)
+    # Q1007d (`docs/archive/plan-schema-31.md` §3.9): a commanded piece's badge (a cross and strings)
     # and a command sight's tint, a violet of its own: apart from the three effects' blue,
     # rust and green, and lighter and redder than the wild piece's coming purple; 4.5 : 1 on
     # the casing (`FLOORS`).
     "commanded": "#6b2d8f",
+    # TC7 (`docs/plan-turncoat.md` §5.8): the ring round a piece nobody owns that a player
+    # holds by majority, a deep gold of its own beside the goal's teal and the zone's rose;
+    # whose it is is the bead's colour.
+    "holder": "#8a6400",
     # The board dimmed behind a choice drawn over it (Q765: what a promoting piece
     # becomes), so the card is the one lit thing in the reader's eye line.
     "scrim": "rgba(30, 20, 10, .6)",
     # A capture's flash and a shield's glow, the board's two animations.
     "fx-fire": "#f59e42", "fx-flare": "#e8852e", "fx-spark": "#f5c242", "fx-shield": "#5bc0de",
+    # A sweep's blade (schema 13, `motion.js` `sweepCut`): a white edge in a steel-blue wake,
+    # cold against the blast's fire, so a cut never reads as a burn.
+    "fx-blade": "#f4f9ff", "fx-edge": "#5b8fc7",
     # --- the armies, for the lettered disc a piece with no drawing is ---
     "p0": "#ffffff", "p0-ink": "#16171a", "p1": "#26282c", "p1-ink": "#f4f2ee",
     # A third owner (schema 9): a wild piece is neither player's, so it is drawn in neither
@@ -313,6 +320,7 @@ DARK: dict[str, str] = {
     "duck": "#434a00",
     "frozen": "#0b4774", "disarmed": "#7e300e", "shielded": "#185a31",
     "commanded": "#622984",
+    "holder": "#7a5800",
     "scrim": "rgba(0, 0, 0, .6)",
     "p0": "#f0ede7", "p1": "#3b3f45", "p2": "#8f6a2f", "p2-ink": "#f4f2ee",
     "portal-stone": "#9b948a",

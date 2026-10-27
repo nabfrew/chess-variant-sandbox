@@ -136,7 +136,7 @@ CLOCK_BOUNDS: dict[str, tuple[int, int]] = {
 # Whose piece may serve as a hop's screen.
 SCREEN_OWNERS = ("any", "own", "enemy")
 
-# T1 (`docs/plan-pieces-moves.md` §5.2): how a slide's path runs. ``"straight"`` repeats one
+# T1 (`docs/archive/plan-pieces-moves.md` §5.2): how a slide's path runs. ``"straight"`` repeats one
 # direction, the slide since schema 1 and the off value (`MOVE_OFF_VALUES`). ``"circle"``
 # turns to the next direction round at every step, always the same way (the rose, on the
 # knight's eight; the ring, on the king's eight); ``"zigzag"`` alternates its first direction
@@ -194,7 +194,7 @@ _NPC_KEYS = {
 # passes over a fold is not changed. ``"momentum"`` written out states nothing, and the
 # normal form drops it (Q1008c).
 #
-# Spelling 31 (Q1007b, `docs/plan-schema-31.md` §4): a group's own ``moves``, a list in
+# Spelling 31 (Q1007b, `docs/archive/plan-schema-31.md` §4): a group's own ``moves``, a list in
 # exactly ``pieces[].moves``' shape, is how its ends move when somebody may move one. Until
 # then a group named a stand-in piece (``"piece": "O"``) declared in ``pieces`` for its
 # moves alone; that spelling is gone, `spelling.current_spelling` converts it, and the
@@ -404,7 +404,7 @@ def _portal_move_lists(rules: Any) -> tuple[list[list[Any]], list[int]]:
 
 
 def portal_movement_types(spec: Any) -> list[dict[str, Any]]:
-    """The piece types a portal game's groups move as (spelling 31, `docs/plan-schema-31.md`
+    """The piece types a portal game's groups move as (spelling 31, `docs/archive/plan-schema-31.md`
     §4.3): one per distinct ``moves`` list, in group order, each ``{"id", "name": "portal",
     "value": 0, "moves"}`` with every move's ``mode`` written (`portal_moves`). Its id is the
     first of `PORTAL_MOVER_IDS` (``O``, then ``V``, ``W``, ...) that no declared piece has.
@@ -449,7 +449,7 @@ def portal_stand_in_shape(spec: Any) -> Any:
     its type as ``piece`` in place of ``moves``. A new dict; ``spec`` is not changed.
 
     The shape every portal game was named and measured in, so the readers that must say and
-    count a portal game exactly as before spelling 31 read it (`docs/plan-schema-31.md`
+    count a portal game exactly as before spelling 31 read it (`docs/archive/plan-schema-31.md`
     §4.3): the normal form (`normal.normal_form`), the relations (`relate.normal_form`), the
     rules text's piece list (`describe.describe_pieces`) and the distance features. Never
     validated or compiled: the validator refuses it, and the compiler reads the movement
@@ -785,7 +785,7 @@ _MOVE_KEYS = {
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
     "id", "name", "royal", "value", "moves", "region", "promoted_from", "captures",
-    "facing", "beats", "spy", "speed", "rest", "sight",
+    "facing", "beats", "spy", "speed", "rest", "sight", "control", "bounty", "price",
 }
 # ``appearance`` and ``provenance`` are deliberately *outside* the mechanics.
 # ``canonical.MECHANIC_KEYS`` is what the content hash covers, so anything added inside
@@ -854,11 +854,13 @@ _RULES_KEYS = {
     "portals",
     "simultaneous",
     "duck",
+    # TC5 (`docs/plan-turncoat.md` §5.4): coins each player holds, and a market to spend them in.
+    "purse",
 }
 _OBSTACLES_KEYS = {"squares", "mirror", "blocks_leaps"}
 _STRIKE_KEYS = {
     "effect", "chain", "position", "immune", "landing", "switches_sides",
-    # A1 (`docs/plan-pieces-moves.md` §6.2): the only capturing pieces whose captures strike.
+    # A1 (`docs/archive/plan-pieces-moves.md` §6.2): the only capturing pieces whose captures strike.
     "by",
 }
 _STRIKE_LINK_KEYS = {"from", "to"}
@@ -989,7 +991,15 @@ REST_MAX = 4
 # accepts them, and `normal.normal_form` and `spelling.current_spelling` drop them, so a spec
 # that writes one is the game without it, named and tidied as that game. Per place: a piece
 # type, a line of sight, `rules.simultaneous`, a portal group and a contact link.
-PIECE_OFF_VALUES: dict[str, Any] = {"rest": 0, "speed": 0, "spy": False, "sight": []}
+PIECE_OFF_VALUES: dict[str, Any] = {
+    "rest": 0, "speed": 0, "spy": False, "sight": [],
+    # TC3 (`docs/plan-turncoat.md` §4.1): a type nobody owns stands until something takes it.
+    "control": "stands",
+    # TC4 (`docs/plan-turncoat.md` §5.1): a type whose taking pays nobody anything.
+    "bounty": 0,
+    # TC5 (`docs/plan-turncoat.md` §5.4): a type that is not for sale.
+    "price": 0,
+}
 SIGHT_OFF_VALUES: dict[str, Any] = {"through": False, "captures_own": False}
 SIMULTANEOUS_OFF_VALUES: dict[str, Any] = {"tie": "both", "swap": "chase", "both": "draw"}
 PORTAL_OFF_VALUES: dict[str, Any] = {"kind": "momentum"}
@@ -1001,8 +1011,17 @@ MOVE_OFF_VALUES: dict[str, Any] = {"path": "straight"}
 NPC_OFF_VALUES: dict[str, Any] = {"respawn": 0, "turns_back": False}
 # N4b: ``rules.duck``'s: ``goes: "anywhere"`` is the classic duck, as is leaving it out.
 DUCK_OFF_VALUES: dict[str, Any] = {"goes": "anywhere"}
+# TC6: ``rules.purse``'s: ``bribe: false`` is a purse that never buys an enemy piece.
+PURSE_OFF_VALUES: dict[str, Any] = {"bribe": False}
 
-# Generation 36 (N1, `docs/plan-npc.md` §4.1): the longest clock a respawning wild piece may
+# TC4 (`docs/plan-turncoat.md` §5.1, §5.2): the largest bounty a type may carry, and the most
+# coins a purse may hold (`rust/src/tables.rs::PURSE_MAX`), which bounds the purse's keys.
+BOUNTY_MAX = 20
+PURSE_MAX = 99
+# TC5 (`docs/plan-turncoat.md` §5.4): the dearest a type may be priced.
+PRICE_MAX = 40
+
+# Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): the longest clock a respawning wild piece may
 # have, in phases. Bounds the clocks' keys (one per value per half).
 RESPAWN_MAX = 16
 
@@ -1088,7 +1107,7 @@ def _check_rest_coherence(
 # ``SIGHT_MAX`` of them (§2.2); the cap bounds the core's reverse table and is raised by a
 # showcase that needs more.
 SIGHT_MAX = 4
-# Q1007c (`docs/plan-schema-31.md` §3): ``command``, the affected piece's opponent may also move
+# Q1007c (`docs/archive/plan-schema-31.md` §3): ``command``, the affected piece's opponent may also move
 # it; ``captures_own`` (only beside it) lets a commanded piece take its own side's pieces.
 SIGHT_EFFECTS = ("freeze", "disarm", "shield", "command")
 SIGHT_WHOSE = ("enemy", "own", "any")
@@ -1159,7 +1178,7 @@ def _arrives_after_setup(rules: dict[str, Any], pid: str) -> bool:
 def _check_moveless_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
-    """The shapes of a piece that never moves that are mistakes (I1, `plan-pieces-moves.md`
+    """The shapes of a piece that never moves that are mistakes (I1, `docs/archive/plan-pieces-moves.md`
     §4.3, refusals 1 to 6).
 
     ``moves: []`` is legal on any piece: it stands where the setup, a drop, a promotion, a
@@ -1348,7 +1367,7 @@ def sight_affected_ids(
 ) -> list[str]:
     """The ids a sight's effect can touch: its ``affects``, or every declared type that is
     neither wild nor a portal end (§2.3). A command never touches a royal (Q1007c,
-    `docs/plan-schema-31.md` §3.4), so ``royal`` (the royal ids) is left out of a command's."""
+    `docs/archive/plan-schema-31.md` §3.4), so ``royal`` (the royal ids) is left out of a command's."""
     blank = _never_moved(rules)
     if sight.effect == "command":
         blank = blank | set(royal)
@@ -1531,7 +1550,7 @@ def _check_sight_coherence(
             if "whose" in entry and whose not in SIGHT_WHOSE:
                 errors.append(f"{loc}.whose must be one of {SIGHT_WHOSE}, got {whose!r}")
             if on_wild:
-                # Generation 37 (N2, `docs/plan-npc.md` §4.2): a wild piece's sight, with its
+                # Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): a wild piece's sight, with its
                 # three limits.
                 if whose in ("enemy", "own"):
                     errors.append(
@@ -1604,7 +1623,7 @@ def _check_sight_coherence(
         _check_command_beside(spec, pieces, rules, turncoats, errors)
 
 
-# Q1007c (`docs/plan-schema-31.md` §3.6): each rule refused beside a command, with the second
+# Q1007c (`docs/archive/plan-schema-31.md` §3.6): each rule refused beside a command, with the second
 # rule it would need.
 _COMMAND_REFUSED_RULES = {
     "simultaneous": "two players could move one piece in one round",
@@ -1620,7 +1639,7 @@ def _check_command_beside(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], turncoats: bool,
     errors: list[str],
 ) -> None:
-    """The rules a command sight is refused beside (Q1007c, `docs/plan-schema-31.md` §3.6)."""
+    """The rules a command sight is refused beside (Q1007c, `docs/archive/plan-schema-31.md` §3.6)."""
     for key, why in _COMMAND_REFUSED_RULES.items():
         # Stated at all (`simultaneous: {}` is a whole rule); a strike written at plain
         # capture states no rule, and refuses nothing.
@@ -1886,6 +1905,8 @@ def simultaneous_holdings(spec: dict[str, Any]) -> tuple[set[str], set[str]]:
     for placement in setup.get("placements") or []:
         if not isinstance(placement, dict) or placement.get("piece") not in declared:
             continue
+        if is_nobodys(placement):
+            continue
         players = (0, 1) if mirrored else (placement.get("player", 0),)
         for player in players:
             if player in (0, 1):
@@ -1982,7 +2003,7 @@ def placed_ids(spec: dict[str, Any]) -> tuple[set[str], set[str]]:
     for placement in _listed(setup.get("placements")):
         if not isinstance(placement, dict) or not isinstance(placement.get("piece"), str):
             continue
-        if not placement.get("squares"):
+        if not placement.get("squares") or is_nobodys(placement):
             continue
         for player in (0, 1) if mirrored else (placement.get("player", 0),):
             if player in (0, 1):
@@ -3262,7 +3283,8 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     # Portals (schema 19) are nobody's too, and each pair adds two internal types.
     _check_facing_coherence(
         pieces, errors,
-        owners=3 if rules.get("npcs") or rules.get("portals") or rules.get("duck") else 2,
+        owners=3 if rules.get("npcs") or rules.get("portals") or rules.get("duck")
+        or has_neutrals(spec) else 2,
         extra_types=portal_extra_types(rules),
     )
     _check_fixed_facings(spec, pieces, errors)
@@ -3273,6 +3295,9 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_sight_coherence(spec, pieces, rules, errors)
     _check_moveless_coherence(spec, pieces, rules, errors)
     _check_path_coherence(pieces, rules, errors)
+    _check_neutral_coherence(spec, pieces, rules, errors)
+    _check_bounty_coherence(pieces, rules, errors)
+    _check_purse_coherence(spec, pieces, rules, errors)
 
     if isinstance(rules.get("castling"), dict):
         castling = rules["castling"]
@@ -3289,7 +3314,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
 def _check_path_coherence(
     pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
-    """The rules a turning path (T1, `plan-pieces-moves.md` §5.3 refusals 5 to 7) may not sit
+    """The rules a turning path (T1, `docs/archive/plan-pieces-moves.md` §5.3 refusals 5 to 7) may not sit
     beside, each by name.
 
     A portal's exit carries a piece on in the direction it came (`compile.momentum_bits`),
@@ -3963,7 +3988,7 @@ def strikers(pieces: list[Any], strike: dict[str, Any]) -> list[str] | None:
     and its ``captures`` lets it take a type the strike reaches: one the compiled rule
     (asked of the compiler, `_compiled_strike`, with ``by`` taken off) does not leave as a
     plain capture. ``None`` on anything malformed, so a spec already collecting errors is
-    not also told its ``by`` is wrong (A1, `docs/plan-pieces-moves.md` §6.3).
+    not also told its ``by`` is wrong (A1, `docs/archive/plan-pieces-moves.md` §6.3).
     """
     if not all(isinstance(piece, dict) and isinstance(piece.get("id"), str) for piece in pieces):
         return None
@@ -3993,7 +4018,7 @@ def strikers(pieces: list[Any], strike: dict[str, Any]) -> list[str] | None:
 
 
 def _check_strike_by(pieces: list[Any], strike: dict[str, Any], errors: list[str]) -> None:
-    """Refusals 2 and 3 of A1 (`docs/plan-pieces-moves.md` §6.3), on a live strike.
+    """Refusals 2 and 3 of A1 (`docs/archive/plan-pieces-moves.md` §6.3), on a live strike.
 
     A ``by`` naming every type whose captures the strike reaches is the strike without
     ``by``, one game in two spellings. A listed type that never captures anything the
@@ -4132,10 +4157,10 @@ def _check_npc_coherence(
     scoring = rules.get("scoring")
     wants_points = isinstance(scoring, dict) and scoring.get("count") == "points"
     if not isinstance(npcs, list) or not npcs:
-        if wants_points:
+        if wants_points and not piece_bounties(pieces):
             errors.append(
-                'rules.scoring.count "points" needs rules.npcs with a bounty above zero, '
-                "or there is nothing to count"
+                'rules.scoring.count "points" needs a bounty above zero, on a piece type '
+                "(pieces[].bounty) or a wild piece (rules.npcs), or there is nothing to count"
             )
         return
 
@@ -4239,15 +4264,15 @@ def _check_npc_coherence(
             value = piece.get("value", 1) if isinstance(piece, dict) else 1
             return float(value) if isinstance(value, (int, float)) else 1.0
 
-        if not any(bounty_of(npc) > 0 for npc in npcs):
+        if not any(bounty_of(npc) > 0 for npc in npcs) and not piece_bounties(pieces):
             errors.append(
-                'rules.scoring.count "points" needs a wild piece with a bounty above '
-                "zero, or there is nothing to count"
+                'rules.scoring.count "points" needs a bounty above zero, on a piece type '
+                "(pieces[].bounty) or a wild piece (rules.npcs), or there is nothing to count"
             )
 
 
 def _check_npc_turns_back(npcs: list[Any], rules: dict[str, Any], errors: list[str]) -> None:
-    """Generation 38 (N5, `docs/plan-npc.md` §4.7): a turning-back entry against the rest.
+    """Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): a turning-back entry against the rest.
 
     * **a one-square route** -- nothing to turn on;
     * **``also_at``** -- two pieces on one line meeting head-on would need an order the queue
@@ -4294,7 +4319,7 @@ def _check_npc_pounce(
     orientation: str,
     errors: list[str],
 ) -> None:
-    """Generation 39 (N3b, `docs/plan-npc.md` §4.3): a pouncing entry against the rest.
+    """Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): a pouncing entry against the rest.
 
     * **rounds** -- both players have just moved, and no order between two equal pieces of
       different players is colour-blind;
@@ -4396,7 +4421,7 @@ def _check_npc_pounce(
 
 
 def _check_npc_split(npcs: list[Any], rules: dict[str, Any], errors: list[str]) -> None:
-    """Generation 41 (N3d, `docs/plan-npc.md` §4.5): a splitting entry against the rest.
+    """Generation 41 (N3d, `docs/archive/plan-npc.md` §4.5): a splitting entry against the rest.
 
     * **split without pounce "attackers"** -- the copies grow on the attackers' squares;
     * **split below the type's starts** (every entry of the type counted) -- it would start
@@ -4438,7 +4463,7 @@ def _check_npc_split(npcs: list[Any], rules: dict[str, Any], errors: list[str]) 
             )
 
 
-# Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck's keys and how it goes.
+# Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck's keys and how it goes.
 _DUCK_KEYS = {"piece", "start", "goes"}
 DUCK_GOES = ("anywhere", "by_moves")
 
@@ -4483,7 +4508,7 @@ def _validate_duck(
 def _check_duck_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
-    """The duck against everything else in the spec (`docs/plan-npc.md` §4.6), each refusal
+    """The duck against everything else in the spec (`docs/archive/plan-npc.md` §4.6), each refusal
     by name. Thirteen:
 
     1. a check rule (checkmate, ``forbid_check``, ``check_limit``): a move's legality would
@@ -4497,7 +4522,7 @@ def _check_duck_coherence(
     7. a duck type that is royal, captures, or has a facing, rest, speed, spy, a region, a move
        condition or a capture-only move;
     8. ``goes: "by_moves"`` on moves that read differently for the two players;
-    9. ``goes: "by_moves"`` on a type with no moves (I1's, `plan-pieces-moves.md` §4.3);
+    9. ``goes: "by_moves"`` on a type with no moves (I1's, `docs/archive/plan-pieces-moves.md` §4.3);
     10. moves on a duck that goes anywhere: never read, write ``moves: []``;
     11. its type anywhere but ``rules.duck``;
     12. a start the opening does not leave empty;
@@ -4720,8 +4745,8 @@ def _check_entry_promotion_coherence(
 
     * **no promotion rule** -- nothing promotes, so nothing can promote on entry;
     * **no way to enter play** -- a piece reaches a square without moving there by
-      exactly two routes, a drop and a strike that leaves the struck piece standing, and
-      a spec with neither has no event for the flag to fire on;
+      a drop, a strike that leaves the struck piece standing, or (TC5) a purchase from
+      ``rules.purse``'s market, and a spec with none has no event for the flag to fire on;
     * **no promoting piece can enter its zone** -- the routes exist but every promoting
       type is kept out: not on the strike chain's ``to`` side, and either never in a
       hand, or held but droppable only outside its zone (crazyhouse's pawn, which
@@ -4801,11 +4826,20 @@ def _check_entry_promotion_coherence(
                 survivors.add(link["mover_to"])
             if link.get("onto") not in immune_ids and isinstance(link.get("onto_to"), str):
                 survivors.add(link["onto_to"])
-    if drops is None and not survivors:
+    # TC5 (`docs/plan-turncoat.md` §5.4): a bought piece enters play on its region, through
+    # the same `arriving_value` a drop's goes through.
+    market = set(purse_market(spec)) if purse_rule(rules) is not None else set()
+    # TC6 (§5.5): a hired or bribed piece changes sides where it stands, through
+    # `rehome_value`, which enters it into play for its new owner by `arriving_value`, as
+    # a capturer that switches sides is entered. A neutral that obeys a majority, and an
+    # enemy piece, can stand anywhere, so either counts as a survivor: on any square.
+    with_rules = {**spec, "rules": rules}
+    survivors |= hire_ids(with_rules) | bribe_ids(with_rules)
+    if drops is None and not survivors and not market:
         errors.append(
             "rules.promote_on_entry: nothing enters play except by moving; it needs "
-            "rules.drops, a rules.strike whose chain leaves a struck piece standing, or "
-            "a rules.contacts link that turns a piece into another"
+            "rules.drops, rules.purse, a rules.strike whose chain leaves a struck piece "
+            "standing, or a rules.contacts link that turns a piece into another"
         )
         return
 
@@ -4823,6 +4857,11 @@ def _check_entry_promotion_coherence(
         pid = entry["piece"]
         if pid in survivors:
             return  # a strike can leave it standing on any square, the zone included
+        if pid in market and (
+            promotion_squares(entry, width, height, orientation)[0]
+            & purse_squares(spec, pid, 0)
+        ):
+            return  # bought onto a square of its zone
         if drops is None:
             kept_out.append(f"{pid} is not on the strike chain's 'to' side")
             continue
@@ -5520,7 +5559,7 @@ def board_shape(spec: Any) -> str:
 
 # ------------------------------------------------------------------ turning paths (T1)
 #
-# `docs/plan-pieces-moves.md` §5.2. The validator and the compiler read a turning path's
+# `docs/archive/plan-pieces-moves.md` §5.2. The validator and the compiler read a turning path's
 # directions in one order, this one, so a spec has one set of paths and one set of
 # refusals. Exact: integer cross products, never a floating angle, so the order cannot
 # depend on rounding.
@@ -5837,7 +5876,7 @@ def _validate_moves(
     movement table for the type, ``_build_attack_sources`` gives it no attack source, and
     the core never generates a move from it. It is placed, it blocks, it can be taken.
     Schema 10 admitted it only for a piece ``rules.drops.stock`` puts in a hand; I1
-    (``docs/plan-pieces-moves.md`` §4) lifted that gate and refuses instead the shapes of
+    (``docs/archive/plan-pieces-moves.md`` §4) lifted that gate and refuses instead the shapes of
     it that are mistakes (`_refuse_moveless_mistakes`).
     """
     if not isinstance(moves, list):
@@ -6096,9 +6135,9 @@ def _validate_setup(
             errors.append(f"{loc}.piece {piece!r} is not a declared piece id")
 
         player = placement.get("player", 0)
-        if player not in (0, 1):
-            errors.append(f"{loc}.player must be 0 or 1, got {player!r}")
-        elif mirror and player != 0:
+        if player not in (0, 1, NOBODY):
+            errors.append(f"{loc}.player must be 0, 1 or {NOBODY!r}, got {player!r}")
+        elif mirror and player == 1:
             errors.append(
                 f"{loc}.player must be 0 when setup.mirror is true "
                 "(the second player's army is derived by reflection)"
@@ -6242,6 +6281,7 @@ def _validate_rules(
     _validate_contacts(rules.get("contacts"), piece_ids, errors, promoting_piece_ids(rules))
     _validate_npcs(rules.get("npcs"), piece_ids, width, height, errors, rules)
     _validate_duck(rules.get("duck"), piece_ids, width, height, errors)
+    _validate_purse(rules.get("purse"), piece_ids, width, height, errors)
     _validate_portals(rules.get("portals"), width, height, errors)
     _validate_territory(rules.get("territory"), width, height, errors)
     _validate_scoring(
@@ -6799,7 +6839,7 @@ def npc_routes(
 
 
 def npc_respawn(npc: Any) -> int:
-    """A wild-piece entry's ``respawn`` (generation 36, N1, `docs/plan-npc.md` §4.1): the
+    """A wild-piece entry's ``respawn`` (generation 36, N1, `docs/archive/plan-npc.md` §4.1): the
     phases after which a taken piece of it comes back, and 0 -- gone for good -- where it
     writes none, the off value 0, or something the validator refuses. The one reader, for
     the compiler, the words and the operators."""
@@ -6812,14 +6852,14 @@ def npc_respawn(npc: Any) -> int:
 
 
 def npc_turns_back(npc: Any) -> bool:
-    """Whether a wild-piece entry turns back (generation 38, N5, `docs/plan-npc.md` §4.7): its
+    """Whether a wild-piece entry turns back (generation 38, N5, `docs/archive/plan-npc.md` §4.7): its
     route is a line, walked first to last and back, and a blocked step turns the piece round.
     False where it writes none, the off value ``false``, or something the validator refuses.
     The one reader, for the compiler, the words and the operators."""
     return isinstance(npc, dict) and npc.get("turns_back") is True
 
 
-# Generation 39 (N3b, `docs/plan-npc.md` §4.3): what a pouncing wild piece takes. ``"prey"``:
+# Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): what a pouncing wild piece takes. ``"prey"``:
 # the pieces of the player who has just moved that it attacks. ``"attackers"`` (generation 40,
 # N3c, §4.4): the pieces of the player who has just moved that attack it. The order is the
 # core's (`PounceTables::kind` is the index plus one).
@@ -6827,7 +6867,7 @@ POUNCE_KINDS = ("prey", "attackers")
 
 
 def npc_pounce(npc: Any) -> str | None:
-    """A wild-piece entry's ``pounce`` (generation 39, N3b, `docs/plan-npc.md` §4.3): one of
+    """A wild-piece entry's ``pounce`` (generation 39, N3b, `docs/archive/plan-npc.md` §4.3): one of
     ``POUNCE_KINDS``, or None where it writes none or something the validator refuses. The one
     reader, for the compiler, the words and the operators."""
     if not isinstance(npc, dict):
@@ -6836,14 +6876,14 @@ def npc_pounce(npc: Any) -> str | None:
     return kind if isinstance(kind, str) and kind in POUNCE_KINDS else None
 
 
-# Generation 41 (N3d, `docs/plan-npc.md` §4.5): the bounds of ``npcs[].split``, the most
+# Generation 41 (N3d, `docs/archive/plan-npc.md` §4.5): the bounds of ``npcs[].split``, the most
 # pieces of a splitting type standing at once.
 SPLIT_MIN = 2
 SPLIT_MAX = 8
 
 
 def npc_split(npc: Any) -> int:
-    """A wild-piece entry's ``split`` (generation 41, N3d, `docs/plan-npc.md` §4.5): the most
+    """A wild-piece entry's ``split`` (generation 41, N3d, `docs/archive/plan-npc.md` §4.5): the most
     pieces of its type that may stand at once, a copy growing on each attacker's square while
     there is room; 0 where it writes none or something the validator refuses. The one reader,
     for the compiler, the words and the operators."""
@@ -7614,6 +7654,295 @@ def _check_portal_carries(
                 )
 
 
+# --------------------------------------------------------------------------- neutral pieces
+
+# TC3 (`docs/plan-turncoat.md` §4): a placement for nobody, and how its type is moved while
+# nobody owns it. ``"stands"`` is the off value (`PIECE_OFF_VALUES`): nobody moves it.
+NOBODY = "nobody"
+CONTROL_VALUES = ("stands", "majority")
+# The king's step on each lattice: what *next to* means when ``control`` names no geometry.
+KING_STEP_SQUARE: tuple[tuple[tuple[int, int], ...], str] = (((1, 0), (1, 1)), "dihedral8")
+KING_STEP_HEX: tuple[tuple[tuple[int, int], ...], str] = (((1, 0),), "rotate6")
+
+
+def is_nobodys(placement: Any) -> bool:
+    """Whether a placement puts its pieces in nobody's block (TC3, ``player: "nobody"``)."""
+    return isinstance(placement, dict) and placement.get("player") == NOBODY
+
+
+def neutral_ids(spec: Any) -> set[str]:
+    """The piece ids some placement puts in nobody's block."""
+    setup = spec.get("setup") if isinstance(spec, dict) else None
+    placements = setup.get("placements") if isinstance(setup, dict) else None
+    return {
+        placement["piece"] for placement in _listed(placements)
+        if is_nobodys(placement) and isinstance(placement.get("piece"), str)
+        and placement.get("squares")
+    }
+
+
+def has_neutrals(spec: Any) -> bool:
+    """Whether the opening board holds a piece nobody owns from a placement (TC3)."""
+    return bool(neutral_ids(spec))
+
+
+def piece_control(piece: Any) -> str:
+    """How a type's pieces move while nobody owns them: ``"stands"`` or ``"majority"``."""
+    control = piece.get("control", "stands") if isinstance(piece, dict) else "stands"
+    if isinstance(control, dict) and "majority" in control:
+        return "majority"
+    return control if control in CONTROL_VALUES else "stands"
+
+
+def control_geometry(
+    piece: Any, hex_lattice: bool = False,
+) -> tuple[tuple[tuple[int, int], ...], str]:
+    """What *next to* means for a majority type: its object form's vectors and symmetry, or
+    the lattice's king's step (`docs/plan-turncoat.md` §4.2)."""
+    control = piece.get("control") if isinstance(piece, dict) else None
+    if isinstance(control, dict) and isinstance(control.get("majority"), dict):
+        shape = control["majority"]
+        vectors = tuple(
+            (vector[0], vector[1]) for vector in _listed(shape.get("vectors"))
+            if isinstance(vector, list) and len(vector) == 2
+        )
+        return vectors, str(shape.get("symmetry", "none"))
+    return KING_STEP_HEX if hex_lattice else KING_STEP_SQUARE
+
+
+def majority_ids(spec: Any) -> set[str]:
+    """The piece ids a player may move by holding the majority next to one (TC3): a type
+    with ``control`` majority that some placement puts in nobody's block."""
+    pieces = spec.get("pieces") if isinstance(spec, dict) else None
+    return {
+        piece["id"] for piece in _listed(pieces)
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+        and piece_control(piece) == "majority"
+    } & neutral_ids(spec)
+
+
+def _validate_control(piece: dict[str, Any], where: str, errors: list[str]) -> None:
+    """The shape of ``pieces[].control``: a word, or ``{"majority": {vectors, symmetry}}``."""
+    control = piece["control"]
+    if isinstance(control, str):
+        if control not in CONTROL_VALUES:
+            errors.append(f"{where}.control must be one of {CONTROL_VALUES}, got {control!r}")
+        return
+    if not isinstance(control, dict) or set(control) != {"majority"}:
+        errors.append(
+            f'{where}.control must be "stands", "majority" or {{"majority": {{"vectors": ..., '
+            f'"symmetry": ...}}}}, got {control!r}'
+        )
+        return
+    shape = control["majority"]
+    if not isinstance(shape, dict):
+        errors.append(f"{where}.control.majority must be an object with vectors and symmetry")
+        return
+    _check_keys(
+        shape, {"vectors", "symmetry"}, f"{where}.control.majority", errors, required={"vectors"}
+    )
+    vectors = shape.get("vectors")
+    if not isinstance(vectors, list) or not vectors or not all(
+        isinstance(vector, list) and len(vector) == 2
+        and all(isinstance(c, int) and not isinstance(c, bool) for c in vector)
+        and vector != [0, 0] and all(abs(c) <= MAX_VECTOR_COMPONENT for c in vector)
+        for vector in vectors
+    ):
+        errors.append(
+            f"{where}.control.majority.vectors must be a non-empty list of [dx, dy] integer "
+            f"pairs, not [0, 0], each component at most {MAX_VECTOR_COMPONENT}"
+        )
+    if shape.get("symmetry", "none") not in SYMMETRIES:
+        errors.append(f"{where}.control.majority.symmetry must be one of {SYMMETRIES}")
+
+
+def _check_neutral_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """TC3 (`docs/plan-turncoat.md` §4.5): neutral pieces and majority control, each refusal
+    by name.
+
+    A nobody's placement shares the third owner's block, which wild pieces, the duck and
+    portal ends already use with readers of their own (the phase, the bounty tally, the duck
+    half, a portal's moves), so a neutral is refused beside each of those until every such
+    reader asks the block's control kind; and beside rounds, a strike and contacts, whose
+    writes of what a capture leaves were never stated for nobody's piece. A majority type
+    must read alike for both players, since its holder moves it in the first player's frame,
+    and sits beside none of the rules that would make a second rule of what a nobody's mover
+    claims, reaches or blasts.
+    """
+    board = spec.get("board")
+    hex_lattice = isinstance(board, dict) and board.get("lattice") == "hex"
+    setup: dict[str, Any] = spec["setup"] if isinstance(spec.get("setup"), dict) else {}
+    orientation = str(setup.get("orientation", "mirror"))
+    by_id = {
+        piece["id"]: piece for piece in pieces
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    }
+    for index, piece in enumerate(pieces):
+        if isinstance(piece, dict) and "control" in piece:
+            _validate_control(piece, f"pieces[{index}]", errors)
+    neutrals = neutral_ids(spec)
+    wild = {
+        npc["piece"] for npc in _listed(rules.get("npcs"))
+        if isinstance(npc, dict) and isinstance(npc.get("piece"), str)
+    }
+    duck = duck_piece(rules)
+    for index, piece in enumerate(pieces):
+        if not isinstance(piece, dict) or "control" not in piece:
+            continue
+        if stated_off(piece, "control", PIECE_OFF_VALUES):
+            continue
+        pid = piece.get("id")
+        loc = f"pieces[{index}].control"
+        if piece.get("royal"):
+            errors.append(f"{loc} on a royal: a royal always belongs to a player")
+        elif pid in wild or pid == duck:
+            errors.append(f"{loc} on a wild type ({pid!r}): a wild piece walks its route")
+        elif pid not in neutrals:
+            errors.append(
+                f"{loc} on {pid!r}, which no placement puts in nobody's block: it would never "
+                'be nobody\'s, so the rule never fires (place some with "player": "nobody")'
+            )
+    if not neutrals:
+        return
+
+    for pid in sorted(neutrals):
+        piece = by_id.get(pid)
+        if not isinstance(piece, dict):
+            continue
+        where = f"a placement for nobody of {pid!r}"
+        if piece.get("royal"):
+            errors.append(f"{where}: a royal always belongs to a player")
+        if piece.get("spy") is True:
+            errors.append(f"{where}: a spy is never gained, and a nobody's piece may be")
+        if pid in wild or pid == duck:
+            errors.append(f"{where}: a wild type walks its route, it does not stand for nobody")
+        if _stated_on(piece, "rest"):
+            errors.append(f"{where}: a piece nobody owns has no turn to rest after")
+        if _stated_on(piece, "sight"):
+            errors.append(f"{where}: a nobody's piece's sight would bind nobody, a second rule")
+    for index, placement in enumerate(_listed(setup.get("placements"))):
+        if is_nobodys(placement) and "facing" in placement:
+            errors.append(
+                f"setup.placements[{index}].facing for nobody: a piece nobody owns has no forward"
+            )
+
+    for key, why in (
+        ("npcs", "the phase and the bounty tally read nobody's block as wild pieces"),
+        ("duck", "the duck shares nobody's block, and its half reads the block as the duck's"),
+        ("portals", "portal ends share nobody's block"),
+        ("simultaneous", "a round's collisions were not written for a piece nobody owns"),
+        ("strike", "what a capture leaves of a piece nobody owns is a second rule"),
+        ("contacts", "what a contact makes of a piece nobody owns is a second rule"),
+    ):
+        if key in rules:
+            errors.append(f"a placement for nobody is refused beside rules.{key}: {why}")
+
+    _check_neutral_squares(spec, setup, orientation, errors)
+
+    majority = majority_ids(spec)
+    if not majority:
+        return
+    for key, why in (
+        ("territory", "who claims a square a nobody's piece steps on is a second rule"),
+        ("reach", "whether a nobody's piece reaching a goal wins is a second rule"),
+        ("explode_on_capture", "who a held piece's blast is charged to is a second rule"),
+    ):
+        if key in rules:
+            errors.append(f"majority control is refused beside rules.{key}: {why}")
+    if turn_is_long(rules):
+        errors.append(
+            "majority control is refused beside a turn longer than one move: the holder is "
+            "read off the board at the start of a move, and a long turn changes it mid-turn"
+        )
+    for pid in sorted(majority):
+        _check_majority_type(pid, by_id[pid], rules, orientation, hex_lattice, errors)
+
+
+def _check_majority_type(
+    pid: str, piece: dict[str, Any], rules: dict[str, Any], orientation: str,
+    hex_lattice: bool, errors: list[str],
+) -> None:
+    """A majority type reads alike for both players (`docs/plan-turncoat.md` §4.4): its holder
+    moves it in the first player's frame, so nothing in it may name a side."""
+    loc = f"piece {pid!r} (control majority)"
+    if "facing" in piece:
+        errors.append(f"{loc} has a facing: a piece nobody owns has no forward")
+    if "region" in piece:
+        errors.append(f"{loc} has a region: a piece nobody owns has no rank of its own")
+    if any(
+        isinstance(entry, dict) and entry.get("piece") == pid
+        for entry in _promotion_entries(rules)
+    ):
+        errors.append(f"{loc} promotes: a held piece moves in nobody's frame and never promotes")
+    vectors, symmetry = control_geometry(piece, hex_lattice)
+    if not reads_alike_for_both([list(v) for v in vectors], symmetry, orientation):
+        errors.append(
+            f"{loc}: its control's geometry reads differently for the two players (use a "
+            "symmetry that covers both, such as rotate4 or dihedral8)"
+        )
+    for number, move in enumerate(_listed(piece.get("moves"))):
+        if not isinstance(move, dict):
+            continue
+        where = f"{loc} moves[{number}]"
+        if move.get("kind") == "sweep":
+            errors.append(f"{where} is a sweep: what a nobody's sweep removes is a second rule")
+        if not reads_alike_for_both(move.get("vectors"), move.get("symmetry", "none"), orientation):
+            errors.append(
+                f"{where} reads differently for the two players: a piece nobody owns has no "
+                "forward (use a symmetry that covers both, such as rotate4 or dihedral8)"
+            )
+        if "condition" in move:
+            errors.append(f"{where} has a condition: a piece nobody owns has no rank or first move")
+        if move.get("screen", "any") != "any":
+            errors.append(f"{where} is a hop whose screen names an owner: nobody has no own or enemy")
+
+
+def _check_neutral_squares(
+    spec: dict[str, Any], setup: dict[str, Any], orientation: str, errors: list[str]
+) -> None:
+    """A nobody's square, and its image under a mirrored setup, holds no other placement's
+    piece (`docs/plan-turncoat.md` §4.1), nor a wall or an absent cell."""
+    board = spec.get("board")
+    width = board.get("width") if isinstance(board, dict) else None
+    height = board.get("height") if isinstance(board, dict) else None
+    if not isinstance(width, int) or not isinstance(height, int):
+        return
+    mirrored = setup.get("mirror", True) is not False
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    blocked = obstacle_squares(rules, width, height, orientation) | absent_squares(board)
+    seats: set[tuple[int, int]] = set()
+    nobody: list[tuple[int, int, int, str]] = []
+    for index, placement in enumerate(_listed(setup.get("placements"))):
+        if not isinstance(placement, dict):
+            continue
+        for name in _listed(placement.get("squares")):
+            coords = parse_square(name, width, height) if isinstance(name, str) else None
+            if coords is None:
+                continue
+            if is_nobodys(placement):
+                nobody.append((index, *coords, name))
+                continue
+            seats.add(coords)
+            if mirrored:
+                seats.add(reflect_square(*coords, width, height, orientation))
+    taken: set[tuple[int, int]] = set()
+    for index, file, rank, name in nobody:
+        images = {(file, rank)}
+        if mirrored:
+            images.add(reflect_square(file, rank, width, height, orientation))
+        for image in sorted(images):
+            where = f"setup.placements[{index}] (nobody's {name!r}, on {format_square(*image)})"
+            if image in seats:
+                errors.append(f"{where} lands on a square a player's piece starts on")
+            elif image in taken:
+                errors.append(f"{where} lands on a square another nobody's piece starts on")
+            elif image[1] * width + image[0] in blocked:
+                errors.append(f"{where} lands on a wall or a missing cell")
+            taken.add(image)
+
+
 def reads_alike_for_both(vectors: Any, symmetry: Any, orientation: str) -> bool:
     """Whether a geometry (a move's or a sight's ``vectors`` with their ``symmetry``) is its
     own image under the second player's reflection (``reflect_square``'s: a mirror flips the
@@ -7976,7 +8305,7 @@ def _validate_strike_shape(strike: Any, piece_ids: list[str], errors: list[str])
             if len(set(map(str, switching))) != len(switching):
                 errors.append("rules.strike.switches_sides names a piece twice")
 
-    # A1 (`docs/plan-pieces-moves.md` §6.2-§6.3): the only capturing pieces whose captures
+    # A1 (`docs/archive/plan-pieces-moves.md` §6.2-§6.3): the only capturing pieces whose captures
     # strike, the explosion's `by` on the strike. Refusals 1 and 4 here; 2 and 3 read the
     # pieces' moves, in `_check_strike_by`.
     by = strike.get("by")
@@ -8614,3 +8943,345 @@ def _check_keys(
     for key in sorted(required or set()):
         if key not in obj:
             errors.append(f"{where} is missing required key {key!r}")
+
+
+# --------------------------------------------------------------------------- bounties
+
+def piece_bounties(spec_or_pieces: Any) -> dict[str, int]:
+    """TC4 (`docs/plan-turncoat.md` §5.1): each type's ``bounty`` above zero, by id: what
+    taking one pays the player whose move took it."""
+    pieces = (
+        spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    )
+    return {
+        piece["id"]: piece["bounty"] for piece in _listed(pieces)
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+        and isinstance(piece.get("bounty"), int) and not isinstance(piece.get("bounty"), bool)
+        and piece["bounty"] > 0
+    }
+
+
+def _check_bounty_coherence(
+    pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """TC4 (`docs/plan-turncoat.md` §5.1): ``pieces[].bounty``, each refusal by name.
+
+    * **the shape** -- an integer 0 to ``BOUNTY_MAX`` (0 the off value), so the purse that
+      will hold it (TC5) is an integer;
+    * **on a royal** -- taking one ends the game, or is refused outright;
+    * **on a wild type or the duck** -- a wild piece's bounty is its ``npcs`` entry's, one
+      bounty per piece, and the duck is never taken;
+    * **with nothing that reads it** -- a bounty is paid into ``points``, which only
+      ``scoring.count: "points"`` compares, and (TC5) into the purse under ``rules.purse``;
+      without either the rule never changes a game.
+    """
+    wild = {
+        npc["piece"] for npc in _listed(rules.get("npcs"))
+        if isinstance(npc, dict) and isinstance(npc.get("piece"), str)
+    }
+    duck = duck_piece(rules)
+    paying = False
+    for index, piece in enumerate(pieces):
+        if not isinstance(piece, dict) or "bounty" not in piece:
+            continue
+        loc = f"pieces[{index}].bounty"
+        bounty = piece["bounty"]
+        if isinstance(bounty, bool) or not isinstance(bounty, int) or not 0 <= bounty <= BOUNTY_MAX:
+            errors.append(f"{loc} must be a whole number from 0 to {BOUNTY_MAX}, got {bounty!r}")
+            continue
+        if bounty == 0:
+            continue
+        paying = True
+        pid = piece.get("id")
+        if piece.get("royal"):
+            errors.append(f"{loc} on a royal: taking a royal decides the game, it is not paid for")
+        if pid in wild:
+            errors.append(
+                f"{loc} on a wild type ({pid!r}): a wild piece's bounty is its rules.npcs "
+                "entry's, one bounty per piece"
+            )
+        if pid == duck:
+            errors.append(f"{loc} on the duck ({pid!r}): the duck is never taken")
+    scoring = rules.get("scoring")
+    if (
+        paying
+        and not (isinstance(scoring, dict) and scoring.get("count") == "points")
+        and not isinstance(rules.get("purse"), dict)
+    ):
+        errors.append(
+            'pieces[].bounty needs rules.scoring.count "points" or rules.purse: a bounty is '
+            "paid into the points tally and the purse, and without either nothing reads it, "
+            "so the rule would never change a game"
+        )
+
+
+# --------------------------------------------------------------------------- the purse
+
+_PURSE_KEYS = {"start", "market", "region", "bribe"}
+
+
+def purse_rule(spec_or_rules: Any) -> dict[str, Any] | None:
+    """TC5 (`docs/plan-turncoat.md` §5.4): ``rules.purse`` when it is an object, else ``None``."""
+    rules = spec_or_rules
+    if isinstance(spec_or_rules, dict) and isinstance(spec_or_rules.get("rules"), dict):
+        rules = spec_or_rules["rules"]
+    purse = rules.get("purse") if isinstance(rules, dict) else None
+    return purse if isinstance(purse, dict) else None
+
+
+def piece_prices(spec_or_pieces: Any) -> dict[str, int]:
+    """TC5 (`docs/plan-turncoat.md` §5.4): each type's ``price`` above zero, by id: what one
+    costs from the market."""
+    pieces = (
+        spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    )
+    return {
+        piece["id"]: piece["price"] for piece in _listed(pieces)
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+        and isinstance(piece.get("price"), int) and not isinstance(piece.get("price"), bool)
+        and piece["price"] > 0
+    }
+
+
+def purse_bribes(spec_or_rules: Any) -> bool:
+    """TC6 (`docs/plan-turncoat.md` §5.5): whether ``rules.purse.bribe`` is ``true``: a player
+    may buy an enemy piece of a priced type standing next to one of theirs, at twice its
+    price."""
+    purse = purse_rule(spec_or_rules)
+    return purse is not None and purse.get("bribe") is True
+
+
+def hire_ids(spec: Any) -> set[str]:
+    """TC6 (`docs/plan-turncoat.md` §5.5): the priced types some placement puts in nobody's
+    block, under a purse: what a player may hire, at its price, standing next to one."""
+    if purse_rule(spec) is None:
+        return set()
+    return set(piece_prices(spec)) & neutral_ids(spec)
+
+
+def bribe_ids(spec: Any) -> set[str]:
+    """TC6: the types a player may bribe, at twice the price: every priced type under
+    ``rules.purse.bribe`` (a price is refused on a royal and a spy)."""
+    return set(piece_prices(spec)) if purse_bribes(spec) else set()
+
+
+def purse_market(spec: Any) -> list[str]:
+    """The ids ``rules.purse.market`` lists, in order, each once (malformed entries skipped)."""
+    purse = purse_rule(spec)
+    seen: list[str] = []
+    for entry in _listed(purse.get("market") if purse else None):
+        if isinstance(entry, str) and entry not in seen:
+            seen.append(entry)
+    return seen
+
+
+def purse_squares(spec: dict[str, Any], piece_id: str, player: int) -> frozenset[int]:
+    """TC5 (`docs/plan-turncoat.md` §5.4): where ``player`` may place a bought ``piece_id``.
+
+    ``rules.purse.region`` (written for the first player, reflected for the second by
+    ``setup.orientation``), by default the player's first rank; less the walls and a
+    hexagon's absent cells, which nothing stands on; and inside the type's own ``region``
+    when it is confined, since a piece may not be placed where it could never stand. Shared
+    by the validator (a market type with no square is refused) and the compiler, so the two
+    read one set. Malformed names are skipped: the shape's errors are reported elsewhere.
+    """
+    board = spec.get("board")
+    width = board.get("width") if isinstance(board, dict) else None
+    height = board.get("height") if isinstance(board, dict) else None
+    if not isinstance(width, int) or not isinstance(height, int):
+        return frozenset()
+    setup = spec.get("setup")
+    orientation = str(setup.get("orientation", "mirror")) if isinstance(setup, dict) else "mirror"
+    raw_rules = spec.get("rules")
+    rules: dict[str, Any] = raw_rules if isinstance(raw_rules, dict) else {}
+    purse = purse_rule(rules) or {}
+
+    def resolve(names: Any) -> set[int]:
+        out: set[int] = set()
+        for name in _listed(names):
+            coords = parse_square(name, width, height) if isinstance(name, str) else None
+            if coords is None:
+                continue
+            file, rank = coords
+            if player == 1:
+                file, rank = reflect_square(file, rank, width, height, orientation)
+            out.add(rank * width + file)
+        return out
+
+    if "region" in purse:
+        squares = resolve(purse["region"])
+    else:
+        rank = 0 if player == 0 else height - 1
+        squares = {rank * width + file for file in range(width)}
+    piece = next(
+        (p for p in _listed(spec.get("pieces")) if isinstance(p, dict) and p.get("id") == piece_id),
+        None,
+    )
+    if isinstance(piece, dict) and piece.get("region"):
+        squares &= resolve(piece["region"])
+    squares -= obstacle_squares(rules, width, height, orientation)
+    squares -= absent_squares(board)
+    return frozenset(squares)
+
+
+def _validate_purse(
+    purse: Any, piece_ids: list[str], width: int, height: int, errors: list[str]
+) -> None:
+    """``rules.purse``'s shape (TC5): ``start`` a whole number 0 to ``PURSE_MAX``, ``market``
+    a list of declared pieces, ``region`` a list of squares on the board."""
+    if purse is None:
+        return
+    if not isinstance(purse, dict):
+        errors.append(
+            "rules.purse must be an object (start, and optionally market, region and bribe)"
+        )
+        return
+    _check_keys(purse, _PURSE_KEYS, "rules.purse", errors, required={"start"})
+    if "bribe" in purse and not isinstance(purse["bribe"], bool):
+        errors.append(f"rules.purse.bribe must be true or false, got {purse['bribe']!r}")
+    if "start" in purse:
+        start = purse["start"]
+        if isinstance(start, bool) or not isinstance(start, int) or not 0 <= start <= PURSE_MAX:
+            errors.append(
+                f"rules.purse.start must be a whole number from 0 to {PURSE_MAX}, got {start!r}"
+            )
+    if "market" in purse:
+        market = purse["market"]
+        if not isinstance(market, list):
+            errors.append("rules.purse.market must be a list of piece ids")
+        elif not market:
+            errors.append(
+                "rules.purse.market is empty: list at least one piece, or leave the market out"
+            )
+        else:
+            for entry in market:
+                if not isinstance(entry, str) or entry not in piece_ids:
+                    errors.append(
+                        f"rules.purse.market lists {entry!r}, which is not a declared piece"
+                    )
+            if len(set(map(repr, market))) != len(market):
+                errors.append("rules.purse.market lists a piece twice")
+    if "region" in purse:
+        region = purse["region"]
+        if not isinstance(region, list) or not region:
+            errors.append("rules.purse.region must be a non-empty list of squares")
+        else:
+            for name in region:
+                if not isinstance(name, str) or parse_square(name, width, height) is None:
+                    errors.append(
+                        f"rules.purse.region names {name!r}, which is not a square on this board"
+                    )
+            if len(set(map(repr, region))) != len(region):
+                errors.append("rules.purse.region names a square twice")
+
+
+def _check_purse_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """TC5 (`docs/plan-turncoat.md` §5.4, §5.9): ``rules.purse`` and ``pieces[].price``, each
+    refusal by name.
+
+    * **a price's shape** -- a whole number 0 to ``PRICE_MAX`` (0 the off value); never on a
+      royal, a spy (TC6: a spy is never gained) or a wild type or the duck; and only where
+      something charges it: a market that sells the type, a placement for nobody (a hire,
+      TC6) or ``rules.purse.bribe`` (TC6);
+    * **beside** rounds (and so the spy), a long turn, portals and a blast (§5.9);
+    * **a fractional wild bounty**: a purse holds whole coins;
+    * **nothing to spend on**: no market, no priced piece placed for nobody, no bribe (TC6);
+      a region with no market; a bribe with no priced piece a player can hold;
+    * **a market type** that is royal, a spy, nobody's (wild or the duck), moveless,
+      unpriced, or with no square in the region it may stand on.
+    """
+    purse = purse_rule(rules)
+    market = purse_market(spec) if purse is not None else []
+    hired = hire_ids(spec)
+    bribed = purse_bribes(rules)
+    wild = {
+        npc["piece"] for npc in _listed(rules.get("npcs"))
+        if isinstance(npc, dict) and isinstance(npc.get("piece"), str)
+    }
+    for index, piece in enumerate(pieces):
+        if not isinstance(piece, dict) or "price" not in piece:
+            continue
+        loc = f"pieces[{index}].price"
+        price = piece["price"]
+        if isinstance(price, bool) or not isinstance(price, int) or not 0 <= price <= PRICE_MAX:
+            errors.append(f"{loc} must be a whole number from 0 to {PRICE_MAX}, got {price!r}")
+            continue
+        if price == 0:
+            continue
+        pid = piece.get("id")
+        if piece.get("royal"):
+            errors.append(f"{loc} on a royal: a royal is never bought or sold")
+        elif piece.get("spy") is True:
+            errors.append(f"{loc} on a spy: a spy is never gained")
+        elif pid in wild or pid == duck_piece(rules):
+            errors.append(f"{loc} on a wild type ({pid!r}): a wild piece is never a player's")
+        elif pid not in market and pid not in hired and not bribed:
+            errors.append(
+                f"{loc} on {pid!r}, which nothing charges: a price is what a market "
+                "(rules.purse.market), a hire (a placement for nobody) or a bribe "
+                "(rules.purse.bribe) costs, and none reads it here"
+            )
+    if purse is None:
+        return
+    errors.extend(
+        f"rules.purse is refused beside rules.{key}: {why}"
+        for key, why in (
+            ("simultaneous", "two buyers in one round is a rule not written"),
+            ("portals", "a portal end is nobody's and its own mover"),
+            ("explode_on_capture", "who is paid for a blast's victims is a second rule"),
+        )
+        if rules.get(key) not in (None, False)
+    )
+    if turn_is_long(rules):
+        errors.append("rules.purse is refused beside a turn longer than one move")
+    for index, npc in enumerate(_listed(rules.get("npcs"))):
+        bounty = npc.get("bounty") if isinstance(npc, dict) else None
+        if isinstance(bounty, float) and not bounty.is_integer():
+            errors.append(
+                f"rules.npcs[{index}].bounty {bounty!r} under a purse: a purse holds whole coins"
+            )
+    if not market and not hired and not bribed:
+        errors.append(
+            "rules.purse has nothing to spend on: list the types a player may buy in "
+            "rules.purse.market, price a piece placed for nobody (a hire), or set "
+            "rules.purse.bribe"
+        )
+    if "region" in purse and not market:
+        errors.append("rules.purse.region with no market: the region is where a bought piece goes")
+    prices = piece_prices(pieces)
+    if bribed:
+        raw_setup = spec.get("setup")
+        setup: dict[str, Any] = raw_setup if isinstance(raw_setup, dict) else {}
+        held = {
+            placement["piece"] for placement in _listed(setup.get("placements"))
+            if isinstance(placement, dict) and not is_nobodys(placement)
+            and isinstance(placement.get("piece"), str)
+        } | set(market) | hired
+        if not set(prices) & held:
+            errors.append(
+                "rules.purse.bribe with no priced piece a player can hold: give a piece on "
+                "the board (or one a market sells, or one placed for nobody) a price"
+            )
+    by_id = {p["id"]: p for p in pieces if isinstance(p, dict) and isinstance(p.get("id"), str)}
+    for pid in market:
+        piece = by_id.get(pid)
+        if piece is None:
+            continue
+        where = f"rules.purse.market {pid!r}"
+        if piece.get("royal"):
+            errors.append(f"{where} is royal: a royal is never bought")
+        if piece.get("spy") is True:
+            errors.append(f"{where} is a spy: a spy is never gained")
+        if pid in wild or pid == duck_piece(rules):
+            errors.append(f"{where} is nobody's piece (a wild piece or the duck), never a player's")
+        if not piece.get("moves"):
+            errors.append(f"{where} has no moves: a bought piece that never moves is a wall")
+        if pid not in prices:
+            errors.append(f"{where} has no price: give pieces[].price, 1 to {PRICE_MAX}")
+        if not purse_squares(spec, pid, 0) or not purse_squares(spec, pid, 1):
+            errors.append(
+                f"{where} has no square in rules.purse.region it may stand on (walls, the "
+                "hexagon's edge and the type's own region taken out)"
+            )

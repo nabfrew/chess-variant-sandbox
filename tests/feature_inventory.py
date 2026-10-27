@@ -32,17 +32,24 @@ from chess_variant_sandbox.spec.schema import (
     duck_piece,
     has_rests,
     has_speeds,
+    hire_ids,
     keeping_link_holds,
+    majority_ids,
+    neutral_ids,
     npc_pounce,
     npc_respawn,
     npc_split,
     npc_turns_back,
+    piece_bounties,
+    piece_prices,
     promoting_piece_ids,
+    purse_bribes,
+    purse_rule,
     uses_sweep,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 42
+LAST_BUMP = 46
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -662,7 +669,7 @@ _SCHEMA_THIRTY_EFFECTS = ("freeze", "disarm", "shield")
 
 def _schema_thirty_one_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that generation 31 added, by name (Q1007c,
-    `docs/plan-schema-31.md` §3; numbered by order of landing, bumping no version).
+    `docs/archive/plan-schema-31.md` §3; numbered by order of landing, bumping no version).
 
     * ``pieces.sight.command`` -- a line of sight whose pieces their opponent may also move,
       onto empty squares, as that player's move and as their owner would move them.
@@ -687,7 +694,7 @@ def _schema_thirty_one_uses(spec: dict[str, Any]) -> set[str]:
 
 def _schema_thirty_two_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that generation 32 added, by name (Q1007a,
-    `docs/plan-schema-31.md` §2; numbered by order of landing, bumping no version).
+    `docs/archive/plan-schema-31.md` §2; numbered by order of landing, bumping no version).
 
     * ``pieces.moves.lame.range`` -- a lame move with a ``range`` other than 1: the lame
       rider, jump after jump, each blocked on its leg (a lifted refusal; 1 is the single
@@ -710,7 +717,7 @@ def _schema_thirty_two_uses(spec: dict[str, Any]) -> set[str]:
 
 def _schema_thirty_three_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that generation 33 added, by name (I1,
-    `docs/plan-pieces-moves.md` §4; numbered by order of landing, bumping no version).
+    `docs/archive/plan-pieces-moves.md` §4; numbered by order of landing, bumping no version).
 
     * ``pieces.moves.empty`` -- a type with ``moves: []`` that the setup places, or that a
       promotion, strike chain or contact can create, or that is a wild type: a piece that
@@ -746,7 +753,7 @@ def _schema_thirty_three_uses(spec: dict[str, Any]) -> set[str]:
 
 def _schema_thirty_four_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that generation 34 added, by name (T1,
-    `docs/plan-pieces-moves.md` §5; numbered by order of landing, bumping no version).
+    `docs/archive/plan-pieces-moves.md` §5; numbered by order of landing, bumping no version).
 
     * ``pieces.moves.slide.path.circle`` -- a slide whose path turns to the next direction
       round at every step (the rose, the ring);
@@ -769,7 +776,7 @@ def _schema_thirty_four_uses(spec: dict[str, Any]) -> set[str]:
 
 def _schema_thirty_five_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that generation 35 added, by name (A1,
-    `docs/plan-pieces-moves.md` §6; numbered by order of landing, bumping no version).
+    `docs/archive/plan-pieces-moves.md` §6; numbered by order of landing, bumping no version).
 
     * ``rules.strike.by`` -- only the listed pieces' captures strike (under rifle's
       reading, a piece that shoots: the arrow).
@@ -782,7 +789,7 @@ def _schema_thirty_five_uses(spec: dict[str, Any]) -> set[str]:
 
 
 def _schema_thirty_six_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that generation 36 added, by name (N1, `docs/plan-npc.md`
+    """Everything in this spec that generation 36 added, by name (N1, `docs/archive/plan-npc.md`
     §4.1; numbered by order of landing, bumping no version).
 
     * ``rules.npcs.respawn`` -- a taken wild piece comes back to its start a fixed number of
@@ -797,7 +804,7 @@ def _schema_thirty_six_uses(spec: dict[str, Any]) -> set[str]:
 
 
 def _schema_thirty_seven_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that generation 37 added, by name (N2, `docs/plan-npc.md`
+    """Everything in this spec that generation 37 added, by name (N2, `docs/archive/plan-npc.md`
     §4.2; numbered by order of landing, bumping no version).
 
     * ``pieces.sight.wild.freeze``, ``.disarm``, ``.shield`` -- a wild type (an `npcs` entry's
@@ -826,7 +833,7 @@ def _schema_thirty_seven_uses(spec: dict[str, Any]) -> set[str]:
 
 
 def _schema_thirty_eight_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that generation 38 added, by name (N5, `docs/plan-npc.md`
+    """Everything in this spec that generation 38 added, by name (N5, `docs/archive/plan-npc.md`
     §4.7; numbered by order of landing, bumping no version).
 
     * ``rules.npcs.turns_back`` -- a wild piece paces its route as a line and turns round at
@@ -841,7 +848,7 @@ def _schema_thirty_eight_uses(spec: dict[str, Any]) -> set[str]:
 
 
 def _schema_thirty_nine_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that generation 39 added, by name (N3b, `docs/plan-npc.md`
+    """Everything in this spec that generation 39 added, by name (N3b, `docs/archive/plan-npc.md`
     §4.3; numbered by order of landing, bumping no version).
 
     * ``rules.npcs.pounce.prey`` -- a wild piece pounces on a piece of the player who has just
@@ -879,7 +886,7 @@ def uses(version: int, spec: dict[str, Any]) -> set[str]:
 
 
 def _schema_forty_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that generation 40 added, by name (N3c, `docs/plan-npc.md`
+    """Everything in this spec that generation 40 added, by name (N3c, `docs/archive/plan-npc.md`
     §4.4; numbered by order of landing, bumping no version).
 
     * ``rules.npcs.pounce.attackers`` -- a wild piece pounces on a piece of the player who has
@@ -894,7 +901,7 @@ def _schema_forty_uses(spec: dict[str, Any]) -> set[str]:
 
 
 def _schema_forty_one_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that generation 41 added, by name (N3d, `docs/plan-npc.md`
+    """Everything in this spec that generation 41 added, by name (N3d, `docs/archive/plan-npc.md`
     §4.5; numbered by order of landing, bumping no version).
 
     * ``rules.npcs.split`` -- an ``"attackers"`` pouncer grows a copy of itself on each
@@ -909,7 +916,7 @@ def _schema_forty_one_uses(spec: dict[str, Any]) -> set[str]:
 
 
 def _schema_forty_two_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that generation 42 added, by name (N4b, `docs/plan-npc.md`
+    """Everything in this spec that generation 42 added, by name (N4b, `docs/archive/plan-npc.md`
     §4.6; numbered by order of landing, bumping no version).
 
     * ``rules.duck`` -- every turn ends with the mover moving one neutral, uncapturable piece;
@@ -930,6 +937,92 @@ def _schema_forty_two_uses(spec: dict[str, Any]) -> set[str]:
     for piece in pieces if isinstance(pieces, list) else ():
         if isinstance(piece, dict) and piece.get("id") == pid and piece.get("sight"):
             names.add("pieces.sight.duck")
+    return names
+
+
+def _schema_forty_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 43 added, by name (TC3, `docs/plan-turncoat.md`
+    §4; numbered by order of landing, bumping no version).
+
+    * ``setup.placements.player.nobody`` -- pieces nobody owns stand on the opening board;
+    * ``pieces.control.majority`` -- a type nobody owns there is moved by the player with
+      strictly more pieces next to it (a tie: nobody);
+    * ``pieces.control.majority.geometry`` -- *next to* is a named leap's geometry rather than
+      the king's step.
+
+    A ``control`` on a type nobody's placement holds is all the validator admits, so the two
+    control names need the placement; ``"stands"`` is the off value and names nothing.
+    """
+    names: set[str] = set()
+    if neutral_ids(spec):
+        names.add("setup.placements.player.nobody")
+    held = majority_ids(spec)
+    if held:
+        names.add("pieces.control.majority")
+    pieces = spec.get("pieces")
+    for piece in pieces if isinstance(pieces, list) else ():
+        if (
+            isinstance(piece, dict) and piece.get("id") in held
+            and isinstance(piece.get("control"), dict)
+        ):
+            names.add("pieces.control.majority.geometry")
+    return names
+
+
+def _schema_forty_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 44 added, by name (TC4, `docs/plan-turncoat.md`
+    §5.1; numbered by order of landing, bumping no version).
+
+    * ``pieces.bounty`` -- taking a piece of some type pays its bounty into the taker's points
+      (and lifts the old refusal of ``scoring.count: "points"`` without wild pieces).
+
+    ``0`` is the off value and names nothing. The purse TC4 builds has no key yet (TC5's
+    ``rules.purse``), so it names nothing either.
+    """
+    return {"pieces.bounty"} if piece_bounties(spec) else set()
+
+
+def _schema_forty_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 45 added, by name (TC5, `docs/plan-turncoat.md`
+    §5.4; numbered by order of landing, bumping no version).
+
+    * ``rules.purse`` -- coins each player holds, filled by bounties, and a market to spend
+      them in (lifting TC4's refusal of a type's bounty without a points count);
+    * ``pieces.price`` -- what a market type costs (a purse needs one on each, so the two
+      come together until TC6 prices pieces on the board);
+    * ``rules.purse.region`` -- where a bought piece is placed, named rather than the first
+      rank.
+
+    ``0`` is a price's off value and names nothing.
+    """
+    names: set[str] = set()
+    purse = purse_rule(spec)
+    if purse is not None:
+        names.add("rules.purse")
+        if "region" in purse:
+            names.add("rules.purse.region")
+    if piece_prices(spec):
+        names.add("pieces.price")
+    return names
+
+
+def _schema_forty_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 46 added, by name (TC6, `docs/plan-turncoat.md`
+    §5.5; numbered by order of landing, bumping no version).
+
+    * ``pieces.price.hire`` -- a price on a type placed for nobody, under a purse: a player
+      next to one may hire it (lifting TC5's refusal of a price no market charges, and of a
+      purse with no market);
+    * ``rules.purse.bribe`` -- an enemy piece of a priced type next to one of yours may be
+      bought at twice its price.
+
+    ``bribe: false`` is the off value and names nothing.
+    """
+    names: set[str] = set()
+    if hire_ids(spec):
+        names.add("pieces.price.hire")
+    if purse_bribes(spec):
+        names.add("rules.purse.bribe")
     return names
 
 
@@ -968,4 +1061,8 @@ _COLLECTORS = {
     40: _schema_forty_uses,
     41: _schema_forty_one_uses,
     42: _schema_forty_two_uses,
+    43: _schema_forty_three_uses,
+    44: _schema_forty_four_uses,
+    45: _schema_forty_five_uses,
+    46: _schema_forty_six_uses,
 }

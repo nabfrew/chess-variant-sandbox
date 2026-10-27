@@ -193,24 +193,24 @@ RETIRED_PREVIEWS = {
     "gardner-in-rounds-with-swift-knights": "bf230a962d10",
     "watering-hole-by-speed": "423a29997264",
     "gardner-with-spies-resting": "8ce37482d0de",
-    # Q1007e (2026-10-24, `docs/plan-schema-31.md` §6.1): Q999b's colour-bound game, a library
+    # Q1007e (2026-10-24, `docs/archive/plan-schema-31.md` §6.1): Q999b's colour-bound game, a library
     # game since Q1005, replaced under its name by R1 (riders as rook and queen) by the user's
     # rule; the showcase and lame-rider tests still read it.
     "opposite-colours": "690631b0e4eb",
-    # Q1007f (2026-10-24, `docs/plan-schema-31.md` §6.3): the command showcases K1 and K2, built,
+    # Q1007f (2026-10-24, `docs/archive/plan-schema-31.md` §6.3): the command showcases K1 and K2, built,
     # measured and retired before they ever joined: each missed V2 (the effect is offered too
     # rarely), and the call registered before their first measured game retires a miss. Never
     # previews; kept here because the V1 mechanism tests read them
     # (`tests/test_showcases_q1007.py`).
     "chess-with-commanding-knights": "adc1a91b0a83",
     "chess-with-a-spellbinding-king": "6a8120390853",
-    # I2 (2026-10-25, `docs/plan-pieces-moves.md` §4.7): the showcase of pieces that never move,
+    # I2 (2026-10-25, `docs/archive/plan-pieces-moves.md` §4.7): the showcase of pieces that never move,
     # chess with an immobile royal flag, built, measured and retired before it ever joined: the
     # index missed V3's 0.800 (0.790), and the call registered before its first measured game
     # retires a miss. Kept here because its V1 mechanism tests read it
     # (`tests/test_showcase_capture_the_flag.py`).
     "capture-the-flag": "407af145c5d6",
-    # N8 (2026-10-26, `docs/plan-npc.md` §6.3): the showcase of a wild piece's sight (freeze,
+    # N8 (2026-10-26, `docs/archive/plan-npc.md` §6.3): the showcase of a wild piece's sight (freeze,
     # disarm, shield) and of the duck that walks by its moves from a start square, chess on 8 by
     # 9 with a herd of six effect-carrying wild pieces and a walking duck, built, measured and
     # retired before it ever joined: the index missed V3's 0.840 (0.816), and the call

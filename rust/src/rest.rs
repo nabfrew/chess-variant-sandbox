@@ -174,7 +174,7 @@ impl<'t> Game<'t> {
         let entries = &self.resting[player][..slots];
         let lifted = free.iter().any(|&m| {
             let kind = move_kind(m);
-            kind != MOVE_DROP
+            !enters_play(kind)
                 && kind != MOVE_FOLD
                 && entries.iter().any(|e| e.live() && e.square as usize == move_from(m))
         });
@@ -213,7 +213,7 @@ fn drop_resting(out: &mut Vec<u32>, base: usize, resting_from: impl Fn(usize) ->
     for index in base..before {
         let m = out[index];
         let kind = move_kind(m);
-        if kind == MOVE_DROP || kind == MOVE_FOLD || !resting_from(move_from(m)) {
+        if enters_play(kind) || kind == MOVE_FOLD || !resting_from(move_from(m)) {
             out[write] = m;
             write += 1;
         }

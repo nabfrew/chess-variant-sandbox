@@ -229,7 +229,7 @@
   "provenance": {
     "added": "2026-10-26",
     "origin": "human",
-    "source": "LPD, docs/plan-landing.md §5: the one-change fix for sweeping bishop chess, written for the landing page's fourth story",
+    "source": "LPD, docs/archive/plan-landing.md §5: the one-change fix for sweeping bishop chess, written for the landing page's fourth story",
     "history": "LPD, 2026-10-26: one change to sweeping bishop chess (42bd7d06828d), the bishop's sweep given range 3. Chosen over range 2 (the sweep almost never passed over a piece in 1,600-node self-play), range 4 (still mate on the first move) and a bishop that may not capture pawns (two changes of meaning). Pre-registered in docs/reference/landing-fourth-pair.md before any measured game. Perft(1) is 26: chess's 20 plus three sweeps per bishop."
   }
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 31,
   "name": "path ring",
-  "description": "T1's test spec (docs/plan-pieces-moves.md §5): chess with a queen whose lines are circles: king steps turning an eighth at every step.",
+  "description": "T1's test spec (docs/archive/plan-pieces-moves.md §5): chess with a queen whose lines are circles: king steps turning an eighth at every step.",
   "board": {
     "width": 8,
     "height": 8

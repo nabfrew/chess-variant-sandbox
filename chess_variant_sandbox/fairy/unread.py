@@ -179,7 +179,7 @@ def reasons(config: str, unread: Iterable[str]) -> list[str]:
         if entry is not None and entry[0](written):
             continue
         if key == "wallingRule" and written.get(key) == "duck":
-            # Generation 42 (N4c, `docs/plan-npc.md` §4.6): no `UNREAD` entry, on purpose. The
+            # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): no `UNREAD` entry, on purpose. The
             # 2021 build has no duck at all, so a duck game has no opponent there; it is
             # named, since the moves are verified against `pyffish` instead.
             said.append(

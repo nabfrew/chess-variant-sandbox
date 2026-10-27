@@ -89,8 +89,8 @@
   "provenance": {
     "added": "2026-10-24",
     "origin": "designed",
-    "source": "docs/plan-schema-31.md, Q1007e: R3, the showcase for schema 31's riders written as a slide over a jump (section 6.2)",
-    "history": "R3 of docs/plan-schema-31.md section 6.2, pre-registered 2026-10-23: chess (4c1922ffae26) with the knight's move written as a slide over [1, 2] by dihedral8, the nightrider, one change on the calibration baseline so a visitor sees what a ridden leap is. Built by Q1007e (2026-10-24); the piece renamed nightrider and valued 4.5 (the registered file kept the knight's name and value 3), a design choice made before any measured game.",
+    "source": "docs/archive/plan-schema-31.md, Q1007e: R3, the showcase for schema 31's riders written as a slide over a jump (section 6.2)",
+    "history": "R3 of docs/archive/plan-schema-31.md section 6.2, pre-registered 2026-10-23: chess (4c1922ffae26) with the knight's move written as a slide over [1, 2] by dihedral8, the nightrider, one change on the calibration baseline so a visitor sees what a ridden leap is. Built by Q1007e (2026-10-24); the piece renamed nightrider and valued 4.5 (the registered file kept the knight's name and value 3), a design choice made before any measured game.",
     "parents": ["4c1922ffae26"]
   }
 }

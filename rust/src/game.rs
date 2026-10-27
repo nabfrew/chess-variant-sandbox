@@ -32,18 +32,22 @@ pub use rest::{rest_lists_from, RestLists, NO_REST};
 // Schema 30 (Q999a): lines of sight with passive effects, one query for movegen and attack.
 #[path = "sight.rs"]
 mod sight;
-// Generation 36 (N1, `docs/plan-npc.md` §4.1): wild pieces that come back, step 3 of the phase.
+// TC1 (`docs/plan-turncoat.md` §3.3): the one source of foreign moves, a piece the mover moves
+// but does not own (today a commanded one).
+#[path = "foreign.rs"]
+mod foreign;
+// Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): wild pieces that come back, step 3 of the phase.
 #[path = "respawn.rs"]
 mod respawn;
 pub use respawn::respawn_clocks_from;
-// Generation 38 (N5, `docs/plan-npc.md` §4.7): wild pieces that turn back, step 2 on a line.
+// Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): wild pieces that turn back, step 2 on a line.
 #[path = "turning.rs"]
 mod turning;
 pub use turning::heading_from;
-// Generation 39 (N3b, `docs/plan-npc.md` §4.3): wild pieces that pounce, step 1 of the phase.
+// Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): wild pieces that pounce, step 1 of the phase.
 #[path = "pounce.rs"]
 mod pounce;
-// Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, the second half of every turn.
+// Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck, the second half of every turn.
 #[path = "duck.rs"]
 mod duck;
 
@@ -59,7 +63,7 @@ pub const PHASE_TURN: u8 = 2;
 /// the victim's and the victim's byte. `unmake` puts it back as it puts back a step.
 pub const PHASE_POUNCE: u8 = 3;
 /// A splitting pouncer growing a copy of itself on an attacker's square (generation 41, N3d,
-/// `docs/plan-npc.md` §4.5): `(parent, square, eaten)`, the parent's square, the copy's and the
+/// `docs/archive/plan-npc.md` §4.5): `(parent, square, eaten)`, the parent's square, the copy's and the
 /// attacker's byte. `unmake` puts back only the eaten byte, as for a return.
 pub const PHASE_COPY: u8 = 4;
 
@@ -463,6 +467,14 @@ pub struct Game<'t> {
     /// `heading_back` before each move still on the undo stack, oldest first: written by
     /// `make` only under the rule.
     heading_log: Vec<SquareSet>,
+    /// TC4 (`docs/plan-turncoat.md` §5.2): each player's coins, 0 to `PURSE_MAX`. `[0, 0]`
+    /// in every game without a purse. In the key (`PurseTables::key`).
+    pub purse: [u16; 2],
+    /// `purse` before each move still on the undo stack, oldest first: written by `make`
+    /// only under the rule, `rest_log`'s shape, so `Undo` does not grow. A log and not a
+    /// read-back, because the cap makes a payment lossy: 98 and a bounty of 3 is 99, and
+    /// 99 less 3 is not 98.
+    purse_log: Vec<[u16; 2]>,
     /// Guard against infinite recursion in drop-mate checking.
     checking_drop_mate: bool,
     /// The key the move in progress is building. Scratch, not state: seeded from `key`
@@ -539,6 +551,8 @@ pub struct Snapshot {
     pub respawn: Vec<u8>,
     /// Generation 38 (N5): the squares of the wild pieces walking their line back.
     pub heading_back: SquareSet,
+    /// TC4: each player's coins.
+    pub purse: [u16; 2],
 }
 
 /// Schema 26: who holds the initiative at the start, or -1 where the tie is not it.
@@ -603,6 +617,8 @@ impl<'t> Game<'t> {
             respawn_log: Vec::new(),
             heading_back: SquareSet::EMPTY,
             heading_log: Vec::new(),
+            purse: t.purse.as_deref().map_or([0, 0], |purse| [purse.start, purse.start]),
+            purse_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -667,6 +683,8 @@ impl<'t> Game<'t> {
             respawn_log: Vec::new(),
             heading_back: snapshot.heading_back,
             heading_log: Vec::new(),
+            purse: snapshot.purse,
+            purse_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -709,6 +727,7 @@ impl<'t> Game<'t> {
             resting: self.resting,
             respawn: self.respawn.clone(),
             heading_back: self.heading_back,
+            purse: self.purse,
         }
     }
 
@@ -758,6 +777,8 @@ impl<'t> Game<'t> {
         self.respawn_log.clear();
         self.heading_back = snapshot.heading_back;
         self.heading_log.clear();
+        self.purse = snapshot.purse;
+        self.purse_log.clear();
         self.round_undo.clear();
         self.round_log.clear();
         // The check bits describe the position that just went away. The royal hint is
@@ -859,6 +880,10 @@ impl<'t> Game<'t> {
         digest ^= self.respawn_key();
         // Generation 38: the headings; zero in a game without the rule.
         digest ^= self.heading_key();
+        // TC4: the purse; zero in a game without one.
+        if let Some(purse) = t.purse.as_deref() {
+            digest ^= purse.key(0, self.purse[0]) ^ purse.key(1, self.purse[1]);
+        }
         digest
     }
 
@@ -1271,7 +1296,7 @@ impl<'t> Game<'t> {
     #[inline(always)]
     fn note_portal(&self, portals: &PortalTables, at: &mut [u16; 8], square: usize) -> usize {
         let value = self.board[square];
-        if value == 0 || self.t.owner_of(value) != PORTAL_OWNER {
+        if !self.t.is_portal_end(value) {
             return 0;
         }
         let end = self.t.type_of(value) - portals.first_type;
@@ -1468,7 +1493,7 @@ impl<'t> Game<'t> {
     /// The definition `in_check` memoises, and what every `debug_assert` above compares
     /// a remembered answer against.
     fn compute_in_check(&self, player: usize) -> bool {
-        // Generation 39 (N3b, `docs/plan-npc.md` §4.3): the side to move in a pounce game is in
+        // Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): the side to move in a pounce game is in
         // check by the pass test.
         if self.t.pounce.is_some() && player == self.side {
             return self.in_check_by_pass(player);
@@ -1758,12 +1783,18 @@ impl<'t> Game<'t> {
             StrikePosition::Stay => origin,
             _ => target,
         };
-        // A side switch is the attacker entering play for the other side, as whatever it
-        // now is (a pawn that promoted on the capture switches as the promoted piece).
+        // A side switch is the attacker changing sides as whatever it now is (a pawn that
+        // promoted on the capture switches as the promoted piece, at that type's initial
+        // facing). TC1: the one change of allegiance on the board is `rehome_value`'s; TC2
+        // (`docs/plan-turncoat.md` §6): it keeps the heading it has, so `attacker` is the
+        // mover's byte as it stands, turned by nothing.
         let attacker = if flips {
-            let as_type =
-                if mover_becomes >= 0 { mover_becomes as usize } else { self.t.type_of(attacker) };
-            self.t.arriving_value(1 - mover_owner, as_type, landing)
+            let now = if mover_becomes >= 0 {
+                self.t.entering_value(mover_owner, mover_becomes as usize)
+            } else {
+                attacker
+            };
+            self.t.rehome_value(now, 1 - mover_owner, landing)
         } else if mover_becomes >= 0 {
             self.t.arriving_value(mover_owner, mover_becomes as usize, landing)
         } else {
@@ -1894,7 +1925,7 @@ impl<'t> Game<'t> {
     /// has already gone this phase is `npc_step_order`'s business, not this function's --
     /// it reads the board as the earlier steps left it.
     ///
-    /// Generation 37 (N2, `docs/plan-npc.md` §4.2): a fourth, **a wild piece never takes a
+    /// Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): a fourth, **a wild piece never takes a
     /// shielded piece**. `shields` is the phase's snapshot of the shielded squares
     /// (`wild_shields`), read once at the phase's start, so a step earlier in the phase that
     /// moves a shield (a wild piece carrying one, or one eating the piece that gave it) bares
@@ -2253,8 +2284,9 @@ impl<'t> Game<'t> {
         let target = move_to(m);
         let kind = move_kind(m);
         // Schema 22: a fold's own move touches no square of the board byte. Generation 42:
-        // the duck's half is its own function too. One comparison on the hot path for both.
-        if kind >= MOVE_FOLD {
+        // the duck's half is its own function too. One comparison on the hot path for both
+        // (TC5: a range, since a buy, kind 10, is played here as a drop is).
+        if (MOVE_FOLD..=MOVE_DUCK).contains(&kind) {
             if kind == MOVE_FOLD {
                 self.make_fold(m);
             } else {
@@ -2277,8 +2309,10 @@ impl<'t> Game<'t> {
         // flip is undone further down when the same player moves again.
         self.working_key = self.key ^ t.zobrist_side;
 
-        // Handle MOVE_DROP separately -- it has no origin piece on the board.
-        let (moving, piece_type) = if kind == MOVE_DROP {
+        // Handle MOVE_DROP separately -- it has no origin piece on the board. TC5: nor has a
+        // buy (`MOVE_BUY`), which places what arrives the same way and spends coins, not a
+        // hand slot (the purse is written below, beside the bounty, under its log).
+        let (moving, piece_type) = if enters_play(kind) {
             let pt = move_promotion(m) as usize;
             // What stands on the square afterwards is the table's business (schema 9's
             // `promote_on_entry`): a pawn dropped on the far rank is a queen there, or a
@@ -2288,30 +2322,37 @@ impl<'t> Game<'t> {
             // the dropped type.
             let value = t.arriving_value(player, pt, target);
             self.write(target, value);
-            // The slot the drop spends: `pt` itself, or under schema 18's `either_face`
-            // (Q785) the base whose other face `pt` is. `Undo.hand` records the slot, so
-            // `unmake` gives back what was spent.
-            let slot = t.drops.as_ref().map_or(pt, |rule| rule.slot_of(pt));
-            // Remove from hand -- unless the slot is a supply rather than a count
-            // (schema 10, Q51). An unlimited slot is never spent, so it records no undo
-            // delta either, which is the whole of what `unmake` needs to know about it.
-            if !t.drops.as_ref().is_some_and(|rule| rule.is_unlimited(slot)) {
-                self.hands[player][slot] -= 1;
-                hand = Some((player as u8, slot as u8, -1));
+            if kind == MOVE_DROP {
+                // The slot the drop spends: `pt` itself, or under schema 18's `either_face`
+                // (Q785) the base whose other face `pt` is. `Undo.hand` records the slot, so
+                // `unmake` gives back what was spent.
+                let slot = t.drops.as_ref().map_or(pt, |rule| rule.slot_of(pt));
+                // Remove from hand -- unless the slot is a supply rather than a count
+                // (schema 10, Q51). An unlimited slot is never spent, so it records no undo
+                // delta either, which is the whole of what `unmake` needs to know about it.
+                if !t.drops.as_ref().is_some_and(|rule| rule.is_unlimited(slot)) {
+                    self.hands[player][slot] -= 1;
+                    hand = Some((player as u8, slot as u8, -1));
+                }
             }
             (value, pt)
         } else {
             let mv = self.board[origin];
             (mv, t.type_of(mv))
         };
-        let target_before = if kind == MOVE_DROP { 0 } else { self.board[target] };
+        let target_before = if enters_play(kind) { 0 } else { self.board[target] };
         // Two kinds end on an occupied square without taking what stands there, and
         // saying so here is what keeps the hand, the explosion, the material clock and
         // the strike rule out of both. A rotation's target *is* its origin, so the square
         // holds the piece that is turning; a file-based castling can land the king on its
         // own rook, which the castling branch below moves rather than removes.
-        let mut captured =
-            if kind == MOVE_ROTATE || kind == MOVE_CASTLE { 0 } else { target_before };
+        // TC6: a hire's or a bribe's target is the piece bought where it stands, so it takes
+        // nothing either.
+        let mut captured = if kind == MOVE_ROTATE || kind == MOVE_CASTLE || kind == MOVE_HIRE {
+            0
+        } else {
+            target_before
+        };
         let mut captured_square = target;
         let mut rook = None;
         let mut struck: Option<(usize, u8)> = None;
@@ -2321,8 +2362,18 @@ impl<'t> Game<'t> {
         // leaves the attacker where it was, so its capture takes nothing off a goal.
         let mut stayed = false;
         let mut cleared: Vec<(usize, u8)> = Vec::new();
+        // TC6: what a hire or a bribe spends, read off whose the piece was before it changes
+        // sides (written into the purse below, beside a buy's price and the bounty).
+        let mut spent: u16 = 0;
 
-        if kind == MOVE_ROTATE {
+        if kind == MOVE_HIRE {
+            // TC6 (`docs/plan-turncoat.md` §5.5): the whole of the move. The piece stays where
+            // it stands and becomes the mover's through the one change of side
+            // (`rehome_value`, which keeps a facing piece's heading, §6); `write` keys it.
+            let purse = t.purse.as_deref().expect("a hire without a purse");
+            spent = purse.cost(piece_type, t.owner_of(moving), player);
+            self.write(origin, t.rehome_value(moving, player, origin));
+        } else if kind == MOVE_ROTATE {
             // The whole of the move. `write` puts the change into the key as it happens,
             // and a piece value that carries a facing has its own Zobrist row -- so two
             // positions that differ only in which way a piece points are different
@@ -2349,7 +2400,7 @@ impl<'t> Game<'t> {
             rook = Some((rook_from, rook_to, rook_value));
             self.unmoved.clear(rook_from);
             self.unmoved.clear(rook_to);
-        } else if kind != MOVE_DROP {
+        } else if !enters_play(kind) {
             self.write(origin, 0);
             self.write(target, moving);
 
@@ -2450,16 +2501,17 @@ impl<'t> Game<'t> {
 
         self.ep_target = NO_SQUARE;
         self.ep_victim = NO_SQUARE;
-        if kind != MOVE_DROP
+        if !enters_play(kind)
             && t.ep_type >= 0
             && piece_type == t.ep_type as usize
             && captured == 0
             && kind != MOVE_PROMOTION
             && kind != MOVE_PORTAL
+            && kind != MOVE_HIRE
             // Schema 22: a move that went through a fold opens no window (rule 9). Bits
             // 25-31 are zero on every other move that gets here: a strike's landing index
             // rides only on a capture. Q1007c: a commanded move carries bit 30
-            // (`MOVE_COMMANDED`), so it opens none either (`docs/plan-schema-31.md` §3.2).
+            // (`MOVE_FOREIGN`), so it opens none either (`docs/archive/plan-schema-31.md` §3.2).
             && move_landing(m) == 0
         {
             // The square stepped over is a table fact, not arithmetic on the delta:
@@ -2473,9 +2525,10 @@ impl<'t> Game<'t> {
         }
 
         // The tally (schema 9), before the phase and after `captured` is known: a player
-        // whose move takes a wild piece is paid the bounty of the route it walked. A
-        // phase step never awards anything -- a boar eating a boar is refused by the
-        // rule, and a boar eating a player's piece is nobody's gain.
+        // whose move takes a wild piece is paid the bounty of the route it walked, and
+        // (TC4) one whose move takes any piece but their own is paid its type's bounty
+        // (`Tables::bounty_paid`). A phase step never awards anything -- a boar eating a
+        // boar is refused by the rule, and a boar eating a player's piece is nobody's gain.
         //
         // **Not logged.** `unmake` reads the award back off `captured`, `captured_square`
         // and the side that moved, which `Undo` already carries -- one statement of what
@@ -2483,8 +2536,36 @@ impl<'t> Game<'t> {
         // the first. Measured, not tidied: an `Option<(usize, f64)>` here cost 24 bytes
         // on a struct `make` writes at every node of every search, and chess -- which has
         // no wild piece and never reads it -- paid for it in perft.
-        if t.has_npcs && captured != 0 && t.owner_of(captured) == WILD {
-            self.points[player] += t.wild_bounty(captured, captured_square);
+        //
+        // TC4: under a purse the same payment also fills the payee's purse, capped at
+        // `PURSE_MAX`. That one *is* logged (`purse_log`, only under the rule), because
+        // the cap loses what passes it and a read-back could not find it again.
+        let paid = if t.pays && captured != 0 {
+            t.bounty_paid(captured, captured_square, player)
+        } else {
+            0.0
+        };
+        if paid != 0.0 {
+            self.points[player] += paid;
+        }
+        if let Some(purse) = t.purse.as_deref() {
+            self.purse_log.push(self.purse);
+            let before = self.purse[player];
+            let mut after = before;
+            // TC5: a buy spends its type's price; movegen offered it only when the purse held
+            // it, and a buy takes nothing, so nothing is paid on the same move.
+            if kind == MOVE_BUY {
+                after -= purse.price[piece_type];
+            }
+            // TC6: a hire or a bribe spends what `PurseTables::cost` said, read above.
+            after -= spent;
+            if paid > 0.0 {
+                after = (after + paid as u16).min(PURSE_MAX);
+            }
+            if after != before {
+                self.working_key ^= purse.key(player, before) ^ purse.key(player, after);
+                self.purse[player] = after;
+            }
         }
 
         // The phase (schema 9): every wild piece walks, after the player's move is
@@ -2555,7 +2636,8 @@ impl<'t> Game<'t> {
         // takes it whatever was there; a permanent one only claims an unclaimed square,
         // which is what makes the colouring monotone and the Zobrist term unnecessary.
         let mut coloured = None;
-        if let Some(ref rule) = t.territory {
+        // TC6: a hire or a bribe moves no piece onto anything, so it claims no square.
+        if let Some(rule) = t.territory.as_ref().filter(|_| kind != MOVE_HIRE) {
             let want = (player + 1) as u8;
             let before = self.colour[target];
             if before != want && (rule.repaints || before == 0) {
@@ -2631,9 +2713,11 @@ impl<'t> Game<'t> {
         // one flag, and never writes the field or its log.
         if t.reach_leaves {
             self.goal_left_log.push(self.goal_left_by);
-            let left = kind != MOVE_DROP
+            // A drop or a buy (TC5) leaves nothing: neither has a piece on its origin.
+            // TC6: nor does a hire or a bribe, which moves no piece.
+            let set_out = !(stayed || enters_play(kind) || kind == MOVE_HIRE);
+            let left = set_out
                 && kind != MOVE_ROTATE
-                && !stayed
                 && !(kind == MOVE_CASTLE && target == origin)
                 && t.reach.as_ref().is_some_and(|rule| {
                     rule.squares[player][origin]
@@ -2667,7 +2751,9 @@ impl<'t> Game<'t> {
         if t.rest.is_some() {
             self.rest_log.push(self.resting);
             let end = if kind == MOVE_ROTATE || stayed { origin } else { target };
-            key ^= self.rest_after_turn(player, Some(end));
+            // TC6: a hire or a bribe moves no piece, so nothing enters a rest; a bribed piece's
+            // own rest ends because its square no longer holds the code that rested there.
+            key ^= self.rest_after_turn(player, (kind != MOVE_HIRE).then_some(end));
         }
 
         self.undo.push(Undo {
@@ -2709,7 +2795,12 @@ impl<'t> Game<'t> {
         // changes type at the far end has spent itself, and that is progress whether or
         // not the piece could have walked back. It is a fact about the move rather than
         // about the type's rule sheet, which is the whole difference.
+        // TC5: a buy adds material to the board (`docs/plan-turncoat.md` §5.4), so it is
+        // progress as a capture is; `material_changed` asks only what left the board.
+        // TC6: so does a hire or a bribe, which moves material from one army to another.
         let progress = material_changed
+            || kind == MOVE_BUY
+            || kind == MOVE_HIRE
             || t.is_one_way(piece_type)
             || promoted
             || (coloured.is_some() && !t.territory.as_ref().is_some_and(|r| r.repaints));
@@ -2744,7 +2835,7 @@ impl<'t> Game<'t> {
     pub fn unmake(&mut self) {
         let undo = self.undo.pop().expect("unmake without a matching make");
         self.history.pop();
-        if undo.kind >= MOVE_FOLD {
+        if (MOVE_FOLD..=MOVE_DUCK).contains(&undo.kind) {
             if undo.kind == MOVE_FOLD {
                 self.unmake_fold(&undo);
             } else {
@@ -2796,7 +2887,7 @@ impl<'t> Game<'t> {
             }
             self.put(undo.target, undo.target_before);
             self.put(undo.captured_square, undo.captured);
-            if undo.kind != MOVE_DROP {
+            if !enters_play(undo.kind) {
                 self.put(undo.origin, undo.moving);
             }
         }
@@ -2832,8 +2923,15 @@ impl<'t> Game<'t> {
         // again by here -- the flip above is undone from `turns_taken`, which is the only
         // reliable witness -- and what the move was paid is the same question `make`
         // asked of the same two fields.
-        if self.t.has_npcs && undo.captured != 0 && self.t.owner_of(undo.captured) == WILD {
-            self.points[self.side] -= self.t.wild_bounty(undo.captured, undo.captured_square);
+        if self.t.pays && undo.captured != 0 {
+            let paid = self.t.bounty_paid(undo.captured, undo.captured_square, self.side);
+            if paid != 0.0 {
+                self.points[self.side] -= paid;
+            }
+        }
+        // TC4: the purse, from its log (the key came back with `undo.key`).
+        if self.t.purse.is_some() {
+            self.purse = self.purse_log.pop().expect("purse log shorter than the undo stack");
         }
         if self.t.reach_leaves {
             self.goal_left_by =
@@ -3075,12 +3173,15 @@ impl<'t> Game<'t> {
         let base = out.len();
         self.generate_pseudo_legal_as::<false>(out);
         if let Some(sight) = self.t.sight.as_deref() {
-            // Q1007c (`docs/plan-schema-31.md` §3.7): the opponent's commanded pieces are a
-            // second source of moves, filtered with the rest.
-            if sight.has_command {
-                self.push_commanded(sight, out);
+            // Q1007c (`docs/archive/plan-schema-31.md` §3.7): the opponent's commanded pieces are a
+            // second source of moves, filtered with the rest; TC3's held neutrals a third.
+            if sight.has_command || self.t.majority.is_some() {
+                self.push_foreign(out);
             }
             self.sight_filter(sight, out, base);
+        } else if self.t.majority.is_some() {
+            // TC3 (`docs/plan-turncoat.md` §4.3): the neutrals the side to move holds.
+            self.push_foreign(out);
         }
     }
 
@@ -3417,6 +3518,15 @@ impl<'t> Game<'t> {
         if t.drops.is_some() {
             self.generate_drops(out);
         }
+        // TC5 (`docs/plan-turncoat.md` §5.4): buys from the market. One null test for every
+        // game without a purse.
+        // TC6 (§5.5): hires and bribes, behind the same test.
+        if let Some(purse) = t.purse.as_deref() {
+            self.generate_buys(out);
+            if purse.contested() {
+                self.generate_hires(out, purse);
+            }
+        }
     }
 }
 
@@ -3460,7 +3570,7 @@ impl<'t> Game<'t> {
         let mut n_entered = 0;
         let mut enter = |square: usize, bits: u16| {
             let value = self.board[square];
-            if bits == 0 || value == 0 || t.owner_of(value) != PORTAL_OWNER {
+            if bits == 0 || !t.is_portal_end(value) {
                 return;
             }
             if portals.admits[t.type_of(value)][player] & (1 << piece_type) == 0 {
@@ -3777,7 +3887,7 @@ impl<'t> Game<'t> {
         ends.sort_unstable();
         let lands = |target: usize| {
             let value = self.board[target];
-            !self.fold_on(target) && (value == 0 || t.owner_of(value) != PORTAL_OWNER)
+            !self.fold_on(target) && !t.is_portal_end(value)
         };
         for &(square, end) in ends.iter() {
             let origin = square as usize;
@@ -3907,6 +4017,61 @@ impl<'t> Game<'t> {
                     // the square afterwards; `make` spends `slot_of(face)` from the hand.
                     out.push(encode_move(square, square, MOVE_DROP, face as u32));
                 }
+            }
+        }
+    }
+
+    /// TC5 (`docs/plan-turncoat.md` §5.4): every buy the side to move can afford, onto each
+    /// empty square of its region a market type may stand on, in market order then square
+    /// order. Supply is unlimited; the coins are the only scarcity. Under `drops.placement`
+    /// a held hand returns before this is reached, so a drop is then the only move.
+    #[cold]
+    #[inline(never)]
+    fn generate_buys(&self, out: &mut Vec<u32>) {
+        let t = self.t;
+        let purse = t.purse.as_deref().expect("generate_buys without a purse");
+        let player = self.side;
+        let coins = self.purse[player];
+        for (entry, &(piece_type, price)) in purse.market.iter().enumerate() {
+            if price > coins {
+                continue;
+            }
+            for &square in purse.squares(player, entry) {
+                let square = square as usize;
+                if self.board[square] == 0 {
+                    out.push(encode_move(square, square, MOVE_BUY, u32::from(piece_type)));
+                }
+            }
+        }
+    }
+
+    /// TC6 (`docs/plan-turncoat.md` §5.5): every hire and bribe the side to move can afford:
+    /// a nobody's piece of a type for hire (`PurseTables::hire`), or under `rules.purse.bribe`
+    /// an opponent's piece of a priced type (`PurseTables::bribe`, twice the price), standing
+    /// next to (`PurseTables::near`) one of the mover's pieces. In square order. The board is
+    /// read rather than the occupancy sets, since a filter may ask for these moves.
+    #[cold]
+    #[inline(never)]
+    fn generate_hires(&self, out: &mut Vec<u32>, purse: &PurseTables) {
+        let t = self.t;
+        let player = self.side;
+        let coins = self.purse[player];
+        for square in 0..t.n_squares {
+            let value = self.board[square];
+            if value == 0 {
+                continue;
+            }
+            let piece_type = t.type_of(value);
+            let cost = purse.cost(piece_type, t.owner_of(value), player);
+            if cost == 0 || cost > coins {
+                continue;
+            }
+            let beside = purse.near(t.n_squares, piece_type, square).iter().any(|&near| {
+                let held = self.board[near as usize];
+                held != 0 && t.owner_of(held) == player
+            });
+            if beside {
+                out.push(encode_move(square, square, MOVE_HIRE, 0));
             }
         }
     }
@@ -4137,13 +4302,21 @@ impl<'t> Game<'t> {
         if kind == MOVE_FOLD {
             return None;
         }
-        if kind == MOVE_DROP {
+        if enters_play(kind) {
             saved.push((target, self.board[target]));
             // What arrives, not what was dropped (schema 9): a struck or dropped piece
             // that promotes on arrival can give check, and a filter that did not know
             // would let a royal be captured -- the `strike_writes`-in-the-filter argument
             // applied to the new table.
             self.board[target] = t.arriving_value(player, move_promotion(m) as usize, target);
+            return None;
+        }
+        if kind == MOVE_HIRE {
+            // TC6: the piece changes sides where it stands, and so what it attacks; nothing
+            // moves.
+            let bought = self.board[origin];
+            saved.push((origin, bought));
+            self.board[origin] = t.rehome_value(bought, player, origin);
             return None;
         }
         if kind == MOVE_ROTATE {
@@ -4258,7 +4431,7 @@ impl<'t> Game<'t> {
         // `play_for_filter` empties the origin. Behind `explosion.is_some()` so a ruleset
         // without the rule pays nothing, and `make`'s reading exactly -- the mover's type
         // as it stood before the move.
-        let capturer = if t.explosion.is_some() && kind != MOVE_DROP {
+        let capturer = if t.explosion.is_some() && !enters_play(kind) {
             t.type_of(self.board[origin])
         } else {
             0
@@ -4501,13 +4674,18 @@ impl<'t> Game<'t> {
                             if sight.bears_on_check {
                                 hop_lines = hop_lines.union(&self.effect_lines(sight, player, royal));
                             }
-                            // Q1007c (`docs/plan-schema-31.md` §3.4): a commanded move starts on
+                            // Q1007c (`docs/archive/plan-schema-31.md` §3.4): a commanded move starts on
                             // one of the opponent's squares, so every move from or onto one is
                             // asked, and every commanded move is verified. Read here, outside the
                             // loop, so a game without a command pays nothing per move.
                             if sight.has_command {
                                 hop_lines = hop_lines.union(&self.occupied()[1 - player]);
                             }
+                        }
+                        // TC3: a held neutral starts on nobody's square, which may be the sole
+                        // blocker of a line onto the royal, so every move from one is asked.
+                        if t.majority.is_some() {
+                            hop_lines = hop_lines.union(&self.occupied()[WILD]);
                         }
                         let hop_relevant = !hop_lines.is_empty();
 
@@ -4519,7 +4697,7 @@ impl<'t> Game<'t> {
                             let suspect = origin == royal
                                 || pinned.get(origin)
                                 || move_kind(m) == MOVE_EN_PASSANT
-                                || move_kind(m) == MOVE_DROP
+                                || enters_play(move_kind(m))
                                 || (hop_relevant && (hop_lines.get(origin) || hop_lines.get(move_to(m))))
                                 || (has_strike && self.board[move_to(m)] != 0);
                             if suspect && self.leaves_royal_attacked(m) {
@@ -4630,7 +4808,7 @@ impl<'t> Game<'t> {
                     // rank as stranding a pawn, when what stands there is a tokin. The
                     // `MOVE_PROMOTION` arm is the moved piece's own promotion, chosen by
                     // the move, and reads the same table it always did.
-                    MOVE_DROP => {
+                    MOVE_DROP | MOVE_BUY => {
                         let arrived = t.arriving_value(player, move_promotion(m) as usize, target);
                         (t.type_of(arrived), t.frame_of_value(arrived))
                     }
@@ -4648,6 +4826,11 @@ impl<'t> Game<'t> {
                         t.type_of(moving),
                         t.owner_of(moving) * t.n_facings + move_promotion(m) as usize,
                     ),
+                    // TC6: the bought piece as it stands after it changes sides.
+                    MOVE_HIRE => {
+                        let rehomed = t.rehome_value(moving, player, target);
+                        (t.type_of(rehomed), t.frame_of_value(rehomed))
+                    }
                     _ => (t.type_of(moving), t.frame_of_value(moving)),
                 };
                 if !t.is_immobile_square(frame, piece_type, target) {

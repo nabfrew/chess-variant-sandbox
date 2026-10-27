@@ -90,7 +90,7 @@ pub fn rested_royal_falls(game: &Game<'_>, side: usize, lists: [&[u32]; 2]) -> b
 
 fn royal_resting_falls(game: &Game<'_>, side: usize, square: usize, lists: [&[u32]; 2]) -> bool {
     use crate::tables::{
-        move_from, move_kind, move_to, MOVE_DROP, MOVE_NORMAL, MOVE_PORTAL, MOVE_PROMOTION,
+        enters_play, move_from, move_kind, move_to, MOVE_NORMAL, MOVE_PORTAL, MOVE_PROMOTION,
         MOVE_SWEEP,
     };
     let t = game.t;
@@ -114,7 +114,7 @@ fn royal_resting_falls(game: &Game<'_>, side: usize, square: usize, lists: [&[u3
         return false;
     }
     // The lift's own test (`rounds.rs::generate_legal_for`): any move off the square.
-    if lists[side].iter().any(|&m| move_kind(m) != MOVE_DROP && move_from(m) == square) {
+    if lists[side].iter().any(|&m| !enters_play(move_kind(m)) && move_from(m) == square) {
         return false;
     }
     // A move that ends on an occupied square and takes what stands there (the kinds of
@@ -357,6 +357,12 @@ pub struct Evaluator {
     /// capture. `None` wherever that is not a fact about the capture relation alone, and
     /// then the race reads the compiled goal table as it always did.
     seal: Option<Box<Seal>>,
+    /// TC5 (`docs/plan-turncoat.md` §5.6): what one coin in the purse is worth in material
+    /// units: the best value per coin the market sells, `values[type] / price` at its
+    /// largest. Zero in every game without a purse, and where running out is the win
+    /// (`material_sign` negative: coins buy material that side wants to shed), so the term
+    /// costs one comparison per evaluated node. Mirrors `agents/evaluation.py::coin_value`.
+    coin_weight: f64,
 }
 
 /// Q466 (F2): which pieces the opponent can never capture, read off the capture relation.
@@ -538,6 +544,7 @@ impl Evaluator {
             }),
             None => [0, 0],
         };
+        let coin_weight = if material_sign > 0.0 { coin_value(t, &values) } else { 0.0 };
         Self {
             values,
             mobility_weight,
@@ -557,6 +564,7 @@ impl Evaluator {
             immune_weight: 0.0,
             immunity: None,
             seal: Seal::of(t).map(Box::new),
+            coin_weight,
         }
     }
 
@@ -1009,6 +1017,11 @@ impl Evaluator {
         if self.immune_weight != 0.0 {
             score += self.immune_weight * self.immunity(game, player);
         }
+        if self.coin_weight != 0.0 {
+            // TC5: the purse, mine minus theirs, at the market's best rate.
+            let coins = f64::from(game.purse[player]) - f64::from(game.purse[1 - player]);
+            score += self.coin_weight * coins;
+        }
         if self.spy_weight != 0.0 {
             let edge = spy_edge(game, player);
             if edge != 0 {
@@ -1150,6 +1163,27 @@ impl Evaluator {
 /// other side does, `0` while both or neither have one (`Game::has_spy`, the summed mask the
 /// phase reads). Asked only in a spy game. `agents/evaluation.py::Evaluator.spy_edge` is the
 /// same reading.
+/// TC5 (`docs/plan-turncoat.md` §5.6): the coin term's rate, `values[type] / price` at its
+/// largest over the market, or 0.0 without a purse. Read off the evaluator's own values,
+/// not the declared ones, so a coin is counted in the units material is.
+/// TC6 (§5.6): and over what a hire buys at its price and a bribe at twice it, in type order,
+/// hires first (`PurseTables::hire`, `PurseTables::bribe`).
+pub fn coin_value(t: &Tables, values: &[f64]) -> f64 {
+    t.purse.as_deref().map_or(0.0, |purse| {
+        let market = purse
+            .market
+            .iter()
+            .map(|&(piece_type, price)| values[piece_type as usize] / f64::from(price))
+            .fold(0.0, f64::max);
+        [&purse.hire, &purse.bribe]
+            .into_iter()
+            .flat_map(|costs| costs.iter().enumerate())
+            .filter(|(_, cost)| **cost != 0)
+            .map(|(piece_type, cost)| values[piece_type] / f64::from(*cost))
+            .fold(market, f64::max)
+    })
+}
+
 pub fn spy_edge(game: &Game<'_>, player: usize) -> i32 {
     i32::from(game.has_spy(player)) - i32::from(game.has_spy(1 - player))
 }

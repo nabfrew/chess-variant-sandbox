@@ -84,12 +84,12 @@ class GameState:
     # about the difference is irreversible.
     remaining: int = 1
     turns_taken: int = 0
-    # What each player has been paid for taking a wild piece (schema 9). Compared at the
-    # clocks under ``scoring.count: "points"``, and ``(0.0, 0.0)`` for every ruleset
-    # without ``rules.npcs``.
+    # What each player has been paid for taking a wild piece (schema 9), or (TC4) a piece
+    # of a type with a ``bounty``. Compared at the clocks under ``scoring.count: "points"``,
+    # and ``(0.0, 0.0)`` for every ruleset with neither.
     #
     # It needs no Zobrist term, for the reason ``hands`` needs none and a permanent
-    # colouring needs none: a bounty is awarded only when a wild piece is taken, which is
+    # colouring needs none: a bounty is awarded only when a piece is taken, which is
     # a material change, which is irreversible, which clears the repetition window -- so
     # two positions the repetition rule ever compares always share the tally.
     points: tuple[float, float] = (0.0, 0.0)
@@ -130,17 +130,24 @@ class GameState:
     # with a different piece resting has different legal moves. (Schema 27's
     # ``rules.simultaneous.rest`` kept ``(square, square)`` here; schema 29 retired it.)
     rest: tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]] = ((), ())
-    # Generation 36 (N1, ``rules.npcs[].respawn``, `docs/plan-npc.md` §4.1): one clock per
+    # Generation 36 (N1, ``rules.npcs[].respawn``, `docs/archive/plan-npc.md` §4.1): one clock per
     # respawning half (an entry that comes back, then its mirrored half), 0 idle, else the
     # phases until a taken piece's return is tried. ``()`` for every game without the rule,
     # and read as every clock idle. In the Zobrist key: the same board with a different
     # clock has a different future.
     respawn: tuple[int, ...] = ()
-    # Generation 38 (N5, ``rules.npcs[].turns_back``, `docs/plan-npc.md` §4.7): the squares,
+    # Generation 38 (N5, ``rules.npcs[].turns_back``, `docs/archive/plan-npc.md` §4.7): the squares,
     # ascending, of the wild pieces walking their line back; a piece on a line and not listed
     # walks it forward. ``()`` for every game without the rule. In the Zobrist key: the same
     # board with a piece facing the other way has a different future.
     heading_back: tuple[int, ...] = ()
+    # TC4 (`docs/plan-turncoat.md` §5.2): each player's coins, 0 to ``PURSE_MAX`` (99),
+    # ``(0, 0)`` for every game without a purse (every game until TC5's ``rules.purse``; a
+    # test hook compiles one). A bounty paid under the rule also fills the payee's purse,
+    # capped. In the Zobrist key, unlike ``points``: repetition alone would not need it (a
+    # purse changes only beside a material change), but a transposition table does, since
+    # one board can be reached holding different coins.
+    purse: tuple[int, int] = (0, 0)
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)
@@ -247,7 +254,7 @@ class Effects:
     effects removed for each reason (a move barred two ways counts once, under the first).
     ``suppressed`` is whether the side to move's royal stands under an attack the effects
     suppressed: a frozen or disarmed attacker, or a shielded royal. Q1007c
-    (`docs/plan-schema-31.md` §3.7): ``bits`` also carry ``SIGHT_COMMAND`` 8 (the piece's
+    (`docs/archive/plan-schema-31.md` §3.7): ``bits`` also carry ``SIGHT_COMMAND`` 8 (the piece's
     opponent may move it) and ``SIGHT_COMMAND_OWN`` 16 (and make it take its own side), and
     ``commanded`` counts the side to move's legal commanded moves, 0 without a command.
     """
@@ -258,7 +265,7 @@ class Effects:
     shielded: int
     suppressed: bool
     commanded: int = 0
-    # Generation 37 (N2, `docs/plan-npc.md` §4.2): each square's bits from the wild pieces'
+    # Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): each square's bits from the wild pieces'
     # sights alone, on a player's piece; empty in a game without wild pieces.
     wild: tuple[int, ...] = ()
 

@@ -1,4 +1,4 @@
-//! Wild pieces that come back (generation 36, N1, `docs/plan-npc.md` §4.1): step 3 of the
+//! Wild pieces that come back (generation 36, N1, `docs/archive/plan-npc.md` §4.1): step 3 of the
 //! wild-piece phase, after the steps.
 //!
 //! **The key's state.** One clock per respawning half (`Tables::respawn`'s order: `rules.npcs`

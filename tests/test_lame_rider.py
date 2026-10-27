@@ -1,4 +1,4 @@
-"""Q1007a: the lame rider, `lame` with a `range` (`docs/plan-schema-31.md` §2.2, §7).
+"""Q1007a: the lame rider, `lame` with a `range` (`docs/archive/plan-schema-31.md` §2.2, §7).
 
 Jump after jump along the vector, each jump blocked by a piece on its leg (the square
 `compile._lame_path` names) and each landing ending the ride when occupied, captured if it
@@ -227,7 +227,7 @@ def test_check_through_a_lame_rider_and_its_block_on_a_leg() -> None:
 
 def test_a_lame_rider_pawns_window_is_its_first_jumps() -> None:
     """En passant follows `_ep_passes` over the ray: a ride to the first landing opens a
-    window on its leg, and a longer ride opens none (pinned here, `plan-schema-31.md` §2.4)."""
+    window on its leg, and a longer ride opens none (pinned here, `docs/archive/plan-schema-31.md` §2.4)."""
     pawn = {"id": "P", "name": "pawn", "value": 1, "moves": [
         {"kind": "leap", "vectors": [[0, 1]], "mode": "move"},
         {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"},
@@ -253,9 +253,9 @@ def test_a_lame_rider_pawns_window_is_its_first_jumps() -> None:
 
 def r1_shaped() -> dict[str, Any]:
     """*Opposite colours* with its elephants made lame `[2, 0]` riders and its guard given
-    one beside its diagonal step (`plan-schema-31.md` §6.1's file, the tunable parts as the
+    one beside its diagonal step (`docs/archive/plan-schema-31.md` §6.1's file, the tunable parts as the
     parent's). Not the showcase, which is Q1007e's: a test spec of its shape."""
-    # The first opposite colours, retired by Q1007e when R1 took its name (`plan-schema-31.md` §6.1).
+    # The first opposite colours, retired by Q1007e when R1 took its name (`docs/archive/plan-schema-31.md` §6.1).
     spec: dict[str, Any] = json.loads((ROOT / "tests" / "_retired_opposite_colours.json")
                                       .read_text("utf-8"))
     spec.pop("provenance", None)

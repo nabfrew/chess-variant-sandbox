@@ -187,7 +187,7 @@ class TestCoherence:
 
     @pytest.mark.parametrize("key", ["range", "min_range"])
     def test_a_distance_on_a_lame_move_is_a_rider(self, key: str) -> None:
-        """Q1007a (`docs/plan-schema-31.md` §2.2): `lame` counts jumps, so a distance on one
+        """Q1007a (`docs/archive/plan-schema-31.md` §2.2): `lame` counts jumps, so a distance on one
         is a lame rider and is accepted; it was refused while a lame was one jump."""
         spec = copy.deepcopy(MINIMAL)
         spec["pieces"][0]["moves"][0] = {"kind": "lame", "vectors": [[1, 2]], key: 2}
@@ -1018,12 +1018,16 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     # Schema 28 (Q943a): a speed is a rank of at least 1; 0 is the default left out.
     f"{_PIECE}/speed": {"minimum": 1},
     f"{_PIECE}/rest": {"minimum": 1, "maximum": 4},
+    f"{_PIECE}/bounty": {"minimum": 1, "maximum": 20},  # TC4
+    f"{_PIECE}/price": {"minimum": 1, "maximum": 40},  # TC5
     # Schema 30 (Q999a): 1 to 4 lines of sight, each with a slide's geometry bounds.
     f"{_PIECE}/sight": {"minItems": 1, "maxItems": 4},
     **_vector_bounds(f"{_PIECE}/sight/items{_P}/vectors", _AT_LEAST_ONE),
     f"{_PIECE}/sight/items{_P}/range": {"minimum": 0, "maximum": 16},
     f"{_PIECE}/sight/items{_P}/min_range": {"minimum": 1, "maximum": 16},
     f"{_PIECE}/sight/items{_P}/affects": _AT_LEAST_ONE,
+    # TC3 (`docs/plan-turncoat.md` §4.1): majority control's adjacency, a leap's geometry.
+    **_vector_bounds(f"{_PIECE}/control/anyOf[1]{_P}/majority{_P}/vectors", _AT_LEAST_ONE),
     # Q925: no minItems (a drop-stock piece has no moves) and no cap on vectors (the
     # validator has none; `archive/hex-glinski-hexagon.json` lists 12).
     f"{_PIECE}/moves": {"maxItems": 12},
@@ -1066,6 +1070,7 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_RULES}/npcs/items{_P}/route": _AT_LEAST_ONE,
     f"{_RULES}/npcs/items{_P}/also_at": _AT_LEAST_ONE,
     f"{_RULES}/npcs/items{_P}/bounty": {"minimum": 0},
+    f"{_RULES}/purse{_P}/start": {"minimum": 0, "maximum": 99},  # TC5
     # N1: the respawn clock, 0 the off value (`schema.NPC_OFF_VALUES`) up to `RESPAWN_MAX`.
     f"{_RULES}/npcs/items{_P}/respawn": {"minimum": 0, "maximum": 16},
     # N3d: the split cap, `schema.SPLIT_MIN` to `SPLIT_MAX`.

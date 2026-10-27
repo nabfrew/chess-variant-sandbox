@@ -1,7 +1,7 @@
 {
   "schema_version": 31,
   "name": "strike archers",
-  "description": "A1's test spec (docs/plan-pieces-moves.md §6): chess whose bishops shoot. A bishop's capture removes its target and the bishop stays where it stood; every other piece captures as in chess.",
+  "description": "A1's test spec (docs/archive/plan-pieces-moves.md §6): chess whose bishops shoot. A bishop's capture removes its target and the bishop stays where it stood; every other piece captures as in chess.",
   "board": {
     "width": 8,
     "height": 8

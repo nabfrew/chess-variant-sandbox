@@ -1570,7 +1570,7 @@ def portal_errors(problems: list[str], spec: Any = None, sides: Any = None) -> l
 def duck_answer(
     spec: Any, problems: list[str], sides: Any, *, said: bool = False
 ) -> dict[str, Any] | None:
-    """The duck's card beside a check's answer (generation 42, N4c, `docs/plan-npc.md` §4.6).
+    """The duck's card beside a check's answer (generation 42, N4c, `docs/archive/plan-npc.md` §4.6).
 
     ``says``: the rule as a player is told it (`describe`'s duck line), once the draft is a
     game (``said``); ``errors``: the validator's refusals that are about the duck, in the
@@ -2974,7 +2974,7 @@ def timeline(session: Any) -> list[dict[str, Any]]:
     The board seeds its beat-stepped timeline from this, because a session that arrives
     already many plies in has no earlier snapshots to record.
     """
-    from chess_variant_sandbox.web.play import effects_payload
+    from chess_variant_sandbox.web.play import effects_payload, turncoat_payload
 
     states = [*session.states, session.state]
     comings = [coming_phases(session.engine, state) for state in states]
@@ -2990,6 +2990,8 @@ def timeline(session: Any) -> list[dict[str, Any]]:
             "comingThen": [step.as_dict() for step in then],
             # Schema 30 (Q999c): the effects on it, for its marks; absent without a sight.
             **effects_payload(session.engine, state),
+            # TC7 (§5.8): the purses and held neutrals; absent without the rules.
+            **turncoat_payload(session.engine, state),
         }
         for state, (first, then) in zip(states, comings, strict=True)
     ]
@@ -3995,7 +3997,7 @@ def _nesting(text: str) -> int:
 
 # ------------------------------------------------------------------ a door at a rule (LP7)
 
-# `#/design?rule=<key>` (`docs/plan-landing.md` §5, box LP7): the designer opened on a copy
+# `#/design?rule=<key>` (`docs/archive/plan-landing.md` §5, box LP7): the designer opened on a copy
 # of a game with one rule added, from a word of the landing's wall or a story's card. The
 # key is the rule language's, as `reference.FAMILIES` and the wall spell it (`rules.drops`,
 # `pieces[].region`, a kind of move, `board.lattice`). This says, for every key the designer

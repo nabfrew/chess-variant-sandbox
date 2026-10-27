@@ -31,27 +31,38 @@ from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.schema import (
     BARE_ROYAL_HOLDER,
     DEFAULT_RANGE,
+    PURSE_MAX,
     REPETITION_NEVER,
     STOCK_UNLIMITED,
     WRAP_PAIRS,
     Sight,
     SpecError,
     absent_squares,
+    control_geometry,
     duck_goes,
     duck_piece,
     has_speeds,
+    hire_ids,
+    is_nobodys,
     is_simultaneous,
+    majority_ids,
+    neutral_ids,
     npc_pounce,
     npc_respawn,
     npc_split,
     npc_turns_back,
     obstacle_squares,
     path_of,
+    piece_bounties,
+    piece_prices,
     piece_rests,
     piece_sights,
     piece_speeds,
     portal_groups,
     portal_stand_in_shape,
+    purse_bribes,
+    purse_market,
+    purse_rule,
     simultaneous_switch,
     spy_ids,
     wrap_stated,
@@ -185,7 +196,11 @@ def describe_setup(spec: dict[str, Any]) -> list[str]:
     setup = spec["setup"]
     lines = [
         f"{placement['piece']} on {_squares(placement['squares'])}"
-        + ("" if "player" not in placement else f" (player {placement['player']} only)")
+        + (
+            "" if "player" not in placement
+            else " (nobody's: neither player owns them)" if is_nobodys(placement)
+            else f" (player {placement['player']} only)"
+        )
         # Which way a group starts pointing is as much a fact about the opening position
         # as which squares it stands on, and a reader who is not told it cannot work out
         # what any of those pieces may do on the first move.
@@ -217,6 +232,12 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_rest(spec, rules))
     # Schema 30 (Q999a): which piece may move or be taken, read with the rest.
     lines.extend(_describe_sight(spec, rules))
+    # TC3 (`docs/plan-turncoat.md` §4): pieces nobody owns, and who may move them.
+    lines.extend(_describe_neutrals(spec))
+    # TC4 (`docs/plan-turncoat.md` §5.1): what taking a piece pays.
+    lines.extend(_describe_bounties(spec))
+    # TC5 (`docs/plan-turncoat.md` §5.4): the purse and its market.
+    lines.extend(_describe_purse(spec))
 
     turn = rules.get("turn")
     if turn and int(turn.get("moves", 1)) > 1:
@@ -442,7 +463,7 @@ _MOVELESS = {
             "there for the rest of the game",
     "blast": "never moves, and nothing can capture it: once it is on a square it stays "
              "there until an explosion beside it destroys it",
-    # I1 (`docs/plan-pieces-moves.md` §4.3): a royal that never moves, by the win it is under.
+    # I1 (`docs/archive/plan-pieces-moves.md` §4.3): a royal that never moves, by the win it is under.
     "royal_capture": "never moves, so it cannot run from an attack: it stays on its square, "
                      "and taking it is how the game is won (see the rules)",
     "checkmate": "never moves, so a check on it can be answered only by taking the checking "
@@ -517,9 +538,35 @@ def _describe_piece(
     reverts = piece.get("promoted_from")
     if reverts:
         notes.append(f"reverts to {reverts} when captured")
+    bounty = piece.get("bounty")
+    if isinstance(bounty, int) and not isinstance(bounty, bool) and bounty > 0:
+        # TC4: the rules say who is paid; the piece says how much.
+        notes.append(f"pays a bounty of {bounty} to whoever takes it (see the rules)")
+    price = piece.get("price")
+    if isinstance(price, int) and not isinstance(price, bool) and price > 0:
+        # TC5: the rules say where a bought piece goes; the piece says what it costs. TC6: a
+        # price may buy a hire or a bribe too, which the rules say.
+        notes.append(f"costs {price} coins to buy, hire or bribe (see the rules)")
     if piece.get("spy") is True:
         # Schema 27 (Q935a): the rules say what the spy does; the piece says it is one.
         notes.append("is a spy: who still has one decides how play goes (see the rules)")
+    control = piece.get("control")
+    if isinstance(control, dict) and isinstance(control.get("majority"), dict):
+        # TC3: the rules say what majority control does; the piece says what next to means.
+        shape = control["majority"]
+        vectors = ", ".join(
+            f"({v[0]:+d},{v[1]:+d})" for v in shape.get("vectors") or []
+            if isinstance(v, list) and len(v) == 2
+        )
+        near = f"the squares a leap of {vectors}{_SYMMETRY_TEXT.get(shape.get('symmetry', 'none'), '')} reaches"
+        notes.append(
+            f"while nobody owns it, is moved by whoever has more pieces on {near} from it "
+            "(see the rules)"
+        )
+    elif control == "majority":
+        notes.append(
+            "while nobody owns it, is moved by whoever has more pieces next to it (see the rules)"
+        )
     rest = piece.get("rest")
     if isinstance(rest, int) and not isinstance(rest, bool) and rest > 0:
         # Schema 29 (Q983a): the rules say what a rest does; the piece says its own.
@@ -1059,7 +1106,7 @@ def _oblique_span_words(move: dict[str, Any], aim: _Aim) -> str | None:
 
 def _rider_count(move: dict[str, Any], aim: _Aim) -> str | None:
     """How many jumps a rider makes, with the jump on the end: *any number of jumps of two
-    squares forward, back, left and right* (Q1007a, `docs/plan-schema-31.md` §2.5).
+    squares forward, back, left and right* (Q1007a, `docs/archive/plan-schema-31.md` §2.5).
 
     For a jump longer than one square and repeated: a slide over it (the nightrider, option
     1) or a lame move with a ``range`` other than 1 (option 2). The distance is counted in
@@ -1090,7 +1137,7 @@ def _rider_count(move: dict[str, Any], aim: _Aim) -> str | None:
 
 
 def _path_words(move: dict[str, Any], aim: _Aim) -> str | None:
-    """A slide whose path turns (T1, `docs/plan-pieces-moves.md` §5.2): *any number of steps of
+    """A slide whose path turns (T1, `docs/archive/plan-pieces-moves.md` §5.2): *any number of steps of
     two and one, in all eight directions, each step turning to the next direction round, ...*.
 
     Counted in steps, which is what the engine counts its ``range`` in. ``None`` for a
@@ -1240,6 +1287,12 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "A piece nobody owns that every turn ends by moving: the player moves a piece, then "
         "moves the duck to an empty square, where it blocks lines and nothing may take it.",
     ),
+    # TC5 (`docs/plan-turncoat.md` §5.4).
+    "purse": (
+        "coins and a market",
+        "Each player holds coins, paid by the bounties on what they take, and may spend a "
+        "whole move buying a piece for sale onto their own back rank.",
+    ),
     "en_passant": (
         "taking a piece in passing",
         "A piece that steps two squares past an enemy that could have taken it on the way "
@@ -1382,6 +1435,7 @@ RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
     "extinction": ("extinction", "run out"),
     "npcs": ("wild", "neutral", "monster", "non-player"),
     "duck": ("duck chess", "duck", "neutral blocker", "wall"),
+    "purse": ("coins", "money", "buy", "market", "shop", "gold", "currency"),
     "turn": ("double move", "marseillais", "progressive", "several moves", "two moves"),
     "castling": ("castle",),
     "en_passant": ("en passant",),
@@ -1584,6 +1638,105 @@ def _capture_relation(spec: dict[str, Any]) -> str:
     )
 
 
+def _describe_bounties(spec: dict[str, Any]) -> list[str]:
+    """TC4 (`docs/plan-turncoat.md` §5.1): each type's bounty, who is paid it, and when not."""
+    bounties = piece_bounties(spec)
+    if not bounties:
+        return []
+    listed = ", ".join(f"{pid} {worth}" for pid, worth in sorted(bounties.items()))
+    into = "into the points and the purse" if purse_rule(spec) is not None else "into the points"
+    return [
+        f"Taking a piece pays its bounty ({listed}) {into} of the player whose move "
+        "took it, whoever owned it, a piece nobody owns included; taking your own piece pays "
+        "nothing, and a piece removed by anything but a move's capture (a blast, a wild "
+        "piece's step) pays nobody."
+    ]
+
+
+def _describe_purse(spec: dict[str, Any]) -> list[str]:
+    """TC5 (`docs/plan-turncoat.md` §5.2, §5.4): the purse, the cap, the market and where a
+    bought piece goes."""
+    purse = purse_rule(spec)
+    if purse is None:
+        return []
+    prices = piece_prices(spec)
+    lines = [
+        f"Each player has a purse of coins, starting at {purse.get('start', 0)}, filled by "
+        f"every bounty its owner is paid and holding at most {PURSE_MAX} (what passes that "
+        "is lost). Spending coins is the whole move, and cannot be taken back, so it resets "
+        "the clocks a capture resets."
+    ]
+    market = purse_market(spec)
+    if market:
+        sold = ", ".join(f"{pid} for {prices.get(pid, 0)}" for pid in market)
+        region = purse.get("region")
+        where = (
+            f"an empty square of {_squares(region)} (reflected for the second player)"
+            if region else "an empty square of the buyer's own first rank"
+        )
+        lines.append(
+            f"Instead of moving, a player may buy a piece from the market ({sold}): the price "
+            f"leaves their purse and the piece is placed on {where}, entering play as a new "
+            "piece does. Supply is unlimited."
+        )
+    # TC6 (`docs/plan-turncoat.md` §5.5): hires and bribes.
+    hired = sorted(hire_ids(spec))
+    if hired:
+        listed = ", ".join(f"{pid} for {prices[pid]}" for pid in hired)
+        lines.append(
+            f"A piece nobody owns that has a price ({listed}) may be hired by a player with "
+            "one of their own pieces next to it: the price leaves their purse and the piece is "
+            "theirs, where it stands, from then on."
+        )
+    if purse_bribes(spec):
+        listed = ", ".join(f"{pid} for {2 * worth}" for pid, worth in sorted(prices.items()))
+        lines.append(
+            "An enemy piece that has a price may be bribed by a player with one of their own "
+            f"pieces next to it, for twice its price ({listed}): it changes sides where it "
+            "stands, keeping the way it points, and whoever paid last owns it."
+        )
+    return lines
+
+
+def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
+    """TC3 (`docs/plan-turncoat.md` §4): pieces nobody owns from the setup, and majority
+    control with its tie rule."""
+    neutrals = sorted(neutral_ids(spec))
+    if not neutrals:
+        return []
+    lines = [
+        f"Some pieces belong to nobody ({', '.join(neutrals)}, placed for nobody): they are in "
+        "neither army, so they count for no ending or material, they block, and either player "
+        "may capture one (a capture into a hand gives the taker one of that type)."
+    ]
+    held = sorted(majority_ids(spec))
+    if held:
+        hexy = (spec.get("board") or {}).get("lattice") == "hex"
+        pieces = {piece.get("id"): piece for piece in spec.get("pieces") or []}
+        named = [
+            pid for pid in held
+            if control_geometry(pieces[pid], hexy) != control_geometry({}, hexy)
+        ]
+        where = (
+            "next to it (the squares its piece's notes name)" if named == held
+            else "next to it (one step away in any direction"
+            + (f"; for {', '.join(named)}, the squares its notes name" if named else "")
+            + ")"
+        )
+        lines.append(
+            f"A piece nobody owns of type {', '.join(held)} may be moved by the player with "
+            f"strictly more of their own pieces {where}, royals included, as that player's "
+            "move; on a tie, none against none included, nobody may move it. It moves as its "
+            "type does, the same for either player, onto an empty square or capturing a "
+            "non-royal piece of the other player; it never promotes, castles or captures en "
+            "passant, and stays nobody's after it moves. It attacks nothing and gives no check, "
+            "though moving it may uncover one, and a move of it that leaves the mover's own "
+            "royal in check is illegal. Who holds it is read from the board at the start of "
+            "every move."
+        )
+    return lines
+
+
 def _describe_rest(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     """Schema 29 (Q983a, `docs/plan-rest.md` §3, §5.7): rest as a piece-type property, in any
     game. One paragraph for the rule, and one sentence more where check is a rule, since a
@@ -1664,7 +1817,7 @@ def sight_sentence(sight: Sight, names: dict[str, str], hexy: bool = False) -> s
     all eight directions, as far as the first piece in the way*. ``names`` is each piece id's
     name. The operators that give and take a sight say it in these words too."""
     if sight.affects is None:
-        # Q1007c: a command never touches a royal (`docs/plan-schema-31.md` §3.4).
+        # Q1007c: a command never touches a royal (`docs/archive/plan-schema-31.md` §3.4).
         kinds = "non-royal pieces" if sight.effect == "command" else "pieces"
     else:
         plural = [_plural(names.get(pid, pid)) for pid in sight.affects]
@@ -1732,7 +1885,7 @@ def _describe_sight(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             + (", and a shielded royal is never in check." if check else ".")
         )
     if "command" in effects:
-        # Q1007c (`docs/plan-schema-31.md` §3.2-§3.5).
+        # Q1007c (`docs/archive/plan-schema-31.md` §3.2-§3.5).
         said.append(
             "A commanded piece still belongs to its owner, and its owner's opponent may also "
             "move it, as that player's move and as its owner would move it: onto an empty "
@@ -1879,7 +2032,7 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
 
 
 def _describe_duck(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
-    """Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, as a player is told it."""
+    """Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck, as a player is told it."""
     pid = duck_piece(rules)
     if pid is None:
         return []
@@ -2078,15 +2231,29 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     immune = [str(names.get(pid, pid)) for pid in strike.get("immune", [])]
     # Schema 17 (Q540): the capturer changes sides, under any effect.
     switching = strike.get("switches_sides")
+    # TC2 (`docs/plan-turncoat.md` §6): a facing switcher keeps its heading. Said only where a
+    # listed piece faces, so no game without one reads differently.
+    facing_ids = {
+        piece["id"]
+        for piece in spec.get("pieces", [])
+        if isinstance(piece, dict) and isinstance(piece.get("facing"), dict)
+    }
+    keeps = (
+        " A piece that faces keeps pointing the way it pointed, so it may face its new "
+        "side's own camp."
+        if isinstance(switching, list) and facing_ids.intersection(switching)
+        else ""
+    )
     switch_lines = (
         [
             f"A {', '.join(str(names.get(pid, pid)) for pid in switching)} that captures "
             "changes sides: it becomes the other player's piece on the square it took."
+            + keeps
         ]
         if isinstance(switching, list) and switching
         else []
     )
-    # A1 (`docs/plan-pieces-moves.md` §6.2): only the listed pieces' captures strike.
+    # A1 (`docs/archive/plan-pieces-moves.md` §6.2): only the listed pieces' captures strike.
     by = strike.get("by")
     by_names = (
         [str(names.get(pid, pid)) for pid in by] if isinstance(by, list) and by else []
@@ -2286,7 +2453,7 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         if len(route) <= 1:
             walk = f"stands on {_squares(route)} and never moves"
         elif turns:
-            # Generation 38 (N5, `docs/plan-npc.md` §4.7): a line walked to its end and back.
+            # Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): a line walked to its end and back.
             walk = (
                 f"starts on {route[0]} and, after every move, paces the line "
                 f"{_squares(route)}: it steps along it to {route[-1]}, turns round there and "
@@ -2369,10 +2536,10 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
                 if survivors
                 else " Nothing may take it."
             )
-        # Generation 39 (N3b, `docs/plan-npc.md` §4.3): the pounce, after what it eats.
+        # Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): the pounce, after what it eats.
         pounce = ""
         if npc_pounce(npc) == "attackers":
-            # Generation 40 (N3c, `docs/plan-npc.md` §4.4): it takes what attacks it.
+            # Generation 40 (N3c, `docs/archive/plan-npc.md` §4.4): it takes what attacks it.
             pounce = (
                 " It pounces on its attackers: after each move, before any wild piece steps, it "
                 "takes a piece of the player who has just moved that attacks it (one that could "
@@ -2388,7 +2555,7 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
                 "it pounces again, and back on its route it walks on."
             )
             if npc_split(npc):
-                # Generation 41 (N3d, `docs/plan-npc.md` §4.5): the mitosis.
+                # Generation 41 (N3d, `docs/archive/plan-npc.md` §4.5): the mitosis.
                 pounce += (
                     f" It splits, up to {npc_split(npc)}: while fewer than that many wild "
                     f"{name}s stand (at most {npc_split(npc)}, counted as the phase goes, so "
@@ -2418,7 +2585,7 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             "standing nearest the mover's first rank (then furthest to the mover's left) "
             "first, each on the board the ones before it left; then the rest step."
         )
-    # Generation 37 (N2, `docs/plan-npc.md` §4.2): the rule a shield beside wild pieces needs.
+    # Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): the rule a shield beside wild pieces needs.
     if any(sight.effect == "shield" for sights in piece_sights(spec).values() for sight in sights):
         has_royal = any(isinstance(p, dict) and p.get("royal") for p in spec.get("pieces", []))
         lines.append(
@@ -2435,7 +2602,7 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
 def _respawn_words(
     npc: dict[str, Any], route: list[Any], also: list[str], rules: dict[str, Any]
 ) -> str:
-    """Generation 36 (N1, `docs/plan-npc.md` §4.1): when a taken wild piece comes back,
+    """Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): when a taken wild piece comes back,
     where, and what holds it back. Empty for a piece that, once taken, is gone."""
     every = npc_respawn(npc)
     if not every:
@@ -2912,7 +3079,11 @@ def _describe_scoring_rules(spec: dict[str, Any], rules: dict[str, Any]) -> list
             "region": "how many of your own pieces stand on "
                       + _squares(scoring.get("region") or []),
             "territory": "how much ground each player has claimed",
-            "points": "the points each player has collected by taking wild pieces",
+            "points": (
+                "the points each player has collected by taking pieces with a bounty"
+                if piece_bounties(spec) else
+                "the points each player has collected by taking wild pieces"
+            ),
         }
         what = counts.get(str(scoring.get("count", "material")), str(scoring.get("count")))
         lines.append(

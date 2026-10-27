@@ -30,6 +30,7 @@ from typing import Any
 
 from chess_variant_sandbox.spec.complexity import expand_symmetry, measure_complexity
 from chess_variant_sandbox.spec.schema import (
+    PURSE_MAX,
     REPETITION_NEVER,
     REST_MAX,
     SIGHT_EFFECTS,
@@ -39,11 +40,16 @@ from chess_variant_sandbox.spec.schema import (
     duck_goes,
     duck_piece,
     facing_turns,
+    hire_ids,
+    majority_ids,
+    neutral_ids,
     npc_pounce,
     npc_respawn,
     npc_split,
     npc_turns_back,
     obstacle_squares,
+    piece_bounties,
+    piece_prices,
     piece_rests,
     piece_sights,
     piece_speeds,
@@ -51,6 +57,8 @@ from chess_variant_sandbox.spec.schema import (
     portal_map_shape,
     portal_stand_in_shape,
     promotion_squares,
+    purse_bribes,
+    purse_rule,
     simultaneous_switch,
     spy_ids,
     strike_changes_anything,
@@ -77,11 +85,11 @@ _SCALES: dict[str, float] = {
     # Schema 13 (Q21). A line that removes what it crosses is a different piece from one
     # that stops at it, so a slide turned sweep must not measure zero from its parent.
     "sweep_share": 1.0,
-    # Q1007a (`docs/plan-schema-31.md` §2.5). A lame move with a `range` other than 1 rides,
+    # Q1007a (`docs/archive/plan-schema-31.md` §2.5). A lame move with a `range` other than 1 rides,
     # jump after jump; without this a lame rider and the single lame leap it was written from
     # read as one game (every other count is equal), and the loop would skip the tournament.
     "lame_rider_share": 1.0,
-    # T1 (`docs/plan-pieces-moves.md` §5.5). A slide whose path turns (a circle or a zigzag)
+    # T1 (`docs/archive/plan-pieces-moves.md` §5.5). A slide whose path turns (a circle or a zigzag)
     # reaches other squares from the same directions; without this the ring queen and the
     # queen would differ only by the rule charge in `special_rules`.
     "turning_share": 1.0,
@@ -195,7 +203,7 @@ _SCALES: dict[str, float] = {
     "strike_stays_put": 1.0,
     "strike_rebirths": 1.0,
     "capturer_switches_sides": 1.0,
-    # A1 (`docs/plan-pieces-moves.md` §6.5): the share of the capturing types whose captures
+    # A1 (`docs/archive/plan-pieces-moves.md` §6.5): the share of the capturing types whose captures
     # strike, 1.0 without `by`. Without it rifle and the archers (rifle given to the bishops
     # alone) would differ only by nothing, and read as distance zero.
     "strikers_share": 1.0,
@@ -350,6 +358,27 @@ _SCALES: dict[str, float] = {
     "sight_command_share": 1.0,
     "sight_aura_share": 1.0,
     "sight_turncoat_share": 1.0,
+    # TC3 (`docs/plan-turncoat.md` §5.8): the share of declared types placed for nobody, the
+    # share moved by the majority, and whether a majority type names its own geometry, so a
+    # game and its neutral twin, or a standing and a held neutral, are not at distance zero.
+    "nobody_share": 1.0,
+    "majority_share": 1.0,
+    "majority_geometry": 1.0,
+    # TC4 (`docs/plan-turncoat.md` §5.8): the share of declared types carrying a bounty, so a
+    # game and its bounty twin are not at distance zero.
+    "bounty_share": 1.0,
+    # TC5 (`docs/plan-turncoat.md` §5.8): the purse as a flag, its opening coins (a share of
+    # `PURSE_MAX`), whether it names a region, and the share of declared types with a price,
+    # so a game and its purse twin, or two purses that differ only in one, are not at
+    # distance zero.
+    "has_purse": 1.0,
+    "purse_start": 1.0,
+    "purse_region": 1.0,
+    "price_share": 1.0,
+    # TC6 (`docs/plan-turncoat.md` §5.8): hires (a priced piece placed for nobody) and bribes,
+    # each a flag, so a purse game and its hiring or bribing twin are not at distance zero.
+    "has_hire": 1.0,
+    "has_bribe": 1.0,
 }
 
 
@@ -500,6 +529,57 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         **_simultaneous_features(spec),
         **_rest_features(spec),
         **_sight_features(spec),
+        **_neutral_features(spec),
+        **_bounty_features(spec),
+        **_purse_features(spec),
+    }
+
+
+def _purse_features(spec: dict[str, Any]) -> dict[str, float]:
+    """TC5: the purse, its start, its region and the priced share of the declared types."""
+    purse = purse_rule(spec)
+    declared = [
+        piece for piece in spec.get("pieces") or []
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    ]
+    start = purse.get("start", 0) if purse is not None else 0
+    return {
+        "has_purse": 1.0 if purse is not None else 0.0,
+        "purse_start": (
+            start / PURSE_MAX if isinstance(start, int) and not isinstance(start, bool) else 0.0
+        ),
+        "purse_region": 1.0 if purse is not None and "region" in purse else 0.0,
+        "price_share": len(piece_prices(spec)) / len(declared) if declared else 0.0,
+        "has_hire": 1.0 if hire_ids(spec) else 0.0,
+        "has_bribe": 1.0 if purse_bribes(spec) else 0.0,
+    }
+
+
+def _bounty_features(spec: dict[str, Any]) -> dict[str, float]:
+    """TC4: the share of declared types whose taking pays a bounty."""
+    declared = [
+        piece for piece in spec.get("pieces") or []
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    ]
+    paying = piece_bounties(spec)
+    return {"bounty_share": len(paying) / len(declared) if declared else 0.0}
+
+
+def _neutral_features(spec: dict[str, Any]) -> dict[str, float]:
+    """TC3: the share of declared types some placement puts in nobody's block, the share of
+    them moved by the majority, and whether a majority type names what next to means."""
+    declared = [
+        piece for piece in spec.get("pieces") or []
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    ]
+    placed = neutral_ids(spec)
+    held = majority_ids(spec)
+    return {
+        "nobody_share": len(placed) / len(declared) if declared else 0.0,
+        "majority_share": len(held) / len(declared) if declared else 0.0,
+        "majority_geometry": float(any(
+            piece["id"] in held and isinstance(piece.get("control"), dict) for piece in declared
+        )),
     }
 
 
@@ -524,7 +604,7 @@ def _sight_features(spec: dict[str, Any]) -> dict[str, float]:
     out["sight_aura_share"] = (
         sum(1 for sight in entries if sight.through) / len(entries) if entries else 0.0
     )
-    # Q1007c (`docs/plan-schema-31.md` §3.8): a command's `captures_own` at half the weight of
+    # Q1007c (`docs/archive/plan-schema-31.md` §3.8): a command's `captures_own` at half the weight of
     # an effect (`sight_command_share` above), so a turncoat command is near its plain twin.
     out["sight_turncoat_share"] = (
         0.5 * sum(1 for read in sights.values() if any(s.captures_own for s in read))

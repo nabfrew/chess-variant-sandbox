@@ -233,8 +233,8 @@
   "provenance": {
     "added": "2026-10-25",
     "origin": "designed",
-    "source": "docs/plan-pieces-moves.md, T2: the showcase for riders whose path zigzags (section 5.7, Z1)",
-    "history": "Z1 of docs/plan-pieces-moves.md section 5.7, pre-registered 2026-10-25 before the rule was built: chess (4c1922ffae26) with each bishop's slide given path: zigzag (XBetza zB, Betza's crooked bishop), one key on the calibration baseline so a visitor sees what a turning path does. Nothing was tunable; the mechanics are T1's test spec tests/_path_bolt.json, archived as registered, with the piece named crooked bishop (the test spec calls it bolt) and drawn as a bishop, a choice made before any measured game.",
+    "source": "docs/archive/plan-pieces-moves.md, T2: the showcase for riders whose path zigzags (section 5.7, Z1)",
+    "history": "Z1 of docs/archive/plan-pieces-moves.md section 5.7, pre-registered 2026-10-25 before the rule was built: chess (4c1922ffae26) with each bishop's slide given path: zigzag (XBetza zB, Betza's crooked bishop), one key on the calibration baseline so a visitor sees what a turning path does. Nothing was tunable; the mechanics are T1's test spec tests/_path_bolt.json, archived as registered, with the piece named crooked bishop (the test spec calls it bolt) and drawn as a bishop, a choice made before any measured game.",
     "parents": [
       "4c1922ffae26"
     ]

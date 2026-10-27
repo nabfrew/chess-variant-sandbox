@@ -176,8 +176,10 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::royal_in_hand": "asks `royal_stocked` first (Q784), which needs a royal in "
         "the stock; the refusals need no stock, so it answers false",
         "game.rs::generate_drops": "walks the hand, which is empty for the life of the game",
-        "sight.rs::push_commanded": "schema 18's placement gate (Q1007c's commanded moves wait "
+        "foreign.rs::push_commanded": "schema 18's placement gate (Q1007c's commanded moves wait "
         "on it as the own moves do), which fires only on a non-empty hand",
+        "foreign.rs::push_held": "schema 18's placement gate (TC3's held neutrals wait on it as "
+        "the own moves do), which fires only on a non-empty hand",
         "rounds.rs::resolve_step": "schema 26's drop branch and fill, as `make`'s: the fill "
         "is behind a capture and `from_captures`",
         "game.rs::restrict": "the drop-mate filter; it filters drops, and there are none",
@@ -316,7 +318,7 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
         "game.rs::push_through": "asked of the moving piece going through a fold (schema 24)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
-        "sight.rs::push_commanded": "asked of a commanded piece (Q1007c), which is a moving "
+        "foreign.rs::push_foreign_piece": "asked of a commanded piece (Q1007c), which is a moving "
         "piece: a phantom promotion's piece never stands, so it is never commanded",
     },
     "promotes_on()": {
@@ -325,17 +327,17 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::push_transits": "asked of a moving piece's exit (schema 19)",
         "game.rs::push_portal_moves": "asked of a moving piece's origin (schema 19)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
-        "sight.rs::push_commanded": "asked of a commanded piece's origin and targets (Q1007c), "
+        "foreign.rs::push_foreign_piece": "asked of a commanded piece's origin and targets (Q1007c), "
         "behind `is_promoting`, as the moving piece's are",
     },
     "promotes_on_leaving()": {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
         "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
-        "sight.rs::push_commanded": "asked of a commanded piece (Q1007c), behind `is_promoting`",
+        "foreign.rs::push_foreign_piece": "asked of a commanded piece (Q1007c), behind `is_promoting`",
     },
     "promotion_optional()": {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
-        "sight.rs::push_commanded": "asked of a commanded piece (Q1007c), behind `is_promoting`",
+        "foreign.rs::push_foreign_piece": "asked of a commanded piece (Q1007c), behind `is_promoting`",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
         "game.rs::push_through": "asked of the moving piece going through a fold (schema 24)",
     },
@@ -357,6 +359,19 @@ READERS: dict[str, dict[str, str]] = {
         "rounds.rs::contact_in_place": "schema 26: a contact's two pieces, as `strike_writes`",
         "rounds.rs::strike_after": "schema 26: a struck piece and its captor, as "
         "`strike_writes`",
+        "tables.rs::rehome_value": "TC1: a piece changing sides on the board enters play for "
+        "its new owner, as a struck piece does",
+    },
+    "rehome_value()": {
+        "game.rs::strike_writes": "TC1: Andernach's switch and a contact flip, the value a "
+        "struck piece becomes where it lands",
+        "rounds.rs::contact_in_place": "TC1, schema 26: a contact flip, as `strike_writes`",
+        "rounds.rs::strike_after": "TC1, schema 26: a captor that switches, as `strike_writes`",
+        "game.rs::make": "TC6: a hire or a bribe, the bought piece entering play for its "
+        "new owner where it stands (`promote_on_entry` counts both as a way in)",
+        "game.rs::play_move_for_filter": "TC6: the same hire or bribe in the legality filter",
+        "game.rs::restrict": "TC6: the immobility filter, asking of a hired or bribed piece "
+        "as it stands after the change of side",
     },
     "rounds.rs:mover": {
         "rounds.rs::resolve_step": "schema 26: the dropped piece's value `plan` read, placed "

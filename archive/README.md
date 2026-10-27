@@ -459,7 +459,7 @@ has `"range": 3`, so it lands at most three squares along its diagonal. The pare
 White's first move (`Bf1` sweeps e2 to b5, four squares, and mates through d7); three is the
 largest range that closes that line, and the smallest that keeps the sweep in play (range 2
 seldom passed over a piece in self-play). Written as the landing page's fourth pair
-(`docs/plan-landing.md` §5 LPD); its candidates, pre-registration and measurement are in
+(`docs/archive/plan-landing.md` §5 LPD); its candidates, pre-registration and measurement are in
 `docs/reference/landing-fourth-pair.md`.
 
 ## `rifle.json`, `circe.json`, `andernach.json`, `kamikaze.json` — schema 17, what a capture leaves behind
@@ -927,7 +927,7 @@ Q983e still grades §6.3 on all three, reading the retired two from their new pa
 ## `opposite-colours.json` — schemas 30 and 31, two armies that meet only by sight, with riders as rook and queen (Q1007e, replacing Q999b's)
 
 2026-10-24, **in the library** (`ce406100becc`), replacing the game below under its name. The
-user's correction of R1 (`docs/plan-schema-31.md` §6.1, 2026-10-23): the colour-bound game with
+user's correction of R1 (`docs/archive/plan-schema-31.md` §6.1, 2026-10-23): the colour-bound game with
 closer analogues of chess's rook and queen. The rook rides any number of two-square jumps along
 files and ranks (a slide over `[2, 0]`), stopped only by a piece on a square it would land on,
 never by one it jumps; the queen adds that ride to the bishop's diagonals. The rook carries the
@@ -994,7 +994,7 @@ index bar (chess's interval less 0.05) on depth alone. Joined the library from p
 
 ## `chess-with-nightriders.json` — schema 31, a ridden leap on chess (Q1007e)
 
-2026-10-24, **in the library** (`cc5e28e9ed0f`). R3 of `docs/plan-schema-31.md` §6.2: chess with
+2026-10-24, **in the library** (`cc5e28e9ed0f`). R3 of `docs/archive/plan-schema-31.md` §6.2: chess with
 the knight's move written as a slide over `[1, 2]` by `dihedral8`, the nightrider (T. R. Dawson,
 1925), named so and valued 4.5. One change on the calibration baseline, so a visitor sees what a
 ridden leap is. Fairy-Stockfish plays it as `NN`, and `verify` agrees with the core against both
@@ -1007,7 +1007,7 @@ the seat check tolerates though not refused; over every graded game the seat is 
 
 ## `chess-with-galloping-knights.json` — schema 31, a lame rider on chess (Q1023)
 
-2026-10-26, **in the library** (`69f1e486af87`). L1 of `docs/plan-schema-31.md` §6.4, the lame
+2026-10-26, **in the library** (`69f1e486af87`). L1 of `docs/archive/plan-schema-31.md` §6.4, the lame
 rider's showcase: chess with the knight keeping its leap and gaining a lame rider over `[1, 2]`
 from its second jump on (`range: 0`, `min_range: 2`), so a single jump is chess's and every
 jump of a gallop is blocked on its leg, as the xiangqi horse is, and by a piece on a landing it
@@ -1026,7 +1026,7 @@ oracle, with a check at a gallop answered by a block on a leg.
 
 ## `chess-with-preaching-bishops.json` — schema 31, a bishop that commands pawns (Q1024)
 
-2026-10-26, **in the library** (`91c2c24305e5`). P1 of `docs/plan-schema-31.md` §6.5, the second
+2026-10-26, **in the library** (`91c2c24305e5`). P1 of `docs/archive/plan-schema-31.md` §6.5, the second
 showcase of the `command` effect and the first of its `captures_own`, after K1 and K2 (below)
 retired for a command too rarely offered: chess with one key on the bishop, an aura over its
 eight lines to the edge that commands every enemy pawn on them, through any piece between, and
@@ -1046,7 +1046,7 @@ holds the mechanism against the sight oracle.
 ## `chess-with-commanding-knights.json`, `chess-with-a-spellbinding-king.json` — schema 31, pieces the opponent may move (Q1007f; both retired)
 
 2026-10-24, built, measured and **retired without joining**, by the call registered before their
-first measured game (`docs/plan-schema-31.md` §6.3): a showcase that misses any of V2 to V4
+first measured game (`docs/archive/plan-schema-31.md` §6.3): a showcase that misses any of V2 to V4
 retires. The showcases of the `command` sight effect, each one key on chess, pre-registered
 2026-10-23 before the effect was built; their files are `tests/_retired_*.json` and
 `tests/test_showcases_q1007.py` holds V1, the mechanism, on them. Their runs are kept.
@@ -1068,7 +1068,7 @@ retires. The showcases of the `command` sight effect, each one key on chess, pre
 ## `capture-the-flag.json` — generation 33, a piece that never moves (I2; retired)
 
 2026-10-25, built, measured and **retired without joining**, by the call registered before its
-first measured game (`docs/plan-pieces-moves.md` §4.7): a showcase that misses any of V2 to V4
+first measured game (`docs/archive/plan-pieces-moves.md` §4.7): a showcase that misses any of V2 to V4
 retires, and is not tuned after the miss. Its file is `tests/_retired_capture_the_flag.json`,
 `tests/test_showcase_capture_the_flag.py` holds V1 on it, and its runs and its king-stepping
 twin's (`c4e50ed4ee63`) are kept.
@@ -1084,7 +1084,7 @@ twin's (`c4e50ed4ee63`) are kept.
 ## `anchors.json` — generation 33, a piece that never moves (I3)
 
 2026-10-25, **in the library** (`d6cb641394dd`). The second showcase for `moves: []`
-(`docs/plan-pieces-moves.md` §4.8), registered after *capture the flag* retired: chess with two
+(`docs/archive/plan-pieces-moves.md` §4.8), registered after *capture the flag* retired: chess with two
 **anchors** a side on b3 and g3 (b6 and g6), pieces that never move and that only a pawn may
 take (`captures` on every other type), drawn as the anchor. Where the flag made the moveless
 piece the one whose loss ends the game, the anchors are terrain each side owns: a wall in front
@@ -1101,7 +1101,7 @@ the strongest. `tests/test_showcase_anchors.py` holds the mechanism.
 
 ## `the-herd.json` — generations 37 and 42, wild pieces that see and the duck that walks (N9)
 
-2026-10-26, **in the library** (`2135109e8191`). The showcase of `docs/plan-npc.md` §6.4, the
+2026-10-26, **in the library** (`2135109e8191`). The showcase of `docs/archive/plan-npc.md` §6.4, the
 second attempt at the five features *the menagerie* (below) left owed, registered before any
 measured game: chess on 8 by 9 won by taking the king, in which a player with no move at all
 loses; a gorgon alone on a5-c5 that freezes the four squares beside it (the kings included), a
@@ -1127,7 +1127,7 @@ first seat 0.518 of decided games. A side frozen out of every move ends 0.028 of
 ## `the-menagerie.json` — generations 37 and 42, wild pieces that see and the duck that walks (N8; retired)
 
 2026-10-26, built, measured and **retired without joining**, by the call registered before its
-first measured game (`docs/plan-npc.md` §6.3): a showcase that misses any of V2 to V4 retires,
+first measured game (`docs/archive/plan-npc.md` §6.3): a showcase that misses any of V2 to V4 retires,
 and is not tuned after the miss. Its file is `tests/_retired_the_menagerie.json`,
 `tests/test_showcase_menagerie.py` holds V1 on it, and its runs are kept.
 
@@ -1146,7 +1146,7 @@ and is not tuned after the miss. Its file is `tests/_retired_the_menagerie.json`
 
 ## `the-hydra.json` — generations 39 to 41, wild pieces that pounce and split (N7)
 
-2026-10-26, **in the library** (`0f126fe608ef`). The showcase of `docs/plan-npc.md` §6.2,
+2026-10-26, **in the library** (`0f126fe608ef`). The showcase of `docs/archive/plan-npc.md` §6.2,
 registered before any of its rules was built: chess with a hydra on d4 and d5 that never walks
 but takes whatever piece ends its owner's move attacking it, growing a new head onto that
 square up to six heads in all and lunging onto the attacker past that, and that cannot take a
@@ -1170,7 +1170,7 @@ mechanism, and `docs/reference/hydra-study.py` reads the runs.
 
 ## `the-shepherds-duck.json` — generations 36 to 38 and 42, the duck and the wolves that turn (N6)
 
-2026-10-26, **in the library** (`e7d2d7406586`). The showcase of `docs/plan-npc.md` §6.1,
+2026-10-26, **in the library** (`e7d2d7406586`). The showcase of `docs/archive/plan-npc.md` §6.1,
 registered before any of its rules was built: chess won by taking the king, in which every turn
 ends with the mover putting the duck (a neutral piece nobody can take) on any empty square, the
 duck shielding the eight squares round it for both sides, and a mirrored wolf pair pacing ranks
@@ -1194,7 +1194,7 @@ prediction of 0.85. `tests/test_showcase_shepherds_duck.py` holds the mechanism,
 ## `horse-archers.json` — generation 35, a piece that shoots (A2)
 
 2026-10-25, **in the library** (`9c90463dc10f`). The registered fallback of A2,
-`docs/plan-pieces-moves.md` §6.7: chess whose knights shoot (`rules.strike` at rifle chess's
+`docs/archive/plan-pieces-moves.md` §6.7: chess whose knights shoot (`rules.strike` at rifle chess's
 reading, `by: ["N"]`): a knight's capture removes its target and the knight stays where it
 stood, so a guard protects nothing against it; every other piece captures as in chess. Drawn as
 an arrow. The plan preferred *the archers* (the same rule on the bishops), but the rule written
@@ -1211,7 +1211,7 @@ knight that still shoots among it.
 
 ## `circling-queen.json` — generation 34, a rider whose path circles (T3)
 
-2026-10-25, **in the library** (`379efba235c5`). C1 of `docs/plan-pieces-moves.md` §5.7: chess
+2026-10-25, **in the library** (`379efba235c5`). C1 of `docs/archive/plan-pieces-moves.md` §5.7: chess
 with the queen's slide given `path: "circle"`: one-square steps in her eight directions, each
 turning an eighth of a turn the same way, so her lines curl round in a ring of up to seven
 squares. Named *circling queen* and drawn as a queen; nothing else was open, and the registered
@@ -1228,7 +1228,7 @@ block cannot answer among it.
 
 ## `crooked-bishops.json` — generation 34, a rider whose path zigzags (T2)
 
-2026-10-25, **in the library** (`23f6613e9fa3`). Z1 of `docs/plan-pieces-moves.md` §5.7: chess
+2026-10-25, **in the library** (`23f6613e9fa3`). Z1 of `docs/archive/plan-pieces-moves.md` §5.7: chess
 with each bishop's slide given `path: "zigzag"`, Betza's crooked bishop (XBetza `zB`): diagonal
 steps alternating with a neighbouring diagonal, so the path runs along a rank or a file on its
 colour. Named *crooked bishop* and drawn as a bishop; nothing else was open. One key on the

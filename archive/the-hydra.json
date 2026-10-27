@@ -328,8 +328,8 @@
   "provenance": {
     "added": "2026-10-26",
     "origin": "designed",
-    "source": "docs/plan-npc.md, N7: the showcase for pounce on prey, pounce on attackers and split (section 6.2)",
-    "history": "Section 6.2 of docs/plan-npc.md, pre-registered 2026-10-25 before any of its rules was built: chess with a stationary hydra pair on d4 and d5 that takes what attacks it (every type but the king) and splits up to six heads, and four hounds on three-square wing loops that take the mover's pieces next to them. Registered after a draft read in self-play at 1600 and 6400 nodes, with the one tunable the read argued for moved: the loops keep their squares, start on b4 and g4, and the black side's run one ply behind the white side's (four entries in place of two mirrored ones), because a mirrored pair starts both sides' hounds on the same ply and the drafted start took two of the first player's pawns on its first move whatever it played.",
+    "source": "docs/archive/plan-npc.md, N7: the showcase for pounce on prey, pounce on attackers and split (section 6.2)",
+    "history": "Section 6.2 of docs/archive/plan-npc.md, pre-registered 2026-10-25 before any of its rules was built: chess with a stationary hydra pair on d4 and d5 that takes what attacks it (every type but the king) and splits up to six heads, and four hounds on three-square wing loops that take the mover's pieces next to them. Registered after a draft read in self-play at 1600 and 6400 nodes, with the one tunable the read argued for moved: the loops keep their squares, start on b4 and g4, and the black side's run one ply behind the white side's (four entries in place of two mirrored ones), because a mirrored pair starts both sides' hounds on the same ply and the drafted start took two of the first player's pawns on its first move whatever it played.",
     "parents": [
       "4c1922ffae26"
     ]

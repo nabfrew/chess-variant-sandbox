@@ -214,7 +214,7 @@ def test_a_sight_is_refused_beside_portals_and_explosions() -> None:
 
 
 def test_a_shield_beside_wild_pieces_and_a_wild_piece_seeing_both_sides() -> None:
-    """Generation 37 (N2, `docs/plan-npc.md` §4.2) lifted the shield's refusal beside wild
+    """Generation 37 (N2, `docs/archive/plan-npc.md` §4.2) lifted the shield's refusal beside wild
     pieces and let a wild piece see, with ``whose`` ``"any"`` only (`tests/test_wild_sight.py`
     holds the rest)."""
     wolves = load("archive/wolves.json")

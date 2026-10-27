@@ -53,6 +53,6 @@
  "provenance": {
   "added": "2026-10-24",
   "origin": "human",
-  "history": "Constructed by LPR2 as the landing page's ground story (docs/plan-landing.md section 2.1), the user allowing a constructed example where the library's pair was unclear. It differs from ground-for-good.json only in rules.territory.mode. Not a library game, not measured; its boards on the page are games played through Engine by make_examples.py. Moved from docs/reference/landing-mockups/examples/ to chess_variant_sandbox/web/stories/ by LP1 (2026-10-24), its mechanics unchanged."
+  "history": "Constructed by LPR2 as the landing page's ground story (docs/archive/plan-landing.md section 2.1), the user allowing a constructed example where the library's pair was unclear. It differs from ground-for-good.json only in rules.territory.mode. Not a library game, not measured; its boards on the page are games played through Engine by make_examples.py. Moved from docs/reference/landing-mockups/examples/ to chess_variant_sandbox/web/stories/ by LP1 (2026-10-24), its mechanics unchanged."
  }
 }

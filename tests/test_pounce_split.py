@@ -1,4 +1,4 @@
-"""Wild pieces that split (generation 41, N3d, `docs/plan-npc.md` §4.5), the user's mitosis.
+"""Wild pieces that split (generation 41, N3d, `docs/archive/plan-npc.md` §4.5), the user's mitosis.
 
 An ``"attackers"`` pouncer with ``split: n``: when it has attackers to take, a copy of itself grows
 on each attacker's square in prey order, eating it, while *room* lasts (the cap less the wild

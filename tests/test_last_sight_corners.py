@@ -47,9 +47,9 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import SIGHT_DISARM, SIGHT_FREEZE
 from chess_variant_sandbox.engine.engine import _pack
 from chess_variant_sandbox.engine.moves import (
-    MOVE_COMMANDED,
     MOVE_DROP,
     MOVE_FOLD,
+    MOVE_FOREIGN,
     MOVE_ROTATE,
     MOVE_SWEEP,
     decode_move,
@@ -339,11 +339,11 @@ def test_a_placement_phase_offers_no_commanded_move() -> None:
     assert any(state.hands[0])
     moves = legal(PLACEMENT, state)
     assert moves and all(decode_move(m)[2] == MOVE_DROP for m in moves)
-    assert not any(m & MOVE_COMMANDED for m in moves)
+    assert not any(m & MOVE_FOREIGN for m in moves)
     emptied = state.with_(hands=tuple(tuple(0 for _ in hand) for hand in state.hands))
     emptied = emptied.with_(key=engine(PLACEMENT)._compute_hash(emptied))
     after = legal(PLACEMENT, emptied)
-    assert any(m & MOVE_COMMANDED and decode_move(m)[0] == sq(PLACEMENT, "e6") for m in after)
+    assert any(m & MOVE_FOREIGN and decode_move(m)[0] == sq(PLACEMENT, "e6") for m in after)
 
 
 def test_sight_of_an_empty_square_is_empty() -> None:

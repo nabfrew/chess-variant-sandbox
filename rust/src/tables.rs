@@ -36,6 +36,9 @@ pub const MAX_PIECE_TYPES: usize = 24;
 /// how many of one player's pieces can rest at once (one enters a turn, none stays longer).
 /// `spec/schema.py::REST_MAX` is the validator's copy.
 pub const REST_MAX: usize = 4;
+/// TC4 (`docs/plan-turncoat.md` §5.2): the most coins a purse holds; a bounty past it is lost.
+/// `spec/schema.py::PURSE_MAX` is the validator's copy, and it bounds the purse's keys.
+pub const PURSE_MAX: u16 = 99;
 
 pub const MOVE_NORMAL: u32 = 0;
 pub const MOVE_EN_PASSANT: u32 = 1;
@@ -61,12 +64,21 @@ pub const MOVE_PORTAL: u32 = 7;
 /// a fold -- landed on it and came out on the end it leads to, its target (schema 24) --
 /// carries the end it went in by plus one in the same bits.
 pub const MOVE_FOLD: u32 = 8;
-/// Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck's move, the second half of every
+/// Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck's move, the second half of every
 /// turn under `rules.duck`. The promotion field says how: `DUCK_STEP` the standing duck
 /// moves from origin to target, `DUCK_PLACE` it is put on the target from off the board
 /// (origin equals target, as a drop's), `DUCK_PASS` it has nowhere to go (origin equals
 /// target, the duck's square or 0; never read). Takes nothing, on any reading.
 pub const MOVE_DUCK: u32 = 9;
+/// TC5 (`docs/plan-turncoat.md` §5.4): a piece bought from the market (`rules.purse`) and
+/// placed on an empty square of the buyer's region. Origin equals target, as a drop's; the
+/// promotion field holds the bought type, and `make` spends its price from the purse.
+pub const MOVE_BUY: u32 = 10;
+/// TC6 (`docs/plan-turncoat.md` §5.5): a piece hired or bribed where it stands. Origin equals
+/// target, the bought piece's square; the promotion field is 0. Whose the piece was says
+/// which: nobody's is a hire at its type's price, the opponent's a bribe at twice it
+/// (`PurseTables::cost`). `make` rehomes it (`Tables::rehome_value`) and spends the coins.
+pub const MOVE_HIRE: u32 = 11;
 pub const DUCK_STEP: u32 = 0;
 pub const DUCK_PLACE: u32 = 1;
 pub const DUCK_PASS: u32 = 2;
@@ -74,6 +86,43 @@ pub const DUCK_PASS: u32 = 2;
 /// piece uses too. The validator refuses the two rules together, so a game's third block
 /// holds one or the other (`compile.PortalRule`).
 pub const PORTAL_OWNER: usize = WILD;
+
+/// TC1 (`docs/plan-turncoat.md` §3.2): who moves a piece nobody owns, by its kind -- what
+/// `Tables::kind_of` answers for a byte of the third owner's block. `CONTROL_NONE` is every
+/// player's byte, the empty square, and a nobody's type no rule moves. Mirrors
+/// `chess_variant_sandbox/engine/compile.py`'s `CONTROL_*`.
+pub const CONTROL_NONE: u8 = 0;
+/// A wild piece, walked by the phase along its route (`rules.npcs`).
+pub const CONTROL_ROUTE: u8 = 1;
+/// The duck, moved by the side to move on the duck half (`rules.duck`).
+pub const CONTROL_DUCK: u8 = 2;
+/// A portal end, moved by its group's rule (`rules.portals`).
+pub const CONTROL_PORTAL: u8 = 3;
+/// TC3 (`docs/plan-turncoat.md` §4): a neutral piece from the setup that stands: nobody
+/// moves it; it blocks, and either player may take it.
+pub const CONTROL_NEUTRAL: u8 = 4;
+/// TC3: a neutral piece the player with strictly more pieces next to it may move, in frame 0
+/// (`Game::controller_of`, `foreign.rs`'s second candidate set).
+pub const CONTROL_MAJORITY: u8 = 5;
+
+/// TC3 (`docs/plan-turncoat.md` §4.2): what *next to* means for each majority type, flat by
+/// `type * n_squares + square` (`index` the offsets into `squares`, one past the last). Built
+/// by `compile._compile_neutrals` through `_compile_square`, so walls, absent cells and wrap
+/// are already resolved: the core counts and computes no square.
+#[derive(Clone, Debug)]
+pub struct NeutralTables {
+    index: Vec<u32>,
+    squares: Vec<u8>,
+}
+
+impl NeutralTables {
+    /// The squares next to `square` for a majority piece of `piece_type`.
+    #[inline]
+    pub fn neighbours(&self, n_squares: usize, piece_type: usize, square: usize) -> &[u8] {
+        let slot = piece_type * n_squares + square;
+        &self.squares[self.index[slot] as usize..self.index[slot + 1] as usize]
+    }
+}
 
 /// `AttackSource::sweep` bit 0: the attacked square is itself a capture landing.
 pub const SWEEP_LANDS: u8 = 1;
@@ -98,6 +147,14 @@ pub fn move_to(m: u32) -> usize {
 #[inline(always)]
 pub fn move_kind(m: u32) -> u32 {
     (m >> 16) & 0xF
+}
+
+/// TC5: whether a move of this kind puts a piece onto the board from off it -- a drop from a
+/// hand, or a buy from the market. Neither has a piece on its origin (which is its target),
+/// and both place what `Tables::arriving_value` says arrives.
+#[inline(always)]
+pub fn enters_play(kind: u32) -> bool {
+    kind == MOVE_DROP || kind == MOVE_BUY
 }
 
 #[inline(always)]
@@ -640,7 +697,7 @@ pub struct ReachRule {
     pub leaves: bool,
 }
 
-/// Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck. One piece nobody owns, in the
+/// Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck. One piece nobody owns, in the
 /// third owner's block at facing 0, which the mover moves every turn as the turn's second
 /// half (the compiled turn is two moves; `remaining` 1 is the duck half). Its square is read
 /// off the board (`Game::duck_square`), never kept.
@@ -817,7 +874,7 @@ impl RestTables {
     }
 }
 
-/// One route of wild pieces that come back (generation 36, N1, `docs/plan-npc.md` §4.1): an
+/// One route of wild pieces that come back (generation 36, N1, `docs/archive/plan-npc.md` §4.1): an
 /// `npcs` entry with `respawn`, or its mirrored half, each with a clock of its own.
 pub struct RespawnHalf {
     /// The clock's length: a taken piece comes back this many phases after it was taken.
@@ -832,6 +889,72 @@ pub struct RespawnHalf {
     pub value: u8,
     /// Where this half's `every` keys begin in `RespawnTables::zobrist`.
     pub key_base: usize,
+}
+
+/// TC4 (`docs/plan-turncoat.md` §5.2): the purse, coins each player holds. The state is
+/// `Game::purse`; a bounty paid under the rule also fills the payee's purse, capped at
+/// `PURSE_MAX`. No spec key yet (TC5's `rules.purse`); a test hook compiles one.
+pub struct PurseTables {
+    /// Both players' opening amount.
+    pub start: u16,
+    /// `[player * (PURSE_MAX + 1) + amount]`: the key of `player` holding `amount`.
+    pub zobrist: Vec<u64>,
+    /// TC5 (`docs/plan-turncoat.md` §5.4): the market, `(type, price)` per entry in
+    /// `rules.purse.market` order.
+    pub market: Vec<(u8, u16)>,
+    /// `[type]` -> its market price, 0 for a type not sold: what `make` spends on a buy.
+    pub price: Vec<u16>,
+    /// `squares[index[player * market.len() + entry]..index[.. + 1]]`: where `player` may
+    /// place a bought `market[entry]`, ascending (walls, absent cells and the type's own
+    /// region already taken out by the compiler).
+    square_index: Vec<u32>,
+    squares: Vec<u8>,
+    /// TC6 (§5.5): `[type]` -> what hiring a nobody's piece of it costs (0: not for hire),
+    /// empty when nothing can be hired; `bribe` the same for an enemy piece (twice the price).
+    pub hire: Vec<u16>,
+    pub bribe: Vec<u16>,
+    /// `near_squares[near_index[type * n_squares + square]..]`: the squares *next to* a hirable
+    /// or bribable piece of `type` on `square`; both empty when neither list is.
+    near_index: Vec<u32>,
+    near_squares: Vec<u8>,
+}
+
+impl PurseTables {
+    /// Whether anything can be hired or bribed: the one test `generate_pseudo_legal_as` asks.
+    #[inline]
+    pub fn contested(&self) -> bool {
+        !self.near_index.is_empty()
+    }
+
+    /// What buying the piece of `piece_type` that `owner` holds costs the side `player`: its
+    /// hire from nobody, its bribe from the opponent, 0 where it cannot be bought at all.
+    #[inline]
+    pub fn cost(&self, piece_type: usize, owner: usize, player: usize) -> u16 {
+        if owner == player {
+            return 0;
+        }
+        let costs = if owner > 1 { &self.hire } else { &self.bribe };
+        costs.get(piece_type).copied().unwrap_or(0)
+    }
+
+    /// The squares next to a hirable or bribable `piece_type` standing on `square`.
+    #[inline]
+    pub fn near(&self, n_squares: usize, piece_type: usize, square: usize) -> &[u8] {
+        let slot = piece_type * n_squares + square;
+        &self.near_squares[self.near_index[slot] as usize..self.near_index[slot + 1] as usize]
+    }
+
+    #[inline]
+    pub fn key(&self, player: usize, amount: u16) -> u64 {
+        self.zobrist[player * (PURSE_MAX as usize + 1) + amount as usize]
+    }
+
+    /// The squares `player` may place a bought `market[entry]` on, empty or not.
+    #[inline]
+    pub fn squares(&self, player: usize, entry: usize) -> &[u8] {
+        let slot = player * self.market.len() + entry;
+        &self.squares[self.square_index[slot] as usize..self.square_index[slot + 1] as usize]
+    }
 }
 
 /// Generation 36 (N1): every respawning half, in `rules.npcs` order with a mirrored half after
@@ -856,7 +979,7 @@ impl RespawnTables {
     }
 }
 
-/// Generation 38 (N5, `docs/plan-npc.md` §4.7): the routes walked as **lines**, first to last
+/// Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): the routes walked as **lines**, first to last
 /// and back, by an `npcs` entry with `turns_back`. `npc_next` holds a line's last square on
 /// itself (it never wraps); `prev` is the way back. The state is `Game::heading_back`, the
 /// squares of the pieces walking back (`turning.rs`).
@@ -892,7 +1015,7 @@ pub struct ReachEntry {
     pub path_start: u32,
 }
 
-/// Generation 39 (N3b, `docs/plan-npc.md` §3.2, §4.3): wild pieces that pounce, as the
+/// Generation 39 (N3b, `docs/archive/plan-npc.md` §3.2, §4.3): wild pieces that pounce, as the
 /// compiler resolved them (`compile.PounceRule`). `None` on `Tables` for every game in which
 /// no `npcs` entry says `pounce`. The core sorts nothing geometric: the prey order is three
 /// tables and the reach a forward list per type and square (`pounce.rs`).
@@ -919,7 +1042,7 @@ pub struct PounceTables {
     /// load (one per type, the validator says), 0.0 for a type no route carries.
     pub bounty: Vec<f64>,
     /// `[type]`: the most wild pieces of a splitting type standing at once (generation 41,
-    /// N3d, `docs/plan-npc.md` §4.5), 0 for a type that does not split; empty where nothing
+    /// N3d, `docs/archive/plan-npc.md` §4.5), 0 for a type that does not split; empty where nothing
     /// splits.
     pub split: Vec<u8>,
     pub n_squares: usize,
@@ -988,17 +1111,18 @@ pub struct SightSource {
 pub const SIGHT_FREEZE: u8 = 1;
 pub const SIGHT_DISARM: u8 = 2;
 pub const SIGHT_SHIELD: u8 = 4;
-/// Q1007c (`docs/plan-schema-31.md` §3): the piece's opponent may also move it.
+/// Q1007c (`docs/archive/plan-schema-31.md` §3): the piece's opponent may also move it.
 pub const SIGHT_COMMAND: u8 = 8;
 /// Q1007c: a commanded move may also take the piece's own side's non-royal pieces
 /// (`captures_own`); never set without `SIGHT_COMMAND` on the same source.
 pub const SIGHT_COMMAND_OWN: u8 = 16;
-/// Q1007c: bit 30 of a move word marks a commanded move -- the side to move moving one of
-/// the opponent's pieces. Bits 25 to 31 are otherwise a strike's landing, a portal end or a
-/// fold, each refused beside a sight, so in a command game this bit is the only one set
-/// there. It also keeps a commanded move from opening an en passant window (`make` opens
-/// one only where those bits are zero).
-pub const MOVE_COMMANDED: u32 = 1 << 30;
+/// TC1 (`docs/plan-turncoat.md` §3.3; Q1007c's `MOVE_COMMANDED`, renamed): bit 30 of a move
+/// word marks a **foreign** move -- the side to move moving a piece that is not its own (today
+/// a commanded one, the opponent's). Bits 25 to 31 are otherwise a strike's landing, a portal
+/// end or a fold, each refused beside a sight, so in a command game this bit is the only one
+/// set there. It also keeps a foreign move from opening an en passant window (`make` opens
+/// one only where those bits are zero). Every foreign move comes from `Game::push_foreign`.
+pub const MOVE_FOREIGN: u32 = 1 << 30;
 
 /// Schema 30: lines of sight, as the compiler resolved them (`compile.SightRule`). Boxed,
 /// as the rounds and the rest are, so a game without a sight pays one pointer, and `None` is
@@ -1017,7 +1141,7 @@ pub struct SightTables {
     /// Whether any sight freezes or disarms: only then is a mover or an attacker asked.
     pub has_restraint: bool,
     /// Q1007c: whether any sight commands. Only then does the generator walk the opponent's
-    /// pieces for commanded moves (`Game::push_commanded`).
+    /// pieces for commanded moves (`Game::push_foreign`).
     pub has_command: bool,
     /// `n_types * n_squares`, the stride of a player's block in `index`.
     block: usize,
@@ -1082,6 +1206,10 @@ pub struct Tables {
     /// Empty where every facing piece turns, which is every ruleset before schema 25;
     /// read it through `turns_of`.
     pub facing_turns: Vec<bool>,
+    /// TC2 (`docs/plan-turncoat.md` §6): `[from_owner * n_facings + facing] -> facing` under
+    /// the other owner that points the same way on the board (`compile._coat_facing`), read
+    /// by `rehome_value`. Empty unless a facing game switches sides.
+    coat_facing: Vec<u8>,
     pub has_facing: bool,
     /// `[board value] -> owner`, `-> frame`, `-> piece type`.
     ///
@@ -1091,6 +1219,10 @@ pub struct Tables {
     value_owner: [u8; 256],
     value_frame: [u8; 256],
     value_type: [u8; 256],
+    /// TC1 (`docs/plan-turncoat.md` §3.2): `[board value] -> control kind` (`CONTROL_*`),
+    /// beside `value_owner`: a third-block byte's kind, read off its type's crossed
+    /// `control_kind`; `CONTROL_NONE` everywhere else, so every two-army game's is zeros.
+    value_kind: [u8; 256],
 
     pub royal_types: Vec<usize>,
     /// `royal_types` as a flag per type. See `type_flags`.
@@ -1273,13 +1405,22 @@ pub struct Tables {
     /// The ceiling `features.rs` measures a points gap against, and 0.0 when nothing is
     /// wild.
     pub npc_bounty_total: f64,
+    /// TC4 (`docs/plan-turncoat.md` §5.1): `[piece_type]` -> what taking a piece of that type
+    /// pays the player whose move took it, never for the mover's own piece. Empty when no
+    /// type carries one, which is every game before TC4.
+    pub piece_bounty: Vec<f64>,
+    /// Whether any taking can pay a bounty: `has_npcs` or a `piece_bounty`. The one test
+    /// `make` asks on a capture, so a game that pays nothing pays one branch.
+    pub pays: bool,
+    /// TC4: the purse, `None` for every game without one (every game until TC5).
+    pub purse: Option<Box<PurseTables>>,
     /// Whether any route carries more than one wild piece at ply zero (schema 23's
     /// `also_at`). Derived here from the opening board and `npc_next`, so nothing new
     /// crosses the boundary. Only then can one wild piece wait for another, and only then
     /// does the phase need `Game::npc_step_order`'s passes; every other game steps its
     /// wild pieces in one ascending pass, as before the bump, at no extra cost.
     pub npc_queues: bool,
-    /// Generation 37 (N2, `docs/plan-npc.md` §4.2): whether a shield and wild pieces share
+    /// Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): whether a shield and wild pieces share
     /// the game. Only then does a wild step, a return or a wild threat ask whether the piece
     /// in its way is shielded (**a wild piece never takes a shielded piece**). Derived here
     /// from the sight's flags and `has_npcs`, so nothing new crosses the boundary.
@@ -1299,21 +1440,21 @@ pub struct Tables {
     pub rest: Option<Box<RestTables>>,
     /// Schema 30 (Q999a): lines of sight, `None` for every game in which no type sees.
     pub sight: Option<Box<SightTables>>,
-    /// Generation 36 (N1, `docs/plan-npc.md` §4.1): wild pieces that come back, `None` for
+    /// TC3 (`docs/plan-turncoat.md` §4): the majority types' neighbours, `None` for every
+    /// game in which no piece nobody owns may be moved by the majority.
+    pub majority: Option<Box<NeutralTables>>,
+    /// Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): wild pieces that come back, `None` for
     /// every game in which no `npcs` entry says `respawn`.
     pub respawn: Option<Box<RespawnTables>>,
-    /// Generation 38 (N5, `docs/plan-npc.md` §4.7): wild pieces that turn back, `None` for
+    /// Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): wild pieces that turn back, `None` for
     /// every game in which no `npcs` entry says `turns_back`.
     pub npc_lines: Option<Box<LineTables>>,
-    /// Generation 39 (N3b, `docs/plan-npc.md` §4.3): wild pieces that pounce, `None` for
+    /// Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): wild pieces that pounce, `None` for
     /// every game in which no `npcs` entry says `pounce`.
     pub pounce: Option<Box<PounceTables>>,
-    /// Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck, `None` for every game without
+    /// Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck, `None` for every game without
     /// `rules.duck`.
     pub duck: Option<Box<DuckRule>>,
-    /// The duck's byte, or 0 without a duck: what `is_wild_piece` tells a wild piece from the
-    /// duck by, since both stand in the third owner's block.
-    pub duck_byte: u8,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -1425,11 +1566,53 @@ impl Tables {
         self.value_owner[value as usize] as usize
     }
 
-    /// Whether `value` is a wild piece (`rules.npcs`): the third owner's byte, and not the
-    /// duck's (generation 42), which stands in the same block and never walks a route.
+    /// TC1 (`docs/plan-turncoat.md` §3.2): the control kind of the piece `value` encodes
+    /// (`CONTROL_*`), `CONTROL_NONE` for the empty square and every player's piece.
+    #[inline(always)]
+    pub fn kind_of(&self, value: u8) -> u8 {
+        self.value_kind[value as usize]
+    }
+
+    /// Whether `value` is a wild piece (`rules.npcs`): a nobody's byte whose kind is a route,
+    /// so never the duck (generation 42), which stands in the same block and never walks one.
     #[inline(always)]
     pub fn is_wild_piece(&self, value: u8) -> bool {
-        value != 0 && self.owner_of(value) == WILD && value != self.duck_byte
+        self.kind_of(value) == CONTROL_ROUTE
+    }
+
+    /// Whether `value` is a portal end (schema 19): a nobody's byte whose kind is a portal.
+    #[inline(always)]
+    pub fn is_portal_end(&self, value: u8) -> bool {
+        self.kind_of(value) == CONTROL_PORTAL
+    }
+
+    /// TC1 (`docs/plan-turncoat.md` §3.4): the one statement of what a piece becomes when it
+    /// changes sides on the board -- Andernach's switch and a contact flip. `value` is the
+    /// piece as it now is (its owner's byte; a strike that changed what it is passes the new
+    /// type's, at that type's initial facing for the old owner), and the answer is its byte
+    /// for `new_owner` standing on `square`.
+    ///
+    /// TC2 (§6): **it keeps its heading.** Its colour changes and its arrow does not: the
+    /// facing index under the new owner that points the same way, `coat_facing`'s. Two cases
+    /// take the arriving answer instead: a type with one orientation (nothing to keep), and
+    /// `promote_on_entry` firing on the square (the piece becomes another type, which enters
+    /// play at its initial facing, as every type change does).
+    #[inline]
+    pub fn rehome_value(&self, value: u8, new_owner: usize, square: usize) -> u8 {
+        debug_assert!(value != 0 && new_owner < 2);
+        let piece_type = self.type_of(value);
+        let arrived = self.arriving_value(new_owner, piece_type, square);
+        let from_owner = self.owner_of(value);
+        if self.coat_facing.is_empty()
+            || from_owner > 1
+            || self.facings_of(piece_type) < 2
+            || self.type_of(arrived) != piece_type
+        {
+            return arrived;
+        }
+        let facing = self.frame_of_value(value) % self.n_facings;
+        let kept = self.coat_facing[from_owner * self.n_facings + facing] as usize;
+        self.piece_value(new_owner, kept, piece_type)
     }
 
     #[inline(always)]
@@ -1684,6 +1867,22 @@ impl Tables {
             None => self.npc_bounty[square],
             Some(pounce) => pounce.bounty[self.type_of(value)],
         }
+    }
+
+    /// TC4 (`docs/plan-turncoat.md` §5.1): what `taker`'s move taking `captured` from `square`
+    /// pays: a wild piece's route bounty (schema 9), and a type's bounty (TC4) for any piece
+    /// but `taker`'s own. One statement, asked by `make`, `unmake` and the round.
+    #[inline]
+    pub fn bounty_paid(&self, captured: u8, square: usize, taker: usize) -> f64 {
+        let owner = self.owner_of(captured);
+        if owner == taker {
+            return 0.0;
+        }
+        let mut paid = if self.has_npcs && owner == WILD { self.wild_bounty(captured, square) } else { 0.0 };
+        if !self.piece_bounty.is_empty() {
+            paid += self.piece_bounty[self.type_of(captured)];
+        }
+        paid
     }
 
     /// Whether a piece type is royal. One load, for the callers that ask per piece per
@@ -2295,6 +2494,16 @@ impl Tables {
             .into_iter()
             .map(|turns| turns != 0)
             .collect();
+        let coat_facing: Vec<u8> = field(source, keys::COAT_FACING)?;
+        if !coat_facing.is_empty()
+            && (coat_facing.len() != n_frames
+                || coat_facing.iter().any(|facing| *facing as usize >= n_facings))
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "coat_facing holds {} facings for {n_frames} frames",
+                coat_facing.len()
+            )));
+        }
 
         // --- Wild pieces (schema 9) ---
         // Three owners share the one byte once anything is wild, which is what the bound
@@ -2316,7 +2525,16 @@ impl Tables {
                 "the duck and portals share the third owner's block; the validator refuses the two together",
             ));
         }
-        let n_owners = if has_npcs || has_portals || !duck_field.is_empty() { 3 } else { 2 };
+        // TC3: pieces nobody owns from the setup, one neutral kind per type, empty without.
+        let neutral_control: Vec<u8> = field(source, keys::NEUTRAL_CONTROL)?;
+        if !neutral_control.is_empty() && (has_npcs || has_portals || !duck_field.is_empty()) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "neutral pieces share the third owner's block with wild pieces, the duck or \
+                 portals; the validator refuses them together",
+            ));
+        }
+        let third = has_npcs || has_portals || !duck_field.is_empty() || !neutral_control.is_empty();
+        let n_owners = if third { 3 } else { 2 };
         let npc_next: Vec<i16> = field::<Vec<i32>>(source, keys::NPC_NEXT)?
             .into_iter()
             .map(|square| square as i16)
@@ -2372,6 +2590,49 @@ impl Tables {
             value_type[value] = ((value - 1) % n_types) as u8;
         }
 
+        // TC1: the third block's control kinds, one per type, empty when nobody owns anything.
+        let control_kind: Vec<u8> = field(source, keys::CONTROL_KIND)?;
+        if control_kind.len() != if n_owners == 3 { n_types } else { 0 } {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "control_kind holds {} kinds for {n_types} types and {n_owners} owners",
+                control_kind.len(),
+            )));
+        }
+        if neutral_control.iter().any(|&kind| ![CONTROL_NONE, CONTROL_NEUTRAL, CONTROL_MAJORITY].contains(&kind)) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "neutral_control holds a kind that is not a neutral's",
+            ));
+        }
+        if !neutral_control.is_empty() && neutral_control != control_kind {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "control_kind and neutral_control disagree about a neutral game's kinds",
+            ));
+        }
+        let mut value_kind = [CONTROL_NONE; 256];
+        if n_owners == 3 {
+            for value in (WILD * side_stride + 1)..(3 * side_stride + 1) {
+                value_kind[value] = control_kind[value_type[value] as usize];
+                // TC3 (§3.2): a majority neutral moves in frame 0 (player 0, facing 0), valid
+                // because its type reads alike for both players (the validator's).
+                if value_kind[value] == CONTROL_MAJORITY {
+                    value_frame[value] = 0;
+                }
+            }
+        }
+        let neighbour_index: Vec<u32> = field(source, keys::NEIGHBOUR_INDEX)?;
+        let neighbour_squares: Vec<u8> = field(source, keys::NEIGHBOUR_SQUARES)?;
+        let has_majority = control_kind.contains(&CONTROL_MAJORITY);
+        let fits = neighbour_index.len() == n_types * n_squares + 1
+            && neighbour_index.last().is_some_and(|&last| last as usize == neighbour_squares.len())
+            && neighbour_squares.iter().all(|&square| (square as usize) < n_squares);
+        if has_majority == neighbour_index.is_empty() || (has_majority && !fits) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "the neighbour tables do not fit this board's majority types",
+            ));
+        }
+        let majority = has_majority
+            .then(|| Box::new(NeutralTables { index: neighbour_index, squares: neighbour_squares }));
+
         let royal_types: Vec<usize> = field(source, keys::ROYAL_TYPES)?;
         let mut all_squares = SquareSet::EMPTY;
         for square in 0..n_squares {
@@ -2416,9 +2677,11 @@ impl Tables {
             facing_axes,
             facing_initial,
             facing_turns,
+            coat_facing,
             value_owner,
             value_frame,
             value_type,
+            value_kind,
             royal_flags,
             royal_at_start,
             royal_types,
@@ -2502,6 +2765,9 @@ impl Tables {
             npc_bounty,
             npc_squares,
             npc_bounty_total: 0.0,
+            piece_bounty: Vec::new(),
+            pays: false,
+            purse: None,
             npc_queues: false,
             npc_shield: false,
             portals: None,
@@ -2509,11 +2775,11 @@ impl Tables {
             spy: None,
             rest: None,
             sight: None,
+            majority,
             respawn: None,
             npc_lines: None,
             pounce: None,
             duck: None,
-            duck_byte: 0,
             entry_promotion,
             piece_values,
             must_capture,
@@ -2591,7 +2857,9 @@ impl Tables {
                 set.set(square as usize);
             }
             let value = (WILD * tables.side_stride + piece_type + 1) as u8;
-            tables.duck_byte = value;
+            if tables.kind_of(value) != CONTROL_DUCK {
+                return Err(pyo3::exceptions::PyValueError::new_err("the duck's type is not of the duck's control kind"));
+            }
             tables.duck = Some(Box::new(DuckRule { value, piece_type, by_moves: *by_moves != 0, squares: set }));
         } else if !duck_field.is_empty() {
             return Err(pyo3::exceptions::PyValueError::new_err("a duck field too short to name its type"));
@@ -2631,6 +2899,93 @@ impl Tables {
                 }
                 seen.push(lowest);
             }
+        }
+
+        // TC4 (`docs/plan-turncoat.md` §5.1, §5.2): each type's bounty, and the purse.
+        let piece_bounty: Vec<f64> = field::<Vec<u32>>(source, keys::PIECE_BOUNTY)?
+            .into_iter()
+            .map(f64::from)
+            .collect();
+        if !piece_bounty.is_empty() && piece_bounty.len() != tables.n_types {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "piece bounties for {} types, not the {} this game has",
+                piece_bounty.len(),
+                tables.n_types,
+            )));
+        }
+        // What the two tallies can come to between them at ply zero: every bounty on the
+        // opening board, the wild routes' (above) and the types' alike.
+        if !piece_bounty.is_empty() {
+            tables.npc_bounty_total += (0..tables.n_squares)
+                .map(|square| tables.initial_board[square])
+                .filter(|value| *value != 0)
+                .map(|value| piece_bounty[tables.type_of(value)])
+                .sum::<f64>();
+        }
+        tables.pays = tables.has_npcs || !piece_bounty.is_empty();
+        tables.piece_bounty = piece_bounty;
+        let purse_start: i32 = field(source, keys::PURSE_START)?;
+        let zobrist_purse: Vec<u64> = field(source, keys::ZOBRIST_PURSE)?;
+        if purse_start >= 0 {
+            if purse_start > PURSE_MAX as i32 || zobrist_purse.len() != 2 * (PURSE_MAX as usize + 1) {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "a purse starting at {purse_start} with {} keys",
+                    zobrist_purse.len(),
+                )));
+            }
+            // TC5: the market, its prices and its squares.
+            let market_types: Vec<u32> = field(source, keys::PURSE_MARKET)?;
+            let market_prices: Vec<u32> = field(source, keys::PURSE_PRICE)?;
+            let square_index: Vec<u32> = field(source, keys::PURSE_SQUARE_INDEX)?;
+            let squares: Vec<u8> = field(source, keys::PURSE_SQUARES)?;
+            let n_market = market_types.len();
+            if market_prices.len() != n_market
+                || square_index.len() != 2 * n_market + 1
+                || square_index.last().is_none_or(|end| *end as usize != squares.len())
+                || market_types.iter().any(|ty| *ty as usize >= tables.n_types)
+                || squares.iter().any(|sq| *sq as usize >= tables.n_squares)
+                || market_prices.iter().any(|price| *price == 0 || *price > PURSE_MAX as u32)
+            {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "a market whose types, prices and squares do not agree",
+                ));
+            }
+            let mut price = vec![0u16; tables.n_types];
+            for (ty, cost) in market_types.iter().zip(&market_prices) {
+                price[*ty as usize] = *cost as u16;
+            }
+            // TC6: what a hire and a bribe cost per type, and what *next to* means for them.
+            let hire: Vec<u16> = field(source, keys::PURSE_HIRE)?;
+            let bribe: Vec<u16> = field(source, keys::PURSE_BRIBE)?;
+            let near_index: Vec<u32> = field(source, keys::PURSE_NEIGHBOUR_INDEX)?;
+            let near_squares: Vec<u8> = field(source, keys::PURSE_NEIGHBOUR_SQUARES)?;
+            let contested = !hire.is_empty() || !bribe.is_empty();
+            if (!hire.is_empty() && hire.len() != tables.n_types)
+                || (!bribe.is_empty() && bribe.len() != tables.n_types)
+                || hire.iter().chain(&bribe).any(|cost| *cost > PURSE_MAX)
+                || contested == near_index.is_empty()
+                || (contested && near_index.len() != tables.n_types * tables.n_squares + 1)
+                || near_index.last().is_some_and(|end| *end as usize != near_squares.len())
+                || near_squares.iter().any(|sq| *sq as usize >= tables.n_squares)
+            {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "hire and bribe costs and their neighbours do not agree",
+                ));
+            }
+            tables.purse = Some(Box::new(PurseTables {
+                start: purse_start as u16,
+                zobrist: zobrist_purse,
+                market: market_types.iter().zip(&market_prices).map(|(ty, cost)| (*ty as u8, *cost as u16)).collect(),
+                price,
+                square_index,
+                squares,
+                hire,
+                bribe,
+                near_index,
+                near_squares,
+            }));
+        } else if !zobrist_purse.is_empty() {
+            return Err(pyo3::exceptions::PyValueError::new_err("purse keys without a purse"));
         }
 
         // Generation 38 (N5): the lines' way back and the heading's keys, both empty unless
@@ -2815,6 +3170,13 @@ impl Tables {
             ));
         }
 
+        // TC4: a round pays its bounties into the tally alone (`rounds.rs`), so a purse is
+        // never beside one; the purse's compiler refuses them together too.
+        if tables.purse.is_some() && tables.simultaneous.is_some() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a purse beside rounds; the compiler refuses them together",
+            ));
+        }
         tables.hop_lines = tables.build_hop_lines();
         Ok(tables)
     }
@@ -3288,7 +3650,9 @@ pub mod keys {
         CASTLE_STEPS => "castle_steps",
         CHECK_LIMIT => "check_limit",
         CHECKMATE_RESULT => "checkmate_result",
+        COAT_FACING => "coat_facing",
         CONTACT_MOVER_FLIPS => "contact_mover_flips",
+        CONTROL_KIND => "control_kind",
         CONTACT_MOVER_TO => "contact_mover_to",
         CONTACT_ONTO_TO => "contact_onto_to",
         CONTACT_OWN_MOVER_TO => "contact_own_mover_to",
@@ -3365,8 +3729,22 @@ pub mod keys {
         N_FRAMES => "n_frames",
         N_SQUARES => "n_squares",
         N_TYPES => "n_types",
+        NEIGHBOUR_INDEX => "neighbour_index",
+        NEIGHBOUR_SQUARES => "neighbour_squares",
+        NEUTRAL_CONTROL => "neutral_control",
         NO_PROGRESS_DRAW => "no_progress_draw",
         NPC_BOUNTY => "npc_bounty",
+        PIECE_BOUNTY => "piece_bounty",
+        PURSE_START => "purse_start",
+        PURSE_MARKET => "purse_market",
+        PURSE_PRICE => "purse_price",
+        PURSE_SQUARE_INDEX => "purse_square_index",
+        PURSE_SQUARES => "purse_squares",
+        PURSE_HIRE => "purse_hire",
+        PURSE_BRIBE => "purse_bribe",
+        PURSE_NEIGHBOUR_INDEX => "purse_neighbour_index",
+        PURSE_NEIGHBOUR_SQUARES => "purse_neighbour_squares",
+        ZOBRIST_PURSE => "zobrist_purse",
         NPC_NEXT => "npc_next",
         ONE_WAY_TYPES => "one_way_types",
         PIECE_VALUES => "piece_values",

@@ -596,6 +596,33 @@ class TestAContactLinkFeedsTheFlagUnlessItsTargetIsImmune:
         assert "nothing enters play except by moving" in error
 
 
+class TestAHireOrABribeFeedsTheFlag:
+    """TC6: a hired or bribed piece changes sides through `rehome_value`, which enters it
+    into play for its new owner, so either route lets the flag fire."""
+
+    PRICED = [{"id": "P"}, {"id": "Q", "price": 3}, {"id": "R"}]
+
+    def test_a_priced_piece_placed_for_nobody_is_a_way_in(self) -> None:
+        setup = {"placements": [{"piece": "Q", "player": "nobody", "squares": ["b2"]}]}
+        errors = _entry_errors(
+            {"promotion": [PROMOTE_Q], "purse": {"start": 5}},
+            pieces=self.PRICED, setup=setup,
+        )
+        assert errors == []
+
+    def test_a_bribe_is_a_way_in(self) -> None:
+        errors = _entry_errors(
+            {"promotion": [PROMOTE_Q], "purse": {"start": 5, "bribe": True}}, pieces=self.PRICED
+        )
+        assert errors == []
+
+    def test_a_purse_that_neither_hires_nor_bribes_is_not(self) -> None:
+        (error,) = _entry_errors(
+            {"promotion": [PROMOTE_Q], "purse": {"start": 5}}, pieces=self.PRICED
+        )
+        assert "nothing enters play except by moving" in error
+
+
 class TestABoardTheFlagCannotMeasureIsLeftToItsOwnRefusal:
     HAND = {"promotion": [PROMOTE_Q], "drops": {"region": {"Q": ["a1"]}}}
 

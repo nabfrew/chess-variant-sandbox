@@ -849,6 +849,14 @@ const MARK_KINDS = {
            label: 'a royal piece under attack (check)' },
   goal: { colour: 'var(--goal)', inset: 0.085, corner: 'top', name: 'teal ring',
           label: 'a square that wins the game' },
+  // TC7 (`docs/plan-turncoat.md` §4.3, §5.8): a piece nobody owns that a player holds now,
+  // having more of their pieces next to it, so that player may move it on their turn. A ring
+  // near the edge, clear of the disc (majority is refused beside a goal, so it never meets
+  // the goal ring), its bead in the holder's colour; off the core's answer for
+  // the position on screen (`Engine.controller_of`, the snapshot's `held`). A tie, zero
+  // against zero included, is nobody's and draws no ring.
+  holder: { colour: 'var(--holder)', inset: 0.06, corner: 'bottom', name: 'gold ring',
+            label: "a piece nobody owns, held by the side of its bead: more of that side's pieces stand next to it, so that side may move it" },
   // A promotion zone: hatched ground, with no beads. Whose zone it is goes in the legend
   // line (`zoneWords`), because a bead on a square was read as a dot, a pick or a piece.
   zone: { colour: 'var(--zone)', inset: 0, corner: 'bottom', shape: 'hatch',
@@ -940,7 +948,7 @@ const MARK_KINDS = {
   announced: { colour: 'var(--announced)', shape: 'announce', name: 'solid arrow',
                ink: 'var(--ink)',
                label: 'the move announced this round: it is made, whatever the other player answers' },
-  // Generation 42 (N4c, `docs/plan-npc.md` §4.6): where the duck flew from on the last ply, a
+  // Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): where the duck flew from on the last ply, a
   // solid arrow of its own olive from its old square to its new one (`duckFlightHtml`, off
   // the history entry's own `from` and `to`), never on one square; the row is the legend's.
   // A placement from off the board and the pass draw none.
@@ -958,7 +966,7 @@ const MARK_KINDS = {
               ink: 'var(--ink)', label: 'disarmed: it may move but cannot capture' },
   shielded: { colour: 'var(--shielded)', shape: 'shielded', name: 'shield', ink: 'var(--ink)',
               label: 'shielded: it cannot be captured' },
-  // Q1007d (`docs/plan-schema-31.md` §3.9): a piece under a command, which the other player may
+  // Q1007d (`docs/archive/plan-schema-31.md` §3.9): a piece under a command, which the other player may
   // also move. A marionette's control (a cross with three strings hanging from it) on a disc
   // in `--commanded`, on the square's top right corner: the rest's sign is there in a game
   // with a rest, which a command is refused beside. One badge whether or not the command
@@ -1350,6 +1358,7 @@ function squareMarks(source, hidden) {
   const marks = {};
   if (!off.check) addMarks(marks, 'check', checkMarks(source && source.checked));
   if (!off.goal) addMarks(marks, 'goal', goalMarks(source && source.goals));
+  if (!off.holder) addMarks(marks, 'holder', holderMarks(source && source.held));
   if (!off.zone) addMarks(marks, 'zone', zoneMarks(source && source.zones));
   return marks;
 }
@@ -1398,6 +1407,14 @@ function zoneMarks(zones) { return sidedMarks(zones); }
 
 // The squares a check is drawn on: a plain list, belonging to nobody in particular (the
 // side is the side to move, which the status line names).
+// TC7: `held` is `[square, player]` per piece nobody owns that a player holds (the core's
+// `controller_of`), a fact of the position on screen as `checked` is; a still board has none.
+function holderMarks(held) {
+  const found = {};
+  for (const [square, player] of held || []) found[square] = [player];
+  return found;
+}
+
 function checkMarks(squares) {
   const found = {};
   for (const square of squares || []) found[square] = [];

@@ -16,7 +16,7 @@ without the library answers an empty palette, as `viz/pieces.py` answers no icon
 
 PF: a drawing whose movement tradition settles also carries `ready`, the piece that moves
 that way, out of `assets/pieces/ready.json` (`tests/test_ready_pieces.py` holds each entry
-to its reading in `docs/plan-pieces-moves.md` §1). The page lets a designer take it whole --
+to its reading in `docs/archive/plan-pieces-moves.md` §1). The page lets a designer take it whole --
 drawing, name and moves -- and says in the entry's own words what game-wide rule it needs.
 The file is data: nothing here reads what a move means beyond saying it in words.
 

@@ -27,7 +27,7 @@ use crate::agents::{AgentSpec, Player};
 use crate::eval::Evaluator;
 use crate::game::{count_colours, scan_occupied, Game, Snapshot};
 use crate::rng::PyRandom;
-use crate::tables::{SquareSet, Tables, MAX_SQUARES};
+use crate::tables::{SquareSet, Tables, MAX_SQUARES, PURSE_MAX};
 
 /// The full state crossing the boundary. Twelve fields: the original nine, plus checks
 /// (two u32), hands (two Vec<u32>), and everything schema 4 added grouped into one --
@@ -47,7 +47,7 @@ type StateIn = (
     Vec<u8>, u8, Vec<u8>, i16, i16, u32, u32, u64, Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>),
+    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>, (u16, u16)),
 );
 /// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element.
 type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
@@ -57,7 +57,10 @@ type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
 type Rest = (Vec<(i16, u8)>, Vec<(i16, u8)>);
 // Generation 36 (N1): the respawn clocks, one per respawning half, slot 11's tenth element
 // (empty without the rule; an empty one is every clock idle). Generation 38 (N5): the squares
-// of the wild pieces walking their line back, slot 11's eleventh element.
+// of the wild pieces walking their line back, slot 11's eleventh element. TC4
+// (`docs/plan-turncoat.md` §5.2): each player's coins, slot 11's **twelfth and last**
+// element, PyO3's ceiling: the next field of any rule must restructure the group into a
+// struct.
 type StateOut<'py> = (
     Bound<'py, PyBytes>,
     u8,
@@ -70,7 +73,7 @@ type StateOut<'py> = (
     Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>),
+    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>, (u16, u16)),
 );
 
 /// What the wild-piece phase did on the way to a position (schema 9): one
@@ -165,6 +168,13 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         resting: crate::game::rest_lists_from(t, &board, [&state.11.8.0, &state.11.8.1]),
         respawn: crate::game::respawn_clocks_from(t, &state.11.9),
         heading_back: crate::game::heading_from(t, &board, &state.11.10),
+        // TC4: read only under a purse, and capped, so a hand-built position cannot key off
+        // the end of the table; `[0, 0]` in every other game, whatever Python sent.
+        purse: if t.purse.is_some() {
+            [state.11.11.0.min(PURSE_MAX), state.11.11.1.min(PURSE_MAX)]
+        } else {
+            [0, 0]
+        },
     }
 }
 
@@ -227,6 +237,7 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
             (game.resting_of(0), game.resting_of(1)),
             game.respawn.clone(),
             game.heading_back.iter().map(|square| square as u16).collect(),
+            (game.purse[0], game.purse[1]),
         ),
     )
 }
@@ -616,6 +627,17 @@ impl Core {
         }
         let snapshot = snapshot_from(&self.tables, &state);
         Ok(Game::from_snapshot(&self.tables, &snapshot).sight_of(square))
+    }
+
+    /// TC3 (`docs/plan-turncoat.md` §4.3): who may move the piece nobody owns on `square` as a
+    /// held neutral now: 0, 1, or -1 (a tie, or not a majority neutral). The page and the
+    /// analysis ask this; Python never counts (rule 3).
+    fn controller_of(&self, state: StateIn, square: usize) -> PyResult<i8> {
+        if square >= self.tables.n_squares {
+            return Err(pyo3::exceptions::PyValueError::new_err("square off the board"));
+        }
+        let snapshot = snapshot_from(&self.tables, &state);
+        Ok(Game::from_snapshot(&self.tables, &snapshot).controller_of(square))
     }
 
     fn in_check(&self, state: StateIn, player: u8) -> bool {

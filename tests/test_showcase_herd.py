@@ -1,5 +1,5 @@
 """N9: *the herd*, the second showcase of a wild piece's sight (freeze, disarm, shield) and of the duck
-that walks by its moves from a start square (`docs/plan-npc.md` §6.4).
+that walks by its moves from a start square (`docs/archive/plan-npc.md` §6.4).
 
 Chess on 8 by 9 won by taking the king, stalemate a loss, a duck that starts on e5 and walks a king's
 step, and four wild pieces that eat nothing, touch only the four squares beside them and pace their

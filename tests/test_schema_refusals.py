@@ -211,7 +211,7 @@ SHAPE = [
         id="placement-type",
     ),
     pytest.param(
-        {"setup.placements.1.player": 2}, "setup.placements[1].player must be 0 or 1, got 2",
+        {"setup.placements.1.player": 2}, "setup.placements[1].player must be 0, 1 or 'nobody', got 2",
         id="placement-player",
     ),
     pytest.param(

@@ -1,7 +1,7 @@
 {
   "schema_version": 31,
   "name": "path bolt",
-  "description": "T1's test spec (docs/plan-pieces-moves.md §5): chess with zigzag bishops: diagonal steps turning one way and back, along a rank or a file on their colour.",
+  "description": "T1's test spec (docs/archive/plan-pieces-moves.md §5): chess with zigzag bishops: diagonal steps turning one way and back, along a rank or a file on their colour.",
   "board": {
     "width": 8,
     "height": 8

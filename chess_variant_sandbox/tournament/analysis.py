@@ -45,11 +45,13 @@ from chess_variant_sandbox.engine.compile import POUNCE_ATTACKERS
 from chess_variant_sandbox.engine.moves import (
     DUCK_PASS,
     DUCK_PLACE,
+    MOVE_BUY,
     MOVE_CASTLE,
-    MOVE_COMMANDED,
     MOVE_DROP,
     MOVE_DUCK,
     MOVE_FOLD,
+    MOVE_FOREIGN,
+    MOVE_HIRE,
     MOVE_PROMOTION,
     MOVE_ROTATE,
     move_fold,
@@ -143,16 +145,24 @@ class GameAnalysis:
     # side-turn in each of `REST_SERIES`, as the core answers it (`Engine.rest_turn`).
     # ``None`` for a game without a rest, and then absent from the file, as ``rounds`` is.
     rest: dict[str, list[int]] | None = None
-    # Generation 39 (N3b, `docs/plan-npc.md` §4.3): what the wild pieces did (`WILD_COUNTS`),
+    # Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): what the wild pieces did (`WILD_COUNTS`),
     # read off the phase log's kinds as the pass replays each move, with the pounces' victims
     # by type. ``None`` for a game without wild pieces (and for a game in rounds), and then
     # absent from the file, as ``rounds`` is.
     wild: dict[str, Any] | None = None
-    # Generation 42 (N4b, `docs/plan-npc.md` §4.6): what the duck did (`DUCK_COUNTS`, and
+    # Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): what the duck did (`DUCK_COUNTS`, and
     # ``royal_distance``, the duck's king's distance to the mover's royal after each duck move,
     # -1 with none on the board). ``None`` for a game without a duck, and then absent from the
     # file, as ``rounds`` is.
     duck: dict[str, Any] | None = None
+    # TC7 (`docs/plan-turncoat.md` §5.8): what the purse did, one entry per side-turn in each
+    # of `PURSE_SERIES`, read off the core's states and the record's moves. ``None`` for a
+    # game without a purse, and then absent from the file, as ``rounds`` is.
+    purse: dict[str, list[int]] | None = None
+    # TC7 (§5.8): what the pieces nobody owns did, one entry per side-turn in each of
+    # `NEUTRAL_SERIES`, the core's answers. ``None`` for a game without a piece nobody owns,
+    # and then absent from the file.
+    neutral: dict[str, list[int]] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -169,6 +179,10 @@ class GameAnalysis:
             del data["wild"]
         if self.duck is None:
             del data["duck"]
+        if self.purse is None:
+            del data["purse"]
+        if self.neutral is None:
+            del data["neutral"]
         return data
 
     @classmethod
@@ -374,7 +388,7 @@ SIGHT_SERIES = (
     "suppressed",
 )
 
-# Q1007d (`docs/plan-schema-31.md` §3.9): what the pass adds for a game whose sight commands,
+# Q1007d (`docs/archive/plan-schema-31.md` §3.9): what the pass adds for a game whose sight commands,
 # one entry a side-turn beside `SIGHT_SERIES`'s (a command is refused beside rounds, so every
 # side-turn is a ply), each the core's answer or the record's move:
 #
@@ -384,7 +398,7 @@ SIGHT_SERIES = (
 # * ``command_offered``: how many legal commanded moves that side was offered
 #   (`Effects.commanded`);
 # * ``command_made``: 1 when the move made was a commanded one (the record's move carries
-#   ``MOVE_COMMANDED``), else 0;
+#   ``MOVE_FOREIGN``), else 0;
 # * ``turncoat``: 1 when it was a commanded capture, a piece made to take its own side, else 0.
 #
 # A game without a command has none of these keys, so its `analysis.json` is the bytes it was:
@@ -397,7 +411,7 @@ COMMAND_SERIES = (
     "turncoat",
 )
 
-# Generation 37 (N2, `docs/plan-npc.md` §4.2): the third owner's column, for a game in which a
+# Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): the third owner's column, for a game in which a
 # wild piece sees, one entry a side-turn beside `SIGHT_SERIES`' (and `COMMAND_SERIES`', when a
 # player's sight commands): how many of that side's pieces stood under a freeze, a disarm and a
 # shield **a wild piece gives** (`Effects.wild`, the core's bits from the wild sights alone),
@@ -465,7 +479,7 @@ def _count_sight(
         int(effects.suppressed),
     )
     if commands:
-        made = move is not None and bool(move & MOVE_COMMANDED)
+        made = move is not None and bool(move & MOVE_FOREIGN)
         row += (
             *under[3:],
             effects.commanded,
@@ -518,7 +532,104 @@ def _count_rest(
         tally[key].append(value)
 
 
-# Generation 39 (N3b, `docs/plan-npc.md` §4.3): the wild tally, per game. The phase log's
+# TC7 (`docs/plan-turncoat.md` §5.8): what the pass records of a game with a purse, one entry
+# a side-turn (the purse is refused beside rounds, so every side-turn is a ply), read off the
+# core's states before and after the record's move:
+#
+# * ``side``: whose turn it was;
+# * ``purse``: that side's coins as it chose (`GameState.purse`);
+# * ``spent``: the coins its move spent (a buy, hire or bribe takes nothing, so the fall in
+#   its purse), else 0;
+# * ``earned``: the coins its move earned (a bounty, after the cap), else 0;
+# * ``bought``, ``hired``, ``bribed``: 1 when the move was that purchase (a hire of a piece
+#   nobody owned, a bribe of the opponent's), else 0.
+#
+# The totals, the counts and the purse at the end are sums and the last entry's. A game without
+# a purse has no ``purse`` key at all, so its `analysis.json` is the bytes it was.
+PURSE_SERIES = ("side", "purse", "spent", "earned", "bought", "hired", "bribed")
+
+
+def _purse_tally(engine: Engine) -> dict[str, list[int]] | None:
+    """`PURSE_SERIES` empty, for a game with a purse; ``None`` for every other game."""
+    if engine.spec.purse is None:
+        return None
+    return {key: [] for key in PURSE_SERIES}
+
+
+def _count_purse(
+    engine: Engine, tally: dict[str, list[int]] | None, before: GameState, move: int,
+    after: GameState,
+) -> None:
+    """One side-turn of `PURSE_SERIES`: the side to move on ``before`` making ``move``."""
+    if tally is None:
+        return
+    seat = before.side_to_move
+    kind = move_type(move)
+    change = after.purse[seat] - before.purse[seat]
+    purchase = kind in (MOVE_BUY, MOVE_HIRE)
+    # A hire and a bribe are one kind (`MOVE_HIRE`): whose the piece was says which.
+    bribe = kind == MOVE_HIRE and engine.spec.owner_of(before.board[move_from(move)]) != 2
+    row = (
+        seat,
+        before.purse[seat],
+        -change if purchase else 0,
+        0 if purchase else max(change, 0),
+        int(kind == MOVE_BUY),
+        int(kind == MOVE_HIRE and not bribe),
+        int(bribe),
+    )
+    for key, value in zip(PURSE_SERIES, row, strict=True):
+        tally[key].append(value)
+
+
+# TC7 (§5.8): what the pass records of a game with a piece nobody owns, one entry a side-turn,
+# each the core's answer on the board the choice was made on:
+#
+# * ``side``: whose turn it was;
+# * ``held``: how many pieces nobody owns that side held by majority (`Engine.controller_of`);
+# * ``neutral_offered``: how many legal moves of a piece nobody owns it was offered (a foreign
+#   move from a square of nobody's block);
+# * ``neutral_made``: 1 when the move made was one, else 0.
+#
+# The share of side-turns holding one is the mean of ``held > 0``. A game without a piece
+# nobody owns has no ``neutral`` key at all, so its `analysis.json` is the bytes it was.
+NEUTRAL_SERIES = ("side", "held", "neutral_offered", "neutral_made")
+
+
+def _neutral_tally(engine: Engine) -> dict[str, list[int]] | None:
+    """`NEUTRAL_SERIES` empty, for a game with a piece nobody owns; ``None`` otherwise."""
+    if engine.spec.neutrals is None:
+        return None
+    return {key: [] for key in NEUTRAL_SERIES}
+
+
+def _count_neutral(
+    engine: Engine, tally: dict[str, list[int]] | None, state: GameState, move: int
+) -> None:
+    """One side-turn of `NEUTRAL_SERIES`: the side to move on ``state`` making ``move``."""
+    if tally is None:
+        return
+    spec = engine.spec
+    seat = state.side_to_move
+
+    def nobodys(square: int) -> bool:
+        value = state.board[square]
+        return bool(value) and spec.owner_of(value) == 2
+
+    held = sum(
+        1 for square in range(len(state.board))
+        if nobodys(square) and engine.controller_of(state, square) == seat
+    )
+    offered = sum(
+        1 for legal in engine.legal_moves(state)
+        if legal & MOVE_FOREIGN and nobodys(move_from(legal))
+    )
+    made = bool(move & MOVE_FOREIGN) and nobodys(move_from(move))
+    for key, value in zip(NEUTRAL_SERIES, (seat, held, offered, int(made)), strict=True):
+        tally[key].append(value)
+
+
+# Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): the wild tally, per game. The phase log's
 # entries by kind (``steps_eating`` the steps that ate, then every pounce, return and turn),
 # the wild pieces players took, and the most standing at once; beside it ``pounced``, the
 # pounces' victims by type in the spec's piece order. N1 left returns uncounted; they are here.
@@ -533,7 +644,7 @@ WILD_COUNTS = (
 )
 
 
-# Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck tally, per game. Its moves, how many put
+# Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck tally, per game. Its moves, how many put
 # it down from off the board, how many passed, and after each duck move the duck's king's
 # distance to the mover's royal (the lattice's own distance on a hex board; -1 with no royal
 # of the mover's standing), which §6.1's prediction reads.
@@ -642,6 +753,8 @@ def _analyse_game(
             1 for value in state.board if _is_wild_piece(engine.spec, value)
         )
     duck = _duck_tally(engine)
+    purse = _purse_tally(engine)
+    neutral = _neutral_tally(engine)
 
     for index, move in enumerate(record.moves):
         board = state.board
@@ -652,6 +765,8 @@ def _analyse_game(
             break
         _count_sight(engine, sight, state, state.side_to_move, move)
         _count_rest(engine, rest, state, state.side_to_move)
+        _count_neutral(engine, neutral, state, move)
+        before = state
         if _moves_an_instance(move) and move_from(move) in starting_squares:
             moved_squares.add(move_from(move))
         moves_by_type[kind] += 1
@@ -679,6 +794,7 @@ def _analyse_game(
             _count_wild(engine, wild, board, move, state, phase)
         if duck is not None:
             _count_duck(engine, duck, mover, move, state)
+        _count_purse(engine, purse, before, move, state)
         walked += 1
         position_keys.append(state.key)
         if state.key in seen_keys:
@@ -703,6 +819,8 @@ def _analyse_game(
         rest=rest,
         wild=wild,
         duck=duck,
+        purse=purse,
+        neutral=neutral,
     )
 
 
@@ -726,7 +844,8 @@ def _mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
     """
     n_types = engine.spec.n_types
     kind = move_type(move)
-    if kind == MOVE_DROP:
+    if kind in (MOVE_DROP, MOVE_BUY):
+        # TC5: a buy, like a drop, is the type it places.
         return move_promotion(move) % n_types
     if kind == MOVE_DUCK:
         # Generation 42: the duck's moves count under its type, placed or passing as moved.
@@ -742,9 +861,10 @@ def _mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
 
 
 def _moves_an_instance(move: int) -> bool:
-    """Whether a move moves the piece on its origin square: a drop moves none, and a fold's
-    own move leaves the piece standing in it where it is."""
-    return move_type(move) not in (MOVE_DROP, MOVE_FOLD, MOVE_DUCK)
+    """Whether a move moves the piece on its origin square: a drop or a buy (TC5) moves none,
+    a hire or a bribe (TC6) changes its side where it stands, and a fold's own move leaves
+    the piece standing in it where it is."""
+    return move_type(move) not in (MOVE_DROP, MOVE_BUY, MOVE_FOLD, MOVE_DUCK, MOVE_HIRE)
 
 
 def _starting_squares(engine: Engine, board: bytes) -> set[int]:
@@ -777,13 +897,15 @@ def _takes(board: bytes, move: int) -> bool:
     moves the rook rather than removing it. A fold's own move may end on a piece and leave
     it standing (`docs/archive/plan-portals-2.md` §3R.1 rule 6). A duck's pass (generation 42)
     names the duck's own square. These are the four `agents.rs::capture_gain` and
-    `agents/minimax.py` leave out.
+    `agents/minimax.py` leave out. A hire or a bribe (TC6) names the piece it buys, which
+    changes sides and is not taken.
     """
     return board[move_to(move)] != 0 and move_type(move) not in (
         MOVE_ROTATE,
         MOVE_CASTLE,
         MOVE_FOLD,
         MOVE_DUCK,
+        MOVE_HIRE,
     )
 
 

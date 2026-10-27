@@ -238,8 +238,8 @@
   "provenance": {
     "added": "2026-10-25",
     "origin": "designed",
-    "source": "docs/plan-pieces-moves.md, A2: the showcase for a shooting capture (section 6.7, its fallback)",
-    "history": "The registered fallback of A2 (docs/plan-pieces-moves.md section 6.7), pre-registered 2026-10-25 before the rule was built: chess (4c1922ffae26) with rifle chess's capture given to the knights alone, rules.strike with by: [N], one key on the calibration baseline so a visitor sees what a piece that shoots does. Taken over the archers (the same rule on the bishops) by the rule written before the draft read: the bishops unless their 6400-node self-play gave the first seat more than 0.70 of the decided games; it gave 18 of 18, the first player's bishop going to b5 and shooting into the uncastled king's side. Nothing was tunable; the knights are drawn as an arrow, the drawing this rule was built for, a choice made before any measured game.",
+    "source": "docs/archive/plan-pieces-moves.md, A2: the showcase for a shooting capture (section 6.7, its fallback)",
+    "history": "The registered fallback of A2 (docs/archive/plan-pieces-moves.md section 6.7), pre-registered 2026-10-25 before the rule was built: chess (4c1922ffae26) with rifle chess's capture given to the knights alone, rules.strike with by: [N], one key on the calibration baseline so a visitor sees what a piece that shoots does. Taken over the archers (the same rule on the bishops) by the rule written before the draft read: the bishops unless their 6400-node self-play gave the first seat more than 0.70 of the decided games; it gave 18 of 18, the first player's bishop going to b5 and shooting into the uncastled king's side. Nothing was tunable; the knights are drawn as an arrow, the drawing this rule was built for, a choice made before any measured game.",
     "parents": [
       "4c1922ffae26"
     ]

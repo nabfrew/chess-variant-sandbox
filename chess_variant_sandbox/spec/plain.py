@@ -178,6 +178,36 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "Claiming this many squares wins outright. 0 leaves the claiming to another rule, "
         "such as 'who wins when a clock runs out' comparing the ground each side holds.",
     ),
+    # TC5 (`docs/plan-turncoat.md` §5.4): the purse and its market.
+    "rules.purse": (
+        "coins and a market",
+        "Each player holds coins, paid by the bounties on what they take, and may spend a "
+        "whole move buying a piece for sale, hiring a priced piece nobody owns that stands "
+        "next to one of theirs, or (where bribes are on) buying an enemy one. Not in a game where both move at once, where "
+        "a turn is longer than one move, beside portals or where a capture blows up.",
+    ),
+    "rules.purse.start": (
+        "coins at the start",
+        "How many coins each player starts with. Bounties add to them, up to 99; what "
+        "passes that is lost.",
+    ),
+    "rules.purse.market": (
+        "for sale",
+        "The kinds of piece a player may buy, each at its price. Buying one is the whole "
+        "move, and the piece is placed on an empty square where bought pieces go.",
+    ),
+    "rules.purse.region": (
+        "where bought pieces go",
+        "The squares a bought piece may be placed on, given for the first player and "
+        "reflected for the second. Leave it empty for each player's own back row.",
+    ),
+    # TC6 (`docs/plan-turncoat.md` §5.5): bribes.
+    "rules.purse.bribe": (
+        "bribes",
+        "On: a player may spend a whole move buying an enemy piece that has a price and "
+        "stands next to one of theirs, for twice its price. It changes sides where it "
+        "stands. Off: never.",
+    ),
     "rules.duck.piece": (
         "the duck",
         "The piece every turn ends by moving: after each move the same player moves it to an "
@@ -522,6 +552,42 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "both choose in secret. A spy game must be played in rounds, and a lost spy never "
         "comes back.",
     ),
+    # TC3 (`docs/plan-turncoat.md` §4): how a piece nobody owns is moved.
+    "pieces.control": (
+        "when nobody owns it",
+        "Whether a piece of this kind that belongs to nobody just stands, or is moved by "
+        "whichever player has more of their own pieces next to it (a tie: nobody moves it). "
+        "Leave it empty and it stands.",
+    ),
+    "pieces.control.majority": (
+        "moved by the majority of",
+        "Which squares count as next to a piece nobody owns, instead of one step in any "
+        "direction: the player with more of their own pieces on them may move it.",
+    ),
+    "pieces.control.majority.vectors": (
+        "direction",
+        "The squares that count as next to it, as a way of moving's directions are.",
+    ),
+    "pieces.control.majority.symmetry": (
+        "turned",
+        "How each direction is turned into more, as on a way of moving; it must read the same "
+        "from either player's side.",
+    ),
+    # TC5 (`docs/plan-turncoat.md` §5.4): what a piece costs from the market; TC6, to hire
+    # or bribe.
+    "pieces.price": (
+        "price",
+        "What one piece of this kind costs, in coins: from the market, to hire one nobody "
+        "owns standing next to one of yours, or (twice it) to bribe an enemy one. Leave it "
+        "empty and it is not for sale.",
+    ),
+    # TC4 (`docs/plan-turncoat.md` §5.1): what taking a piece pays.
+    "pieces.bounty": (
+        "bounty",
+        "What taking a piece of this kind pays the player whose move took it, into the points "
+        "counted when time runs out (the game must count points). Leave it empty and taking "
+        "one pays nothing.",
+    ),
     # Schema 29 (Q983a): rest, a piece property in any game.
     "pieces.rest": (
         "rests after it moves",
@@ -577,7 +643,7 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "Yes: it sees past every piece on its lines. Left empty, each line stops at the "
         "first piece, which is seen.",
     ),
-    # Generation 31 (Q1007c, `docs/plan-schema-31.md` §3): a command's turncoat capture, a box
+    # Generation 31 (Q1007c, `docs/archive/plan-schema-31.md` §3): a command's turncoat capture, a box
     # beside *what it does* shown only while the effect is a command (Q1007d; worded by Q1013).
     "pieces.sight.captures_own": (
         "may make them take their own side",

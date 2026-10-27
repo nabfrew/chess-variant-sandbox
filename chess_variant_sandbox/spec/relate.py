@@ -50,10 +50,12 @@ from typing import Any
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.schema import (
     DEFAULT_RANGE,
+    NOBODY,
     absent_squares,
     can_double_step,
     format_square,
     has_sights,
+    is_nobodys,
     obstacle_squares,
     parse_square,
     piece_sights,
@@ -103,6 +105,9 @@ RULE_KINDS: dict[str, str] = {
     "repetition_draw": "clock",
     "no_progress_draw": "clock",
     "drops": "hand",
+    # TC5 (`docs/plan-turncoat.md` §5.8): coins and a market are a second way pieces enter
+    # play, beside the hand.
+    "purse": "hand",
     "npcs": "wild",
     "duck": "wild",
     "turn": "turn",
@@ -142,6 +147,7 @@ RULE_WORDS: dict[str, str] = {
     "repetition_draw": "how often a position may repeat",
     "no_progress_draw": "how long without progress before a draw",
     "drops": "putting captured pieces back on the board",
+    "purse": "coins, and buying pieces with them",
     "npcs": "the pieces that belong to nobody",
     "duck": "the neutral piece each turn ends by moving",
     "turn": "how many moves a turn is",
@@ -371,6 +377,12 @@ def _key_of(form: NormalForm) -> str:
                   | ({"spy": piece["spy"]} if "spy" in piece else {})
                   | ({"speed": piece["speed"]} if "speed" in piece else {})
                   | ({"rest": piece["rest"]} if "rest" in piece else {})
+                  # TC4: a bounty decides what a capture pays; TC3's control, who moves a
+                  # piece nobody owns. Both are rules, so neither is a spelling.
+                  | ({"bounty": piece["bounty"]} if "bounty" in piece else {})
+                  # TC5: a price decides what buying one costs.
+                  | ({"price": piece["price"]} if "price" in piece else {})
+                  | ({"control": _frozen(piece["control"])} if "control" in piece else {})
                   | ({"sight": _sight_form(piece)} if "sight" in piece else {})),
             )
             for pid, piece in form.pieces.items()
@@ -433,7 +445,8 @@ def _restated(
     placements: list[dict[str, Any]] = []
     for player, file_, rank, pid, facing in sorted(cells):
         row: dict[str, Any] = {
-            "piece": pid, "player": player, "squares": [format_square(file_, rank)],
+            "piece": pid, "player": NOBODY if player == 2 else player,
+            "squares": [format_square(file_, rank)],
         }
         if facing:
             row["facing"] = facing
@@ -498,6 +511,8 @@ _PIECE_POSITIONS: dict[str, Any] = {
     },
     "npcs": [{"piece": _ID, "immune": _IDS}],
     "duck": {"piece": _ID},
+    # TC5: what the market sells.
+    "purse": {"market": _IDS},
     # Schema 21: an end's `carries`, on a pair keyed by the end, on a map's end a list.
     "portals": [{"piece": _ID, "carries": {_ANY: _IDS}, "ends": [{"carries": _IDS}]}],
     "strike": {
@@ -730,7 +745,8 @@ def _setup_cells(
     for placement in setup.get("placements") or []:
         if not isinstance(placement, dict) or "piece" not in placement:
             continue
-        player = _int(placement.get("player"), 0)
+        # TC3: a nobody's placement is the third owner's, and its mirror image stays nobody's.
+        player = 2 if is_nobodys(placement) else _int(placement.get("player"), 0)
         facing = str(placement.get("facing", ""))
         for name in placement.get("squares") or []:
             square = parse_square(str(name), width, height)
@@ -740,7 +756,8 @@ def _setup_cells(
             if setup.get("mirror", True):
                 there = reflect_square(square[0], square[1], width, height, orientation)
                 cells.add(
-                    (1 - player, there[0], there[1], str(placement["piece"]), facing)
+                    (player if player == 2 else 1 - player, there[0], there[1],
+                     str(placement["piece"]), facing)
                 )
     return cells
 
@@ -1030,7 +1047,12 @@ def _compare(
         # 28's speed (Q943a) one that decides when its move is made in a round; schema 29's
         # rest (Q983a) one that decides when it may move again.
         # Schema 30's sight (Q999a) one that decides what the pieces it sees may do.
-        rest = ("region", "promoted_from", "beats", "spy", "speed", "rest")
+        # TC4's bounty one that decides what taking it pays, TC3's control who moves it.
+        # TC5's price one that decides what buying it costs.
+        rest = (
+            "region", "promoted_from", "beats", "spy", "speed", "rest", "bounty", "control",
+            "price",
+        )
         if _folded(_stated_sight(one, rest), _PIECE_FIELDS, ids_a) != _folded(
             _stated_sight(other, rest), _PIECE_FIELDS, ids_b
         ):
@@ -1375,6 +1397,12 @@ def rules_involved(form: NormalForm) -> frozenset[str]:
     # Schema 29 (Q983a): a rest changes which piece may make a turn's move, so it is a rule.
     if any("rest" in piece for piece in form.pieces.values()):
         involved.add("piece.rest")
+    # TC4: a bounty changes what a capture pays, so it is a rule.
+    if any("bounty" in piece for piece in form.pieces.values()):
+        involved.add("piece.bounty")
+    # TC5: a price changes what buying a piece costs, so it is a rule.
+    if any("price" in piece for piece in form.pieces.values()):
+        involved.add("piece.price")
     # Schema 30 (Q999a): a line of sight changes what the pieces it sees may do, so it is a
     # rule; held only where the compiler keeps it (`_live_sights`).
     if any("sight" in piece for piece in form.pieces.values()):

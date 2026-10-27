@@ -1,4 +1,4 @@
-"""A door per rule into the designer (LP7, `docs/plan-landing.md` §5).
+"""A door per rule into the designer (LP7, `docs/archive/plan-landing.md` §5).
 
 `#/design?rule=<key>` opens the designer on a copy of chess with that rule added, through the
 designer's own add paths. These hold the route together from its three sides: every word of

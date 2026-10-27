@@ -2,7 +2,7 @@
 // are at `/game`.
 //
 // The words are the server's: `web/landing.py` draws the page (LP4, direction B of
-// `docs/plan-landing.md`: the question and its turning endings, then one story start to
+// `docs/archive/plan-landing.md`: the question and its turning endings, then one story start to
 // finish, then the wall of words) from the stories `web/stories.py` rendered, and the single
 // page carries it as `<template id="landingPage">`. This file clones it into the view, hides
 // what this server has not got (`data-needs`), draws the hero's games from the listing, and
@@ -425,7 +425,7 @@ function fillMembersShelf(data) {
 
 // ------------------------------------------------------------------ the hero (LP4)
 //
-// `docs/plan-landing.md` §3.2: *Wouldn't it be cool if…* with its ending turning over every
+// `docs/archive/plan-landing.md` §3.2: *Wouldn't it be cool if…* with its ending turning over every
 // few seconds, the story's own first, each beside the library game that idea became, drawn
 // from the listing's still with its marks (the seams, the walls, the walks, the goals, a
 // hand). The words and the order are the server's (`landing._hero`); this finds each game
@@ -682,17 +682,13 @@ function drawStoryFrame(mount, game, frame, prev, art, still) {
   if (!moving) return 0;
   // A sweep is the rule acting: it takes the time its travel needs, not the story's pace.
   const flight = travel(moving, fx - tx, fy - ty, false, 0, item.sweep ? Infinity : most);
-  // A sweep: each piece on its path is struck as the sweeper passes over it, in the order
-  // the server listed them along the path.
-  let swept = 0;
-  for (const square of item.sweep || []) {
-    if (!before[square]) continue;
-    const [x, y] = at(square);
-    const share = Math.hypot(x - fx, y - fy) / Math.max(1, Math.hypot(tx - fx, ty - fy));
-    swept = Math.max(swept, capture(svg, before[square], x, y, cell,
-      { at: flight * Math.min(1, share), dx: tx - fx, dy: ty - fy }));
-  }
-  if (swept) svg.appendChild(moving);
+  // A sweep: each piece on its path is cut down as the sweeper passes over it, in the order
+  // the server listed them along the path -- the play board's cut (`sweepCut`), the same
+  // blade and the same halves.
+  const victims = (item.sweep || []).filter(square => before[square])
+    .map(square => [before[square], ...at(square)]);
+  const swept = victims.length
+    ? sweepCut(svg, moving, [fx, fy], [tx, ty], victims, cell, flight) : 0;
   // A square the move claimed is painted as the piece lands on it.
   let painting = 0;
   for (const [square, owner] of item.claims || []) {

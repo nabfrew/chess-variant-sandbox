@@ -216,11 +216,11 @@ FROZEN: dict[str, tuple[str, str]] = {
     # LPD, 2026-10-26: its one-change fix, the sweep given range 3 (the landing's fourth pair).
     "archive/short-sweeping-bishop-chess.json": ("c7c6907901b3", "f47ff465aa55f168"),
     # Q1023, 2026-10-26: L1, chess with galloping knights, schema 31's lame rider (`range`,
-    # `min_range`; `docs/plan-schema-31.md` §6.4; `tests/test_showcase_galloping_knights.py`),
+    # `min_range`; `docs/archive/plan-schema-31.md` §6.4; `tests/test_showcase_galloping_knights.py`),
     # from `4c1922ffae26`. New.
     "archive/chess-with-galloping-knights.json": ("69f1e486af87", "e11db59559c33321"),
     # Q1024, 2026-10-26: P1, chess with preaching bishops, schema 31's command and captures_own
-    # (`docs/plan-schema-31.md` §6.5; `tests/test_showcase_preaching_bishops.py`), from
+    # (`docs/archive/plan-schema-31.md` §6.5; `tests/test_showcase_preaching_bishops.py`), from
     # `4c1922ffae26`. New.
     "archive/chess-with-preaching-bishops.json": ("91c2c24305e5", "1dbafa64248e5732"),
     "archive/marchfield.json": ("0be72e61ef24", "3a2d5a7fddb76113"),
@@ -481,7 +481,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q999b, 2026-10-22: the user's colour-bound showcase of schema 30's lines of sight
     # (`docs/archive/plan-passive.md` §6.5; `tests/test_showcase_opposite_colours.py`): chess's array
     # with every piece bound to its colour, the colours meeting only by sight. New.
-    # Q1007e, 2026-10-24: replaced under its name by R1 (`docs/plan-schema-31.md` §6.1;
+    # Q1007e, 2026-10-24: replaced under its name by R1 (`docs/archive/plan-schema-31.md` §6.1;
     # `tests/test_showcases_q1007e.py`), rook and queen made two-square riders on a board two ranks
     # longer; was `690631b0e4eb`/`b0f117a66632385c`, kept as `tests/_retired_opposite_colours.json`.
     "archive/opposite-colours.json": ("ce406100becc", "2b08f4f685f2a455"),
@@ -491,38 +491,38 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/chess-with-a-sheltering-king.json": ("1aa8c4705681", "64883471fd520e34"),
     "archive/chess-with-daunting-knights.json": ("c2b124298181", "39d7f80d78350661"),
     # Q1007e, 2026-10-24: R3, chess with the knight made a nightrider, schema 31's ridden leap
-    # (`docs/plan-schema-31.md` §6.2; `tests/test_showcases_q1007e.py`), from `4c1922ffae26`. New.
+    # (`docs/archive/plan-schema-31.md` §6.2; `tests/test_showcases_q1007e.py`), from `4c1922ffae26`. New.
     "archive/chess-with-nightriders.json": ("cc5e28e9ed0f", "1c16ddb9f0bfe37b"),
     # T2, 2026-10-25: Z1, chess with zigzag bishops, generation 34's turning path
-    # (`docs/plan-pieces-moves.md` §5.7; `tests/test_showcase_crooked_bishops.py`), from
+    # (`docs/archive/plan-pieces-moves.md` §5.7; `tests/test_showcase_crooked_bishops.py`), from
     # `4c1922ffae26`. New.
     "archive/crooked-bishops.json": ("23f6613e9fa3", "e4e79b5a3a3a78e9"),
     # T3, 2026-10-25: C1, chess with the queen's lines turned to circles, generation 34's turning
-    # path (`docs/plan-pieces-moves.md` §5.7; `tests/test_showcase_circling_queen.py`), from
+    # path (`docs/archive/plan-pieces-moves.md` §5.7; `tests/test_showcase_circling_queen.py`), from
     # `4c1922ffae26`. New.
     "archive/circling-queen.json": ("379efba235c5", "8374456cbf75c3ec"),
     # A2, 2026-10-25: the horse archers, chess whose knights shoot, generation 35's strike `by`
-    # (`docs/plan-pieces-moves.md` §6.7, the registered fallback over the archers;
+    # (`docs/archive/plan-pieces-moves.md` §6.7, the registered fallback over the archers;
     # `tests/test_showcase_horse_archers.py`), from `4c1922ffae26`. New.
     "archive/horse-archers.json": ("9c90463dc10f", "77560229c453887c"),
     # I3, 2026-10-25: anchors, chess with two pieces a side that never move and only a pawn
-    # may take, generation 33's `moves: []` on the board (`docs/plan-pieces-moves.md` §4.8;
+    # may take, generation 33's `moves: []` on the board (`docs/archive/plan-pieces-moves.md` §4.8;
     # `tests/test_showcase_anchors.py`), from `4c1922ffae26`. New.
     "archive/anchors.json": ("d6cb641394dd", "5caf97001f5a1db8"),
     # N6, 2026-10-26: the shepherds duck, chess won by taking the king with the classic duck
     # shielding round it and a wolf pair that turns back and returns, generations 36 to 38 and
-    # 42 (`docs/plan-npc.md` §6.1; `tests/test_showcase_shepherds_duck.py`), from
+    # 42 (`docs/archive/plan-npc.md` §6.1; `tests/test_showcase_shepherds_duck.py`), from
     # `4c1922ffae26`. New.
     "archive/the-shepherds-duck.json": ("e7d2d7406586", "906a46e35f292ea2"),
     # N7, 2026-10-26: the hydra, chess with a stationary hydra pair that grows a head on whatever
     # attacks it, up to six, and four hounds that pounce on the mover's pieces beside them,
-    # generations 39 to 41 (`docs/plan-npc.md` §6.2; `tests/test_showcase_hydra.py`), from
+    # generations 39 to 41 (`docs/archive/plan-npc.md` §6.2; `tests/test_showcase_hydra.py`), from
     # `4c1922ffae26`. New.
     "archive/the-hydra.json": ("0f126fe608ef", "2fa09f528586afbd"),
     # N9, 2026-10-26: the herd, chess on 8 by 9 won by taking the king with stalemate a loss, a
     # duck that starts on e5 and walks a king's step, and four wild pieces touching the four
     # squares beside them (a gorgon freezing, a siren disarming, two dryads shielding), generations
-    # 37 and 42 (`docs/plan-npc.md` section 6.4; `tests/test_showcase_herd.py`), from
+    # 37 and 42 (`docs/archive/plan-npc.md` section 6.4; `tests/test_showcase_herd.py`), from
     # `4c1922ffae26`. New.
     "archive/the-herd.json": ("2135109e8191", "a8d032c3aafb1648"),
 }
@@ -1300,7 +1300,8 @@ class TestWildPiecesAgainstTheRestOfTheSpec:
     def test_points_with_no_wild_piece_list_count_nothing(self, npcs: Any) -> None:
         rules = {**self.POINTS, **({} if npcs is None else {"npcs": npcs})}
         (error,) = self._errors(rules)
-        assert error.startswith('rules.scoring.count "points" needs rules.npcs')
+        # TC4 widened it: a type's bounty pays too (`docs/plan-turncoat.md` §5.1).
+        assert error.startswith('rules.scoring.count "points" needs a bounty above zero')
 
     def test_junk_among_the_pieces_is_not_a_piece(self) -> None:
         rules = {"npcs": [{"piece": "W", "route": ["a1", "b1"]}]}
@@ -1348,4 +1349,4 @@ class TestWildPiecesAgainstTheRestOfTheSpec:
         rules = {**self.POINTS, "npcs": [{"piece": "W", "route": ["a1", "b1"], **npc}]}
         errors = self._errors(rules, [piece])
         assert bool(errors) is not pays
-        assert all("needs a wild piece with a bounty above zero" in e for e in errors)
+        assert all('"points" needs a bounty above zero' in e for e in errors)

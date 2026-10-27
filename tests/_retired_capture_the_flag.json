@@ -212,8 +212,8 @@
   "provenance": {
     "added": "2026-10-25",
     "origin": "designed",
-    "source": "docs/plan-pieces-moves.md, I2: the showcase for pieces that never move (section 4.7)",
-    "history": "I2 of docs/plan-pieces-moves.md section 4.7, pre-registered 2026-10-25: chess (4c1922ffae26) with the king made an immobile royal flag (moves: []), won by taking it, stalemate a loss and no castling, one change on the calibration baseline so a visitor sees what a piece that never moves does. Draft F1a, kept over F1b (only pawns, bishops and rooks may take the flag) by the rule registered before the draft read: its 6400-node self-play median was 33.5 plies, not under 30. Measured 2026-10-25 (four runs, weights v12): 0.790 [0.770, 0.826], viable 4-0, seat level; V2 and V4 met, V3's index bar 0.800 missed, so it retired by the call registered before its first measured game, and never joined the library.",
+    "source": "docs/archive/plan-pieces-moves.md, I2: the showcase for pieces that never move (section 4.7)",
+    "history": "I2 of docs/archive/plan-pieces-moves.md section 4.7, pre-registered 2026-10-25: chess (4c1922ffae26) with the king made an immobile royal flag (moves: []), won by taking it, stalemate a loss and no castling, one change on the calibration baseline so a visitor sees what a piece that never moves does. Draft F1a, kept over F1b (only pawns, bishops and rooks may take the flag) by the rule registered before the draft read: its 6400-node self-play median was 33.5 plies, not under 30. Measured 2026-10-25 (four runs, weights v12): 0.790 [0.770, 0.826], viable 4-0, seat level; V2 and V4 met, V3's index bar 0.800 missed, so it retired by the call registered before its first measured game, and never joined the library.",
     "parents": [
       "4c1922ffae26"
     ]

@@ -1,5 +1,5 @@
 """N6: *the shepherd's duck*, the showcase of the duck, its shield, turning back and respawn
-(`docs/plan-npc.md` §6.1).
+(`docs/archive/plan-npc.md` §6.1).
 
 Chess won by taking the king, with the classic duck shielding the eight squares round it and a
 mirrored wolf pair pacing ranks 4 and 5 end to end, turning back at what it may not eat and

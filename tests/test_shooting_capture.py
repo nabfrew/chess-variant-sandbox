@@ -1,4 +1,4 @@
-"""A1: the shooting capture, `rules.strike.by` (`docs/plan-pieces-moves.md` §6).
+"""A1: the shooting capture, `rules.strike.by` (`docs/archive/plan-pieces-moves.md` §6).
 
 A list on the existing strike, copying the explosion's `by`: only a capture made by a listed
 type strikes, and every other capture is an ordinary one. Rifle given to the bishops is the

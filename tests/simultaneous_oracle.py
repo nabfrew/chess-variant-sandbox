@@ -57,6 +57,17 @@ def _arriving(spec: CompiledSpec, player: int, piece_type: int, square: int) -> 
     return _entering(spec, player, piece_type)
 
 
+def _rehome(spec: CompiledSpec, value: int, new_owner: int, square: int) -> int:
+    """TC2 (`docs/plan-turncoat.md` §6): a piece changing sides keeps its heading, unless it
+    has one orientation or `promote_on_entry` turns it into another type there."""
+    piece_type = spec.type_of(value)
+    arrived = _arriving(spec, new_owner, piece_type, square)
+    if not spec.has_facing or spec.facing_axes[piece_type] < 2 or spec.type_of(arrived) != piece_type:
+        return arrived
+    kept = spec.coat_facing[spec.owner_of(value)][spec.facing_of(value)]
+    return spec.encode_piece(new_owner, piece_type, kept)
+
+
 def _meeting(spec: CompiledSpec, mover_type: int, victim: int, mover_owner: int) -> tuple[int, int, bool]:
     strike = spec.strike
     if strike is None:
@@ -169,7 +180,8 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
         becomes, mover_becomes, flips = _meeting(spec, plan["type"], victim, player)
         as_type = mover_becomes if mover_becomes >= 0 else spec.type_of(mover)
         if flips:
-            attacker = _arriving(spec, 1 - player, as_type, origin)
+            now = _entering(spec, player, as_type) if mover_becomes >= 0 else mover
+            attacker = _rehome(spec, now, 1 - player, origin)
         elif mover_becomes >= 0:
             attacker = _arriving(spec, player, as_type, origin)
         else:
@@ -383,7 +395,11 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 mover_becomes >= 0 or flips
             ):
                 as_type = mover_becomes if mover_becomes >= 0 else spec.type_of(there)
-                board[square] = _arriving(spec, 1 - captor if flips else captor, as_type, square)
+                if flips:
+                    now = _entering(spec, captor, as_type) if mover_becomes >= 0 else there
+                    board[square] = _rehome(spec, now, 1 - captor, square)
+                else:
+                    board[square] = _arriving(spec, captor, as_type, square)
             if becomes < 0:
                 continue
             owner = spec.owner_of(victim)

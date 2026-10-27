@@ -104,7 +104,7 @@ class TestTheMarkup:
 
 
 class TestTheShelvesAndTheScoreMove:
-    """LP3 (`docs/plan-landing.md` §4.2): the five shelves are one band at the top of
+    """LP3 (`docs/archive/plan-landing.md` §4.2): the five shelves are one band at the top of
     `/game`, and the score's long explanation is its own view, `#/score`, on both servers."""
 
     def test_the_page_carries_both_as_templates(self) -> None:

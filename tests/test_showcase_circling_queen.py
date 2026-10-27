@@ -1,4 +1,4 @@
-"""V1 of T3's showcase *the circling queen* (`docs/plan-pieces-moves.md` §5.7, C1): the mechanism,
+"""V1 of T3's showcase *the circling queen* (`docs/archive/plan-pieces-moves.md` §5.7, C1): the mechanism,
 without players.
 
 Chess with the queen's slide given ``path: "circle"``: one-square steps in her eight directions,

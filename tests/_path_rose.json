@@ -1,7 +1,7 @@
 {
   "schema_version": 31,
   "name": "path rose",
-  "description": "T1's test spec (docs/plan-pieces-moves.md §5): chess with roses for knights: knight steps turning one place round at every step, round an octagon.",
+  "description": "T1's test spec (docs/archive/plan-pieces-moves.md §5): chess with roses for knights: knight steps turning one place round at every step, round an octagon.",
   "board": {
     "width": 8,
     "height": 8

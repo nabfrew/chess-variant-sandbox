@@ -26,6 +26,11 @@ from typing import Any
 from chess_variant_sandbox.spec.schema import (
     STOCK_UNLIMITED,
     drop_face_pairs,
+    hire_ids,
+    piece_bounties,
+    piece_prices,
+    purse_bribes,
+    purse_market,
     strike_is_live,
     strike_states_nothing,
     strike_survives_anything,
@@ -337,8 +342,17 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
             # A `scoring` rule counting points has nothing left to count, which is the
             # pair `clear_npcs` already keeps together.
             rules.pop("npcs", None)
-            if isinstance(rules.get("scoring"), dict) and rules["scoring"].get("count") == "points":
+            if (
+                isinstance(rules.get("scoring"), dict) and rules["scoring"].get("count") == "points"
+                and not piece_bounties(spec)
+            ):
                 rules.pop("scoring", None)
+
+    # TC5 (`docs/plan-turncoat.md` §5.4): the market stops selling it; a market left empty
+    # is settled by `_drop_inert`.
+    purse = rules.get("purse")
+    if isinstance(purse, dict) and isinstance(purse.get("market"), list):
+        purse["market"] = [pid for pid in purse["market"] if pid != piece_id]
 
     # Generation 42 (N4b): the duck goes with its type.
     duck = rules.get("duck")
@@ -924,6 +938,43 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
     scoring = rules.get("scoring")
     if isinstance(scoring, dict) and scoring.get("count") == "points" and not wild_pieces_pay(spec):
         drop("scoring")
+    # TC5 (§5.4): a market emptied by an edit sells nothing, and a purse with nothing to spend
+    # on is refused; the purse goes. A price on a type no market sells goes too.
+    # TC6 (§5.5): a purse may also spend on a hire (a priced piece nobody owns) or a bribe, so
+    # it goes only when none of the three is left; an emptied market goes on its own, with a
+    # region that names where nothing is bought, and a bribe with no priced piece goes.
+    purse = rules.get("purse")
+    if isinstance(purse, dict):
+        if "market" in purse and not purse.get("market"):
+            purse.pop("market")
+        if "region" in purse and "market" not in purse:
+            purse.pop("region")
+        if purse_bribes(spec) and not piece_prices(spec):
+            purse.pop("bribe")
+        if not purse_market(spec) and not hire_ids(spec) and not purse_bribes(spec):
+            drop("purse")
+    charged = set(purse_market(spec)) | hire_ids(spec)
+    bribes = purse_bribes(spec)
+    for piece in listed if isinstance(listed, list) else []:
+        if (
+            isinstance(piece, dict) and "price" in piece
+            and piece.get("id") not in charged and not bribes
+        ):
+            piece.pop("price")
+            dropped.append(f"price:{piece.get('id')}")
+    # TC4 (`docs/plan-turncoat.md` §5.1): a type's bounty with no points count (and, TC5, no
+    # purse) left to pay into never changes a game, and the validator refuses it; the
+    # bounties go.
+    scoring = rules.get("scoring")
+    if (
+        piece_bounties(spec)
+        and not (isinstance(scoring, dict) and scoring.get("count") == "points")
+        and not isinstance(rules.get("purse"), dict)
+    ):
+        for piece in listed if isinstance(listed, list) else []:
+            if isinstance(piece, dict) and "bounty" in piece:
+                piece.pop("bounty")
+                dropped.append(f"bounty:{piece.get('id')}")
     # A strike that states more than plain capture and is played as it (Q538,
     # `schema.strike_states_nothing`). `drop_piece` settles the one route Q538 found, a
     # chain pruned down to its immune links; this holds any other edit that empties a
@@ -1574,7 +1625,11 @@ def clear_npcs(spec: dict[str, Any]) -> dict[str, Any]:
     """
     rules = spec.get("rules", {})
     rules.pop("npcs", None)
-    if isinstance(rules.get("scoring"), dict) and rules["scoring"].get("count") == "points":
+    # TC4: a type's bounty still pays into the count, so it stays.
+    if (
+        isinstance(rules.get("scoring"), dict) and rules["scoring"].get("count") == "points"
+        and not piece_bounties(spec)
+    ):
         rules.pop("scoring")
     return spec
 

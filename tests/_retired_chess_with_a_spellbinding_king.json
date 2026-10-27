@@ -99,8 +99,8 @@
   "provenance": {
     "added": "2026-10-24",
     "origin": "designed",
-    "source": "docs/plan-schema-31.md, Q1007f: K2, the showcase for the command effect's captures_own (section 6.3)",
-    "history": "K2 of docs/plan-schema-31.md section 6.3, pre-registered 2026-10-23 before the effect was built: chess (4c1922ffae26) with one key on the king, a sight over its eight neighbours that commands enemy pieces and lets them be made to take their own side (captures_own), one change on the calibration baseline. Written by Q1007c as a test spec (tests/_command_k2.json, the same mechanics) and built by Q1007f (2026-10-24) exactly as registered.",
+    "source": "docs/archive/plan-schema-31.md, Q1007f: K2, the showcase for the command effect's captures_own (section 6.3)",
+    "history": "K2 of docs/archive/plan-schema-31.md section 6.3, pre-registered 2026-10-23 before the effect was built: chess (4c1922ffae26) with one key on the king, a sight over its eight neighbours that commands enemy pieces and lets them be made to take their own side (captures_own), one change on the calibration baseline. Written by Q1007c as a test spec (tests/_command_k2.json, the same mechanics) and built by Q1007f (2026-10-24) exactly as registered.",
     "parents": ["4c1922ffae26"]
   }
 }

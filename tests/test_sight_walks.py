@@ -7,7 +7,7 @@ alternating spec with checkmate, castling, en passant and a shield on the royal
 (`_sight_wardens`), one with royal capture and drops (`_sight_drops`) and one with royal capture and contacts
 (`_sight_contacts`; the two are refused together), a round spec
 (`_sight_rounds`), a speed spec (`_sight_speed`), a spy spec with rests (`_sight_spy`) and an
-alternating rest spec (`_sight_rest`), and since generation 37 (N2, `docs/plan-npc.md` §4.2) wild pieces that see:
+alternating rest spec (`_sight_rest`), and since generation 37 (N2, `docs/archive/plan-npc.md` §4.2) wild pieces that see:
 wolves' chess with freezing wolves and shielding dryads (`_sight_wild_wolves`), and a 6x6
 checkmate game with a disarming wolf beside the players' wardens (`_sight_wild_small`). At every position the check answer is held to the
 oracle's too, and the incremental key to the slow definition. Twenty games each (three of

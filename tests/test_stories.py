@@ -1,4 +1,4 @@
-"""The landing's stories as data (`web/stories.py`; `docs/plan-landing.md` §2.1, §2.2, box LP1).
+"""The landing's stories as data (`web/stories.py`; `docs/archive/plan-landing.md` §2.1, §2.2, box LP1).
 
 What is held here: the record types no measured number and declares each pair's change
 exactly; every game a story plays is replayed through `Engine` to the ending its sentences

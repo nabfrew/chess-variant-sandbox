@@ -233,8 +233,8 @@
   "provenance": {
     "added": "2026-10-25",
     "origin": "designed",
-    "source": "docs/plan-pieces-moves.md, T3: the showcase for riders whose path circles (section 5.7, C1)",
-    "history": "C1 of docs/plan-pieces-moves.md section 5.7, pre-registered 2026-10-25 before the rule was built: chess (4c1922ffae26) with the queen's slide given path: circle, her own eight directions walked round as a ring of one-square steps, one key on the calibration baseline so a visitor sees what a circling path does. Registered over the fallback, the rose queen, by the rule written before the draft read (C1 unless its self-play at 6400 nodes ran a median under 30 plies or under half decisive; it ran 133 plies, 0.85 decided). Nothing was tunable; the mechanics are T1's test spec tests/_path_ring.json, archived as registered, with the piece named circling queen (the test spec calls it ring queen) and drawn as a queen, a choice made before any measured game.",
+    "source": "docs/archive/plan-pieces-moves.md, T3: the showcase for riders whose path circles (section 5.7, C1)",
+    "history": "C1 of docs/archive/plan-pieces-moves.md section 5.7, pre-registered 2026-10-25 before the rule was built: chess (4c1922ffae26) with the queen's slide given path: circle, her own eight directions walked round as a ring of one-square steps, one key on the calibration baseline so a visitor sees what a circling path does. Registered over the fallback, the rose queen, by the rule written before the draft read (C1 unless its self-play at 6400 nodes ran a median under 30 plies or under half decisive; it ran 133 plies, 0.85 decided). Nothing was tunable; the mechanics are T1's test spec tests/_path_ring.json, archived as registered, with the piece named circling queen (the test spec calls it ring queen) and drawn as a queen, a choice made before any measured game.",
     "parents": [
       "4c1922ffae26"
     ]

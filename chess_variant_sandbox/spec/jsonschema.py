@@ -25,6 +25,7 @@ from typing import Any
 
 from chess_variant_sandbox.spec.schema import (
     BARE_ROYAL_HOLDER,
+    BOUNTY_MAX,
     CONTACT_POSITIONS,
     ENDING_RESULTS,
     FACING_AXES,
@@ -41,6 +42,8 @@ from chess_variant_sandbox.spec.schema import (
     ORIENTATIONS,
     PATHS,
     PORTAL_PASSAGES,
+    PRICE_MAX,
+    PURSE_MAX,
     REACH_ON,
     REPETITION_NEVER,
     REST_MAX,
@@ -492,6 +495,87 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "rules.strike, rules.contacts, pieces[].rest and a sweep move."
                 ),
             },
+            "control": {
+                "anyOf": [
+                    {"type": "string", "enum": ["stands", "majority"]},
+                    _object(
+                        {
+                            "majority": _object(
+                                {
+                                    "vectors": {
+                                        "type": "array", "items": vector, "minItems": 1,
+                                        "description": (
+                                            "The offsets, from the piece, of the squares "
+                                            "that count as next to it, written as a leap's."
+                                        ),
+                                    },
+                                    "symmetry": {
+                                        "type": "string", "enum": list(SYMMETRIES),
+                                        "description": (
+                                            "How the offsets are expanded, as a move's; it "
+                                            "must cover both players' views."
+                                        ),
+                                    },
+                                },
+                                required=["vectors"],
+                                strict=strict,
+                                description=(
+                                    "Moved by the majority, counting the squares these "
+                                    "offsets reach instead of the king's step."
+                                ),
+                            ),
+                        },
+                        required=["majority"],
+                        strict=strict,
+                    ),
+                ],
+                "description": (
+                    "How pieces of this type move while they belong to nobody (a placement "
+                    'with "player": "nobody"). "stands", the default: nobody moves them; they '
+                    'block and either player may take them. "majority": the player with '
+                    "strictly more of their own pieces next to one (any of their pieces, "
+                    "royals included) may move it as their move, in nobody's frame, onto an "
+                    "empty square or taking a non-royal piece of the other player; a tie, "
+                    "none against none included, means nobody moves it. Moving it does not "
+                    "make it yours. Next to means the king's step (six steps on a hex "
+                    'lattice), or the geometry {"majority": {"vectors": [...], "symmetry": '
+                    '...}} names. A held piece attacks nothing and gives no check. A majority '
+                    "type must read the same for both players (no facing, region, condition, "
+                    "promotion, owner-named screen, sweep, or a move whose symmetry does not "
+                    "cover both), and some placement must put it in nobody's block. Never on "
+                    "a royal or a wild piece. Refused beside rules.territory, rules.reach, "
+                    "rules.explode_on_capture and a turn longer than one move."
+                ),
+            },
+            "bounty": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": BOUNTY_MAX,
+                "description": (
+                    f"What taking a piece of this type pays, 1 to {BOUNTY_MAX}; omit it for "
+                    "nothing. Paid into the points tally of the player whose move took it, "
+                    "whoever owned it (a piece nobody owns too), never for a player's own "
+                    "piece; a wild piece's or a blast's taking pays no type bounty. Needs "
+                    'rules.scoring.count "points", which compares the tallies at the clock, '
+                    "or rules.purse, whose coins it also pays (capped at "
+                    f"{PURSE_MAX}). Never on a royal, a wild type (its rules.npcs entry "
+                    "carries its bounty) or the duck."
+                ),
+            },
+            "price": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": PRICE_MAX,
+                "description": (
+                    f"What one piece of this type costs, 1 to {PRICE_MAX}; omit it and the "
+                    "type is not for sale. Read by the market (rules.purse.market), by a "
+                    "hire (a piece of the type placed for nobody may be hired at its price "
+                    "by a player with a piece next to it) and by a bribe "
+                    "(rules.purse.bribe: an enemy piece of the type next to one of yours, "
+                    "at twice the price). Only where one of those reads it; never on a "
+                    "royal, a spy or a wild type."
+                ),
+            },
             "facing": _object(
                 {
                     "axes": {
@@ -543,7 +627,20 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
     placement = _object(
         {
             "piece": {"type": "string"},
-            "player": {"type": "integer", "enum": [0, 1]},
+            "player": {
+                "anyOf": [
+                    {"type": "integer", "enum": [0, 1]},
+                    {"type": "string", "enum": ["nobody"]},
+                ],
+                "description": (
+                    'Whose pieces these are: 0, 1, or "nobody" for pieces neither player '
+                    "owns (under a mirrored setup their squares are mirrored too, still "
+                    "nobody's). A piece nobody owns blocks and may be taken by either player; "
+                    "its type's control says whether anyone may move it. Never a royal, a spy "
+                    "or a wild type, and refused beside rules.npcs, rules.duck, "
+                    "rules.portals, rules.simultaneous, rules.strike and rules.contacts."
+                ),
+            },
             "facing": {
                 "type": "string",
                 "enum": list(FACING_NAMES),
@@ -860,7 +957,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "description": (
                             "Pieces that change sides when they capture: the capturer "
                             "becomes the other player's piece where it lands "
-                            "(Andernach chess). A royal piece may not be listed."
+                            "(Andernach chess). A piece that faces keeps pointing the way "
+                            "it pointed, so it may face its new side's own camp. A royal "
+                            "piece may not be listed."
                         ),
                     },
                     "by": {
@@ -1363,6 +1462,65 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "piece region."
                 ),
             },
+            "purse": _object(
+                {
+                    "start": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": PURSE_MAX,
+                        "description": (
+                            f"Coins each player starts with, 0 to {PURSE_MAX}. A purse holds "
+                            f"at most {PURSE_MAX}; every bounty (pieces[].bounty, "
+                            "rules.npcs[].bounty) is paid into it as well, and what passes "
+                            "the cap is lost."
+                        ),
+                    },
+                    "market": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "The piece types a player may buy, each with a pieces[].price. "
+                            "Buying is a whole move: the price leaves the buyer's purse and "
+                            "the piece is placed on an empty square of the region, entering "
+                            "play as a dropped piece does (its first facing, promoted if it "
+                            "enters its zone under promote_on_entry). Supply is unlimited. "
+                            "Never a royal, a spy, a wild type, the duck or a type with no "
+                            "moves. Optional: leave it out where coins buy only hires or "
+                            "bribes."
+                        ),
+                    },
+                    "bribe": {
+                        "type": "boolean",
+                        "description": (
+                            "true: a player may also buy an enemy piece of a priced type "
+                            "standing next to one of theirs, at twice its price, as a whole "
+                            "move; it becomes theirs where it stands, keeping the way it "
+                            "points. false (the default) never."
+                        ),
+                    },
+                    "region": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Where a bought piece may be placed, written for the first player "
+                            "and reflected for the second; leave it out for each player's "
+                            "first rank. Each market type needs a square in it it may stand "
+                            "on (not a wall, inside its own region). Algebraic squares such "
+                            "as a1 or e4."
+                        ),
+                    },
+                },
+                required=["start"],
+                strict=strict,
+                description=(
+                    "Coins, and what to spend them on: each player holds a purse, filled "
+                    "by bounties and spent on buying pieces from a market, hiring a priced "
+                    "piece nobody owns that stands next to one of theirs (its price), or "
+                    "under bribe buying an enemy one (twice the price). Not beside rounds "
+                    "(rules.simultaneous), a turn longer than one move, portals or "
+                    "explode_on_capture; under drops.placement a held hand is placed first."
+                ),
+            ),
             "duck": _object(
                 {
                     "piece": {
@@ -1490,7 +1648,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "declared piece values, 'pieces' counts them, 'region' "
                             "counts your own pieces standing in the squares below, "
                             "'territory' counts ground claimed and needs rules.territory, "
-                            "'points' counts bounties collected and needs rules.npcs. "
+                            "'points' counts bounties collected and needs a bounty, on a wild "
+                            "piece (rules.npcs) or a piece type (pieces[].bounty). "
                             "Higher wins; equal is still a draw."
                         ),
                     },

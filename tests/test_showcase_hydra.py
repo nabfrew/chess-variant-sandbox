@@ -1,5 +1,5 @@
 """N7: *the hydra*, the showcase of pounce on prey, pounce on attackers and split
-(`docs/plan-npc.md` §6.2).
+(`docs/archive/plan-npc.md` §6.2).
 
 Chess with a stationary hydra pair on d4 and d5 that takes what attacks it (every type but the
 king), growing a head on each attacker's square up to six, and four hounds on three-square wing

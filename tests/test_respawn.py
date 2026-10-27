@@ -1,4 +1,4 @@
-"""Wild pieces that come back (generation 36, N1, `docs/plan-npc.md` §4.1).
+"""Wild pieces that come back (generation 36, N1, `docs/archive/plan-npc.md` §4.1).
 
 A taken wild piece of an entry with ``respawn: n`` returns to the first of its entry's
 starts that is empty or holds a player's non-royal piece its type may take, ``n`` phases

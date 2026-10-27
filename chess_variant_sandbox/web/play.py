@@ -29,12 +29,16 @@ from typing import Any
 
 from chess_variant_sandbox.agents.base import AgentConfig, native_spec, parse_agent
 from chess_variant_sandbox.engine.coming import coming_phases
+from chess_variant_sandbox.engine.compile import CONTROL_MAJORITY
 from chess_variant_sandbox.engine.engine import _square_name as square_name
 from chess_variant_sandbox.engine.moves import (
     DUCK_PASS,
     DUCK_PLACE,
+    MOVE_BUY,
     MOVE_DROP,
     MOVE_DUCK,
+    MOVE_FOREIGN,
+    MOVE_HIRE,
     MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
@@ -45,6 +49,7 @@ from chess_variant_sandbox.engine.moves import (
     move_type,
 )
 from chess_variant_sandbox.engine.state import GameState
+from chess_variant_sandbox.spec.schema import PURSE_MAX
 from chess_variant_sandbox.tournament.play import choose_move, eval_values
 from chess_variant_sandbox.viz.heading import directional_types
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
@@ -55,6 +60,7 @@ from chess_variant_sandbox.viz.wrapped import (
     portal_payload,
     portal_transit,
     pounce_kinds_payload,
+    sweep_transit,
     walls_payload,
     wrap_payload,
     zone_payload,
@@ -183,7 +189,7 @@ def _reply(
 
 
 def _duck_entry(move: int) -> dict[str, Any]:
-    """A duck move as the page reads it (generation 42, N4c, `docs/plan-npc.md` §4.6):
+    """A duck move as the page reads it (generation 42, N4c, `docs/archive/plan-npc.md` §4.6):
     ``from`` None on a placement from off the board and on the pass, ``to`` None on the pass,
     and ``pass`` whether it is the pass. Read off the move word, which says how; nothing
     here decides whether the move is legal."""
@@ -231,6 +237,74 @@ def effects_payload(engine: Any, state: GameState) -> dict[str, Any]:
         return {}
     bits = engine.effects(state).bits
     return {"effects": [[square, value] for square, value in enumerate(bits) if value]}
+
+
+def turncoat_payload(engine: Any, state: GameState) -> dict[str, Any]:
+    """TC7 (`docs/plan-turncoat.md` §5.8): what a position says of the purse and of the
+    pieces nobody owns, for the board and for a step back to draw them as they were.
+
+    ``purse`` is each player's coins (`GameState.purse`), present only under ``rules.purse``.
+    ``held`` lists ``[square, player]`` for every piece nobody owns that a player holds by
+    majority now, the core's answer (`Engine.controller_of`; rule 3: the page never counts
+    neighbours), present only in a game with majority control. Empty in every other game, so
+    a snapshot or history entry of every other game is what it was."""
+    spec = engine.spec
+    out: dict[str, Any] = {}
+    if spec.purse is not None:
+        out["purse"] = [int(state.purse[0]), int(state.purse[1])]
+    neutrals = spec.neutrals
+    if neutrals is not None and neutrals.has_majority:
+        held = []
+        for square, value in enumerate(state.board):
+            if not value or spec.owner_of(value) != 2:
+                continue
+            if neutrals.kind[spec.type_of(value)] != CONTROL_MAJORITY:
+                continue
+            holder = engine.controller_of(state, square)
+            if holder in (0, 1):
+                held.append([square, holder])
+        out["held"] = held
+    return out
+
+
+def market_payload(engine: Any) -> dict[str, Any] | None:
+    """TC7 (§5.8): the purse's rule as the page draws it, compiled (`PurseRule`), or ``None``
+    without a purse: the market (each type and its price, in the spec's order), whether an
+    enemy piece may be bribed, the cap, and which types are for hire or bribe at what cost
+    (``hire[type]``/``bribe[type]``, 0 where not; empty where nothing is). The page offers
+    only the moves the engine lists; these are the words beside them."""
+    purse = engine.spec.purse
+    if purse is None:
+        return None
+    return {
+        "start": purse.start,
+        "cap": PURSE_MAX,
+        "market": [
+            {"type": int(piece_type), "price": int(price)}
+            for piece_type, price in zip(purse.market, purse.price, strict=True)
+        ],
+        "hire": list(purse.hire),
+        "bribe": list(purse.bribe),
+    }
+
+
+def purchase_entry(engine: Any, state: GameState, move: int) -> dict[str, Any]:
+    """TC7 (§5.8): a buy's or a hire's own block for the move list and the buttons: what it
+    buys (``buy``, the type; ``hire``, the type standing there), what it costs (``cost``, the
+    compiled price, twice it for a bribe, as `PurseTables::cost` charges) and whether it is a
+    bribe (the piece is the opponent's, not nobody's). Empty for every other move."""
+    kind = move_type(move)
+    purse = engine.spec.purse
+    if purse is None or kind not in (MOVE_BUY, MOVE_HIRE):
+        return {}
+    if kind == MOVE_BUY:
+        bought = move_promotion(move) % engine.spec.n_types
+        return {"buy": bought, "cost": int(purse.price[purse.market.index(bought)])}
+    value = state.board[move_from(move)]
+    piece_type = engine.spec.type_of(value)
+    bribe = engine.spec.owner_of(value) != 2
+    costs = purse.bribe if bribe else purse.hire
+    return {"hire": piece_type, "cost": int(costs[piece_type]), "bribe": bribe}
 
 
 def resting_payload(state: GameState) -> list[dict[str, int]]:
@@ -501,10 +575,13 @@ class Session:
                 # (`CompiledSpec.rest`), so a game whose longest rest is over 1 numbers its
                 # pause signs with the turns left; empty in every game without a rest.
                 "rest": list(engine.spec.rest),
-                # Generation 42 (N4c, `docs/plan-npc.md` §4.6): the duck's type, or None in
+                # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): the duck's type, or None in
                 # a game without `rules.duck`. The move list writes a turn on one line from
                 # it, and the board names the duck in its words.
                 "duck": engine.spec.duck.piece_type if engine.spec.duck is not None else None,
+                # TC7 (`docs/plan-turncoat.md` §5.8): the purse's rule, compiled
+                # (`market_payload`); absent in every game without a purse.
+                **({"purse": market} if (market := market_payload(engine)) else {}),
             },
             "seats": list(self.seats),
             # How hard each seat thinks, in plain words off the budget it plays at, for
@@ -553,6 +630,9 @@ class Session:
             # it for that player's next `left` turns unless it is all that player can move.
             # The core's state, in every game, alternating or in rounds; `[]` without a rest.
             "resting": resting_payload(self.state),
+            # TC7 (§5.8): each player's coins and the neutrals held by majority, the core's
+            # answers (`turncoat_payload`); absent in every game without either rule.
+            **turncoat_payload(engine, self.state),
             # Schema 30 (Q999a, `docs/archive/plan-passive.md` §4.6): the effect bits on each square
             # (1 frozen, 2 disarmed, 4 shielded, on the piece standing there), as the core
             # answers them (`Engine.effects`), for the page's marks. Absent in every game
@@ -699,6 +779,15 @@ class Session:
                 entry["promotion"] = move_promotion(move) % engine.spec.n_types
             elif kind == MOVE_ROTATE:
                 entry["rotation"] = move_promotion(move)
+            elif kind == MOVE_BUY:
+                # TC7 (§5.8): a buy comes from the market (no origin), as a drop from a hand;
+                # what it buys and costs travel with it.
+                entry["from"] = None
+                entry.update(purchase_entry(engine, state, move))
+            elif kind == MOVE_HIRE:
+                # TC7 (§5.8): a hire or a bribe stays on its square; the board offers it as a
+                # button on the picked piece, never as a step onto its own square.
+                entry.update(purchase_entry(engine, state, move))
             elif kind == MOVE_DUCK:
                 # Generation 42 (N4c, §4.6): the duck's half. A placement comes from off the
                 # board (no origin) and the pass goes nowhere (no target the board lights);
@@ -711,6 +800,9 @@ class Session:
                 entry.update(portal_transit(engine, state, move) or {})
                 if move_promotion(move):
                     entry["promotion"] = move_promotion(move) - 1
+            if move & MOVE_FOREIGN:
+                # A move of a piece the mover does not own (`~`): a commanded or held one.
+                entry["foreign"] = True
             # Schema 22: a move through a fold, its way in and out and the group's colour
             # (`viz.wrapped.fold_transit`), for the dot where only a fold reaches (Q843d).
             entry.update(fold_transit(engine, state, move) or {})
@@ -840,7 +932,7 @@ class Session:
             return self.snapshot()
         watched = HUMAN not in self.seats
         engine = self.engine
-        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): a take-back never leaves half a turn.
+        # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): a take-back never leaves half a turn.
         # Begun with a duck move owed, it takes back the person's piece move alone (they
         # regret it before placing the duck); otherwise it stops only where a person owes a
         # piece move, so a reply's take-back returns the whole of the person's last turn.
@@ -901,7 +993,7 @@ class Session:
             {
                 "ply": self.state.ply,
                 "text": engine.describe_move(self.state, move),
-                "from": None if move_type(move) == MOVE_DROP else move_from(move),
+                "from": None if move_type(move) in (MOVE_DROP, MOVE_BUY) else move_from(move),
                 "to": move_to(move),
                 # Generation 42 (N4c): a duck move's own block, `_offer`'s words; its
                 # placement has no origin and its pass no square. Absent for every other move.
@@ -924,6 +1016,9 @@ class Session:
                 # folds stand once it is made (`fold_payload`), so a position stepped back to
                 # draws them where they were then. Absent and empty without folds.
                 **(fold_transit(engine, self.state, move) or {}),
+                # Schema 13: the squares a sweep cleared (`viz.wrapped.sweep_transit`), so
+                # the page cuts them down along its path. Absent for every other move.
+                **(sweep_transit(engine, self.state, move) or {}),
                 **({"folds": folds} if (folds := fold_payload(engine, state)) else {}),
                 # How many moves ahead the machine's search got before it chose this
                 # one, counting both sides', from the core. `None` for a person's move
@@ -949,6 +1044,10 @@ class Session:
                 # Schema 29 (Q983b): the resting pieces this ply left, and whether it was
                 # chosen under a lift (`rest_entry`); absent without a rest.
                 **rest_entry(engine, self.state, state, self.state.side_to_move),
+                # TC7 (§5.8): what a buy, hire or bribe bought and cost, and the purses and
+                # held neutrals of the position it left; absent without the rules.
+                **purchase_entry(engine, self.state, move),
+                **turncoat_payload(engine, state),
             }
         )
         self.state = state

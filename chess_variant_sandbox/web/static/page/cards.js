@@ -783,7 +783,7 @@ function rulesCardsHtml(out) {
     // The portals have a card of their own, in sentences, one per pair (P3, D4); the
     // generated one stays reachable as the game's text.
     if (key === 'portals' && Array.isArray(rules.portals)) return portalCardsHtml(out);
-    // Generation 42 (N4c, `docs/plan-npc.md` §4.6): the duck has a card of its own, its start
+    // Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): the duck has a card of its own, its start
     // picked on the board and the rule read back in words (`duckCardHtml`).
     if (key === 'duck' && rules.duck && typeof rules.duck === 'object' && !Array.isArray(rules.duck)
         && byKey.duck && byKey.duck.control === 'card') {
@@ -1448,7 +1448,7 @@ function drawDuckSays() {
   box.innerHTML = duckSaysHtml((DRAFT_CHECK && DRAFT_CHECK.duck) || {});
 }
 
-// The duck's card (generation 42, N4c, `docs/plan-npc.md` §4.6): which piece it is, where it
+// The duck's card (generation 42, N4c, `docs/archive/plan-npc.md` §4.6): which piece it is, where it
 // starts (a square picked on the board, or off the board, the classic), how it goes, and
 // the rule read back in a player's words with the refusals that are the duck's, both from
 // the server's check (`designing.duck_answer`). The page names only the square clicked.

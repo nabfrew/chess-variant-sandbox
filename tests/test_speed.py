@@ -723,9 +723,12 @@ def walk_digest(names: list[str], seeds: int = 3, rounds: int = 60) -> str:
                 # Generation 38 (N5) added `GameState.heading_back`; none of these specs turns
                 # back, and it is left out of the row so the digest stays one.
                 assert state.heading_back == ()
+                # TC4 added `GameState.purse`; no round game has one (it is refused beside
+                # rounds), and it is left out of the row so the digest stays one.
+                assert state.purse == (0, 0)
                 row = repr((name, seed, state.with_(rest=(-1, -1)), phase, events))
                 rows.append(row.replace(", respawn=()", "").replace(", kind='step'", "")
-                            .replace(", heading_back=()", ""))
+                            .replace(", heading_back=()", "").replace(", purse=(0, 0)", ""))
     return hashlib.sha256("\n".join(rows).encode()).hexdigest()
 
 

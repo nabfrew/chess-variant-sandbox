@@ -279,7 +279,7 @@ _RULES_TRANSLATED = frozenset(
         "check_limit",
         "checkmate",
         "drops",
-        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): the classic duck, `wallingRule = duck`.
+        # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): the classic duck, `wallingRule = duck`.
         "duck",
         "en_passant",
         "explode_on_capture",
@@ -306,6 +306,8 @@ _RULES_REFUSED = frozenset(
         "npcs",
         "portals",
         "promote_on_entry",
+        # TC5 (`docs/plan-turncoat.md` §5.7): read off `compiled.purse`.
+        "purse",
         "scoring",
         "simultaneous",
         "strike",
@@ -403,12 +405,39 @@ def _check_unsupported_rules(
             f"rules.{compiled.strike.spelling}: over there a capture removes the piece "
             "and nothing else"
         )
+    if compiled.neutrals is not None:
+        # TC3 (`docs/plan-turncoat.md` §5.7): read off the compiled rule, since the key guard
+        # does not see `setup.*` or `pieces[].*`; a `control` the validator admits always has a
+        # nobody's placement beside it, so one branch names both.
+        reasons.append(
+            "setup.placements.player: a piece nobody owns has no counterpart in "
+            "Fairy-Stockfish, where every piece is a side's"
+        )
+        if compiled.neutrals.has_majority:
+            reasons.append(
+                "pieces.control: a piece moved by whichever side has more pieces next to it "
+                "has no counterpart there"
+            )
+    if compiled.bounty:
+        # TC4 (`docs/plan-turncoat.md` §5.7): read off the compiled table, since the key guard
+        # does not see `pieces[].*`; empty for every type without one.
+        reasons.append(
+            "pieces.bounty: a capture there pays nothing into a tally; a pocket is a count of "
+            "pieces, not a price"
+        )
+    if compiled.purse is not None:
+        # TC5 (`docs/plan-turncoat.md` §5.7): its gating and pockets are not a purse; a pocket
+        # is a count of pieces, never a price. `pieces[].price` is read only beside it.
+        reasons.append(
+            "rules.purse: currency, and a market that sells pieces for it, have no "
+            "counterpart in Fairy-Stockfish"
+        )
     if compiled.territory is not None:
         reasons.append("rules.territory: no square changes hands in Fairy-Stockfish")
     if compiled.scoring is not None:
         reasons.append("rules.scoring: a clock there runs out to a draw, never to a count")
     if compiled.duck is not None:
-        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): asked before `rules.turn`, since a
+        # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): asked before `rules.turn`, since a
         # duck game's compiled turn is two moves, which is the duck's half and crosses.
         _check_duck(compiled, reasons)
     elif compiled.turn is not None:
@@ -514,7 +543,7 @@ def _check_unsupported_rules(
         # `None` without a sight. The effects only filter the generator and the attack test,
         # so the generator itself is still checked through the twin with every sight
         # removed; the effects are the sight oracle's (`tests/sight_oracle.py`). Q1007c's
-        # `command` (`docs/plan-schema-31.md` §3.8) is a sight too, refused here with the rest:
+        # `command` (`docs/archive/plan-schema-31.md` §3.8) is a sight too, refused here with the rest:
         # Fairy-Stockfish has no move of the opponent's pieces, and the commanded moves (the
         # one part of a command the twin does not see) are the sight oracle's as well.
         reasons.append(
@@ -723,7 +752,11 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
     },
     "placement": {
         "piece": (_TRANSLATED, "through the compiled opening board"),
-        "player": (_TRANSLATED, "through the compiled opening board"),
+        "player": (
+            _TRANSLATED,
+            'through the compiled opening board; TC3 refuses "nobody" off the '
+            "compiled rule (compiled.neutrals)",
+        ),
         "squares": (_TRANSLATED, "through the compiled opening board"),
         "facing": (
             _REFUSED,
@@ -786,6 +819,22 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             "schema 29: a piece that waits its player's next turns after it moves, read off "
             "the compiled table (compiled.rest); Fairy-Stockfish has no per-piece wait, and "
             "the generator is checked through the twin with every rest removed",
+        ),
+        "control": (
+            _REFUSED,
+            "TC3: how a piece nobody owns is moved, read off the compiled rule "
+            "(compiled.neutrals); Fairy-Stockfish has no piece that belongs to nobody",
+        ),
+        "bounty": (
+            _REFUSED,
+            "TC4: what taking a piece pays, read off the compiled table (compiled.bounty); "
+            "Fairy-Stockfish has no tally a capture pays into",
+        ),
+        "price": (
+            _REFUSED,
+            "TC5: what a piece costs from the market (TC6: to hire or bribe), read only beside "
+            "rules.purse, which is "
+            "refused off the compiled rule (compiled.purse); a pocket is a count, not a price",
         ),
         "sight": (
             _REFUSED,
@@ -1604,7 +1653,7 @@ def _descriptor_term(
 ) -> str | None:
     """One move descriptor as one or more Betza terms."""
     kind = descriptor["kind"]
-    # T1 (`docs/plan-pieces-moves.md` §5.4): refused before any Betza is written. pyffish
+    # T1 (`docs/archive/plan-pieces-moves.md` §5.4): refused before any Betza is written. pyffish
     # 0.0.90 loads XBetza's `q` (circular), `z` (crooked) and `o` without an error and plays
     # the plain piece: `qN` is the knight, `zB` the bishop, so a translation would be a
     # second, wrong game. `path_of` reads "straight", the off value, as no path.
@@ -1793,7 +1842,7 @@ def _rule_lines(
     lines.extend(_demotion_lines(compiled, chars, notes))
 
     if compiled.duck is not None:
-        # Generation 42 (N4c, `docs/plan-npc.md` §4.6): every move ends by setting the wall
+        # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): every move ends by setting the wall
         # down on any empty square but its own (`_check_duck` refused every other duck).
         lines.append("wallingRule = duck")
     if compiled.must_capture:

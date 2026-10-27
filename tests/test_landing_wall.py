@@ -1,4 +1,4 @@
-"""The landing's wall of words (LP2, `docs/plan-landing.md` §3.2 and §5): the palette's
+"""The landing's wall of words (LP2, `docs/archive/plan-landing.md` §3.2 and §5): the palette's
 families, one row each, every word a rule.
 
 `web/landing.py`'s `BLOCKS` is the one table of the families and their words. These hold it

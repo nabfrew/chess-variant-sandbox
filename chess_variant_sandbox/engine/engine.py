@@ -44,12 +44,14 @@ from chess_variant_sandbox.engine.compile import (
 from chess_variant_sandbox.engine.moves import (
     DUCK_PASS,
     DUCK_PLACE,
+    MOVE_BUY,
     MOVE_CASTLE,
-    MOVE_COMMANDED,
     MOVE_DROP,
     MOVE_DUCK,
     MOVE_EN_PASSANT,
     MOVE_FOLD,
+    MOVE_FOREIGN,
+    MOVE_HIRE,
     MOVE_NORMAL,
     MOVE_PORTAL,
     MOVE_PROMOTION,
@@ -120,6 +122,9 @@ def _pack(state: GameState) -> tuple[Any, ...]:
             bytes(state.respawn),
             # Generation 38 (N5): the squares of the wild pieces walking their line back.
             list(state.heading_back),
+            # TC4: each player's coins, the twelfth and last element PyO3 converts; the next
+            # field must restructure this group into a struct.
+            state.purse,
         ),
     )
 
@@ -157,6 +162,7 @@ def _unpack(packed: State) -> GameState:
         ),
         respawn=tuple(packed[11][9]),
         heading_back=tuple(packed[11][10]),
+        purse=(packed[11][11][0], packed[11][11][1]),
     )
 
 
@@ -383,7 +389,7 @@ class Engine:
         ``SIGHT_SHIELD`` on the piece there, for its owner), the side to move's moves the
         effects removed by reason, and whether its royal stands under a suppressed attack.
         All zeros in a game without a sight. Q1007c: ``commanded`` counts the side to move's
-        legal commanded moves (`docs/plan-schema-31.md` §3.7). Generation 37 (N2): ``wild``,
+        legal commanded moves (`docs/archive/plan-schema-31.md` §3.7). Generation 37 (N2): ``wild``,
         each square's bits from the wild pieces' sights alone (empty without wild pieces)."""
         bits, (freeze, disarm, shield), suppressed, commanded, wild = self.core.effects(
             _pack(state)
@@ -403,6 +409,12 @@ class Engine:
         """The squares the piece on ``square`` sees on this board, each with the effect bits
         of the sights that see it (schema 30), ascending; empty for an empty square."""
         return [(target, bits) for target, bits in self.core.sight_of(_pack(state), square)]
+
+    def controller_of(self, state: GameState, square: int) -> int:
+        """Who may move the piece nobody owns on ``square`` as a held neutral now (TC3,
+        `docs/plan-turncoat.md` §4.3): 0, 1, or -1 for a tie or anything but a majority
+        neutral. The core counts; Python never does (rule 3)."""
+        return int(self.core.controller_of(_pack(state), square))
 
     # ------------------------------------------------------------------- players
 
@@ -525,11 +537,11 @@ class Engine:
 
     def describe_move(self, state: GameState, move: int) -> str:
         """Human-readable move text, used by records and the visualiser."""
-        if move & MOVE_COMMANDED:
-            # Q1007c (`docs/plan-schema-31.md` §3.7): a commanded move is the same move
+        if move & MOVE_FOREIGN:
+            # Q1007c (`docs/archive/plan-schema-31.md` §3.7): a commanded move is the same move
             # written with a ``~`` before the piece, which is the opponent's (``~Nb8-c6``);
             # the origin names the piece, so the text stays unique.
-            return "~" + self.describe_move(state, move & ~MOVE_COMMANDED)
+            return "~" + self.describe_move(state, move & ~MOVE_FOREIGN)
         spec = self.spec
         origin, target, kind, promoted = decode_move(move)
         if kind == MOVE_DROP:
@@ -545,8 +557,15 @@ class Engine:
                 f"{spec.piece_ids[promoted % spec.n_types]}@"
                 f"{_square_name(target, spec.width)}"
             )
+        if kind == MOVE_BUY:
+            # TC5 (`docs/plan-turncoat.md` §5.8): a buy is written as the piece, ``$`` for the
+            # coins, and the square it is placed on (``N$e1``), a drop's shape with its own mark.
+            return (
+                f"{spec.piece_ids[promoted % spec.n_types]}$"
+                f"{_square_name(target, spec.width)}"
+            )
         if kind == MOVE_DUCK:
-            # Generation 42 (N4b, `docs/plan-npc.md` §4.6): the duck's half, in words.
+            # Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck's half, in words.
             if promoted == DUCK_PASS:
                 return "the duck has nowhere to go"
             if promoted == DUCK_PLACE:
@@ -563,6 +582,10 @@ class Engine:
                 f"{_square_name(target, spec.width)}"
             )
         piece = spec.piece_ids[spec.type_of(state.board[origin])]
+        if kind == MOVE_HIRE:
+            # TC6 (`docs/plan-turncoat.md` §5.8): a hire or a bribe is written as ``$``, the
+            # piece and the square it stands on (``$Nd4``): the piece stays, its side changes.
+            return f"${piece}{_square_name(origin, spec.width)}"
         if kind in (MOVE_NORMAL, MOVE_PROMOTION) and move_fold(move) and self._has_folds:
             return self._fold_text(state, move)
         if kind == MOVE_ROTATE:
@@ -774,7 +797,7 @@ class Engine:
             return None
         origin, target, kind, _ = decode_move(move)
         struck = state.ep_victim if kind == MOVE_EN_PASSANT else target
-        if kind in (MOVE_DROP, MOVE_CASTLE, MOVE_ROTATE) or not state.board[struck]:
+        if kind in (MOVE_DROP, MOVE_CASTLE, MOVE_ROTATE, MOVE_HIRE) or not state.board[struck]:
             return None
         mover, victim = state.board[origin], state.board[struck]
         cell = spec.type_of(mover) * strike.n_types + spec.type_of(victim)
@@ -850,6 +873,7 @@ class Engine:
         respawn: Iterable[int] = (),
         heading_back: Iterable[str] = (),
         duck_owed: bool = False,
+        purse: tuple[int, int] | None = None,
     ) -> GameState:
         """Build a position directly, for tests, puzzles, and CLI setup.
 
@@ -864,6 +888,8 @@ class Engine:
         back; the rest walk it forward. A square holding no such piece is dropped.
         ``duck_owed`` (generation 42) builds a duck game's position at its duck half; left
         false, the side to move owes its piece move. Place the duck as ``("D", 2)``.
+        ``purse`` (TC4) is each player's coins; left out, both hold the purse's start, and
+        without a purse it is ``(0, 0)`` whatever is given.
         """
         spec = self.spec
         board = bytearray(spec.n_squares)
@@ -900,6 +926,10 @@ class Engine:
             )),
             # Generation 42: a duck game's turn is two halves; 2 owes the piece move.
             remaining=(1 if duck_owed else 2) if spec.duck is not None else 1,
+            purse=(
+                (purse if purse is not None else (spec.purse.start, spec.purse.start))
+                if spec.purse is not None else (0, 0)
+            ),
         )
         key = self._compute_hash(state)
         return state.with_(key=key, repetition=(key,))

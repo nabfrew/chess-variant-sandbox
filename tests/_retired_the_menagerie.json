@@ -426,8 +426,8 @@
   "provenance": {
     "added": "2026-10-26",
     "origin": "designed",
-    "source": "docs/plan-npc.md, N8: the showcase for a wild piece's sight (freeze, disarm and shield) and for the duck that walks by its moves from a start square (section 6.3)",
-    "history": "Section 6.3 of docs/plan-npc.md, registered 2026-10-26 before any measured game: chess on 8 by 9 won by taking the king, a duck that starts on e5 and walks a king's step, and six wild pieces that eat nothing and pace their lines (gorgons freezing on a4-d4 and a6-d6, sirens disarming on h4-e4 and h6-e6, dryads shielding on a5-c5 and h5-f5), turning back at a block and returning eight phases after they are taken. Registered as drafted after a draft read in self-play at 1600 and 6400 nodes.",
+    "source": "docs/archive/plan-npc.md, N8: the showcase for a wild piece's sight (freeze, disarm and shield) and for the duck that walks by its moves from a start square (section 6.3)",
+    "history": "Section 6.3 of docs/archive/plan-npc.md, registered 2026-10-26 before any measured game: chess on 8 by 9 won by taking the king, a duck that starts on e5 and walks a king's step, and six wild pieces that eat nothing and pace their lines (gorgons freezing on a4-d4 and a6-d6, sirens disarming on h4-e4 and h6-e6, dryads shielding on a5-c5 and h5-f5), turning back at a block and returning eight phases after they are taken. Registered as drafted after a draft read in self-play at 1600 and 6400 nodes.",
     "parents": [
       "4c1922ffae26"
     ]

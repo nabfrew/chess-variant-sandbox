@@ -47,6 +47,7 @@ from dataclasses import dataclass, field
 from chess_variant_sandbox.engine import Engine, GameState
 from chess_variant_sandbox.engine.compile import UNREACHABLE, WILD, CompiledSpec, ReachRule
 from chess_variant_sandbox.engine.moves import (
+    MOVE_BUY,
     MOVE_DROP,
     MOVE_NORMAL,
     MOVE_PORTAL,
@@ -335,6 +336,10 @@ class Evaluator:
     # per-player copy: every player on the built-in objective reads ``SPY_PIECES``; a field
     # here so a test and the term's duel (`plan-spy.md` §6.1) can hold a player without it.
     spy_pieces: float = SPY_PIECES
+    # TC5 (`docs/plan-turncoat.md` §5.6): whether the coin term is read. The core has no
+    # per-player copy (every player on the built-in objective reads it); a field here so a test
+    # and the term's duel can hold a player without it.
+    coins: bool = True
     # The denominator of the prey share, derived rather than passed. Not a constructor
     # argument on purpose: a value table and the pool it is scaled against are one fact
     # about one ruleset, and a caller able to hand in a mismatched pair would be a
@@ -783,6 +788,13 @@ class Evaluator:
                 self.values, self.spec.royal_types, inexhaustible_types(self.spec)
             )
             score += weight * self.immunity(state, player)
+        coins = (
+            coin_value(self.spec, self.values) if self.coins and self.material_sign > 0 else 0.0
+        )
+        if coins:
+            # TC5 (`docs/plan-turncoat.md` §5.6): the purse, mine minus theirs, at the
+            # market's best rate (`eval.rs`'s `coin_weight`).
+            score += coins * float(state.purse[player] - state.purse[1 - player])
         if self.spy_pieces and self.spec.spy is not None:
             edge = self.spy_edge(state.board, player)
             if edge:
@@ -1109,6 +1121,27 @@ class Evaluator:
             else:
                 total += 1.0
         return total
+
+
+def coin_value(spec: CompiledSpec, values: tuple[float, ...]) -> float:
+    """TC5 (`docs/plan-turncoat.md` §5.6): what one coin is worth in material units, the
+    best ``values[type] / cost`` over the market, the hires and (at twice the price) the
+    bribes (TC6); 0.0 without a purse. Read off the evaluator's own
+    values rather than the declared ones, so a coin is counted in the units material is.
+    ``rust/src/eval.rs::coin_value`` is the same function, in the same order."""
+    purse = spec.purse
+    if purse is None:
+        return 0.0
+    best = 0.0
+    for piece_type, price in zip(purse.market, purse.price, strict=True):
+        best = max(best, values[piece_type] / price)
+    # TC6 (§5.6): what a hire buys at its price and a bribe at twice it, per type, in type
+    # order, hires first.
+    for costs in (purse.hire, purse.bribe):
+        for piece_type, cost in enumerate(costs):
+            if cost:
+                best = max(best, values[piece_type] / cost)
+    return best
 
 
 def _clamp(value: float) -> float:
@@ -1501,7 +1534,7 @@ def _royal_resting_falls(
         return False
     for move in lists[side]:
         origin, _, kind, _ = decode_move(move)
-        if kind != MOVE_DROP and origin == square:
+        if kind not in (MOVE_DROP, MOVE_BUY) and origin == square:
             return False
     for move in lists[1 - side]:
         _, target, kind, _ = decode_move(move)

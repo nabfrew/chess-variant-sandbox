@@ -7,6 +7,8 @@ const view = document.getElementById('view');
 const TAGLINE_SERVED = document.getElementById('tagline').textContent;
 let LIBRARY = [], OPPONENTS = [], COVERAGE = null, SESSION = null, SELECTED = null,
     DROP = null, RUN = null, TIMER = null,
+    // TC7: the market piece picked to buy (`board.js` `marketHtml`), as `DROP` is a hand's.
+    BUY = null,
     // Who you can play in the ruleset currently on screen. The ladder is the same
     // player on every board; a rule of thumb is not -- the feature vocabulary
     // normalises by board size, so one digest is not one player on two boards -- so

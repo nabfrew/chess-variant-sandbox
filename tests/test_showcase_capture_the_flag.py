@@ -1,4 +1,4 @@
-"""V1 of I2's showcase *capture the flag* (`docs/plan-pieces-moves.md` §4.7): the mechanism,
+"""V1 of I2's showcase *capture the flag* (`docs/archive/plan-pieces-moves.md` §4.7): the mechanism,
 without players.
 
 Chess with the king replaced by an immobile royal flag (`moves: []`), won by taking it, with
@@ -122,7 +122,7 @@ def test_a_side_reduced_to_its_flag_loses_by_stalemate() -> None:
 
 
 class TestFairyStockfishAgrees:
-    """The extinct model (`plan-pieces-moves.md` §4.4): legal lists after every move."""
+    """The extinct model (`docs/archive/plan-pieces-moves.md` §4.4): legal lists after every move."""
 
     @staticmethod
     def _verify(**kwargs: Any) -> Any:

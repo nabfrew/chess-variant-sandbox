@@ -286,8 +286,8 @@
   "provenance": {
     "added": "2026-10-25",
     "origin": "designed",
-    "source": "docs/plan-pieces-moves.md, I3: the second showcase for pieces that never move (section 4.8)",
-    "history": "Registered by I3 (docs/plan-pieces-moves.md section 4.8), 2026-10-25, before any measured game, after capture the flag (I2) retired: chess (4c1922ffae26) with two pieces that never move (moves: []) on each side's third rank, b3 and g3 (b6 and g6), which only a pawn may take (captures on every other type). Chosen over the same anchors on d3 and e3 by the rule written before the draft read: b3 and g3 unless their 6400-node self-play leaned over 0.70 to the first seat, ran under 30 plies or decided under 0.60 of games; it read 0.64, 176 and 0.70. A one-shot bomb (explode_on_capture) was drafted first and set aside: no piece ever took one. The value 1 was fixed before the draft read; the anchors are drawn as the anchor.",
+    "source": "docs/archive/plan-pieces-moves.md, I3: the second showcase for pieces that never move (section 4.8)",
+    "history": "Registered by I3 (docs/archive/plan-pieces-moves.md section 4.8), 2026-10-25, before any measured game, after capture the flag (I2) retired: chess (4c1922ffae26) with two pieces that never move (moves: []) on each side's third rank, b3 and g3 (b6 and g6), which only a pawn may take (captures on every other type). Chosen over the same anchors on d3 and e3 by the rule written before the draft read: b3 and g3 unless their 6400-node self-play leaned over 0.70 to the first seat, ran under 30 plies or decided under 0.60 of games; it read 0.64, 176 and 0.70. A one-shot bomb (explode_on_capture) was drafted first and set aside: no piece ever took one. The value 1 was fixed before the draft read; the anchors are drawn as the anchor.",
     "parents": [
       "4c1922ffae26"
     ]

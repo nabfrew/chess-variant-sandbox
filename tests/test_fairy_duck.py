@@ -1,4 +1,4 @@
-"""The duck in Fairy-Stockfish (generation 42, N4c, `docs/plan-npc.md` §4.6).
+"""The duck in Fairy-Stockfish (generation 42, N4c, `docs/archive/plan-npc.md` §4.6).
 
 The classic duck (`goes: "anywhere"`, no `start`, no sight, no wild pieces) crosses as
 `wallingRule = duck`; every other duck is refused by name. A move there is both halves of our

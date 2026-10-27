@@ -112,7 +112,10 @@ NOTES: dict[str, str] = {
     "setup.placements[].piece": "The id of the piece placed.",
     "setup.placements[].player": (
         "Whose pieces these are: 0 for the first player, who moves first, 1 for the "
-        "second. With `setup.mirror` on, write only the first player's and leave this out."
+        "second, or `\"nobody\"` for pieces neither player owns (they block, either player "
+        "may take them, and `pieces[].control` says who may move them). With `setup.mirror` "
+        "on, write only the first player's (and nobody's, whose squares are mirrored too, "
+        "still nobody's) and leave this out for the first player's."
     ),
     "rules": (
         "Everything about the game beyond the pieces and the board: how it is won, and "
@@ -364,10 +367,11 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "its taker, blow up with everything round it, or go into the captor's hand to be "
         "dropped back into play. A piece can shoot, taking what it captures without moving "
         "onto its square; a player can start with pieces in hand; captures can be "
-        "compulsory.",
+        "compulsory; and taking a piece can pay its bounty into points counted when time "
+        "runs out.",
         ("pieces[].captures", "rules.strike", "rules.contacts", "rules.explode_on_capture",
          "rules.drops", "pieces[].promoted_from", "rules.promote_on_entry",
-         "rules.must_capture"),
+         "rules.must_capture", "pieces[].bounty"),
     ),
     (
         "The board",
@@ -399,9 +403,21 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "Pieces nobody owns",
         "Wild pieces that walk a fixed route, one step after every move, eat what they may, "
-        "and pay a bounty to whoever takes them; and the duck, which every turn ends by "
-        "moving to an empty square, where nothing may take it.",
-        ("rules.npcs", "rules.duck"),
+        "and pay a bounty to whoever takes them; the duck, which every turn ends by "
+        "moving to an empty square, where nothing may take it; and neutral pieces placed for "
+        "nobody, which stand and block until taken, or are moved by whichever player has "
+        "more pieces next to them.",
+        ("rules.npcs", "rules.duck", "pieces[].control"),
+    ),
+    (
+        "Coins and a market",
+        "Each player can hold a purse of coins, filled by the bounties on the pieces they "
+        "take, and spend a whole move buying a piece from a market onto their own back rank "
+        "(or any squares the game names), hiring a priced piece nobody owns that stands next "
+        "to one of theirs, or bribing an enemy one away at twice its price. Every exchange "
+        "is then priced twice, in material and in coins, and every turn asks whether to "
+        "raise a piece or move one.",
+        ("rules.purse", "pieces[].price"),
     ),
     (
         "Chess's own rules",

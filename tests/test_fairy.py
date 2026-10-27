@@ -291,7 +291,7 @@ class TestWhatCannotCross:
 
 
 def _lone_piece(name: str, moves: list[dict[str, Any]], squares: list[str]) -> dict[str, Any]:
-    """One piece `X` beside two kings, the shape of `plan-pieces-moves.md` §1.3's specs."""
+    """One piece `X` beside two kings, the shape of `docs/archive/plan-pieces-moves.md` §1.3's specs."""
     king = {
         "id": "K", "name": "king", "value": 0, "royal": True,
         "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4",
@@ -319,7 +319,7 @@ def _sergeant() -> dict[str, Any]:
 
 
 class TestTheTwoPiecesQ1030Found:
-    """`plan-pieces-moves.md` §1.3's two translator gaps."""
+    """`docs/archive/plan-pieces-moves.md` §1.3's two translator gaps."""
 
     def test_the_antelope_is_refused_by_its_leap(self) -> None:
         """Fairy-Stockfish's leapers stop at (3,3); both builds read `(3,4)` as no moves."""
