@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### A colour of its own for looking
+
+On the front page's wall of words, "what a piece does by looking" now has its own steel blue. It used to borrow a
+lavender almost the same as the one for pieces in hand.
+
 ### Reckoning plays with its own trained player
 
 Reckoning is now measured against a computer player trained on reckoning itself, and its score moved from 0.833 to

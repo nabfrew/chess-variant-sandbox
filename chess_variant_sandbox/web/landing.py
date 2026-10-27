@@ -318,7 +318,7 @@ BLOCKS: tuple[Block, ...] = (
         Word("explode", "rules.explode_on_capture", "captures that explode"),
         Word("must be taken", "rules.must_capture", "a capture must be taken"),
     )),
-    Block("what a piece does by looking", "k-sight", "kind-valuation",
+    Block("what a piece does by looking", "k-sight", "kind-sight",
           ("What pieces do to each other without moving",), (
         Word("freeze", "pieces[].sight", "freezes it", field="effect", value="freeze"),
         Word("disarm", "pieces[].sight", "disarms it", field="effect", value="disarm"),

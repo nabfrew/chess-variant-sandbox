@@ -18,8 +18,9 @@ from typing import Any
 
 import pytest
 import site_words
+from test_style import _delta_e, _rgb
 
-from chess_variant_sandbox.spec import reference
+from chess_variant_sandbox.spec import reference, relate
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.spec.schema import MOVE_KINDS
 from chess_variant_sandbox.web import cards, landing, stories
@@ -56,6 +57,15 @@ def _sections() -> dict[str, str]:
     if key:
         found.setdefault(key, "\n".join(lines))
     return found
+
+
+def _map_kind(key: str) -> str:
+    """The kind of rule the map (`spec/relate.py`) files a wall word's key under."""
+    if key.startswith("rules."):
+        return relate.RULE_KINDS.get(key[len("rules."):], "")
+    if key == "pieces[].captures":
+        return "capture"
+    return "board" if key.startswith("board.") else "pieces"
 
 
 SECTIONS = _sections()
@@ -125,6 +135,34 @@ class TestTheFamilies:
     def test_the_stories_read_their_families_from_the_wall(self) -> None:
         assert {block.family: block.hue for block in landing.BLOCKS} == stories.FAMILIES
         assert {story.family for story in stories.STORIES} <= set(stories.FAMILIES)
+
+    def test_a_rows_colour_is_its_kind_of_rule_on_the_map(self) -> None:
+        """Choice E1 (`plan-visual.md` §3.2): a map hue means a kind of rule wherever one is
+        named. A row in a kind's map colour holds a rule the map files under that kind; a
+        row in no kind's colour (*by looking*, which the map counts among the pieces' rules
+        beside the move row, and *chess's own*) wears a colour no kind wears, so the map's
+        colours never say a second thing here."""
+        kind_tokens = {f"kind-{kind}" for kind in relate.KINDS}
+        for block in landing.BLOCKS:
+            kinds = {_map_kind(word.key) for word in block.words}
+            if block.colour in kind_tokens:
+                assert block.colour[len("kind-"):] in kinds, (block.family, kinds)
+                continue
+            for theme in (tokens.LIGHT, {**tokens.LIGHT, **tokens.DARK}):
+                worn = {theme[name].lower() for name in kind_tokens}
+                assert theme[block.colour].lower() not in worn, block.family
+
+    def test_the_rows_colours_are_told_apart(self) -> None:
+        """No two rows in near-identical hues: the sight row once borrowed
+        `--kind-valuation`'s lavender beside `--kind-hand`'s (12.7 apart in the dark), and
+        has `--kind-sight` of its own (Q1038). *Chess's own* row is the neutral `--muted`,
+        no hue, and is left out: the map's own `--kind-turn` is a warm grey near it."""
+        for theme in (tokens.LIGHT, {**tokens.LIGHT, **tokens.DARK}):
+            colours = [block.colour for block in landing.BLOCKS if block.colour != "muted"]
+            for at, one in enumerate(colours):
+                for two in colours[at + 1:]:
+                    apart = _delta_e(_rgb(theme[one]), _rgb(theme[two]))
+                    assert apart >= 20, (one, two, round(apart, 1))
 
 
 # ------------------------------------------------------------------ the designer

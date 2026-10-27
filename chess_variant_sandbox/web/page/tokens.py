@@ -257,13 +257,18 @@ LIGHT: dict[str, str] = {
     # A seam a piece may cross one way and not the other, and the squares a piece promotes
     # on. Blue and rose because neither is any army's colour under either theme.
     "seam": "#3466ac", "zone": "#b0468a",
-    # --- the map: one colour per kind of rule, for its links. The names are
+    # --- one colour per kind of rule, on the map's links and wherever else a kind is named
+    # (choice E1: the landing's wall and stories, `landing.BLOCKS`). The names are
     # `spec/relate.py`'s `KINDS`, read as `var(--kind-<kind>, var(--muted))`, so a kind
     # added to the schema draws in grey rather than not at all.
     "kind-board": "#3466ac", "kind-pieces": "#b0468a", "kind-setup": "#1f8f86",
     "kind-capture": "#c0503a", "kind-ending": "#4f8a5b", "kind-hand": "#7a5ea8",
     "kind-wild": "#c08a3e", "kind-turn": "#6f6558", "kind-clock": "#7d7b2a",
     "kind-valuation": "#5a4fb5",
+    # The landing wall's *what a piece does by looking* (Q1038): the map files a line of
+    # sight under the pieces, beside the move row, so the row is no kind and wears a steel
+    # blue no kind wears; it once borrowed valuation's lavender, a near twin of the hand's.
+    "kind-sight": "#204660",
     # One colour per community on the map, in the payload's order: eight categorical hues
     # validated for colour-blind separation against the panel a dot sits on, in both
     # themes (`docs/archive/plan-graph-map.md` S3). A ninth keeps the neutral dot.
@@ -320,7 +325,7 @@ DARK: dict[str, str] = {
     "kind-board": "#74a6ef", "kind-pieces": "#e58cc4", "kind-setup": "#5cc9bd",
     "kind-capture": "#e0836a", "kind-ending": "#6fae7c", "kind-hand": "#a98fd6",
     "kind-wild": "#d9a441", "kind-turn": "#b0a48f", "kind-clock": "#c3bf55",
-    "kind-valuation": "#9a93ef",
+    "kind-valuation": "#9a93ef", "kind-sight": "#92c2e2",
     "community-1": "#3987e5", "community-2": "#d95926", "community-3": "#199e70",
     "community-4": "#c98500", "community-5": "#d55181", "community-6": "#008300",
     "community-7": "#9085e9", "community-8": "#e66767",

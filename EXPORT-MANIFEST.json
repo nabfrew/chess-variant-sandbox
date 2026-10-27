@@ -1,5 +1,5 @@
 {
- "source_commit": "bc00d1db503f51b310cd234a669d44e6d7c53636",
+ "source_commit": "2d1c23f3aa2a8222bd91dee5728b20cfc225516e",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -2996,8 +2996,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/landing.py",
-   "bytes": 69378,
-   "sha256": "8b86b1d0c6cff2c7adc22372b18cfc6d3154f01d499c4e033d114b11b3125bbc"
+   "bytes": 69374,
+   "sha256": "d8ebe9e225bbe429456f769cc34283d5e200be5573971ca5391564f382d4df97"
   },
   {
    "path": "chess_variant_sandbox/web/launch.py",
@@ -3111,8 +3111,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/tokens.py",
-   "bytes": 27808,
-   "sha256": "0c3679c16d33f602ff2d371b86c6754682749f60fe227a8f80e7d700653e2d3c"
+   "bytes": 28232,
+   "sha256": "4e669f2353d7eb6eee13d153fa5fd7e3f95a7d81c884f89f143dbd3a1f7e5821"
   },
   {
    "path": "chess_variant_sandbox/web/page/utilities.py",
@@ -3406,8 +3406,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 153407,
-   "sha256": "285ee8ab0b0c918897d7893ca007e63223196c0bd17064e6b209407e7e6ad161"
+   "bytes": 153615,
+   "sha256": "c0669728e09b522d4f985ef3be8af89d5913263fb04a836429363516499047fa"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -5591,8 +5591,8 @@
   },
   {
    "path": "tests/test_landing_wall.py",
-   "bytes": 10224,
-   "sha256": "43ef51d3091bd5f92e572dbc428262e6564b3ddd6d56d331cca9231ebc8f6d42"
+   "bytes": 12436,
+   "sha256": "b6322ba68cb4c319a129c2117701cb2f283ac790b94dfba7beb88e53a25e0d6b"
   },
   {
    "path": "tests/test_last_game_corners.py",
