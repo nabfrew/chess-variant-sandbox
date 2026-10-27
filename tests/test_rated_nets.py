@@ -63,6 +63,8 @@ ROLLED_OUT = {
     "add543cc28c3": "db5ef1bc938e",  # rps repaint (rps-v4)
     "bdf2801ade24": "db5ef1bc938e",  # rps race (rps-v3)
     "fb8a67625131": "db5ef1bc938e",  # jeson mor
+    # L2's two owed games, read by L2r (plan-teacher §10.11.7, 2026-10-27): reckoning accepted.
+    "ffc7b604bea0": "db5ef1bc938e",  # reckoning
 }
 
 

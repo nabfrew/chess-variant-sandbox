@@ -1,5 +1,5 @@
 {
- "source_commit": "ef0041e4f63cf609f0ca00fc2ffcaeb4c31a2cd8",
+ "source_commit": "bc00d1db503f51b310cd234a669d44e6d7c53636",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -3406,8 +3406,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 152981,
-   "sha256": "dcd9c600354fcea52c22a5f01ff7830df99d79e01ec64ba9e98513ad6ca34586"
+   "bytes": 153407,
+   "sha256": "285ee8ab0b0c918897d7893ca007e63223196c0bd17064e6b209407e7e6ad161"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -4063,6 +4063,21 @@
    "path": "nets/fe7c42772c71-db5ef1bc938e.json",
    "bytes": 1570,
    "sha256": "971898c72085eb219fdb14c34a091f5aa198ae1357193eb796a00408a5be1a00"
+  },
+  {
+   "path": "nets/ffb9a99dbd01-db5ef1bc938e.json",
+   "bytes": 1571,
+   "sha256": "20760f5429ce345fc5ad1df22d938a1e459ea852c466b3608fe67d58b02ce31d"
+  },
+  {
+   "path": "nets/ffc7b604bea0-db5ef1bc938e.json",
+   "bytes": 2085,
+   "sha256": "8eaa30e81b7a2712aabb21c3e4fd4b85172c52bc1100f2a259ced0cb8d9ce936"
+  },
+  {
+   "path": "nets/ffc7b604bea0-db5ef1bc938e.net",
+   "bytes": 394340,
+   "sha256": "b7a4f4b7ef6a5f83a250c7f17f5025eb3ef718670f77243086125aa5b708d2d1"
   },
   {
    "path": "pyproject.toml",
@@ -5891,8 +5906,8 @@
   },
   {
    "path": "tests/test_rated_nets.py",
-   "bytes": 15883,
-   "sha256": "cfd83d57a52816a2625a8ecd46fbef3172909f4815933423eeb4d60af58924c1"
+   "bytes": 16029,
+   "sha256": "2b3290f1c8c1ee4d3518a78c15b0cdc3f61fa148c609f1d75bc6ffbf8bf3715a"
   },
   {
    "path": "tests/test_ratings_convergence.py",

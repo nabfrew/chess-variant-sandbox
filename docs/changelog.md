@@ -13,6 +13,13 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### Reckoning plays with its own trained player
+
+Reckoning is now measured against a computer player trained on reckoning itself, and its score moved from 0.833 to
+0.754. That is still well inside the range of a game worth playing. Fifteen games in the library now have a trained
+player of their own. Promoted drop shogi was trained too, but its player did not beat the standard one by enough to
+keep, so it plays as before.
+
 ### Your draft, one tap from its next step
 
 Opening your own draft in the designer now opens the draft itself, with its name and words, instead of a copy. Its
