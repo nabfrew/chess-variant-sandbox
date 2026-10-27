@@ -263,8 +263,8 @@ LIGHT: dict[str, str] = {
     # added to the schema draws in grey rather than not at all.
     "kind-board": "#3466ac", "kind-pieces": "#b0468a", "kind-setup": "#1f8f86",
     "kind-capture": "#c0503a", "kind-ending": "#4f8a5b", "kind-hand": "#7a5ea8",
-    "kind-wild": "#c08a3e", "kind-turn": "#6f6558", "kind-clock": "#7d7b2a",
-    "kind-valuation": "#5a4fb5",
+    "kind-wild": "#c08a3e", "kind-turn": "#7a4a2a", "kind-clock": "#7d7b2a",
+    "kind-valuation": "#7a2838",
     # The landing wall's *what a piece does by looking* (Q1038): the map files a line of
     # sight under the pieces, beside the move row, so the row is no kind and wears a steel
     # blue no kind wears; it once borrowed valuation's lavender, a near twin of the hand's.
@@ -324,8 +324,8 @@ DARK: dict[str, str] = {
     "goal": "#5cc9bd", "seam": "#74a6ef", "zone": "#e58cc4",
     "kind-board": "#74a6ef", "kind-pieces": "#e58cc4", "kind-setup": "#5cc9bd",
     "kind-capture": "#e0836a", "kind-ending": "#6fae7c", "kind-hand": "#a98fd6",
-    "kind-wild": "#d9a441", "kind-turn": "#b0a48f", "kind-clock": "#c3bf55",
-    "kind-valuation": "#9a93ef", "kind-sight": "#92c2e2",
+    "kind-wild": "#d9a441", "kind-turn": "#eac690", "kind-clock": "#c3bf55",
+    "kind-valuation": "#de5a78", "kind-sight": "#92c2e2",
     "community-1": "#3987e5", "community-2": "#d95926", "community-3": "#199e70",
     "community-4": "#c98500", "community-5": "#d55181", "community-6": "#008300",
     "community-7": "#9085e9", "community-8": "#e66767",

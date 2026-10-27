@@ -156,7 +156,8 @@ class TestTheFamilies:
         """No two rows in near-identical hues: the sight row once borrowed
         `--kind-valuation`'s lavender beside `--kind-hand`'s (12.7 apart in the dark), and
         has `--kind-sight` of its own (Q1038). *Chess's own* row is the neutral `--muted`,
-        no hue, and is left out: the map's own `--kind-turn` is a warm grey near it."""
+        no hue, and is left out here; every kind hue keeps 20 from it and from each other
+        (`tests/test_kind_hues.py`, Q1040)."""
         for theme in (tokens.LIGHT, {**tokens.LIGHT, **tokens.DARK}):
             colours = [block.colour for block in landing.BLOCKS if block.colour != "muted"]
             for at, one in enumerate(colours):

@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### Every kind of rule, easy to tell apart
+
+"What a piece is worth" is now claret, no longer a lavender close to "pieces in hand", and "who moves" is a warm
+brown, no longer a grey close to the quieter text around it. No two kinds of rule now share a near-identical colour,
+in light or dark. The small "+" links on the front page's wall are easier to read in light mode.
+
 ### A colour of its own for looking
 
 On the front page's wall of words, "what a piece does by looking" now has its own steel blue. It used to borrow a

@@ -262,7 +262,11 @@ RULES = """
   .landing a.wallWord { padding: 4px 12px; }
   .landing .wallWord a.wallRule { padding: 4px 10px 4px 12px; }
   .landing .wallWord a.wallDoor { padding: 4px 11px 4px 9px; border-left: 1px solid var(--line);
-                                  color: var(--family); font-weight: 600; }
+                                  font-weight: 600;
+    /* The door's `+` is text in its family's hue taken 40% toward the ink: several light kind
+       hues are graphics at 3 : 1, and the mix holds every one, and `--muted`, at AA (4.5) on
+       the panel and the page in both themes (Q1040, `tests/test_kind_hues.py`). */
+    color: color-mix(in srgb, var(--family) 60%, var(--ink)); }
   .landing .wallWord:hover, .landing .wallWord:focus-within {
     border-color: var(--family); box-shadow: inset 3px 0 0 var(--family);
     transform: translateY(-1px); }
