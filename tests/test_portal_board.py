@@ -95,7 +95,7 @@ class TestTheTransitAsTheServerSaysIt:
             (1, "orange"), (1, "blue"), (2, "orange"), (2, "blue")]
         chess = designing.opening_preview(json.loads(
             (ROOT / "rulesets" / "chess.json").read_text(encoding="utf-8")))
-        assert "portals" not in chess
+        assert chess["portals"] is None
 
     def test_the_offline_replay_carries_the_ends_and_the_transit(self, tmp_path: Path) -> None:
         from chess_variant_sandbox.viz.html import _write_page

@@ -566,17 +566,43 @@ _SPEC_ATTRIBUTES = frozenset({
 })
 
 # Where `bridge.py` may read them, and why each is still only a flattening.
+#
+# Since CP1 (`docs/plan-smells-python.md` PY8) `build_tables` is the merge of one flattener
+# per rule, so the flattening is listed by flattener: each reads only its own rule's
+# attributes and writes only its own rule's keys.
+_FLATTENING = "the flattening itself, where its rule's refused keys are written"
 BRIDGE_READERS: dict[str, str] = {
-    "build_tables": "the flattening itself, where each refused key is written",
+    "_ending_fields": _FLATTENING,
+    "_bare_royal_fields": _FLATTENING,
+    "_en_passant_fields": _FLATTENING,
+    "_royal_facing_fields": _FLATTENING,
+    "_promotion_fields": _FLATTENING,
+    "_castling_fields": _FLATTENING,
+    "_explosion_fields": _FLATTENING,
+    "_drops_fields": _FLATTENING,
+    "_reach_fields": _FLATTENING,
+    "_entry_promotion_fields": _FLATTENING,
     "rust_supports": "a support check whose every branch sits behind a `_CORE_KNOWS_*` "
     "constant that is True; it sends nothing across the boundary",
 }
 
 # Where `bridge.py` may spell the refused keys, and why.
+_INERT_ROWS = (
+    "its rule's rows of the fingerprint's default values, merged into `_INERT_DEFAULTS` and "
+    "read by `canonical_tables` for every key alike, never for one rule"
+)
 BRIDGE_SPELLERS: dict[str, str] = {
-    "build_tables": "writes them",
-    "_INERT_DEFAULTS": "the fingerprint's default values; read by `canonical_tables` for "
-    "every key alike, never for one rule",
+    **{name: "writes them" for name in BRIDGE_READERS if name != "rust_supports"},
+    "_ENDING_INERT": _INERT_ROWS,
+    "_BARE_ROYAL_INERT": _INERT_ROWS,
+    "_EN_PASSANT_INERT": _INERT_ROWS,
+    "_ROYAL_FACING_INERT": _INERT_ROWS,
+    "_PROMOTION_INERT": _INERT_ROWS,
+    "_CASTLING_INERT": _INERT_ROWS,
+    "_EXPLOSION_INERT": _INERT_ROWS,
+    "_DROPS_INERT": _INERT_ROWS,
+    "_REACH_INERT": _INERT_ROWS,
+    "_ENTRY_PROMOTION_INERT": _INERT_ROWS,
     "_ALWAYS_MEANINGFUL": "the fingerprint's other half, a set of names",
 }
 
@@ -595,7 +621,7 @@ def _bridge_definitions() -> list[tuple[str, ast.AST]]:
 
 
 class TestTheBridgeOnlyFlattensThem:
-    """The Python half: the bridge reads these rules in `build_tables` and spells them there."""
+    """The Python half: the bridge reads these rules in their flatteners and spells them there."""
 
     def test_the_spec_attributes_are_read_only_where_listed(self) -> None:
         readers = {

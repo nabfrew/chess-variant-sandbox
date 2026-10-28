@@ -33,6 +33,7 @@ from chess_variant_sandbox.engine.moves import (
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.describe import describe_spec
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import validate_spec
 from tests.neutral_oracle import NeutralOracle
 
@@ -372,6 +373,12 @@ def _refused(spec: dict[str, Any], words: str) -> None:
     assert any(words in error for error in errors), errors
 
 
+def _refused_pair(spec: dict[str, Any], rid: str) -> None:
+    """A refused pair, by its id in `spec/refusals.py`."""
+    errors = validate_spec(spec)
+    assert rid in refused_ids(errors), errors
+
+
 class TestRefusals:
     def test_control_on_a_royal(self):
         spec = _spec()
@@ -394,25 +401,27 @@ class TestRefusals:
         spec["setup"]["placements"].append({"piece": "G", "player": "nobody", "squares": ["e3"]})
         _refused(spec, "a spy is never gained")
 
-    @pytest.mark.parametrize("key, value", [
-        ("simultaneous", {}),
-        ("strike", {"effect": "capture"}),
-        ("npcs", [{"piece": "G", "route": ["e3", "e4"]}]),
+    @pytest.mark.parametrize("key, value, rid", [
+        ("simultaneous", {}, "R18"),
+        ("strike", {"effect": "capture"}, "O3"),
+        ("npcs", [{"piece": "G", "route": ["e3", "e4"]}], "O1"),
     ])
-    def test_beside_a_rule_that_shares_the_block_or_the_capture(self, key, value):
+    def test_beside_a_rule_that_shares_the_block_or_the_capture(self, key, value, rid):
         spec = _spec(**{key: value})
-        _refused(spec, f"a placement for nobody is refused beside rules.{key}")
+        _refused_pair(spec, rid)
 
-    @pytest.mark.parametrize("key, value", [
-        ("territory", {"repaint": True}),
-        ("reach", {"piece": "K", "squares": ["f6"]}),
-        ("explode_on_capture", True),
+    @pytest.mark.parametrize("key, value, rid", [
+        ("territory", {"repaint": True}, "O10"),
+        ("reach", {"piece": "K", "squares": ["f6"]}, "O11"),
+        ("explode_on_capture", True, "O12"),
     ])
-    def test_majority_beside(self, key, value):
-        _refused(_spec(**{key: value}), f"majority control is refused beside rules.{key}")
+    def test_majority_beside(self, key, value, rid):
+        _refused_pair(_spec(**{key: value}), rid)
 
-    def test_a_long_turn(self):
-        _refused(_spec(turn={"moves": 2}), "a turn longer than one move")
+    def test_a_long_turn_is_lifted(self):
+        """SR2 (`docs/plan-schema-next.md` L5): the holder is read at each move's start;
+        `tests/test_long_turn_turncoat.py` holds the core to it."""
+        assert validate_spec(_spec(turn={"moves": 2})) == []
 
     def test_a_majority_type_that_reads_unalike(self):
         spec = _spec()

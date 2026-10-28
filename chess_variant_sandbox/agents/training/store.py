@@ -59,6 +59,7 @@ from chess_variant_sandbox.agents.training.procedure import (
     Parent,
     Procedure,
 )
+from chess_variant_sandbox.metrics.components import plays_in_rounds
 
 Report = Callable[[str], None]
 
@@ -318,7 +319,7 @@ def accept(
 
     # Q918g: on a round game both seats are the round player, `matrix:`, at the round
     # duel's budget unless one is named (`ROUND_ACCEPT_NODES`).
-    rounds = duel_rounds(spec)
+    rounds = plays_in_rounds(spec)
     kind = "matrix" if rounds else "minimax"
     if nodes is None:
         nodes = ROUND_ACCEPT_NODES if rounds else ACCEPT_NODES
@@ -380,13 +381,6 @@ def accept(
         openings=openings,
         planned=pairs,
     )
-
-
-def duel_rounds(spec: dict[str, Any]) -> bool:
-    """Whether this ruleset is played in rounds, so its duels seat `matrix:` (Q918g)."""
-    from chess_variant_sandbox.engine import Engine
-
-    return bool(Engine(spec).simultaneous)
 
 
 def _opening_duel(spec: dict[str, Any], config: Any, most: int) -> list[Any]:

@@ -24,7 +24,19 @@ import copy
 from typing import Any
 
 from chess_variant_sandbox.spec.schema import (
+    ANY_KEY,
+    GOES_HOLDER,
+    GOES_KEY,
+    KEPT_EMPTY,
+    LEFT,
+    PIECE_FIELDS,
+    PIECE_ID,
+    PIECE_IDS,
+    PIECE_POSITIONS,
     STOCK_UNLIMITED,
+    Each,
+    Fields,
+    Names,
     drop_face_pairs,
     hire_ids,
     piece_bounties,
@@ -70,7 +82,8 @@ def strongest(spec: dict[str, Any]) -> str | None:
 
 
 def drop_piece(spec: dict[str, Any], piece_id: str | None) -> dict[str, Any]:
-    """Remove a piece type entirely: definition, placements and promotion targets."""
+    """Remove a piece type entirely: its definition, its placements, and every place a
+    rule names it (`_forget_piece`)."""
     if piece_id is None:
         return spec
     spec["pieces"] = [p for p in pieces(spec) if p["id"] != piece_id]
@@ -78,61 +91,6 @@ def drop_piece(spec: dict[str, Any], piece_id: str | None) -> dict[str, Any]:
     setup["placements"] = [
         p for p in setup.get("placements", []) if p["piece"] != piece_id
     ]
-    # Castling names its rook by id, so removing that piece leaves a rule pointing at
-    # nothing. The validator catches it, which is the system working -- but a mutant
-    # that fails to build is a mutant that tests nothing, so the reference goes too.
-    castling = spec.get("rules", {}).get("castling")
-    if isinstance(castling, dict) and piece_id in (castling.get("rook"), castling.get("king")):
-        spec["rules"].pop("castling", None)
-
-    # **Promotion is a list, and this read it only as an object.** Schema 2 made
-    # `rules.promotion` one rule per promoting piece, so every ruleset written since --
-    # which is every ruleset with promotion in the corpus, chess included -- took the
-    # `isinstance(promotion, dict)` branch and skipped it. Removing a promotion target
-    # therefore left `promotion.to` naming a piece that no longer existed, the validator
-    # refused the result by name, and `mutate` quietly drew again.
-    #
-    # So `remove-a-piece` has been a **no-op on most of the corpus**, silently: an
-    # operator whose every child is discarded looks exactly like an operator that had
-    # nothing to do. Found by `chess_variant_sandbox/fuzz.py` -- not by the fuzzer failing, but by it
-    # failing to find something it should have. A wall on a rank a king castles along
-    # needs a back rank emptied first, and the only operator that can empty one could
-    # not, so seventeen thousand cases never once produced the shape.
-    rules = spec.setdefault("rules", {})
-    promotion = rules.get("promotion")
-    written_as_list = isinstance(promotion, list)
-    entries = promotion if written_as_list else [promotion]
-    kept: list[dict[str, Any]] = []
-    for entry in entries:
-        if not isinstance(entry, dict) or entry.get("piece") == piece_id:
-            continue
-        targets = entry.get("to")
-        if isinstance(targets, list):
-            entry["to"] = [t for t in targets if t != piece_id]
-            if not entry["to"]:
-                continue
-        # `to_by_player` is the same relation written per side, and a target removed from
-        # one side has to go from both or the two armies promote into different pieces
-        # for a reason nobody wrote down.
-        by_player = entry.get("to_by_player")
-        if isinstance(by_player, dict):
-            for side, side_targets in list(by_player.items()):
-                if isinstance(side_targets, list):
-                    by_player[side] = [t for t in side_targets if t != piece_id]
-            if not any(by_player.values()):
-                continue
-        kept.append(entry)
-
-    if promotion is not None and not kept:
-        rules.pop("promotion", None)
-        rules.pop("en_passant", None)
-    elif promotion is not None:
-        rules["promotion"] = kept if written_as_list else kept[0]
-        # En passant is defined against *the* promoting piece. If the one it was about
-        # is gone, so is the rule; the validator says as much and would refuse the spec.
-        if not any(entry.get("piece") for entry in kept):
-            rules.pop("en_passant", None)
-
     _forget_piece(spec, piece_id)
     return spec
 
@@ -214,96 +172,133 @@ def settle_carries(spec: dict[str, Any]) -> list[str]:
     return gone
 
 
-def _forget_carried(rules: dict[str, Any], piece_id: str) -> None:
-    """Schema 21: the dropped piece out of every end's ``carries``.
+# What a position does with its value once a piece is taken out of it.
+_KEPT, _KEY_GOES, _HOLDER_GOES = "kept", "key goes", "holder goes"
+_VERDICT = {GOES_KEY: _KEY_GOES, GOES_HOLDER: _HOLDER_GOES}
 
-    A filter left naming nothing goes, as `castling` does with its rook, and the end then
-    lets every piece in: the only spelling of it that validates without rewriting who may
-    enter, and the reading the metrics' ablations want. The design loop's operators refuse
-    that draw instead (``empties_a_filter``), since it widens a door. A filter left naming
-    every piece that can move goes too (``settle_carries``), the same door unfiltered.
+
+def _forgotten(value: Any, position: Any, piece_id: str) -> tuple[str, Any]:
+    """``value`` with ``piece_id`` taken out of every place ``position`` says holds one,
+    and what its holder does with it: keeps it (as returned), drops its key, or goes.
+
+    Objects are rewritten in place where the holder keeps them; a value that is not the
+    shape its position says is left alone, for the validator to name.
     """
-    for holder, key, _ in _filters(rules):
-        if piece_id in holder[key]:
-            holder[key] = [pid for pid in holder[key] if pid != piece_id]
-            if not holder[key]:
-                _drop_filter(rules, holder, key)
+    if isinstance(position, Names):
+        return _forgotten_leaf(value, position, piece_id)
+    if isinstance(position, Each):
+        if isinstance(value, list):
+            items = value
+        elif isinstance(value, dict):
+            items = [value]  # the bare object a list-or-object key allows
+        else:
+            return _KEPT, value
+        kept = []
+        for item in items:
+            verdict, item = _forgotten(item, position.item, piece_id)
+            if verdict == _KEPT:
+                kept.append(item)
+        if not kept and position.emptied is not None:
+            return _VERDICT[position.emptied], value
+        return _KEPT, kept if isinstance(value, list) else value
+    if isinstance(position, Fields):
+        if not isinstance(value, dict):
+            return _KEPT, value
+        for key in list(value):
+            inner = position.keys.get(key, position.keys.get(ANY_KEY))
+            if inner is None:
+                continue
+            verdict, rewritten = _forgotten(value[key], inner, piece_id)
+            if verdict == _HOLDER_GOES:
+                return _HOLDER_GOES, value
+            if verdict == _KEY_GOES:
+                value.pop(key)
+            else:
+                value[key] = rewritten
+        if position.emptied is not None and not any(value.values()):
+            return _VERDICT[position.emptied], value
+        return _KEPT, value
+    raise TypeError(f"not a piece position: {position!r}")
+
+
+def _forgotten_leaf(value: Any, position: Names, piece_id: str) -> tuple[str, Any]:
+    """One leaf of `_forgotten`: an id, a list of ids, or a map keyed by ids."""
+    if position.gone == LEFT:
+        return _KEPT, value
+    if position.shape == PIECE_ID:
+        return (_VERDICT[position.gone], value) if value == piece_id else (_KEPT, value)
+    if position.shape == PIECE_IDS:
+        if not isinstance(value, list) or (position.only_named and piece_id not in value):
+            return _KEPT, value
+        value = [pid for pid in value if pid != piece_id]
+    elif isinstance(value, dict):  # PIECE_KEYED
+        value.pop(piece_id, None)
+    else:
+        return _KEPT, value
+    if not value and position.gone != KEPT_EMPTY:
+        return _VERDICT[position.gone], value
+    return _KEPT, value
 
 
 def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
     """Every *other* place a piece id can appear, taken out with the piece.
 
-    The same bug the promotion list had above, six more times (Q85). ``drop_piece``
-    cleaned the definition, the placements, castling and promotion, and
-    ``loop.operators`` claimed on the strength of that -- *"removing a piece takes its
-    placements and its rule references with it"* -- while a capture matrix, an icon, a
+    Walks `schema.PIECE_POSITIONS` and `schema.PIECE_FIELDS`, the one map of where a rule
+    names a piece, which `relate` reads too (CP2). Until then this was a hand cascade of
+    the same positions, and it missed six of them (Q85): a capture matrix, an icon, a
     strike chain, a drop region, a wild piece's route and an explosion's immunity all
-    went on naming a piece that no longer existed. The validator refused each by name and
+    went on naming a piece that no longer existed, the validator refused each by name and
     `mutate` drew again in silence, so ``remove-a-piece`` was a **total loss on 25 of the
-    53 committed and archived specs** -- antichess, atomic, shogi, xiangqi, every RPS
-    version, every hierarchy game, `wolves` -- and the operator looked exactly like one
-    that had nothing to do. It is also the only operator that can shrink an army, so the
-    army axis of `loop.grid` was half unreachable for free on half the corpus.
+    53 committed and archived specs**. Before that it read ``rules.promotion`` only as an
+    object after schema 2 made it a list, and was a no-op on most of the corpus for the
+    same silent reason.
 
-    Written as an explicit cascade rather than a walk of every string in the spec,
-    because a piece id is one or two characters and a blind walk would eat an icon name
-    or a square. The cascade is held complete by measurement instead of by care:
-    `tests/test_operators.py` drops **every** piece of **every** committed spec and
-    requires the result to validate, so a schema bump that puts a piece id somewhere new
-    fails there rather than in a design run.
+    Walked by schema position rather than by every string in the spec, because a piece
+    id is one or two characters and a blind walk would eat an icon name or a square. The
+    map is held complete by `tests/test_piece_positions.py` (every string-typed field of
+    `jsonschema.py` classified) and by `tests/test_operators.py`, which drops **every**
+    piece of **every** committed spec and requires no dangling reference.
 
-    A container emptied by the removal takes its rule with it, on the argument
-    ``castling`` already makes above: a rule that names nothing is either refused
-    outright or is a charge for a rule that can never fire.
+    A container emptied by the removal takes what the map says with it (its key, its
+    list item, or its rule): a rule that names nothing is either refused outright or is
+    a charge for a rule that can never fire. What a rule then owes beyond its own
+    positions is settled below, each where it is written.
     """
     rules = spec.setdefault("rules", {})
+    had_promotion = rules.get("promotion") is not None
+    had_npcs = isinstance(rules.get("npcs"), list)
+    strike = rules.get("strike")
+    had_switches = isinstance(strike, dict) and "switches_sides" in strike
 
+    every_field = Fields(PIECE_FIELDS)
     for piece in pieces(spec):
-        captures = piece.get("captures")
-        if isinstance(captures, list):
-            piece["captures"] = [p for p in captures if p != piece_id]
-        if piece.get("promoted_from") == piece_id:
-            piece.pop("promoted_from", None)
-        # Schema 30 (Q999a): a line of sight that touched only the gone type goes with it
-        # (an `affects` emptied would read as *every type*), and the key with its last line.
-        sight = piece.get("sight")
-        if isinstance(sight, list):
-            kept_sight = []
-            for entry in sight:
-                affects = entry.get("affects") if isinstance(entry, dict) else None
-                if isinstance(affects, list) and piece_id in affects:
-                    entry["affects"] = [p for p in affects if p != piece_id]
-                    if not entry["affects"]:
-                        continue
-                kept_sight.append(entry)
-            if kept_sight:
-                piece["sight"] = kept_sight
-            else:
-                piece.pop("sight")
+        _forgotten(piece, every_field, piece_id)
 
     icons = spec.get("appearance", {}).get("icons")
     if isinstance(icons, dict):
         icons.pop(piece_id, None)
 
-    def _prune_list(holder: dict[str, Any], key: str) -> None:
-        """Take the id out of a list of piece ids, and the key with it if it empties."""
-        value = holder.get(key)
-        if not isinstance(value, list):
-            return
-        holder[key] = [p for p in value if p != piece_id]
-        if not holder[key]:
-            holder.pop(key)
+    for key, position in PIECE_POSITIONS.items():
+        if key not in rules:
+            continue
+        verdict, rewritten = _forgotten(rules[key], position, piece_id)
+        if verdict == _KEPT:
+            rules[key] = rewritten
+        else:
+            rules.pop(key)
+
+    # En passant is defined against *the* promoting piece. If the one it was about is
+    # gone, so is the rule; the validator says as much and would refuse the spec.
+    if had_promotion:
+        promotion = rules.get("promotion")
+        entries = promotion if isinstance(promotion, list) else [promotion]
+        if promotion is None or not any(
+            isinstance(entry, dict) and entry.get("piece") for entry in entries
+        ):
+            rules.pop("en_passant", None)
 
     drops = rules.get("drops")
     if isinstance(drops, dict):
-        for key in ("no_doubled", "no_mate"):
-            _prune_list(drops, key)
-        for key in ("region", "stock"):
-            mapping = drops.get(key)
-            if isinstance(mapping, dict):
-                mapping.pop(piece_id, None)
-                if not mapping:
-                    drops.pop(key)
         # Schema 10 (Q51). A stock is one of the two things that can fill a hand, so
         # dropping the last stocked piece out of a hand that does not also fill from
         # captures leaves a rule the validator refuses by name -- *"nothing else fills a
@@ -316,130 +311,28 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
         elif drops.get("either_face") is True and not drop_face_pairs(pieces(spec)):
             drops.pop("either_face")
 
-    reach = rules.get("reach")
-    if isinstance(reach, dict) and reach.get("piece") == piece_id:
-        rules.pop("reach", None)
-
     extinction = rules.get("extinction")
-    if isinstance(extinction, dict) and isinstance(extinction.get("pieces"), list):
-        extinction["pieces"] = [p for p in extinction["pieces"] if p != piece_id]
-        if not extinction["pieces"]:
-            rules.pop("extinction", None)
-        elif extinction.get("per_type") is True and len(set(extinction["pieces"])) < 2:
-            # Schema 18c: one type counted apart is the count together, which the
-            # validator refuses as stating nothing, so the flag goes with the type.
-            extinction.pop("per_type")
+    if (
+        isinstance(extinction, dict) and isinstance(extinction.get("pieces"), list)
+        and extinction.get("per_type") is True and len(set(extinction["pieces"])) < 2
+    ):
+        # Schema 18c: one type counted apart is the count together, which the validator
+        # refuses as stating nothing, so the flag goes with the type.
+        extinction.pop("per_type")
 
-    npcs = rules.get("npcs")
-    if isinstance(npcs, list):
-        kept_npcs = [n for n in npcs if not (isinstance(n, dict) and n.get("piece") == piece_id)]
-        for npc in kept_npcs:
-            if isinstance(npc, dict):
-                _prune_list(npc, "immune")
-        if kept_npcs:
-            rules["npcs"] = kept_npcs
-        else:
-            # A `scoring` rule counting points has nothing left to count, which is the
-            # pair `clear_npcs` already keeps together.
-            rules.pop("npcs", None)
-            if (
-                isinstance(rules.get("scoring"), dict) and rules["scoring"].get("count") == "points"
-                and not piece_bounties(spec)
-            ):
-                rules.pop("scoring", None)
+    # The last wild piece gone leaves a `scoring` rule counting points with nothing to
+    # count, which is the pair `clear_npcs` already keeps together.
+    if (
+        had_npcs and "npcs" not in rules
+        and isinstance(rules.get("scoring"), dict) and rules["scoring"].get("count") == "points"
+        and not piece_bounties(spec)
+    ):
+        rules.pop("scoring", None)
 
-    # TC5 (`docs/plan-turncoat.md` §5.4): the market stops selling it; a market left empty
-    # is settled by `_drop_inert`.
-    purse = rules.get("purse")
-    if isinstance(purse, dict) and isinstance(purse.get("market"), list):
-        purse["market"] = [pid for pid in purse["market"] if pid != piece_id]
-
-    # Generation 42 (N4b): the duck goes with its type.
-    duck = rules.get("duck")
-    if isinstance(duck, dict) and duck.get("piece") == piece_id:
-        rules.pop("duck")
-
-    # Schema 21: an end's filter forgets the dropped piece (a portal's own moves are its
-    # group's since spelling 31, so no group goes with a piece).
-    if isinstance(rules.get("portals"), list):
-        _forget_carried(rules, piece_id)
-
-    strike = rules.get("strike")
-    if isinstance(strike, dict):
-        _prune_list(strike, "immune")
-        chain = strike.get("chain")
-        if isinstance(chain, list):
-            strike["chain"] = [
-                link
-                for link in chain
-                if not (isinstance(link, dict) and piece_id in (link.get("from"), link.get("to")))
-            ]
-            # `effect` other than "capture" needs somewhere for the victim to go, so a
-            # chain with no links left is not a weaker strike rule: it is no rule.
-            if not strike["chain"]:
-                rules.pop("strike", None)
-        # Schema 17 (Q540): the pieces that change sides on a capture. An emptied list is
-        # gone, and with it a `"capture"` strike that said nothing else.
-        if "strike" in rules and "switches_sides" in strike:
-            _prune_list(strike, "switches_sides")
-            if not strike_is_live(strike):
-                rules.pop("strike", None)
-        # A1: the pieces whose captures strike. A strike none of whose shooters is left is
-        # no rule, and widening it to every piece would be another game, so it goes.
-        if "strike" in rules and "by" in strike:
-            _prune_list(strike, "by")
-            if "by" not in strike:
-                rules.pop("strike", None)
-
-    contacts = rules.get("contacts")
-    if isinstance(contacts, dict):
-        # The strike's other spelling (schema 10, Q19a), and the cascade is coarser than
-        # the chain's above: a link names up to four pieces and has to keep saying what
-        # at least one of the two *becomes*, so a link mentioning the dropped piece
-        # anywhere goes whole. Pruning the key alone would leave `{mover, onto}` with
-        # neither `mover_to` nor `onto_to`, which the validator refuses by name as an
-        # ordinary capture written the long way.
-        _prune_list(contacts, "immune")
-        links = contacts.get("links")
-        if isinstance(links, list):
-            contacts["links"] = [
-                link
-                for link in links
-                if not (
-                    isinstance(link, dict)
-                    and piece_id
-                    in (
-                        link.get("mover"),
-                        link.get("onto"),
-                        link.get("mover_to"),
-                        link.get("onto_to"),
-                    )
-                )
-            ]
-            if not contacts["links"]:
-                rules.pop("contacts", None)  # a table with no link is no rule
-
-    explode = rules.get("explode_on_capture")
-    if isinstance(explode, dict):
-        _prune_list(explode, "immune")
-        # `by` and `of` are schema 10, each "the types this is about". Pruning the id out
-        # and popping the key when the list empties (as `immune` does above) would leave
-        # the key absent, which means "everyone" -- so removing the one piece a narrowed
-        # blast named would *widen* it into unrestricted atomic chess rather than narrow
-        # it further (Q435: `remove-a-piece` taking the queen from `archive/queen-bomb`).
-        # A list that named someone and now names nobody is not a wider rule, it is no
-        # rule, so the piece going takes the whole blast with it instead of just the key.
-        drop_whole_rule = False
-        for key in ("by", "of"):
-            value = explode.get(key)
-            if isinstance(value, list) and piece_id in value:
-                narrowed = [p for p in value if p != piece_id]
-                if not narrowed:
-                    drop_whole_rule = True
-                    break
-                explode[key] = narrowed
-        if drop_whole_rule:
-            rules.pop("explode_on_capture", None)
+    # Schema 17 (Q540): an emptied `switches_sides` is gone, and with it a `"capture"`
+    # strike that said nothing else.
+    if had_switches and "strike" in rules and not strike_is_live(rules["strike"]):
+        rules.pop("strike", None)
 
     # A pruned chain or table may keep nobody alive, which `choose` refuses.
     settle_landing(spec)
@@ -666,7 +559,7 @@ def settle_en_passant(spec: dict[str, Any]) -> dict[str, Any]:
     will refuse for either reason. Called by every edit that can *shorten* a move or
     *lengthen* a turn.
     """
-    from chess_variant_sandbox.spec.schema import can_double_step, turn_is_long
+    from chess_variant_sandbox.spec.schema import en_passant_is_inert, turn_is_long
 
     rules = spec.get("rules", {})
     if not rules.get("en_passant"):
@@ -674,15 +567,8 @@ def settle_en_passant(spec: dict[str, Any]) -> dict[str, Any]:
     if turn_is_long(rules):
         rules.pop("en_passant", None)
         return spec
-    promotion = rules.get("promotion")
-    entries = promotion if isinstance(promotion, list) else [promotion]
-    if len(entries) != 1 or not isinstance(entries[0], dict):
-        return spec  # no single promoting piece: a refusal of its own, not this one
-    promoter = next(
-        (piece for piece in pieces(spec) if piece.get("id") == entries[0].get("piece")),
-        None,
-    )
-    if promoter is not None and not can_double_step(promoter):
+    # no single promoting piece: a refusal of its own, not this one
+    if en_passant_is_inert(spec):
         rules.pop("en_passant", None)
     return spec
 
@@ -796,12 +682,31 @@ def settle_inert_rules(spec: dict[str, Any]) -> list[str]:
     rules = spec.get("rules")
     if not isinstance(listed, list) or not isinstance(rules, dict):
         return []
-    gone: list[str] = []
+    gone: list[str] = _settle_leap_legs(listed, rules)
     while True:
         dropped = _drop_inert(spec, listed, rules)
         if not dropped:
             return gone
         gone.extend(dropped)
+
+
+def _settle_leap_legs(listed: list[Any], rules: dict[str, Any]) -> list[str]:
+    """SR1a: a leap's ``legs`` are where a wall stops it, which only
+    ``obstacles.blocks_leaps`` makes happen; an edit that takes the key (or the walls) away
+    takes the legs with it, as ``schema._refuse_legs_nothing_reads`` would refuse them.
+    Returns ``"legs:<id>"`` per piece whose leap lost them."""
+    obstacles = rules.get("obstacles")
+    if isinstance(obstacles, dict) and obstacles.get("blocks_leaps") is True:
+        return []
+    gone: list[str] = []
+    for piece in listed:
+        moves = piece.get("moves") if isinstance(piece, dict) else None
+        for move in moves if isinstance(moves, list) else ():
+            if isinstance(move, dict) and move.get("kind") == "leap" and "legs" in move:
+                move.pop("legs")
+                if f"legs:{piece.get('id')}" not in gone:
+                    gone.append(f"legs:{piece.get('id')}")
+    return gone
 
 
 def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) -> list[str]:

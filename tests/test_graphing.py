@@ -32,7 +32,9 @@ import copy
 import json
 import math
 import re
+from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -163,6 +165,21 @@ def game(made: dict[str, Any], source: str = "committed") -> library.Game:
         source=source,
         spec=made,
     )
+
+
+@pytest.fixture(autouse=True)
+def _the_process_memory_is_put_back() -> Iterator[None]:
+    """What a test here forgets of the process's memory (`graphing._MAPS`, `_DRAWS`,
+    `_TWINS`, `relate._PAIRS`) is put back after it, so a test that plays a restarted server
+    leaves the rest of its worker the draws it had: `conftest.warm_map` pays the library's
+    draw once a worker, and a test that cleared it made a later page in the worker draw it
+    again inside a timed test, 8 s cold (Q1051)."""
+    tables: list[dict[Any, Any]] = [graphing._MAPS, graphing._DRAWS, graphing._TWINS, relate._PAIRS]
+    held = [dict(table) for table in tables]
+    yield
+    for table, saved in zip(tables, held, strict=True):
+        table.clear()
+        table.update(saved)
 
 
 def built(specs: list[dict[str, Any]], runs: Path, **kwargs: Any) -> graphing.Graph:
@@ -545,6 +562,22 @@ class TestTheMemory:
         held = graphing._MAPS[where][2]
         built(list(reversed(LIBRARY)), tmp_path)
         assert graphing._MAPS[where][2] is held
+
+    def test_a_full_process_lets_its_smallest_draw_go_and_keeps_the_large_one(
+        self, tmp_path: Path
+    ) -> None:
+        """Q1051: the draw over the most games is the dearest to draw again, so a process
+        that meets many small libraries does not evict it for being old."""
+        graphing._DRAWS.clear()
+        large = ("large", None)
+        graphing._DRAWS[large] = SimpleNamespace(family_of=dict.fromkeys(range(100)))
+        for n in range(graphing._DRAWS_KEPT - 1):
+            graphing._DRAWS[(f"small {n}", None)] = SimpleNamespace(family_of=dict.fromkeys(range(2)))
+        built(LIBRARY, tmp_path)
+        assert len(graphing._DRAWS) == graphing._DRAWS_KEPT
+        assert large in graphing._DRAWS
+        assert ("small 0", None) not in graphing._DRAWS  # the oldest of the smallest
+        assert ("small 1", None) in graphing._DRAWS
 
     def test_a_new_game_settles_into_the_picture(self, tmp_path: Path) -> None:
         """The others keep their places but for a shuffle; the new one joins the memory."""

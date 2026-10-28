@@ -202,14 +202,8 @@ def test_refusal_3_one_step_never_turns() -> None:
     _refused_with(probe({**RING, "range": 1}, "d4", validate=False), "which never turns")
 
 
-def test_refusal_4_a_hex_lattice() -> None:
-    spec = load_spec(ROOT / "archive" / "hex-glinski-hexagon.json")
-    slider = next(piece for piece in spec["pieces"]
-                  if any(move["kind"] == "slide" for move in piece["moves"]))
-    for move in slider["moves"]:
-        if move["kind"] == "slide":
-            move["path"] = "circle"
-    _refused_with(spec, "is for the square lattice")
+# Refusal 4, a hex lattice, was lifted by SR1c (`docs/plan-schema-next.md` §1 rank 5, PA2):
+# `tests/test_hex_turning_path.py` holds the hex order and the hex rose.
 
 
 def test_refusal_5_beside_portals_and_on_a_portals_moves() -> None:

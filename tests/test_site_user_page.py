@@ -1,4 +1,4 @@
-"""The user page in the chosen direction (UP2, `docs/plan-user-page.md` §5, direction B).
+"""The user page in the chosen direction (UP2, `docs/archive/plan-user-page.md` §5, direction B).
 
 What waits on you leads, a row each with the position as the engine left it and one action;
 your games stand on the path every game takes (`workshop.columns`), each with its board, the

@@ -33,6 +33,7 @@ from chess_variant_sandbox.engine.moves import (
 )
 from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import describe_spec
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.tournament.play import play_game, play_game_python
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -305,6 +306,12 @@ def _refused(spec: dict[str, Any], words: str) -> None:
     assert any(words in error for error in errors), errors
 
 
+def _refused_pair(spec: dict[str, Any], rid: str) -> None:
+    """A refused pair, by its id in `spec/refusals.py`."""
+    errors = validate_spec(spec)
+    assert rid in refused_ids(errors), errors
+
+
 class TestTheRefusals:
     """The thirteen of §4.6, each by name, and the shape."""
 
@@ -313,28 +320,32 @@ class TestTheRefusals:
         assert validate_spec(_small("by_moves", KING)) == []
 
     def test_beside_a_check_rule(self) -> None:
-        _refused(_small(win="checkmate"), 'beside "win": "checkmate"')
-        _refused(_small(forbid_check=True), 'beside "forbid_check": true')
-        _refused(_small(check_limit=3), "beside rules.check_limit")
+        for spec in (_small(win="checkmate"), _small(forbid_check=True), _small(check_limit=3)):
+            _refused_pair(spec, "K1")
 
     def test_in_rounds(self) -> None:
-        _refused(_small(simultaneous={}), "in a game in rounds")
+        _refused_pair(_small(simultaneous={}), "R15")
 
     def test_beside_a_turn(self) -> None:
-        _refused(_small(turn={"moves": 2}), "beside rules.turn")
+        _refused_pair(_small(turn={"moves": 2}), "L7")
 
     def test_beside_portals(self) -> None:
         portal = [{"at": ["b3", "e4"]}]
-        _refused(_small(portals=portal), "beside rules.portals")
+        _refused_pair(_small(portals=portal), "K2")
 
     def test_beside_a_blast_a_strike_or_contacts(self) -> None:
-        _refused(_small(explode_on_capture={"radius": 1}), "beside rules.explode_on_capture")
-        _refused(_small(strike={"effect": "remove", "position": "stay"}), "beside rules.strike")
+        _refused_pair(_small(explode_on_capture={"radius": 1}), "K3")
+        _refused_pair(_small(strike={"effect": "remove", "position": "stay"}), "K3")
 
-    def test_beside_a_sweep(self) -> None:
+    def test_a_duck_that_sweeps(self) -> None:
+        """A player's sweep beside the duck is allowed since SR2 (W9: the duck blocks it,
+        `tests/test_sweep_blockers.py`); a duck whose own type sweeps is not."""
+        spec = _small(goes="by_moves", duck_moves=[
+            {"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4"}])
+        _refused(spec, "the duck's type 'D' sweeps")
         spec = _small()
         spec["pieces"][1]["moves"] = [{"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4"}]
-        _refused(spec, "beside a sweep")
+        assert validate_spec(spec) == []
 
     def test_a_duck_type_with_what_a_duck_cannot_mean(self) -> None:
         for key, value, words in (

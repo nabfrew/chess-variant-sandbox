@@ -41,6 +41,7 @@ from chess_variant_sandbox.loop.grid import (
 from chess_variant_sandbox.measurement import ROOT as MEASUREMENT_ROOT
 from chess_variant_sandbox.measurement import Measurement, built_fingerprint, tables_cache_path
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
+from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.metrics.glossary import explain
 from chess_variant_sandbox.metrics.index import IndexResult
 from chess_variant_sandbox.metrics.scoring import WeightsError
@@ -1016,8 +1017,7 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
         # Schema 26 (Q918c): whether both players move at once, every round, so the page
         # never says one of them moves first. A spy game (schema 27) starts by turns, and
         # says who moves first, so it is not one.
-        "rounds": isinstance((game.spec.get("rules") or {}).get("simultaneous"), dict)
-        and not is_spy_game(game.spec),
+        "rounds": plays_in_rounds(game.spec) and not is_spy_game(game.spec),
         "ratings": game.ratings,
         # Which of the fourteen things an opponent can be told to care about are not
         # inert here. Six of them read a rule most rulesets do not declare, and a slider

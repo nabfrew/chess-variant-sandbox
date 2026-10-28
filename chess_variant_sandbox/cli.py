@@ -1730,6 +1730,10 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
         for item in items:
             print(f"  {item.needs:9} tier {item.tier}  {item.name:22} [{item.hash}] "
                   f"{item.lease}: {item.reason}")
+            if item.route:
+                # Which route a replay takes and why (Q635b): a sample where one can
+                # stand in for it (C6), else every game played again.
+                print(f"  {'':9} by {item.route}: {item.route_reason}")
         parts = {part: sum(1 for item in items if item.part == part)
                  for part in (refresher.SCORES, refresher.LADDERS, refresher.PROOFS)}
         waits = []
@@ -1737,6 +1741,9 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
             waits.append("the ladders and proofs wait until no score is owed")
         if parts[refresher.LADDERS] and parts[refresher.PROOFS]:
             waits.append("the proofs until no ladder is")
+        sampled = sum(1 for item in items if item.route == refresher.SAMPLE)
+        if sampled:
+            waits.insert(0, f"{sampled} of the replays by sample")
         print(f"\n{len(items)} owed: {parts[refresher.SCORES]} scores, then "
               f"{parts[refresher.LADDERS]} ladders, then {parts[refresher.PROOFS]} proofs"
               + (f" ({'; '.join(waits)})" if waits else ""))

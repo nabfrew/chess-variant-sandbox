@@ -43,6 +43,7 @@ from chess_variant_sandbox.engine.state import NO_SQUARE
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.measurement import tables_fingerprint
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
 from tests.feature_inventory import _schema_nineteen_uses
 
@@ -245,19 +246,19 @@ class TestWhatTheValidatorRefuses:
         spec["rules"]["portals"].append({"orange": "b3", "blue": "c3"})
         _refusal(spec, "two portals on one square")
 
-    @pytest.mark.parametrize("rule, value", [
-        ("territory", {"mode": "permanent"}),
-        ("explode_on_capture", {"radius": 1}),
+    @pytest.mark.parametrize("rule, value, rid", [
+        ("territory", {"mode": "permanent"}, "P6"),
+        ("explode_on_capture", {"radius": 1}, "P5"),
     ])
-    def test_rules_refused_beside_portals(self, rule: str, value: Any) -> None:
+    def test_rules_refused_beside_portals(self, rule: str, value: Any, rid: str) -> None:
         spec = wormhole()
         spec["rules"][rule] = value
-        _refusal(spec, f"refused beside rules.{rule}")
+        assert rid in refused_ids(validate_spec(spec))
 
     def test_a_hex_lattice_is_refused(self) -> None:
         spec = wormhole()
         spec["board"]["lattice"] = "hex"
-        _refusal(spec, "refused on a hex lattice")
+        assert "P1" in refused_ids(validate_spec(spec))
 
     def test_a_piece_may_not_take_the_name_of_an_end(self) -> None:
         spec = wormhole()

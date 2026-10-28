@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import os
 import sys
@@ -157,9 +158,63 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
     compile_memo.bypass = item.get_closest_marker("fresh_compile") is not None
 
 
-@pytest.hookimpl(trylast=True)
-def pytest_runtest_teardown(item: pytest.Item) -> None:
+TESTS = Path(__file__).resolve().parent
+
+
+def own_caches(module: Any) -> list[Any]:
+    """The `functools` caches a module defines at its top level."""
+    name = getattr(module, "__name__", None)
+    return [
+        value for value in vars(module).values()
+        if isinstance(value, functools._lru_cache_wrapper) and getattr(value, "__module__", None) == name
+    ]
+
+
+def helper_modules() -> list[Any]:
+    """The modules of this directory that are not test files (`spy_oracle`, `hex_geometry`, ...),
+    as far as anything has imported them."""
+    found = []
+    for module in list(sys.modules.values()):
+        path = getattr(module, "__file__", None)
+        if path and not Path(path).name.startswith(("test_", "conftest")) and Path(path).parent == TESTS:
+            found.append(module)
+    return found
+
+
+def release_module_caches(module: Any) -> None:
+    """Empty a finished test module's own caches, and every helper module's (Q1051)."""
+    for owner in (module, *helper_modules()):
+        for cached in own_caches(owner):
+            cached.cache_clear()
+
+
+@pytest.hookimpl(hookwrapper=True, trylast=True)
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[None]:
+    """The memo's bypass ends with the test. And when a module's last test (on this worker) is
+    torn down, the caches it filled are emptied.
+
+    **What grew** (Q1051). A worker of a whole `-n 4` run ended at 750-1045 MB of working
+    set, where `CompileMemo` is bounded to about 240 MB. A quarter to a half of the compiled
+    tables alive at a worker's end were not the memo's: 40-200 `Engine`s and oracles that a
+    test module's `@cache` (`test_sight.py`'s `_engine`), a module-level dict of engines, or a
+    helper's engine-keyed `@cache` (`rest_oracle.unrestricted`, `spy_oracle.twin`,
+    `simultaneous_oracle._tables`, which keep every engine they were ever handed) had built,
+    each holding its compiled spec past the memo's bound and past the module that wanted it:
+    0.4-1.7 million table entries a worker, at about 150 bytes each. CPython does not hand a
+    fragmented arena back, so what such a cache holds raises the worker's high-water mark for
+    the rest of the run.
+
+    So a module's caches live as long as its module-scoped fixtures do: emptied after the
+    teardown (a finaliser can still use them) when the next test is in another file. A
+    helper's caches go at the same moment, since what they hold was put there by the module
+    that just ended. A cache asked again later (xdist hands a worker a module in more than one
+    batch) is rebuilt, mostly from the memo. A module-level dict is not found by this, so a
+    test module caches an engine with `@cache`, never with a dict of its own.
+    """
+    yield
     compile_memo.bypass = False
+    if nextitem is None or nextitem.path != item.path:
+        release_module_caches(getattr(item, "module", None))
 
 
 # The two stores git tracks. Each is a directory of evidence keyed by ruleset hash --
@@ -309,6 +364,29 @@ def registrations_end_with_their_test() -> Iterator[None]:
     for registry, before in held:
         registry.clear()
         registry.update(before)
+
+
+@pytest.fixture(autouse=True)
+def the_landing_ends_with_its_test() -> Iterator[None]:
+    """The landing a test's server drew is gone when the test ends (Q1045).
+
+    `landing._CURRENT` is the landing every page carries, and a server redraws it on every
+    page request (`App.stories()` calls `landing.use`). `test_web.py`'s `GET /` over the
+    checkout's own `runs/` drew it from the library's holding stories, whose heroes carry a
+    third way in (the story's play door), and nothing put it back. In the main checkout,
+    where those stories hold, any later test in the same xdist worker that reads the landing
+    with no story named (`test_site_doors.py::...::test_the_drawn_words_are_the_heros_own_markup`)
+    read that one instead of the empty landing it was written against: it failed once under
+    `-n 4` on main and passed alone. A worktree has no such `runs/`, so the leak was empty there.
+
+    Restored in place, on the dict held at setup, as `registrations_end_with_their_test` does.
+    """
+    from chess_variant_sandbox.web import landing
+
+    before = dict(landing._CURRENT)
+    yield
+    landing._CURRENT.clear()
+    landing._CURRENT.update(before)
 
 
 # The scrypt cost every test but one hashes a password at. The site's is n=2**14, 282 ms

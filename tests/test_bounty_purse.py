@@ -33,6 +33,7 @@ from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.describe import describe_spec
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import PURSE_MAX, validate_spec
 from chess_variant_sandbox.tournament.play import play_game
 
@@ -260,14 +261,14 @@ class TestPaying:
 
 class TestThePurse:
     def test_the_validator_refuses_what_the_purse_is_refused_beside(self) -> None:
-        """TC4's hook refused these; TC5's `rules.purse` is refused by the validator."""
+        """TC4's hook refused these; TC5's `rules.purse` is refused by the validator. A long
+        turn was lifted by SR2 (`tests/test_long_turn_turncoat.py`)."""
         refusals = {
-            "simultaneous": _purse_spec(3, simultaneous={}, win="royal_capture"),
-            "explode_on_capture": _purse_spec(3, explode_on_capture={}),
-            "a turn longer than one move": _purse_spec(3, turn={"moves": 2}),
+            "R19": _purse_spec(3, simultaneous={}, win="royal_capture"),
+            "O22": _purse_spec(3, explode_on_capture={}),
         }
-        for word, spec in refusals.items():
-            assert any(word in error for error in validate_spec(spec)), (word, validate_spec(spec))
+        for rid, spec in refusals.items():
+            assert rid in refused_ids(validate_spec(spec)), (rid, validate_spec(spec))
         for start in (-1, PURSE_MAX + 1, True):
             assert any("rules.purse.start" in error for error in validate_spec(_purse_spec(start)))
 

@@ -1,4 +1,4 @@
-"""*Lately* on your own page (UP3, `docs/plan-user-page.md` §5, choice C1 of §4).
+"""*Lately* on your own page (UP3, `docs/archive/plan-user-page.md` §5, choice C1 of §4).
 
 What happened on your games and in your games, dated, newest first, the last `LIMIT` at
 most, each line a sentence in the site's words. One reader over five stores:

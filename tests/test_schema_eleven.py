@@ -29,6 +29,7 @@ from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import _describe_contacts
 from chess_variant_sandbox.spec.distance import _SCALES, distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
 from tests.feature_inventory import _schema_eleven_uses
 
@@ -119,7 +120,7 @@ class TestTheValidator:
         spec = _contacts(chess, [MERGE])
         spec["rules"]["must_capture"] = True
         errors = validate_spec(spec)
-        assert any("rules.must_capture" in e and "own piece" in e for e in errors), errors
+        assert "T9" in refused_ids(errors), errors
 
     def test_an_own_link_has_to_change_something(self, chess: dict[str, Any]) -> None:
         errors = validate_spec(_contacts(chess, [{"mover": "P", "onto": "R", "own": True}]))

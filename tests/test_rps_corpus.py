@@ -32,6 +32,7 @@ moves is a movegen regression rather than a new behaviour.
 
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -59,13 +60,9 @@ OPENING_PERFT: dict[str, dict[int, int]] = {
     "rps-v5": {1: 35, 2: 1_225, 3: 44_065},
 }
 
-_ENGINES: dict[str, Engine] = {}
-
-
+@cache
 def engine_for(name: str) -> Engine:
-    if name not in _ENGINES:
-        _ENGINES[name] = Engine(load_spec(RULESETS / f"{name}.json"))
-    return _ENGINES[name]
+    return Engine(load_spec(RULESETS / f"{name}.json"))
 
 
 def perft_cases() -> list[pytest.ParameterSet]:

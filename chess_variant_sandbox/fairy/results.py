@@ -59,6 +59,7 @@ from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_EN_PASSANT, MOVE_
 from chess_variant_sandbox.engine.state import GameState, Outcome
 from chess_variant_sandbox.fairy import position as fairy_position
 from chess_variant_sandbox.fairy.variant import Untranslatable, Variant, translate
+from chess_variant_sandbox.spec.schema import format_square
 
 # Random games played to the end, half uniform and half taking an ending when one is
 # offered. Each costs about ten questions to the other engine, at about 20 ms apiece.
@@ -502,7 +503,7 @@ def _spell(engine: Engine, variant: Variant, state: GameState, move: int) -> str
 
 
 def _name(square: int, width: int) -> str:
-    return f"{chr(ord('a') + square % width)}{square // width + 1}"
+    return format_square(square % width, square // width)
 
 
 class _Turns:

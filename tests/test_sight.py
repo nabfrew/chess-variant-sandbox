@@ -35,6 +35,7 @@ from chess_variant_sandbox.engine.compile import (
 from chess_variant_sandbox.engine.moves import MOVE_CASTLE, MOVE_DROP, MOVE_EN_PASSANT, decode_move
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import spec_hash, validate_spec
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import SIGHT_MAX, piece_sights
 from tests.feature_inventory import _schema_thirty_uses
 
@@ -169,6 +170,12 @@ def refused(spec: dict[str, Any], words: str) -> None:
     assert any(words in error for error in errors), errors
 
 
+def refused_pair(spec: dict[str, Any], rid: str) -> None:
+    """A refused pair, by its id in `spec/refusals.py`."""
+    errors = validate_spec(spec)
+    assert rid in refused_ids(errors), errors
+
+
 def with_sight(*written: Any, pid: str = "Q", **rules: Any) -> dict[str, Any]:
     spec = chess_with(**rules)
     next(p for p in spec["pieces"] if p["id"] == pid)["sight"] = list(written)
@@ -207,10 +214,10 @@ def test_an_off_value_is_the_sight_left_out() -> None:
 
 def test_a_sight_is_refused_beside_portals_and_explosions() -> None:
     atomic = load("rulesets/atomic.json")
-    refused(chess_with(base=atomic, sights={"Q": [QUEEN_FREEZE]}), "beside rules.explode_on_capture")
+    refused_pair(chess_with(base=atomic, sights={"Q": [QUEEN_FREEZE]}), "V2")
     wormhole = load("archive/wormhole.json")
     pid = next(p["id"] for p in wormhole["pieces"] if p.get("moves"))
-    refused(chess_with(base=wormhole, sights={pid: [QUEEN_FREEZE]}), "beside rules.portals")
+    refused_pair(chess_with(base=wormhole, sights={pid: [QUEEN_FREEZE]}), "V1")
 
 
 def test_a_shield_beside_wild_pieces_and_a_wild_piece_seeing_both_sides() -> None:
@@ -237,7 +244,7 @@ def test_a_shield_is_refused_beside_a_sweep() -> None:
     spec = chess_with(sights={"K": [dict(KING_STEP, effect="shield", whose="own")]})
     rook = next(p for p in spec["pieces"] if p["id"] == "R")
     rook["moves"].append({"kind": "sweep", "vectors": [[1, 1]], "symmetry": "rotate4"})
-    refused(spec, "beside a sweep move")
+    refused_pair(spec, "W10")
 
 
 def _small(**sight: Any) -> dict[str, Any]:

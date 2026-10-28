@@ -42,14 +42,17 @@ from chess_variant_sandbox.spec.schema import (
     npc_turns_back,
     piece_bounties,
     piece_prices,
+    piece_sights,
     promoting_piece_ids,
     purse_bribes,
     purse_rule,
+    strike_is_live,
+    turn_is_long,
     uses_sweep,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 46
+LAST_BUMP = 51
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -1026,6 +1029,152 @@ def _schema_forty_six_uses(spec: dict[str, Any]) -> set[str]:
     return names
 
 
+def _schema_forty_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 47 added, by name (SR1a,
+    `docs/plan-schema-next.md` §1 rank 1; numbered by order of landing, bumping no version).
+
+    * ``pieces.moves.legs`` -- a lame jump's blocking squares stated (Janggi's elephant; any
+      lame on a hex lattice, lifting X1);
+    * ``pieces.moves.legs.leap`` -- a leap's legs, where a wall stops it under
+      ``obstacles.blocks_leaps`` (on a hex lattice, lifting X8).
+
+    The key has no off value: absent is the computed leg, and nothing written is inert.
+    """
+    names: set[str] = set()
+    lists = [piece.get("moves") for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
+    portals = (spec.get("rules") or {}).get("portals")
+    lists += [g.get("moves") for g in portals or [] if isinstance(g, dict)] if isinstance(
+        portals, list) else []
+    for moves in lists:
+        for move in moves if isinstance(moves, list) else ():
+            if isinstance(move, dict) and "legs" in move:
+                names.add("pieces.moves.legs.leap" if move.get("kind") == "leap"
+                          else "pieces.moves.legs")
+    return names
+
+
+def _schema_forty_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 48 added, by name (SR1b,
+    `docs/plan-schema-next.md` §1 rank 2; numbered by order of landing, bumping no version).
+
+    * ``rules.explode_on_capture.blast`` -- a blast's shape stated as vectors from the
+      capture square, in place of ``radius``'s box (a cross; a file; a hex ring).
+
+    The key has no off value: absent is the radius's box, and nothing written is inert.
+    """
+    explosion = (spec.get("rules") or {}).get("explode_on_capture")
+    if isinstance(explosion, dict) and "blast" in explosion:
+        return {"rules.explode_on_capture.blast"}
+    return set()
+
+
+def _schema_forty_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 49 added, by name (SR1c,
+    `docs/plan-schema-next.md` §1 rank 5; numbered by order of landing, bumping no version).
+
+    * ``pieces.moves.slide.path.hex`` -- a turning path (``circle`` or ``zigzag``) on a hex
+      lattice, lifting PA2 (the hex rose: the hex knight's twelve, turned one step round each
+      jump).
+
+    A lifted refusal, not a key: the path's own names are generation 34's.
+    """
+    if (spec.get("board") or {}).get("lattice") != "hex":
+        return set()
+    for piece in _listed(spec.get("pieces")):
+        for move in _listed(piece.get("moves") if isinstance(piece, dict) else None):
+            if (
+                isinstance(move, dict) and move.get("kind") == "slide"
+                and move.get("path") in ("circle", "zigzag")
+            ):
+                return {"pieces.moves.slide.path.hex"}
+    return set()
+
+
+def _schema_fifty_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 50 added, by name (SR2,
+    `docs/plan-schema-next.md` §3.2; numbered by order of landing, bumping no version). Nine
+    lifted refusals, each a pair the probe found the core already plays, and no key:
+
+    * ``pieces.control.majority.turn`` -- majority control in a turn longer than one move
+      (L5): the holder is read at each move's start;
+    * ``rules.purse.turn`` -- a purse in a turn longer than one move (L6): each buy is a move;
+    * ``rules.strike.drops`` -- a shot beside a hand (T2): its victim goes to the hand;
+    * ``rules.contacts.drops`` -- removing links beside a hand (T5): the target goes to it;
+    * ``rules.promotion.only_lost.drops`` -- ``only_lost`` beside a hand that fills from
+      captures (H1): a piece in hand is lost;
+    * ``rules.promotion.only_lost.home`` -- ``only_lost`` beside a circe strike (H2): a
+      reborn piece is not;
+    * ``rules.drops.either_face.explode`` -- ``either_face`` beside a blast (H6): the blast's
+      victims enter no hand;
+    * ``rules.duck.sweep`` -- a player's sweep beside the duck (W9): the duck blocks it;
+    * ``pieces.moves.slide.path.pounce`` -- a turning path on a wild type that pounces on its
+      prey (N20), which reads its own capture moves.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    found: set[str] = set()
+    long_turn = turn_is_long(rules)
+    if long_turn and majority_ids(spec):
+        found.add("pieces.control.majority.turn")
+    if long_turn and purse_rule(spec) is not None:
+        found.add("rules.purse.turn")
+    drops = rules.get("drops")
+    hand = isinstance(drops, dict) and bool(drops)
+    if hand and strike_is_live(rules.get("strike")):
+        found.add("rules.strike.drops")
+    contacts = rules.get("contacts")
+    if hand and isinstance(contacts, dict) and contacts.get("links"):
+        found.add("rules.contacts.drops")
+    if any(isinstance(e, dict) and e.get("only_lost") is True for e in _promotion_entries(rules)):
+        if hand and isinstance(drops, dict) and drops.get("from_captures", True) is not False:
+            found.add("rules.promotion.only_lost.drops")
+        strike = rules.get("strike")
+        if isinstance(strike, dict) and strike.get("position") == "home":
+            found.add("rules.promotion.only_lost.home")
+    if (
+        isinstance(drops, dict) and drops.get("either_face") is True
+        and rules.get("explode_on_capture")
+    ):
+        found.add("rules.drops.either_face.explode")
+    if duck_piece(rules) is not None and uses_sweep(spec):
+        found.add("rules.duck.sweep")
+    preying = {
+        npc.get("piece") for npc in _listed(rules.get("npcs")) if npc_pounce(npc) == "prey"
+    }
+    for piece in _listed(spec.get("pieces")):
+        if not isinstance(piece, dict) or piece.get("id") not in preying:
+            continue
+        for move in _listed(piece.get("moves")):
+            if isinstance(move, dict) and move.get("path") in ("circle", "zigzag"):
+                found.add("pieces.moves.slide.path.pounce")
+    return found
+
+
+def _schema_fifty_one_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 51 added, by name (SR2b,
+    `docs/plan-schema-next.md` §3.2; numbered by order of landing, bumping no version). Two
+    lifted refusals, each a pair the probe found the core already plays, and no key:
+
+    * ``pieces.sight.command.strike`` -- a command beside a live strike (V5): a commanded
+      move lands only on empty squares, so the strike never meets it;
+    * ``pieces.sight.command.contacts`` -- a command beside contacts (V6), as V5.
+
+    Both stay refused beside ``captures_own`` (SR4h), so neither names a turncoat command.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    found: set[str] = set()
+    sights = [sight for entries in piece_sights(spec).values() for sight in entries]
+    if not any(sight.effect == "command" for sight in sights):
+        return found
+    if strike_is_live(rules.get("strike")):
+        found.add("pieces.sight.command.strike")
+    contacts = rules.get("contacts")
+    if isinstance(contacts, dict) and contacts.get("links"):
+        found.add("pieces.sight.command.contacts")
+    return found
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -1065,4 +1214,9 @@ _COLLECTORS = {
     44: _schema_forty_four_uses,
     45: _schema_forty_five_uses,
     46: _schema_forty_six_uses,
+    47: _schema_forty_seven_uses,
+    48: _schema_forty_eight_uses,
+    49: _schema_forty_nine_uses,
+    50: _schema_fifty_uses,
+    51: _schema_fifty_one_uses,
 }

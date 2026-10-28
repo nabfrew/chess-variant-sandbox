@@ -22,6 +22,7 @@ What each ruleset is here to pin down:
 from __future__ import annotations
 
 import json
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -59,13 +60,9 @@ OPENING_PERFT: dict[str, dict[int, int]] = {
 # rungs are this engine's own, kept as regression pins so a change shows up in the fast
 # lane instead of waiting for the deep run.
 
-_ENGINES: dict[str, Engine] = {}
-
-
+@cache
 def engine_for(name: str) -> Engine:
-    if name not in _ENGINES:
-        _ENGINES[name] = Engine(load_spec(RULESETS / f"{name}.json"))
-    return _ENGINES[name]
+    return Engine(load_spec(RULESETS / f"{name}.json"))
 
 
 def perft_cases(ladders: dict[str, dict[int, int]]) -> list[Any]:
@@ -447,6 +444,11 @@ PROBES: dict[str, tuple[dict[str, Any], dict[int, int]]] = {
 }
 
 
+@cache
+def probe_engine(name: str) -> Engine:
+    return Engine(PROBES[name][0])
+
+
 @pytest.mark.parametrize(
     ("name", "depth", "expected"),
     perft_cases({name: ladder for name, (_, ladder) in PROBES.items()}),
@@ -454,10 +456,7 @@ PROBES: dict[str, tuple[dict[str, Any], dict[int, int]]] = {
 def test_probe_perft_matches_the_reference_implementation(
     name: str, depth: int, expected: int
 ) -> None:
-    spec, _ = PROBES[name]
-    if name not in _ENGINES:
-        _ENGINES[name] = Engine(spec)
-    engine = _ENGINES[name]
+    engine = probe_engine(name)
     assert engine.perft(engine.initial_state(), depth, stop_at_terminal=True) == expected
 
 
@@ -613,6 +612,9 @@ _EVERY_RULESET += sorted(Path(__file__).parent.glob("_duck_*.json"))
 # TC5: no committed or archived game has a purse until TC9's showcase lands, so the market test
 # spec (pawns and knights bought onto the back rank) joins it.
 _EVERY_RULESET += sorted(Path(__file__).parent.glob("_purse_*.json"))
+# SR1b: no committed or archived game states a blast's shape until SR1s2's showcase lands, so
+# the two blast test specs (atomic with a cross; atomic along the file) join it.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_blast_*.json"))
 
 
 def test_the_walk_below_reads_the_whole_corpus() -> None:

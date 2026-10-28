@@ -185,6 +185,8 @@ DEFAULTS: dict[str, str] = {
     "pieces[].moves[].screen": "`\"any\"`",
     "pieces[].moves[].screen_range": "`0`",
     "pieces[].moves[].path": "`\"straight\"`, every step the same direction",
+    "pieces[].moves[].legs": "absent: a lame is blocked on one computed square, a step along "
+    "its longer axis or an even diagonal's midpoint",
     "pieces[].moves[].condition.first_move": "`false`",
     "rules.portals[].moves[].symmetry": "`\"none\"`",
     "rules.portals[].moves[].mode": "`\"move\"`, the only mode a portal's move may have",
@@ -220,6 +222,9 @@ DEFAULTS: dict[str, str] = {
     "rules.strike.effect": "`\"capture\"`",
     "rules.strike.position": "`\"advance\"`",
     "rules.explode_on_capture.radius": "`1`",
+    "rules.explode_on_capture.blast": "absent: every square within radius of the capture square, "
+    "diagonals included",
+    "rules.explode_on_capture.blast.symmetry": "`\"none\"`",
     "rules.reach.mirror": "`true`",
     "rules.reach.safe": "`false`",
     "rules.reach.result": "`\"win\"`",
@@ -356,7 +361,8 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "piece on the one square it passes, the square a lame leap is blocked on. A slide's "
         "path may turn as it goes: round in a circle, each step the next direction round "
         "(the rose, on the knight's eight), or in a zigzag between two neighbouring "
-        "directions (the crooked bishop). A piece "
+        "directions (the crooked bishop). A lame jump may state the squares it is blocked "
+        "on (Janggi's elephant, blocked on two; any lame on a hex board). A piece "
         "can be kept to one part of the board, or point one way and spend a move turning.",
         ("slide", "leap", "hop", "lame", "sweep", "pieces[].region", "pieces[].facing"),
     ),

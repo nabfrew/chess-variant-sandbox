@@ -1890,11 +1890,6 @@ def grant_for_games(connection: Any, games: Sequence[str]) -> list[awards.Award]
     return written
 
 
-def grant_for_game(connection: Any, game: str) -> list[awards.Award]:
-    """N1 and U1 on one game. `grant_for_games` for a single caller."""
-    return grant_for_games(connection, [game])
-
-
 def grant_for_save(connection: Any, user: int, game: str) -> list[awards.Award]:
     """Write the badges this saved design completed, and return them.
 

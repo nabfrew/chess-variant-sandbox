@@ -38,6 +38,7 @@ from __future__ import annotations
 import copy
 import json
 import random
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -105,13 +106,9 @@ STUDY_HASHES = {
     "V5 SP2": "7dce453b8635",
 }
 
-_ENGINES: dict[str, Engine] = {}
-
-
+@cache
 def engine_of(name: str) -> Engine:
-    if name not in _ENGINES:
-        _ENGINES[name] = Engine({"SP1": SP1, "SP2": SP2, "T0": twin(SP1)}[name])
-    return _ENGINES[name]
+    return Engine({"SP1": SP1, "SP2": SP2, "T0": twin(SP1)}[name])
 
 
 def square(engine: Engine, name: str) -> int:

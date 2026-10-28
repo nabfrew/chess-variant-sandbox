@@ -287,7 +287,7 @@ def read(
     which drops *Challenge* and adds the way to their settings. What the page shows of
     the person is the same for every member, the person included.
 
-    UP4 (`docs/plan-user-page.md` §5, the showcase): `known` is the site's listing, and
+    UP4 (`docs/archive/plan-user-page.md` §5, the showcase): `known` is the site's listing, and
     each game they made gains its board (`still`, the listing's own, `None` for a game
     the listing cannot draw), the first sentence of its description and its votes
     (`stars`: the mean and the count, `None` where nobody has voted, never a nought);

@@ -13,6 +13,7 @@ maximin of a 3x3 round.
 from __future__ import annotations
 
 import json
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -35,13 +36,9 @@ def _load(name: str) -> dict[str, Any]:
     return json.loads((HERE / f"{name}.json").read_text(encoding="utf-8"))
 
 
-_ENGINES: dict[str, Engine] = {}
-
-
+@cache
 def _engine(name: str) -> Engine:
-    if name not in _ENGINES:
-        _ENGINES[name] = Engine(_load(name))
-    return _ENGINES[name]
+    return Engine(_load(name))
 
 
 def _square(engine: Engine, name: str) -> int:

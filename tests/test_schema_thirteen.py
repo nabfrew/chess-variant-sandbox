@@ -40,6 +40,7 @@ from chess_variant_sandbox.spec import validate_spec
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import _SCALES, distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
 from chess_variant_sandbox.spec.transform import (
     set_contacts,
@@ -128,25 +129,26 @@ class TestTheValidator:
         assert any("only applies to a hop" in e for e in validate_spec(spec))
 
     @pytest.mark.parametrize(
-        "key, add",
+        "key, add, rid",
         [
-            ("strike", lambda spec: set_strike(spec, effect="demote", position="stay")),
-            ("contacts", lambda spec: set_contacts(spec, effect="promote")),
-            ("explode_on_capture", set_explosion),
-            ("drops", lambda spec: spec["rules"].__setitem__("drops", {"from_captures": True})),
-            ("npcs", lambda spec: set_npc(spec, "N", ["c3", "c4", "d4", "d3"])),
-            ("wrap", lambda spec: set_wrap(spec, "files")),
+            ("strike", lambda spec: set_strike(spec, effect="demote", position="stay"), "W1"),
+            ("contacts", lambda spec: set_contacts(spec, effect="promote"), "W2"),
+            ("explode_on_capture", set_explosion, "W3"),
+            ("drops", lambda spec: spec["rules"].__setitem__("drops", {"from_captures": True}),
+             "W4"),
+            ("npcs", lambda spec: set_npc(spec, "N", ["c3", "c4", "d4", "d3"]), "W5"),
+            ("wrap", lambda spec: set_wrap(spec, "files"), "W6"),
         ],
     )
     def test_a_rule_that_cannot_share_a_game_with_a_sweep_is_refused_by_name(
-        self, sweeping: dict[str, Any], key: str, add: Any
+        self, sweeping: dict[str, Any], key: str, add: Any, rid: str
     ) -> None:
         spec = copy.deepcopy(sweeping)
         spec["rules"].pop("en_passant")
         add(spec)
         assert spec["rules"].get(key), f"the helper did not write rules.{key}"
         errors = validate_spec(spec)
-        assert any(f"rules.{key}" in e and "sweep" in e for e in errors), errors
+        assert rid in refused_ids(errors), errors
 
     def test_a_promoting_piece_may_not_sweep(self, sweeping: dict[str, Any]) -> None:
         """So no sweeper is ever the en passant piece, and no sweep opens a window."""

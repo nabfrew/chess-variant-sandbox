@@ -2225,7 +2225,11 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
       continue;
     }
     const step = stepOf(from, to);
-    const arc = pathHops(before, from, step, W, H, view);
+    // A sweeper goes *through* what stands on its line, so it never hops it: an arc would
+    // also put it on another easing than the one `sweepCut` times the blade and the cuts by,
+    // and the blade ran ahead of it, cutting pieces it had not reached (Q1042).
+    const sweeping = swept.length > 0 && from === last.from && to === last.to;
+    const arc = !sweeping && pathHops(before, from, step, W, H, view);
     // Where the piece came from, along the step rather than across the board. The two
     // agree on every square pair that does not cross a seam, which is every move of
     // every board with edges.
@@ -2234,7 +2238,7 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
     if (step.wrapped) {
       animateCrossing(svg, node, pieceOf(before[from]), fx, fy, dx, dy, cell, arc, flight);
     }
-    if (swept.length && from === last.from && to === last.to) {
+    if (sweeping) {
       busy = Math.max(busy, sweepCut(svg, node, [fx, fy], [tx, ty],
         swept.map(sq => [pieceOf(before[sq]), ...at(sq)]), cell, flight));
       for (const sq of swept) cut.add(sq);
@@ -3117,6 +3121,15 @@ function drawEnded() {
   const next = BOARD_PROVEN ? document.getElementById('provenNext') : null;
   const key = `${outcome.winner}|${outcome.reason}|${again ? again.id : ''}|${
     next && !next.disabled ? 'next' : ''}|${TIMELINE.length}|${STORY_SHOWN || ''}`;
+  // The move that ended the game is still playing out under where the banner goes: a
+  // sweeping checkmate's blade and halves (Q1042), a mating capture's strike. The banner is
+  // there at once (in the page, for anything that reads it) and comes into sight as the board
+  // settles (`BUSY_UNTIL`), so the last move is seen before the verdict covers it.
+  const settling = BUSY_UNTIL - performance.now();
+  if (banner.hidden && settling > 0 && typeof banner.animate === 'function') {
+    banner.animate([{ opacity: 0, visibility: 'hidden' }, { opacity: 1, visibility: 'visible' }],
+      { delay: settling, duration: 220, easing: 'ease-out', fill: 'backwards' });
+  }
   banner.hidden = false;
   if (banner.dataset.built === key) return;
   banner.dataset.built = key;
@@ -3459,7 +3472,7 @@ function drawHand() {
 //
 // Every coin count is the core's state (`purse`, on the snapshot and on each history entry,
 // so a step back shows the purses of its own position), every price the compiled rule's
-// (`ruleset.purse`, `web/play.py::market_payload`), and every purchase a move the engine
+// (`ruleset.purse`, `viz/rules_payload.py::market_payload`), and every purchase a move the engine
 // listed: a buy names its type (`buy`) and its square, a hire or bribe its piece's square
 // (`hire`, `cost`, `bribe`). The page offers what the list holds and works none of it out:
 // a market piece the list does not offer is drawn greyed, whatever the purse says.
@@ -3468,10 +3481,6 @@ function drawHand() {
 function purseShown() {
   if (!SESSION || !SESSION.ruleset.purse) return null;
   return (AT ? AT.purse : SESSION.purse) || SESSION.purse || null;
-}
-
-function coinsWord(n) {
-  return `${n} coin${n === 1 ? '' : 's'}`;
 }
 
 // Under each seat's name, the coins it holds; filled by `drawPurses` on every draw.
@@ -3483,12 +3492,11 @@ function purseSlotHtml(player) {
 function drawPurses() {
   const purse = purseShown();
   if (!purse) return;
-  const rule = SESSION.ruleset.purse;
-  const spend = (rule.bribe || []).some(Boolean) ? 'buy, hire or bribe' : 'buy or hire';
+  // The words are `viz/wrapped.js`'s, shared with the offline replay's seats.
+  const title = purseTitle(SESSION.ruleset.purse);
   document.querySelectorAll('[data-purse]').forEach(node => {
-    const n = purse[Number(node.dataset.purse)] || 0;
-    node.textContent = `purse: ${coinsWord(n)}`;
-    node.title = `coins to ${spend} pieces with; taking a piece with a bounty fills it, up to ${rule.cap}`;
+    node.textContent = purseWords(purse[Number(node.dataset.purse)] || 0);
+    node.title = title;
   });
 }
 

@@ -32,6 +32,7 @@ from chess_variant_sandbox.spec.schema import (
     FACING_NAMES,
     LATTICES,
     MAX_BOARD_DIM,
+    MAX_LEGS,
     MAX_MOVE_DESCRIPTORS,
     MAX_MOVES_PER_TURN,
     MAX_PIECE_TYPES,
@@ -123,7 +124,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "[0, 1], [2, 0] passes [1, 0], [2, 2] passes [1, 1]). With a range it "
                     "is a lame rider, jump after jump, each blocked on that square too. A "
                     "one-square vector has no square to be blocked on and is refused: use a "
-                    "leap or a range-1 slide. "
+                    "leap or a range-1 slide. Its legs may be stated instead (legs). "
                     "sweep: jump to any square along the line, removing every piece "
                     "passed over, friendly included; a piece it may not capture blocks, "
                     "and a sweep that could pass over the enemy royal is check."
@@ -170,6 +171,25 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "enum": list(MODES),
                 "description": "Whether this move may occupy an empty square, capture, or both.",
             },
+            "legs": {
+                "type": "array",
+                "items": {"type": "array", "items": vector, "minItems": 1,
+                          "maxItems": MAX_LEGS},
+                "minItems": 1,
+                "description": (
+                    "For a lame (or a leap under obstacles.blocks_leaps), the squares that "
+                    "block each jump, stated: one list per base vector, each square a step "
+                    "from the mover, turned with its vector by the symmetry. A lame is "
+                    "blocked by a piece or a wall on any of them; a leap only by a wall. "
+                    "Absent, a lame is blocked on the one computed square. Janggi's "
+                    "elephant: [[2, 3]] by dihedral8, legs [[[0, 1], [1, 2]]]; a horse "
+                    "blocked on the diagonal: [[1, 2]], legs [[[1, 1]]]. Each square is "
+                    "shorter than its jump, none twice; the symmetry's turns must agree on "
+                    "each direction's squares. Required on a lame on a hex lattice, and on "
+                    "a leap longer than a step under blocks_leaps on one; a leap's legs "
+                    "need blocks_leaps."
+                ),
+            },
             "path": {
                 "type": "string",
                 "enum": list(PATHS),
@@ -187,9 +207,12 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "slide's: empty, it may stop and go on; occupied, the path ends there, "
                     "taking it if it may. A square reached two ways is one move. range "
                     "counts steps. A circle needs directions all the way round (no gap of "
-                    "half a turn); a zigzag two less than half a turn apart. Refused on "
-                    "any other kind, at range 1, on a hex lattice, beside portals, on the "
-                    "piece en passant is about, and on a wild piece."
+                    "half a turn); a zigzag two less than half a turn apart. On a hex "
+                    "lattice the directions go round as they lie in the plane: the hex "
+                    "knight's twelve, [[1, 2]] by dihedral12, is the hex rose. Refused on "
+                    "any other kind, at range 1, beside portals, on the piece en passant "
+                    "is about, and on a wild piece, unless it pounces on its prey (which "
+                    "reads its own capture moves)."
                 ),
             },
             "screen_range": {
@@ -328,7 +351,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "take a piece of its own side that its captures list allows (never a "
                     "royal or a shielded piece, and not while it is disarmed); omit it for a "
                     "command that moves its pieces onto empty squares only. Refused beside "
-                    "drops that fill a hand from captures."
+                    "drops that fill a hand from captures, rules.strike and rules.contacts."
                 ),
             },
         },
@@ -492,7 +515,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "nothing can capture, a command on types with no move) is refused. A "
                     "command never touches a royal (an affects naming one is refused) and is "
                     "refused beside rules.simultaneous, rules.reach, rules.territory, "
-                    "rules.strike, rules.contacts, pieces[].rest and a sweep move."
+                    "pieces[].rest and a sweep move; beside rules.strike or rules.contacts "
+                    "it moves onto empty squares, which neither touches, and its "
+                    "captures_own is refused there."
                 ),
             },
             "control": {
@@ -543,8 +568,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "type must read the same for both players (no facing, region, condition, "
                     "promotion, owner-named screen, sweep, or a move whose symmetry does not "
                     "cover both), and some placement must put it in nobody's block. Never on "
-                    "a royal or a wild piece. Refused beside rules.territory, rules.reach, "
-                    "rules.explode_on_capture and a turn longer than one move."
+                    "a royal or a wild piece. Refused beside rules.territory, rules.reach "
+                    "and rules.explode_on_capture. In a turn of several moves the holder is "
+                    "read afresh at the start of each move."
                 ),
             },
             "bounty": {
@@ -700,8 +726,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "True offers a target only while the mover's side has fewer of that "
                     "type on the board than it started with, as in Grand chess: a pawn "
                     "promotes only into a piece its side has lost. Every target must be in "
-                    "both armies' setup. Not beside drops that fill from captures, a circe "
-                    "strike or promote_on_entry."
+                    "both armies' setup. It reads the board: a piece in a hand is lost, and "
+                    "one a circe strike puts back on its home square is not. Not beside "
+                    "promote_on_entry."
                 ),
             },
             "to": {"type": "array", "items": {"type": "string"}, "minItems": 1},
@@ -879,7 +906,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "Whether a wall also stops a jumping piece. False, the "
                             "default, lets a knight vault a wall; true stops it. The "
                             "square a jump is stopped at is the one the xiangqi horse "
-                            "is blocked at, one step along the longer axis."
+                            "is blocked at, one step along the longer axis, or the "
+                            "leap's own stated legs. On a hex lattice every leap longer "
+                            "than a step must state its legs."
                         ),
                     },
                 },
@@ -1517,8 +1546,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "by bounties and spent on buying pieces from a market, hiring a priced "
                     "piece nobody owns that stands next to one of theirs (its price), or "
                     "under bribe buying an enemy one (twice the price). Not beside rounds "
-                    "(rules.simultaneous), a turn longer than one move, portals or "
-                    "explode_on_capture; under drops.placement a held hand is placed first."
+                    "(rules.simultaneous), portals or explode_on_capture; under "
+                    "drops.placement a held hand is placed first. In a turn of several moves "
+                    "each buy is a move, paid from the purse as the move before left it."
                 ),
             ),
             "duck": _object(
@@ -1533,8 +1563,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "screens a hop; nothing may capture it and it captures nothing. "
                             "Only beside win 'royal_capture', 'annihilation' or 'none' (no "
                             "check rule), never in rounds or beside turn, portals, a blast, "
-                            "a strike, contacts or a sweep; max_plies must be even (each "
-                            "half is a ply)."
+                            "a strike or contacts, and its type never sweeps; a player's sweep "
+                            "stops short of it, as of any piece it may not capture. max_plies "
+                            "must be even (each half is a ply)."
                         ),
                     },
                     "start": {
@@ -1788,7 +1819,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "other face, the piece whose promoted_from it is (Kyoto "
                             "shogi). Needs at least one promoted_from pair a hand can "
                             "hold; each base may have one face, and no face may itself be "
-                            "a base, stocked, or royal."
+                            "a base, stocked, or royal. Beside explode_on_capture only the "
+                            "piece the capture took goes to the hand; the blast's victims "
+                            "enter none."
                         ),
                     },
                 },
@@ -1804,7 +1837,43 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "description": (
                             "How far the blast reaches around the capture square; 1 is "
                             "atomic chess. 0 destroys only the capturer and the piece "
-                            "it took (kamikaze chess), and then 'immune' may not be set."
+                            "it took (kamikaze chess), and then 'immune' may not be set. "
+                            "Not with blast, which states the shape instead."
+                        ),
+                    },
+                    # Generation 48 (SR1b): the blast's shape stated, in place of `radius`.
+                    "blast": {
+                        **_object(
+                            {
+                                "vectors": {
+                                    "type": "array",
+                                    "items": vector,
+                                    "minItems": 1,
+                                    "description": (
+                                        "The steps from the capture square the blast "
+                                        "takes, each turned by the symmetry."
+                                    ),
+                                },
+                                "symmetry": {
+                                    "type": "string",
+                                    "enum": list(SYMMETRIES),
+                                    "description": (
+                                        "How the vectors are expanded, as on a move, and "
+                                        "refused off its lattice as there."
+                                    ),
+                                },
+                            },
+                            required=["vectors"],
+                            strict=strict,
+                        ),
+                        "description": (
+                            "Instead of radius: the squares the blast takes, as [dx, dy] "
+                            "steps from the capture square. [[1, 0]] with rotate4 is a "
+                            "cross that spares the diagonals; [[0, 1], [0, 2], [0, -1], "
+                            "[0, -2]] two squares each way along the file. The blast is "
+                            "the board's, one shape round every square, so it must read "
+                            "the same for both players (its mirror image is itself). Not "
+                            "with radius."
                         ),
                     },
                     "immune": {

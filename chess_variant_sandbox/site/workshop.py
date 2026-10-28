@@ -1,4 +1,4 @@
-"""What the user page's workshop is sent, read on the server (UP1, `docs/plan-user-page.md` §5).
+"""What the user page's workshop is sent, read on the server (UP1, `docs/archive/plan-user-page.md` §5).
 
 The profile's *Your games* names each of a person's games with its level and its next step
 (`stages.yours`). The page the user chose (§4, direction B, *the workshop*) draws each as a

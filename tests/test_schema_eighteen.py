@@ -83,6 +83,7 @@ from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
 from chess_variant_sandbox.spec.complexity import expand_symmetry, measure_complexity
 from chess_variant_sandbox.spec.describe import describe_pieces, describe_spec
 from chess_variant_sandbox.spec.distance import distance
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.relate import identity_key
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, castling_spans
 from chess_variant_sandbox.spec.transform import set_obstacle
@@ -582,23 +583,20 @@ def _from(engine: Engine, state: Any, square: str) -> list[str]:
 
 class TestPromotionOnlyLost:
     @pytest.mark.parametrize(
-        ("edit", "said"),
+        ("edit", "rid"),
         [
-            ({"drops": {"from_captures": True}}, "beside rules.drops"),
-            (
-                {"strike": {"effect": "capture", "position": "home", "immune": ["K"]}},
-                'position is "home"',
-            ),
-            ({"promote_on_entry": True}, "beside rules.promote_on_entry"),
+            # A capture hand and circe were lifted by SR2 (H1, H2): the board is counted
+            # (`tests/test_lost_and_held.py`).
+            ({"promote_on_entry": True}, "H3"),
         ],
     )
     def test_a_rule_that_gives_a_piece_back_is_refused(
-        self, games: dict[str, dict[str, Any]], edit: dict[str, Any], said: str
+        self, games: dict[str, dict[str, Any]], edit: dict[str, Any], rid: str
     ) -> None:
         spec = copy.deepcopy(games["grand"])
         spec["rules"].update(edit)
         errors = validate_spec(spec)
-        assert any(said in e for e in errors), errors
+        assert rid in refused_ids(errors), errors
 
     def test_a_stone_only_hand_is_accepted(self, games: dict[str, dict[str, Any]]) -> None:
         spec = copy.deepcopy(games["grand"])
@@ -1057,8 +1055,8 @@ class TestDropEitherFace:
         [
             ({"strike": {"effect": "capture", "position": "stay"}}, "position is 'stay'"),
             ({"strike": {"effect": "capture", "position": "home"}}, "position is 'home'"),
-            ({"strike": {"switches_sides": ["S"]}}, "rules.strike.switches_sides"),
-            ({"explode_on_capture": {"radius": 1}}, "rules.explode_on_capture"),
+            # A blast was lifted by SR2 (H6): its victims enter no hand
+            # (`tests/test_lost_and_held.py`).
         ],
     )
     def test_a_rule_that_already_says_what_a_taken_piece_becomes_is_refused(
@@ -1067,6 +1065,11 @@ class TestDropEitherFace:
         spec = copy.deepcopy(games["kyoto"])
         spec["rules"].update(copy.deepcopy(rule))
         assert any(says in e for e in _refusals(spec)), validate_spec(spec)
+
+    def test_a_side_switch_is_refused(self, games: dict[str, dict[str, Any]]) -> None:
+        spec = copy.deepcopy(games["kyoto"])
+        spec["rules"]["strike"] = {"switches_sides": ["S"]}
+        assert "H5" in refused_ids(validate_spec(spec)), validate_spec(spec)
 
     def test_a_flag_with_no_pair_is_refused(self) -> None:
         crazyhouse = load_spec(ROOT / "rulesets" / "crazyhouse.json")
@@ -1168,7 +1171,7 @@ class TestDropEitherFaceElsewhere:
         assert any("no_doubled or drops.no_mate" in r for r in refusal.value.reasons)
 
     def test_the_page_is_sent_the_pairs(self, games: dict[str, dict[str, Any]]) -> None:
-        from chess_variant_sandbox.web.play import drop_faces_payload
+        from chess_variant_sandbox.viz.rules_payload import drop_faces_payload
 
         compiled = compile_spec(games["kyoto"])
         ids = compiled.piece_ids
@@ -1299,7 +1302,7 @@ class TestWinByLeaving:
     def test_safe_and_other_values_are_refused(self, games: dict[str, dict[str, Any]]) -> None:
         spec = copy.deepcopy(games["jeson-mor"])
         spec["rules"]["reach"]["safe"] = True
-        assert any("leave safe out" in error for error in validate_spec(spec))
+        assert "I1" in refused_ids(validate_spec(spec))
         spec = copy.deepcopy(games["jeson-mor"])
         spec["rules"]["reach"]["on"] = "pass"
         assert any("rules.reach.on must be one of" in e for e in validate_spec(spec))
@@ -1363,11 +1366,13 @@ class TestWinByLeavingElsewhere:
             translate(compile_spec(games["jeson-mor"]))
         assert any('rules.reach.on "leave"' in r for r in refusal.value.reasons)
 
-    def test_the_page_is_told(self) -> None:
+    def test_the_page_is_told(self, games: dict[str, dict[str, Any]]) -> None:
         board = ROOT / "chess_variant_sandbox" / "web" / "static" / "page" / "board.js"
         assert "SESSION.ruleset.goalLeaves" in board.read_text(encoding="utf-8")
-        play = ROOT / "chess_variant_sandbox" / "web" / "play.py"
-        assert '"goalLeaves"' in play.read_text(encoding="utf-8")
+        # Every page carries `rules_payload` whole (`tests/test_rules_payload.py`).
+        from chess_variant_sandbox.viz.rules_payload import rules_payload
+
+        assert rules_payload(Engine(games["jeson-mor"]))["goalLeaves"] is True
 
 
 # 18b (Q782): the two showcases and the committed game each is written from.

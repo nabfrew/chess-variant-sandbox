@@ -36,6 +36,7 @@ from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import (
     LATTICES,
     SCHEMA_VERSION,
@@ -225,7 +226,7 @@ class TestTheHexRefusals:
         self, showcase: dict[str, Any], orientation: str | None
     ) -> None:
         spec = _with(showcase, setup__orientation=orientation)
-        assert any('setup.orientation must be "rotate"' in e for e in _errors(spec))
+        assert "X5" in refused_ids(_errors(spec))
 
     @pytest.mark.parametrize(
         ("mirror", "refused"), [(None, True), (True, True), ("rotate", False), (False, False)]
@@ -237,7 +238,7 @@ class TestTheHexRefusals:
         if mirror is not None:
             reach["mirror"] = mirror
         errors = _errors(_with(showcase, rules__reach=reach))
-        assert any("rules.reach.mirror must be" in e for e in errors) is refused, errors
+        assert ("X6" in refused_ids(errors)) is refused, errors
 
     @pytest.mark.parametrize("symmetry", ["lateral", "rotate4", "dihedral8"])
     def test_3_a_descriptor_must_list_its_vectors(
@@ -286,9 +287,10 @@ class TestTheHexRefusals:
         assert any(named in e and "far edge is not a rank" in e for e in errors), errors
 
     def test_6_a_lame_leap_has_no_leg(self, showcase: dict[str, Any]) -> None:
+        """Until SR1a refused outright; now a hex lame must state its legs."""
         spec = copy.deepcopy(showcase)
         spec["pieces"][1]["moves"][0]["kind"] = "lame"
-        assert any("'lame' is refused on a hex lattice" in e for e in _errors(spec))
+        assert any("on a hex lattice must state its legs" in e for e in _errors(spec))
 
     def test_the_same_spellings_pass_on_a_square_lattice(self, chess: dict[str, Any]) -> None:
         """The refusals are the lattice's, not the keys': chess writes three of them."""

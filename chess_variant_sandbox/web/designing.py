@@ -49,6 +49,7 @@ from chess_variant_sandbox.engine.coming import coming_phases
 from chess_variant_sandbox.engine.compile import HexCopy
 from chess_variant_sandbox.loop.archive import Archive, Entry
 from chess_variant_sandbox.loop.gates import STALLED
+from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.spec import (
     SCHEMA_VERSION,
     SpecError,
@@ -758,7 +759,7 @@ def _one_placement(spec: dict[str, Any]) -> list[dict[str, Any]]:
     walls = set(obstacles.get("squares") or []) if isinstance(obstacles, dict) else set()
     absent = absent_squares(board)
     for square in range(width):
-        name = _square_name(square, width)
+        name = format_square(square % width, square // width)
         if square not in absent and name not in walls:
             return [{"piece": spec["pieces"][0]["id"], "squares": [name]}]
     return []
@@ -1747,7 +1748,7 @@ def _rank_zones_named(draft: dict[str, Any]) -> bool:
             continue
         zone.pop("rank", None)
         zone.pop("ranks", None)
-        zone["squares"] = [_square_name(square, width) for square in sorted(first)]
+        zone["squares"] = [format_square(square % width, square // width) for square in sorted(first)]
         named = True
     return named
 
@@ -2046,9 +2047,7 @@ def rest_every_piece(spec: Any, rest: Any) -> dict[str, Any]:
 
 def _rest_count(rest: int, spec: dict[str, Any]) -> str:
     """*1 turn*, *2 rounds*: a rest in the unit the game is played in (`REST_WORDS`)."""
-    rules = spec.get("rules")
-    rounds = isinstance(rules, dict) and isinstance(rules.get("simultaneous"), dict)
-    one, many = REST_WORDS["units"]["rounds" if rounds else "turns"]
+    one, many = REST_WORDS["units"]["rounds" if plays_in_rounds(spec) else "turns"]
     return f"{rest} {one if rest == 1 else many}"
 
 
@@ -2639,7 +2638,7 @@ def _probe_spec(spec: dict[str, Any], compiled: Any) -> dict[str, Any]:
     kept = {key: rules[key] for key in _GEOMETRY_RULES if key in rules}
     placed: dict[str, Any] = {
         "mirror": True,
-        "placements": [{"piece": "A", "squares": [_square_name(free, width)]}],
+        "placements": [{"piece": "A", "squares": [format_square(free % width, free // width)]}],
     }
     # A hex board's two armies face each other by a half turn rather than by a rank
     # reflection, and the schema insists on it being written out.
@@ -2655,9 +2654,6 @@ def _probe_spec(spec: dict[str, Any], compiled: Any) -> dict[str, Any]:
         "rules": {"win": "annihilation", "stalemate": "draw", "max_plies": 40, **kept},
     }
 
-
-def _square_name(square: int, width: int) -> str:
-    return f"{chr(ord('a') + square % width)}{square // width + 1}"
 
 
 def _probed_with(probe: dict[str, Any], move: dict[str, Any]) -> dict[str, Any]:

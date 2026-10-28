@@ -662,6 +662,7 @@ function drawStoryFrame(mount, game, frame, prev, art, still) {
     const arriving = node(item.to);
     let flight;
     if (arriving) {
+      svg.appendChild(arriving);  // over the squares it passes, as a plain move's (below)
       flight = travel(arriving, fx - tx, fy - ty, false);
     } else {
       const bomb = ghostAt(svg, before[item.from], tx, ty, cell);
@@ -680,6 +681,11 @@ function drawStoryFrame(mount, game, frame, prev, art, still) {
   }
   const moving = node(item.to);
   if (!moving) return 0;
+  // Out of its square's group and on top: the board draws each piece inside its square, so a
+  // piece left there travels under every square drawn after its landing one -- a white move up
+  // the board vanished mid-flight, and a sweeper under its own blade (Q1042). The play board's
+  // `animateMove` lifts its traveller the same way.
+  svg.appendChild(moving);
   // A sweep is the rule acting: it takes the time its travel needs, not the story's pace.
   const flight = travel(moving, fx - tx, fy - ty, false, 0, item.sweep ? Infinity : most);
   // A sweep: each piece on its path is cut down as the sweeper passes over it, in the order

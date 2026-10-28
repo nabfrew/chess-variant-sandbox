@@ -29,6 +29,7 @@ from chess_variant_sandbox.engine.moves import (
 )
 from chess_variant_sandbox.engine.state import NO_SQUARE, GameState
 from chess_variant_sandbox.fairy.variant import board_letters
+from chess_variant_sandbox.spec.schema import format_square
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from chess_variant_sandbox.engine.compile import CompiledSpec
@@ -62,7 +63,7 @@ def fen(
         board,
         "w" if their_side(compiled, state) == 0 else "b",
         _castling_field(compiled, state, king) if castling else "-",
-        _square_name(state.ep_target, compiled.width) if state.ep_target != NO_SQUARE else "-",
+        format_square(state.ep_target % compiled.width, state.ep_target // compiled.width) if state.ep_target != NO_SQUARE else "-",
     ]
     if check_limit:
         # Remaining checks, first player first, which is the order the board field is
@@ -236,8 +237,8 @@ def uci_of(
         # from its base's slot, and `dropPromoted` writes that drop as the base marked
         # promoted, `+P@c3`.
         mark = "+" if slot != face else ""
-        return f"{mark}{chars[slot].upper()}@{_square_name(target, width)}"
-    text = f"{_square_name(origin, width)}{_square_name(target, width)}"
+        return f"{mark}{chars[slot].upper()}@{format_square(target % width, target // width)}"
+    text = f"{format_square(origin % width, origin // width)}{format_square(target % width, target // width)}"
     if kind == MOVE_PROMOTION:
         if promotion_suffix == "plus":
             # A turn back to the piece's `promoted_from` is `pieceDemotion`'s move there,
@@ -273,7 +274,7 @@ def turn_word(
     _, target, _, _ = decode_move(move)
     _, duck_target, _, how = decode_move(duck_move)
     lands = target if how == DUCK_PASS else duck_target
-    return f"{head},{_square_name(target, width)}{_square_name(lands, width)}"
+    return f"{head},{format_square(target % width, target // width)}{format_square(lands % width, lands // width)}"
 
 
 def move_of(
@@ -308,11 +309,6 @@ def move_of(
     )
 
 
-def position_command(variant: Variant, compiled: CompiledSpec, state: GameState) -> str:
-    """The UCI `position` line for one position."""
-    return f"position fen {variant_fen(variant, compiled, state)}"
-
-
 def variant_fen(variant: Variant, compiled: CompiledSpec, state: GameState) -> str:
     """``state`` as a FEN under ``variant``, with every field the variant needs.
 
@@ -333,6 +329,3 @@ def variant_fen(variant: Variant, compiled: CompiledSpec, state: GameState) -> s
 def _limit(compiled: CompiledSpec, variant: Variant) -> int:
     return compiled.check_limit if variant.check_counting else 0
 
-
-def _square_name(square: int, width: int) -> str:
-    return f"{chr(ord('a') + square % width)}{square // width + 1}"

@@ -4735,7 +4735,7 @@ def _done(lines: list[dict[str, Any]], held: list[dict[str, Any]] | None = None)
 
 
 class TestTheUserPagesFaultsThatNeedNoChoice:
-    """UP0 of `docs/plan-user-page.md` §5. The record lists the games played and says the
+    """UP0 of `docs/archive/plan-user-page.md` §5. The record lists the games played and says the
     rest in one line; no count tile reads a nought; a day is written one way; the corner
     is the same button on your own page; no script writes a fixed style."""
 
@@ -4874,7 +4874,7 @@ class TestTheProfileDrawsTheMetaGame:
         assert _done([]) == ""
 
     def test_still_open_is_one_line_and_never_the_library_again_by_kind(self) -> None:
-        """Choice F1 of `docs/plan-user-page.md` §4 (UP2): *still open* is the one line under
+        """Choice F1 of `docs/archive/plan-user-page.md` §4 (UP2): *still open* is the one line under
         the record that names the library's filters (`drawUntried`, UP0's), never the
         library again grouped by kind of game."""
         page = page_text.site_own(site_pages.profile("ada"))
@@ -4922,7 +4922,7 @@ class TestTheProfileDrawsTheMetaGame:
 
 
 class TestAnEmptyProfileSaysWhatToDo:
-    """L2 of `docs/archive/plan-launch.md` §3.2, and UP2 of `docs/plan-user-page.md` §5. A page
+    """L2 of `docs/archive/plan-launch.md` §3.2, and UP2 of `docs/archive/plan-user-page.md` §5. A page
     with nothing on it says what a person can do, never three noughts over a table of *none
     yet*: *Start building a game* first, the one primary (the site's key idea), *Play
     today's game* beside it, and one line on what the page will hold. Once a rated game is

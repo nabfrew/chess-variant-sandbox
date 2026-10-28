@@ -42,19 +42,13 @@ from chess_variant_sandbox.engine.moves import (
 from chess_variant_sandbox.spec import spec_hash
 from chess_variant_sandbox.tournament.play import replay
 from chess_variant_sandbox.tournament.record import GameRecord
-from chess_variant_sandbox.viz.heading import directional_types
-from chess_variant_sandbox.viz.pieces import credits_for, icons_for
+from chess_variant_sandbox.viz.pieces import credits_for, icons_for, side_names
+from chess_variant_sandbox.viz.rules_payload import rules_payload
 from chess_variant_sandbox.viz.wrapped import (
     WRAPPED,
     fold_payload,
     fold_transit,
-    goal_payload,
-    portal_payload,
     portal_transit,
-    pounce_kinds_payload,
-    walls_payload,
-    wrap_payload,
-    zone_payload,
 )
 
 
@@ -67,6 +61,12 @@ def _duck_squares(move: int) -> dict[str, Any]:
     if how == DUCK_PASS:
         return {"from": None, "to": None}
     return {"from": None} if how == DUCK_PLACE else {}
+
+
+def _purse(state: GameState) -> list[int]:
+    """Each player's coins in ``state``, as the core keeps them (``(0, 0)`` without a
+    purse); the replay's counterpart of the play board's ``purse`` (`web/play.py`)."""
+    return [int(state.purse[0]), int(state.purse[1])]
 
 
 def render_game(
@@ -111,6 +111,7 @@ def render_game(
         spec,
         boards=[list(s.board) for s in states],
         folds=[fold_payload(engine, s) for s in states],
+        purses=[_purse(s) for s in states],
         frames=frames,
         meta={
             "agents": list(record.agents),
@@ -138,6 +139,7 @@ def render_position(
         spec,
         boards=[list(state.board)],
         folds=[fold_payload(engine, state)],
+        purses=[_purse(state)],
         frames=[],
         meta={
             "agents": ["-", "-"],
@@ -160,6 +162,7 @@ def _write_page(
     out_path: str | Path,
     icons: bool = True,
     folds: list[list[dict[str, Any]]] | None = None,
+    purses: list[list[int]] | None = None,
 ) -> Path:
     art = (
         icons_for(
@@ -171,46 +174,25 @@ def _write_page(
         else []
     )
     payload = {
-        "width": engine.spec.width,
-        "height": engine.spec.height,
-        # `"hex"` draws each cell as a hexagon on a sheared grid (schema 14).
-        "lattice": engine.spec.lattice,
-        "pieceIds": list(engine.spec.piece_ids),
-        "pieceNames": list(engine.spec.piece_names),
-        # Generation 40 (N3c): each type's compiled pounce kind (``"prey"``, ``"attackers"``
-        # or ``None``), or ``None`` where nothing pounces: the phase's words tell a pounce on
-        # an attacker from one on prey by it, the log's kind being one for both.
-        "pounceKinds": pounce_kinds_payload(engine.spec.pounce),
-        "nTypes": engine.spec.n_types,
-        # A whole army's worth of board values, the headings a facing piece is drawn at,
-        # and which pieces may be turned to a heading at all.
-        "sideStride": engine.spec.side_stride,
-        "facingAngles": [list(row) for row in engine.spec.facing_headings()],
-        "directional": list(directional_types(engine.spec)),
-        # Squares nothing may occupy. Empty for every ruleset without a wall -- and a
-        # board that does not draw them is a board on which pieces refuse a square for
-        # no visible reason, which is the territory colouring's failure again.
-        **walls_payload(engine.spec),
-        # Which edges each player may leave by, compiled. ``None`` for a board with
-        # edges, which is what the replay tests to draw one board and no outline.
-        "wrap": wrap_payload(engine.spec.wrap, engine.spec.copies),
-        # Squares a game ends on when a piece reaches one, compiled, per player. ``None``
-        # for a game with no such rule, which is what the replay tests to draw no marker.
-        "goals": goal_payload(engine.spec.reach),
-        # Squares a piece promotes on, compiled, per player. ``None`` for a game with no
-        # promotion, which is what the replay tests to draw no band and offer no toggle.
-        "zones": zone_payload(engine.spec.promotions),
-        # Schema 19: each portal end's pair, colour, movers and doors, compiled, so an end
-        # is drawn as the play board draws it (`portalGlyph`). ``None`` without portals.
-        "portals": portal_payload(engine.spec),
+        # Every compiled rule a page draws (`viz.rules_payload`, CP5), the play board's
+        # block, so the replay carries what the board does: walls, wrap, goals, zones,
+        # portals, the blast, speeds, rests and the purse among them.
+        **rules_payload(engine),
         "pieceIcons": art,
-        # PI4: the duck's type, which stays bare where every other wild piece wears a disc.
-        "duck": engine.spec.duck.piece_type if engine.spec.duck is not None else None,
         "credits": credits_for(art),
         "boards": boards,
         # Schema 22 (Q843d): where the folds lie in each position, no board byte, so the replay
         # draws each pool under the piece standing in it. Absent without folds.
         **({"folds": folds} if folds and any(folds) else {}),
+        # TC7 (Q1049): each player's coins in each position, one pair a ply, read off the
+        # core's replayed state (`GameState.purse`), never worked out on the page; with
+        # the names the seats go by, which the purses sit under as on the play board.
+        # Absent without a purse.
+        **(
+            {"purses": purses, "sides": list(side_names(art))}
+            if purses and engine.spec.purse is not None
+            else {}
+        ),
         "moves": frames,
         "meta": {"ruleset": spec.get("name", "?"), "hash": spec_hash(spec), **meta},
     }
@@ -296,6 +278,10 @@ _TEMPLATE = """<!doctype html>
   .move.active { background: var(--mark); color: #16171a; }
   .stat { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 2px 0; }
   .stat span:first-child { color: var(--muted); }
+  /* The seats and their purses (TC7), as the play board's seat bar words them. */
+  .seats { display: grid; gap: 6px; margin-bottom: 8px; padding-bottom: 8px;
+           border-bottom: 1px solid var(--line); font-size: 13px; }
+  .seats .muted { color: var(--muted); }
   .credits { color: var(--muted); font-size: 11px; margin-top: 14px; }
   .credits div { padding: 1px 0; }
   /* A portal's arms turn idly inwards, as on the play board (the page's `.pg-idle`), and
@@ -325,6 +311,7 @@ _TEMPLATE = """<!doctype html>
     <div class="credits" id="credits"></div>
   </div>
   <div class="panel">
+    <div class="seats" id="seats" hidden></div>
     <div class="stat"><span>ply</span><span id="ply"></span></div>
     <div class="stat"><span>material</span><span id="material"></span></div>
     <div class="stat"><span>legal moves</span><span id="branching"></span></div>

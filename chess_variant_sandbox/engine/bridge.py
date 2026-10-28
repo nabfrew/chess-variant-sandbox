@@ -84,6 +84,19 @@ _CORE_KNOWS_FACING = True
 # guarded, which is what a guard is for.
 _CORE_KNOWS_NPCS = True
 
+# The portal pairs `rust_supports` holds shut for a spec that reached the compiler past the
+# validator, each by its refused pairs' ids (`spec/refusals.py`; a compiled strike is either
+# spelling, so P3 and P4 are one hold), in the order its message names them. A lift of a row
+# here lifts it in the validator's table too.
+PORTAL_CORE_HOLDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("P2",), "rules.npcs"),
+    (("P3", "P4"), "a strike or contact table"),
+    (("P5",), "rules.explode_on_capture"),
+    (("W8",), "a sweep"),
+    (("P6",), "rules.territory"),
+    (("P1",), "a hex lattice"),
+)
+
 # Schema 10 (Q18): whether ``game.rs`` reads ``explosion_by`` / ``explosion_of``.
 #
 # The eleventh hold, and the same shape as the ten before it. The compiler can already
@@ -194,43 +207,50 @@ def _flatten_dirs(
     ]
 
 
-def _sight_tables(spec: CompiledSpec) -> dict[str, Any]:
-    """Schema 30: `SightRule.sources` flattened for the core (`tables.rs::SightTables`), or
-    four empty lists without a sight. Q1007c's ``sight_command`` is false unless a sight
-    commands (`_INERT_DEFAULTS`, so no other sight game's fingerprint moves)."""
-    sight = spec.sight
-    if sight is None:
-        return {
-            "sight_index": [], "sight_srcs": [], "sight_paths": [], "sight_flags": [],
-            "sight_command": False,
-        }
-    index = [0]
-    srcs: list[int] = []
-    paths: list[int] = []
-    for side in sight.sources:
-        for by_type in side:
-            for found in by_type:
-                for origin, piece_value, effect, path in found:
-                    srcs.extend((origin, piece_value, effect, len(paths), len(path)))
-                    paths.extend(path)
-                index.append(len(srcs) // 5)
+# ---------------------------------------------------------------------------- flatteners
+#
+# One flattener per rule (CP1, `docs/plan-smells-python.md` PY8). Each takes the compiled
+# spec and returns the boundary keys of its rule, and beside it sits the dict of those keys'
+# inert defaults (`_INERT_DEFAULTS`, assembled after the last of them). `build_tables` is the
+# merge of their dicts, in `_FLATTENERS`' order, and no two flatteners write one key
+# (`tests/test_bridge_flatteners.py`). A flattener only flattens: what a rule *means* is
+# `compile.py`'s, and every value read here is already its answer.
+
+
+_BOARD_INERT: dict[str, Any] = {"n_frames": 2}
+
+
+def _board_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The board's shape, the piece types, the opening array and the declared values."""
     return {
-        "sight_index": index,
-        "sight_srcs": srcs,
-        "sight_paths": paths,
-        "sight_flags": [
-            int(sight.has_shield), int(sight.bears_on_check), int(sight.has_restraint),
-        ],
-        "sight_command": sight.has_command,
+        "width": spec.width,
+        "height": spec.height,
+        "n_squares": spec.n_squares,
+        "n_types": spec.n_types,
+        # How many readings of the movement vectors the tables hold. Two today, one per
+        # player. Sits in `_INERT_DEFAULTS` at 2, so adding it moved no ruleset's tables
+        # fingerprint -- which is item 2's canonicalisation doing exactly the job it was
+        # built for, on the first field to arrive after it.
+        "n_frames": spec.n_frames,
+        "royal_types": list(spec.royal_types),
+        "initial_board": spec.initial_board,
+        "initial_unmoved": spec.initial_unmoved.to_bytes(32, "little"),
+        # The declared piece values rather than the evaluator's derived ones. A rule has to
+        # be objective: the evaluator is an agent's opinion about what a piece is worth, and
+        # two agents holding different opinions must not disagree about who won.
+        "piece_values": [float(v) for v in spec.piece_values],
     }
 
 
-def build_tables(spec: CompiledSpec) -> dict[str, Any]:
-    """Everything the core needs, keyed by name."""
-    n_types = spec.n_types
-    n_squares = spec.n_squares
-    n_frames = spec.n_frames
+_MOVEMENT_INERT: dict[str, Any] = {
+    "has_capture_matrix": False,
+    "has_hop_attacks": False,
+}
 
+
+def _movement_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The leap, slide and hop tables, the dedup and immobility masks, the capture matrix."""
+    n_types, n_squares, n_frames = spec.n_types, spec.n_squares, spec.n_frames
     leap_index, leap_refs, leap_squares, leap_modes = _flatten_entries(
         spec.leaps, n_frames, n_types, n_squares
     )
@@ -240,17 +260,80 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     hop_index, hop_refs, hop_squares, hop_modes = _flatten_entries(
         spec.hops, n_frames, n_types, n_squares
     )
-    # Schema 13. Empty unless something sweeps, so no earlier fingerprint moves.
-    has_sweep = spec.has_sweep
+    return {
+        "leap_index": leap_index,
+        "leap_refs": leap_refs,
+        "leap_squares": leap_squares,
+        "leap_modes": leap_modes,
+        "slide_index": slide_index,
+        "slide_refs": slide_refs,
+        "slide_squares": slide_squares,
+        "slide_modes": slide_modes,
+        "hop_index": hop_index,
+        "hop_refs": hop_refs,
+        "hop_squares": hop_squares,
+        "hop_modes": hop_modes,
+        "dedup": [
+            int(square in spec.dedup_squares[frame][piece_type])
+            for frame in range(n_frames)
+            for piece_type in range(n_types)
+            for square in range(n_squares)
+        ],
+        # The capture matrix, one byte per (attacker, victim) pair. Flat rather than nested
+        # for the same reason everything else here is: the core wants one index, not two
+        # pointer hops, on a path that runs per capture test.
+        "capture_allowed": [int(allowed) for row in spec.capture_allowed for allowed in row],
+        "has_capture_matrix": spec.has_capture_matrix,
+        "has_hop_attacks": spec.has_hop_attacks,
+        "immobile_squares": [
+            int(square in spec.immobile_squares[frame][piece_type])
+            for frame in range(n_frames)
+            for piece_type in range(n_types)
+            for square in range(n_squares)
+        ],
+    }
+
+
+# Schema 13 (Q21). Empty unless a piece sweeps.
+_SWEEP_INERT: dict[str, Any] = {
+    "sweep_index": [],
+    "sweep_refs": [],
+    "sweep_squares": [],
+    "sweep_modes": [],
+    "has_sweep": False,
+}
+
+
+def _sweep_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Schema 13: the sweep table. Empty unless something sweeps, so no earlier fingerprint
+    moves."""
     sweep_index: list[int] = []
     sweep_refs: list[int] = []
     sweep_squares: list[int] = []
     sweep_modes: list[int] = []
-    if has_sweep:
+    if spec.has_sweep:
         sweep_index, sweep_refs, sweep_squares, sweep_modes = _flatten_entries(
-            spec.sweeps, n_frames, n_types, n_squares
+            spec.sweeps, spec.n_frames, spec.n_types, spec.n_squares
         )
+    return {
+        "sweep_index": sweep_index,
+        "sweep_refs": sweep_refs,
+        "sweep_squares": sweep_squares,
+        "sweep_modes": sweep_modes,
+        "has_sweep": spec.has_sweep,
+    }
 
+
+# Schema 13 (Q21). Empty unless a piece sweeps.
+_ATTACK_INERT: dict[str, Any] = {
+    "attack_sweep": [],
+    "attack_path_modes": [],
+}
+
+
+def _attack_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The attack sources, eight words per source into the flat paths."""
+    has_sweep = spec.has_sweep
     attack_index = [0]
     attack_srcs: list[int] = []
     attack_paths: list[int] = []
@@ -259,7 +342,7 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     # Over however many owners the compiler built blocks for: two, or three once the
     # spec has wild pieces (schema 9), whose block the core walks with the same loop.
     for player in range(len(spec.attack_sources)):
-        for square in range(n_squares):
+        for square in range(spec.n_squares):
             for entry in spec.attack_sources[player][square]:
                 (
                     origin, piece_value, prefix, window, screens, unmoved, screen_owner,
@@ -287,22 +370,77 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
                 )
                 attack_paths.extend(path)
             attack_index.append(len(attack_srcs) // 8)
+    return {
+        "attack_index": attack_index,
+        "attack_srcs": attack_srcs,
+        "attack_paths": attack_paths,
+        "attack_sweep": attack_sweep,
+        "attack_path_modes": attack_path_modes,
+    }
 
-    # The capture matrix, one byte per (attacker, victim) pair. Flat rather than nested
-    # for the same reason everything else here is: the core wants one index, not two
-    # pointer hops, on a path that runs per capture test.
-    capture_allowed = [
-        int(allowed) for row in spec.capture_allowed for allowed in row
-    ]
 
-    dedup = [
-        int(square in spec.dedup_squares[frame][piece_type])
-        for frame in range(n_frames)
-        for piece_type in range(n_types)
-        for square in range(n_squares)
-    ]
+_ENDING_INERT: dict[str, Any] = {
+    # Empty is "every piece can come back", which is a real reading and the one every
+    # ruleset whose pieces all turn or retrace has -- so such a spec's bytes do not move
+    # for this field existing.
+    "one_way_types": [],
+    "multi_royal": False,
+    "must_capture": False,
+    "forbid_check": False,
+    "forbid_immobility": False,
+    "check_limit": 0,
+}
 
-    castling = spec.castling
+
+def _ending_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """How a game ends and what a move may not do: the win condition, the clocks, the
+    restrictions on a move, and the check limit."""
+    return {
+        "win": spec.win,
+        "stalemate": spec.stalemate,
+        "checkmate_result": spec.checkmate,
+        "max_plies": spec.max_plies,
+        "repetition_draw": spec.repetition_draw,
+        "no_progress_draw": spec.no_progress_draw,
+        # Which types can never return to a square they left, so that a move by one is
+        # progress and clears both clocks above. Derived from the movement tables by
+        # `compile._one_way_types`; sent as the list of types, which `type_flags` turns
+        # back into a flag per type, exactly as `promo_piece_types` is. It used to be
+        # `ep_type` doing this job under an en passant name -- see Q113.
+        "one_way_types": sorted(spec.one_way_types),
+        "multi_royal": spec.multi_royal,
+        "must_capture": spec.must_capture,
+        "forbid_check": spec.forbid_check,
+        "forbid_immobility": spec.forbid_immobility,
+        "check_limit": spec.check_limit,
+    }
+
+
+_BARE_ROYAL_INERT: dict[str, Any] = {
+    "has_bare_royal": False,
+    "bare_royal": 0,
+}
+
+
+def _bare_royal_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Stated from the point of view of the side reduced to royalty alone: shatranj's rule
+    is a loss for them. "off" is carried separately from the result because "draw" is one
+    of the three answers ``ENDING_RESULTS`` promises and cannot double as the off switch --
+    which is exactly the bug a boolean produced here."""
+    return {
+        "has_bare_royal": spec.bare_royal != "",
+        "bare_royal": _ENDING_RESULT[spec.bare_royal] if spec.bare_royal else 0,
+    }
+
+
+_EN_PASSANT_INERT: dict[str, Any] = {
+    "ep_type": -1,
+    "ep_pass_flat": [],
+}
+
+
+def _en_passant_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The en passant piece and the windows its moves open."""
     # En passant is defined against the promoting piece: the piece that advances,
     # cannot retreat, and is therefore the only one a double step can run past.
     # With multi-promotion, find the ep piece from any promotion rule that exists.
@@ -317,18 +455,35 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     # board whose edges are edges.
     ep_pass_flat: list[int] = []
     ep_pass_index: list[int] = [0]
-    for frame in range(n_frames):
-        for origin in range(n_squares):
+    for frame in range(spec.n_frames):
+        for origin in range(spec.n_squares):
             for target, passed in spec.ep_passes[frame][origin]:
                 ep_pass_flat.extend((target, passed))
             ep_pass_index.append(len(ep_pass_flat) // 2)
+    return {
+        "ep_type": ep_type,
+        "ep_pass_flat": ep_pass_flat,
+        "ep_pass_index": ep_pass_index,
+    }
 
-    # Which squares can see which down a file, and what has to be empty for them to.
-    # CSR over [square], because the core reads one square's entries per check test and
-    # never wants a second pointer hop. It replaced arithmetic in the core -- walking a
-    # file by `+= width` -- which is right only on a board whose edges are edges and
-    # whose empty squares are the only empty squares. Empty for every ruleset that does
-    # not declare `royal_facing: forbidden`, so nothing else's bytes move.
+
+_ROYAL_FACING_INERT: dict[str, Any] = {
+    "royal_facing_forbidden": False,
+    "facing_index": [],
+    "facing_entries": [],
+    "facing_paths": [],
+}
+
+
+def _royal_facing_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Which squares can see which down a file, and what has to be empty for them to.
+
+    CSR over [square], because the core reads one square's entries per check test and
+    never wants a second pointer hop. It replaced arithmetic in the core -- walking a file
+    by `+= width` -- which is right only on a board whose edges are edges and whose empty
+    squares are the only empty squares. Empty for every ruleset that does not declare
+    `royal_facing: forbidden`, so nothing else's bytes move.
+    """
     facing_index: list[int] = [0]
     facing_entries: list[int] = []
     facing_paths: list[int] = []
@@ -339,8 +494,28 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         facing_index.append(len(facing_entries) // 3)
     if not spec.facing_lines:
         facing_index = []
+    return {
+        "royal_facing_forbidden": spec.royal_facing_forbidden,
+        "facing_index": facing_index,
+        "facing_entries": facing_entries,
+        "facing_paths": facing_paths,
+    }
 
-    # --- Promotion tables (schema 2: per-piece, per-player, optional, zones) ---
+
+_PROMOTION_INERT: dict[str, Any] = {
+    "promo_targets_flat": [],
+    "promo_piece_types": [],
+    # Schema 15 (Q452). Empty unless a promoting piece can leave its zone under the flag.
+    "promo_on_leaving": [],
+    # Schema 18 (Q783). Empty unless an entry says `only_lost`.
+    "promo_only_lost": [],
+    "promo_opening": [],
+}
+
+
+def _promotion_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Schema 2's promotion: per piece, per player, optional, zones; and the demotions."""
+    n_types, n_squares = spec.n_types, spec.n_squares
     # promo_squares: flat [player][piece_type * n_squares + square] -> 0/1
     promo_squares: list[int] = []
     for player in (0, 1):
@@ -366,22 +541,74 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     for rule in spec.promotions:
         promo_optional[rule.piece_type] = int(not rule.mandatory)
 
-    # Which piece types have a promotion rule
-    promo_piece_types = sorted({rule.piece_type for rule in spec.promotions})
-    # Schema 15: which of them also promote on a move out of their zone. The compiler has
-    # already dropped a flag that cannot fire, so this is empty for every game before it.
-    promo_on_leaving = sorted({rule.piece_type for rule in spec.promotions if rule.on_leaving})
-    # Schema 18 (Q783): which promoting types offer a target only while it is short of
-    # its opening count, and the counts, flat `[player * n_types + type]`. The counts are
-    # the setup's, the same for every such rule, and both are empty for every game before
-    # it, so no earlier fingerprint moves.
-    promo_only_lost = sorted({rule.piece_type for rule in spec.promotions if rule.only_lost})
-    promo_opening: list[int] = next(
-        ([*rule.opening[0], *rule.opening[1]] for rule in spec.promotions if rule.only_lost),
-        [],
-    )
+    return {
+        "promo_squares": promo_squares,
+        "promo_targets_flat": promo_targets_flat,
+        "promo_targets_index": promo_targets_index,
+        "promo_optional": promo_optional,
+        # Which piece types have a promotion rule
+        "promo_piece_types": sorted({rule.piece_type for rule in spec.promotions}),
+        # Schema 15: which of them also promote on a move out of their zone. The compiler
+        # has already dropped a flag that cannot fire, so this is empty for every game
+        # before it.
+        "promo_on_leaving": sorted(
+            {rule.piece_type for rule in spec.promotions if rule.on_leaving}
+        ),
+        # Schema 18 (Q783): which promoting types offer a target only while it is short of
+        # its opening count, and the counts, flat `[player * n_types + type]`. The counts
+        # are the setup's, the same for every such rule, and both are empty for every game
+        # before it, so no earlier fingerprint moves.
+        "promo_only_lost": sorted(
+            {rule.piece_type for rule in spec.promotions if rule.only_lost}
+        ),
+        "promo_opening": next(
+            ([*rule.opening[0], *rule.opening[1]] for rule in spec.promotions if rule.only_lost),
+            [],
+        ),
+        "demotions": list(spec.demotions),
+    }
 
-    # --- Explosion ---
+
+_CASTLING_INERT: dict[str, Any] = {
+    "castle_king": -1,
+    "castle_rook": -1,
+    "castle_steps": 0,
+    "castle_king_files": [-1, -1],
+    "castle_rook_files": [-1, -1],
+}
+
+
+def _castling_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The castling pair, the king's steps, and the files each starts on."""
+    castling = spec.castling
+    return {
+        "castle_king": castling.king_type if castling else -1,
+        "castle_rook": castling.rook_type if castling else -1,
+        "castle_steps": castling.king_steps if castling else 0,
+        "castle_king_files": (
+            list(castling.king_files) if castling and castling.king_files else [-1, -1]
+        ),
+        "castle_rook_files": (
+            list(castling.rook_files) if castling and castling.rook_files else [-1, -1]
+        ),
+    }
+
+
+_EXPLOSION_INERT: dict[str, Any] = {
+    "has_explosion": False,
+    "explosion_immune": [],
+    "explosion_blast": [],
+    "explosion_blast_index": [0],
+    # Schema 10 (Q18). Empty is "every capturer" and "every victim", so `atomic.json`
+    # -- and every other ruleset with an explosion -- keeps the fingerprint it had.
+    "explosion_by": [],
+    "explosion_of": [],
+}
+
+
+def _explosion_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The blast per square, the immune types, and whose capture explodes what."""
+    n_types = spec.n_types
     explosion = spec.explosion
     explosion_blast: list[int] = []
     explosion_blast_index: list[int] = [0]
@@ -395,18 +622,44 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     explosion_by: list[int] = []
     explosion_of: list[int] = []
     if explosion is not None:
-        explosion_immune = [
-            int(pt in explosion.immune_types) for pt in range(n_types)
-        ]
+        explosion_immune = [int(pt in explosion.immune_types) for pt in range(n_types)]
         if explosion.by_types is not None:
             explosion_by = [int(pt in explosion.by_types) for pt in range(n_types)]
         if explosion.of_types is not None:
             explosion_of = [int(pt in explosion.of_types) for pt in range(n_types)]
-        for square in range(n_squares):
+        for square in range(spec.n_squares):
             explosion_blast.extend(explosion.blast[square])
             explosion_blast_index.append(len(explosion_blast))
+    return {
+        "has_explosion": explosion is not None,
+        "explosion_immune": explosion_immune,
+        "explosion_blast": explosion_blast,
+        "explosion_blast_index": explosion_blast_index,
+        "explosion_by": explosion_by,
+        "explosion_of": explosion_of,
+    }
 
-    # --- Drops ---
+
+_DROPS_INERT: dict[str, Any] = {
+    "has_drops": False,
+    "drops_from_captures": False,
+    "drops_regions": [],
+    "drops_no_doubled": [],
+    "drops_no_mate": [],
+    # Schema 10 (Q51). Empty is "nothing is held before a capture", which is every
+    # ruleset with a hand up to now.
+    "drops_stock": [],
+    "drops_unlimited": [],
+    # Schema 18 (Q784). False unless the hand says `placement`.
+    "drops_placement": False,
+    # Schema 18 (Q785). Empty unless the hand says `either_face`.
+    "drops_faces": [],
+}
+
+
+def _drops_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The hand: where each type may be dropped, the drop restrictions, the stock."""
+    n_types, n_squares = spec.n_types, spec.n_squares
     drops = spec.drops
     drops_regions: list[int] = []
     drops_no_doubled: list[int] = []
@@ -421,341 +674,7 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
                     drops_regions.extend(int(sq in region) for sq in range(n_squares))
         drops_no_doubled = [int(pt in drops.no_doubled) for pt in range(n_types)]
         drops_no_mate = [int(pt in drops.no_mate) for pt in range(n_types)]
-
-    # --- Reach ---
-    reach = spec.reach
-    reach_squares: list[int] = []
-    if reach is not None:
-        for player in (0, 1):
-            reach_squares.extend(int(sq in reach.squares[player]) for sq in range(n_squares))
-
-    # How far each piece is from a winning square, from every square, on an empty board.
-    # Compiled by `compile.py` because it is a fact about the rules; flattened here for
-    # the same reason everything else is, and read once per evaluated node.
-    goal_distance = [
-        distance
-        for player in spec.goal_distance
-        for per_type in player
-        for distance in per_type
-    ]
-    # Q708 (F1): the same, from each goal square alone, [player][goal][type][square] in
-    # the goals' ascending square order. Empty unless a priced race gives a side more
-    # than one goal square, so no other ruleset's tables move.
-    goal_distance_each = [
-        distance
-        for player in spec.goal_distance_each
-        for per_goal in player
-        for per_type in per_goal
-        for distance in per_type
-    ]
-
-    # --- Turn length ---
-    # Sent as a table of turn lengths plus the length everything past it settles to, so
-    # the core reads an index rather than reimplementing the ramp.
-    turn = spec.turn
-
-    # --- Territory ---
-    territory = spec.territory
-
-    # --- Scoring ---
-    # The declared piece values rather than the evaluator's derived ones. A rule has to
-    # be objective: the evaluator is an agent's opinion about what a piece is worth, and
-    # two agents holding different opinions must not disagree about who won.
-    scoring = spec.scoring
-    scoring_squares: list[int] = []
-    if scoring is not None and scoring.squares is not None:
-        for player in (0, 1):
-            scoring_squares.extend(
-                int(sq in scoring.squares[player]) for sq in range(n_squares)
-            )
-
-    # --- Strike ---
-    # Three fields, not five, and the two that are missing are the point. The chain, the
-    # ``immune`` list and the choice of ``demote`` or ``promote`` are all resolved by the
-    # compiler into one array -- ``strike_to[victim] `` is the type the victim becomes,
-    # or -1 for it leaving the board -- so an effect flag and an immunity mask crossing
-    # beside it would be two more places the same rule is stated and could be stated
-    # differently. What a rule *means* is interpreted once, and this is what that costs
-    # when it is done properly: the boundary carries the answer, not the question.
-    #
-    # Schema 10 (Q19a) makes it three *or* five, and which one it is says something. The
-    # compiled rule is always the general contact table -- (mover, target) -> (what the
-    # mover becomes, what the target becomes) -- and `compact_to` asks whether that table
-    # can be said keyed by the target alone. Where it can, the schema-6 array crosses and
-    # the two contact tables stay empty; where it cannot, the array stays empty and the
-    # two tables cross. So a ruleset written before schema 10 sends exactly the bytes it
-    # always did, and the core is handed one shape either way because `tables.rs` widens
-    # the compact form on the way in. The inert default is what keeps every earlier
-    # fingerprint still, the way `npc_next` and `entry_promotion` do.
-    strike = spec.strike
-    compact = strike.compact_to if strike else None
-    strike_to = list(compact) if compact is not None else []
-    contact_onto_to = [] if compact is not None or not strike else list(strike.onto_to)
-    contact_mover_to = [] if compact is not None or not strike else list(strike.mover_to)
-    # Schema 11 (Q19b): the friendly-target tables, empty unless a link says `own`.
-    contact_own_onto_to = list(strike.own_onto_to) if strike else []
-    contact_own_mover_to = list(strike.own_mover_to) if strike else []
-    # Schema 12 (Q20): the landing list per (player, square), flat with an index, the
-    # explosion's shape. Empty unless the position is `choose`.
-    strike_landing: list[int] = []
-    strike_landing_index: list[int] = []
-    if strike is not None and strike.landing:
-        strike_landing_index.append(0)
-        for per_square in strike.landing:
-            for candidates in per_square:
-                strike_landing.extend(candidates)
-                strike_landing_index.append(len(strike_landing))
-    # Schema 17 (Q540): the rebirth table under `home` and the side-switch table, both
-    # empty unless the rule uses them -- the inert default again.
-    strike_rebirth = list(strike.rebirth) if strike else []
-    contact_mover_flips = [int(flip) for flip in strike.mover_flips] if strike else []
-    # TC2 (`docs/plan-turncoat.md` §6): a piece that changes sides on the board keeps its
-    # heading, `[from_owner * n_facings + facing] -> facing` for the other owner. Crossed only
-    # where a facing game can change a piece's side (a switch, or TC6's bribe), so every other
-    # game's tables and fingerprint stay where they were.
-    bribes = spec.purse is not None and spec.purse.bribes
-    coat_facing = (
-        [facing for row in spec.coat_facing for facing in row]
-        if (contact_mover_flips or bribes) and spec.has_facing else []
-    )
-
-    # --- Facing (schema 8) ---
-    # Two arrays, both per piece type, and both empty for a spec in which nothing turns
-    # -- which is the inert default that keeps every earlier ruleset's fingerprint still.
-    # `n_frames` already says how many readings the movement tables hold; what the core
-    # cannot get from it is *which* of them one piece may be in, and which one it starts
-    # in. A piece with two axes on a four-facing board turns by two indices at a time,
-    # and the core divides `n_facings` by `facing_axes` once to find that out.
-    facing_axes = list(spec.facing_axes) if spec.has_facing else []
-    facing_initial = list(spec.facing_initial) if spec.has_facing else []
-    # Schema 25 (Q869): per type, 1 where a move may turn it. Empty -- every facing piece
-    # turns -- unless some facing says `turns: false`, so no earlier fingerprint moves.
-    facing_turns = [int(turns) for turns in spec.facing_turns]
-
-    # --- Wild pieces (schema 9) ---
-    # Two board-sized tables and a flag, and that is the whole rule at the boundary: the
-    # square each wild piece steps to next, and what taking the one that walks each
-    # square is worth. Which wild piece stands where is on the board; where it may
-    # threaten is the third block of attack sources above; which types it may eat is the
-    # capture matrix it already shares with every player's piece. Empty when nothing is
-    # wild, so no earlier ruleset's fingerprint moves.
-    npcs = spec.npcs
-    npc_next = list(npcs.next) if npcs is not None else []
-    npc_bounty = [float(worth) for worth in npcs.bounty] if npcs is not None else []
-    # Generation 36 (N1): each respawning half as ``[every, n_starts, starts...]``, flat. The
-    # core walks the route off ``npc_next`` and reads the piece off the opening board. Empty
-    # unless an entry comes back.
-    npc_respawn = [
-        value
-        for every, starts in (npcs.respawn if npcs is not None else ())
-        for value in (every, len(starts), *starts)
-    ]
-    # Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): the pounce tables, every one empty unless an
-    # entry pounces. The reach is ``[target, path_start, path_len, prefix_len, screens]`` per
-    # entry into ``pounce_paths``, indexed per (type, origin); ``npc_piece`` (each square's route
-    # type, -1 off every route) crosses only beside a pounce, where a wild piece can stand on a
-    # route that is not its own.
-    pounce = spec.pounce
-    pounce_reach_index: list[int] = []
-    pounce_reach: list[int] = []
-    pounce_paths: list[int] = []
-    if pounce is not None:
-        pounce_reach_index.append(0)
-        for per_type in pounce.reach:
-            for origin in range(spec.n_squares):
-                for target, prefix, window, screens in per_type[origin] if per_type else ():
-                    pounce_reach.extend(
-                        (target, len(pounce_paths), len(prefix) + len(window), len(prefix), screens)
-                    )
-                    pounce_paths.extend(prefix)
-                    pounce_paths.extend(window)
-                pounce_reach_index.append(len(pounce_reach) // 5)
-
-    # --- Promotion on entering play (schema 9) ---
-    # One table, `[player][piece_type][square]` flattened in that order, holding the
-    # type a piece that *enters play* on that square becomes, or -1. The compiler has
-    # already chosen the target and already decided that `mandatory` does not apply, so
-    # what crosses is the answer and not the rule -- the strike's `strike_to` shape.
-    # Empty when the flag is off, so no earlier ruleset's fingerprint moves.
-    entering = spec.entry_promotion
-    entry_promotion = (
-        [
-            becomes
-            for per_type in entering.becomes
-            for row in per_type
-            for becomes in row
-        ]
-        if entering is not None
-        else []
-    )
-
-    # --- Portals (schema 19; schema 21's map and filters) ---
-    # Per type: the end a piece that goes in here comes out of (-1 for a way out only and
-    # for a piece that is not a portal), the end's group (-1 for a piece that is not a
-    # portal), per player the mask of declared types that may go in by it, and which
-    # players may move it (a bit per player). The exit table per
-    # player, square and direction, and the momentum masks parallel to the three movement
-    # tables' landings and to the attack sources. Every one is empty and the flag false
-    # without a portal, so no earlier ruleset's fingerprint moves.
-    portals = spec.portals
-    portal_dest: list[int] = []
-    portal_group: list[int] = []
-    portal_admits: list[int] = []
-    portal_movers: list[int] = []
-    portal_exits: list[int] = []
-    leap_dirs: list[int] = []
-    slide_dirs: list[int] = []
-    hop_dirs: list[int] = []
-    attack_dirs: list[int] = []
-    # Schema 20 (Q807): per type, may it not go straight back; the bar's Zobrist keys.
-    # Empty unless some pair sets ``no_straight_back``, so no schema 19 game's tables move.
-    portal_no_back: list[int] = []
-    zobrist_portal_bar: list[int] = []
-    if portals is not None:
-        portal_dest = list(portals.dest)
-        portal_group = [-1] * len(portals.dest)
-        for piece_type, group in zip(portals.end_types, portals.group_of, strict=True):
-            portal_group[piece_type] = group
-        portal_no_back = [int(flag) for flag in portals.no_back]
-        zobrist_portal_bar = list(portals.zobrist_bar)
-        portal_admits = [mask for masks in portals.admits for mask in masks]
-        portal_movers = [sum(1 << player for player in who) for who in portals.movers]
-        portal_exits = [
-            square for player in portals.exits for row in player for square in row
-        ]
-        leap_dirs = _flatten_dirs(portals.leap_dirs, n_frames, n_types, n_squares)
-        slide_dirs = _flatten_dirs(portals.slide_dirs, n_frames, n_types, n_squares)
-        hop_dirs = _flatten_dirs(portals.hop_dirs, n_frames, n_types, n_squares)
-        attack_dirs = [
-            bits for owner in portals.attack_dirs for per_square in owner for bits in per_square
-        ]
-
-    # --- Folds (schema 22; schema 24 cut them to this, `docs/archive/plan-portals-2.md` §3R.4) ---
-    # Per type whether it is a fold end; per end where it starts (-1 for a momentum end); the
-    # fold's Zobrist keys. Every one empty without a fold, so no earlier ruleset's
-    # fingerprint moves.
-    folds = portals.folds if portals is not None else None
-    portal_kind: list[int] = []
-    fold_starts: list[int] = []
-    zobrist_fold: list[int] = []
-    if portals is not None and folds is not None:
-        portal_kind = [int(portals.is_fold(piece_type)) for piece_type in range(n_types)]
-        fold_starts = list(folds.starts)
-        zobrist_fold = list(folds.zobrist)
-
-    # --- Extinction ---
-    extinction = spec.extinction
-
-    # --- Immobile squares ---
-    immobile_squares = [
-        int(square in spec.immobile_squares[frame][piece_type])
-        for frame in range(n_frames)
-        for piece_type in range(n_types)
-        for square in range(n_squares)
-    ]
-
-    # --- Bare royal ---
-    # Stated from the point of view of the side reduced to royalty alone: shatranj's
-    # rule is a loss for them. "off" is carried separately from the result because
-    # "draw" is one of the three answers ``ENDING_RESULTS`` promises and cannot double
-    # as the off switch -- which is exactly the bug a boolean produced here.
-    bare_royal_result = _ENDING_RESULT[spec.bare_royal] if spec.bare_royal else 0
-
     return {
-        "width": spec.width,
-        "height": spec.height,
-        "n_squares": n_squares,
-        "n_types": n_types,
-        # How many readings of the movement vectors the tables hold. Two today, one per
-        # player. Sits in `_INERT_DEFAULTS` at 2, so adding it moved no ruleset's tables
-        # fingerprint -- which is item 2's canonicalisation doing exactly the job it was
-        # built for, on the first field to arrive after it.
-        "n_frames": n_frames,
-        "royal_types": list(spec.royal_types),
-        "leap_index": leap_index,
-        "leap_refs": leap_refs,
-        "leap_squares": leap_squares,
-        "leap_modes": leap_modes,
-        "slide_index": slide_index,
-        "slide_refs": slide_refs,
-        "slide_squares": slide_squares,
-        "slide_modes": slide_modes,
-        "hop_index": hop_index,
-        "hop_refs": hop_refs,
-        "hop_squares": hop_squares,
-        "hop_modes": hop_modes,
-        "sweep_index": sweep_index,
-        "sweep_refs": sweep_refs,
-        "sweep_squares": sweep_squares,
-        "sweep_modes": sweep_modes,
-        "has_sweep": has_sweep,
-        "attack_index": attack_index,
-        "attack_srcs": attack_srcs,
-        "attack_paths": attack_paths,
-        "attack_sweep": attack_sweep,
-        "attack_path_modes": attack_path_modes,
-        "dedup": dedup,
-        "capture_allowed": capture_allowed,
-        "has_capture_matrix": spec.has_capture_matrix,
-        "has_hop_attacks": spec.has_hop_attacks,
-        "initial_board": spec.initial_board,
-        "initial_unmoved": spec.initial_unmoved.to_bytes(32, "little"),
-        "win": spec.win,
-        "stalemate": spec.stalemate,
-        "checkmate_result": spec.checkmate,
-        "max_plies": spec.max_plies,
-        "repetition_draw": spec.repetition_draw,
-        "no_progress_draw": spec.no_progress_draw,
-        # Which types can never return to a square they left, so that a move by one is
-        # progress and clears both clocks above. Derived from the movement tables by
-        # `compile._one_way_types`; sent as the list of types, which `type_flags` turns
-        # back into a flag per type, exactly as `promo_piece_types` is. It used to be
-        # `ep_type` doing this job under an en passant name -- see Q113.
-        "one_way_types": sorted(spec.one_way_types),
-        "ep_type": ep_type,
-        "ep_pass_flat": ep_pass_flat,
-        "ep_pass_index": ep_pass_index,
-        # Promotion tables
-        "promo_squares": promo_squares,
-        "promo_targets_flat": promo_targets_flat,
-        "promo_targets_index": promo_targets_index,
-        "promo_optional": promo_optional,
-        "promo_piece_types": promo_piece_types,
-        "promo_on_leaving": promo_on_leaving,
-        "promo_only_lost": promo_only_lost,
-        "promo_opening": promo_opening,
-        # Castling
-        "castle_king": castling.king_type if castling else -1,
-        "castle_rook": castling.rook_type if castling else -1,
-        "castle_steps": castling.king_steps if castling else 0,
-        "castle_king_files": (
-            list(castling.king_files) if castling and castling.king_files else [-1, -1]
-        ),
-        "castle_rook_files": (
-            list(castling.rook_files) if castling and castling.rook_files else [-1, -1]
-        ),
-        # Schema 2 runtime features
-        "multi_royal": spec.multi_royal,
-        "demotions": list(spec.demotions),
-        "must_capture": spec.must_capture,
-        "forbid_check": spec.forbid_check,
-        "forbid_immobility": spec.forbid_immobility,
-        "royal_facing_forbidden": spec.royal_facing_forbidden,
-        "facing_index": facing_index,
-        "facing_entries": facing_entries,
-        "facing_paths": facing_paths,
-        "check_limit": spec.check_limit,
-        "has_bare_royal": spec.bare_royal != "",
-        "bare_royal": bare_royal_result,
-        "immobile_squares": immobile_squares,
-        # Explosion
-        "has_explosion": explosion is not None,
-        "explosion_immune": explosion_immune,
-        "explosion_blast": explosion_blast,
-        "explosion_blast_index": explosion_blast_index,
-        "explosion_by": explosion_by,
-        "explosion_of": explosion_of,
-        # Drops
         "has_drops": drops is not None,
         "drops_from_captures": drops.from_captures if drops else False,
         "drops_regions": drops_regions,
@@ -770,7 +689,33 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # Schema 18 (Q785): drop either face, each slot's other face or -1. Empty for
         # every game before it.
         "drops_faces": list(drops.faces) if drops else [],
-        # Reach
+    }
+
+
+_REACH_INERT: dict[str, Any] = {
+    "has_reach": False,
+    "reach_piece_type": -1,
+    "reach_squares": [],
+    "reach_result": 1,
+    "reach_safe": False,
+    # Schema 18 (Q786). False unless the reach rule says `on: "leave"`.
+    "reach_leaves": False,
+    "goal_distance": [],
+    "goal_diameter": 1,
+    "goal_distance_each": [],
+}
+
+
+def _reach_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The goal squares, the reach rule's terms, and each piece's distance to a goal."""
+    reach = spec.reach
+    reach_squares: list[int] = []
+    if reach is not None:
+        for player in (0, 1):
+            reach_squares.extend(
+                int(sq in reach.squares[player]) for sq in range(spec.n_squares)
+            )
+    return {
         "has_reach": reach is not None,
         "reach_piece_type": reach.piece_type if reach else -1,
         "reach_squares": reach_squares,
@@ -778,205 +723,286 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "reach_safe": reach.safe if reach else False,
         # Schema 18 (Q786): win by leaving a goal square. False for every game before it.
         "reach_leaves": reach.leaves if reach else False,
-        "goal_distance": goal_distance,
+        # How far each piece is from a winning square, from every square, on an empty
+        # board. Compiled by `compile.py` because it is a fact about the rules; flattened
+        # here for the same reason everything else is, and read once per evaluated node.
+        "goal_distance": [
+            distance
+            for player in spec.goal_distance
+            for per_type in player
+            for distance in per_type
+        ],
         "goal_diameter": spec.goal_diameter,
-        "goal_distance_each": goal_distance_each,
-        # Extinction
+        # Q708 (F1): the same, from each goal square alone, [player][goal][type][square] in
+        # the goals' ascending square order. Empty unless a priced race gives a side more
+        # than one goal square, so no other ruleset's tables move.
+        "goal_distance_each": [
+            distance
+            for player in spec.goal_distance_each
+            for per_goal in player
+            for per_type in per_goal
+            for distance in per_type
+        ],
+    }
+
+
+_TURN_INERT: dict[str, Any] = {
+    "has_turn": False,
+    "turn_moves": 1,
+    "turn_ramp": [],
+}
+
+
+def _turn_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Sent as a table of turn lengths plus the length everything past it settles to, so
+    the core reads an index rather than reimplementing the ramp."""
+    turn = spec.turn
+    return {
         "has_turn": turn is not None,
         "turn_moves": turn.moves if turn else 1,
         "turn_ramp": list(turn.lengths) if turn else [],
+    }
+
+
+_TERRITORY_INERT: dict[str, Any] = {
+    "has_territory": False,
+    "territory_repaints": False,
+    "territory_win_at": 0,
+}
+
+
+def _territory_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Whether squares take a colour, whether it repaints, and the count that wins."""
+    territory = spec.territory
+    return {
         "has_territory": territory is not None,
         "territory_repaints": territory.mode == "repaint" if territory else False,
         "territory_win_at": territory.win_at if territory else 0,
+    }
+
+
+_SCORING_INERT: dict[str, Any] = {
+    "has_scoring": False,
+    "scoring_count": 0,
+    "scoring_squares": [],
+}
+
+
+def _scoring_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """What a scoring rule counts, and the squares it counts on."""
+    scoring = spec.scoring
+    scoring_squares: list[int] = []
+    if scoring is not None and scoring.squares is not None:
+        for player in (0, 1):
+            scoring_squares.extend(
+                int(sq in scoring.squares[player]) for sq in range(spec.n_squares)
+            )
+    return {
         "has_scoring": scoring is not None,
         "scoring_count": _SCORING_COUNT.get(scoring.count, 0) if scoring else 0,
         "scoring_squares": scoring_squares,
-        "piece_values": [float(v) for v in spec.piece_values],
-        # Strike
-        # Facing
-        "facing_axes": facing_axes,
-        "facing_initial": facing_initial,
-        "facing_turns": facing_turns,
-        "coat_facing": coat_facing,
+    }
+
+
+_STRIKE_INERT: dict[str, Any] = {
+    "has_strike": False,
+    "strike_position": 1,
+    "strike_to": [],
+    "contact_onto_to": [],
+    "contact_mover_to": [],
+    # Schema 11 (Q19b). Empty unless a link says `own`, so no earlier fingerprint moves.
+    "contact_own_onto_to": [],
+    "contact_own_mover_to": [],
+    # Schema 12 (Q20). Empty unless the position is `choose`.
+    "strike_landing": [],
+    "strike_landing_index": [],
+    # Schema 17 (Q540). Empty unless the position is `home`, or a type switches sides.
+    "strike_rebirth": [],
+    "contact_mover_flips": [],
+}
+
+
+def _strike_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """What a capture leaves behind: the strike, and schema 10's contact table.
+
+    Three fields, not five, and the two that are missing are the point. The chain, the
+    ``immune`` list and the choice of ``demote`` or ``promote`` are all resolved by the
+    compiler into one array -- ``strike_to[victim]`` is the type the victim becomes, or -1
+    for it leaving the board -- so an effect flag and an immunity mask crossing beside it
+    would be two more places the same rule is stated and could be stated differently. What
+    a rule *means* is interpreted once, and this is what that costs when it is done
+    properly: the boundary carries the answer, not the question.
+
+    Schema 10 (Q19a) makes it three *or* five, and which one it is says something. The
+    compiled rule is always the general contact table -- (mover, target) -> (what the mover
+    becomes, what the target becomes) -- and `compact_to` asks whether that table can be
+    said keyed by the target alone. Where it can, the schema-6 array crosses and the two
+    contact tables stay empty; where it cannot, the array stays empty and the two tables
+    cross. So a ruleset written before schema 10 sends exactly the bytes it always did, and
+    the core is handed one shape either way because `tables.rs` widens the compact form on
+    the way in. The inert default is what keeps every earlier fingerprint still, the way
+    `npc_next` and `entry_promotion` do.
+    """
+    strike = spec.strike
+    compact = strike.compact_to if strike else None
+    # Schema 12 (Q20): the landing list per (player, square), flat with an index, the
+    # explosion's shape. Empty unless the position is `choose`.
+    strike_landing: list[int] = []
+    strike_landing_index: list[int] = []
+    if strike is not None and strike.landing:
+        strike_landing_index.append(0)
+        for per_square in strike.landing:
+            for candidates in per_square:
+                strike_landing.extend(candidates)
+                strike_landing_index.append(len(strike_landing))
+    return {
         "has_strike": strike is not None,
         "strike_position": _STRIKE_POSITION[strike.position] if strike else 1,
-        "strike_to": strike_to,
-        "contact_onto_to": contact_onto_to,
-        "contact_mover_to": contact_mover_to,
-        "contact_own_onto_to": contact_own_onto_to,
-        "contact_own_mover_to": contact_own_mover_to,
+        "strike_to": list(compact) if compact is not None else [],
+        "contact_onto_to": [] if compact is not None or not strike else list(strike.onto_to),
+        "contact_mover_to": (
+            [] if compact is not None or not strike else list(strike.mover_to)
+        ),
+        # Schema 11 (Q19b): the friendly-target tables, empty unless a link says `own`.
+        "contact_own_onto_to": list(strike.own_onto_to) if strike else [],
+        "contact_own_mover_to": list(strike.own_mover_to) if strike else [],
         "strike_landing": strike_landing,
         "strike_landing_index": strike_landing_index,
-        "strike_rebirth": strike_rebirth,
-        "contact_mover_flips": contact_mover_flips,
-        # Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck, ``[type, by_moves, squares...]``,
-        # empty without one.
+        # Schema 17 (Q540): the rebirth table under `home` and the side-switch table, both
+        # empty unless the rule uses them -- the inert default again.
+        "strike_rebirth": list(strike.rebirth) if strike else [],
+        "contact_mover_flips": [int(flip) for flip in strike.mover_flips] if strike else [],
+    }
+
+
+_FACING_INERT: dict[str, Any] = {
+    "facing_axes": [],
+    "facing_initial": [],
+    "facing_turns": [],
+    # TC2. Empty unless a facing game switches sides.
+    "coat_facing": [],
+}
+
+
+def _facing_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Schema 8's facing.
+
+    Two arrays, both per piece type, and both empty for a spec in which nothing turns --
+    which is the inert default that keeps every earlier ruleset's fingerprint still.
+    `n_frames` already says how many readings the movement tables hold; what the core
+    cannot get from it is *which* of them one piece may be in, and which one it starts in.
+    A piece with two axes on a four-facing board turns by two indices at a time, and the
+    core divides `n_facings` by `facing_axes` once to find that out.
+    """
+    # TC2 (`docs/plan-turncoat.md` §6): a piece that changes sides on the board keeps its
+    # heading, `[from_owner * n_facings + facing] -> facing` for the other owner. Crossed
+    # only where a facing game can change a piece's side (a switch, or TC6's bribe), so
+    # every other game's tables and fingerprint stay where they were.
+    switches = spec.strike is not None and bool(spec.strike.mover_flips)
+    bribes = spec.purse is not None and spec.purse.bribes
+    return {
+        "facing_axes": list(spec.facing_axes) if spec.has_facing else [],
+        "facing_initial": list(spec.facing_initial) if spec.has_facing else [],
+        # Schema 25 (Q869): per type, 1 where a move may turn it. Empty -- every facing
+        # piece turns -- unless some facing says `turns: false`, so no earlier fingerprint
+        # moves.
+        "facing_turns": [int(turns) for turns in spec.facing_turns],
+        "coat_facing": (
+            [facing for row in spec.coat_facing for facing in row]
+            if (switches or bribes) and spec.has_facing else []
+        ),
+    }
+
+
+# Generation 42 (N4b). Empty unless the spec has a duck.
+_DUCK_INERT: dict[str, Any] = {"duck": []}
+
+
+def _duck_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck, ``[type, by_moves,
+    squares...]``, empty without one."""
+    return {
         "duck": (
             [spec.duck.piece_type, int(spec.duck.by_moves), *spec.duck.squares]
             if spec.duck is not None else []
         ),
-        # TC1 (`docs/plan-turncoat.md` §3.2): each type's control kind in the third owner's
-        # block (`compile.ControlRule`), empty when nobody owns anything. Derived wholly from
-        # the wild, duck, portal and neutral keys, so the fingerprint leaves it out (`_DERIVED`).
-        "control_kind": list(spec.control.kind) if spec.control is not None else [],
-        # TC3 (`docs/plan-turncoat.md` §4): pieces nobody owns from the setup. Each type's
-        # neutral kind (`CONTROL_NEUTRAL` stands, `CONTROL_MAJORITY` moved by the majority
-        # holder, 0 otherwise), and the majority types' neighbours, flat by ``type *
-        # n_squares + square`` (`neighbour_index` the offsets, one past the last). All empty
-        # without a nobody's placement.
-        **_neutral_fields(spec),
-        # TC4 (`docs/plan-turncoat.md` §5.1, §5.2): each type's bounty, empty when no type
-        # carries one; the purse's opening amount, -1 without a purse, and its keys
-        # (`[player * (PURSE_MAX + 1) + amount]`), empty without one.
-        "piece_bounty": list(spec.bounty),
-        "purse_start": spec.purse.start if spec.purse is not None else -1,
-        "zobrist_purse": list(spec.purse.zobrist) if spec.purse is not None else [],
-        # TC5 (§5.4): the market, empty without a purse: each entry's type and price, and
-        # where a bought one may stand, flat by ``player * n_market + entry``
-        # (`purse_square_index` the offsets, one past the last).
-        **_market_fields(spec),
-        # Wild pieces
-        "has_npcs": npcs is not None,
-        "npc_next": npc_next,
-        "npc_bounty": npc_bounty,
-        # Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): the respawning halves and their
-        # clocks' keys, both empty unless an entry comes back.
-        "npc_respawn": npc_respawn,
-        "zobrist_respawn": list(spec.zobrist_respawn),
-        # Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): the lines' way back and the heading's
-        # keys, both empty unless an entry turns back.
-        "npc_prev": list(npcs.prev) if npcs is not None else [],
-        "zobrist_heading": list(spec.zobrist_heading),
-        # Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): the pounce tables, all empty unless an
-        # entry pounces.
-        "npc_piece": list(npcs.piece) if npcs is not None and pounce is not None else [],
-        "pounce_kind": list(pounce.kind) if pounce is not None else [],
-        "pounce_value_rank": list(pounce.value_rank) if pounce is not None else [],
-        "pounce_reading": [
-            rank for player in pounce.reading_rank for rank in player
-        ] if pounce is not None else [],
-        "pounce_distance": list(pounce.distance) if pounce is not None else [],
-        "pounce_reach_index": pounce_reach_index,
-        "pounce_reach": pounce_reach,
-        "pounce_paths": pounce_paths,
-        # Generation 41 (N3d, `docs/archive/plan-npc.md` §4.5): the cap per type, empty unless a type
-        # splits.
-        "pounce_split": list(pounce.split) if pounce is not None else [],
-        # Promotion on entering play
-        "entry_promotion": entry_promotion,
-        # Portals (schema 19)
-        "has_portals": portals is not None,
-        "portal_dest": portal_dest,
-        "portal_group": portal_group,
-        "portal_admits": portal_admits,
-        "portal_movers": portal_movers,
-        "portal_exits": portal_exits,
-        "leap_dirs": leap_dirs,
-        "slide_dirs": slide_dirs,
-        "hop_dirs": hop_dirs,
-        "attack_dirs": attack_dirs,
-        # Portals' straight-back bar (schema 20)
-        "portal_no_back": portal_no_back,
-        "zobrist_portal_bar": zobrist_portal_bar,
-        # Fold portals (schema 22)
-        "portal_kind": portal_kind,
-        "fold_starts": fold_starts,
-        "zobrist_fold": zobrist_fold,
-        "has_extinction": extinction is not None,
-        "extinction_types": list(extinction.piece_types) if extinction else [],
-        "extinction_any_piece": extinction.any_piece if extinction else False,
-        "extinction_min_count": extinction.min_count if extinction else 0,
-        "extinction_result": _ENDING_RESULT[extinction.result] if extinction else -1,
-        # Schema 18 (Q783): each listed type counted on its own. False is the summed
-        # count every game before it makes.
-        "extinction_per_type": bool(extinction.per_type) if extinction else False,
-        # Schema 27 (Q936): each side's counted types, apart, under `"per_type": "own"`.
-        # Empty under every other spelling, where the core reads `extinction_types` for
-        # both sides, so no earlier ruleset's fingerprint moves.
-        "extinction_side_types": (
-            [list(types) for types in extinction.side_types]
-            if extinction is not None and extinction.own
-            else []
-        ),
-        # Schema 26 (Q918a): simultaneous moves. All three empty for an alternating game.
-        # `sim_rule` is `[tie, initiative_start, void_run, collision_strikes]`;
-        # `sim_collision` the `beats` matrix, `[a * n_types + b]`; `zobrist_sim` the
-        # initiative's key, then the standoff's squares (player 0's, then player 1's), then
-        # its states.
-        "sim_rule": (
-            [
-                sim.tie, sim.initiative_start, sim.void_run, int(sim.collision_strikes),
-            ] if (sim := spec.simultaneous) is not None else []
-        ),
-        "sim_collision": (
-            [int(flag) for flag in spec.simultaneous.collision_allowed]
-            if spec.simultaneous is not None else []
-        ),
-        "zobrist_sim": (
-            [
-                spec.simultaneous.zobrist_initiative,
-                *spec.simultaneous.zobrist_squares,
-                *spec.simultaneous.zobrist_states,
-            ] if spec.simultaneous is not None else []
-        ),
-        # Schema 27 (Q942a): the chase switches, `[0, swap_collides, both_score]`, empty
-        # unless a switch is on. The first slot was schema 27's `rest`, which schema 29
-        # (Q983a) moved to `piece_rest` below; it is always 0 now and kept only so that no
-        # game with `swap` or `both` and no rest has its tables fingerprint moved.
-        "sim_chase": (
-            [0, int(sim.swap_collides), int(sim.both_score)]
-            if (sim := spec.simultaneous) is not None and sim.chases else []
-        ),
-        # Schema 29 (Q983a, `docs/plan-rest.md` §4.2, §4.3): each type's rest, `[type]`, and
-        # one key per (turns left, player, square), `((left - 1) * 2 + player) * n_squares
-        # + square`. Both empty unless a piece declares a rest, in any game, alternating or
-        # in rounds, so no other game's fingerprint moves.
-        "piece_rest": list(spec.rest),
-        "zobrist_rest": list(spec.zobrist_rest),
-        # Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.3): the sight's reverse table, shaped
-        # as the attack sources -- an index per (player, affected type, square), five words
-        # per source (origin, piece value, effect bit, path start, path length) and the flat
-        # paths -- and its three flags, `[has_shield, bears_on_check, has_restraint]`. All four
-        # empty unless a type declares a sight, so no other game's fingerprint moves.
-        **_sight_tables(spec),
-        # Schema 28 (Q943a): each type's speed, `[type]`; empty unless a piece declares one,
-        # so the core never orders a round and no earlier fingerprint moves.
-        "sim_speed": (
-            list(spec.simultaneous.speed) if spec.simultaneous is not None else []
-        ),
-        # Schema 27 (Q935a): each player's spy types, two lists, and whether the initiative
-        # is dealt to the announcer at the first announced round (`plan-spy.md` E10). Empty
-        # and false in every game without a spy, so no earlier fingerprint moves.
-        "spy_types": [list(types) for types in spec.spy.types] if spec.spy is not None else [],
-        "spy_deal": bool(spec.simultaneous is not None and spec.simultaneous.deal_initiative),
-        # Zobrist
-        "zobrist_pieces": [
-            value for row in spec.zobrist_pieces for value in row
-        ],
-        "zobrist_side": spec.zobrist_side,
-        "zobrist_ep": list(spec.zobrist_ep),
-        "zobrist_colour": [value for row in spec.zobrist_colour for value in row],
-        "zobrist_turn": list(spec.zobrist_turn),
     }
 
 
-# Keys whose value is the same for every ruleset that does not reach for the rule they
-# belong to, and what that value is. Dropped before a ruleset's tables are fingerprinted,
-# which is the whole reason the table exists: `measurement.tables_fingerprint` asks *what
-# the compiler produced for this game*, and a new key added here at its inert default
-# would otherwise change that answer for all forty-seven of them at once and mark every
-# stored measurement stale for a rule none of them uses.
-#
-# This is `complexity._RULE_ACTIVE` one layer down. That table decides whether a player
-# has to be *taught* a rule; this one decides whether the core is *told* one. Both answer
-# "is this rule here at all", and both exist because a default spelled out loud has to
-# compile to the game that was already there.
-#
-# Only a *constant* default belongs here. Several keys are an array of zeros as long as
-# the board -- `promo_squares`, `immobile_squares`, `ep_pass_index` -- and those stay in
-# the fingerprint: their default is not one value, so dropping them would need a rule
-# about lengths rather than about values, and they are already in every stored basis.
-def _market_fields(spec: CompiledSpec) -> dict[str, list[int]]:
+def _control_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """TC1 (`docs/plan-turncoat.md` §3.2): each type's control kind in the third owner's
+    block (`compile.ControlRule`), empty when nobody owns anything. Derived wholly from the
+    wild, duck, portal and neutral keys, so the fingerprint leaves it out (`_DERIVED`)."""
+    return {"control_kind": list(spec.control.kind) if spec.control is not None else []}
+
+
+# TC3 (`docs/plan-turncoat.md` §4). Empty unless a placement is nobody's.
+_NEUTRAL_INERT: dict[str, Any] = {
+    "neutral_control": [],
+    "neighbour_index": [],
+    "neighbour_squares": [],
+}
+
+
+def _neutral_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """TC3's boundary keys (`compile.NeutralRule`), empty without a nobody's placement.
+
+    Pieces nobody owns from the setup: each type's neutral kind (`CONTROL_NEUTRAL` stands,
+    `CONTROL_MAJORITY` moved by the majority holder, 0 otherwise), and the majority types'
+    neighbours, flat by ``type * n_squares + square`` (`neighbour_index` the offsets, one
+    past the last).
+    """
+    neutrals = spec.neutrals
+    if neutrals is None:
+        return {"neutral_control": [], "neighbour_index": [], "neighbour_squares": []}
+    index = [0]
+    squares: list[int] = []
+    for piece_type in range(spec.n_types):
+        per_square = neutrals.neighbours[piece_type]
+        for square in range(spec.n_squares):
+            squares.extend(per_square[square] if per_square else ())
+            index.append(len(squares))
+    return {
+        "neutral_control": list(neutrals.kind),
+        "neighbour_index": index if neutrals.has_majority else [],
+        "neighbour_squares": squares,
+    }
+
+
+# TC4. Empty unless a type carries a bounty; -1 and empty without a purse.
+_PURSE_INERT: dict[str, Any] = {
+    "piece_bounty": [],
+    "purse_start": -1,
+    "zobrist_purse": [],
+}
+
+
+def _purse_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """TC4 (`docs/plan-turncoat.md` §5.1, §5.2): each type's bounty, empty when no type
+    carries one; the purse's opening amount, -1 without a purse, and its keys
+    (`[player * (PURSE_MAX + 1) + amount]`), empty without one."""
+    return {
+        "piece_bounty": list(spec.bounty),
+        "purse_start": spec.purse.start if spec.purse is not None else -1,
+        "zobrist_purse": list(spec.purse.zobrist) if spec.purse is not None else [],
+    }
+
+
+_MARKET_INERT: dict[str, Any] = {
+    # TC5. Empty without a purse.
+    "purse_market": [],
+    "purse_price": [],
+    "purse_square_index": [],
+    "purse_squares": [],
+    # TC6. Empty unless something can be hired or bribed.
+    "purse_hire": [],
+    "purse_bribe": [],
+    "purse_neighbour_index": [],
+    "purse_neighbour_squares": [],
+}
+
+
+def _market_fields(spec: CompiledSpec) -> dict[str, Any]:
     """TC5 (`docs/plan-turncoat.md` §5.4): the market's boundary keys, all empty without a
     purse. ``purse_squares[purse_square_index[k]:purse_square_index[k + 1]]`` are the
     squares entry ``k % n_market`` may be placed on by player ``k // n_market``."""
@@ -1017,122 +1043,7 @@ def _market_fields(spec: CompiledSpec) -> dict[str, list[int]]:
     }
 
 
-_INERT_DEFAULTS: dict[str, Any] = {
-    "n_frames": 2,
-    "facing_axes": [],
-    "facing_initial": [],
-    "facing_turns": [],
-    "has_capture_matrix": False,
-    "has_hop_attacks": False,
-    "ep_type": -1,
-    # Empty is "every piece can come back", which is a real reading and the one every
-    # ruleset whose pieces all turn or retrace has -- so such a spec's bytes do not move
-    # for this field existing.
-    "one_way_types": [],
-    "ep_pass_flat": [],
-    "promo_targets_flat": [],
-    "promo_piece_types": [],
-    # Schema 15 (Q452). Empty unless a promoting piece can leave its zone under the flag.
-    "promo_on_leaving": [],
-    # Schema 18 (Q783). Empty unless an entry says `only_lost`.
-    "promo_only_lost": [],
-    "promo_opening": [],
-    "castle_king": -1,
-    "castle_rook": -1,
-    "castle_steps": 0,
-    "castle_king_files": [-1, -1],
-    "castle_rook_files": [-1, -1],
-    "multi_royal": False,
-    "must_capture": False,
-    "forbid_check": False,
-    "forbid_immobility": False,
-    "royal_facing_forbidden": False,
-    "facing_index": [],
-    "facing_entries": [],
-    "facing_paths": [],
-    "check_limit": 0,
-    "has_bare_royal": False,
-    "bare_royal": 0,
-    "has_explosion": False,
-    "explosion_immune": [],
-    "explosion_blast": [],
-    "explosion_blast_index": [0],
-    # Schema 10 (Q18). Empty is "every capturer" and "every victim", so `atomic.json`
-    # -- and every other ruleset with an explosion -- keeps the fingerprint it had.
-    "explosion_by": [],
-    "explosion_of": [],
-    "has_drops": False,
-    "drops_from_captures": False,
-    "drops_regions": [],
-    "drops_no_doubled": [],
-    "drops_no_mate": [],
-    # Schema 10 (Q51). Empty is "nothing is held before a capture", which is every
-    # ruleset with a hand up to now.
-    "drops_stock": [],
-    "drops_unlimited": [],
-    # Schema 18 (Q784). False unless the hand says `placement`.
-    "drops_placement": False,
-    # Schema 18 (Q785). Empty unless the hand says `either_face`.
-    "drops_faces": [],
-    "has_reach": False,
-    "reach_piece_type": -1,
-    "reach_squares": [],
-    "reach_result": 1,
-    "reach_safe": False,
-    # Schema 18 (Q786). False unless the reach rule says `on: "leave"`.
-    "reach_leaves": False,
-    "goal_distance": [],
-    "goal_diameter": 1,
-    "goal_distance_each": [],
-    "has_turn": False,
-    "turn_moves": 1,
-    "turn_ramp": [],
-    "has_territory": False,
-    "territory_repaints": False,
-    "territory_win_at": 0,
-    "has_scoring": False,
-    "scoring_count": 0,
-    "scoring_squares": [],
-    "has_strike": False,
-    "strike_position": 1,
-    "strike_to": [],
-    "contact_onto_to": [],
-    "contact_mover_to": [],
-    # Schema 11 (Q19b). Empty unless a link says `own`, so no earlier fingerprint moves.
-    "contact_own_onto_to": [],
-    "contact_own_mover_to": [],
-    # Schema 12 (Q20). Empty unless the position is `choose`.
-    "strike_landing": [],
-    "strike_landing_index": [],
-    # Schema 17 (Q540). Empty unless the position is `home`, or a type switches sides.
-    "strike_rebirth": [],
-    "contact_mover_flips": [],
-    # TC2. Empty unless a facing game switches sides.
-    "coat_facing": [],
-    # Schema 13 (Q21). Empty unless a piece sweeps.
-    "sweep_index": [],
-    "sweep_refs": [],
-    "sweep_squares": [],
-    "sweep_modes": [],
-    "has_sweep": False,
-    "attack_sweep": [],
-    "attack_path_modes": [],
-    # Generation 42 (N4b). Empty unless the spec has a duck.
-    "duck": [],
-    # TC4. Empty unless a type carries a bounty; -1 and empty without a purse.
-    "piece_bounty": [],
-    "purse_start": -1,
-    "zobrist_purse": [],
-    # TC5. Empty without a purse.
-    "purse_market": [],
-    "purse_price": [],
-    "purse_square_index": [],
-    "purse_squares": [],
-    # TC6. Empty unless something can be hired or bribed.
-    "purse_hire": [],
-    "purse_bribe": [],
-    "purse_neighbour_index": [],
-    "purse_neighbour_squares": [],
+_NPC_INERT: dict[str, Any] = {
     "has_npcs": False,
     "npc_next": [],
     "npc_bounty": [],
@@ -1142,6 +1053,42 @@ _INERT_DEFAULTS: dict[str, Any] = {
     # Generation 38 (N5). Empty unless an `npcs` entry says `turns_back`.
     "npc_prev": [],
     "zobrist_heading": [],
+}
+
+
+def _npc_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Schema 9's wild pieces.
+
+    Two board-sized tables and a flag, and that is the whole rule at the boundary: the
+    square each wild piece steps to next, and what taking the one that walks each square is
+    worth. Which wild piece stands where is on the board; where it may threaten is the
+    third block of attack sources; which types it may eat is the capture matrix it already
+    shares with every player's piece. Empty when nothing is wild, so no earlier ruleset's
+    fingerprint moves.
+    """
+    npcs = spec.npcs
+    return {
+        "has_npcs": npcs is not None,
+        "npc_next": list(npcs.next) if npcs is not None else [],
+        "npc_bounty": [float(worth) for worth in npcs.bounty] if npcs is not None else [],
+        # Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): each respawning half as
+        # ``[every, n_starts, starts...]``, flat, and their clocks' keys. The core walks the
+        # route off ``npc_next`` and reads the piece off the opening board. Both empty unless
+        # an entry comes back.
+        "npc_respawn": [
+            value
+            for every, starts in (npcs.respawn if npcs is not None else ())
+            for value in (every, len(starts), *starts)
+        ],
+        "zobrist_respawn": list(spec.zobrist_respawn),
+        # Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): the lines' way back and the
+        # heading's keys, both empty unless an entry turns back.
+        "npc_prev": list(npcs.prev) if npcs is not None else [],
+        "zobrist_heading": list(spec.zobrist_heading),
+    }
+
+
+_POUNCE_INERT: dict[str, Any] = {
     # Generation 39 (N3b). Empty unless an `npcs` entry says `pounce`.
     "npc_piece": [],
     "pounce_kind": [],
@@ -1153,7 +1100,74 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "pounce_paths": [],
     # Generation 41 (N3d). Empty unless an `npcs` entry says `split`.
     "pounce_split": [],
-    "entry_promotion": [],
+}
+
+
+def _pounce_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): the pounce tables, every one
+    empty unless an entry pounces.
+
+    The reach is ``[target, path_start, path_len, prefix_len, screens]`` per entry into
+    ``pounce_paths``, indexed per (type, origin); ``npc_piece`` (each square's route type,
+    -1 off every route) crosses only beside a pounce, where a wild piece can stand on a
+    route that is not its own.
+    """
+    npcs = spec.npcs
+    pounce = spec.pounce
+    pounce_reach_index: list[int] = []
+    pounce_reach: list[int] = []
+    pounce_paths: list[int] = []
+    if pounce is not None:
+        pounce_reach_index.append(0)
+        for per_type in pounce.reach:
+            for origin in range(spec.n_squares):
+                for target, prefix, window, screens in per_type[origin] if per_type else ():
+                    pounce_reach.extend(
+                        (target, len(pounce_paths), len(prefix) + len(window), len(prefix), screens)
+                    )
+                    pounce_paths.extend(prefix)
+                    pounce_paths.extend(window)
+                pounce_reach_index.append(len(pounce_reach) // 5)
+    return {
+        "npc_piece": list(npcs.piece) if npcs is not None and pounce is not None else [],
+        "pounce_kind": list(pounce.kind) if pounce is not None else [],
+        "pounce_value_rank": list(pounce.value_rank) if pounce is not None else [],
+        "pounce_reading": [
+            rank for player in pounce.reading_rank for rank in player
+        ] if pounce is not None else [],
+        "pounce_distance": list(pounce.distance) if pounce is not None else [],
+        "pounce_reach_index": pounce_reach_index,
+        "pounce_reach": pounce_reach,
+        "pounce_paths": pounce_paths,
+        # Generation 41 (N3d, `docs/archive/plan-npc.md` §4.5): the cap per type, empty
+        # unless a type splits.
+        "pounce_split": list(pounce.split) if pounce is not None else [],
+    }
+
+
+_ENTRY_PROMOTION_INERT: dict[str, Any] = {"entry_promotion": []}
+
+
+def _entry_promotion_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Promotion on entering play (schema 9).
+
+    One table, `[player][piece_type][square]` flattened in that order, holding the type a
+    piece that *enters play* on that square becomes, or -1. The compiler has already chosen
+    the target and already decided that `mandatory` does not apply, so what crosses is the
+    answer and not the rule -- the strike's `strike_to` shape. Empty when the flag is off,
+    so no earlier ruleset's fingerprint moves.
+    """
+    entering = spec.entry_promotion
+    return {
+        "entry_promotion": (
+            [becomes for per_type in entering.becomes for row in per_type for becomes in row]
+            if entering is not None
+            else []
+        ),
+    }
+
+
+_PORTAL_INERT: dict[str, Any] = {
     # Schema 19 (Q771). Empty and false unless the spec has portals.
     "has_portals": False,
     "portal_dest": [],
@@ -1168,10 +1182,96 @@ _INERT_DEFAULTS: dict[str, Any] = {
     # Schema 20 (Q807). Empty unless a portal pair sets ``no_straight_back``.
     "portal_no_back": [],
     "zobrist_portal_bar": [],
-    # Schema 22 (Q843c). Empty unless a portal group is a fold.
+}
+
+
+def _portal_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Portals (schema 19; schema 21's map and filters).
+
+    Per type: the end a piece that goes in here comes out of (-1 for a way out only and for
+    a piece that is not a portal), the end's group (-1 for a piece that is not a portal),
+    per player the mask of declared types that may go in by it, and which players may move
+    it (a bit per player). The exit table per player, square and direction, and the
+    momentum masks parallel to the three movement tables' landings and to the attack
+    sources. Every one is empty and the flag false without a portal, so no earlier
+    ruleset's fingerprint moves.
+    """
+    n_types, n_squares, n_frames = spec.n_types, spec.n_squares, spec.n_frames
+    portals = spec.portals
+    portal_dest: list[int] = []
+    portal_group: list[int] = []
+    portal_admits: list[int] = []
+    portal_movers: list[int] = []
+    portal_exits: list[int] = []
+    leap_dirs: list[int] = []
+    slide_dirs: list[int] = []
+    hop_dirs: list[int] = []
+    attack_dirs: list[int] = []
+    # Schema 20 (Q807): per type, may it not go straight back; the bar's Zobrist keys.
+    # Empty unless some pair sets ``no_straight_back``, so no schema 19 game's tables move.
+    portal_no_back: list[int] = []
+    zobrist_portal_bar: list[int] = []
+    if portals is not None:
+        portal_dest = list(portals.dest)
+        portal_group = [-1] * len(portals.dest)
+        for piece_type, group in zip(portals.end_types, portals.group_of, strict=True):
+            portal_group[piece_type] = group
+        portal_no_back = [int(flag) for flag in portals.no_back]
+        zobrist_portal_bar = list(portals.zobrist_bar)
+        portal_admits = [mask for masks in portals.admits for mask in masks]
+        portal_movers = [sum(1 << player for player in who) for who in portals.movers]
+        portal_exits = [
+            square for player in portals.exits for row in player for square in row
+        ]
+        leap_dirs = _flatten_dirs(portals.leap_dirs, n_frames, n_types, n_squares)
+        slide_dirs = _flatten_dirs(portals.slide_dirs, n_frames, n_types, n_squares)
+        hop_dirs = _flatten_dirs(portals.hop_dirs, n_frames, n_types, n_squares)
+        attack_dirs = [
+            bits for owner in portals.attack_dirs for per_square in owner for bits in per_square
+        ]
+    return {
+        "has_portals": portals is not None,
+        "portal_dest": portal_dest,
+        "portal_group": portal_group,
+        "portal_admits": portal_admits,
+        "portal_movers": portal_movers,
+        "portal_exits": portal_exits,
+        "leap_dirs": leap_dirs,
+        "slide_dirs": slide_dirs,
+        "hop_dirs": hop_dirs,
+        "attack_dirs": attack_dirs,
+        "portal_no_back": portal_no_back,
+        "zobrist_portal_bar": zobrist_portal_bar,
+    }
+
+
+# Schema 22 (Q843c). Empty unless a portal group is a fold.
+_FOLD_INERT: dict[str, Any] = {
     "portal_kind": [],
     "fold_starts": [],
     "zobrist_fold": [],
+}
+
+
+def _fold_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Folds (schema 22; schema 24 cut them to this, `docs/archive/plan-portals-2.md` §3R.4).
+
+    Per type whether it is a fold end; per end where it starts (-1 for a momentum end); the
+    fold's Zobrist keys. Every one empty without a fold, so no earlier ruleset's
+    fingerprint moves.
+    """
+    portals = spec.portals
+    folds = portals.folds if portals is not None else None
+    if portals is None or folds is None:
+        return {"portal_kind": [], "fold_starts": [], "zobrist_fold": []}
+    return {
+        "portal_kind": [int(portals.is_fold(piece_type)) for piece_type in range(spec.n_types)],
+        "fold_starts": list(folds.starts),
+        "zobrist_fold": list(folds.zobrist),
+    }
+
+
+_EXTINCTION_INERT: dict[str, Any] = {
     "has_extinction": False,
     "extinction_types": [],
     "extinction_any_piece": False,
@@ -1181,19 +1281,107 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "extinction_per_type": False,
     # Schema 27 (Q936). Empty unless the rule says `"per_type": "own"`.
     "extinction_side_types": [],
+}
+
+
+def _extinction_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The counted types, the count, and the result when a side runs short."""
+    extinction = spec.extinction
+    return {
+        "has_extinction": extinction is not None,
+        "extinction_types": list(extinction.piece_types) if extinction else [],
+        "extinction_any_piece": extinction.any_piece if extinction else False,
+        "extinction_min_count": extinction.min_count if extinction else 0,
+        "extinction_result": _ENDING_RESULT[extinction.result] if extinction else -1,
+        # Schema 18 (Q783): each listed type counted on its own. False is the summed
+        # count every game before it makes.
+        "extinction_per_type": bool(extinction.per_type) if extinction else False,
+        # Schema 27 (Q936): each side's counted types, apart, under `"per_type": "own"`.
+        # Empty under every other spelling, where the core reads `extinction_types` for
+        # both sides, so no earlier ruleset's fingerprint moves.
+        "extinction_side_types": (
+            [list(types) for types in extinction.side_types]
+            if extinction is not None and extinction.own
+            else []
+        ),
+    }
+
+
+_SIMULTANEOUS_INERT: dict[str, Any] = {
     # Schema 26 (Q918a). Empty unless the game is simultaneous.
     "sim_rule": [],
     "sim_collision": [],
     "zobrist_sim": [],
     # Schema 27 (Q942a). Empty unless a chase switch is on.
     "sim_chase": [],
-    "spy_types": [],
-    "spy_deal": False,
-    # Schema 29 (Q983a). Empty unless a piece declares a rest.
-    "piece_rest": [],
-    "zobrist_rest": [],
     # Schema 28 (Q943a). Empty unless a piece declares a speed.
     "sim_speed": [],
+}
+
+
+def _simultaneous_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Schema 26 (Q918a): simultaneous moves. All empty for an alternating game.
+
+    `sim_rule` is `[tie, initiative_start, void_run, collision_strikes]`; `sim_collision`
+    the `beats` matrix, `[a * n_types + b]`; `zobrist_sim` the initiative's key, then the
+    standoff's squares (player 0's, then player 1's), then its states.
+    """
+    sim = spec.simultaneous
+    if sim is None:
+        return {
+            "sim_rule": [], "sim_collision": [], "zobrist_sim": [], "sim_chase": [],
+            "sim_speed": [],
+        }
+    return {
+        "sim_rule": [sim.tie, sim.initiative_start, sim.void_run, int(sim.collision_strikes)],
+        "sim_collision": [int(flag) for flag in sim.collision_allowed],
+        "zobrist_sim": [sim.zobrist_initiative, *sim.zobrist_squares, *sim.zobrist_states],
+        # Schema 27 (Q942a): the chase switches, `[0, swap_collides, both_score]`, empty
+        # unless a switch is on. The first slot was schema 27's `rest`, which schema 29
+        # (Q983a) moved to `piece_rest`; it is always 0 now and kept only so that no game
+        # with `swap` or `both` and no rest has its tables fingerprint moved.
+        "sim_chase": [0, int(sim.swap_collides), int(sim.both_score)] if sim.chases else [],
+        # Schema 28 (Q943a): each type's speed, `[type]`; empty unless a piece declares
+        # one, so the core never orders a round and no earlier fingerprint moves.
+        "sim_speed": list(sim.speed),
+    }
+
+
+_SPY_INERT: dict[str, Any] = {
+    "spy_types": [],
+    "spy_deal": False,
+}
+
+
+def _spy_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Schema 27 (Q935a): each player's spy types, two lists, and whether the initiative is
+    dealt to the announcer at the first announced round (`plan-spy.md` E10). Empty and
+    false in every game without a spy, so no earlier fingerprint moves."""
+    return {
+        "spy_types": [list(types) for types in spec.spy.types] if spec.spy is not None else [],
+        "spy_deal": bool(spec.simultaneous is not None and spec.simultaneous.deal_initiative),
+    }
+
+
+# Schema 29 (Q983a). Empty unless a piece declares a rest.
+_REST_INERT: dict[str, Any] = {
+    "piece_rest": [],
+    "zobrist_rest": [],
+}
+
+
+def _rest_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Schema 29 (Q983a, `docs/plan-rest.md` §4.2, §4.3): each type's rest, `[type]`, and
+    one key per (turns left, player, square), `((left - 1) * 2 + player) * n_squares +
+    square`. Both empty unless a piece declares a rest, in any game, alternating or in
+    rounds, so no other game's fingerprint moves."""
+    return {
+        "piece_rest": list(spec.rest),
+        "zobrist_rest": list(spec.zobrist_rest),
+    }
+
+
+_SIGHT_INERT: dict[str, Any] = {
     # Schema 30 (Q999a). Empty unless a piece declares a sight.
     "sight_index": [],
     "sight_srcs": [],
@@ -1201,29 +1389,129 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "sight_flags": [],
     # Q1007c (`docs/archive/plan-schema-31.md` §3.7). False unless a sight commands.
     "sight_command": False,
-    # TC3 (`docs/plan-turncoat.md` §4). Empty unless a placement is nobody's.
-    "neutral_control": [],
-    "neighbour_index": [],
-    "neighbour_squares": [],
 }
 
-def _neutral_fields(spec: CompiledSpec) -> dict[str, list[int]]:
-    """TC3's boundary keys (`compile.NeutralRule`), empty without a nobody's placement."""
-    neutrals = spec.neutrals
-    if neutrals is None:
-        return {"neutral_control": [], "neighbour_index": [], "neighbour_squares": []}
+
+def _sight_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.3): `SightRule.sources` flattened
+    for the core (`tables.rs::SightTables`), or four empty lists without a sight.
+
+    The sight's reverse table, shaped as the attack sources -- an index per (player,
+    affected type, square), five words per source (origin, piece value, effect bit, path
+    start, path length) and the flat paths -- and its three flags, `[has_shield,
+    bears_on_check, has_restraint]`. Q1007c's ``sight_command`` is false unless a sight
+    commands (`_INERT_DEFAULTS`, so no other sight game's fingerprint moves).
+    """
+    sight = spec.sight
+    if sight is None:
+        return {
+            "sight_index": [], "sight_srcs": [], "sight_paths": [], "sight_flags": [],
+            "sight_command": False,
+        }
     index = [0]
-    squares: list[int] = []
-    for piece_type in range(spec.n_types):
-        per_square = neutrals.neighbours[piece_type]
-        for square in range(spec.n_squares):
-            squares.extend(per_square[square] if per_square else ())
-            index.append(len(squares))
+    srcs: list[int] = []
+    paths: list[int] = []
+    for side in sight.sources:
+        for by_type in side:
+            for found in by_type:
+                for origin, piece_value, effect, path in found:
+                    srcs.extend((origin, piece_value, effect, len(paths), len(path)))
+                    paths.extend(path)
+                index.append(len(srcs) // 5)
     return {
-        "neutral_control": list(neutrals.kind),
-        "neighbour_index": index if neutrals.has_majority else [],
-        "neighbour_squares": squares,
+        "sight_index": index,
+        "sight_srcs": srcs,
+        "sight_paths": paths,
+        "sight_flags": [
+            int(sight.has_shield), int(sight.bears_on_check), int(sight.has_restraint),
+        ],
+        "sight_command": sight.has_command,
     }
+
+
+def _zobrist_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The Zobrist draw every game keys its positions by."""
+    return {
+        "zobrist_pieces": [value for row in spec.zobrist_pieces for value in row],
+        "zobrist_side": spec.zobrist_side,
+        "zobrist_ep": list(spec.zobrist_ep),
+        "zobrist_colour": [value for row in spec.zobrist_colour for value in row],
+        "zobrist_turn": list(spec.zobrist_turn),
+    }
+
+
+_NO_INERT: dict[str, Any] = {}
+
+# Every rule's flattener and the inert defaults of its keys, in the order `build_tables`
+# merges them. A new boundary key goes in its rule's flattener, and its inert default (if
+# it has one) in the dict beside it; a new rule is a new row.
+_FLATTENERS: tuple[tuple[Callable[[CompiledSpec], dict[str, Any]], dict[str, Any]], ...] = (
+    (_board_fields, _BOARD_INERT),
+    (_movement_fields, _MOVEMENT_INERT),
+    (_sweep_fields, _SWEEP_INERT),
+    (_attack_fields, _ATTACK_INERT),
+    (_ending_fields, _ENDING_INERT),
+    (_bare_royal_fields, _BARE_ROYAL_INERT),
+    (_en_passant_fields, _EN_PASSANT_INERT),
+    (_royal_facing_fields, _ROYAL_FACING_INERT),
+    (_promotion_fields, _PROMOTION_INERT),
+    (_castling_fields, _CASTLING_INERT),
+    (_explosion_fields, _EXPLOSION_INERT),
+    (_drops_fields, _DROPS_INERT),
+    (_reach_fields, _REACH_INERT),
+    (_turn_fields, _TURN_INERT),
+    (_territory_fields, _TERRITORY_INERT),
+    (_scoring_fields, _SCORING_INERT),
+    (_strike_fields, _STRIKE_INERT),
+    (_facing_fields, _FACING_INERT),
+    (_duck_fields, _DUCK_INERT),
+    (_control_fields, _NO_INERT),
+    (_neutral_fields, _NEUTRAL_INERT),
+    (_purse_fields, _PURSE_INERT),
+    (_market_fields, _MARKET_INERT),
+    (_npc_fields, _NPC_INERT),
+    (_pounce_fields, _POUNCE_INERT),
+    (_entry_promotion_fields, _ENTRY_PROMOTION_INERT),
+    (_portal_fields, _PORTAL_INERT),
+    (_fold_fields, _FOLD_INERT),
+    (_extinction_fields, _EXTINCTION_INERT),
+    (_simultaneous_fields, _SIMULTANEOUS_INERT),
+    (_spy_fields, _SPY_INERT),
+    (_rest_fields, _REST_INERT),
+    (_sight_fields, _SIGHT_INERT),
+    (_zobrist_fields, _NO_INERT),
+)
+
+
+def build_tables(spec: CompiledSpec) -> dict[str, Any]:
+    """Everything the core needs, keyed by name: every rule's flattener, merged."""
+    tables: dict[str, Any] = {}
+    for flatten, _inert in _FLATTENERS:
+        tables.update(flatten(spec))
+    return tables
+
+
+# Keys whose value is the same for every ruleset that does not reach for the rule they
+# belong to, and what that value is. Dropped before a ruleset's tables are fingerprinted,
+# which is the whole reason the table exists: `measurement.tables_fingerprint` asks *what
+# the compiler produced for this game*, and a new key added here at its inert default
+# would otherwise change that answer for all forty-seven of them at once and mark every
+# stored measurement stale for a rule none of them uses.
+#
+# This is `complexity._RULE_ACTIVE` one layer down. That table decides whether a player
+# has to be *taught* a rule; this one decides whether the core is *told* one. Both answer
+# "is this rule here at all", and both exist because a default spelled out loud has to
+# compile to the game that was already there.
+#
+# Only a *constant* default belongs here. Several keys are an array of zeros as long as
+# the board -- `promo_squares`, `immobile_squares`, `ep_pass_index` -- and those stay in
+# the fingerprint: their default is not one value, so dropping them would need a rule
+# about lengths rather than about values, and they are already in every stored basis.
+#
+# Each rule's rows sit beside its flattener (`_FLATTENERS`); this is their union.
+_INERT_DEFAULTS: dict[str, Any] = {
+    key: value for _flatten, inert in _FLATTENERS for key, value in inert.items()
+}
 
 
 # Keys that restate, in the core's shape, what other keys already say, and so add nothing to
@@ -1359,18 +1647,15 @@ def rust_supports(spec: CompiledSpec) -> str | None:
     # eight-direction exit table does not name). The validator refuses each by name; this
     # holds a spec that reached the compiler some other way.
     if spec.portals is not None:
-        beside = [
-            name
-            for name, present in (
-                ("rules.npcs", spec.npcs is not None),
-                ("a strike or contact table", spec.strike is not None),
-                ("rules.explode_on_capture", spec.explosion is not None),
-                ("a sweep", spec.has_sweep),
-                ("rules.territory", spec.territory is not None),
-                ("a hex lattice", spec.lattice == "hex"),
-            )
-            if present
-        ]
+        present = {
+            "P2": spec.npcs is not None,
+            "P3": spec.strike is not None,
+            "P5": spec.explosion is not None,
+            "W8": spec.has_sweep,
+            "P6": spec.territory is not None,
+            "P1": spec.lattice == "hex",
+        }
+        beside = [name for ids, name in PORTAL_CORE_HOLDS if present[ids[0]]]
         if beside:
             return (
                 f"rules.portals beside {', '.join(beside)}: the core's transit has no "

@@ -16,11 +16,13 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable, Sequence
 from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
 from functools import cmp_to_key
-from math import atan2, degrees, gcd
+from math import atan2, degrees, gcd, sqrt
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from chess_variant_sandbox.spec.complexity import expand_symmetry
+from chess_variant_sandbox.spec.legs import stated_legs
 from chess_variant_sandbox.spec.reachability import (
     _in,
     _pieces_that_can_stand,
@@ -31,6 +33,7 @@ from chess_variant_sandbox.spec.reachability import (
 from chess_variant_sandbox.spec.reachability import (
     pieces_a_player_can_hold as pieces_a_player_can_hold,
 )
+from chess_variant_sandbox.spec.refusals import refusal
 
 if TYPE_CHECKING:
     from chess_variant_sandbox.engine.compile import StrikeRule
@@ -777,10 +780,13 @@ MAX_BOARD_DIM = 16
 MAX_PIECE_TYPES = 24
 MAX_MOVE_DESCRIPTORS = 12
 MAX_VECTOR_COMPONENT = 8
+# SR1a: the most squares a stated leg list may name for one vector. Janggi's elephant names
+# two; four is any shortest path of a jump the vector bound allows a ride to make useful.
+MAX_LEGS = 4
 
 _MOVE_KEYS = {
     "kind", "vectors", "symmetry", "range", "min_range", "mode", "condition",
-    "screen_range", "screen", "path",
+    "screen_range", "screen", "path", "legs",
 }
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
@@ -857,6 +863,169 @@ _RULES_KEYS = {
     # TC5 (`docs/plan-turncoat.md` §5.4): coins each player holds, and a market to spend them in.
     "purse",
 }
+# ------------------------------------------------------------ where a rule names a piece
+#
+# Every schema position that holds a piece id, once (CP2, `docs/plan-smells-python.md`
+# PY10). Two readers walk it: `relate` renames ids at these positions (and `likeness`
+# reads them as ``<piece>``), and `transform.drop_piece` takes a removed piece out of
+# them. Before this map they were two copies, a declarative one in `relate` and a
+# 223-line cascade in `transform`, and a position that turns from one id into a list had
+# to be found in both. A position is matched *by where it stands*, never by matching the
+# string: a piece id is one or two characters, and a square or an ending may spell one.
+#
+# A leaf says what it holds and what removing a piece does there; a container says what
+# an emptied one does. `tests/test_piece_positions.py` holds the map against every
+# string-typed field of `jsonschema.py`, so a rule that names a piece cannot land
+# without a row.
+
+PIECE_ID = "<id>"  # the value is one piece id
+PIECE_IDS = "<ids>"  # a list of piece ids
+PIECE_KEYED = "<keyed>"  # a map whose *keys* are piece ids
+ANY_KEY = "*"  # in a `Fields`, every key not named, whatever it is called
+
+# What removing a piece does at a position.
+GOES_KEY = "key"  # the key holding it goes (an id it names; a list or map it emptied)
+GOES_HOLDER = "holder"  # the nearest list item holding it goes, or else the whole rule
+KEPT_EMPTY = "kept"  # the id goes and an emptied list stays: an empty list says something
+LEFT = "left"  # removing a piece does not touch it (each such row says why)
+
+
+@dataclass(frozen=True)
+class Names:
+    """A leaf position: one id, a list of ids or a map keyed by ids, and what a removed
+    piece does to it. ``only_named``: the emptied rule applies only to a list that named
+    the piece, so a list written empty stays as written (where an empty list is valid
+    and says something else, as ``explode_on_capture.by: []`` does)."""
+
+    shape: str
+    gone: str
+    only_named: bool = False
+
+
+@dataclass(frozen=True)
+class Each:
+    """A list of items of one shape (a bare item where the schema allows one is read as
+    a list of one), and what the list does once removing a piece has emptied it."""
+
+    item: Any
+    emptied: str | None = None
+
+
+@dataclass(frozen=True)
+class Fields:
+    """An object whose named keys are positions (``ANY_KEY`` for every other key), and
+    what it does once no value it holds says anything (``None``: it never goes)."""
+
+    keys: dict[str, Any]
+    emptied: str | None = None
+
+
+_ONE_GOES_WITH_IT = Names(PIECE_ID, GOES_HOLDER)
+_PRUNED = Names(PIECE_IDS, GOES_KEY)
+
+# One row per `rules` key that can name a piece. A key absent here names none.
+PIECE_POSITIONS: dict[str, Any] = {
+    "castling": Fields({"king": _ONE_GOES_WITH_IT, "rook": _ONE_GOES_WITH_IT}),
+    # A promotion whose piece or every target is gone is no entry; one side's targets
+    # emptied stays, so the two armies still promote by what was written for each.
+    "promotion": Each(
+        Fields({
+            "piece": _ONE_GOES_WITH_IT,
+            "to": Names(PIECE_IDS, GOES_HOLDER),
+            "to_by_player": Fields({ANY_KEY: Names(PIECE_IDS, KEPT_EMPTY)}, emptied=GOES_HOLDER),
+        }),
+        emptied=GOES_HOLDER,
+    ),
+    "reach": Fields({"piece": _ONE_GOES_WITH_IT}),
+    # Schema 18c: an extinction counting nobody states nothing.
+    "extinction": Fields({"pieces": Names(PIECE_IDS, GOES_HOLDER)}),
+    # `by` and `of` absent mean *everyone*, so one emptied is no rule rather than a wider
+    # one (Q435); written empty it is already no rule, and stays as written.
+    "explode_on_capture": Fields({
+        "immune": _PRUNED,
+        "by": Names(PIECE_IDS, GOES_HOLDER, only_named=True),
+        "of": Names(PIECE_IDS, GOES_HOLDER, only_named=True),
+    }),
+    "drops": Fields({
+        "no_doubled": _PRUNED, "no_mate": _PRUNED,
+        "stock": Names(PIECE_KEYED, GOES_KEY), "region": Names(PIECE_KEYED, GOES_KEY),
+    }),
+    # A wild piece goes with its type, and the rule with its last wild piece.
+    "npcs": Each(Fields({"piece": _ONE_GOES_WITH_IT, "immune": _PRUNED}), emptied=GOES_HOLDER),
+    # Generation 42 (N4b): the duck goes with its type.
+    "duck": Fields({"piece": _ONE_GOES_WITH_IT}),
+    # TC5: what the market sells; an emptied market is settled by `transform._drop_inert`.
+    "purse": Fields({"market": Names(PIECE_IDS, KEPT_EMPTY)}),
+    # Schema 21: an end's `carries`, on a pair keyed by the end, on a map's end a list; a
+    # filter that named only the removed piece goes, and the pair's object with its last.
+    # `piece` is the stand-in `portal_stand_in_shape` writes for the readers, which the
+    # validator refuses, so a spec `transform` edits never holds one.
+    "portals": Each(Fields({
+        PORTAL_OLD_PIECE_KEY: Names(PIECE_ID, LEFT),
+        "carries": Fields(
+            {ANY_KEY: Names(PIECE_IDS, GOES_KEY, only_named=True)}, emptied=GOES_KEY
+        ),
+        "ends": Each(Fields({"carries": Names(PIECE_IDS, GOES_KEY, only_named=True)})),
+    })),
+    # A chain with no link left is no strike (an effect other than "capture" needs
+    # somewhere for the victim to go), and a strike none of whose shooters is left is no
+    # rule: widening it to every piece would be another game (A1).
+    "strike": Fields({
+        "immune": _PRUNED,
+        "chain": Each(
+            Fields({"from": _ONE_GOES_WITH_IT, "to": _ONE_GOES_WITH_IT}), emptied=GOES_HOLDER
+        ),
+        "switches_sides": _PRUNED,
+        "by": Names(PIECE_IDS, GOES_HOLDER),  # A1: the pieces whose captures strike
+    }),
+    # Schema 10 (Q19a): a link names up to four pieces and must keep saying what one of
+    # two becomes, so a link naming the removed piece anywhere goes whole.
+    "contacts": Fields({
+        "immune": _PRUNED,
+        "links": Each(
+            Fields({
+                "mover": _ONE_GOES_WITH_IT, "onto": _ONE_GOES_WITH_IT,
+                "mover_to": _ONE_GOES_WITH_IT, "onto_to": _ONE_GOES_WITH_IT,
+            }),
+            emptied=GOES_HOLDER,
+        ),
+    }),
+}
+
+# The same, for the fields on a piece that name another piece. `region` is squares and
+# `facing` is an angle, so neither is here.
+PIECE_FIELDS: dict[str, Any] = {
+    # An emptied capture list is a piece that never captures, which is what it now does.
+    "captures": Names(PIECE_IDS, KEPT_EMPTY),
+    "promoted_from": Names(PIECE_ID, GOES_KEY),
+    # Schema 26 (Q1046). A `beats` list names the pieces this one wins a collision against;
+    # the removed one leaves it, and an emptied list stays: written empty it says *beats
+    # nothing*, which is not what an absent `beats` says (its captures, else everyone).
+    "beats": Names(PIECE_IDS, KEPT_EMPTY),
+    # Schema 30 (Q999a): a line of sight names the types it touches; one that touched only
+    # the removed type goes (an `affects` emptied would read as *every type*), and the key
+    # with its last line.
+    "sight": Each(
+        Fields({"affects": Names(PIECE_IDS, GOES_HOLDER, only_named=True)}), emptied=GOES_KEY
+    ),
+}
+
+
+def piece_shapes(position: Any) -> Any:
+    """A position row as bare shapes, for a reader that renames ids rather than removing
+    them: a leaf as its ``PIECE_ID``/``PIECE_IDS``/``PIECE_KEYED``, a list as ``[item]``,
+    an object as a dict of its keys' shapes (``ANY_KEY`` kept)."""
+    if isinstance(position, Names):
+        return position.shape
+    if isinstance(position, Each):
+        return [piece_shapes(position.item)]
+    if isinstance(position, Fields):
+        return {key: piece_shapes(inner) for key, inner in position.keys.items()}
+    if isinstance(position, dict):
+        return {key: piece_shapes(inner) for key, inner in position.items()}
+    raise TypeError(f"not a piece position: {position!r}")
+
+
 _OBSTACLES_KEYS = {"squares", "mirror", "blocks_leaps"}
 _STRIKE_KEYS = {
     "effect", "chain", "position", "immune", "landing", "switches_sides",
@@ -907,7 +1076,10 @@ MAX_STOCK = 32
 # ``by`` and ``of`` are schema 10 (Q18): *whose* capture explodes and *what* has to be
 # taken for it to. Absent means every type, which is atomic chess and is what makes the
 # pair inert on every spec written before them. See ``_validate_explosion``.
-_EXPLODE_KEYS = {"radius", "immune", "by", "of"}
+_EXPLODE_KEYS = {"radius", "immune", "by", "of", "blast"}
+# ``blast`` is generation 48 (SR1b, `docs/plan-schema-next.md` §1 rank 2): the blast's shape
+# stated as a vector set read from the capture square, in place of ``radius``'s box.
+_BLAST_KEYS = {"vectors", "symmetry"}
 _REACH_KEYS = {"piece", "squares", "mirror", "result", "safe", "on"}
 # ``on`` is schema 18 (Q786, Jeson Mor): ``"arrive"`` is the rule as it always was, a piece
 # standing on a goal square decides the game; ``"leave"`` reads the move's origin instead,
@@ -974,6 +1146,7 @@ def validate_spec(spec: Any) -> list[str]:
     errors.extend(_promotion_ranks_past_the_board(spec.get("rules"), height))
     _refuse_a_portal_bar_no_move_meets(spec, errors)
     _refuse_a_one_square_lame_leap(spec, errors)
+    _refuse_legs_nothing_reads(spec, errors)
     _validate_appearance(spec.get("appearance"), piece_ids, errors)
     _validate_provenance(spec.get("provenance"), errors)
     _validate_coherence(spec, errors)
@@ -1096,11 +1269,7 @@ def _check_rest_coherence(
                 "piece that never moves never rests; leave it out"
             )
     if turn_is_long(rules):
-        errors.append(
-            "pieces[].rest beside a turn longer than one move (rules.turn moves or ramp): "
-            "inside a turn of several moves a rest would need a second rule, for a piece that "
-            "moved earlier in the same turn; use one move per turn, or leave the rest out"
-        )
+        errors.append(refusal("L2"))
 
 
 # Schema 30 (Q999a, `docs/archive/plan-passive.md` §2): lines of sight. A type declares at most
@@ -1602,37 +1771,23 @@ def _check_sight_coherence(
                 if why is not None:
                     errors.append(f"{loc} affects nothing that could be there: {why}")
     if rules.get("portals"):
-        errors.append(
-            "pieces[].sight beside rules.portals: an attack through a portal would need the "
-            "sight's reading of attack too, and a sight through a portal a rule of its own; "
-            "leave one out"
-        )
+        errors.append(refusal("V1"))
     if rules.get("explode_on_capture"):
-        errors.append(
-            "pieces[].sight beside rules.explode_on_capture: what a blast does to a shielded "
-            "piece, and how its legality reads a frozen attacker, are rules of their own; leave "
-            "one out"
-        )
+        errors.append(refusal("V2"))
     if shields and uses_sweep(spec):
-        errors.append(
-            "a shield (pieces[].sight effect 'shield') beside a sweep move: whether a sweep "
-            "passing over a shielded piece removes it or is stopped by it would be a second "
-            "rule; leave one out"
-        )
+        errors.append(refusal("W10"))
     if commands:
         _check_command_beside(spec, pieces, rules, turncoats, errors)
 
 
-# Q1007c (`docs/archive/plan-schema-31.md` §3.6): each rule refused beside a command, with the second
-# rule it would need.
-_COMMAND_REFUSED_RULES = {
-    "simultaneous": "two players could move one piece in one round",
-    "reach": "whether a commanded arrival wins for the mover or the owner would be a second rule",
-    "territory": "whether a commanded arrival paints for the mover or the owner would be a "
-    "second rule",
-    "strike": "what a commanded capture leaves behind would be a second rule",
-    "contacts": "what a commanded capture leaves behind would be a second rule",
-}
+# Q1007c (`docs/archive/plan-schema-31.md` §3.6): each rule refused beside a command, by its
+# refused pair's id (`spec/refusals.py`).
+_COMMAND_REFUSED_RULES = {"simultaneous": "R17", "reach": "V3", "territory": "V4"}
+
+# Generation 51 (V5, V6, `docs/plan-schema-next.md` §2.4): a command moves onto empty squares,
+# so a strike or contacts meet a commanded move only under ``captures_own``, whose own-side
+# capture the core does not yet play as the ordinary removal it is ruled to be (SR4h).
+_TURNCOAT_REFUSED_RULES = {"strike": "V5", "contacts": "V6"}
 
 
 def _check_command_beside(
@@ -1640,32 +1795,23 @@ def _check_command_beside(
     errors: list[str],
 ) -> None:
     """The rules a command sight is refused beside (Q1007c, `docs/archive/plan-schema-31.md` §3.6)."""
-    for key, why in _COMMAND_REFUSED_RULES.items():
+    for key, rid in _COMMAND_REFUSED_RULES.items():
         # Stated at all (`simultaneous: {}` is a whole rule); a strike written at plain
         # capture states no rule, and refuses nothing.
         value = rules.get(key)
         if value is not None and value is not False and (key != "strike" or strike_is_live(value)):
-            errors.append(
-                f"a command (pieces[].sight effect 'command') beside rules.{key}: {why}; "
-                "leave one out"
-            )
+            errors.append(refusal(rid))
+    for key, rid in _TURNCOAT_REFUSED_RULES.items():
+        value = rules.get(key)
+        if turncoats and value and (key != "strike" or strike_is_live(value)):
+            errors.append(refusal(rid))
     if has_rests(pieces):
-        errors.append(
-            "a command (pieces[].sight effect 'command') beside pieces[].rest: whose turns a "
-            "commanded piece's rest counts would be a second rule; leave one out"
-        )
+        errors.append(refusal("V7"))
     if uses_sweep(spec):
-        errors.append(
-            "a command (pieces[].sight effect 'command') beside a sweep move: what a commanded "
-            "sweep clears would be a second rule; leave one out"
-        )
+        errors.append(refusal("V8"))
     drops = rules.get("drops")
     if turncoats and isinstance(drops, dict) and drops.get("from_captures", True) is not False:
-        errors.append(
-            "captures_own (a commanded piece taking its own side) beside "
-            "rules.drops.from_captures: whose hand a turncoat capture fills would be a second "
-            "rule; leave one out"
-        )
+        errors.append(refusal("V9"))
 
 
 def has_speeds(spec_or_pieces: Any) -> bool:
@@ -2253,25 +2399,19 @@ def _check_simultaneous_coherence(
             "'annihilation' or 'none'",
         )
     if "checkmate" in rules:
-        refuse("rules.checkmate", "there is no checkmate when both players move at once")
+        errors.append(refusal("R2"))
     if rules.get("forbid_check") is True:
-        refuse("rules.forbid_check", "there is no check when both players move at once")
+        errors.append(refusal("R3"))
     if rules.get("check_limit") is not None:
-        refuse("rules.check_limit", "there is no check when both players move at once")
+        errors.append(refusal("R4"))
     if rules.get("royal_facing") == "forbidden":
-        refuse(
-            "rules.royal_facing 'forbidden'",
-            "two legal moves made together can open the file, which neither did alone",
-        )
+        errors.append(refusal("R5"))
     if isinstance(rules.get("castling"), dict):
-        refuse("rules.castling", "castling moves two pieces in one move, and a round has one each")
+        errors.append(refusal("R6"))
     if rules.get("en_passant") is True:
-        refuse(
-            "rules.en_passant",
-            "it reads the last move, and the pawn that stepped twice may move again this round",
-        )
+        errors.append(refusal("R7"))
     if turn_is_long(rules):
-        refuse("a turn longer than one move", "a round is one secret move each")
+        errors.append(refusal("L4"))
     if any(
         isinstance(piece, dict) and any(
             isinstance(move, dict) and move.get("kind") == "sweep"
@@ -2279,44 +2419,27 @@ def _check_simultaneous_coherence(
         )
         for piece in pieces
     ):
-        refuse(
-            "a sweep",
-            "which pieces a sweep removes depends on who stood on its path when, and a "
-            "round has no such time",
-        )
+        errors.append(refusal("R8"))
     if any(end["moved_by"] for group in portal_groups(rules) for end in group["ends"]):
-        refuse(
-            "a portal a player moves (moved_by)",
-            "a piece going through a portal moved in the same round needs a third timing rule",
-        )
+        errors.append(refusal("R9"))
     for key in ("strike", "contacts"):
         stated = rules.get(key)
         if not isinstance(stated, dict):
             continue
         position = stated.get("position", "advance")
         if position == "choose":
-            refuse(
-                f"rules.{key}.position 'choose'",
-                "the square is chosen before the other player's move is known",
-            )
+            errors.append(refusal("R10", f'rules.{key}.position: "choose"'))
         if key == "strike" and position == "stay":
-            refuse(
-                "rules.strike.position 'stay'",
-                "a captor that collided did move, so staying would mean going back",
-            )
+            errors.append(refusal("R11"))
         if key == "contacts" and position == "swap" and any(
             isinstance(link, dict) and link.get("own") is True
             for link in stated.get("links") or []
         ):
-            refuse(
-                "an own rules.contacts link with position 'swap'",
-                "the mover's own piece would be put on its origin before the meetings, "
-                "where the other player's piece may arrive",
-            )
+            errors.append(refusal("R12"))
     drops = rules.get("drops")
     if isinstance(drops, dict):
         if drops.get("no_mate"):
-            refuse("rules.drops.no_mate", "it is about checkmate, and there is none")
+            errors.append(refusal("R13"))
         stock = drops.get("stock")
         royal_ids = {
             p.get("id") for p in pieces if isinstance(p, dict) and p.get("royal") is True
@@ -2426,16 +2549,14 @@ def _check_only_lost_coherence(
     """``promotion.only_lost`` (schema 18, Q783) against what *lost* has to mean.
 
     The core counts the mover's pieces of a target type on the board and offers the
-    target while that is below the side's opening count. That is *lost* only where a
-    piece off the board stays off it, so the rules under which a taken piece comes back
-    are refused by name rather than ordered (`docs/archive/plan-schema-17-18.md` §9.3,
-    *18c*):
+    target while that is below the side's opening count. The rule as written reads the
+    board (*"fewer of that type on the board than it started with"*), so SR2
+    (`docs/plan-schema-next.md` §2.5 H1, H2) lifted the two refusals that asked what
+    *lost* means where a taken piece comes back: beside ``drops`` a piece in a hand is not
+    on the board, and beside a circe strike (``strike.position: "home"``) a piece reborn
+    on its home square is on it, which is what the core counts. One refusal stays
+    (`docs/archive/plan-schema-17-18.md` §9.3, *18c*):
 
-    * **beside ``drops`` that fill from captures** -- a taken piece goes to a hand and may
-      be dropped again, so a piece can be lost and not gone. A stone-only hand
-      (``from_captures: false``, `archive/stones`) gives nothing back and is accepted;
-    * **beside a circe strike** (``strike.position: "home"``) -- a taken piece is reborn
-      on its home square, so it is lost only when that square was full;
     * **beside ``promote_on_entry``** -- a piece entering its zone takes the first target
       listed, with no move in which to offer it or withhold it.
 
@@ -2450,25 +2571,8 @@ def _check_only_lost_coherence(
     ]
     if not flagged:
         return
-    drops = rules.get("drops")
-    if isinstance(drops, dict) and drops and drops.get("from_captures", True) is not False:
-        errors.append(
-            "rules.promotion.only_lost beside rules.drops: a taken piece goes to a hand and "
-            "can come back, so what a side has lost has two answers; drop one of the two"
-        )
-    strike = rules.get("strike")
-    if isinstance(strike, dict) and strike.get("position") == "home":
-        errors.append(
-            'rules.promotion.only_lost beside a strike whose position is "home": a taken '
-            "piece is reborn on its home square, so what a side has lost has two answers; "
-            "drop one of the two"
-        )
     if rules.get("promote_on_entry") is True:
-        errors.append(
-            "rules.promotion.only_lost beside rules.promote_on_entry: a piece that enters "
-            "its zone takes the first target listed, with no move in which to withhold it; "
-            "drop one of the two"
-        )
+        errors.append(refusal("H3"))
     # Who starts with what is a fact only of a board and an army that can be read. When
     # either was refused, a count of none would repeat that refusal, not state a fact.
     board = spec.get("board")
@@ -2487,8 +2591,8 @@ def _check_only_lost_coherence(
         return
     counts = opening_counts(spec)
     # Schema 18 (Q784): under the placement phase a stocked piece is on the board before
-    # any piece of its side moves (a hand that fills from captures is refused above), so
-    # the side starts with it as surely as with one placed.
+    # any piece of its side moves, so the side starts with it as surely as with one placed.
+    drops = rules.get("drops")
     if isinstance(drops, dict) and drops.get("placement") is True:
         for player in (0, 1):
             stock = drops.get("stock")
@@ -2624,11 +2728,14 @@ def _check_either_face_coherence(
     * **a strike whose position is not ``advance``** -- rifle's attacker stays, circe's
       victim is reborn on its home square, and a chosen landing places a survivor: each is
       a second answer to where a taken piece goes;
-    * **``strike.switches_sides``** -- Andernach's attacker changes sides on a capture;
-    * **``explode_on_capture``** -- a blast takes pieces no capture took.
+    * **``strike.switches_sides``** -- Andernach's attacker changes sides on a capture.
 
-    A live strike is refused beside any hand already (``_check_strike_coherence``); these
-    name the flag so the message says which rule to give up. And the pairs must name one
+    ``explode_on_capture`` was refused here too, until SR2 (`docs/plan-schema-next.md` §2.5
+    H6): a blast's victims leave the board without entering a hand, so what a held piece
+    comes back as is untouched (only the piece the capture took goes to the hand).
+
+    A live strike is refused beside any hand already (``_check_strike_coherence``) but a
+    shot (``strike_only_removes``, SR2), whose position is ``stay``; these name the flag so the message says which rule to give up. And the pairs must name one
     slot per face, or the core could not say which slot a drop spends: a base with two
     faces, a piece that is both a face and a base (a chain of ``promoted_from``), a face
     in ``drops.stock`` and a royal in a pair are refused. A flag with no pair a hand can
@@ -2647,17 +2754,7 @@ def _check_either_face_coherence(
                 "as has two answers; drop one of the two"
             )
         if strike.get("switches_sides"):
-            errors.append(
-                "rules.drops.either_face beside rules.strike.switches_sides: a capture "
-                "already changes a piece's side, so what a taken piece becomes has two "
-                "answers; drop one of the two"
-            )
-    if rules.get("explode_on_capture"):
-        errors.append(
-            "rules.drops.either_face beside rules.explode_on_capture: a blast takes pieces "
-            "no capture took, so what a taken piece becomes has two answers; drop one of "
-            "the two"
-        )
+            errors.append(refusal("H5"))
     pairs = drop_face_pairs(pieces)
     if not pairs:
         errors.append(
@@ -2776,11 +2873,7 @@ def _check_own_extinction(
     if len(kinds) < 2:
         return  # `_validate_extinction` names a single listed type
     if isinstance(rules.get("drops"), dict):
-        errors.append(
-            'rules.extinction.per_type "own" beside rules.drops: a kind that starts in hand '
-            "has no opening count on the board, and whether a held kind counts is not "
-            "settled; drop one of the two"
-        )
+        errors.append(refusal("H11"))
         return
     for piece in kinds:
         if not any(counts[player].get(piece, 0) for player in (0, 1)):
@@ -2829,6 +2922,33 @@ def strike_is_live(strike: Any) -> bool:
     )
 
 
+def strike_only_removes(strike: Any) -> bool:
+    """Whether a live ``rules.strike`` only ever takes its victim off the board (SR2, T2).
+
+    Effect ``"capture"`` with position ``"stay"`` and no ``switches_sides``: a shot (rifle,
+    or the archer under ``by``). Its victim leaves the board as any capture's does, so it
+    can sit beside a hand that fills from captures. Every other live strike leaves a struck
+    piece standing (a chain's link, circe's home) or turns the capturer, and is refused
+    beside ``drops``. A chain under ``"capture"`` is never read.
+    """
+    return (
+        isinstance(strike, dict)
+        and strike.get("effect", "capture") == "capture"
+        and strike.get("position", "advance") == "stay"
+        and not strike.get("switches_sides")
+    )
+
+
+def contacts_only_remove(contacts: Any) -> bool:
+    """Whether every ``rules.contacts`` link removes its target (SR2, T5): none has an
+    ``onto_to``, so a meeting leaves the target off the board, as a capture does, and the
+    target can go to a hand. A link that keeps its target is refused beside ``drops``."""
+    links = contacts.get("links") if isinstance(contacts, dict) else None
+    return isinstance(links, list) and all(
+        isinstance(link, dict) and "onto_to" not in link for link in links
+    )
+
+
 def uses_sweep(spec: dict[str, Any]) -> bool:
     """Whether any piece in this spec has a ``sweep`` descriptor.
 
@@ -2856,19 +2976,15 @@ def promoting_piece_ids(rules: Any) -> set[str]:
     }
 
 
-# The rules a sweep may not share a game with, and why (Q21).
+# The rules a sweep may not share a game with (Q21), each by its refused pair's id
+# (`spec/refusals.py`, which holds why).
 _SWEEP_EXCLUDES: tuple[tuple[str, str], ...] = (
-    ("strike", "a strike says what one taken piece becomes, a sweep takes several, and "
-     "ordering the two would choose a game silently"),
-    ("contacts", "a contact says what one taken piece becomes, a sweep takes several, and "
-     "ordering the two would choose a game silently"),
-    ("explode_on_capture", "two multi-square clears on one move would be undone in an "
-     "order nobody stated"),
-    ("drops", "a sweep over several pieces would put several in a hand at once"),
-    ("npcs", "a bounty is paid per victim, and a swept wild piece would be a second "
-     "victim with nowhere to be paid"),
-    ("wrap", "round a seam two rays can reach one square by two paths, and a move names "
-     "only its target"),
+    ("strike", "W1"),
+    ("contacts", "W2"),
+    ("explode_on_capture", "W3"),
+    ("drops", "W4"),
+    ("npcs", "W5"),
+    ("wrap", "W6"),
 )
 
 
@@ -2923,9 +3039,9 @@ def _check_sweep_coherence(
     }
     if not sweepers:
         return
-    why = dict(_SWEEP_EXCLUDES)
+    rid = dict(_SWEEP_EXCLUDES)
     for key in sweep_conflicts(rules):
-        errors.append(f"rules.{key} is refused beside a piece that sweeps: {why[key]}")
+        errors.append(refusal(rid[key]))
     for pid in sorted(str(p) for p in promoting_piece_ids(rules) & sweepers):
         errors.append(
             f"rules.promotion makes {pid!r} a promoting piece, and it sweeps; a move is a "
@@ -3205,7 +3321,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     if win in ("checkmate", "royal_capture") and not has_royal:
         errors.append(f"rules.win is {win!r} but no piece is marked royal")
     if win == "annihilation" and has_royal:
-        errors.append("rules.win is 'annihilation' but a piece is marked royal")
+        errors.append(refusal("Z3"))
     if win == "none" and not any(
         rules.get(key) for key in ("reach", "extinction", "check_limit", "bare_royal")
     ) and rules.get("stalemate", "draw") == "draw":
@@ -3229,11 +3345,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     # it would stale every stored measurement by build fingerprint. `docs/bugs.md` holds
     # the reasoning.
     if rules.get("en_passant") and turn_is_long(rules):
-        errors.append(
-            "rules.en_passant beside a turn longer than one move: the window a double "
-            "step opens is still open on the mover's own next move, so a player could "
-            "take their own pawn in passing; use one move per turn, or drop en passant"
-        )
+        errors.append(refusal("L1"))
 
     setup = spec.get("setup")
     if has_royal and isinstance(setup, dict) and isinstance(setup.get("placements"), list):
@@ -3267,6 +3379,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
 
     _check_obstacle_coherence(spec, rules, errors)
     _check_hexagon_coherence(spec, pieces, rules, errors)
+    _check_blast_coherence(spec, rules, errors)
     _check_strike_coherence(pieces, rules, errors)
     _check_contact_coherence(pieces, rules, errors)
     _check_sweep_coherence(pieces, rules, errors)
@@ -3283,8 +3396,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     # Portals (schema 19) are nobody's too, and each pair adds two internal types.
     _check_facing_coherence(
         pieces, errors,
-        owners=3 if rules.get("npcs") or rules.get("portals") or rules.get("duck")
-        or has_neutrals(spec) else 2,
+        owners=3 if has_third_owner(spec) else 2,
         extra_types=portal_extra_types(rules),
     )
     _check_fixed_facings(spec, pieces, errors)
@@ -3350,6 +3462,13 @@ def _check_path_coherence(
         )
     passing = promoting_piece_ids(rules) if rules.get("en_passant") else set()
     wild = {npc.get("piece") for npc in _listed(rules.get("npcs")) if isinstance(npc, dict)}
+    # SR2 (`docs/plan-schema-next.md` §2.9 N20): a wild type that pounces on its prey reads its
+    # own capture moves (what it attacks, and so whose royal is in check), so a turning path
+    # on it is read; an "attackers" pouncer reads its attackers' moves, never its own.
+    preying = {
+        npc.get("piece") for npc in _listed(rules.get("npcs"))
+        if isinstance(npc, dict) and npc_pounce(npc) == "prey"
+    }
     for p_index, m_index, pid, path in turning:
         where = f"pieces[{p_index}].moves[{m_index}].path {path!r}"
         if pid in passing:
@@ -3358,10 +3477,10 @@ def _check_path_coherence(
                 "square pass different squares, so 'the square passed' is not one square; "
                 "keep its moves straight, or leave en passant out"
             )
-        if pid in wild:
+        if pid in wild and pid not in preying:
             errors.append(
                 f"{where} on {pid!r}, a wild piece: a wild piece walks its route, and its "
-                "moves are never read"
+                "moves are never read (only a pouncer on its prey reads them)"
             )
 
 
@@ -3496,9 +3615,10 @@ def _check_hexagon_coherence(
       The core buckets squares into files by ``square % width``, and a file is a line
       only while ``(0, 1)`` comes back onto it; across ``n`` or ``ne`` it comes back onto
       another file (``c11`` to ``i1``). With ``nw_se`` alone joined it does not.
-    * **9. ``obstacles.blocks_leaps`` on a hexagon.** The leg ``_lame_path`` picks is the
-      square lattice's, and on a hexagon it can fall on an absent cell, which would block
-      a leap with a square that is not there.
+    * **9. ``obstacles.blocks_leaps`` on a hexagon** was refused here until SR1a: the leg
+      ``_lame_path`` picks is the square lattice's, and on a hexagon it can fall on an absent
+      cell. Now every leap longer than a step states its legs there, on any hex lattice
+      (`_refuse_legs_nothing_reads`).
     """
     if board_shape(spec) != "hexagon":
         return
@@ -3507,14 +3627,6 @@ def _check_hexagon_coherence(
     if not isinstance(width, int) or isinstance(width, bool) or width % 2 == 0:
         return  # refused as a frame already; no radius to measure against
     radius = (width - 1) // 2
-
-    obstacles = rules.get("obstacles")
-    if isinstance(obstacles, dict) and obstacles.get("blocks_leaps") is True:
-        errors.append(
-            "rules.obstacles.blocks_leaps on a hexagon: the leg a blocked leap is checked "
-            "on is the square lattice's, and on a hexagon it can fall on a corner that is "
-            "not a cell, blocking the leap with a square that is not there"
-        )
 
     stated = wrap_stated(rules.get("wrap"), "hexagon")
     if not any(value not in (None, "none") for values in stated.values() for value in values):
@@ -3553,6 +3665,22 @@ def _check_hexagon_coherence(
             "the vector or join no side"
         )
     explosion = rules.get("explode_on_capture")
+    if isinstance(explosion, dict) and "blast" in explosion:
+        # SR1b restates the bound over a stated shape: two cells of one blast, the capture
+        # square among them, may lie at most R + 1 apart, as a radius r's do when 2r <= R + 1.
+        shape = sorted(blast_directions(explosion.get("blast")) | {(0, 0)})
+        across = max(
+            (hex_distance(a[0] - b[0], a[1] - b[1]) for a in shape for b in shape),
+            default=0,
+        )
+        if across > bound:
+            errors.append(
+                f"rules.explode_on_capture.blast reaches across {across} cells, more than "
+                f"{bound}, one more than the hexagon's radius {radius}; with a side joined, "
+                "a blast that wide can meet itself round the seams. Use a smaller shape or "
+                "join no side"
+            )
+        return
     blast = explosion.get("radius", 1) if isinstance(explosion, dict) else None
     if isinstance(blast, int) and not isinstance(blast, bool) and 2 * blast > bound:
         errors.append(
@@ -3560,6 +3688,55 @@ def _check_hexagon_coherence(
             f"cells, one more than the hexagon's radius {radius}; with a side joined, a "
             "blast that wide can meet itself round the seams. Use a smaller radius or "
             "join no side"
+        )
+
+
+def blast_directions(blast: Any) -> set[tuple[int, int]]:
+    """A stated blast's offsets from the capture square (generation 48, SR1b): every
+    well-formed vector turned by the blast's symmetry. Empty for a shape this cannot read
+    (``_validate_explosion`` says what is wrong with it) and for an unknown symmetry."""
+    if not isinstance(blast, dict) or not isinstance(blast.get("vectors"), list):
+        return set()
+    symmetry = blast.get("symmetry", "none")
+    if symmetry not in SYMMETRIES:
+        return set()
+    directions: set[tuple[int, int]] = set()
+    for vector in blast["vectors"]:
+        if (
+            isinstance(vector, list) and len(vector) == 2
+            and all(isinstance(c, int) and not isinstance(c, bool) for c in vector)
+            and vector != [0, 0]
+        ):
+            directions |= expand_symmetry((vector[0], vector[1]), symmetry)
+    return directions
+
+
+def _check_blast_coherence(
+    spec: dict[str, Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """A stated blast (generation 48, SR1b) turns by its own lattice's symmetries, as a move
+    does, and reads alike for both players: the blast table is one per square, not one per
+    player, so a shape that a second player's reflection would change has no single table."""
+    explosion = rules.get("explode_on_capture")
+    blast = explosion.get("blast") if isinstance(explosion, dict) else None
+    if not isinstance(blast, dict):
+        return
+    loc = "rules.explode_on_capture.blast"
+    symmetry = blast.get("symmetry", "none")
+    if symmetry not in SYMMETRIES:
+        return  # refused by `_validate_explosion`
+    board = spec.get("board")
+    hex_lattice = isinstance(board, dict) and board.get("lattice") == "hex"
+    refusals = _symmetry_refusals(symmetry, blast.get("vectors"), f"{loc}.symmetry", hex_lattice)
+    errors.extend(refusals)
+    setup = spec.get("setup")
+    orientation = str(setup.get("orientation", "mirror")) if isinstance(setup, dict) else "mirror"
+    if not refusals and not reads_alike_for_both(blast.get("vectors"), symmetry, orientation):
+        errors.append(
+            f"{loc} reads differently for the two players: a blast is the board's, one "
+            "shape round every square whoever captured, so it must be the same seen from "
+            "either side (state the mirrored vectors too, or use a symmetry that covers "
+            "both, such as rotate4 or dihedral8)"
         )
 
 
@@ -3933,16 +4110,13 @@ def _check_strike_coherence(
     # transform the victim and then destroy it; a strike under ``drops`` would put the
     # same piece in the captor's hand *and* leave it standing. Both are refusals rather
     # than orderings, because neither ordering is the obvious one and choosing one
-    # silently is how a plausible wrong game gets played.
-    for other, why in (
-        ("explode_on_capture", "an explosion destroys what a strike just transformed"),
-        ("drops", "a struck piece cannot both stand on the board and sit in a hand"),
-    ):
-        if rules.get(other):
-            errors.append(
-                f"rules.strike and rules.{other} both say what happens to a taken "
-                f"piece; {why}"
-            )
+    # silently is how a plausible wrong game gets played. SR2 (`docs/plan-schema-next.md`
+    # §2.4 T2) lifted the strike that only removes (``strike_only_removes``: a shot): its
+    # victim leaves the board and goes to the hand as any capture's does.
+    if rules.get("explode_on_capture"):
+        errors.append(refusal("T1"))
+    if rules.get("drops") and not strike_only_removes(strike):
+        errors.append(refusal("T2"))
 
     _check_strike_by(pieces, strike, errors)
 
@@ -4074,20 +4248,14 @@ def _check_contact_coherence(
         return
 
     if rules.get("strike"):
-        errors.append(
-            "rules.contacts and rules.strike are two spellings of one rule; a strike is "
-            "a contact table with no mover column, so write one or the other"
-        )
-    for other, why in (
-        ("explode_on_capture", "an explosion destroys what a contact just transformed"),
-        ("drops", "a transformed piece cannot both stand on the board and sit in a hand"),
-        ("npcs", "a wild piece eats what it steps onto, and a contact says what that meeting leaves behind"),
-    ):
+        errors.append(refusal("T3"))
+    for other, rid in (("explode_on_capture", "T4"), ("npcs", "T6")):
         if rules.get(other):
-            errors.append(
-                f"rules.contacts and rules.{other} both say what happens to a taken "
-                f"piece; {why}"
-            )
+            errors.append(refusal(rid))
+    # SR2 (`docs/plan-schema-next.md` §2.4 T5): a link with no ``onto_to`` removes its target,
+    # which goes to the hand as any capture's does; a link that keeps it stays refused.
+    if rules.get("drops") and not contacts_only_remove(contacts):
+        errors.append(refusal("T5"))
 
     immune = contacts.get("immune")
     immune_ids = _str_set(immune) if isinstance(immune, list) else set()
@@ -4095,10 +4263,7 @@ def _check_contact_coherence(
     # Schema 11: `must_capture` asks whether a move takes an enemy piece, and nothing
     # settles whether a move onto an own piece is one. Refused rather than guessed.
     if rules.get("must_capture") and any(link.get("own") is True for link in links):
-        errors.append(
-            "rules.contacts has a link onto an own piece beside rules.must_capture; "
-            "whether moving onto your own piece counts as a capture is not settled"
-        )
+        errors.append(refusal("T9"))
     met = _str_set(link.get("onto") for link in links)
     for piece in pieces:
         if not isinstance(piece, dict) or not piece.get("royal"):
@@ -4231,27 +4396,15 @@ def _check_npc_coherence(
 
     strike = rules.get("strike")
     if strike_is_live(strike):
-        errors.append(
-            "rules.npcs and rules.strike both say what happens when a piece is taken; a "
-            "struck wild piece would have to become a wild piece of another type, or a "
-            "player's, and neither is a rule anybody wrote"
-        )
+        errors.append(refusal("T7"))
     if rules.get("explode_on_capture"):
-        errors.append(
-            "rules.npcs and rules.explode_on_capture both say what happens when a piece "
-            "is taken; a blast that destroys a wild piece pays nobody its bounty, and a "
-            "wild piece that eats does not explode"
-        )
+        errors.append(refusal("T8"))
     _check_npc_turns_back(npcs, rules, errors)
     _check_npc_pounce(npcs, by_id, rules, orientation, errors)
     _check_npc_split(npcs, rules, errors)
 
     if turn_is_long(rules):
-        errors.append(
-            "rules.npcs beside a turn longer than one move: a wild piece walks between "
-            "turns, and a legality filter would have to know whether the move it is "
-            "testing ends the turn; use one move per turn"
-        )
+        errors.append(refusal("L3"))
 
     if wants_points:
         def bounty_of(npc: Any) -> float:
@@ -4518,7 +4671,9 @@ def _check_duck_coherence(
     4. portals: the third owner's block;
     5. ``explode_on_capture``, ``strike`` or ``contacts``: an uncapturable piece in a blast or
        a strike would be a second rule;
-    6. a sweep;
+    6. a duck type that sweeps (a player's sweep is allowed beside the duck since SR2,
+       `docs/plan-schema-next.md` §2.7 W9: nothing captures the duck, so it blocks a sweep as
+       any piece the sweeper may not capture does);
     7. a duck type that is royal, captures, or has a facing, rest, speed, spy, a region, a move
        condition or a capture-only move;
     8. ``goes: "by_moves"`` on moves that read differently for the two players;
@@ -4535,46 +4690,30 @@ def _check_duck_coherence(
     by_id = {p["id"]: p for p in pieces if isinstance(p, dict) and isinstance(p.get("id"), str)}
     piece = by_id.get(pid) if pid is not None else None
 
-    asks = []
     if rules.get("win", "checkmate") == "checkmate":
-        asks.append('"win": "checkmate"')
+        errors.append(refusal("K1", "rules.win"))
     if rules.get("forbid_check") is True:
-        asks.append('"forbid_check": true')
+        errors.append(refusal("K1", "rules.forbid_check"))
     if rules.get("check_limit"):
-        asks.append("rules.check_limit")
-    for rule in asks:
-        errors.append(
-            f"rules.duck beside {rule}: a move's legality would depend on the duck move after "
-            'it; the duck is for a game without check ("win": "royal_capture", "annihilation" '
-            'or "none")'
-        )
+        errors.append(refusal("K1", "rules.check_limit"))
     if "simultaneous" in rules:
-        errors.append(
-            "rules.duck in a game in rounds (rules.simultaneous): both players move at once, "
-            "and nobody is the mover"
-        )
+        errors.append(refusal("R15"))
     if "turn" in rules:
-        errors.append("rules.duck beside rules.turn: a turn already has its two halves")
+        errors.append(refusal("L7"))
     if rules.get("portals"):
-        errors.append(
-            "rules.duck beside rules.portals: a portal end and the duck share the third "
-            "owner's block"
-        )
+        errors.append(refusal("K2"))
     for key in ("explode_on_capture", "strike", "contacts"):
         if rules.get(key):
-            errors.append(
-                f"rules.duck beside rules.{key}: an uncapturable piece in a blast or a strike "
-                "would be a second rule"
-            )
+            errors.append(refusal("K3", f"rules.{key}"))
     if any(
-        isinstance(p, dict) and any(
+        isinstance(p, dict) and p.get("id") == pid and any(
             isinstance(m, dict) and m.get("kind") == "sweep" for m in _listed(p.get("moves"))
         )
         for p in pieces
     ):
         errors.append(
-            "rules.duck beside a sweep: a sweep removes what lies on its line, and nothing "
-            "takes the duck"
+            f"the duck's type {pid!r} sweeps: a sweep removes what lies on its line, and the "
+            "duck captures nothing"
         )
     max_plies = rules.get("max_plies", 400)
     if isinstance(max_plies, int) and not isinstance(max_plies, bool) and max_plies % 2:
@@ -5192,27 +5331,16 @@ def _check_inert_rules(
     # which makes this refusal sound where it used to be right for the wrong reason. The
     # wording stays "no capture" all the same: it is the narrower claim and it is the one
     # `can_double_step` actually checks.
-    if rules.get("en_passant"):
-        entries = _promotion_entries(rules)
-        entry = entries[0] if len(entries) == 1 else None
-        piece_id = entry.get("piece") if isinstance(entry, dict) else None
-        promoter = next(
-            (
-                piece
-                for piece in pieces
-                if isinstance(piece, dict) and piece.get("id") == piece_id
-            ),
-            None,
+    if rules.get("en_passant") and en_passant_is_inert(spec):
+        ep_piece = next(iter(en_passant_pieces(spec)))
+        errors.append(
+            f"rules.en_passant can generate no capture here: it answers a two-square "
+            f"move, and {ep_piece!r}, the promoting piece it is defined against, has "
+            "none -- a leap passes over nothing, a hop passes over its own screen, "
+            "and a slide needs a range of at least 2 (or 0 for unlimited), a "
+            "min_range of at most 2, and a mode that moves. It is charged 1.0 all "
+            "the same."
         )
-        if promoter is not None and not can_double_step(promoter):
-            errors.append(
-                f"rules.en_passant can generate no capture here: it answers a two-square "
-                f"move, and {piece_id!r}, the promoting piece it is defined against, has "
-                "none -- a leap passes over nothing, a hop passes over its own screen, "
-                "and a slide needs a range of at least 2 (or 0 for unlimited), a "
-                "min_range of at most 2, and a mode that moves. It is charged 1.0 all "
-                "the same."
-            )
 
     # -- castling for a rook that is never unmoved on the king's rank. Both pieces must
     # be unmoved, `generate_castling` looks for the rook along the king's own rank, and
@@ -5331,6 +5459,42 @@ def _capture_is_possible(pieces: list[Any], declared: set[str]) -> bool:
         if declared.intersection(_str_set(allowed)):
             return True
     return False
+
+
+def en_passant_pieces(spec: Any) -> frozenset[str]:
+    """The ids of the pieces en passant is defined against: today the one promoting piece.
+
+    Empty with no promotion rule or more than one (refusals of their own). Every reader
+    that decides whether en passant can fire asks this, so a rule that widens the set
+    changes it once (`en_passant_can_fire`, `en_passant_is_inert`)."""
+    rules = spec.get("rules") if isinstance(spec, dict) else None
+    entries = _promotion_entries(rules) if isinstance(rules, dict) else []
+    if len(entries) != 1 or not isinstance(entries[0], dict):
+        return frozenset()
+    piece_id = entries[0].get("piece")
+    return frozenset({piece_id}) if isinstance(piece_id, str) else frozenset()
+
+
+def _en_passant_double_steps(spec: Any) -> list[bool]:
+    """`can_double_step` of each piece en passant is defined against that the spec declares."""
+    ids = en_passant_pieces(spec)
+    pieces = spec.get("pieces") if isinstance(spec, dict) else None
+    return [
+        can_double_step(piece)
+        for piece in (pieces if isinstance(pieces, list) else [])
+        if isinstance(piece, dict) and piece.get("id") in ids
+    ]
+
+
+def en_passant_can_fire(spec: Any) -> bool:
+    """Whether some piece en passant is defined against has a two-square move."""
+    return any(_en_passant_double_steps(spec))
+
+
+def en_passant_is_inert(spec: Any) -> bool:
+    """Whether en passant has a piece to answer and none of them can double-step."""
+    steps = _en_passant_double_steps(spec)
+    return bool(steps) and not any(steps)
 
 
 def can_double_step(piece: dict[str, Any]) -> bool:
@@ -5534,10 +5698,7 @@ def _validate_board(board: Any, errors: list[str]) -> tuple[int, int, str]:
         errors.append(f"board.shape must be one of {SHAPES}, got {shape!r}")
     elif shape == "hexagon":
         if lattice != "hex":
-            errors.append(
-                'board.shape "hexagon" needs board.lattice "hex": a hexagon of cells is '
-                "cut from a hex rhombus, and a square lattice has no hexagon to cut"
-            )
+            errors.append(refusal("X12"))
         if ok and isinstance(width, int) and (width != height or width % 2 == 0):
             errors.append(
                 'board.shape "hexagon" needs an odd width equal to its height, got '
@@ -5563,6 +5724,17 @@ def board_shape(spec: Any) -> str:
 # directions in one order, this one, so a spec has one set of paths and one set of
 # refusals. Exact: integer cross products, never a floating angle, so the order cannot
 # depend on rounding.
+#
+# The hex lattice's order (SR1c, `docs/plan-schema-next.md` §1 rank 5, lifting PA2) is the
+# same comparator read in axial coordinates. A hex cell `(q, r)` sits in the plane at
+# `(q + r / 2, r * sqrt(3) / 2)`, a linear map of positive determinant, so it keeps the sign
+# of every cross product (which way one direction turns to another), which side of east a
+# direction lies on (`r > 0`, or `r == 0` and `q > 0`), and the order of lengths along one
+# line. Every question the order asks is one of those three, so the integer comparator lays
+# the hexagon's directions round a cell exactly as their angles in the plane do: the six
+# steps east, `[0, 1]` at 60 degrees, `[-1, 1]` at 120, and on round; the hex knight's
+# twelve between them. Only the size of an angle is not kept, which `_turn_degrees` reads
+# in the plane.
 
 _PATH_OFF_KIND: dict[str, str] = {
     "leap": "a leap is one jump, and has no path to turn",
@@ -5606,9 +5778,18 @@ def turns_less_than_half(a: tuple[int, int], b: tuple[int, int]) -> bool:
     return _cross(a, b) > 0
 
 
-def _turn_degrees(a: tuple[int, int], b: tuple[int, int]) -> int:
-    """The counter-clockwise turn from ``a`` to ``b`` in whole degrees, in (0, 360]."""
-    turn = round(degrees(atan2(_cross(a, b), a[0] * b[0] + a[1] * b[1]))) % 360
+def _in_the_plane(vector: tuple[int, int], hex_lattice: bool) -> tuple[float, float]:
+    """Where a direction points in the plane: as written on the square lattice, and a hex
+    cell's axial ``(q, r)`` at ``(q + r / 2, r * sqrt(3) / 2)`` (SR1c)."""
+    q, r = vector
+    return (q + r / 2, r * sqrt(3) / 2) if hex_lattice else (float(q), float(r))
+
+
+def _turn_degrees(a: tuple[int, int], b: tuple[int, int], hex_lattice: bool = False) -> int:
+    """The counter-clockwise turn from ``a`` to ``b`` in whole degrees, in (0, 360]: the
+    angle in the plane, so a hex lattice's is read through `_in_the_plane`."""
+    (ax, ay), (bx, by) = _in_the_plane(a, hex_lattice), _in_the_plane(b, hex_lattice)
+    turn = round(degrees(atan2(ax * by - ay * bx, ax * bx + ay * by))) % 360
     return turn or 360
 
 
@@ -5623,8 +5804,8 @@ def path_refusals(move: dict[str, Any], loc: str, hex_lattice: bool = False) -> 
 
     A ``path`` other than ``"straight"`` turns a slide only; a slide of one step never
     turns; ``circle`` needs directions all the way round, each less than half a turn from
-    the next, and ``zigzag`` at least one pair that close; and the hexagon's angle order is
-    not built. The rules a path may not sit beside (portals, en passant, wild pieces) are
+    the next, and ``zigzag`` at least one pair that close. A hex lattice's directions are
+    its own symmetries' and are laid out by the same order (SR1c, lifting PA2). The rules a path may not sit beside (portals, en passant, wild pieces) are
     `_check_path_coherence`'s, which knows the spec."""
     if "path" not in move:
         return []
@@ -5639,16 +5820,14 @@ def path_refusals(move: dict[str, Any], loc: str, hex_lattice: bool = False) -> 
                 f"{_PATH_OFF_KIND[kind]}"]
     if kind != "slide":
         return []  # an unknown kind is refused by name already
-    if hex_lattice:
-        return [f"{loc}.path {path!r} is for the square lattice: the order of the hexagon's "
-                "directions round a cell is not built"]
     if move.get("range") == 1:
         return [f"{loc}.path {path!r} with range 1 is one step, which never turns: write it "
                 "as a leap"]
     vectors = move.get("vectors")
     symmetry = move.get("symmetry", "none")
     if (
-        not isinstance(vectors, list) or symmetry not in SQUARE_SYMMETRIES
+        not isinstance(vectors, list)
+        or symmetry not in (HEX_SYMMETRIES if hex_lattice else SQUARE_SYMMETRIES)
         or not all(
             isinstance(v, list) and len(v) == 2
             and all(isinstance(c, int) and not isinstance(c, bool) for c in v)
@@ -5666,7 +5845,7 @@ def path_refusals(move: dict[str, Any], loc: str, hex_lattice: bool = False) -> 
             return [f"{loc}.path {path!r} turns from one direction to the next, and "
                     f"{list(a)} and {list(b)} point the same way; keep one of them"]
     if path == "circle":
-        wide = max(_turn_degrees(a, b) for a, b in pairs)
+        wide = max(_turn_degrees(a, b, hex_lattice) for a, b in pairs)
         if wide >= 180:
             return [f"{loc}.path 'circle' needs directions all the way round, each less than "
                     f"half a turn from the next; these leave a gap of {wide} degrees"]
@@ -5895,11 +6074,11 @@ def _validate_moves(
         kind = move.get("kind")
         if kind not in MOVE_KINDS:
             errors.append(f"{loc}.kind must be one of {MOVE_KINDS}, got {kind!r}")
-        elif hex_lattice and kind == "lame":
+        elif hex_lattice and kind == "lame" and "legs" not in move:
             errors.append(
-                f"{loc}.kind 'lame' is refused on a hex lattice: its leg is chosen by the "
-                "square lattice's longer axis, and a hex leap has two shortest paths and no "
-                "stated leg"
+                f"{loc}.kind 'lame' on a hex lattice must state its legs: the computed leg "
+                "is the square lattice's longer axis, and a hex leap has two shortest paths, "
+                "so say which squares block it with 'legs'"
             )
 
         symmetry = move.get("symmetry", "none")
@@ -5969,6 +6148,96 @@ def _validate_moves(
         _validate_vectors(move.get("vectors"), loc, errors)
         _validate_condition(move.get("condition"), loc, width, height, errors)
         errors.extend(path_refusals(move, loc, hex_lattice))
+        if "legs" in move:
+            errors.extend(legs_refusals(move, loc, hex_lattice))
+
+
+def jump_length(vector: Sequence[int], hex_lattice: bool) -> int:
+    """How many single steps a vector is: the king's distance on a square lattice, the hex
+    distance (`hex_distance`) on a hex one. A leg is stated shorter than its jump."""
+    if hex_lattice:
+        return hex_distance(vector[0], vector[1])
+    return max(abs(vector[0]), abs(vector[1]))
+
+
+def _is_pair(value: Any) -> bool:
+    return (
+        isinstance(value, list) and len(value) == 2
+        and all(isinstance(c, int) and not isinstance(c, bool) for c in value)
+    )
+
+
+def legs_refusals(move: dict[str, Any], loc: str, hex_lattice: bool = False) -> list[str]:
+    """What is wrong with a move's ``legs`` (SR1a, `docs/plan-schema-next.md` §1 rank 1).
+
+    ``legs`` lists, per base vector, the squares (steps from the mover, in the vector's own
+    frame) that block that jump; the descriptor's symmetry turns them with it
+    (`legs.stated_legs`). On a ``lame`` they replace `compile._lame_path`'s one
+    computed leg: a piece on any of them blocks the jump, as does a wall. On a ``leap`` they
+    are where a wall stops it under ``obstacles.blocks_leaps`` (`_refuse_legs_nothing_reads`
+    refuses them without it). Refused: on any other kind; not one non-empty list per vector;
+    a leg that is not a pair, is the null step, is named twice, or is not shorter than its
+    jump (`jump_length`), since a leg is a square the jump passes, never its landing or
+    beyond; and a direction two turns of the descriptor give different legs.
+    """
+    kind = move.get("kind")
+    legs = move.get("legs")
+    if kind not in ("lame", "leap"):
+        return [
+            f"{loc}.legs only means something on a 'lame' or a 'leap' (the squares that "
+            f"block a jump), not on a {kind!r}"
+        ]
+    vectors = move.get("vectors")
+    if not isinstance(legs, list) or (
+        isinstance(vectors, list) and len(legs) != len(vectors)
+    ):
+        return [
+            f"{loc}.legs must be an array with one entry per vector, each the list of "
+            "squares [dx, dy] that block that jump"
+        ]
+    errors: list[str] = []
+    for index, own in enumerate(legs):
+        where = f"{loc}.legs[{index}]"
+        if not isinstance(own, list) or not own:
+            errors.append(
+                f"{where} must be a non-empty list of squares [dx, dy]; a jump nothing "
+                "blocks is a 'leap'"
+            )
+            continue
+        if len(own) > MAX_LEGS:
+            errors.append(f"{where} may name at most {MAX_LEGS} squares")
+        vector = vectors[index] if isinstance(vectors, list) else None
+        seen: list[list[int]] = []
+        for leg in own:
+            if not _is_pair(leg) or leg == [0, 0]:
+                errors.append(
+                    f"{where} entries must be non-null [dx, dy] integer pairs, got {leg!r}"
+                )
+                continue
+            if leg in seen:
+                errors.append(f"{where} names {leg} twice")
+            seen.append(leg)
+            if isinstance(vector, list) and _is_pair(vector) and jump_length(
+                leg, hex_lattice
+            ) >= jump_length(vector, hex_lattice):
+                errors.append(
+                    f"{where} {leg} is not shorter than its jump {vector}: a leg is a square "
+                    "the jump passes on its way, never its landing or past it"
+                )
+    symmetry = move.get("symmetry", "none")
+    if errors or not isinstance(vectors, list) or not all(_is_pair(v) for v in vectors):
+        return errors
+    if symmetry not in SYMMETRIES:
+        return errors
+    _, clashes = stated_legs(vectors, legs, symmetry)
+    if clashes:
+        errors.append(
+            f"{loc}.legs give {', '.join(str(list(d)) for d in clashes)} two different "
+            f"sets of legs under {symmetry!r} (two turns of the descriptor land on one "
+            "direction and turn its legs apart); state legs that the turns agree on, or "
+            "list the directions under 'none'"
+        )
+    return errors
 
 
 def _symmetry_refusals(
@@ -6108,11 +6377,7 @@ def _validate_setup(
     if orientation not in ORIENTATIONS:
         errors.append(f"setup.orientation must be one of {ORIENTATIONS}, got {orientation!r}")
     elif hex_lattice and orientation != "rotate":
-        errors.append(
-            'setup.orientation must be "rotate" on a hex lattice, written out: the rank '
-            "reflection sends a neighbour to a cell that is not one, and the half turn is "
-            "the hex symmetry that carries one army onto the other"
-        )
+        errors.append(refusal("X5"))
 
     placements = setup.get("placements")
     if not isinstance(placements, list) or not placements:
@@ -6331,10 +6596,7 @@ def _refuse_square_readings(rules: dict[str, Any], errors: list[str]) -> None:
     """
     reach = rules.get("reach")
     if isinstance(reach, dict) and reach.get("mirror", True) not in ("rotate", False):
-        errors.append(
-            'rules.reach.mirror must be "rotate" or false on a hex lattice: true, the '
-            "default, reflects the goal by rank, which is not a hex symmetry"
-        )
+        errors.append(refusal("X6"))
 
 
 def _check_landing_symmetries(
@@ -6375,6 +6637,26 @@ def _validate_explosion(explosion: Any, piece_ids: list[str], errors: list[str])
         errors.append("rules.explode_on_capture must be an object")
         return
     _check_keys(explosion, _EXPLODE_KEYS, "rules.explode_on_capture", errors)
+
+    blast = explosion.get("blast")
+    if blast is not None:
+        # Generation 48 (SR1b): the shape stated, in place of the radius's box. Its lattice
+        # and its reading for both players are `_check_blast_coherence`'s, which see the
+        # board; its reach on a hexagon with a side joined is `_check_hexagon_coherence`'s.
+        loc = "rules.explode_on_capture.blast"
+        if "radius" in explosion:
+            errors.append(
+                "rules.explode_on_capture.radius and .blast both say how far a blast "
+                "reaches; give one of them"
+            )
+        if not isinstance(blast, dict):
+            errors.append(f"{loc} must be an object with 'vectors' and 'symmetry'")
+        else:
+            _check_keys(blast, _BLAST_KEYS, loc, errors, required={"vectors"})
+            symmetry = blast.get("symmetry", "none")
+            if symmetry not in SYMMETRIES:
+                errors.append(f"{loc}.symmetry must be one of {SYMMETRIES}, got {symmetry!r}")
+            _validate_vectors(blast.get("vectors"), loc, errors)
 
     radius = explosion.get("radius", 1)
     if isinstance(radius, bool) or not isinstance(radius, int) or not 0 <= radius <= 3:
@@ -6510,11 +6792,7 @@ def _validate_reach(
     if on not in REACH_ON:
         errors.append(f"rules.reach.on must be one of {REACH_ON}, got {on!r}")
     elif on == "leave" and reach.get("safe") is True:
-        errors.append(
-            'rules.reach.safe asks whether the piece on the goal square could be taken '
-            'there, and under "on": "leave" the piece that decides the game has just left '
-            "it; leave safe out"
-        )
+        errors.append(refusal("I1"))
     result = reach.get("result", "win")
     if result not in ENDING_RESULTS:
         errors.append(f"rules.reach.result must be one of {ENDING_RESULTS}, got {result!r}")
@@ -7384,25 +7662,15 @@ def _check_portal_coherence(
     orientation = str(setup.get("orientation", "mirror"))
 
     if isinstance(board, dict) and board.get("lattice") == "hex":
-        errors.append(
-            "rules.portals is refused on a hex lattice in this schema: the direction a piece "
-            "comes out in is read from the sign of its vector, which on six neighbours does "
-            "not name one of them"
-        )
-    for key, why in (
-        ("npcs", "a wild piece walks a fixed route and a portal moves"),
-        ("strike", "what a capture leaves behind beside an exit is a second landing rule"),
-        ("contacts", "what a capture leaves behind beside an exit is a second landing rule"),
-        ("explode_on_capture", "a blast beside an exit is a second landing rule"),
-        ("territory", "which square a transit colours is not settled"),
+        errors.append(refusal("P1"))
+    for key, rid in (
+        ("npcs", "P2"), ("strike", "P3"), ("contacts", "P4"), ("explode_on_capture", "P5"),
+        ("territory", "P6"),
     ):
         if key in rules:
-            errors.append(f"rules.portals is refused beside rules.{key}: {why}")
+            errors.append(refusal(rid))
     if uses_sweep(spec):
-        errors.append(
-            "rules.portals is refused beside a 'sweep' move: what a sweep through a portal "
-            "removes is not settled"
-        )
+        errors.append(refusal("W8"))
 
     declared = {
         piece["id"]: piece
@@ -7474,6 +7742,8 @@ def _refuse_a_one_square_lame_leap(spec: dict[str, Any], errors: list[str]) -> N
     ever held or the main checkout's `runs/` holds that carries one
     (`docs/reference/schema-reboot-assessment.md` §10).
     """
+    board = spec.get("board")
+    hex_lattice = isinstance(board, dict) and board.get("lattice") == "hex"
     pieces = spec.get("pieces")
     for p_index, piece in enumerate(pieces if isinstance(pieces, list) else ()):
         moves = piece.get("moves") if isinstance(piece, dict) else None
@@ -7482,16 +7752,79 @@ def _refuse_a_one_square_lame_leap(spec: dict[str, Any], errors: list[str]) -> N
             if not isinstance(move, dict) or move.get("kind") != "lame":
                 continue
             for v_index, vector in enumerate(vectors if isinstance(vectors, list) else ()):
+                # SR1a: one step is the lattice's own -- on a hex lattice [1, 1] is two
+                # steps (a hex diagonal), with a leg to state, and [1, -1] is one.
                 if (
-                    isinstance(vector, list) and len(vector) == 2
-                    and all(isinstance(c, int) and not isinstance(c, bool) for c in vector)
-                    and vector != [0, 0] and max(abs(vector[0]), abs(vector[1])) == 1
+                    _is_pair(vector) and vector != [0, 0]
+                    and jump_length(vector, hex_lattice) == 1
                 ):
                     errors.append(
                         f"pieces[{p_index}].moves[{m_index}].vectors[{v_index}] {vector} is a "
                         "one-square 'lame' leap, which has no square to be blocked on; use an "
                         "ordinary 'leap' or a 'slide' of range 1 instead"
                     )
+
+
+def _move_lists(spec: dict[str, Any]) -> list[tuple[str, list[Any]]]:
+    """Every move list in a spec with its location: each piece's, and each portal group's."""
+    found: list[tuple[str, list[Any]]] = []
+    pieces = spec.get("pieces")
+    for p_index, piece in enumerate(pieces if isinstance(pieces, list) else ()):
+        moves = piece.get("moves") if isinstance(piece, dict) else None
+        if isinstance(moves, list):
+            found.append((f"pieces[{p_index}].moves", moves))
+    rules = spec.get("rules")
+    groups = rules.get("portals") if isinstance(rules, dict) else None
+    for g_index, group in enumerate(groups if isinstance(groups, list) else ()):
+        moves = group.get("moves") if isinstance(group, dict) else None
+        if isinstance(moves, list):
+            found.append((f"rules.portals[{g_index}].moves", moves))
+    return found
+
+
+def _refuse_legs_nothing_reads(spec: dict[str, Any], errors: list[str]) -> None:
+    """SR1a: a leap's ``legs`` with nothing to read them, and a hex leap with none to read.
+
+    * **Legs on a ``leap`` without ``obstacles.blocks_leaps: true``.** A leap's legs are where
+      a wall stops it, and only that key makes a wall stop a leap; without it they state
+      nothing, so they are refused rather than carried inert.
+    * **``obstacles.blocks_leaps`` on a hex lattice with a leap that states no legs**, for a
+      leap longer than one step (§2 X8, `docs/plan-schema-next.md`). The computed leg is the
+      square lattice's (`compile._lame_path`): on a hexagon it can fall on a corner that is
+      not a cell, and on either hex board it picks one of a hex jump's two shortest paths
+      for no reason the lattice gives. With every such leap's legs stated there is nothing
+      left to pick. This closes the rhombus gap `docs/game-ideas.md` named too: no stored
+      spec carried the key on a hex lattice. A ``lame`` on a hex lattice states its legs
+      already (`_validate_moves`).
+    """
+    board = spec.get("board")
+    hex_lattice = isinstance(board, dict) and board.get("lattice") == "hex"
+    rules = spec.get("rules")
+    obstacles = rules.get("obstacles") if isinstance(rules, dict) else None
+    blocks = isinstance(obstacles, dict) and obstacles.get("blocks_leaps") is True
+    for where, moves in _move_lists(spec):
+        for m_index, move in enumerate(moves):
+            if not isinstance(move, dict) or move.get("kind") != "leap":
+                continue
+            loc = f"{where}[{m_index}]"
+            if "legs" in move and not blocks:
+                errors.append(
+                    f"{loc}.legs on a 'leap' are where a wall stops it, which only "
+                    "rules.obstacles.blocks_leaps: true makes happen; without it a leap is "
+                    "never blocked, so leave them out (or make it a 'lame', which a piece "
+                    "blocks too)"
+                )
+            vectors = move.get("vectors")
+            if (
+                blocks and hex_lattice and "legs" not in move and isinstance(vectors, list)
+                and any(_is_pair(v) and jump_length(v, True) > 1 for v in vectors)
+            ):
+                errors.append(
+                    f"{loc} is a leap longer than one step under rules.obstacles.blocks_leaps "
+                    "on a hex lattice, and must state its 'legs': a hex jump has two shortest "
+                    "paths, and the computed leg is the square lattice's, which on a hexagon "
+                    "can fall on a corner that is not a cell"
+                )
 
 
 def _refuse_a_portal_bar_no_move_meets(spec: dict[str, Any], errors: list[str]) -> None:
@@ -7686,6 +8019,17 @@ def has_neutrals(spec: Any) -> bool:
     return bool(neutral_ids(spec))
 
 
+def has_third_owner(spec: Any) -> bool:
+    """Whether anything is nobody's (npcs, portals, a duck or a neutral): the third owner block.
+
+    The validator's facing bound and the compiler's ``n_owners`` both read this one predicate."""
+    rules = spec.get("rules") if isinstance(spec, dict) else None
+    rules = rules if isinstance(rules, dict) else {}
+    return bool(
+        rules.get("npcs") or rules.get("portals") or rules.get("duck") or has_neutrals(spec)
+    )
+
+
 def piece_control(piece: Any) -> str:
     """How a type's pieces move while nobody owns them: ``"stands"`` or ``"majority"``."""
     control = piece.get("control", "stands") if isinstance(piece, dict) else "stands"
@@ -7828,34 +8172,23 @@ def _check_neutral_coherence(
                 f"setup.placements[{index}].facing for nobody: a piece nobody owns has no forward"
             )
 
-    for key, why in (
-        ("npcs", "the phase and the bounty tally read nobody's block as wild pieces"),
-        ("duck", "the duck shares nobody's block, and its half reads the block as the duck's"),
-        ("portals", "portal ends share nobody's block"),
-        ("simultaneous", "a round's collisions were not written for a piece nobody owns"),
-        ("strike", "what a capture leaves of a piece nobody owns is a second rule"),
-        ("contacts", "what a contact makes of a piece nobody owns is a second rule"),
+    for key, rid in (
+        ("npcs", "O1"), ("duck", "O2"), ("portals", "P10"), ("simultaneous", "R18"),
+        ("strike", "O3"), ("contacts", "O4"),
     ):
         if key in rules:
-            errors.append(f"a placement for nobody is refused beside rules.{key}: {why}")
+            errors.append(refusal(rid))
 
     _check_neutral_squares(spec, setup, orientation, errors)
 
     majority = majority_ids(spec)
     if not majority:
         return
-    for key, why in (
-        ("territory", "who claims a square a nobody's piece steps on is a second rule"),
-        ("reach", "whether a nobody's piece reaching a goal wins is a second rule"),
-        ("explode_on_capture", "who a held piece's blast is charged to is a second rule"),
-    ):
+    for key, rid in (("territory", "O10"), ("reach", "O11"), ("explode_on_capture", "O12")):
         if key in rules:
-            errors.append(f"majority control is refused beside rules.{key}: {why}")
-    if turn_is_long(rules):
-        errors.append(
-            "majority control is refused beside a turn longer than one move: the holder is "
-            "read off the board at the start of a move, and a long turn changes it mid-turn"
-        )
+            errors.append(refusal(rid))
+    # SR2 (`docs/plan-schema-next.md` §2.2 L5) lifted the long turn: the holder is read
+    # off the board at the start of each move, which movegen does per move anyway.
     for pid in sorted(majority):
         _check_majority_type(pid, by_id[pid], rules, orientation, hex_lattice, errors)
 
@@ -8322,11 +8655,7 @@ def _validate_strike_shape(strike: Any, piece_ids: list[str], errors: list[str])
             if len(set(map(str, by))) != len(by):
                 errors.append("rules.strike.by names a piece twice")
         if switching is not None:
-            errors.append(
-                "rules.strike.by beside rules.strike.switches_sides: rules.strike.switches_sides "
-                "already names the capturers it changes, and two lists of capturers in one strike "
-                "would make which one a switch reads a second rule; leave one out"
-            )
+            errors.append(refusal("T10"))
 
     immune = strike.get("immune", [])
     if not isinstance(immune, list):
@@ -9185,7 +9514,8 @@ def _check_purse_coherence(
       royal, a spy (TC6: a spy is never gained) or a wild type or the duck; and only where
       something charges it: a market that sells the type, a placement for nobody (a hire,
       TC6) or ``rules.purse.bribe`` (TC6);
-    * **beside** rounds (and so the spy), a long turn, portals and a blast (§5.9);
+    * **beside** rounds (and so the spy), portals and a blast (§5.9; a long turn was lifted
+      by SR2, `docs/plan-schema-next.md` L6);
     * **a fractional wild bounty**: a purse holds whole coins;
     * **nothing to spend on**: no market, no priced piece placed for nobody, no bribe (TC6);
       a region with no market; a bribe with no priced piece a player can hold;
@@ -9226,16 +9556,12 @@ def _check_purse_coherence(
     if purse is None:
         return
     errors.extend(
-        f"rules.purse is refused beside rules.{key}: {why}"
-        for key, why in (
-            ("simultaneous", "two buyers in one round is a rule not written"),
-            ("portals", "a portal end is nobody's and its own mover"),
-            ("explode_on_capture", "who is paid for a blast's victims is a second rule"),
-        )
+        refusal(rid)
+        for key, rid in (("simultaneous", "R19"), ("portals", "P9"), ("explode_on_capture", "O22"))
         if rules.get(key) not in (None, False)
     )
-    if turn_is_long(rules):
-        errors.append("rules.purse is refused beside a turn longer than one move")
+    # SR2 (`docs/plan-schema-next.md` §2.2 L6) lifted the long turn: a buy is a move, and two
+    # buys in a turn are two moves, each paid from the purse as the move before left it.
     for index, npc in enumerate(_listed(rules.get("npcs"))):
         bounty = npc.get("bounty") if isinstance(npc, dict) else None
         if isinstance(bounty, float) and not bounty.is_integer():

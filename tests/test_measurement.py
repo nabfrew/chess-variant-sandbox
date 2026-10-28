@@ -2112,7 +2112,12 @@ class TestTheTablesCacheOnDisk:
 
         try:
             before = key()
-            assert [p.relative_to(tmp_path) for p in measurement.compile_sources()] == files
+            found = measurement.compile_sources()
+            assert [p.relative_to(tmp_path) for p in found] == files
+            # The file set is pinned once, above; re-deriving it per edit re-parses every
+            # source's imports (the whole cost of this test) and proves nothing more, since
+            # an edit of bytes cannot change which files are listed.
+            monkeypatch.setattr(measurement, "compile_sources", lambda: found)
             for relative in files:
                 target = tmp_path / relative
                 body = target.read_bytes()

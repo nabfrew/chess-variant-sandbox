@@ -1,4 +1,4 @@
-// UP2 and UP4, `docs/plan-user-page.md` §5: a position on a server-drawn page, as the
+// UP2 and UP4, `docs/archive/plan-user-page.md` §5: a position on a server-drawn page, as the
 // application's still board draws it (`stillboard.js` `boardPreview`, the one drawing of a
 // board; nothing here works out a square). Loaded after `pages.BOARD_SCRIPTS` and before the
 // page's own script, by the user page and by a member's page.

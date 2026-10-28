@@ -461,7 +461,8 @@ class TestASquareGameMadeHexagonsIsAGame:
                 refused[path.stem] = problems
         assert len(refused) <= 2, sorted(refused)
         for problems in refused.values():
-            assert all("'lame' is refused" in line or "facing.axes 4" in line
+            # SR1a: a hex lame is refused only until it states its legs.
+            assert all("must state its legs" in line or "facing.axes 4" in line
                        or "schema_version" in line for line in problems), problems
 
     def test_a_rank_zone_becomes_the_cells_it_was(self) -> None:

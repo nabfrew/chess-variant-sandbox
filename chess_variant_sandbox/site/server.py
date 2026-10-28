@@ -1577,7 +1577,7 @@ class SiteApp(App):
             for group in designed:
                 for game in group["games"]:
                     game["tagCounts"] = tagged.get(game["hash"], [])
-            # UP1 (`docs/plan-user-page.md` §5): each game's board, track, rungs, parent and
+            # UP1 (`docs/archive/plan-user-page.md` §5): each game's board, track, rungs, parent and
             # change, and each waiting game's board and last move (`site/workshop.py`), the
             # drawings sent once in `pieceArt` as the listing sends them.
             known = self.known()

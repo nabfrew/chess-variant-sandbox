@@ -31,6 +31,7 @@ from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import distance, features
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.transform import drop_piece
 from tests.feature_inventory import _schema_thirty_five_uses
 
@@ -131,15 +132,18 @@ class TestTheRefusals:
             ({**RIFLE, "by": ["B", "B"]}, "rules.strike.by names a piece twice"),
             ({**RIFLE, "by": ["P", "N", "B", "R", "Q", "K"]},
              "rules.strike.by names every piece that captures"),
-            ({"effect": "capture", "immune": ["K"], "by": ["B"], "switches_sides": ["B"]},
-             "two lists of capturers in one strike"),
             ({"effect": "capture", "by": ["B"]}, "which is no strike at all"),
         ],
-        ids=["empty", "undeclared", "twice", "every capturer", "beside switches_sides", "inert"],
+        ids=["empty", "undeclared", "twice", "every capturer", "inert"],
     )
     def test_each_is_refused_in_words(self, strike: dict[str, Any], words: str) -> None:
         errors = validate_spec(_with(strike))
         assert any(words in error for error in errors), errors
+
+    def test_beside_switches_sides_is_refused(self) -> None:
+        strike = {"effect": "capture", "immune": ["K"], "by": ["B"], "switches_sides": ["B"]}
+        errors = validate_spec(_with(strike))
+        assert "T10" in refused_ids(errors), errors
 
     def test_a_listed_piece_that_never_captures_is_refused(self) -> None:
         spec = _with(ARCHERS)
@@ -164,9 +168,11 @@ class TestTheRefusals:
     def test_the_existing_refusals_still_reach_a_strike_with_by(self) -> None:
         royal = _with({"effect": "capture", "position": "stay", "by": ["B"]})
         assert any("not in rules.strike.immune" in e for e in validate_spec(royal))
+        # Beside a hand an archer is allowed since SR2 (T2): its victim goes to the hand
+        # (`tests/test_removing_strike_hand.py`); a demoting chain beside one is not.
         drops = _with(ARCHERS)
         drops["rules"]["drops"] = {"from_captures": True}
-        assert any("rules.strike and rules.drops" in e for e in validate_spec(drops))
+        assert not any("rules.strike and rules.drops" in e for e in validate_spec(drops))
 
 
 class TestTheHandPositions:

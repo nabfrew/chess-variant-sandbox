@@ -146,7 +146,7 @@ class TestTheServer:
         snap = session.play(move["move"])
         for block in (snap, snap["history"][-1], *designing.timeline(session)):
             assert "purse" not in block and "held" not in block
-        assert "purse" not in snap["ruleset"]
+        assert snap["ruleset"]["purse"] is None
         assert not any("cost" in m or "foreign" in m for m in snap["moves"])
 
 

@@ -92,6 +92,7 @@ _NUMBER_WORDS = {
     34: "thirty_four", 35: "thirty_five", 36: "thirty_six", 37: "thirty_seven",
     38: "thirty_eight", 39: "thirty_nine", 40: "forty", 41: "forty_one", 42: "forty_two",
     43: "forty_three", 44: "forty_four", 45: "forty_five", 46: "forty_six",
+    47: "forty_seven", 48: "forty_eight", 49: "forty_nine", 50: "fifty", 51: "fifty_one",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -385,6 +386,8 @@ class TestMutation:
         # N5's `pace-a-line` needs wild pieces in a game without check, and no archived wild
         # game is one until N6: the turning wolves' test spec stands in.
         parents.append(load_spec(ROOT / "tests" / "_turning_wolves.json"))
+        # SR1b's `shape-the-blast` shapes a blast a game already has: atomic's.
+        parents.append(specs["atomic"])
 
         def fires(operator) -> bool:
             return any(
@@ -2034,7 +2037,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 46
+_FEATURES_ARE_FOR_SCHEMA = 51
 
 
 @dataclass(frozen=True)
@@ -2047,14 +2050,15 @@ class _Feature:
     crossed `npcs[].immune`, it has crossed `npcs` and taken the modifier down with it. A
     ``host`` of ``None`` says the feature *is* the rule, so removing it is the crossing.
 
-    ``keeps_army`` is the second half of the same question, and it is ``False`` exactly
-    once. A crossing normally has to leave the piece list alone, or `remove-a-piece`
+    ``keeps_army`` is the second half of the same question, and it is ``False``
+    rarely. A crossing normally has to leave the piece list alone, or `remove-a-piece`
     deleting the type a list happens to name counts as reaching that list -- which is
     `_forget_piece` repairing a dangling reference on its way past, not an edit anything
     can ask for. Q51 is the exception because one of its two inventory names, *a piece with
     no moves of its own*, is a fact about the piece list: no edit can put a stone in a game
     without adding one, so requiring the same army there would state a condition that
-    cannot be met rather than a gap that can be closed.
+    cannot be met rather than a gap that can be closed. Generation 50's duck beside a sweep
+    (SR2, W9) is the same case: the duck is a type of its own.
 
     ``parent`` builds the smallest edit to a committed spec that turns the feature on, so
     what the leave arm measures is the operator set and not the parent's other novelties.
@@ -2518,6 +2522,159 @@ def _parent_bribe() -> dict:
     return chess
 
 
+def _parent_legs() -> dict:
+    """Xiangqi whose horse is blocked on its diagonal leg rather than its orthogonal one
+    (SR1a, `docs/plan-schema-next.md` §1 rank 1)."""
+    spec = load_spec(RULESETS / "xiangqi.json")
+    for piece in spec["pieces"]:
+        for move in piece["moves"]:
+            if move["kind"] == "lame" and move["vectors"] == [[1, 2]]:
+                move["legs"] = [[[1, 1]]]
+    return spec
+
+
+def _parent_leap_legs() -> dict:
+    """Quarry, whose walls stop its knights' leaps, with each knight's leg stated on its
+    diagonal (SR1a)."""
+    spec = load_spec(ROOT / "archive" / "quarry.json")
+    for piece in spec["pieces"]:
+        for move in piece["moves"]:
+            if move["kind"] == "leap" and move.get("vectors") == [[1, 2]]:
+                move["legs"] = [[[1, 1]]]
+    return spec
+
+
+def _parent_blast() -> dict:
+    """Atomic whose blast is a cross that spares the diagonals (SR1b,
+    `docs/plan-schema-next.md` §1 rank 2)."""
+    spec = load_spec(RULESETS / "atomic.json")
+    explosion = spec["rules"]["explode_on_capture"]
+    explosion.pop("radius", None)
+    explosion["blast"] = {"vectors": [[1, 0]], "symmetry": "rotate4"}
+    return spec
+
+
+def _parent_hex_path() -> dict:
+    """Glinski's hexagon whose rooks circle the six steps (SR1c,
+    `docs/plan-schema-next.md` §1 rank 5)."""
+    spec = load_spec(ARCHIVE / "hex-glinski-hexagon.json")
+    for piece in spec["pieces"]:
+        if piece["id"] == "R":
+            piece["moves"][0]["path"] = "circle"
+    return spec
+
+
+def _long_turn(spec: dict) -> dict:
+    """``spec`` in a turn of two moves after a first of one (`transform.set_turn`, which takes
+    en passant out)."""
+    from chess_variant_sandbox.spec.transform import set_turn
+
+    set_turn(spec)
+    return spec
+
+
+def _parent_crowd_in_a_long_turn() -> dict:
+    """The crowd (majority-held condottieri) in two moves a turn (SR2, L5)."""
+    return _long_turn(_parent_crowd())
+
+
+def _parent_market_in_a_long_turn() -> dict:
+    """The knights' market in two moves a turn (SR2, L6)."""
+    return _long_turn(_parent_market())
+
+
+def _crazyhouse() -> dict:
+    return load_spec(RULESETS / "crazyhouse.json")
+
+
+def _parent_shot_hand() -> dict:
+    """Crazyhouse whose bishops shoot (SR2, T2): the archers beside a hand."""
+    spec = _crazyhouse()
+    spec["rules"]["strike"] = {
+        "effect": "capture", "position": "stay", "immune": ["K"], "by": ["B"],
+    }
+    return spec
+
+
+def _parent_contact_hand() -> dict:
+    """Crazyhouse in which a pawn that takes a knight becomes one (SR2, T5): a removing link
+    beside a hand."""
+    spec = _crazyhouse()
+    spec["rules"].pop("en_passant", None)
+    spec["rules"]["contacts"] = {
+        "position": "advance", "immune": ["K"],
+        "links": [{"mover": "P", "onto": "N", "mover_to": "N"}],
+    }
+    return spec
+
+
+def _parent_only_lost_hand() -> dict:
+    """Crazyhouse whose pawn promotes only into what its side has lost (SR2, H1)."""
+    spec = _crazyhouse()
+    spec["rules"]["promotion"]["only_lost"] = True
+    return spec
+
+
+def _parent_only_lost_circe() -> dict:
+    """*Circe* whose pawn promotes only into what its side has lost (SR2, H2)."""
+    spec = load_spec(ARCHIVE / "circe.json")
+    spec["rules"]["promotion"]["only_lost"] = True
+    return spec
+
+
+def _parent_either_face_blast() -> dict:
+    """Shogi dropping either face, its captures exploding (SR2, H6)."""
+    from chess_variant_sandbox.spec.transform import set_explosion
+
+    spec = _parent_either_face()
+    set_explosion(spec)
+    return spec
+
+
+def _parent_duck_sweep() -> dict:
+    """The duck's chess whose rooks sweep (SR2, W9)."""
+    spec = _parent_duck()
+    for piece in spec["pieces"]:
+        if piece["id"] == "R":
+            piece["moves"][0]["kind"] = "sweep"
+    return spec
+
+
+def _parent_pouncing_path() -> dict:
+    """*Wolves* whose wolves pounce on their prey along a crooked bishop's zigzag (SR2, N20)."""
+    wolves = _parent_hunting_wolves()
+    wild = {npc["piece"] for npc in wolves["rules"]["npcs"]}
+    for piece in wolves["pieces"]:
+        if piece["id"] in wild:
+            piece["moves"] = [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4",
+                               "range": 3, "path": "zigzag"}]
+    return wolves
+
+
+def _parent_command_strike() -> dict:
+    """Chess whose knights command the enemy a knight's jump away, beside rifle (SR2b, V5)."""
+    spec = _parent_sight("N", {
+        "vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1,
+        "effect": "command", "whose": "enemy",
+    })
+    spec["rules"]["strike"] = {"effect": "capture", "position": "stay", "immune": ["K"]}
+    return spec
+
+
+def _parent_command_contacts() -> dict:
+    """Chess whose knights command the enemy a knight's jump away, beside a pawn that takes a
+    knight becoming one (SR2b, V6)."""
+    spec = _parent_sight("N", {
+        "vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1,
+        "effect": "command", "whose": "enemy",
+    })
+    spec["rules"]["contacts"] = {
+        "position": "advance", "immune": ["K"],
+        "links": [{"mover": "P", "onto": "N", "mover_to": "N"}],
+    }
+    return spec
+
+
 def _parent_bounty() -> dict:
     """Chess whose knights pay a bounty of 3, the clock counting points (TC4, §5.1)."""
     chess = _chess()
@@ -2695,21 +2852,21 @@ def _armies_differ(spec: dict) -> bool:
 # so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
 # and `straighten` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    # Generation 46 (TC6, `docs/plan-turncoat.md` §5.5): two names. No committed game has a
-    # piece nobody owns or a purse, so a hire is entered by `hire-a-sword` placing a new
-    # king-stepping type for nobody, priced, with a purse (a new type, so the army is not
-    # kept), and left by the same operator taking hiring away. A bribe is entered by
-    # `offer-a-bribe` (a purse opened where there is none, a placed type priced, bribes on),
-    # and left by the same operator turning bribes off with the market still standing; it
-    # names types and adds none, so the army is kept. Generation 45's rows (TC5) retired with
-    # the generation; `open-a-market` still crosses them.
-    "TC6 hire": _Feature(
-        None, frozenset({"pieces.price.hire"}), False, "chess+condottieri for hire",
-        _parent_hire,
+    # Generation 51 (SR2b, `docs/plan-schema-next.md` §3.2): two names, each a lifted refusal
+    # of a pair, so each rides on nothing (removing either half is the crossing) and keeps the
+    # army. Entered by the operator that adds a strike or contacts beside a command, or a
+    # command beside them; left by the one that takes a half away. Generation 50's nine rows
+    # (SR2) retired with the generation; their operators still cross them.
+    "SR2b command beside a strike": _Feature(
+        None, frozenset({"pieces.sight.command.strike"}), True,
+        "chess+commanding knights+rifle", _parent_command_strike,
+        likely=lambda spec: bool((spec.get("rules") or {}).get("strike")),
     ),
-    "TC6 bribe": _Feature(
-        "purse", frozenset({"rules.purse.bribe"}), True, "chess+market with bribes",
-        _parent_bribe,
+    "SR2b command beside contacts": _Feature(
+        None, frozenset({"pieces.sight.command.contacts"}), True,
+        "chess+commanding knights+a pawn that takes a knight becomes one",
+        _parent_command_contacts,
+        likely=lambda spec: bool((spec.get("rules") or {}).get("contacts")),
     ),
 }
 
@@ -2721,10 +2878,20 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # Generation 46 (TC6): *the condottieri* (TC10, `docs/plan-turncoat.md` §8.3) hires
-    # mercenaries nobody owns and bribes them away.
-    "TC6 hire": "TC10, the condottieri (docs/plan-turncoat.md §8.3)",
-    "TC6 bribe": "TC10, the condottieri (docs/plan-turncoat.md §8.3)",
+    # Generation 51 (SR2b): each lifted pair, SR2s1 (`docs/plan-schema-next.md` §3.2), which
+    # decides a showcase or a written *Not a task* per row family.
+    "SR2b command beside a strike": "SR2s1, the lifts SR2b landed (docs/plan-schema-next.md §3.2)",
+    "SR2b command beside contacts": "SR2s1, the lifts SR2b landed (docs/plan-schema-next.md §3.2)",
+    # Generation 50's names (SR2) went to `_NO_SHOWCASE_ON_PURPOSE` when SR2b retired their
+    # `_FEATURES` rows, still owed by SR2s1.
+    # Generation 49's name (SR1c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR2 retired its
+    # `_FEATURES` row, still owed by SR1s3.
+    # Generation 48's name (SR1b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR1c retired its
+    # `_FEATURES` row, still owed by SR1s2.
+    # Generation 47's names (SR1a) went to `_NO_SHOWCASE_ON_PURPOSE` when SR1b retired their
+    # `_FEATURES` rows, still owed by SR1s1.
+    # Generation 46's names (TC6) went to `_NO_SHOWCASE_ON_PURPOSE` when SR1a retired their
+    # `_FEATURES` rows, still owed by TC10.
     # Generation 45's names (TC5) went to `_NO_SHOWCASE_ON_PURPOSE` when TC6 retired their
     # `_FEATURES` rows, still owed by TC9.
     # Generation 44's name (TC4) went to `_NO_SHOWCASE_ON_PURPOSE` when TC5 retired its
@@ -2855,6 +3022,16 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     44: frozenset({"pieces.bounty"}),
     45: frozenset({"rules.purse", "pieces.price", "rules.purse.region"}),
     46: frozenset({"pieces.price.hire", "rules.purse.bribe"}),
+    47: frozenset({"pieces.moves.legs", "pieces.moves.legs.leap"}),
+    48: frozenset({"rules.explode_on_capture.blast"}),
+    49: frozenset({"pieces.moves.slide.path.hex"}),
+    50: frozenset({
+        "pieces.control.majority.turn", "rules.purse.turn", "rules.strike.drops",
+        "rules.contacts.drops", "rules.promotion.only_lost.drops",
+        "rules.promotion.only_lost.home", "rules.drops.either_face.explode", "rules.duck.sweep",
+        "pieces.moves.slide.path.pounce",
+    }),
+    51: frozenset({"pieces.sight.command.strike", "pieces.sight.command.contacts"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2863,6 +3040,40 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 50's names (SR2), owed in `_SHOWCASE_OWED` until generation 51 (SR2b) retired
+    # their `_FEATURES` rows. Still owed by SR2s1 (`docs/plan-schema-next.md` §3.2), which
+    # decides a showcase or a written *Not a task* per row family; each entry goes the day its
+    # showcase lands.
+    **{
+        f"schema 50: {name}": "owed by SR2s1, the lifts SR2 landed (§3.2)"
+        for name in (
+            "pieces.control.majority.turn", "rules.purse.turn", "rules.strike.drops",
+            "rules.contacts.drops", "rules.promotion.only_lost.drops",
+            "rules.promotion.only_lost.home", "rules.drops.either_face.explode",
+            "rules.duck.sweep", "pieces.moves.slide.path.pounce",
+        )
+    },
+    # Generation 49's name (SR1c), owed in `_SHOWCASE_OWED` until generation 50 (SR2) retired
+    # its `_FEATURES` row. Still owed by SR1s3 (`docs/plan-schema-next.md` §3.2), and the entry
+    # goes the day it lands.
+    "schema 49: pieces.moves.slide.path.hex": "owed by SR1s3, a turning path on a hex lattice (§3.2)",
+    # Generation 48's name (SR1b), owed in `_SHOWCASE_OWED` until generation 49 (SR1c) retired
+    # its `_FEATURES` row. Still owed by SR1s2 (`docs/plan-schema-next.md` §3.2), and the entry
+    # goes the day it lands.
+    "schema 48: rules.explode_on_capture.blast": "owed by SR1s2, a blast's stated shape (§3.2)",
+    # Generation 47's names (SR1a), owed in `_SHOWCASE_OWED` until generation 48 (SR1b) retired
+    # their `_FEATURES` rows. Still owed by SR1s1 (`docs/plan-schema-next.md` §3.2), and each
+    # entry goes the day it lands.
+    "schema 47: pieces.moves.legs": "owed by SR1s1, stated legs (§3.2)",
+    "schema 47: pieces.moves.legs.leap": (
+        "owed by SR1s1, or no showcase on purpose with its reason (§3.2)"
+    ),
+    # Generation 46's names (TC6), owed in `_SHOWCASE_OWED` until generation 47 (SR1a) retired
+    # their `_FEATURES` rows. Still owed: *the condottieri* (TC10, `docs/plan-turncoat.md`
+    # §8.3) hires mercenaries nobody owns and bribes them away, and each entry goes the day it
+    # lands.
+    "schema 46: pieces.price.hire": "owed by TC10, the condottieri (§8.3)",
+    "schema 46: rules.purse.bribe": "owed by TC10, the condottieri (§8.3)",
     # Generation 45's names (TC5), owed in `_SHOWCASE_OWED` until generation 46 (TC6) retired
     # their `_FEATURES` rows. Still owed: *the war chest* (TC9, `docs/plan-turncoat.md` §8.2)
     # buys from a market, and each entry goes the day it lands.
@@ -3059,7 +3270,9 @@ def _feature_parents() -> dict[str, dict]:
 # has a free square on a castling rank outside the spans (every castling army fills its
 # back rank, and `omega` already has it), and no operator adds castling to a walled game.
 # It retired with schema 18's `_FEATURES` rows (Q771); schema 19's three are
-# `open-a-portal` both ways, so the tables are empty again.
+# `open-a-portal` both ways, so the tables are empty again. Generation 50's three (SR2:
+# majority and a purse in a long turn, a pouncing path, each two edits from any stored game)
+# retired with its `_FEATURES` rows (SR2b).
 _CANNOT_ENTER: dict[str, str] = {}
 _CANNOT_LEAVE: dict[str, str] = {}
 
@@ -4123,6 +4336,8 @@ _PINNED_SCALES: dict[str, float] = {
     "bounty_share": 1.0,
     "has_purse": 1.0, "purse_start": 1.0, "purse_region": 1.0, "price_share": 1.0,
     "has_hire": 1.0, "has_bribe": 1.0,
+    "legs_share": 1.0,
+    "explodes_shaped": 1.0,
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
     "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
     "beats_share": 1.0, "simultaneous_swap_collides": 1.0, "simultaneous_both_score": 1.0,
@@ -4197,14 +4412,15 @@ class TestDistanceIsPinnedToTheNumber:
         `npcs_split`, 110 since N4b's `has_duck` and `duck_by_moves`, 113 since TC3's
         `nobody_share`, `majority_share` and `majority_geometry`, 114 since TC4's
         `bounty_share`, 118 since TC5's `has_purse`, `purse_start`, `purse_region` and
-        `price_share` and 120 since TC6's `has_hire` and `has_bribe`, is 0.010276, which
-        rounds to 0.0103."""
+        `price_share`, 120 since TC6's `has_hire` and `has_bribe`, 121 since SR1a's
+        `legs_share` and 122 since SR1b's `explodes_shaped`, is 0.010108, which rounds to
+        0.0101."""
         chess = _chess()
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0103
+        assert distance(chess, twin) == 0.0101
 
 
 def _one_leap_beside_a_stone() -> dict:

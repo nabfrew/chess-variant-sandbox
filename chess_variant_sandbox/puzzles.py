@@ -572,45 +572,59 @@ def _says(
     faster: bool,
 ) -> str | None:
     """T3 (`faster` false: exactly n - 2) or T4 (`faster`: at most n - 2), for `defence`
-    and `hasten`. The core answers every move, outcome and score; this compares."""
+    and `hasten`. The core answers every move, outcome and score; this compares.
+
+    A turn of several plies (a duck's second half, `rules.turn` of two moves or more) is
+    read whole, as §3.1 means a move and a reply: where the key move leaves the attacker
+    still to move, the attacker's turn goes on by its shortest proved win at `nodes` (the
+    first in the engine's order, as `key_move` chose the key), and a reply is every way
+    the defender can play out its whole turn, each a sequence of plies until the attacker
+    is to move again or the game ends. "n - 2" is n less the plies the move and the reply
+    took, which is two where every turn is one ply. A continuation the probe cannot prove
+    leaves the answer `unsettled`, a say, as an unsettled reply does.
+    """
     if row.get("result") != WON or winning_moves(row) < 2:
         return None
     key = key_move(row)
     assert key is not None
-    want = int(row["ends_in"]) - 2
+    n = int(row["ends_in"])
     attacker = int(row["side"])
     if state is None:
         state = engine.play(engine.initial_state(), [int(move) for move in row["moves"]])
     if state.side_to_move != attacker:
         raise ValueError(f"{row.get('id')}: the record's side is not the side to move")
-    after = engine.apply(state, int(key["move"]))
-    replies = engine.legal_moves(after)
-    ended = engine.terminal(after, replies)
-    if ended is not None:
-        # The winning move ends the game (n = 1): there is no reply to make.
-        return NONE if ended.winner == attacker else SOME
-    if after.side_to_move == attacker:
-        raise ValueError(f"{row.get('id')}: the attacker moves again; T3 and T4 ask of a reply")
     values = eval_values(engine.spec)
+    root = state.ply
+    after = engine.apply(state, int(key["move"]))
+    while True:
+        replies = engine.legal_moves(after)
+        ended = engine.terminal(after, replies)
+        if ended is not None:
+            # The attacker's turn ends the game: there is no reply to make.
+            return NONE if ended.winner == attacker else SOME
+        if after.side_to_move != attacker:
+            break
+        # The attacker's turn has more plies: its shortest proved win goes on.
+        scores = engine.root_scores(after, values, nodes, max_depth, goal, immune)
+        won = [(ends_in(score, after.ply), index) for index, score in enumerate(scores)
+               if proof_of(score) == WON]
+        if not won:
+            return UNSETTLED
+        after = engine.apply(after, replies[min(won)[1]])
 
-    def no_say(plies: int) -> bool:
+    def no_say(there: GameState, plies: int) -> bool:
+        want = n - (there.ply - root)
         return plies <= want if faster else plies == want
 
     said = NONE
-    for reply in replies:
-        there = engine.apply(after, reply)
-        legal = engine.legal_moves(there)
-        outcome = engine.terminal(there, legal)
+    for there, outcome in _turns(engine, after, attacker):
         if outcome is not None:
-            answer = NONE if outcome.winner == attacker and no_say(0) else SOME
-        elif there.side_to_move != attacker:
-            raise ValueError(
-                f"{row.get('id')}: the defender moves again; T3 and T4 ask of a reply")
+            answer = NONE if outcome.winner == attacker and no_say(there, 0) else SOME
         else:
             best = max(engine.root_scores(there, values, nodes, max_depth, goal, immune))
             proof = proof_of(best)
             if proof == WON:
-                answer = NONE if no_say(ends_in(best, there.ply)) else SOME
+                answer = NONE if no_say(there, ends_in(best, there.ply)) else SOME
             elif proof == LOST:
                 answer = SOME
             else:
@@ -620,6 +634,19 @@ def _says(
         if answer == UNSETTLED:
             said = UNSETTLED
     return said
+
+
+def _turns(engine: Engine, position: GameState, attacker: int) -> Iterator[tuple[GameState, Any]]:
+    """Every whole turn the defender can play from `position`, depth first in the engine's
+    order: each the position it leaves (the attacker to move, or the game over) and the
+    core's outcome there (None while the game goes on). The core answers every ply."""
+    for move in engine.legal_moves(position):
+        there = engine.apply(position, move)
+        outcome = engine.terminal(there, engine.legal_moves(there))
+        if outcome is None and there.side_to_move != attacker:
+            yield from _turns(engine, there, attacker)
+        else:
+            yield there, outcome
 
 
 def shallow(

@@ -37,6 +37,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from chess_variant_sandbox.engine.compile import _lame_path
 from chess_variant_sandbox.loop.grid import descriptor
 from chess_variant_sandbox.spec import validate_spec
 from chess_variant_sandbox.spec.canonical import spec_hash
@@ -63,9 +64,10 @@ from chess_variant_sandbox.spec.schema import (
     _sight_entry,
     absent_squares,
     beats_of,
-    can_double_step,
     castling_spans,
+    contacts_only_remove,
     duck_piece,
+    en_passant_can_fire,
     format_square,
     has_equal_speed_opponent,
     has_rests,
@@ -105,6 +107,7 @@ from chess_variant_sandbox.spec.schema import (
     simultaneous_tie_pair,
     spy_ids,
     strike_is_live,
+    strike_only_removes,
     strikers,
     sweep_conflicts,
     turn_is_long,
@@ -350,6 +353,7 @@ def _leap_becomes_slide(spec: dict[str, Any], rng: random.Random) -> str | None:
     piece, move = rng.choice(movers)
     move["kind"] = "slide"
     move["range"] = rng.choice((2, 3, 0))
+    move.pop("legs", None)  # SR1a: a slide is blocked on every square, legs or none
     return f"turned the {piece.get('name', piece['id'])}'s leap into a slide"
 
 
@@ -396,6 +400,125 @@ def _ride_a_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
     if rng.random() < 0.25:
         move["min_range"] = 2
     return f"let the {name} leap again and again, each jump blockable on its way"
+
+
+def _walk_legs(vector: Sequence[int], diagonal_first: bool) -> list[list[int]]:
+    """The squares a king's walk from the mover to ``vector`` passes: diagonal steps first,
+    or straight ones first (Janggi's elephant's path for ``(2, 3)``)."""
+    x, y = 0, 0
+    legs: list[list[int]] = []
+    while True:
+        dx, dy = vector[0] - x, vector[1] - y
+        straight = abs(dx) != abs(dy)
+        diagonal = dx != 0 and dy != 0
+        if diagonal and (diagonal_first or not straight):
+            x, y = x + (dx > 0) - (dx < 0), y + (dy > 0) - (dy < 0)
+        elif abs(dx) >= abs(dy):
+            x += (dx > 0) - (dx < 0)
+        else:
+            y += (dy > 0) - (dy < 0)
+        if [x, y] == list(vector):
+            return legs
+        legs.append([x, y])
+
+
+def _state_the_legs(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """SR1a (`docs/plan-schema-next.md` §1 rank 1): a jump's legs stated, or taken back.
+
+    A lame without ``legs`` (or a leap, under ``obstacles.blocks_leaps``) gets a king's walk
+    to each vector as its legs, diagonal steps first or straight ones first, drawn among the
+    walks that differ from its computed leg (`compile._lame_path`): the horse is blocked on
+    its diagonal, the (2, 3) jump on Janggi's elephant's two squares or the other two. A move that states them loses them. Each child
+    must pass the validator whole: a hex lame keeps its legs, and turns that disagree on a
+    direction's legs are declined.
+    """
+    obstacles = (spec.get("rules") or {}).get("obstacles")
+    blocks = isinstance(obstacles, dict) and obstacles.get("blocks_leaps") is True
+    candidates = [
+        (index, position)
+        for index, piece in enumerate(pieces(spec))
+        for position, move in enumerate(piece.get("moves", []))
+        if isinstance(move, dict)
+        and (move.get("kind") == "lame" or (blocks and move.get("kind") == "leap"))
+    ]
+    for index, position in rng.sample(candidates, len(candidates)):
+        trial = copy.deepcopy(spec)
+        piece = pieces(trial)[index]
+        move = piece["moves"][position]
+        name = piece.get("name", piece["id"])
+        if "legs" in move:
+            move.pop("legs")
+            said = f"the {name}'s jumps are blocked where they always were"
+        else:
+            stated = []
+            for v in move.get("vectors", []):
+                computed = [list(_lame_path(v[0], v[1]))]
+                walks = [w for w in (_walk_legs(v, True), _walk_legs(v, False)) if w]
+                fresh = [w for w in walks if w != computed]
+                stated.append(rng.choice(fresh or walks or [computed]))
+            move["legs"] = stated
+            said = f"the {name}'s jumps are blocked on the squares they are stated to pass"
+        if not validate_spec(trial):
+            spec.update(trial)
+            return said
+    return None
+
+
+# SR1b (`docs/plan-schema-next.md` §1 rank 2): the shapes `shape-the-blast` states, each
+# read alike by both players, by lattice. The plan's three: a cross that spares the
+# diagonals, a line along the file two squares each way, and on a hex board the ring of
+# cells two steps out; and their siblings (the diagonals alone, the rank, the six
+# neighbours).
+_BLAST_SHAPES: dict[bool, tuple[tuple[str, dict[str, Any]], ...]] = {
+    False: (
+        ("a cross that spares the diagonals", {"vectors": [[1, 0]], "symmetry": "rotate4"}),
+        ("the four diagonal neighbours only", {"vectors": [[1, 1]], "symmetry": "rotate4"}),
+        ("the file, two squares each way", {"vectors": [[0, 1], [0, 2], [0, -1], [0, -2]]}),
+        ("the rank, two squares each way", {"vectors": [[1, 0], [2, 0], [-1, 0], [-2, 0]]}),
+    ),
+    True: (
+        ("the six neighbours", {"vectors": [[1, 0]], "symmetry": "rotate6"}),
+        ("the ring two steps out", {"vectors": [[2, 0], [1, 1]], "symmetry": "rotate6"}),
+    ),
+}
+
+
+def _shape_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """SR1b (`docs/plan-schema-next.md` §1 rank 2): a standing blast given a stated shape in
+    place of its radius, or its stated shape taken back to the radius-1 box.
+
+    Only a blast that stands: `set-the-blast` adds and removes the rule, and this changes
+    what it reaches. A kamikaze blast (radius 0) reaches nobody beside it and is left to
+    `leave-something-behind`. The shape is drawn from `_BLAST_SHAPES` for the lattice, and
+    the child must pass the validator whole (a shape too wide for a hexagon with a side
+    joined is declined).
+    """
+    explosion = (spec.get("rules") or {}).get("explode_on_capture")
+    if not isinstance(explosion, dict) or not explosion:
+        return None
+    if "blast" in explosion:
+        trial = copy.deepcopy(spec)
+        trial["rules"]["explode_on_capture"].pop("blast")
+        said = "a capture takes every square beside it again, not a shape"
+        if validate_spec(trial):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return said
+    if explosion.get("radius", 1) == 0:
+        return None
+    hexy = (spec.get("board") or {}).get("lattice") == "hex"
+    shapes = _BLAST_SHAPES[hexy]
+    for words, shape in rng.sample(shapes, len(shapes)):
+        trial = copy.deepcopy(spec)
+        blast = trial["rules"]["explode_on_capture"]
+        blast.pop("radius", None)
+        blast["blast"] = copy.deepcopy(shape)
+        if not validate_spec(trial):
+            spec.clear()
+            spec.update(trial)
+            return f"a capture's blast takes {words}"
+    return None
 
 
 def _bend_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -510,8 +633,8 @@ def _add_a_direction(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     piece, move = rng.choice(movers)
     vector = list(rng.choice(_SHORT_VECTORS))
-    if vector in move.get("vectors", []) or _no_leg_for(move, vector):
-        return None
+    if vector in move.get("vectors", []) or _no_leg_for(move, vector) or "legs" in move:
+        return None  # SR1a: a move with stated legs lists one per vector; `state-the-legs`
     move.setdefault("vectors", []).append(vector)
     return f"gave the {piece.get('name', piece['id'])} a {vector[0]},{vector[1]} step"
 
@@ -521,7 +644,10 @@ def _remove_a_direction(spec: dict[str, Any], rng: random.Random) -> str | None:
     if not movers:
         return None
     piece, move = rng.choice(movers)
-    dropped = move["vectors"].pop(rng.randrange(len(move["vectors"])))
+    index = rng.randrange(len(move["vectors"]))
+    dropped = move["vectors"].pop(index)
+    if isinstance(move.get("legs"), list) and index < len(move["legs"]):
+        move["legs"].pop(index)  # SR1a: its legs go with it
     return f"took a {dropped[0]},{dropped[1]} step off the {piece.get('name', piece['id'])}"
 
 
@@ -569,6 +695,8 @@ def _change_symmetry(spec: dict[str, Any], rng: random.Random) -> str | None:
             return None
         move["symmetry"] = rng.choice(alike)
         return f"changed how the {piece.get('name', piece['id'])}'s moves reflect ({current} to {move['symmetry']})"
+    if "legs" in move:
+        return None  # SR1a: stated legs turn with the symmetry; `state-the-legs` restates them
     current = _set_symmetry(spec, move, rng)
     # T1: a turning path needs its directions to go round (a circle) or to have a near pair
     # (a zigzag); where the new symmetry leaves none, the line runs straight, by the
@@ -599,7 +727,8 @@ def _turn_a_hex_move(
         (piece, move, symmetry)
         for piece, move in movers
         for symmetry in HEX_SYMMETRIES
-        if symmetry != move.get("symmetry", "none")
+        if "legs" not in move  # SR1a: as on the square board
+        and symmetry != move.get("symmetry", "none")
         and directions(move, symmetry) != directions(move, move.get("symmetry", "none"))
     ]
     if not choices:
@@ -607,6 +736,10 @@ def _turn_a_hex_move(
     piece, move, symmetry = rng.choice(choices)
     current = move.get("symmetry", "none")
     move["symmetry"] = symmetry
+    # SR1c: a hex path runs straight where the new turns leave it nothing to turn round,
+    # as on the square board.
+    if path_of(move) != "straight" and path_refusals(move, "move", hex_lattice=True):
+        move.pop("path", None)
     return f"changed how the {piece.get('name', piece['id'])}'s moves reflect ({current} to {symmetry})"
 
 
@@ -780,15 +913,7 @@ def _toggle_a_rule(spec: dict[str, Any], rng: random.Random) -> str | None:
         # `transform.set_turn`, which drops the rule rather than refusing the edit.
         if turn_is_long(rules):
             return None
-        promotions = spec.get("rules", {}).get("promotion")
-        entries = promotions if isinstance(promotions, list) else [promotions]
-        if len(entries) != 1 or not isinstance(entries[0], dict):
-            return None
-        promoter = next(
-            (piece for piece in pieces(spec) if piece.get("id") == entries[0].get("piece")),
-            None,
-        )
-        if promoter is None or not can_double_step(promoter):
+        if not en_passant_can_fire(spec):
             return None
         rules["en_passant"] = True
         return "added en passant"
@@ -930,6 +1055,20 @@ def _counts_own_kinds(rules: dict[str, Any]) -> bool:
     return isinstance(extinction, dict) and extinction.get("per_type") == "own"
 
 
+def _a_hand_is_refused_beside_the_capture(spec: dict[str, Any]) -> bool:
+    """Whether the validator refuses a hand beside what this spec's captures do: a sweep
+    (several pieces into a hand at once), a live strike that leaves its victim standing, or
+    a contact link that keeps its target. A shot and removing links are allowed since SR2
+    (`docs/plan-schema-next.md` §2.4 T2, T5): their victim goes to the hand."""
+    rules = spec.get("rules") or {}
+    strike = rules.get("strike")
+    return (
+        uses_sweep(spec)
+        or (strike_is_live(strike) and not strike_only_removes(strike))
+        or (bool(rules.get("contacts")) and not contacts_only_remove(rules.get("contacts")))
+    )
+
+
 def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Turn captures into reinforcements, or stop doing so.
 
@@ -970,20 +1109,15 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
             return None
         rules.pop("drops", None)
         return "captured pieces are gone for good again"
-    if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
-        return None  # a hand is refused beside a rule that takes several pieces at once
+    if _a_hand_is_refused_beside_the_capture(spec):
+        return None  # a sweep, or a strike or contact that leaves its victim standing
     if _counts_own_kinds(rules):
         return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
     if any(npc_split(npc) for npc in rules.get("npcs") or ()):
         return None  # generation 41 (N3d): copies would mint pieces for a capture hand
     if spy_ids(spec):
         return None  # schema 27: a hand that fills from captures or holds a spy gives one back
-    promotion = rules.get("promotion")
-    if any(
-        isinstance(entry, dict) and entry.get("only_lost") is True
-        for entry in (promotion if isinstance(promotion, list) else [promotion])
-    ):
-        return None  # schema 18c: a hand gives back what `only_lost` counts as lost
+    # `only_lost` reads the board, and a piece in hand is not on it (SR2, H1): no guard.
     if any(
         isinstance(npc, dict) and "immune" in npc for npc in rules.get("npcs") or ()
     ):
@@ -1123,7 +1257,20 @@ def _add_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     move = rng.choice(moves)
     vector = list(rng.choice(_SHORT_VECTORS))
-    if vector in move.get("vectors", []) or _no_leg_for(move, vector):
+    if "legs" in move:
+        # SR1a: stated legs are one list per vector and turn with the symmetry, so the
+        # new piece's jumps are blocked on another king's walk instead, or on the
+        # computed leg where there is no other.
+        restated = [
+            next((w for w in (_walk_legs(v, True), _walk_legs(v, False)) if w != own), own)
+            for v, own in zip(move.get("vectors", []), move["legs"], strict=False)
+        ]
+        if restated != move["legs"]:
+            move["legs"] = restated
+        else:
+            move.pop("legs")
+        change = "its jumps blocked elsewhere"
+    elif vector in move.get("vectors", []) or _no_leg_for(move, vector):
         _set_symmetry(spec, move, rng)
         change = f"a {move['symmetry']} symmetry"
     else:
@@ -1226,13 +1373,10 @@ def _lengthen_the_turn(spec: dict[str, Any], rng: random.Random) -> str | None:
     `moves: 1` -- a turn of one move has several spellings and `complexity._RULE_ACTIVE`
     exists because of it.
     """
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
-    if majority_ids(spec):
-        return None
+    # Majority control and a purse sit beside a long turn since SR2 (`docs/plan-schema-next.md`
+    # §2.2 L5, L6), so neither guards this any more.
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a turn already has its two halves)
-    if purse_rule(spec) is not None:
-        return None  # TC5 (`docs/plan-turncoat.md` §5.9): a purse is refused beside a long turn
     rules = spec.setdefault("rules", {})
     if rules.get("turn"):
         strip_rule(spec, "turn")
@@ -1382,7 +1526,7 @@ def _wall_off_a_square(spec: dict[str, Any], rng: random.Random) -> str | None:
         coords = parse_square(name, width, height) if isinstance(name, str) else None
         if reflection is not None and coords is not None:
             file, rank = reflect_square(*coords, width, height, reflection)
-            occupied.add(f"{chr(ord('a') + file)}{rank + 1}")
+            occupied.add(format_square(file, rank))
     occupied.update((rules.get("scoring") or {}).get("region", []) or ())
     # Schema 14's zone as squares, refused under a wall by name. It went unasked until the
     # native hexagon (schema 16): the walled Glinski hexagon, the one spec with such a
@@ -1400,7 +1544,7 @@ def _wall_off_a_square(spec: dict[str, Any], rng: random.Random) -> str | None:
         rules, setup if isinstance(setup, dict) else {}, width, height,
         str((setup or {}).get("orientation", "mirror")),
     ):
-        occupied.update(f"{chr(ord('a') + file)}{span_rank + 1}" for file in files)
+        occupied.update(format_square(file, span_rank) for file in files)
     # `set_obstacle` mirrors the wall, so the wall's image has to be free too, and the
     # image is the spec's own reflection (`schema.reflect_square`). It was the rank flip,
     # which is the image only under `orientation: "mirror"`: under `"rotate"` a wall could
@@ -1410,7 +1554,7 @@ def _wall_off_a_square(spec: dict[str, Any], rng: random.Random) -> str | None:
     orientation = str(spec.get("setup", {}).get("orientation", "mirror"))
 
     def named(file: int, rank: int) -> str:
-        return f"{chr(ord('a') + file)}{rank + 1}"
+        return format_square(file, rank)
 
     # Cells only: a hexagon's corners (schema 16) are not squares a wall could go on.
     absent = absent_squares(board)
@@ -1442,8 +1586,8 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a strike)
-    if _commands(spec):
-        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
+    if _turncoats(spec):
+        return None  # V5, V6 (generation 51): refused beside captures_own only
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
@@ -1506,8 +1650,8 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
         return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a strike)
-    if _commands(spec):
-        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
+    if _turncoats(spec):
+        return None  # V5, V6 (generation 51): refused beside captures_own only
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import set_contacts
@@ -1662,8 +1806,8 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (contacts)
-    if _commands(spec):
-        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
+    if _turncoats(spec):
+        return None  # V5, V6 (generation 51): refused beside captures_own only
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import merge_links, set_own_link, settle_landing
@@ -1786,8 +1930,8 @@ def _place_a_stone(spec: dict[str, Any], rng: random.Random) -> str | None:
         drop_piece(spec, str(stone["id"]))
         return f"the {stone.get('name', stone['id'])} is gone; every move is a move again"
 
-    if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
-        return None  # a hand is refused beside a rule that takes several pieces at once
+    if _a_hand_is_refused_beside_the_capture(spec):
+        return None  # a sweep, or a strike or contact that leaves its victim standing
     if _counts_own_kinds(rules):
         return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
     if spy_ids(spec):
@@ -1859,9 +2003,8 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
 
     if rules.get("strike") or rules.get("contacts") or rules.get("npcs") or uses_sweep(spec):
         return None  # two rules cannot both say what happens to a taken piece
-    drops = rules.get("drops")
-    if isinstance(drops, dict) and drops.get("either_face") is True:
-        return None  # nor can a blast and a hand that drops either face (schema 18e)
+    # A blast beside a hand that drops either face is allowed since SR2 (H6): its victims
+    # enter no hand.
     if not capture_is_possible(spec):
         return None  # a blast where nothing is taken is refused (inert-rule case 4, Q110)
     if has_sights(spec):
@@ -2039,6 +2182,13 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
         if isinstance(npc, dict):
             npc.pop("pounce", None)
             npc.pop("split", None)  # generation 41 (N3d): only beside a pounce
+    # SR2 (N20): a turning path is read only on a prey pouncer, so with the pounce gone the
+    # wild types' lines run straight again.
+    wild = {npc.get("piece") for npc in trial_rules.get("npcs") or [] if isinstance(npc, dict)}
+    for piece in pieces(trial):
+        if piece.get("id") in wild:
+            for move in piece.get("moves", []):
+                move.pop("path", None)
     trial_rules["simultaneous"] = {}
     # The rest of §4's refusals (a sweep, a moved portal, a strike that stays or chooses,
     # a long turn, a royal in a placement stock) are designs of their own: not applied.
@@ -2227,7 +2377,7 @@ def _shields(spec: dict[str, Any]) -> bool:
 
 def _commands(spec: dict[str, Any]) -> bool:
     """Whether a line of sight commands (Q1007c), beside which rounds, a reach, a territory, a
-    strike, a contact, a rest and a sweep are refused (`docs/archive/plan-schema-31.md` §3.6)."""
+    rest and a sweep are refused (`docs/archive/plan-schema-31.md` §3.6)."""
     return any(
         sight.effect == "command" for sights in piece_sights(spec).values() for sight in sights
     )
@@ -2235,7 +2385,7 @@ def _commands(spec: dict[str, Any]) -> bool:
 
 def _turncoats(spec: dict[str, Any]) -> bool:
     """Whether a command may make its pieces take their own side (Q1007c's `captures_own`),
-    beside which a hand filled from captures is refused."""
+    beside which a hand filled from captures, a strike and contacts are refused (V5, V6)."""
     return any(sight.captures_own for sights in piece_sights(spec).values() for sight in sights)
 
 
@@ -2336,6 +2486,14 @@ def _cast_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
             trial = copy.deepcopy(spec)
             target = next(p for p in pieces(trial) if p.get("id") == piece["id"])
             target.setdefault("sight", []).append(entry)
+            if validate_spec(trial) and entry.get("captures_own"):
+                # V5, V6 (generation 51): a command stands beside rules (a strike, contacts,
+                # a capture hand) that refuse only its `captures_own`, so the plain command
+                # is the next try, drawing nothing more.
+                entry = {k: v for k, v in entry.items() if k != "captures_own"}
+                if entry in (piece.get("sight") or []):
+                    continue
+                target["sight"][-1] = entry
             if validate_spec(trial):
                 continue
             spec.clear()
@@ -2630,7 +2788,7 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
                 taken.add(r * width + f)
 
     def name_of(square: int) -> str:
-        return f"{chr(ord('a') + square % width)}{square // width + 1}"
+        return format_square(square % width, square // width)
 
     loops: list[list[int]] = []
     for rank in range(height - 1):
@@ -2911,8 +3069,8 @@ def _place_the_army(spec: dict[str, Any], rng: random.Random) -> str | None:
         spec.clear()
         spec.update(trial)
         return "a player holding a piece must place it before anything on the board moves"
-    if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
-        return None  # a hand is refused beside a rule that takes several pieces at once
+    if _a_hand_is_refused_beside_the_capture(spec):
+        return None  # a sweep, or a strike or contact that leaves its victim standing
     if _counts_own_kinds(rules):
         return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
     if spy_ids(spec):
@@ -3170,7 +3328,7 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
         orange, blue = rng.choice(doors)
 
         def name_of(square: int) -> str:
-            return f"{chr(ord('a') + square % width)}{square // width + 1}"
+            return format_square(square % width, square // width)
 
         pair = {
             "moves": [copy.deepcopy(_PORTAL_STEP)],
@@ -3223,7 +3381,7 @@ def _portal_free_squares(trial: dict[str, Any]) -> list[str]:
     return [
         name for square in range(width * height)
         if square not in taken
-        and (name := f"{chr(ord('a') + square % width)}{square // width + 1}") not in ends
+        and (name := format_square(square % width, square // width)) not in ends
     ]
 
 
@@ -3486,7 +3644,7 @@ def _unplace_the_army(spec: dict[str, Any]) -> str | None:
                 if coords is None:
                     return None
                 file, rank = reflect_square(*coords, width, height, orientation)
-                images.append(f"{chr(ord('a') + file)}{rank + 1}")
+                images.append(format_square(file, rank))
             if taken & set(images):
                 return None
             taken.update(images)
@@ -3530,8 +3688,8 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         return None
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (a strike)
-    if _commands(spec):
-        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
+    if _turncoats(spec):
+        return None  # V5, V6 (generation 51): refused beside captures_own only
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
@@ -3563,6 +3721,7 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     if isinstance(explosion, dict) and explosion:
         explosion["radius"] = 0
         explosion.pop("immune", None)
+        explosion.pop("blast", None)  # SR1b: a stated shape and a radius are refused together
         return "a capture destroys the taker with what it took, and nothing beside them"
     if spy_ids(spec):
         return None  # schema 27: a strike may switch a spy to the other side, which a spy game refuses
@@ -3651,8 +3810,9 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     is a spec holding a rule the validator refuses beside a sweep: both would make every
     draw a rejection.
     """
-    if duck_piece(spec.get("rules")) is not None:
-        return None  # generation 42 (N4b): refused beside the duck (a sweep)
+    # A player's sweep sits beside the duck since SR2 (W9: the duck blocks it); the duck's
+    # own type never sweeps, and is never offered below.
+    duck = duck_piece(spec.get("rules"))
     if _commands(spec):
         return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     if _has_portals(spec):
@@ -3673,7 +3833,10 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     if sweep_conflicts(rules):
         return None
     promoting = promoting_piece_ids(rules)
-    movers = [(p, m) for p, m in _movers(spec, "slide") if p.get("id") not in promoting]
+    movers = [
+        (p, m) for p, m in _movers(spec, "slide")
+        if p.get("id") not in promoting and p.get("id") != duck
+    ]
     if not movers:
         return None
     piece, move = rng.choice(movers)
@@ -3874,6 +4037,13 @@ def _set_the_hounds(spec: dict[str, Any], rng: random.Random) -> str | None:
             if isinstance(npc, dict):
                 npc.pop("pounce", None)
                 npc.pop("split", None)
+        # SR2 (N20): a turning path is read only on a prey pouncer; with the pounce gone the
+        # wild types' lines run straight again.
+        wild = {npc.get("piece") for npc in npcs if isinstance(npc, dict)}
+        for piece in pieces(trial):
+            if piece.get("id") in wild:
+                for move in piece.get("moves", []):
+                    move.pop("path", None)
         said = "the wild pieces no longer pounce on what they attack"
     else:
         kinds = sorted({
@@ -3926,7 +4096,7 @@ def _loose_a_duck(spec: dict[str, Any], rng: random.Random) -> str | None:
     the mover puts on any empty square after every move. The duck is refused beside check, so a
     checkmate game becomes one won by taking the royal piece (``forbid_check`` and
     ``check_limit`` dropped), and an odd ply limit is made even; the validator decides the rest
-    (rounds, a turn, portals, a blast, a strike, a sweep). In a game with one, one of four, at
+    (rounds, a turn, portals, a blast, a strike). In a game with one, one of four, at
     random: the duck goes (its type with it, since nothing else may name it); it walks by a
     king's step instead of going anywhere, or anywhere again; it starts on an empty square, or
     off the board again; its type shields the eight squares round it, or no longer does. A new
@@ -4045,8 +4215,7 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
     placements, and a type nothing else places); majority control is given to one standing
     type or taken from every type; or a majority type's neighbours swap between the king's
     step and the orthogonal four. The validator decides the rest (rounds, wild pieces, the
-    duck, portals, a strike, contacts, and beside majority a territory, a goal, a blast, a
-    long turn).
+    duck, portals, a strike, contacts, and beside majority a territory, a goal, a blast).
     """
     trial = copy.deepcopy(spec)
     placed = neutral_ids(spec)
@@ -4474,6 +4643,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("merge-your-own", _merge_your_own),
     Operator("set-the-blast", _set_the_blast),
     Operator("leave-something-behind", _leave_something_behind),
+    Operator("shape-the-blast", _shape_the_blast),
     Operator("place-a-stone", _place_a_stone),
     Operator("set-a-patrol", _set_a_patrol),
     Operator("share-a-walk", _share_a_walk),
@@ -4506,6 +4676,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("leap-becomes-slide", _leap_becomes_slide),
     Operator("slide-becomes-leap", _slide_becomes_leap),
     Operator("ride-a-leap", _ride_a_leap),
+    Operator("state-the-legs", _state_the_legs),
     Operator("still-a-piece", _still_a_piece),
     Operator("bend-a-line", _bend_a_line),
     Operator("straighten", _straighten),

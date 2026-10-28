@@ -1,4 +1,4 @@
-"""The showcase: a member's page as others see it (UP4, `docs/plan-user-page.md` §5).
+"""The showcase: a member's page as others see it (UP4, `docs/archive/plan-user-page.md` §5).
 
 Choice D1: members only, as before, now with each published game's board, the first
 sentence of its description, its level, its votes with their count, how many people have

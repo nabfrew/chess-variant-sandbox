@@ -32,6 +32,7 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_CASTLE, decode_move
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import spec_hash, validate_spec
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import piece_rests
 from chess_variant_sandbox.spec.spelling import current_spelling
 from tests.feature_inventory import _schema_twenty_nine_uses
@@ -156,9 +157,9 @@ def test_a_rest_on_a_wild_piece_or_beside_a_long_turn_is_refused() -> None:
     assert validate_spec(wild) == [], validate_spec(wild)
     assert any("wild piece" in error for error in validate_spec(resting(wild, {"N": 1})))
     long = resting(GARDNER, {"Q": 1}, turn={"moves": 2})
-    assert any("turn longer than one move" in error for error in validate_spec(long))
+    assert "L2" in refused_ids(validate_spec(long))
     ramp = resting(GARDNER, {"Q": 1}, turn={"moves": 1, "ramp": [1, 2]})
-    assert any("turn longer than one move" in error for error in validate_spec(ramp))
+    assert "L2" in refused_ids(validate_spec(ramp))
 
 
 def test_the_old_switch_is_read_only_through_the_converter() -> None:

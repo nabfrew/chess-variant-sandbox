@@ -2776,3 +2776,22 @@ function phaseWords(steps, walkers, nameOf, W, pounceOf) {
   const last = clauses.pop();
   return 'and ' + (clauses.length ? clauses.join(', ') + ' and ' + last : last);
 }
+
+// ----- the purse's words (TC7, `docs/plan-turncoat.md` §5.8), one copy for both boards
+
+// A number of coins, as every purse, price and cost on either board says it.
+function coinsWord(n) {
+  return `${n} coin${n === 1 ? '' : 's'}`;
+}
+
+// What a seat's purse line says, and its tooltip, from the compiled rule (`market_payload`).
+// The count is the core's: `purse` on the play board's snapshot and history, the replayed
+// state's purse in the replay's `purses`. Neither board works a coin out itself.
+function purseWords(n) {
+  return `purse: ${coinsWord(n)}`;
+}
+
+function purseTitle(rule) {
+  const spend = (rule.bribe || []).some(Boolean) ? 'buy, hire or bribe' : 'buy or hire';
+  return `coins to ${spend} pieces with; taking a piece with a bounty fills it, up to ${rule.cap}`;
+}

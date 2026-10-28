@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import json
 import random
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import decode_move
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec.canonical import spec_hash
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import validate_spec
 from tests import spy_oracle as oracle
 
@@ -32,13 +34,9 @@ def _load(name: str) -> dict[str, Any]:
     return json.loads((HERE / f"{name}.json").read_text(encoding="utf-8"))
 
 
-_ENGINES: dict[str, Engine] = {}
-
-
+@cache
 def _engine(name: str) -> Engine:
-    if name not in _ENGINES:
-        _ENGINES[name] = Engine(_load(name))
-    return _ENGINES[name]
+    return Engine(_load(name))
 
 
 def _walk(engine: Engine, seed: int, limit: int = 200) -> list[tuple[GameState, tuple[int, ...]]]:
@@ -215,15 +213,21 @@ class TestThePhases:
         fled = engine.apply(state, _move(engine, state, "e4", "e5"))
         assert _phase(engine, fled) == ("announced", 1)
 
-    @pytest.mark.parametrize("rule", [
-        {"castling": {"king": "K", "rook": "R", "king_steps": 2}},
-        {"en_passant": True},
-        {"win": "checkmate"},
+    @pytest.mark.parametrize(("rule", "rid"), [
+        ({"castling": {"king": "K", "rook": "R", "king_steps": 2}}, "R6"),
+        ({"en_passant": True}, "R7"),
+        ({"win": "checkmate"}, "R1"),
     ])
-    def test_e8_rules_rounds_refuse_are_refused_for_the_whole_game(self, rule: dict[str, Any]) -> None:
+    def test_e8_rules_rounds_refuse_are_refused_for_the_whole_game(
+        self, rule: dict[str, Any], rid: str
+    ) -> None:
         spec = _load("_spy_small")
         spec["rules"].update(rule)
-        assert any("rules.simultaneous beside" in error for error in validate_spec(spec))
+        errors = validate_spec(spec)
+        if rid == "R1":  # its words say whether the win is written, so it is not in the table
+            assert any("rules.simultaneous beside rules.win" in error for error in errors)
+        else:
+            assert rid in refused_ids(errors)
 
     def test_e9_the_void_run_starts_empty_and_a_bar_carries_into_blind_rounds(self) -> None:
         engine = _engine("_spy_small")

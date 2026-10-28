@@ -23,6 +23,7 @@ from chess_variant_sandbox.spec import (
 from chess_variant_sandbox.spec import schema as schema_module
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import MAX_MOVES_PER_TURN, SCHEMA_VERSION, validate_or_raise
 
 MINIMAL = {
@@ -100,7 +101,7 @@ class TestCoherence:
     def test_annihilation_rejects_royalty(self) -> None:
         spec = copy.deepcopy(MINIMAL)
         spec["rules"] = {"win": "annihilation"}
-        assert any("annihilation" in e for e in validate_spec(spec))
+        assert "Z3" in refused_ids(validate_spec(spec))
 
     def test_en_passant_requires_a_promoting_piece(self) -> None:
         spec = copy.deepcopy(MINIMAL)
@@ -121,9 +122,7 @@ class TestCoherence:
         """
         spec = _fixture("_en_passant_in_a_long_turn.json")
         errors = validate_spec(spec)
-        assert any(
-            "rules.en_passant beside a turn longer than one move" in e for e in errors
-        ), errors
+        assert "L1" in refused_ids(errors), errors
 
         # The pair is the only thing wrong with it: drop either half and it validates,
         # so this pins the combination rather than some other defect in the fixture.
@@ -138,10 +137,7 @@ class TestCoherence:
         """`moves: 1, ramp: [2]` is a player moving twice in the opening, and counts."""
         spec = _fixture("_en_passant_in_a_long_turn.json")
         spec["rules"]["turn"] = {"moves": 1, "ramp": [2]}
-        assert any(
-            "rules.en_passant beside a turn longer than one move" in e
-            for e in validate_spec(spec)
-        )
+        assert "L1" in refused_ids(validate_spec(spec))
         spec["rules"]["turn"] = {"moves": 1, "ramp": [1]}
         assert validate_spec(spec) == []
 
@@ -1003,6 +999,8 @@ def _move_bounds(at: str) -> dict[str, dict[str, int]]:
         f"{move}/range": {"minimum": 0, "maximum": 16},
         f"{move}/min_range": {"minimum": 1, "maximum": 16},
         f"{move}/screen_range": {"minimum": 0, "maximum": 16},
+        f"{move}/legs": _AT_LEAST_ONE,  # SR1a: one list per vector, at most four squares
+        **_vector_bounds(f"{move}/legs/items", {"minItems": 1, "maxItems": 4}),
         f"{move}/condition{_P}/from_rank": {"minimum": 0},
         f"{move}/condition{_P}/region": _AT_LEAST_ONE,
     }
@@ -1035,6 +1033,8 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_MOVE}/range": {"minimum": 0, "maximum": 16},
     f"{_MOVE}/min_range": {"minimum": 1, "maximum": 16},
     f"{_MOVE}/screen_range": {"minimum": 0, "maximum": 16},
+    f"{_MOVE}/legs": _AT_LEAST_ONE,  # SR1a: one list per vector, at most four squares
+    **_vector_bounds(f"{_MOVE}/legs/items", {"minItems": 1, "maxItems": 4}),
     f"{_MOVE}/condition{_P}/from_rank": {"minimum": 0},
     f"{_MOVE}/condition{_P}/region": _AT_LEAST_ONE,
     f"{_PIECE}/region": _AT_LEAST_ONE,
@@ -1066,6 +1066,8 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     **_vector_bounds(_LANDING_STRIKE, _AT_LEAST_ONE),
     f"{_RULES}/contacts{_P}/links": _AT_LEAST_ONE,
     **_vector_bounds(_LANDING_CONTACT, _AT_LEAST_ONE),
+    # SR1b: a blast's stated shape, a landing's vectors in all but name.
+    **_vector_bounds(f"{_RULES}/explode_on_capture{_P}/blast{_P}/vectors", _AT_LEAST_ONE),
     f"{_RULES}/npcs": _AT_LEAST_ONE,
     f"{_RULES}/npcs/items{_P}/route": _AT_LEAST_ONE,
     f"{_RULES}/npcs/items{_P}/also_at": _AT_LEAST_ONE,

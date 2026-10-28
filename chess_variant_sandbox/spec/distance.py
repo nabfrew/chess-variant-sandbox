@@ -89,6 +89,10 @@ _SCALES: dict[str, float] = {
     # jump after jump; without this a lame rider and the single lame leap it was written from
     # read as one game (every other count is equal), and the loop would skip the tournament.
     "lame_rider_share": 1.0,
+    # SR1a (`docs/plan-schema-next.md` §1 rank 1). A jump whose legs are stated is blocked
+    # elsewhere than the computed leg (Janggi's elephant beside the (2, 3) lame); without
+    # this the two would differ only by the rule charge in `special_rules`.
+    "legs_share": 1.0,
     # T1 (`docs/archive/plan-pieces-moves.md` §5.5). A slide whose path turns (a circle or a zigzag)
     # reaches other squares from the same directions; without this the ring queen and the
     # queen would differ only by the rule charge in `special_rules`.
@@ -209,6 +213,9 @@ _SCALES: dict[str, float] = {
     "strikers_share": 1.0,
     # Schema 17 (Q540): a blast of radius 0 (kamikaze) is not atomic.
     "explodes_alone": 1.0,
+    # SR1b (`docs/plan-schema-next.md` §1 rank 2): a blast of a stated shape (a cross, a
+    # file) is not atomic's box; without this the two would read as distance zero.
+    "explodes_shaped": 1.0,
     # Two, for the same reason the strike has three. A rule with a cost but no feature
     # collides with every other rule of the same cost, and two specs then report distance
     # zero -- which makes the loop skip a tournament it should have run. `turns_freely`
@@ -457,6 +464,10 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         "leap_share": kinds["leap"] / total_moves,
         "hop_share": kinds["hop"] / total_moves,
         "sweep_share": kinds["sweep"] / total_moves,
+        "legs_share": sum(
+            1 for piece in pieces for move in piece.get("moves", []) or []
+            if isinstance(move, dict) and "legs" in move
+        ) / total_moves,
         "lame_rider_share": sum(
             1 for piece in pieces for move in piece.get("moves", []) or []
             if move.get("kind") == "lame" and move.get("range", 1) != 1
@@ -1023,7 +1034,10 @@ def _explosion_features(explosion: Any) -> dict[str, float]:
     all -- the same answer `engine.compile._compile_explosion` gives, and the reason this
     is a function rather than the truthiness test it replaces.
     """
-    absent = {"explodes": 0.0, "explodes_selectively": 0.0, "explodes_alone": 0.0}
+    absent = {
+        "explodes": 0.0, "explodes_selectively": 0.0, "explodes_alone": 0.0,
+        "explodes_shaped": 0.0,
+    }
     if not isinstance(explosion, dict) or not explosion:
         return absent
     narrowed = False
@@ -1038,6 +1052,7 @@ def _explosion_features(explosion: Any) -> dict[str, float]:
         "explodes": 1.0,
         "explodes_selectively": 1.0 if narrowed else 0.0,
         "explodes_alone": 1.0 if explosion.get("radius", 1) == 0 else 0.0,
+        "explodes_shaped": 1.0 if "blast" in explosion else 0.0,
     }
 
 

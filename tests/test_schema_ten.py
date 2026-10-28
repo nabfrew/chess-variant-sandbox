@@ -64,6 +64,7 @@ from chess_variant_sandbox.spec.complexity import measure_complexity
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import _SCALES, distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import (
     MAX_STOCK,
     REPETITION_NEVER,
@@ -780,9 +781,9 @@ class TestOnlySomeCapturesExplode:
         rule narrowing *when* the blast fires has to reach it or a capture by a piece that
         is not a bomb animates an explosion that never happened.
         """
-        from chess_variant_sandbox.web.play import Session
+        from chess_variant_sandbox.viz.rules_payload import explosion_payload
 
-        info = Session._explosion_info(_Spec(compile_spec(_selective(by=["Q"]))))
+        info = explosion_payload(compile_spec(_selective(by=["Q"])))
         assert info is not None
         queen = compile_spec(_selective(by=["Q"])).piece_ids.index("Q")
         assert info["by"] is not None and info["by"][queen] is True
@@ -790,7 +791,7 @@ class TestOnlySomeCapturesExplode:
         assert info["of"] is None
 
         plain = compile_spec(json.loads((ROOT / "rulesets" / "atomic.json").read_text(encoding="utf-8")))
-        atomic_info = Session._explosion_info(_Spec(plain))
+        atomic_info = explosion_payload(plain)
         assert atomic_info is not None
         assert atomic_info["by"] is None and atomic_info["of"] is None
 
@@ -1553,13 +1554,6 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
         assert kind == expected, path.stem
 
 
-class _Spec:
-    """The one attribute `Session._explosion_info` reads, without starting a session."""
-
-    def __init__(self, spec: Any) -> None:
-        self.spec = spec
-
-
 # ------------------------------------------------------- Q19a: the contact table
 
 
@@ -1706,30 +1700,32 @@ class TestTheContactTable:
             "immune": ["K"],
         }
         errors = validate_spec(spec)
-        assert any("two spellings of one rule" in error for error in errors), errors
+        assert "T3" in refused_ids(errors), errors
 
     @pytest.mark.parametrize(
-        "other, value",
+        "other, value, rid",
         [
-            ("explode_on_capture", {"radius": 1}),
-            ("drops", {"from_captures": True}),
-            ("npcs", [{"piece": "P", "route": ["d4", "d5"]}]),
+            ("explode_on_capture", {"radius": 1}, "T4"),
+            ("drops", {"from_captures": True}, "T5"),
+            ("npcs", [{"piece": "P", "route": ["d4", "d5"]}], "T6"),
         ],
     )
     def test_it_is_refused_beside_the_other_rules_about_a_taken_piece(
-        self, chess: dict[str, Any], other: str, value: Any
+        self, chess: dict[str, Any], other: str, value: Any, rid: str
     ) -> None:
         """`_check_strike_coherence`'s refusals, restated over this spelling.
 
         Restated rather than shared, because an error naming `rules.strike` for a file
         that says `rules.contacts` points a reader at a rule that is not there.
         """
-        spec = _contacts(chess, [{"mover": "P", "onto": "R", "mover_to": "N"}])
+        # Beside a hand only a link that keeps its target is refused since SR2 (T5).
+        link = {"mover": "P", "onto": "R", "mover_to": "N"}
+        if other == "drops":
+            link = {"mover": "P", "onto": "R", "onto_to": "N"}
+        spec = _contacts(chess, [link])
         spec["rules"][other] = value
         errors = validate_spec(spec)
-        assert any(
-            f"rules.contacts and rules.{other}" in error for error in errors
-        ), errors
+        assert rid in refused_ids(errors), errors
 
     def test_a_link_that_changes_nothing_is_refused(self, chess: dict[str, Any]) -> None:
         errors = validate_spec(_contacts(chess, [{"mover": "P", "onto": "R"}]))

@@ -89,6 +89,14 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "backwards does; one that comes into play later points the way it starts. Some "
         "must then be placed pointing another way, or the pointing would change nothing.",
     ),
+    "pieces.moves.legs": (
+        "which squares block each jump",
+        "For a lame jump, or a leap where walls block leaps. Each jump lists the squares it "
+        "passes, as steps from the piece, and anything on one of them stops it (a leap is "
+        "stopped only by a wall there). Janggi's elephant, three and two, is blocked one "
+        "step straight ahead and one step diagonally beyond that. Left out, a lame jump is "
+        "blocked on one square only, the step along its longer side.",
+    ),
     "pieces.moves.path": (
         "how its path runs",
         "For a slide only. Straight, every step the same way, is every ordinary slide. A "
@@ -183,8 +191,8 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "coins and a market",
         "Each player holds coins, paid by the bounties on what they take, and may spend a "
         "whole move buying a piece for sale, hiring a priced piece nobody owns that stands "
-        "next to one of theirs, or (where bribes are on) buying an enemy one. Not in a game where both move at once, where "
-        "a turn is longer than one move, beside portals or where a capture blows up.",
+        "next to one of theirs, or (where bribes are on) buying an enemy one. Not in a game where both move at once, "
+        "beside portals or where a capture blows up.",
     ),
     "rules.purse.start": (
         "coins at the start",
@@ -751,6 +759,17 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     "rules.explode_on_capture.immune": ("pieces that survive it", None),
     "rules.explode_on_capture.by": ("only when taken by", None),
     "rules.explode_on_capture.of": ("only when taking", None),
+    "rules.explode_on_capture.blast": (
+        "the blast's shape",
+        "Instead of how far it reaches: the squares the blast takes, as steps from the "
+        "capture square, turned as a way of moving is. Steps one square straight in each of "
+        "the four directions are a cross that spares the diagonals. It is the board's, so it "
+        "must look the same from either side.",
+    ),
+    "rules.explode_on_capture.blast.vectors": ("steps", None),
+    "rules.explode_on_capture.blast.symmetry": (
+        "turned", "Which turns of each step it also gets, as on a way of moving."
+    ),
 }
 
 # The rule cards themselves, by the titles their cards already carry.

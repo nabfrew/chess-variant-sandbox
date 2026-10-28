@@ -49,6 +49,7 @@ from chess_variant_sandbox.engine.state import NO_SQUARE, GameState
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import describe_rules
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
 from tests.feature_inventory import _schema_twenty_four_uses, _schema_twenty_two_uses
 
@@ -633,7 +634,7 @@ class TestTheRevisedFoldRules:
     def test_10_the_refusals_beside_portals_hold_for_folds(self) -> None:
         spec = fold_pair()
         spec["rules"]["explode_on_capture"] = {"radius": 1}
-        assert any("refused beside rules.explode_on_capture" in p for p in validate_spec(spec))
+        assert "P5" in refused_ids(validate_spec(spec))
 
     def test_a_duplicate_collapses_to_the_direct_move(self) -> None:
         """Along the third rank the rook reaches d3 straight and through b3: one move, the

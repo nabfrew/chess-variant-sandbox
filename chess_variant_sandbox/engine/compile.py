@@ -26,6 +26,7 @@ from typing import Any
 
 from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.complexity import expand_symmetry
+from chess_variant_sandbox.spec.legs import Legs, stated_legs
 from chess_variant_sandbox.spec.schema import (
     DEFAULT_RANGE,
     MAX_MOVES_PER_TURN,
@@ -37,10 +38,12 @@ from chess_variant_sandbox.spec.schema import (
     SpecError,
     absent_squares,
     beats_of,
+    blast_directions,
     bribe_ids,
     control_geometry,
     has_rests,
     has_speeds,
+    has_third_owner,
     hex_distance,
     hire_ids,
     is_nobodys,
@@ -2379,9 +2382,7 @@ def _compile(
     neutrals = _compile_neutrals(
         spec, pieces, width, height, orientation, wrap, obstacles, radius,
     )
-    n_owners = (
-        3 if npcs is not None or has_portals or duck is not None or neutrals is not None else 2
-    )
+    n_owners = 3 if has_third_owner(spec) else 2
     promotions = _settle_on_leaving(
         _compile_promotions(rules.get("promotion"), index_of, width, height, orientation),
         leaps, slides, hops, sweeps, facing_axes, n_facings,
@@ -2806,8 +2807,14 @@ def _lame_ride(
     jumps: int,
     confine: frozenset[int] | None,
     obstacles: frozenset[int],
+    legs: Legs | None = None,
 ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
     """One direction of a ``lame`` descriptor: the ray ``(leg, landing, leg, landing, ...)``.
+
+    ``legs`` (SR1a) are the jump's stated legs in the mover's frame, each one a modeless
+    square before its landing, so a ride of stated legs is ``(leg, leg, landing, ...)``;
+    ``None`` is the one computed leg, ``_lame_path``'s, and builds the very table it
+    always did.
 
     Jump after jump along the step, each one blocked at its leg (``_lame_path``, the
     language's one notion of "the way past") and each landing ending the ride when
@@ -2832,7 +2839,7 @@ def _lame_ride(
       square already ridden (a one-square step has no leg: ``_lame_path`` puts it on the
       target, or on the jump's own start for a diagonal one; the validator refuses it).
     """
-    block_x, block_y = _lame_path(step_x, step_y)
+    offsets = legs if legs is not None else (_lame_path(step_x, step_y),)
     path: list[int] = []
     modes: list[int] = []
     visited = {square}
@@ -2841,14 +2848,23 @@ def _lame_ride(
         target = landing(at_file + step_x, at_rank + step_y)
         if target is None or target in visited or target in obstacles:
             break
-        block = landing(at_file + block_x, at_rank + block_y)
-        if block is None or block in obstacles or block == target or block in visited:
-            break
-        visited.update((block, target))
-        path.extend((block, target))
-        usable = jump >= min_range and (confine is None or target in confine)
-        modes.extend((0, mode if usable else 0))
-        at_file, at_rank = target % width, target // width
+        blocks: list[int] = []
+        for block_x, block_y in offsets:
+            block = landing(at_file + block_x, at_rank + block_y)
+            if (
+                block is None or block in obstacles or block == target or block in visited
+                or block in blocks
+            ):
+                break
+            blocks.append(block)
+        else:
+            visited.update((*blocks, target))
+            path.extend((*blocks, target))
+            usable = jump >= min_range and (confine is None or target in confine)
+            modes.extend((*(0 for _ in blocks), mode if usable else 0))
+            at_file, at_rank = target % width, target // width
+            continue
+        break
     while modes and not modes[-1]:
         modes.pop()
         path.pop()
@@ -2877,7 +2893,7 @@ def _turning_rides(
     that reached each square (for the momentum signs).
 
     ``steps`` are the descriptor's directions in the mover's frame, laid out round the origin
-    by `schema.turning_order`. A ``circle`` starts with any of them and takes the next one
+    by `schema.turning_order`, on either lattice (a hex lattice's in axial coordinates, SR1c). A ``circle`` starts with any of them and takes the next one
     round at every step, one way or the other; a ``zigzag`` alternates its first direction
     with a neighbour less than half a turn away, either one. Every landing goes through
     ``landing`` (the edge, a seam), so a path ends off the board, on a wall, or on a square it
@@ -2955,6 +2971,35 @@ def _descriptor_directions(
     # is a rook and the set comes back unchanged -- which is what makes a facing worth
     # giving only to a piece that is directional.
     return {_rotate(dx, dy, facing) for dx, dy in directions}
+
+
+def _descriptor_legs(
+    descriptor: dict[str, Any], symmetry: str, facing: int, player: int, orientation: str
+) -> dict[tuple[int, int], Legs]:
+    """A descriptor's stated legs (SR1a), keyed as `_descriptor_directions` keys a
+    direction and turned into the mover's frame; empty when it states none.
+
+    Each leg goes through exactly what its vector goes through: the symmetry's map that
+    turned the vector (`legs.stated_legs`), the facing, then the second player's
+    reflection, so a leg means the same relative square to both armies and every facing.
+    """
+    if "legs" not in descriptor:
+        return {}
+    found, _ = stated_legs(descriptor["vectors"], descriptor["legs"], symmetry)
+
+    def frame(x: int, y: int) -> tuple[int, int]:
+        if facing:
+            x, y = _rotate(x, y, facing)
+        if player == 0:
+            return x, y
+        return (-x, -y) if orientation == "rotate" else (x, -y)
+
+    return {
+        (_rotate(dx, dy, facing) if facing else (dx, dy)): tuple(
+            frame(x, y) for x, y in legs
+        )
+        for (dx, dy), legs in found.items()
+    }
 
 
 _Built = tuple[tuple[Entry, ...], tuple[Entry, ...], tuple[HopEntry, ...], tuple[Entry, ...]]
@@ -3111,8 +3156,12 @@ def _compile_square_full(
         if kind == "slide" and turning != "straight":
             # T1: a turning path reads the whole set of directions at once, in the mover's
             # frame (the second player's reflection, as below), so it is built here rather
-            # than one direction at a time. The validator keeps it off a hex lattice.
-            assert not radius, "a turning path is refused on a hex lattice"
+            # than one direction at a time. On a hex lattice (SR1c) the frame is axial and
+            # the order is the hexagon's angle order: `schema.turning_order`'s integer
+            # comparator reads axial vectors exactly as their angles in the plane, since the
+            # map into the plane keeps every cross product's sign (its comment). The second
+            # player's frame there is the half turn, which keeps a turn's sense, and every
+            # landing (a hexagon's absent cell, a seam) is `landing`'s, as on a slide.
             frame = [
                 (dx, dy) if player == 0 else (-dx, -dy) if orientation == "rotate" else (dx, -dy)
                 for dx, dy in _descriptor_directions(descriptor["vectors"], symmetry, facing)
@@ -3137,6 +3186,7 @@ def _compile_square_full(
         # xiangqi's `slide_squares` under Pyodide and parted its games from the server's
         # at ply 1. Every other order below is re-imposed on a key (`sorted(ray_groups)`,
         # `sorted(leap_targets)`), so this is the one walk whose order reaches a table.
+        frame_legs = _descriptor_legs(descriptor, symmetry, facing, player, orientation)
         for dx, dy in sorted(_descriptor_directions(descriptor["vectors"], symmetry, facing)):
             # Vectors are written from the first player's view. Under the default
             # mirror the second player's forward direction is the rank reflection and
@@ -3167,11 +3217,16 @@ def _compile_square_full(
                 # project already has exactly one rule for that, it is the rule the
                 # xiangqi horse is described by, and inventing a second notion of "the
                 # way past" would leave two answers to one question.
-                if blocks_leaps:
-                    block_x, block_y = _lame_path(step_x, step_y)
-                    over = landing(file + block_x, rank + block_y)
-                    if over is not None and over in obstacles:
-                        continue
+                if blocks_leaps and any(
+                    over is not None and over in obstacles
+                    for over in (
+                        landing(file + block_x, rank + block_y)
+                        for block_x, block_y in frame_legs.get(
+                            (dx, dy), (_lame_path(step_x, step_y),)
+                        )
+                    )
+                ):
+                    continue
                 bucket = leap_targets.setdefault(requires_unmoved, {})
                 bucket[target] = bucket.get(target, 0) | mode
                 if momentum:
@@ -3186,7 +3241,7 @@ def _compile_square_full(
                         width * height if wrap and wrap.active_for(player)
                         else max(width, height)
                     ),
-                    confine, obstacles,
+                    confine, obstacles, frame_legs.get((dx, dy)),
                 )
                 if ride is not None:
                     path, path_modes = ride
@@ -4079,9 +4134,11 @@ def _settle_only_lost(
     The opening count of each type for each player, read off the compiled opening board
     and not off the JSON, so it is the army `_build_initial_position` placed, mirror and
     all. A wild piece is nobody's and is not counted. Under the placement phase (Q784)
-    the stock is counted too: a side plays it all out before any of its pieces moves,
-    and its hand fills from nothing else (`schema._check_only_lost_coherence`), so by the
-    time a promotion can be offered every stocked piece is on the board or lost.
+    the stock is counted too: a side plays it all out before any of its pieces moves, so
+    by the time a promotion can be offered every stocked piece is on the board or lost.
+    Since SR2 (H1, generation 50) the hand may also fill from captures; a piece in it is
+    off the board and so counts as lost until it is dropped back, which is the rule as
+    written (the board is what is counted), so the opening count stands.
     """
     if not any(rule.only_lost for rule in promotions):
         return promotions
@@ -4723,6 +4780,17 @@ def _compile_explosion(
         # docs/reference/bugs-investigations.md, "Ruled on in advance, for Q86").
         return None
     blast_radius = explosion.get("radius", 1)
+    # Generation 48 (SR1b): a stated shape replaces the radius's box, its offsets in the
+    # box's own order (file offset, then rank offset) so a shape that *is* the box compiles
+    # to the box's table. Absent, the box is built exactly as before.
+    if "blast" in explosion:
+        offsets = sorted(blast_directions(explosion["blast"]))
+    else:
+        offsets = [
+            (dx, dy)
+            for dx in range(-blast_radius, blast_radius + 1)
+            for dy in range(-blast_radius, blast_radius + 1)
+        ]
     # A blast reads the board's shape, not a player's permission: the two file edges are
     # one seam whoever may cross it, so a capture beside the join takes what is on the
     # other side of it. With no seam these are both false and ``_wrap_axis`` (or, on a
@@ -4735,25 +4803,24 @@ def _compile_explosion(
     for square in range(width * height):
         file, rank = square % width, square // width
         neighbours = []
-        for dx in range(-blast_radius, blast_radius + 1):
-            for dy in range(-blast_radius, blast_radius + 1):
-                if dx == 0 and dy == 0:
-                    continue
-                nf, nr = file + dx, rank + dy
-                neighbour = _land(
-                    nf, nr, width, height, join_files, join_files, join_ranks, join_ranks,
-                    hex_radius, seam_open,
-                )
-                # A blast clears squares, and a wall is not a square that can be
-                # cleared: nothing is ever standing on one, so listing it would be a
-                # per-capture read of a square that is always empty.
-                if (
-                    neighbour is not None
-                    and neighbour != square
-                    and neighbour not in obstacles
-                    and neighbour not in neighbours
-                ):
-                    neighbours.append(neighbour)
+        for dx, dy in offsets:
+            if dx == 0 and dy == 0:
+                continue
+            nf, nr = file + dx, rank + dy
+            neighbour = _land(
+                nf, nr, width, height, join_files, join_files, join_ranks, join_ranks,
+                hex_radius, seam_open,
+            )
+            # A blast clears squares, and a wall is not a square that can be
+            # cleared: nothing is ever standing on one, so listing it would be a
+            # per-capture read of a square that is always empty.
+            if (
+                neighbour is not None
+                and neighbour != square
+                and neighbour not in obstacles
+                and neighbour not in neighbours
+            ):
+                neighbours.append(neighbour)
         blast.append(tuple(neighbours))
     return ExplosionRule(
         immune_types=frozenset(index_of[p] for p in explosion.get("immune", [])),

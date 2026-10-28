@@ -49,21 +49,18 @@ from chess_variant_sandbox.engine.moves import (
     move_type,
 )
 from chess_variant_sandbox.engine.state import GameState
-from chess_variant_sandbox.spec.schema import PURSE_MAX
 from chess_variant_sandbox.tournament.play import choose_move, eval_values
-from chess_variant_sandbox.viz.heading import directional_types
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
+from chess_variant_sandbox.viz.rules_payload import (
+    effect_pairs,
+    rules_payload,
+)
 from chess_variant_sandbox.viz.wrapped import (
     fold_payload,
     fold_transit,
-    goal_payload,
-    portal_payload,
     portal_transit,
-    pounce_kinds_payload,
     sweep_transit,
     walls_payload,
-    wrap_payload,
-    zone_payload,
 )
 from chess_variant_sandbox.web import draw_offer
 from chess_variant_sandbox.web.library import Game, engine_for
@@ -230,13 +227,11 @@ def _coming(engine: Any, state: GameState) -> dict[str, list[dict[str, Any]]]:
 def effects_payload(engine: Any, state: GameState) -> dict[str, Any]:
     """Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.6): the effects on a position a game has
     passed through, for a step back to draw its marks, as ``{"effects": [[square, bits], ...]}``
-    with only the squares whose piece is under an effect (1 frozen, 2 disarmed, 4 shielded);
-    the core's answer (`Engine.effects`). Empty in a game without a sight, so a history entry
-    of every other game is what it was."""
+    (`viz.rules_payload.effect_pairs`, the one encoder). Empty in a game without a sight, so a
+    history entry of every other game is what it was."""
     if engine.spec.sight is None:
         return {}
-    bits = engine.effects(state).bits
-    return {"effects": [[square, value] for square, value in enumerate(bits) if value]}
+    return {"effects": effect_pairs(engine, state)}
 
 
 def turncoat_payload(engine: Any, state: GameState) -> dict[str, Any]:
@@ -265,27 +260,6 @@ def turncoat_payload(engine: Any, state: GameState) -> dict[str, Any]:
                 held.append([square, holder])
         out["held"] = held
     return out
-
-
-def market_payload(engine: Any) -> dict[str, Any] | None:
-    """TC7 (§5.8): the purse's rule as the page draws it, compiled (`PurseRule`), or ``None``
-    without a purse: the market (each type and its price, in the spec's order), whether an
-    enemy piece may be bribed, the cap, and which types are for hire or bribe at what cost
-    (``hire[type]``/``bribe[type]``, 0 where not; empty where nothing is). The page offers
-    only the moves the engine lists; these are the words beside them."""
-    purse = engine.spec.purse
-    if purse is None:
-        return None
-    return {
-        "start": purse.start,
-        "cap": PURSE_MAX,
-        "market": [
-            {"type": int(piece_type), "price": int(price)}
-            for piece_type, price in zip(purse.market, purse.price, strict=True)
-        ],
-        "hire": list(purse.hire),
-        "bribe": list(purse.bribe),
-    }
 
 
 def purchase_entry(engine: Any, state: GameState, move: int) -> dict[str, Any]:
@@ -357,17 +331,6 @@ def sights_payload(engine: Any, state: GameState) -> list[dict[str, Any]]:
         if seen:
             out.append({"square": square, "seen": [[target, bits] for target, bits in seen]})
     return out
-
-
-def drop_faces_payload(drops: Any) -> list[int] | None:
-    """Each hand slot's other face under ``drops.either_face`` (schema 18e, Q785), or ``None``.
-
-    The compiled pairs, so the page offers a piece in hand as both faces without reading
-    the spec's ``promoted_from``.
-    """
-    if drops is None or not drops.faces:
-        return None
-    return list(drops.faces)
 
 
 @dataclass
@@ -500,88 +463,14 @@ class Session:
                 # -- back to its page, a rematch, the other side -- goes through the
                 # library by hash, and a draft is not in it.
                 "scratch": self.scratch,
-                "width": engine.spec.width,
-                "height": engine.spec.height,
-                # `"hex"` draws each cell as a hexagon on a sheared grid (schema 14).
-                "lattice": engine.spec.lattice,
-                "pieceIds": list(engine.spec.piece_ids),
-                "pieceNames": list(engine.spec.piece_names),
-                # Generation 40 (N3c): each type's compiled pounce kind, or ``None`` where
-                # nothing pounces: the phase's words tell a pounce on an attacker from one
-                # on prey by it, the log's kind being one for both.
-                "pounceKinds": pounce_kinds_payload(engine.spec.pounce),
-                # Schema 18e (Q785): each hand slot's other face, or -1, compiled; `None`
-                # where a held piece comes back as itself only. The hand draws a button
-                # per face from it, so the picker never reads `promoted_from`.
-                "dropFaces": drop_faces_payload(engine.spec.drops),
-"nTypes": engine.spec.n_types,
-                # A whole army's worth of board values, the headings a facing piece is
-                # drawn at, and which pieces may be turned to a heading at all. A piece
-                # with no direction of its own is drawn upright for both seats.
-                "sideStride": engine.spec.side_stride,
-                "facingAngles": [list(row) for row in engine.spec.facing_headings()],
-                "directional": list(directional_types(engine.spec)),
-                "nFacings": engine.spec.n_facings,
-                # What the colouring on this board is *for*, which decides whether it
-                # is scenery or the scoreboard. Read from the spec rather than inferred
-                # from a non-empty colour array: a game may claim ground and be won on
-                # something else entirely.
-                "territory": (self.game.spec.get("rules") or {}).get("territory"),
+                # Every compiled rule a page draws (`viz.rules_payload`, CP5): the same
+                # block the replay and the still preview carry, so none drifts.
+                **rules_payload(engine),
                 "icons": art,
                 # What to call the two players, which is what the board is drawing and
                 # therefore not something the page can settle for itself. "white" and
                 # "black" are wrong for a single-colour set.
                 "sides": list(side_names(art)),
-                # The *compiled* wrap rule, per player and per axis. The spec spells its
-                # permissions as edge names and `engine/compile.py` is the one place
-                # that means anything by them, so what crosses is the resolved pair of
-                # booleans and the page never reads the DSL.
-                "wrap": wrap_payload(engine.spec.wrap, engine.spec.copies),
-                # Squares a game ends on when a piece reaches one, compiled, per
-                # player. The spec spells them as names and mirrors them by a keyword,
-                # so what crosses is the resolved pair of sets -- `None` for a game
-                # with no such rule, and a board that never drew them asked a player to
-                # find the winning square by reading the rules panel.
-                "goals": goal_payload(engine.spec.reach),
-                # Schema 18 (Q786): whether the game is decided by moving off one of
-                # those squares rather than standing on one, so the ended banner says
-                # which (`reasonWords`). Off the compiled rule, as `goals` is.
-                "goalLeaves": bool(engine.spec.reach and engine.spec.reach.leaves),
-                # Squares a piece promotes on, compiled, per player. The spec states
-                # the zone once from the first player's side and the schema reflects
-                # it, so what crosses is the resolved pair of bands -- `None` for a
-                # game with no promotion, which is what the board tests to draw no
-                # band and offer no toggle.
-                "zones": zone_payload(engine.spec.promotions),
-                # Which piece types are royal, compiled, one flag per type. The engine
-                # says *whether* the side to move is in check (`inCheck`); this is how
-                # the board finds the square to draw it on, by the piece standing there,
-                # without deciding anything about attacks.
-                "royal": [t in engine.spec.royal_types for t in range(engine.spec.n_types)],
-                # Explosion metadata: the page needs to know *which* disappearances
-                # are blast damage so it can animate them differently from a plain
-                # capture, and which piece types survive the blast (the "resistant"
-                # indicator).  Constant per ruleset, so sent once in the ruleset block.
-                "explosion": self._explosion_info(engine),
-                # Schema 19: each portal end's pair, colour, movers and doors, compiled
-                # (`viz.wrapped.portal_payload`); `None` without portals.
-                "portals": portal_payload(engine.spec),
-                # Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.5): each type's speed, compiled
-                # (`SimRule.speed`), for the legend's line of ranks; empty in every game
-                # without a speed, which draws no line.
-                "speed": list(engine.spec.simultaneous.speed)
-                if engine.spec.simultaneous is not None else [],
-                # Schema 29 (Q983b, `docs/plan-rest.md` §5.6): each type's rest, compiled
-                # (`CompiledSpec.rest`), so a game whose longest rest is over 1 numbers its
-                # pause signs with the turns left; empty in every game without a rest.
-                "rest": list(engine.spec.rest),
-                # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): the duck's type, or None in
-                # a game without `rules.duck`. The move list writes a turn on one line from
-                # it, and the board names the duck in its words.
-                "duck": engine.spec.duck.piece_type if engine.spec.duck is not None else None,
-                # TC7 (`docs/plan-turncoat.md` §5.8): the purse's rule, compiled
-                # (`market_payload`); absent in every game without a purse.
-                **({"purse": market} if (market := market_payload(engine)) else {}),
             },
             "seats": list(self.seats),
             # How hard each seat thinks, in plain words off the budget it plays at, for
@@ -714,36 +603,6 @@ class Session:
             "may": refusal is None,
             "why": refusal,
             "said": draw_offer.answer_said(answered),
-        }
-
-    @staticmethod
-    def _explosion_info(engine: Any) -> dict[str, Any] | None:
-        """Explosion metadata for the page's animation layer.
-
-        Returns ``None`` when the ruleset has no explosion rule, so the page can
-        skip the check entirely.  Otherwise returns the blast neighbourhood per
-        square and a boolean-per-type array saying which types are immune.
-
-        ``by`` and ``of`` are schema 10 and are ``None`` when every capture explodes.
-        They have to cross for the reason the blast does: **the page cannot work out from
-        two positions which board change was which**, so a rule that narrows *when* the
-        blast fires has to reach it or the animation lies. Without them a capture by a
-        piece that is not a bomb would still be treated as a blast centre and the shield
-        shimmer would draw survivors of an explosion that never happened.
-        """
-        ex = engine.spec.explosion
-        if ex is None:
-            return None
-        n_types = engine.spec.n_types
-
-        def selection(types: frozenset[int] | None) -> list[bool] | None:
-            return None if types is None else [t in types for t in range(n_types)]
-
-        return {
-            "blast": [list(neighbours) for neighbours in ex.blast],
-            "immune": [t in ex.immune_types for t in range(n_types)],
-            "by": selection(ex.by_types),
-            "of": selection(ex.of_types),
         }
 
     def _offer(self, engine: Any, legal: list[int], mover: int) -> list[dict[str, Any]]:

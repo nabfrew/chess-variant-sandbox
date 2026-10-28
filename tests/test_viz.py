@@ -1954,3 +1954,101 @@ class TestTheReplayDrawsAWildPieceAsTheBoardsDo:
     def test_a_players_piece_is_untouched(self) -> None:
         drawn = self._drawn(1, 0)
         assert 'href="wolf1"' in drawn and 'data-wild="1"' not in drawn
+
+
+# ------------------------------------------------------- the purse in the offline replay
+
+
+# The replay's own script in node, on a stub of the few elements it touches: it steps to
+# each beat in `ORDER` and prints what each seat's purse line says there.
+_PURSE_DOM = r"""
+const made = {};
+const element = id => made[id] || (made[id] = {
+  id, innerHTML: '', textContent: '', hidden: false, disabled: false, dataset: {},
+  classList: { toggle() {} }, setAttribute() {}, addEventListener() {},
+  querySelectorAll: () => [], appendChild() {}, onclick: null,
+});
+const seats = [0, 1].map(p => ({ dataset: { purse: String(p) }, textContent: '' }));
+global.window = { matchMedia: () => ({ matches: true }), localStorage: null };
+global.document = {
+  title: '', getElementById: element, addEventListener() {},
+  querySelectorAll: sel => (sel === '[data-purse]' ? seats : []),
+};
+"""
+
+
+class TestTheReplayDrawsThePurse:
+    """Q1049: the offline replay shows each seat's purse at the position on screen, worded as
+    the play board words it, and the counts are the core's replayed state, never the page's
+    arithmetic (CLAUDE.md rule 3)."""
+
+    HERE = Path(__file__).parent
+
+    def _game(self) -> tuple[dict, object]:
+        from chess_variant_sandbox.tournament.play import play_game
+
+        spec = json.loads((self.HERE / "_purse_market.json").read_text(encoding="utf-8"))
+        # Greedy against greedy buys three times in thirty-odd plies and ends in a mate.
+        return spec, play_game(Engine(spec), ("greedy", "greedy"), 0)
+
+    def test_each_ply_carries_the_cores_purses(self, tmp_path: Path) -> None:
+        from chess_variant_sandbox.engine.moves import MOVE_BUY, move_type
+        from chess_variant_sandbox.tournament.play import replay
+        from chess_variant_sandbox.viz.html import render_game
+
+        spec, record = self._game()
+        engine = Engine(spec)
+        data = _payload(render_game(spec, record, tmp_path / "purse.html"))
+        start = spec["rules"]["purse"]["start"]
+        assert data["purses"][0] == [start, start]
+        assert data["purses"] == [list(s.purse) for s in replay(engine, record)]
+        assert data["sides"] == ["white", "black"]
+        # The oracle for a buy: the buyer's purse falls by the market's price, the other's holds.
+        price = dict(zip(engine.spec.purse.market, engine.spec.purse.price, strict=True))
+        states = replay(engine, record)
+        buys = [i for i, m in enumerate(record.moves) if move_type(m) == MOVE_BUY]
+        assert buys, "the game this test reads buys something"
+        for i in buys:
+            mover = states[i].side_to_move
+            bought = engine.spec.type_of(states[i + 1].board[(record.moves[i] >> 8) & 0xFF])
+            assert data["purses"][i + 1][mover] == data["purses"][i][mover] - price[bought]
+            assert data["purses"][i + 1][1 - mover] == data["purses"][i][1 - mover]
+
+    def test_a_game_without_a_purse_carries_none(
+        self, chess_spec: dict, tmp_path: Path
+    ) -> None:
+        data = _payload(
+            render_position(chess_spec, Engine(chess_spec).initial_state(), tmp_path / "c.html")
+        )
+        assert "purses" not in data and data["purse"] is None
+
+    def test_the_seats_say_the_purse_at_every_ply_forward_and_back(self, tmp_path: Path) -> None:
+        from chess_variant_sandbox.viz.html import render_game
+
+        spec, record = self._game()
+        text = render_game(spec, record, tmp_path / "purse.html").read_text(encoding="utf-8")
+        script = text[text.index("<script>") + len("<script>"): text.rindex("</script>")]
+        data = _payload(tmp_path / "purse.html")
+        n = len(data["purses"])
+        # Forward through every ply, then back, then a jump: each step shows its own ply.
+        order = list(range(n)) + list(range(n - 1, -1, -1)) + [n - 1, 0]
+        probe = (
+            "\nconst seen = [];\n"
+            f"for (const at of {json.dumps(order)}) {{\n"
+            "  goto(BEATS.findIndex(b => b.ply === at));\n"
+            "  seen.push(seats.map(s => s.textContent));\n"
+            "}\n"
+            "console.log(JSON.stringify({ seen, seats: made.seats.innerHTML,"
+            " hidden: made.seats.hidden }));\n"
+        )
+        done = node_session.run(_PURSE_DOM + script + probe)
+        assert done.returncode == 0, done.stderr
+        out = json.loads(done.stdout.strip().splitlines()[-1])
+
+        def words(k: int) -> str:
+            return f"purse: {k} coin{'' if k == 1 else 's'}"
+
+        assert out["seen"] == [[words(c) for c in data["purses"][at]] for at in order]
+        assert not out["hidden"]
+        assert "<b>white</b>" in out["seats"] and "<b>black</b>" in out["seats"]
+        assert 'data-purse="0"' in out["seats"] and "buy or hire" in out["seats"]

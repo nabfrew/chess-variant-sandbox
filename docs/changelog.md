@@ -13,6 +13,42 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-28
 
+### Replays show each player's purse
+
+In games with a purse, a game's saved replay now shows how many coins each player holds at whichever move is on
+screen, in the same words the play board uses, stepping forward and back with the game.
+
+### A sweep looks the way it plays
+
+When a piece sweeps across the board, it now rides the front of its blade instead of trailing behind it, and on the
+front page's sweep story you can see it in flight. If a sweep ends the game, the result waits until the sweep has
+finished rather than covering it.
+
+### Nine rule pairs that used to be refused now work together
+
+Some rules couldn't be used together, though nothing about them clashed: no one had yet checked that the game played
+them correctly. Nine such pairs have now been checked and are accepted. Among them: a purse, or pieces nobody owns,
+in games where a turn has several moves; a shooting piece in a game where taken pieces go to your hand; a piece that commands others by looking, beside
+shooting or linking rules (as long as it can't command a capture of its own side); the duck in a
+game with sweeping pieces (a sweep stops short of it); and a turning path on a wild piece that pounces on prey.
+
+### Turning paths on hexagonal boards
+
+A piece that moves along a circle or a zigzag can now do so on a hexagonal board, where before such a game was refused.
+One example: a hex knight whose twelve jumps each turn one step further round.
+
+### Explosions with a shape of their own
+
+An exploding capture no longer has to clear a square around the capture. A game can now give the blast its own shape:
+a cross that spares the diagonals, say, or a line two squares each way along the file.
+
+### Leaps that can be blocked, with the blocking squares named
+
+A piece whose leap can be blocked can now say exactly which squares block it. That makes room for the Janggi elephant,
+which jumps three squares and is stopped by a piece on either square along its way, and for a blockable knight on a
+hexagonal board. Walls that stop leaps now also work on hexagonal boards, provided every blockable leap names its
+squares.
+
 ### Pieces with a price, and pieces nobody owns
 
 A game can now give each player a purse of coins. Coins come from

@@ -1214,8 +1214,10 @@ pub struct Tables {
     /// `[board value] -> owner`, `-> frame`, `-> piece type`.
     ///
     /// Tables rather than arithmetic, for the reason everything else here is one: the
-    /// encoding is stated once, where it is built, and no hot path divides by `n_types`
-    /// to rediscover it. Index 0 is the empty square and every caller tests that first.
+    /// encoding is built once, below, and the movement generator and these accessors read
+    /// it through the tables. Some evaluator and feature code (`eval.rs`, `features.rs`,
+    /// `agents.rs`) still decodes the byte by `% n_types` and `/ side_stride`; plan
+    /// `docs/plan-smells-rust.md` R9 (task CS5) moves them onto these tables. Index 0 is the empty square and every caller tests that first.
     value_owner: [u8; 256],
     value_frame: [u8; 256],
     value_type: [u8; 256],
@@ -1640,8 +1642,8 @@ impl Tables {
     /// `(piece type, frame)` for a value already known to belong to `player`, whose
     /// `value_low` the caller has in hand.
     ///
-    /// The one decode on the movement generator's inner loop, and the only place the
-    /// encoding is read twice. The `else` arm is what the loop did before schema 8 --
+    /// The one decode on the movement generator's inner loop; it reads the encoding
+    /// a second time beside the tables above, and the `else` arm is that arithmetic. The `else` arm is what the loop did before schema 8 --
     /// one subtraction and no load -- and it is exactly right whenever there is one
     /// frame per player: `value - low` is then the type, and the frame *is* the player.
     /// The branch is on a constant of the tables, so it is predicted perfectly and the
@@ -2575,10 +2577,9 @@ impl Tables {
                 n_owners * side_stride + 1
             )));
         }
-        // The encoding, stated once. Everything downstream reads these three arrays
-        // rather than dividing by `n_types`, which is what stops the board byte's layout
-        // from being restated -- and possibly restated differently -- in the dozen hot
-        // paths that need to know whose piece a square holds.
+        // The encoding is built here. The movement generator and the accessors read these
+        // three arrays; the evaluator and feature code still restate the layout by
+        // arithmetic in places (R9 / CS5 in `docs/plan-smells-rust.md`).
         let mut value_owner = [0u8; 256];
         let mut value_frame = [0u8; 256];
         let mut value_type = [0u8; 256];

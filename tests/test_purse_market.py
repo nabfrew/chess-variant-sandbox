@@ -34,6 +34,7 @@ from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.describe import describe_spec
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import PURSE_MAX, validate_spec
 from chess_variant_sandbox.tournament.play import choose_move, play_game, seat_rng
 
@@ -122,8 +123,6 @@ class TestTheKeys:
             (lambda s: s["rules"]["purse"].update(region=["g9"]), "not a square on this board"),
             (lambda s: s["rules"]["purse"].update(spend=1), "unknown keys: spend"),
             (lambda s: s["rules"]["purse"].pop("start"), "missing required key 'start'"),
-            (lambda s: s["rules"].update(explode_on_capture={}), "beside rules.explode_on_capture"),
-            (lambda s: s["rules"].update(turn={"moves": 2}), "a turn longer than one move"),
         ],
     )
     def test_each_refusal_is_named(self, edit: Any, words: str) -> None:
@@ -131,6 +130,11 @@ class TestTheKeys:
         edit(spec)
         errors = validate_spec(spec)
         assert any(words in error for error in errors), errors
+
+    def test_a_blast_beside_the_purse_is_refused(self) -> None:
+        spec = _market()
+        spec["rules"]["explode_on_capture"] = {}
+        assert "O22" in refused_ids(validate_spec(spec))
 
     def test_a_market_type_with_no_square_it_may_stand_on_is_refused(self) -> None:
         spec = _market()

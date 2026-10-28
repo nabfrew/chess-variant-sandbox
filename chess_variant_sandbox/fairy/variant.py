@@ -71,11 +71,23 @@ from chess_variant_sandbox.engine.compile import (
     NO_REPETITION_DRAW,
     CompiledSpec,
     PromotionRule,
+    _lame_path,
     frame_index,
 )
 from chess_variant_sandbox.fairy import betza
 from chess_variant_sandbox.spec.complexity import expand_symmetry
-from chess_variant_sandbox.spec.schema import DEFAULT_RANGE, SpecError, parse_square, path_of
+from chess_variant_sandbox.spec.legs import stated_legs
+from chess_variant_sandbox.spec.schema import (
+    DEFAULT_RANGE,
+    SpecError,
+    blast_directions,
+    format_square,
+    parse_square,
+    path_of,
+)
+
+# The one blast Fairy-Stockfish has (`blastOnCapture`): the eight squares round the capture.
+_KING_STEP = frozenset((dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0))
 
 # Fairy-Stockfish's large-board build. Beyond this the engine returns nonsense rather
 # than an error, which is why the ceiling is checked here rather than discovered later.
@@ -348,7 +360,9 @@ _RULE_OBJECT_KEYS: dict[str, frozenset[str]] = {
     # them -- which, as this table's own comment says, is what stops the silence rather
     # than the whole job. The branch that decides what they mean is in
     # `_check_unsupported_rules`, and it refuses them.
-    "explode_on_capture": frozenset({"immune", "radius", "by", "of"}),
+    # `blast` is generation 48 (SR1b): a stated shape crosses only where it is the king's
+    # step, the one blast Fairy-Stockfish has; `_check_unsupported_rules` refuses the rest.
+    "explode_on_capture": frozenset({"immune", "radius", "by", "of", "blast"}),
     # Schema 6 (Q703). `squares` and `mirror` are read off the compiled walls, which
     # `position.py` writes as `*`; `blocks_leaps` is asked of the compiler by `_check_walls`.
     "obstacles": frozenset({"blocks_leaps", "mirror", "squares"}),
@@ -454,7 +468,14 @@ def _check_unsupported_rules(
     # (`position.fen` writes the checks remaining, `5+5` for five), as the built-in
     # `5check` has it, so nothing in the variant names the number.
     explosion = compiled.explosion
-    if explosion is not None and rules.get("explode_on_capture", {}).get("radius", 1) != 1:
+    stated = rules.get("explode_on_capture", {}).get("blast") if explosion is not None else None
+    if stated is not None:
+        if blast_directions(stated) != _KING_STEP:
+            reasons.append(
+                "rules.explode_on_capture.blast other than the king's step: the blast there "
+                "is the eight adjacent squares"
+            )
+    elif explosion is not None and rules.get("explode_on_capture", {}).get("radius", 1) != 1:
         reasons.append("rules.explode_on_capture.radius other than 1: the blast there is adjacent")
     if explosion is not None and not explosion.fires_on_every_capture:
         # Schema 10 (Q18). `blastOnCapture` is a switch and not a table: over there every
@@ -562,6 +583,24 @@ def _check_unsupported_rules(
             "Fairy-Stockfish always has a side to move"
         )
     drops = compiled.drops
+    # SR2 (`docs/plan-schema-next.md` §2.5 H1, H6): two pairs the validator lifted, whose
+    # reading over there was not checked, refused by name. `promotionLimit` beside a hand
+    # that fills from captures: whether it counts a piece in hand was not probed. A blast
+    # beside `dropPromoted`: what a blast's victims leave in a hand was not probed.
+    if drops is not None and drops.from_captures and any(
+        rule.only_lost for rule in compiled.promotions
+    ):
+        reasons.append(
+            "rules.promotion.only_lost beside rules.drops filling from captures: whether "
+            "promotionLimit counts a piece in hand was not checked"
+        )
+    if drops is not None and compiled.explosion is not None and any(
+        face >= 0 for face in drops.faces
+    ):
+        reasons.append(
+            "rules.drops.either_face beside rules.explode_on_capture: what a blast leaves in a "
+            "hand under dropPromoted was not checked"
+        )
     if drops is not None and drops.unlimited:
         # Schema 10 (Q51). No variant option makes a slot inexhaustible over there:
         # `pocketSize` bounds a hand, and a hand counts down. A *finite* stock is the
@@ -871,6 +910,13 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
         "screen": (
             _TRANSLATED,
             "any crosses; a hop that chooses whose piece it jumps is refused by name",
+        ),
+        "legs": (
+            _TRANSLATED,
+            "SR1a: on a lame, the n modifier where every direction's legs are the squares "
+            "`betza.lame_path` says Fairy-Stockfish's lame leaper is blocked on (Janggi's "
+            "elephant is nZ), refused by name otherwise; on a leap, a wall's stop under "
+            "blocks_leaps, which `_check_walls` asks of the compiler",
         ),
     },
     "move.condition": {
@@ -1583,7 +1629,7 @@ def _region_lines(
         capitalised = name[0].upper() + name[1:]
         for player, label in ((0, "White"), (1, "Black")):
             allowed = _region_squares(squares, compiled, player)
-            written = " ".join(_square_name(sq, compiled.width) for sq in sorted(allowed))
+            written = " ".join(format_square(sq % compiled.width, sq // compiled.width) for sq in sorted(allowed))
             lines.append(f"mobilityRegion{label}{capitalised} = {written or '-'}")
     return lines
 
@@ -1716,6 +1762,29 @@ def _descriptor_term(
             reasons.append(
                 f"{where}: a lame rider (a lame move with range {rng}) is blocked on every "
                 "jump's leg, and Fairy-Stockfish has no rider of that kind we can rely on"
+            )
+            return None
+        # SR1a: Fairy-Stockfish's `n` is blocked on the squares `betza.lame_path` walks, so
+        # a lame crosses only where every direction's legs, stated or computed, are those.
+        # Its `nZ` is Janggi's elephant, two legs: ours with them stated, and only that.
+        if "legs" in descriptor:
+            ours, _ = stated_legs(descriptor["vectors"], descriptor["legs"], symmetry)
+        else:
+            ours = {d: (_lame_path(*d),) for d in directions}
+        parted = sorted(
+            d for d in directions if set(ours[d]) != set(betza.lame_path(*d))
+        )
+        if parted:
+            wanted = ", ".join(
+                f"{list(d)} on {[list(leg) for leg in ours[d]]}" for d in parted[:2]
+            )
+            theirs = ", ".join(
+                f"{[list(leg) for leg in betza.lame_path(*d)]}" for d in parted[:2]
+            )
+            reasons.append(
+                f"{where}: a lame leap blocked {wanted} (its legs), where Fairy-Stockfish's "
+                f"lame leaper is blocked on {theirs}; its nZ is Janggi's elephant, which "
+                "a (2, 3) lame with legs [[0, 1], [1, 2]] states"
             )
             return None
         term = betza.term(directions, distance=rng, mode=mode, lame=True)
@@ -2076,7 +2145,7 @@ def _ending_lines(
         lines.append(f"flagPiece = {chars[reach.piece_type]}")
         for player, label in ((0, "White"), (1, "Black")):
             squares = " ".join(
-                _square_name(square, compiled.width)
+                format_square(square % compiled.width, square // compiled.width)
                 for square in sorted(reach.squares[player])
             )
             lines.append(f"flagRegion{label} = {squares if squares else '-'}")
@@ -2633,7 +2702,7 @@ def _drop_lines(
         return lines
     for player, label in ((0, "White"), (1, "Black")):
         region = rule.regions[player][next(iter(rest))] or frozenset()
-        squares = " ".join(_square_name(sq, compiled.width) for sq in sorted(region))
+        squares = " ".join(format_square(sq % compiled.width, sq // compiled.width) for sq in sorted(region))
         lines.append(f"dropRegion{label} = {squares if squares else '-'}")
         # The installed 2021 build knows only the older spelling and ignored the line
         # above in silence, dropping anywhere (found by Q784's `placement-chess`, the
@@ -2788,12 +2857,9 @@ def _squares_of(compiled: CompiledSpec, board: bytes, player: int, piece: int) -
     return [square for square, value in enumerate(board) if value == wanted]
 
 
-def _square_name(square: int, width: int) -> str:
-    return f"{chr(ord('a') + square % width)}{square // width + 1}"
-
 
 def _file_name(file: int) -> str:
-    return chr(ord("a") + file)
+    return format_square(file, 0)[0]
 
 
 __all__ = [

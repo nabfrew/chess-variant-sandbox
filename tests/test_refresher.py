@@ -229,6 +229,156 @@ class TestOneGame:
         assert Item.from_dict(json.loads(json.dumps(it.as_dict()))) == it
 
 
+# ------------------------------------------------------------------ the route (Q635b)
+
+# What a build move that changes no game does to a stamp: the code that played it moved.
+EARLIER_ENGINE = {"engine": "an earlier engine"}
+
+
+def _sample(refuse: tuple[int, ...] = ()) -> Any:
+    """`adopt.recertify_run` as a stub: every run holds its sample but ``refuse``'s."""
+    seen: list[int] = []
+
+    def check(spec: Any, seed: int, run: Path, config: Any, workers: int = 0,
+              say: Any = None, **_rest: Any) -> Any:
+        from chess_variant_sandbox.tournament.adopt import Recertification
+
+        seen.append(seed)
+        if seed in refuse:
+            return Recertification(seed=seed, certified=False, reason="a game differs")
+        return Recertification(seed=seed, certified=True, sampled=32, games=256)
+
+    check.seen = seen  # type: ignore[attr-defined]
+    return check
+
+
+@pytest.fixture
+def sampled(library: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+    from chess_variant_sandbox.tournament import adopt
+
+    monkeypatch.setattr(corpus, "stale_build", lambda: None)
+    check = _sample()
+    monkeypatch.setattr(adopt, "recertify_run", check)
+    return check
+
+
+def _certificate(digest: str) -> Any:
+    stored = json.loads((corpus.measurement_dir(digest, Path("runs")) / "canonical.json")
+                        .read_text(encoding="utf-8"))
+    return stored["basis"].get("certified")
+
+
+class TestTheRoute:
+    def test_a_sample_goes_after_the_cheaper_repairs_and_before_a_full_replay(self) -> None:
+        routes = {"s": SimpleNamespace(route="sample", reason="the code moved"),
+                  "f": SimpleNamespace(route="replay", reason="another roster")}
+        queue = refresher.order(
+            [status("f", "replay", name="dobutsu"), status("s", "replay"),
+             status("n", "replay"), status("a", "reanalyse")],
+            {key: Stored() for key in "fsna"}, routes)
+        assert [(i.hash, i.route) for i in queue] == [
+            ("a", ""), ("s", "sample"), ("f", "replay"), ("n", "replay")]
+        assert queue[1].route_reason == "the code moved"
+        # A replay nobody routed is a full one, and says so.
+        assert queue[3].route_reason
+        assert {i.lease for i in queue[1:]} == {"heavy"}
+        assert Item.from_dict(json.loads(json.dumps(queue[1].as_dict()))) == queue[1]
+
+    def test_the_plan_routes_each_replay_as_measure_recertify_would(
+        self, library: Path
+    ) -> None:
+        moved = library_game(library, SPEC, **EARLIER_ENGINE)
+        roster = library_game(library, SECOND, agents=["random", "greedy"],
+                              **EARLIER_ENGINE)
+        queue = {i.hash: i for i in refresher.queue(Path("runs"))}
+        assert (queue[moved].needs, queue[moved].route) == ("replay", "sample")
+        assert (queue[roster].needs, queue[roster].route) == ("replay", "replay")
+        assert "a sample cannot stand in" in queue[roster].route_reason
+        assert list(queue) == [moved, roster]
+
+    def test_a_sample_that_holds_keeps_the_games_and_stamps_the_certificate(
+        self, sampled: Any, stubbed  # noqa: F811
+    ) -> None:
+        digest = library_game(Path.cwd(), SPEC, **EARLIER_ENGINE)
+        outcome = refresher.repair(digest, Path("runs"))
+        assert not outcome.refused, outcome
+        assert (outcome.needs, outcome.route, outcome.fell_back) == ("replay", "sample", False)
+        assert sorted(sampled.seen) == sorted(corpus.LIBRARY_SEEDS)
+        assert stubbed["play"] == []  # nothing was played in full
+        assert outcome.index == pytest.approx(0.8)  # the stored number, kept
+        certified = _certificate(digest)
+        assert certified["sample"] == 32 * len(corpus.LIBRARY_SEEDS)
+        assert refresher.queue(Path("runs")) == []
+
+    def test_a_run_whose_sample_differs_is_played_again_and_the_rest_stand(
+        self, sampled: Any, monkeypatch: pytest.MonkeyPatch, stubbed  # noqa: F811
+    ) -> None:
+        from chess_variant_sandbox.tournament import adopt
+
+        refused = corpus.LIBRARY_SEEDS[0]
+        monkeypatch.setattr(adopt, "recertify_run", _sample(refuse=(refused,)))
+        digest = library_game(Path.cwd(), SPEC, **EARLIER_ENGINE)
+        outcome = refresher.repair(digest, Path("runs"))
+        assert not outcome.refused, outcome
+        assert (outcome.route, outcome.fell_back) == ("sample", False)
+        assert stubbed["play"] == [refused]
+        assert _certificate(digest)["sample"] == 32 * (len(corpus.LIBRARY_SEEDS) - 1)
+
+    def test_no_run_holding_falls_back_to_a_full_replay_with_no_label(
+        self, sampled: Any, monkeypatch: pytest.MonkeyPatch, stubbed  # noqa: F811
+    ) -> None:
+        from chess_variant_sandbox.tournament import adopt
+
+        monkeypatch.setattr(adopt, "recertify_run", _sample(refuse=corpus.LIBRARY_SEEDS))
+        digest = library_game(Path.cwd(), SPEC, **EARLIER_ENGINE)
+        outcome = refresher.repair(digest, Path("runs"))
+        assert not outcome.refused, outcome
+        assert (outcome.route, outcome.fell_back) == ("replay", True)
+        assert sorted(stubbed["play"]) == sorted(corpus.LIBRARY_SEEDS)
+        assert _certificate(digest) is None
+        assert any("played again" in line for line in outcome.lines)
+
+    def test_a_replay_no_sample_can_speak_for_never_samples(
+        self, sampled: Any, stubbed  # noqa: F811
+    ) -> None:
+        digest = library_game(Path.cwd(), SPEC, agents=["random", "greedy"],
+                              **EARLIER_ENGINE)
+        outcome = refresher.repair(digest, Path("runs"))
+        assert not outcome.refused, outcome
+        assert (outcome.route, outcome.fell_back) == ("replay", False)
+        assert sampled.seen == []
+        assert sorted(stubbed["play"]) == sorted(corpus.LIBRARY_SEEDS)
+        assert _certificate(digest) is None
+
+    def test_a_re_score_takes_no_route(self, sampled: Any) -> None:
+        digest = library_game(Path.cwd(), SPEC, metrics="earlier")
+        outcome = refresher.repair(digest, Path("runs"))
+        assert (outcome.needs, outcome.route) == ("rescore", "")
+        assert sampled.seen == []
+
+    def test_the_route_survives_the_process_boundary(self) -> None:
+        outcome = Outcome(hash="h", needs="replay", route="replay", fell_back=True)
+        assert Outcome.from_dict(json.loads(json.dumps(outcome.as_dict()))) == outcome
+
+    def test_the_plan_and_the_status_name_the_route(self, library: Path, capsys) -> None:
+        from chess_variant_sandbox.cli import main
+
+        digest = library_game(library, SPEC, **EARLIER_ENGINE)
+        assert main(["refresh", "--plan", "--part", "scores", "--runs", "runs"]) == 0
+        out = capsys.readouterr().out
+        assert f"[{digest}]" in out and "by sample: the code that plays games moved" in out
+        assert "1 of the replays by sample" in out
+        row = {"hash": digest, "name": "lancers", "needs": "replay", "route": "sample",
+               "reason": "stale"}
+        lines = refresher.plain_status({
+            "state": "working", "owed": [row], "owed_counts": {"replay": 1},
+            "doing": row, "last_done": {**row, "route": "replay", "fell_back": True}})
+        assert "owed: 1 replay (1 by sample)" in lines
+        assert any(line.startswith("doing:") and line.endswith("by sample") for line in lines)
+        assert any(line.startswith("next:") and "by sample" in line for line in lines)
+        assert any("by replay, fell back to a replay" in line for line in lines)
+
+
 # ------------------------------------------------------------------ the loop
 
 

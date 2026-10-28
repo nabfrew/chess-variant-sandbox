@@ -62,6 +62,34 @@ HOP_ATOMS = frozenset({(1, 0), (1, 1)})
 MAX_RIDE = 9
 
 
+def lame_path(dx: int, dy: int) -> tuple[tuple[int, int], ...]:
+    """The squares Fairy-Stockfish's lame leaper ``n`` is blocked on for the jump
+    ``(dx, dy)``, in the order its movegen walks them (``lame_leaper_path`` in
+    ``bitboard.cpp``, probed on pyffish 0.0.90 by `tests/test_lame_legs.py`).
+
+    Step by step toward the target: along the file while more files than ranks remain,
+    along the rank while more ranks remain, diagonally while they are equal. For ``N``,
+    ``A`` and ``D`` that is the one leg `compile._lame_path` computes; for ``Z`` it is two,
+    one orthogonal step and one diagonal -- Janggi's elephant, which our lame states only
+    with ``legs`` (SR1a).
+    """
+    path: list[tuple[int, int]] = []
+    x = y = 0
+    step_x = (dx > 0) - (dx < 0)
+    step_y = (dy > 0) - (dy < 0)
+    while (x, y) != (dx, dy):
+        diff = abs(dx - x) - abs(dy - y)
+        if diff > 0:
+            x += step_x
+        elif diff < 0:
+            y += step_y
+        else:
+            x, y = x + step_x, y + step_y
+        if (x, y) != (dx, dy):
+            path.append((x, y))
+    return tuple(path)
+
+
 def images(a: int, b: int) -> list[tuple[int, int]]:
     """The eight directions the atom ``(a, b)`` expands into, in the core's own order.
 

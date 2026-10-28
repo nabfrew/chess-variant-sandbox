@@ -1,10 +1,10 @@
 //! The rule interpreter: move generation, application, and terminal detection.
 //!
-//! This is a port of `chess_variant_sandbox/engine/engine.py`, and the port is deliberately literal.
-//! Every place where a faster formulation was available but would have changed which
-//! moves come out in which order, the Python phrasing won: the two implementations are
-//! held to producing byte-identical games, and that test is worth more than the
-//! micro-optimisation would have been.
+//! This is the engine: `chess_variant_sandbox/engine/engine.py` is a facade over it
+//! (there is no second implementation), and it walks the lookup tables that
+//! `engine/compile.py` builds from the spec. Where a faster formulation would have changed
+//! which moves come out in which order, the established order won, because a game is a
+//! pure function of `(ruleset_hash, seed, agent_configs)` and replays must not move.
 //!
 //! The one structural departure is make/unmake. Python's `apply` returns a new
 //! immutable state because that is what makes states safe to hand between processes;

@@ -1,4 +1,4 @@
-"""*Lately* on your own page (UP3, `docs/plan-user-page.md` §5, choice C1 of §4).
+"""*Lately* on your own page (UP3, `docs/archive/plan-user-page.md` §5, choice C1 of §4).
 
 One reader over your games between people, challenges, milestones and badges, and votes
 and first plays on the games you made (`site/lately.py`): dated, newest first, the last

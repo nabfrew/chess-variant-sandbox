@@ -154,7 +154,7 @@ function burn(svg, piece, x, y, cell, blow, from) {
   return start + PACE.blastBurn;
 }
 
-// A still board's last move played once (UP5, `docs/plan-user-page.md` §5, the user page's
+// A still board's last move played once (UP5, `docs/archive/plan-user-page.md` §5, the user page's
 // waiting games): the piece standing on `last.to` in a still drawn with `preview.motion`
 // slides there from `last.from` (`travel`), or drops in from a hand where the move had no
 // origin (`stoneDrop`). `preview` is the payload the still was drawn from, so the geometry is

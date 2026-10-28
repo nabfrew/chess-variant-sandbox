@@ -548,7 +548,12 @@ _MAPS: dict[str, tuple[str, tuple[int, int] | None, _Drawn]] = {}
 # (`_library_key`) and the memory it settled from (the file's digest, `None` for a cold
 # draw). Exact, since a draw is deterministic in both, and shared by every runs directory,
 # so a second server over the same games -- a test's, a scratch tree's -- draws nothing
-# again. A few are kept: one per library and memory a process meets.
+# again. A few are kept, one per library and memory a process meets, and the one over the
+# fewest games goes first (the oldest of those): a draw costs with its games, about 8 s for
+# the whole library on one core against milliseconds for a handful, so a process that meets
+# many small libraries keeps the large one it drew. Q1051: a fast-suite worker drew nine small
+# maps after `warm_map` had paid for the library's, and oldest-first evicted it, so a later
+# page redrew it inside a timed test.
 _DRAWS: dict[tuple[str, str | None], families.FamilyMap] = {}
 _DRAWS_KEPT = 8
 
@@ -582,7 +587,7 @@ def _drawn(representatives: Sequence[Game], runs: Path) -> _Drawn:
             list(ids), list(forms), [by[digest].name for digest in ids], previous
         )
         if len(_DRAWS) >= _DRAWS_KEPT:
-            _DRAWS.pop(next(iter(_DRAWS)))
+            _DRAWS.pop(min(_DRAWS, key=lambda held: len(_DRAWS[held].family_of)))
         _DRAWS[basis] = found
     with contextlib.suppress(OSError):
         families.write_memory(memory, found)

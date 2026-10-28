@@ -25,6 +25,7 @@ from chess_variant_sandbox.engine.compile import SIGHT_COMMAND, SIGHT_COMMAND_OW
 from chess_variant_sandbox.engine.moves import MOVE_FOREIGN, MOVE_ROTATE, decode_move
 from chess_variant_sandbox.engine.state import NO_SQUARE, GameState
 from chess_variant_sandbox.spec import spec_hash, validate_spec
+from chess_variant_sandbox.spec.refusals import refused_ids
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
@@ -119,16 +120,14 @@ def test_captures_own_false_is_the_off_value() -> None:
 
 
 @pytest.mark.parametrize(
-    ("key", "value", "words"),
+    ("key", "value", "rid"),
     [
-        ("simultaneous", {}, "rules.simultaneous"),
-        ("reach", {"squares": {"white": ["e8"], "black": ["e1"]}}, "rules.reach"),
-        ("territory", {"win_at": 40}, "rules.territory"),
-        ("strike", {"effect": "promote", "chain": [{"from": "P", "to": "N"}], "immune": ["K"]},
-         "rules.strike"),
+        ("simultaneous", {}, "R17"),
+        ("reach", {"squares": {"white": ["e8"], "black": ["e1"]}}, "V3"),
+        ("territory", {"win_at": 40}, "V4"),
     ],
 )
-def test_the_rules_refused_beside_a_command(key: str, value: Any, words: str) -> None:
+def test_the_rules_refused_beside_a_command(key: str, value: Any, rid: str) -> None:
     spec = k1()
     if key == "simultaneous":
         # A round game has no check, castling or en passant; leave them out so only the
@@ -137,27 +136,38 @@ def test_the_rules_refused_beside_a_command(key: str, value: Any, words: str) ->
             spec["rules"].pop(rule, None)
         spec["rules"]["win"] = "royal_capture"
     spec["rules"][key] = value
-    assert any(
-        "beside " + words in error and "command" in error for error in errors_of(spec)
-    ), errors_of(spec)
+    assert rid in refused_ids(errors_of(spec)), errors_of(spec)
+
+
+def test_a_strike_beside_a_command_is_refused_only_with_captures_own() -> None:
+    """SR2b (V5): a plain command lands on empty squares, which a strike never touches; its
+    `captures_own` stays refused (SR4h). `tests/test_readings_without_core.py` plays the pair."""
+    strike = {"effect": "promote", "position": "stay", "chain": [{"from": "P", "to": "N"}],
+              "immune": ["K"]}
+    spec = k1()
+    spec["rules"]["strike"] = strike
+    assert errors_of(spec) == []
+    spec = k2()
+    spec["rules"]["strike"] = strike
+    assert "V5" in refused_ids(errors_of(spec))
 
 
 def test_a_rest_beside_a_command_is_refused() -> None:
     spec = k1()
     spec["pieces"][1]["rest"] = 1
-    assert any("beside pieces[].rest" in error for error in errors_of(spec))
+    assert "V7" in refused_ids(errors_of(spec))
 
 
 def test_a_sweep_beside_a_command_is_refused() -> None:
     spec = k1()
     spec["pieces"][3]["moves"] = [{"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4"}]
-    assert any("command" in error and "sweep" in error for error in errors_of(spec))
+    assert "V8" in refused_ids(errors_of(spec))
 
 
 def test_captures_own_beside_a_capture_hand_is_refused() -> None:
     spec = k2()
     spec["rules"]["drops"] = {}
-    assert any("from_captures" in error for error in errors_of(spec))
+    assert "V9" in refused_ids(errors_of(spec))
     spec = k1()
     spec["rules"]["drops"] = {}
     assert not any("from_captures" in error for error in errors_of(spec))

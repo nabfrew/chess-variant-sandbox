@@ -49,6 +49,7 @@ from chess_variant_sandbox.spec.complexity import _RULE_COSTS, measure_complexit
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.relate import identity_key
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, SHAPES, WRAP_PAIRS, absent_squares
 from tests.feature_inventory import _schema_sixteen_uses
@@ -268,7 +269,7 @@ class TestTheNineRefusals:
             twin["board"].pop("lattice")
         else:
             twin["board"]["lattice"] = lattice
-        assert _errors(twin, 'board.shape "hexagon" needs board.lattice "hex"')
+        assert "X12" in refused_ids(validate_spec(twin))
 
     @pytest.mark.parametrize(("width", "height"), [(11, 9), (10, 10), (12, 12)])
     def test_3_a_hexagon_that_is_not_odd_and_square(self, twin, width, height) -> None:
@@ -419,18 +420,21 @@ class TestTheNineRefusals:
         assert bool(_errors(twin, "rules.drops.no_doubled on a hexagon")) is refused
 
     def test_9_blocks_leaps_on_a_hexagon(self, twin) -> None:
+        """SR1a lifted the refusal for a hexagon whose every long leap states its legs; the
+        knight's do not, so it is refused by name."""
         twin["rules"]["obstacles"] = {"squares": ["f6"], "blocks_leaps": True}
-        assert _errors(twin, "rules.obstacles.blocks_leaps on a hexagon")
+        assert _errors(twin, "must state its 'legs'")
 
-    def test_9_is_not_refused_on_a_rhombus(self, parent) -> None:
-        """Schema 14's gap stays open on the rhombus: refusing it would invalidate specs."""
+    def test_9_is_refused_on_a_rhombus_too(self, parent) -> None:
+        """Schema 14's gap closed with SR1a: on the rhombus as on the hexagon, the knight's
+        leaps state their legs under blocks_leaps or are refused (no stored spec has it)."""
         parent["rules"]["obstacles"]["blocks_leaps"] = True
-        assert _errors(parent, "blocks_leaps") == []
+        assert _errors(parent, "must state its 'legs'")
 
     def test_a_sweep_beside_a_hexagon_seam_is_still_refused(self, flanks) -> None:
         rook = next(p for p in flanks["pieces"] if p["id"] == "R")
         rook["moves"][0]["kind"] = "sweep"
-        assert _errors(flanks, "wrap")
+        assert "W6" in refused_ids(validate_spec(flanks))
 
 
 # ======================================================================= the twin
@@ -795,8 +799,9 @@ class TestTheHexagonsFrameMustHaveARadius:
 
     @pytest.mark.parametrize("width", [3, 5, 7, 9])
     def test_an_odd_frame_is_read(self, width: Any) -> None:
-        errors = _hexagon_errors(width, {"obstacles": {"squares": [], "blocks_leaps": True}})
-        assert len(errors) == 1 and errors[0].startswith("rules.obstacles.blocks_leaps on a hexagon")
+        # Refusal 8, since SR1a moved 9 out of this function.
+        errors = _hexagon_errors(width, {"wrap": {"n_s": "both"}, "drops": {"no_doubled": True}})
+        assert len(errors) == 1 and errors[0].startswith("rules.drops.no_doubled on a hexagon")
 
 
 class TestAStepAtMostOneBeyondTheRadiusIsFine:

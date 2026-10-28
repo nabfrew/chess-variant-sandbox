@@ -49,6 +49,7 @@ from chess_variant_sandbox.engine.bridge import canonical_tables, rust_supports
 from chess_variant_sandbox.engine.compile import WILD, compile_spec
 from chess_variant_sandbox.measurement import tables_fingerprint
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
+from chess_variant_sandbox.spec.refusals import refused_ids
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -651,24 +652,24 @@ class TestWhatTheValidatorRefuses:
         assert any("walks through an obstacle at c4" in error for error in errors), errors
 
     @pytest.mark.parametrize(
-        ("rule", "value", "word"),
+        ("rule", "value", "rid"),
         [
             (
                 "strike",
                 {"effect": "demote", "position": "stay", "immune": ["K"],
                  "chain": [{"from": "Q", "to": "R"}]},
-                "strike",
+                "T7",
             ),
-            ("explode_on_capture", {"radius": 1}, "explode"),
-            ("turn", {"moves": 2, "ramp": [1]}, "turn"),
+            ("explode_on_capture", {"radius": 1}, "T8"),
+            ("turn", {"moves": 2, "ramp": [1]}, "L3"),
         ],
     )
     def test_three_combinations_are_refused_by_name(
-        self, chess_spec: dict[str, Any], rule: str, value: Any, word: str
+        self, chess_spec: dict[str, Any], rule: str, value: Any, rid: str
     ) -> None:
         spec = _boar(chess_spec, **{rule: value})
         errors = validate_spec(spec)
-        assert any("rules.npcs" in error and word in error for error in errors), errors
+        assert rid in refused_ids(errors), errors
 
     def test_a_strike_that_compiles_to_nothing_is_not_a_strike(
         self, chess_spec: dict[str, Any]

@@ -1,4 +1,4 @@
-"""What the user page needs, from the server (UP1, `docs/plan-user-page.md` §5).
+"""What the user page needs, from the server (UP1, `docs/archive/plan-user-page.md` §5).
 
 `/api/profile` sends, per game a person made, its still, its track, its rungs with what is
 known of each, its parent's name, level and score with that score's basis, and the change

@@ -336,6 +336,26 @@ def _committed_paths(directory: Path) -> dict[str, Path]:
     return found
 
 
+def committed_candidates(
+    ruleset_dir: Path = RULESET_DIR, archive_dir: Path = ARCHIVE_DIR
+) -> dict[str, Candidate]:
+    """Every committed and archived game by hash, each directory read once.
+
+    What `find` returns for each, without re-reading both directories per game: the
+    refresher's plan asks it once for every replay it routes.
+    """
+    found: dict[str, Candidate] = {}
+    for directory, stage in ((ruleset_dir, "committed"), (archive_dir, "archived")):
+        for digest, path in _committed_paths(Path(directory)).items():
+            if digest not in found:
+                spec = load_spec(path)
+                found[digest] = Candidate(
+                    hash=digest, name=str(spec.get("name", path.stem)), spec=spec,
+                    path=path, stage=stage,
+                )
+    return found
+
+
 def _lineage_of(entry: Any, archive: Archive) -> dict[str, Any]:
     """What the archive knows about where this candidate came from.
 
@@ -1380,6 +1400,63 @@ def _carried(now: Basis, carry: Basis) -> Basis:
 
 # ---------------------------------------------------------- sampled re-certification
 
+# The two ways a replay can be paid (`replay_route`): a sample of every run that may let
+# the stored games stand (C6, `recertify`), or every game played again (`refresh`).
+SAMPLE_ROUTE = "sample"
+REPLAY_ROUTE = "replay"
+
+
+@dataclass(frozen=True)
+class Route:
+    """How a game that owes a replay would be repaired, and why; read, never spent.
+
+    ``route`` is `SAMPLE_ROUTE`, `REPLAY_ROUTE`, or ``""`` where no replay is owed (the
+    game is current, or owes a re-score or a re-analysis). `recertify` decides with it and
+    the refresher's plan prints it, so the plan and the repair cannot disagree.
+    """
+
+    route: str
+    reason: str
+    stored: Measurement | None = None
+    now: Basis | None = None
+
+
+def replay_route(
+    candidate: Candidate,
+    runs_dir: Path = RUNS_DIR,
+    weights: str = DEFAULT_WEIGHTS,
+    stored: Measurement | None = None,
+) -> Route:
+    """Whether `recertify` would take a sample for this game or replay it (C6's rules).
+
+    A sample stands in only for a replay the stored stamp owes because the code that plays
+    games moved (`Basis.certifiable`: the core, the runner, the tables, the players); never
+    for a game with no stamp, another roster, net, seed set or ruleset, or a browser's
+    games. The answer is the plan's: a run the sample then refuses is still played again
+    (`recertify`), which only `recertify` can know.
+    """
+    expected = expected_seeds(candidate.stage)
+    if stored is None:
+        stored = read_measurement(candidate.hash, runs_dir, weights, candidate.spec, expected)
+    if stored is None or stored.basis is None:
+        return Route(REPLAY_ROUTE, "no stamped measurement for a sample to stand in for",
+                     stored)
+    if stored.current:
+        return Route("", "already current", stored)
+    if stored.staleness.stored_needs != "replay":
+        if stored.staleness.needs == "replay":
+            return Route(REPLAY_ROUTE, "only missing runs owe a replay, and a sample "
+                         "stands in for no run that was never played", stored)
+        return Route("", "owes no replay, so there is nothing for a sample to save", stored)
+    now = current_basis(candidate.hash, weights, candidate.spec, expected)
+    after = stored.basis.certifiable(now)
+    if after.stored_needs == "replay":
+        return Route(REPLAY_ROUTE,
+                     f"a sample cannot stand in for this -- {after.summary()}", stored, now)
+    return Route(SAMPLE_ROUTE, "the code that plays games moved; a sample of every run "
+                 "stands in for the replay, and a run it refuses is played again",
+                 stored, now)
+
 
 def recertify(
     candidate: Candidate,
@@ -1413,23 +1490,12 @@ def recertify(
     from chess_variant_sandbox.tournament import adopt
 
     say = report if callable(report) else (lambda _message: None)
-    expected = expected_seeds(candidate.stage)
-    stored = read_measurement(candidate.hash, runs_dir, weights, candidate.spec, expected)
-    if stored is None or stored.basis is None:
-        say(f"{candidate.name}: no stamped measurement for a sample to stand in for")
-        return refresh(candidate, runs_dir, weights, workers, report)
-    if stored.current:
-        say(f"{candidate.name}: already current")
-        return stored
-    if stored.staleness.stored_needs != "replay":
-        say(f"{candidate.name}: owes no replay, so there is nothing for a sample to save")
-        return refresh(candidate, runs_dir, weights, workers, report)
-
-    now = current_basis(candidate.hash, weights, candidate.spec, expected)
-    after = stored.basis.certifiable(now)
-    if after.stored_needs == "replay":
-        say(f"{candidate.name}: a sample cannot stand in for this -- "
-            f"{after.summary()}")
+    route = replay_route(candidate, runs_dir, weights)
+    stored, now = route.stored, route.now
+    if route.route != SAMPLE_ROUTE or stored is None or stored.basis is None or now is None:
+        say(f"{candidate.name}: {route.reason}")
+        if stored is not None and stored.current:
+            return stored
         return refresh(candidate, runs_dir, weights, workers, report)
     behind = stale_build()
     if behind is not None:

@@ -120,3 +120,27 @@ class TestTheCut:
     def test_the_blade_draws_in_its_own_tokens(self) -> None:
         assert {"fx-blade", "fx-edge"} <= set(tokens.LIGHT)
         assert "var(--fx-blade)" in PAGE and "var(--fx-edge)" in PAGE
+
+
+class TestTheCutAsSeen:
+    """Q1042, the look check of the cut (`look.mjs`'s `sweep cut` and `sweep over` rows, which
+    hold all three in a browser): what it found, held here as text over the page."""
+
+    def test_the_landing_lifts_its_traveller_over_the_squares(self) -> None:
+        # The landing's board draws each piece inside its square's group, so a piece left there
+        # travels under every square drawn after its landing one: the sweeper vanished under
+        # its own blade. Lifted to the board's top level before it travels, as the play board's.
+        story = PAGE[PAGE.index("function drawStoryFrame("):]
+        story = story[:story.index("\nfunction ", 1)]
+        assert story.index("svg.appendChild(moving);") < story.index("travel(moving,")
+        assert story.index("svg.appendChild(arriving);") < story.index("travel(arriving,")
+
+    def test_a_sweeper_never_hops_what_it_sweeps(self) -> None:
+        # An arc put the sweeper on another easing than the blade's, so the blade ran ahead.
+        assert "const arc = !sweeping && pathHops(" in PAGE
+
+    def test_the_result_banner_waits_for_the_last_move(self) -> None:
+        ended = PAGE[PAGE.index("function drawEnded("):]
+        ended = ended[:ended.index("\nfunction ", 1)]
+        assert "BUSY_UNTIL - performance.now()" in ended
+        assert "delay: settling" in ended

@@ -32,7 +32,7 @@ the step as one rule 96% of the time, against 86% without the folds.
 **Nothing here knows a game.** Kinds are keyed by schema position (`RULE_KINDS` covers
 `schema._RULES_KEYS`), pieces by id and square, and no piece name or ruleset name appears
 anywhere in the module. Piece ids are renamed *by schema position* too, from
-`_PIECE_POSITIONS`, rather than by matching the string wherever it occurs: a piece may be
+`schema.PIECE_POSITIONS`, rather than by matching the string wherever it occurs: a piece may be
 given any id the schema accepts, so a string match would rewrite a square name or an
 ending word that happens to spell one. `tests/test_relate.py` pins both tables against
 `schema.py`, so a bump that adds a `rules` key fails until the key is classified.
@@ -48,16 +48,24 @@ from functools import lru_cache
 from typing import Any
 
 from chess_variant_sandbox.spec.complexity import expand_symmetry
+from chess_variant_sandbox.spec.legs import stated_legs
 from chess_variant_sandbox.spec.schema import (
+    ANY_KEY,
     DEFAULT_RANGE,
     NOBODY,
+    PIECE_FIELDS,
+    PIECE_ID,
+    PIECE_IDS,
+    PIECE_KEYED,
+    PIECE_POSITIONS,
     absent_squares,
-    can_double_step,
+    en_passant_can_fire,
     format_square,
     has_sights,
     is_nobodys,
     obstacle_squares,
     parse_square,
+    piece_shapes,
     piece_sights,
     portal_stand_in_shape,
     reflect_square,
@@ -344,7 +352,7 @@ def _build(spec: dict[str, Any]) -> NormalForm:
         stands={pid: frozenset(squares) for pid, squares in stands.items()},
         cells=frozenset(cells),
         rules=_live_rules(spec),
-        en_passant_fires=_en_passant_fires(spec, pieces),
+        en_passant_fires=_en_passant_fires(spec),
         key="",
         names=tuple(sorted((pid, str(piece.get("name", pid))) for pid, piece in pieces.items())),
     )
@@ -492,46 +500,16 @@ def _int(value: Any, fallback: int) -> int:
 # square name, a count word, an ending -- would be rewritten as a piece reference. These
 # say which positions are references and nothing else is touched.
 #
-# One row per `rules` key that can name a piece, read off `schema.py`'s own checks. A key
-# absent here names none, and `tests/test_relate.py` pins that against the validator.
+# Read off `schema.PIECE_POSITIONS` and `schema.PIECE_FIELDS`, the one map of where a rule
+# names a piece (CP2), which `transform.drop_piece` walks too; here only the shapes count.
 
-_ID = "<id>"  # this value is one piece id
-_IDS = "<ids>"  # a list of piece ids
-_KEYED = "<keyed>"  # a map whose *keys* are piece ids
-_ANY = "*"  # every key of this map, whatever it is called
+_ID = PIECE_ID
+_IDS = PIECE_IDS
+_KEYED = PIECE_KEYED
+_ANY = ANY_KEY
 
-_PIECE_POSITIONS: dict[str, Any] = {
-    "castling": {"king": _ID, "rook": _ID},
-    "promotion": [{"piece": _ID, "to": _IDS, "to_by_player": {_ANY: _IDS}}],
-    "reach": {"piece": _ID},
-    "extinction": {"pieces": _IDS},
-    "explode_on_capture": {"immune": _IDS, "by": _IDS, "of": _IDS},
-    "drops": {
-        "no_doubled": _IDS, "no_mate": _IDS, "stock": _KEYED, "region": _KEYED,
-    },
-    "npcs": [{"piece": _ID, "immune": _IDS}],
-    "duck": {"piece": _ID},
-    # TC5: what the market sells.
-    "purse": {"market": _IDS},
-    # Schema 21: an end's `carries`, on a pair keyed by the end, on a map's end a list.
-    "portals": [{"piece": _ID, "carries": {_ANY: _IDS}, "ends": [{"carries": _IDS}]}],
-    "strike": {
-        "immune": _IDS, "chain": [{"from": _ID, "to": _ID}], "switches_sides": _IDS,
-        "by": _IDS,  # A1: the pieces whose captures strike
-    },
-    "contacts": {
-        "immune": _IDS,
-        "links": [{"mover": _ID, "onto": _ID, "mover_to": _ID, "onto_to": _ID}],
-    },
-}
-
-# The same, for the fields on a piece that name another piece. `region` is squares
-# and `facing` is an angle, so neither is here. `beats` is schema 26's.
-_PIECE_FIELDS: dict[str, Any] = {
-    "captures": _IDS, "promoted_from": _ID, "beats": _IDS,
-    # Schema 30 (Q999a): a line of sight names the types it touches.
-    "sight": [{"affects": _IDS}],
-}
+_PIECE_POSITIONS: dict[str, Any] = piece_shapes(PIECE_POSITIONS)
+_PIECE_FIELDS: dict[str, Any] = piece_shapes(PIECE_FIELDS)
 
 
 def _renamed(value: Any, shape: Any, ids: dict[str, str]) -> Any:
@@ -702,7 +680,7 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
     descriptor or three with the same attributes -- and none of those is a different rule.
     What is left is a set of (attributes, directions) pairs, which is the movement itself.
     """
-    merged: dict[Any, set[tuple[int, int]]] = defaultdict(set)
+    merged: dict[Any, set[Any]] = defaultdict(set)
     for move in piece.get("moves") or []:
         if not isinstance(move, dict):
             continue
@@ -719,6 +697,14 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
             # "straight", the off value, is the key's absence.
             move.get("path", "straight"),
         )
+        if isinstance(move.get("legs"), list):
+            # SR1a: a jump blocked on stated legs is another movement than the same jump
+            # on its computed leg, so each direction carries its legs.
+            legs, _ = stated_legs(
+                move.get("vectors") or [], move["legs"], str(move.get("symmetry", "none"))
+            )
+            merged[attrs] |= {(direction, own) for direction, own in legs.items()}
+            continue
         for vector in move.get("vectors") or []:
             merged[attrs] |= expand_symmetry(
                 (int(vector[0]), int(vector[1])), str(move.get("symmetry", "none"))
@@ -809,22 +795,16 @@ def _live_rules(spec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _en_passant_fires(spec: dict[str, Any], pieces: dict[str, dict[str, Any]]) -> bool:
+def _en_passant_fires(spec: dict[str, Any]) -> bool:
     """Whether this game's rules could ever bring en passant into play.
 
     En passant answers a two-square move by the promoting piece, so a game with no
     promotion rule, or whose promoting piece cannot double-step, has no en passant to
-    have. Asked through `schema.can_double_step`, which is the validator's own reading --
+    have. Asked through `schema.en_passant_can_fire`, the validator's own reading --
     `transform.settle_en_passant` drops the rule on exactly this test, which is why an
     edit that shortens a pawn's move arrives here with the rule already gone.
     """
-    rules = spec.get("rules") or {}
-    promotion = rules.get("promotion")
-    entries = promotion if isinstance(promotion, list) else [promotion]
-    if len(entries) != 1 or not isinstance(entries[0], dict):
-        return False
-    promoter = pieces.get(str(entries[0].get("piece")))
-    return promoter is not None and can_double_step(promoter)
+    return en_passant_can_fire(spec)
 
 
 def _wrap_form(spec: dict[str, Any]) -> Any:

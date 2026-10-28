@@ -38,9 +38,11 @@ from chess_variant_sandbox.spec.schema import (
     Sight,
     SpecError,
     absent_squares,
+    blast_directions,
     control_geometry,
     duck_goes,
     duck_piece,
+    format_square,
     has_speeds,
     hire_ids,
     is_nobodys,
@@ -297,7 +299,9 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
             f"{castling['king']} may move {steps} squares toward an unmoved "
             f"{castling['rook']}, which jumps to the square it crossed."
         )
-    lines.extend(_describe_extra_rules(rules))
+    lines.extend(
+        _describe_extra_rules(rules, (spec.get("board") or {}).get("lattice") == "hex")
+    )
     lines.extend(_describe_scoring_rules(spec, rules))
     lines.append(_describe_clocks(rules))
     lines.extend(_describe_ending_order(rules))
@@ -646,8 +650,17 @@ def _move_descriptor(move: dict[str, Any]) -> str:
     # Q1007a: a slide over a vector longer than one square is a rider (the nightrider), which
     # nothing stops but a piece where it would land; "until blocked" read as the lame rider.
     long_vector = any(max(abs(int(v[0])), abs(int(v[1]))) > 1 for v in move["vectors"])
-    if kind == "leap":
+    legs = _legs_words(move)
+    if kind == "leap" and legs:
+        reach = f"jumping directly over pieces, but stopped by a wall on {legs}"
+    elif kind == "leap":
         reach = "jumping directly, ignoring anything in between"
+    elif kind == "lame" and legs:
+        # SR1a: the stated legs, every one of which can stop the jump.
+        reach = (
+            "leaping" + ("" if max_range == 1 else " again and again")
+            + f", each jump stopped by a piece standing on any of its legs ({legs})"
+        )
     elif kind == "lame" and max_range != 1:
         # Q1007a: the lame rider, jump after jump, each stoppable at its leg.
         jumps = (
@@ -1184,12 +1197,36 @@ def _slide_words(move: dict[str, Any], aim: _Aim) -> str | None:
     return span + (", stopped by anything in the way" if blocked else "")
 
 
+def _legs_words(move: dict[str, Any]) -> str:
+    """SR1a: a move's stated legs, said per base vector, or nothing when it states none."""
+    legs = move.get("legs")
+    if not isinstance(legs, list):
+        return ""
+    parts = []
+    for vector, own in zip(move["vectors"], legs, strict=False):
+        squares = " and ".join(f"({leg[0]}, {leg[1]})" for leg in own)
+        parts.append(f"{squares} on the way to ({vector[0]}, {vector[1]})")
+    turned = "" if move.get("symmetry", "none") == "none" else ", each turned with its jump"
+    return "; ".join(parts) + turned
+
+
 def _leap_words(move: dict[str, Any], aim: _Aim) -> str | None:
     over = aim.scale > 1 or not aim.step
     if aim.step:
         words = f"{_count(aim.scale)} square{'' if aim.scale == 1 else 's'} {aim.words}"
     else:
         words = f"leaps {aim.words}"
+    legs = _legs_words(move)
+    if legs and move["kind"] == "lame":
+        rider = _rider_count(move, aim)
+        if rider is None and int(move.get("range", DEFAULT_RANGE["lame"])) != 1:
+            return None
+        return (rider if rider is not None else words) + (
+            f", each jump blocked by a piece on any square it is stated to pass ({legs})"
+            + (", and the ride by a piece on a square it would land on" if rider else "")
+        )
+    if legs:
+        return words + f", jumping over pieces but stopped by a wall on {legs}"
     if move["kind"] == "lame":
         rider = _rider_count(move, aim)
         if rider is not None:
@@ -2779,7 +2816,7 @@ def _describe_wrap(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         return _describe_hexagon_wrap(wrap, rules)
     width = spec["board"]["width"]
     height = spec["board"]["height"]
-    last_file = chr(ord("a") + width - 1)
+    last_file = format_square(width - 1, 0)[0]
 
     resolved = wrap_stated(wrap)
     lines: list[str] = []
@@ -2876,7 +2913,7 @@ def _describe_hexagon_wrap(wrap: Any, rules: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _describe_extra_rules(rules: dict[str, Any]) -> list[str]:
+def _describe_extra_rules(rules: dict[str, Any], hexy: bool = False) -> list[str]:
     """The schema-2 endings, each stated the way a player would be told it."""
     lines = []
     if rules.get("must_capture"):
@@ -2956,11 +2993,11 @@ def _describe_extra_rules(rules: dict[str, Any]) -> list[str]:
                 "that reverts to it when captured, on any square it may be played on."
             )
         lines.extend(_drop_restrictions(drops))
-    lines.extend(_describe_explosion(rules.get("explode_on_capture")))
+    lines.extend(_describe_explosion(rules.get("explode_on_capture"), hexy))
     return lines
 
 
-def _describe_explosion(explosion: Any) -> list[str]:
+def _describe_explosion(explosion: Any, hexy: bool = False) -> list[str]:
     """A capture that takes the neighbourhood with it, and (schema 10) *which* capture.
 
     Three separate facts and they are said in that order because that is the order a
@@ -2987,6 +3024,23 @@ def _describe_explosion(explosion: Any) -> list[str]:
         return [
             f"{who}{what} destroys only the capturing piece and the piece it took; "
             "nothing beside them is touched."
+        ]
+    blast = explosion.get("blast")
+    if isinstance(blast, dict) and isinstance(blast.get("vectors"), list):
+        # Generation 48 (SR1b): a stated shape, said as a move's directions are, or as its
+        # offsets where no phrase fits.
+        aim = _aim(blast, hexy)
+        where = (
+            (f"one square {aim.words}" if aim.scale == 1 else
+             f"{_count(aim.scale)} squares {aim.words}") if aim is not None and aim.step
+            else aim.words if aim is not None
+            else "at " + ", ".join(
+                f"[{dx}, {dy}]" for dx, dy in sorted(blast_directions(blast))
+            )
+        )
+        return [
+            f"{who}{what} destroys the capturing piece and everything {where} from the "
+            f"square it took on{spared}."
         ]
     return [
         f"{who}{what} destroys the capturing piece and everything beside it{spared}."

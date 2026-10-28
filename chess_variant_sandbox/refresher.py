@@ -62,6 +62,16 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
    hold no small ending gets a record with none, so it is asked once. A proof that fails,
    or leaves the game still owed, is refused keyed on the game's record file, and not
    retried until that file changes or `--forget`.
+10. **A replay a sample can stand in for is re-certified** (Q635b; C6,
+   `docs/reference/compute-economy.md` §3.5). Each replay in the queue carries its route
+   (`corpus.replay_route`, the rule `measure --recertify` applies): `sample` where only the
+   code that plays games moved, `replay` where a sample speaks for nothing (no stamp,
+   another roster, net, seed set or ruleset, a missing run). A sample goes before a full
+   replay, under the same `heavy` lease, one game a lease. `repair` then runs
+   `corpus.recertify`: a run whose sample differs is played again, and a game none of
+   whose runs holds is replayed whole (``Outcome.fell_back``). The plan, `--status` and the
+   log name the route. The score so kept is labelled *re-certified from a sample* by its
+   stamp (`Basis.certified`), exactly as `measure --recertify` leaves it.
 
 **What it writes**, beside the measurements in the main checkout's `runs/`:
 `refresh-status.json` (what it is doing, what is owed, the last game, the last refusal,
@@ -119,6 +129,11 @@ LEASE_FOR.update({needs: "heavy" for needs in PROOF_ORDER})
 # The whole queue's first key: every score repair before any ladder, every ladder before
 # any proof.
 QUEUE_ORDER = REPAIR_ORDER + LADDER_ORDER + PROOF_ORDER
+# Point 10: within the replays, the routes (`corpus.replay_route`, Q635b). A sample of
+# every run (about 13% of the play, `docs/reference/compute-economy.md` §3.5) before a
+# full replay; the lease is `heavy` either way, since both play.
+SAMPLE, FULL = "sample", "replay"
+ROUTE_ORDER = {SAMPLE: 0, FULL: 1}
 # A ladder item's `stored` is its ladder file hashed under this prefix, never to be
 # mistaken for its game's `canonical.json` digest; a proof item's is its record file's,
 # under `puzzles.STORED` (`proofs:`).
@@ -253,11 +268,18 @@ class Item:
     tier: int
     measured: str
     stored: str  # `Stored.digest` when the queue was read
+    # How a replay would be paid (`corpus.replay_route`, Q635b): "sample" where a sample of
+    # every run may stand in for it (C6), "replay" where only playing every game again
+    # will do, "" for a re-score, a re-analysis or a ladder or proof; and why.
+    route: str = ""
+    route_reason: str = ""
 
     @property
-    def key(self) -> tuple[int, int, str, str]:
-        # A game never measured has no date and sorts as the oldest.
-        return (QUEUE_ORDER.index(self.needs), self.tier, self.measured, self.hash)
+    def key(self) -> tuple[int, int, int, str, str]:
+        # A game never measured has no date and sorts as the oldest. Within the replays a
+        # sample goes first: it is the cheaper repair (`ROUTE_ORDER`).
+        return (QUEUE_ORDER.index(self.needs), ROUTE_ORDER.get(self.route, 0), self.tier,
+                self.measured, self.hash)
 
     @property
     def ladder(self) -> bool:
@@ -286,6 +308,7 @@ class Item:
             hash=str(data["hash"]), name=str(data.get("name", "")), needs=str(data["needs"]),
             reason=str(data.get("reason", "")), tier=int(data.get("tier", 3)),
             measured=str(data.get("measured", "")), stored=str(data.get("stored", "absent")),
+            route=str(data.get("route") or ""), route_reason=str(data.get("route_reason") or ""),
         )
 
 
@@ -319,13 +342,17 @@ def top_quarter(stored: Mapping[str, Stored]) -> set[str]:
     return {digest for _index, digest in ranked[:take]}
 
 
-def order(statuses: Iterable[Any], stored: Mapping[str, Stored]) -> list[Item]:
+def order(statuses: Iterable[Any], stored: Mapping[str, Stored],
+          routes: Mapping[str, Any] | None = None) -> list[Item]:
     """The queue: every game not current, in §6.2's order.
 
     ``statuses`` are `corpus.ScoringStatus` (or anything with ``hash``, ``name``,
     ``current``, ``needs`` and ``reason``). The top quarter is read over every game
-    surveyed, current ones included, since they are on the same leaderboard.
+    surveyed, current ones included, since they are on the same leaderboard. ``routes``
+    maps a replay's hash to its `corpus.Route` (anything with ``route`` and ``reason``);
+    a replay it does not name is a full one.
     """
+    routes = routes or {}
     statuses = list(statuses)
     top = top_quarter(stored)
     items = []
@@ -333,10 +360,15 @@ def order(statuses: Iterable[Any], stored: Mapping[str, Stored]) -> list[Item]:
         if status.current or status.needs not in REPAIR_ORDER:
             continue
         reading = stored.get(status.hash, Stored())
+        route, why = "", ""
+        if status.needs == "replay":
+            found = routes.get(status.hash)
+            route = getattr(found, "route", "") or FULL
+            why = getattr(found, "reason", "") or "only playing every game again will do"
         items.append(Item(
             hash=status.hash, name=status.name, needs=status.needs, reason=status.reason,
             tier=value_tier(status.name, status.hash, top, reading),
-            measured=reading.measured, stored=reading.digest,
+            measured=reading.measured, stored=reading.digest, route=route, route_reason=why,
         ))
     return sorted(items, key=lambda item: item.key)
 
@@ -346,9 +378,17 @@ def queue(runs_dir: Path, weights: str | None = None) -> list[Item]:
     from chess_variant_sandbox import corpus
     from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
 
-    statuses = corpus.survey(runs_dir=Path(runs_dir), weights=weights or DEFAULT_WEIGHTS)
+    weights = weights or DEFAULT_WEIGHTS
+    statuses = corpus.survey(runs_dir=Path(runs_dir), weights=weights)
     stored = {status.hash: stored_of(status.hash, runs_dir) for status in statuses}
-    return order(statuses, stored)
+    routes: dict[str, Any] = {}
+    replays = [s.hash for s in statuses if not s.current and s.needs == "replay"]
+    if replays:
+        candidates = corpus.committed_candidates()
+        for digest in replays:
+            if digest in candidates:
+                routes[digest] = corpus.replay_route(candidates[digest], Path(runs_dir), weights)
+    return order(statuses, stored, routes)
 
 
 # ------------------------------------------------------------------- one game, here
@@ -370,6 +410,11 @@ class Outcome:
     # What a refusal is keyed on when it is not the item's own `stored`: a ladder rated
     # and still owing is refused as the file it now is, so it is not taken again.
     stored: str = ""
+    # The route a replay took (`SAMPLE` or `FULL`, Q635b), and whether it set out by sample
+    # and fell back to playing every game again (no run held: `corpus.recertify`). A
+    # sample that held carries the certificate even where some refused runs were replayed.
+    route: str = ""
+    fell_back: bool = False
 
     @property
     def refused(self) -> bool:
@@ -390,6 +435,7 @@ class Outcome:
             commit=str(data.get("commit", "")), seconds=float(data.get("seconds") or 0.0),
             lines=tuple(str(line) for line in data.get("lines") or ()),
             stored=str(data.get("stored") or ""),
+            route=str(data.get("route") or ""), fell_back=bool(data.get("fell_back")),
         )
 
 
@@ -407,6 +453,12 @@ def repair(
     anything runs. A gate the
     stored file passed and the new one fails is refused after the repair, and the
     supervisor then delivers nothing.
+
+    **A replay a sample can stand in for is re-certified instead** (Q635b; C6,
+    `docs/reference/compute-economy.md` §3.5): where `corpus.replay_route` says `SAMPLE`,
+    `corpus.recertify` does the work, exactly as `measure --recertify <hash>` would. A run
+    its sample refuses is played again, and a game none of whose runs holds is replayed
+    whole (``fell_back``); every other replay is `corpus.refresh`'s, as before.
     """
     from chess_variant_sandbox import corpus
     from chess_variant_sandbox.measurement import stale_build
@@ -442,17 +494,33 @@ def repair(
             note(f"{candidate.name}: already current")
             return done("", index=_number(stored.stored.get("index")),
                         viable=stored.stored.get("viable"))
-        measured = corpus.refresh(candidate, runs_dir, weights, workers=workers, report=note)
+        route = ""
+        if needs == "replay":
+            planned = corpus.replay_route(candidate, runs_dir, weights, stored=stored)
+            route = planned.route or FULL
+            note(f"{candidate.name}: by {route}: {planned.reason}")
+        if route == SAMPLE:
+            measured = corpus.recertify(candidate, runs_dir, weights, workers=workers,
+                                        report=note)
+        else:
+            measured = corpus.refresh(candidate, runs_dir, weights, workers=workers,
+                                      report=note)
     except Exception as error:  # noqa: BLE001 - every failure is a logged refusal
         return done(needs, ERROR, f"{type(error).__name__}: {error}")
+    fell_back = (route == SAMPLE
+                 and (measured.basis is None or measured.basis.certified is None))
+    if fell_back:
+        note("  no run held its sample, so every game was played again")
+    taken: dict[str, Any] = {"route": FULL if fell_back else route, "fell_back": fell_back}
     index = _number(measured.stored.get("index"))
     viable = measured.stored.get("viable")
     if before.viable is True and viable is False:
         violations = "; ".join(str(v) for v in measured.stored.get("violations") or ())
         return done(needs, GATE_NEWLY_FAILED,
                     "the stored measurement passed its gates and the repair fails "
-                    + (violations or "one"), index=index, viable=False)
-    return done(needs, index=index, viable=viable if isinstance(viable, bool) else None)
+                    + (violations or "one"), index=index, viable=False, **taken)
+    return done(needs, index=index, viable=viable if isinstance(viable, bool) else None,
+                **taken)
 
 
 # ------------------------------------------------------------------- what it writes
@@ -1161,6 +1229,9 @@ class Refresher:
         last = {"hash": item.hash, "name": item.name, "needs": outcome.needs or item.needs,
                 "index": outcome.index, "viable": outcome.viable, "commit": outcome.commit,
                 "seconds": outcome.seconds, "at": _now()}
+        if outcome.route:
+            last["route"] = outcome.route
+            last["fell_back"] = outcome.fell_back
         if item.proofs and outcome.lines:
             # What the proof found and what each stage took (`prove_game`'s last line).
             last["said"] = outcome.lines[-1]
@@ -1498,6 +1569,14 @@ def main_checkout_of(path: Path) -> Path:
     return git.resolve().parent
 
 
+def _by(row: Mapping[str, Any]) -> str:
+    """A replay's route, for a status line: " by sample", " by replay", or nothing."""
+    route = row.get("route")
+    if not route:
+        return ""
+    return f" by {route}" + (", fell back to a replay" if row.get("fell_back") else "")
+
+
 def plain_status(status: Mapping[str, Any] | None) -> list[str]:
     """The status file in a few lines, for `refresh --status`."""
     if not status:
@@ -1506,11 +1585,15 @@ def plain_status(status: Mapping[str, Any] | None) -> list[str]:
              f"at {str(status.get('commit', ''))[:12]})"]
     doing = status.get("doing")
     if doing:
-        lines.append(f"doing: {doing.get('name')} [{doing.get('hash')}] {doing.get('needs')}")
+        lines.append(f"doing: {doing.get('name')} [{doing.get('hash')}] {doing.get('needs')}"
+                     + _by(doing))
     if status.get("waiting_for"):
         lines.append(f"waiting for: {status['waiting_for']}")
     counts = status.get("owed_counts") or {}
     owed = [f"{counts[k]} {k}" for k in REPAIR_ORDER if counts.get(k)]
+    sampled = sum(1 for row in status.get("owed") or [] if row.get("route") == SAMPLE)
+    if sampled and owed:
+        owed[-1] += f" ({sampled} by sample)"
     refused_owed = int(status.get("refused_owed") or 0)
     lines.append("owed: " + (", ".join(owed) or "nothing")
                  + (f" ({refused_owed} more owed and refused)" if refused_owed else ""))
@@ -1519,7 +1602,7 @@ def plain_status(status: Mapping[str, Any] | None) -> list[str]:
     if following:
         first = following[0]
         lines.append(f"next: {first.get('name')} [{first.get('hash')}] {first.get('needs')}"
-                     f" ({first.get('reason')})")
+                     f"{_by(first)} ({first.get('reason')})")
     ladders = status.get("ladder_counts")
     if isinstance(ladders, Mapping):
         owed_ladders = [f"{ladders[k]} {k}" for k in LADDER_ORDER if ladders.get(k)]
@@ -1542,6 +1625,7 @@ def plain_status(status: Mapping[str, Any] | None) -> list[str]:
     last = status.get("last_done")
     if last:
         lines.append(f"last: {last.get('name')} [{last.get('hash')}] {last.get('needs')}"
+                     + _by(last)
                      + ("" if part_of(str(last.get("needs") or "")) != SCORES
                         else f" index {last.get('index')}"))
     refusal = status.get("last_refusal")

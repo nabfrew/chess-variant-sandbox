@@ -30,17 +30,10 @@ from typing import Any
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.loop.gates import SMOKE_GAMES
 from chess_variant_sandbox.spec.schema import SpecError
-from chess_variant_sandbox.viz.heading import directional_types
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
+from chess_variant_sandbox.viz.rules_payload import effect_pairs, rules_payload
 from chess_variant_sandbox.viz.walks import walk_payload
-from chess_variant_sandbox.viz.wrapped import (
-    fold_payload,
-    goal_payload,
-    portal_payload,
-    walls_payload,
-    wrap_payload,
-    zone_payload,
-)
+from chess_variant_sandbox.viz.wrapped import fold_payload
 
 # Compiles one spec, as `library.engine_for` does: `Engine(spec)`, memoised by the caller.
 Compile = Callable[[], Engine]
@@ -140,60 +133,28 @@ def preview(engine: Any, state: Any, spec: dict[str, Any]) -> dict[str, Any]:
         (spec.get("appearance") or {}).get("icons"),
     )
     return {
-        "width": engine.spec.width,
-        "height": engine.spec.height,
-        "lattice": engine.spec.lattice,
+        # Every compiled rule a page draws (`viz.rules_payload`, CP5), the play board's and
+        # the replay's block too, so the still draws the goal ring, the promotion band, the
+        # seam and the portal ends the draft's own rules put there.
+        **rules_payload(engine),
         "board": list(state.board),
         # Whose move it is in this position, the state's own: the game page's start
         # position names the side that moves first from it (K1).
         "toMove": int(state.side_to_move),
-        **walls_payload(engine.spec),
-        "pieceIds": list(engine.spec.piece_ids),
-        "pieceNames": list(engine.spec.piece_names),
-        "nTypes": engine.spec.n_types,
-        "sideStride": engine.spec.side_stride,
-        "facingAngles": [list(row) for row in engine.spec.facing_headings()],
-        "directional": list(directional_types(engine.spec)),
         "icons": art,
         "sides": list(side_names(art)),
-        # The same three compiled rules the play board reads, so the still preview
-        # draws the goal ring, the promotion band and the seam rather than a bare
-        # grid the draft's own rules are invisible on. Compiled, per player: the
-        # spec spells these as square names, a keyword and edge names, and
-        # `engine/compile.py` is the one place that means anything by them.
         # What each player holds at ply zero, the way the state carries it: a count
         # per piece type. A drops game's hand is part of its opening position, and a
         # still that drew only the board read as a game with no hand at all.
         "hands": [list(state.hands[0]), list(state.hands[1])],
-        "handsUsed": engine.spec.drops is not None,
-        "handsFromCaptures": bool(
-            engine.spec.drops is not None and engine.spec.drops.from_captures
-        ),
-        "goals": goal_payload(engine.spec.reach),
-        "zones": zone_payload(engine.spec.promotions),
-        "wrap": wrap_payload(engine.spec.wrap, engine.spec.copies),
-        # Schema 19: each portal end's pair, colour, movers and doors, compiled, so a
-        # still draws an end as the play board does (`portalGlyph`). Absent without
-        # portals, which keeps every other game's still as it was.
-        **({"portals": portals} if (portals := portal_payload(engine.spec)) else {}),
         # Schema 22 (Q843d): where each fold stands, which is no board byte, so a still
         # draws its pool (`fold_payload`). Absent without folds.
         **({"folds": folds} if (folds := fold_payload(engine, state)) else {}),
         # Q852: every wild piece's walk in order, its starts and its jumps
         # (`viz.walks`), so a still draws where each goes. Absent without wild pieces.
         **({"walks": walks} if (walks := walk_payload(spec, engine.spec)) else {}),
-        # Generation 42 (N4c): the duck's type, drawn as its own drawing though nobody owns
-        # it (`stillPieceHtml`). Absent without a duck.
-        **({"duck": engine.spec.duck.piece_type} if engine.spec.duck is not None else {}),
         # Schema 30 (Q999g): the effects a line of sight puts on the opening position, the
-        # core's answer (`Engine.effects`) as ``[[square, bits], ...]`` for the squares whose
-        # piece is under one (1 frozen, 2 disarmed, 4 shielded), so a still draws the badges
-        # the play board draws. Absent without a sight (and when none is in force).
-        **({"effects": fx} if (fx := _effect_pairs(engine, state)) else {}),
+        # core's answer (`effect_pairs`), so a still draws the badges the play board draws.
+        # Absent without a sight (and when none is in force).
+        **({"effects": fx} if (fx := effect_pairs(engine, state)) else {}),
     }
-
-
-def _effect_pairs(engine: Any, state: Any) -> list[list[int]]:
-    if engine.spec.sight is None:
-        return []
-    return [[square, bits] for square, bits in enumerate(engine.effects(state).bits) if bits]

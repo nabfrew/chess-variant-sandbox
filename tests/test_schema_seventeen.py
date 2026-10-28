@@ -36,6 +36,7 @@ from chess_variant_sandbox.spec.complexity import measure_complexity
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import distance
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import PLAYED_AS_CAPTURE, SCHEMA_VERSION
 from tests.feature_inventory import _schema_seventeen_uses
 
@@ -167,11 +168,15 @@ class TestTheValidator:
     def test_one_rule_says_what_a_capture_leaves(
         self, games: dict[str, dict[str, Any]], name: str, other: str
     ) -> None:
+        """Rifle beside a hand is the exception since SR2 (T2): a shot removes its victim,
+        which goes to the hand (`tests/test_removing_strike_hand.py`)."""
         spec = copy.deepcopy(games[name])
         spec["rules"][other] = (
             {"from_captures": True} if other == "drops" else {"radius": 1}
         )
-        assert any(f"rules.strike and rules.{other}" in e for e in validate_spec(spec))
+        rid = {"drops": "T2", "explode_on_capture": "T1"}[other]
+        refused = rid in refused_ids(validate_spec(spec))
+        assert refused == (not (name == "rifle" and other == "drops"))
 
 
 class TestTheCompiledTables:

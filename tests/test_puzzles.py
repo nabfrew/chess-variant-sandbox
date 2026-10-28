@@ -557,6 +557,95 @@ def test_t3_does_not_apply_to_one_winning_move(engine: Engine) -> None:
     assert puzzles.hasten(engine, row, nodes=SMALL, state=state) is None
 
 
+# A turn of two plies (Q1039): the probe with two moves a turn, and with a duck. Found by a
+# search over the four-piece endings, then fixed here. `make_state` builds the last ply of a
+# turn; a turn's first ply is reached by a move of the other side's last.
+TWO_MOVES: dict[str, Any] = {**SPEC, "name": "puzzle probe, two moves a turn",
+                             "rules": {**SPEC["rules"], "turn": {"moves": 2}}}
+DUCK: dict[str, Any] = {
+    **SPEC, "name": "puzzle probe with a duck",
+    "pieces": [*PIECES, {"id": "D", "name": "duck", "value": 0, "moves": []}],
+    "rules": {**SPEC["rules"], "duck": {"piece": "D"}},
+}
+MORE = 60_000  # nodes: the first ply of a two-move turn proves its second winning move here
+LAST_PLY = {"c3": ("K", 0), "e5": ("K", 1), "d4": ("S", 0), "a3": ("T", 1)}  # n = 5
+# Each the board before the other side's last ply, and that ply: the attacker then begins a
+# turn of two (n = 6).
+FIRST_PLY_A_SAY = ({"d2": ("K", 0), "a5": ("K", 1), "d4": ("T", 0), "e2": ("T", 1)}, "Te2-d1")
+FIRST_PLY_NO_SAY = ({"c4": ("K", 0), "b1": ("K", 1), "c2": ("S", 0), "c1": ("T", 1)}, "Kb1-a1")
+DUCK_OWED = {"e3": ("K", 0), "d5": ("S", 0), "c4": ("T", 0), "e5": ("K", 1), "a5": ("T", 1),
+             "a1": ("D", 2)}  # n = 4: the attacker's duck, the defender's move and duck, a capture
+
+
+@pytest.fixture(scope="module")
+def two_moves() -> Engine:
+    return Engine(TWO_MOVES)
+
+
+def _first_ply(engine: Engine, board: dict[str, tuple[str, int]], before: str) -> Any:
+    state = engine.make_state(board, side_to_move=1)
+    [move] = [move for move in engine.legal_moves(state)
+              if engine.describe_move(state, move) == before]
+    state = engine.apply(state, move)
+    assert state.side_to_move == 0
+    return state
+
+
+def test_t3_and_t4_read_the_defenders_two_moves_as_one_reply(two_moves: Engine) -> None:
+    """The key move ends the attacker's turn and the defender moves twice: each way it can
+    play out the turn is one reply, asked where the attacker is next to move (n - 4 here,
+    since the move and the reply took one ply and two)."""
+    state = two_moves.make_state(LAST_PLY, side_to_move=0)
+    row = puzzles.verdict(two_moves, state, nodes=SMALL)
+    assert row["result"] == puzzles.WON and row["ends_in"] == 5 and row["winning"] == 2
+    assert puzzles.asks_defence(row)
+    after = two_moves.apply(state, int(puzzles.key_move(row)["move"]))
+    assert after.side_to_move == 1
+    turns = list(puzzles._turns(two_moves, after, 0))
+    assert all(outcome is not None or there.side_to_move == 0 for there, outcome in turns)
+    assert any(there.ply == after.ply + 2 for there, _outcome in turns)
+    assert puzzles.defence(two_moves, row, nodes=SMALL, state=state) == puzzles.SOME
+    assert puzzles.hasten(two_moves, row, nodes=SMALL, state=state) == puzzles.NONE
+
+
+@pytest.mark.parametrize(("case", "defence"), [(FIRST_PLY_A_SAY, puzzles.SOME),
+                                               (FIRST_PLY_NO_SAY, puzzles.NONE)])
+def test_the_attackers_turn_goes_on_by_its_shortest_win(
+    two_moves: Engine, case: tuple[dict[str, tuple[str, int]], str], defence: str
+) -> None:
+    """The key move leaves the attacker to move again: its turn goes on by the core's
+    shortest proved win, and only then does the defender reply, with its whole turn."""
+    state = _first_ply(two_moves, *case)
+    row = puzzles.verdict(two_moves, state, nodes=MORE)
+    assert row["result"] == puzzles.WON and row["ends_in"] == 6 and row["winning"] == 2
+    assert puzzles.asks_defence(row)
+    assert two_moves.apply(state, int(puzzles.key_move(row)["move"])).side_to_move == 0
+    assert puzzles.defence(two_moves, row, nodes=MORE, state=state) == defence
+    assert puzzles.hasten(two_moves, row, nodes=MORE, state=state) == puzzles.NONE
+
+
+def test_a_continuation_the_probe_cannot_settle_is_a_say() -> None:
+    engine = Engine(TWO_MOVES)
+    state = _first_ply(engine, *FIRST_PLY_NO_SAY)
+    row = puzzles.verdict(engine, state, nodes=MORE)
+    unsure = _Unsure(TWO_MOVES)
+    assert puzzles.defence(unsure, row, nodes=MORE, state=state) == puzzles.UNSETTLED
+    assert puzzles.hasten(unsure, row, nodes=MORE, state=state) == puzzles.UNSETTLED
+
+
+def test_the_duck_half_of_a_reply_is_part_of_it() -> None:
+    """The shepherd's duck's shape (Q1039): the attacker places the duck, and the defender's
+    reply is its piece move and its duck together."""
+    engine = Engine(DUCK)
+    state = engine.make_state(DUCK_OWED, side_to_move=0, duck_owed=True)
+    row = puzzles.verdict(engine, state, nodes=SMALL)
+    assert row["result"] == puzzles.WON and row["ends_in"] == 4 and row["winning"] >= 2
+    after = engine.apply(state, int(puzzles.key_move(row)["move"]))
+    assert after.side_to_move == 1 and not engine.duck_owed(after)
+    assert puzzles.defence(engine, row, nodes=SMALL, state=state) == puzzles.NONE
+    assert puzzles.hasten(engine, row, nodes=SMALL, state=state) == puzzles.NONE
+
+
 def test_t3_replays_the_records_prefix(engine: Engine, records: list[GameRecord]) -> None:
     """Asked without a state, T3 reaches the position by the record's prefix: the same
     answer as asked of the position held."""

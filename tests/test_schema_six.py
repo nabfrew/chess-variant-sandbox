@@ -42,6 +42,7 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import move_from, move_to
 from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.spec.canonical import spec_hash
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import (
     PLAYED_AS_CAPTURE,
     SpecError,
@@ -1098,7 +1099,7 @@ def test_two_rules_may_not_both_say_what_happens_to_a_taken_piece(other: str) ->
         **{other: extra},
     )
     errors = validate_spec(spec)
-    assert any("both say what happens to a taken piece" in error for error in errors), errors
+    assert {"explode_on_capture": "T1", "drops": "T2"}[other] in refused_ids(errors), errors
 
 
 # ------------------------------------------------------------- the other surfaces

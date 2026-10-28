@@ -144,6 +144,10 @@ MOVE_KIND_ONLY: dict[str, tuple[str, ...]] = {
     "screen": ("hop",),
     # T1: a path that turns is a slide's (`docs/archive/plan-pieces-moves.md` §5.2).
     "path": ("slide",),
+    # SR1a: stated legs block a lame's jumps. A leap's legs (under blocks_leaps only) are
+    # not offered: they are refused without that rule, and a designer reaches them by
+    # writing the key.
+    "legs": ("lame",),
 }
 
 # What an empty number box means, said in the box (Q995c, fix 5, F5): an empty speed box

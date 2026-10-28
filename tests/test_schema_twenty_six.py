@@ -23,6 +23,7 @@ from chess_variant_sandbox.engine.compile import VOID_RUN, compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_PORTAL, MOVE_PROMOTION, decode_move
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec.canonical import spec_hash
+from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, validate_spec
 from chess_variant_sandbox.tournament.play import play_game
 
@@ -220,36 +221,45 @@ def circle() -> dict[str, Any]:
     }
 
 
+# Each by its refused pair's id (`spec/refusals.py`); R1, whose words say whether the win is
+# written, is the one not in the table.
 REFUSED = [
-    ("rules.win 'checkmate' (the default)", lambda s: s["rules"].pop("win")),
-    ("rules.checkmate", lambda s: s["rules"].update(checkmate="loss")),
-    ("rules.forbid_check", lambda s: s["rules"].update(forbid_check=True)),
-    ("rules.check_limit", lambda s: s["rules"].update(check_limit=3)),
-    ("rules.royal_facing 'forbidden'", lambda s: s["rules"].update(royal_facing="forbidden")),
-    ("rules.castling", lambda s: s["rules"].update(castling={"king": "K", "rook": "R"})),
-    ("rules.en_passant", lambda s: s["rules"].update(en_passant=True)),
-    ("a turn longer than one move", lambda s: s["rules"].update(turn={"moves": 2})),
-    ("a sweep", lambda s: s["pieces"][3]["moves"].append(
+    ("R2", lambda s: s["rules"].update(checkmate="loss")),
+    ("R3", lambda s: s["rules"].update(forbid_check=True)),
+    ("R4", lambda s: s["rules"].update(check_limit=3)),
+    ("R5", lambda s: s["rules"].update(royal_facing="forbidden")),
+    ("R6", lambda s: s["rules"].update(castling={"king": "K", "rook": "R"})),
+    ("R7", lambda s: s["rules"].update(en_passant=True)),
+    ("L4", lambda s: s["rules"].update(turn={"moves": 2})),
+    ("R8", lambda s: s["pieces"][3]["moves"].append(
         {"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4"})),
-    ("rules.strike.position 'choose'", lambda s: s["rules"].update(strike={
+    ("R10", lambda s: s["rules"].update(strike={
         "effect": "demote", "chain": [{"from": "Q", "to": "R"}], "position": "choose",
         "landing": {"vectors": [[1, 0]], "symmetry": "rotate4"}, "immune": ["K"]})),
-    ("rules.strike.position 'stay'", lambda s: s["rules"].update(strike={
+    ("R11", lambda s: s["rules"].update(strike={
         "position": "stay", "immune": ["K"]})),
-    ("rules.contacts.position 'choose'", lambda s: s["rules"].update(contacts={
+    ("R10", lambda s: s["rules"].update(contacts={
         "links": [{"mover": "N", "onto": "Q", "onto_to": "R"}], "position": "choose",
         "landing": {"vectors": [[1, 0]], "symmetry": "rotate4"}, "immune": ["K"]})),
-    ("an own rules.contacts link with position 'swap'", lambda s: s["rules"].update(contacts={
+    ("R12", lambda s: s["rules"].update(contacts={
         "links": [{"mover": "N", "onto": "B", "onto_to": "R", "own": True}],
         "position": "swap", "immune": ["K"]})),
 ]
 
 
-@pytest.mark.parametrize(("words", "change"), REFUSED, ids=[words for words, _ in REFUSED])
-def test_each_combination_section_four_refuses_is_refused(words: str, change: Any) -> None:
+@pytest.mark.parametrize(("rid", "change"), REFUSED)
+def test_each_combination_section_four_refuses_is_refused(rid: str, change: Any) -> None:
     spec = copy.deepcopy(GARDNER)
     change(spec)
     errors = validate_spec(spec)
+    assert rid in refused_ids(errors), errors
+
+
+def test_checkmate_by_default_is_refused() -> None:
+    spec = copy.deepcopy(GARDNER)
+    spec["rules"].pop("win")
+    errors = validate_spec(spec)
+    words = "rules.win 'checkmate' (the default)"
     assert any(f"rules.simultaneous beside {words}" in error for error in errors), errors
 
 
@@ -257,13 +267,13 @@ def test_a_portal_a_player_moves_is_refused() -> None:
     spec = load("portals")
     spec["rules"]["portals"][0]["moved_by"] = {"orange": [0]}
     errors = validate_spec(spec)
-    assert any("a portal a player moves" in error for error in errors), errors
+    assert "R9" in refused_ids(errors), errors
 
 
 def test_drop_mate_and_a_royal_in_a_placement_stock_are_refused() -> None:
     spec = load("shogi")
     spec["rules"]["drops"]["no_mate"] = ["C"]
-    assert any("rules.drops.no_mate" in error for error in validate_spec(spec))
+    assert "R13" in refused_ids(validate_spec(spec))
     stocked = copy.deepcopy(GARDNER)
     stocked["setup"]["placements"] = [p for p in stocked["setup"]["placements"] if p["piece"] != "K"]
     stocked["rules"]["drops"] = {"stock": {"K": 1}, "placement": True, "from_captures": False}

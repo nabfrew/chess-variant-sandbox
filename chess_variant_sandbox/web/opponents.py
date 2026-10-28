@@ -49,6 +49,7 @@ from chess_variant_sandbox.agents.nets import STORE_DIR as NET_DIR
 from chess_variant_sandbox.agents.valuations import SEARCH as SEARCH_PROCEDURE
 from chess_variant_sandbox.agents.valuations import STORE_DIR as VALUE_DIR
 from chess_variant_sandbox.loop.screen import round_roster
+from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.spec.schema import is_spy_game
 from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tournament
 
@@ -244,12 +245,6 @@ SPY_RUNGS: tuple[tuple[str, str, str], ...] = tuple(
 )
 
 
-def plays_in_rounds(spec: dict[str, Any] | None) -> bool:
-    """Whether a spec is a game played in rounds (schema 26, `rules.simultaneous`)."""
-    rules = (spec or {}).get("rules")
-    return isinstance(rules, dict) and isinstance(rules.get("simultaneous"), dict)
-
-
 def ladder(rounds: bool = False, spy: bool = False) -> list[Opponent]:
     """The roster that is the same on every board: of every game that alternates, or with
     `rounds`, of every game played in rounds, or with `spy`, of every spy game."""
@@ -368,7 +363,7 @@ def for_game(
     if spec is not None and is_spy_game(spec):
         # A spy game plays its own ladder (`SPY_RUNGS`), and nothing stored.
         return ladder(spy=True)
-    if plays_in_rounds(spec):
+    if spec is not None and plays_in_rounds(spec):
         # Nothing stored for a game that alternates plays rounds (`ROUND_RUNGS`).
         return ladder(rounds=True)
     roster = ladder()

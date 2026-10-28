@@ -194,6 +194,7 @@ function draw() {
                       + barrierHtml(CELL, FRAME, DATA.wrap);
   drawShift();
   drawMarks();
+  drawPurses(beat.ply);
 
   document.getElementById('ply').textContent = `${beat.ply} / ${DATA.moves.length}`;
   document.getElementById('material').textContent =
@@ -209,6 +210,26 @@ function draw() {
   document.getElementById('prev').disabled = at === 0;
   document.getElementById('next').disabled = at >= last;
   document.getElementById('end').disabled = at >= last;
+}
+
+// TC7 (Q1049): each seat's purse in the position on screen, worded as the play board words
+// it (`purseWords`, `purseTitle`). The counts are the core's: `DATA.purses` holds one pair
+// per ply, read off the replayed state, so a step back shows that position's coins. A phase
+// beat stands on its ply's position, so it shows the purses the ply left.
+function drawPurses(ply) {
+  if (!DATA.purse || !DATA.purses) return;
+  const purse = DATA.purses[ply] || [0, 0];
+  document.querySelectorAll('[data-purse]').forEach(node => {
+    node.textContent = purseWords(purse[Number(node.dataset.purse)] || 0);
+  });
+}
+
+function seatsHtml() {
+  const sides = DATA.sides || ['white', 'black'];
+  const title = esc(purseTitle(DATA.purse)).replace(/"/g, '&quot;');
+  return [0, 1].map(player => `<div><b>${esc(sides[player])}</b> <span class="muted">${
+    esc(DATA.meta.agents[player])}</span><div data-purse="${player}" title="${title}"></div></div>`)
+    .join('');
 }
 
 // Moving the view across the seam, one square at a time. A wrapping board has no
@@ -371,6 +392,12 @@ document.getElementById('moves').addEventListener('click', event => {
   const node = event.target.closest('.move');
   if (node) goto(Number(node.dataset.beat));
 });
+
+if (DATA.purse && DATA.purses) {
+  const seats = document.getElementById('seats');
+  seats.innerHTML = seatsHtml();
+  seats.hidden = false;
+}
 
 const credits = DATA.credits || [];
 document.getElementById('credits').innerHTML = credits.length

@@ -262,7 +262,7 @@ _OWN = """
   .whoBand .viewSwitch button { font-size: 14px; }
   main.profile .showcase h2 { margin-top: 30px; }
 
-  /* UP2, your own page as the workshop (docs/plan-user-page.md §3.2): what waits on you
+  /* UP2, your own page as the workshop (docs/archive/plan-user-page.md §3.2): what waits on you
      beside your published game, the path every game takes with your games on it, then
      your record, what you have done and the settings, folded. Boards are the app's still
      board (`stillboard.js`), each in a box of its own width. */
@@ -1033,22 +1033,6 @@ def _played_html(game: dict[str, Any]) -> str:
         f"{_RESULT_WORDS[str(game['result'])]} "
         f"{_against_html(game['against'])} at {link}"
         f' <span class="mark">· {kind} · {_day(game["when"])}</span>'
-    )
-
-
-def _made_html(game: dict[str, Any]) -> str:
-    """One line of *Games ‹handle› made* (Q760): the game, its level, the day it was
-    published, and how many other people have tried it (a count, never who)."""
-    parts = [escape(str(game["level"]))]
-    if game.get("published") is not None:
-        parts.append(f"published {_day(game['published'])}")
-    if game.get("tried"):
-        parts.append(
-            f'{game["tried"]} {"person has" if game["tried"] == 1 else "people have"} tried it'
-        )
-    return (
-        f'{_game_link(str(game["game"]), str(game["name"]))} '
-        f'<span class="mark">· {" · ".join(parts)}</span>'
     )
 
 

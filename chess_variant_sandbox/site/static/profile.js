@@ -283,7 +283,7 @@ function carryItem(entry) {
   return row.item;
 }
 
-// UP5, `docs/plan-user-page.md` §5: the user page's one motion. A waiting game's board, its
+// UP5, `docs/archive/plan-user-page.md` §5: the user page's one motion. A waiting game's board, its
 // last move (the engine's `lastMove`, the session's own history entry) played once, the
 // first time the board comes into view: the piece slides from where it stood to where it
 // landed (`travel`), or a piece from a hand drops in (`stoneDrop`), with the board motion
@@ -686,7 +686,7 @@ function drawChallenges(asked) {
   }
 }
 
-// Q503b, §3.4, and UP2 (direction B, `docs/plan-user-page.md` §3.2): *Your workshop*, the
+// Q503b, §3.4, and UP2 (direction B, `docs/archive/plan-user-page.md` §3.2): *Your workshop*, the
 // games this person made on the path every game takes. The columns are the server's
 // (`workshop.columns`: the four levels and *Measured*, a draft whose score the site has
 // checked), each game in the column it stands in, with its board, the change from the game

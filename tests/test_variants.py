@@ -21,6 +21,7 @@ to pin a DSL feature against a published number, not to be played.
 
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -49,14 +50,10 @@ BASELINE_PERFT: dict[str, dict[int, int]] = {
     "courier": {1: 26, 2: 678, 3: 18_406, 4: 500_337},
 }
 
-_ENGINES: dict[str, Engine] = {}
-
-
+@cache
 def engine_for(name: str) -> Engine:
     """Compile once per ruleset. Courier builds a table for 96 squares by 9 pieces."""
-    if name not in _ENGINES:
-        _ENGINES[name] = Engine(load_spec(RULESETS / f"{name}.json"))
-    return _ENGINES[name]
+    return Engine(load_spec(RULESETS / f"{name}.json"))
 
 
 def perft_cases(ladders: dict[str, dict[int, int]]) -> list[Any]:
@@ -247,6 +244,11 @@ PROBE_PERFT: dict[str, tuple[dict[str, Any], dict[int, int]]] = {
 }
 
 
+@cache
+def probe_engine(name: str) -> Engine:
+    return Engine(PROBE_PERFT[name][0])
+
+
 @pytest.mark.parametrize(
     ("name", "depth", "expected"),
     perft_cases({name: ladder for name, (_, ladder) in PROBE_PERFT.items()}),
@@ -254,10 +256,7 @@ PROBE_PERFT: dict[str, tuple[dict[str, Any], dict[int, int]]] = {
 def test_probe_perft_matches_the_reference_implementation(
     name: str, depth: int, expected: int
 ) -> None:
-    spec, _ = PROBE_PERFT[name]
-    if name not in _ENGINES:
-        _ENGINES[name] = Engine(spec)
-    engine = _ENGINES[name]
+    engine = probe_engine(name)
     assert engine.perft(engine.initial_state(), depth) == expected
 
 

@@ -1,4 +1,4 @@
-"""The user page's one motion (UP5, `docs/plan-user-page.md` §5).
+"""The user page's one motion (UP5, `docs/archive/plan-user-page.md` §5).
 
 A waiting game's last move, the engine's `lastMove`, plays once the first time its board comes
 into view, with the board motion every page shares (`motion.js`); nothing else moves, and under
