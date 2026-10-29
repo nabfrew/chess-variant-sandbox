@@ -534,8 +534,6 @@ class Evaluator:
         weight vector drawn before A6 means what it meant and no vocabulary bump is owed.
         """
         spec = self.spec
-        n_types = spec.n_types
-        side_stride = spec.n_facings * n_types
         if self.material_sign < 0.0:
             return -self._plain_material(board, player)
         if spec.has_capture_matrix:
@@ -544,7 +542,7 @@ class Evaluator:
         for value in board:
             if value == 0:
                 continue
-            owner, piece_type = (value - 1) // side_stride, (value - 1) % n_types
+            owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner == WILD:  # nobody's material; see the module docstring
                 continue
             total += self.values[piece_type] if owner == player else -self.values[piece_type]
@@ -557,13 +555,12 @@ class Evaluator:
         inverts and declares a capture matrix -- combining the two is a question nobody
         has asked yet, and guessing at it here would be inventing a rule.
         """
-        n_types = self.spec.n_types
-        side_stride = self.spec.n_facings * n_types
+        spec = self.spec
         total = 0.0
         for value in board:
             if value == 0:
                 continue
-            owner, piece_type = (value - 1) // side_stride, (value - 1) % n_types
+            owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner == WILD:
                 continue
             total += self.values[piece_type] if owner == player else -self.values[piece_type]
@@ -577,14 +574,13 @@ class Evaluator:
         when some piece declared ``captures``, which is the six RPS probes and nothing
         else in the committed corpus.
         """
-        n_types = self.spec.n_types
-        side_stride = self.spec.n_facings * n_types
+        spec = self.spec
         scaled = self._live_values(board)
         total = 0.0
         for value in board:
             if value == 0:
                 continue
-            owner, piece_type = (value - 1) // side_stride, (value - 1) % n_types
+            owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner == WILD:
                 continue
             row = scaled[owner]
@@ -647,12 +643,11 @@ class Evaluator:
         """
         spec = self.spec
         n_types = spec.n_types
-        side_stride = spec.n_facings * n_types
         counts = [[0] * n_types, [0] * n_types]
         for value in board:
             if value == 0:
                 continue
-            owner, piece_type = (value - 1) // side_stride, (value - 1) % n_types
+            owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner == WILD:
                 continue
             counts[owner][piece_type] += 1
@@ -811,13 +806,11 @@ class Evaluator:
         (§1.2). ``rust/src/eval.rs::spy_edge`` is the same reading (``Game::has_spy``)."""
         spec = self.spec
         assert spec.spy is not None
-        n_types = spec.n_types
-        side_stride = spec.n_facings * n_types
         has = [False, False]
         for value in board:
             if value == 0:
                 continue
-            owner, piece_type = (value - 1) // side_stride, (value - 1) % n_types
+            owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner != WILD and piece_type in spec.spy.types[owner]:
                 has[owner] = True
         return int(has[player]) - int(has[1 - player])
@@ -840,13 +833,12 @@ class Evaluator:
             return 0.0
         threat, counted = table
         n_types = spec.n_types
-        stride = spec.n_facings * n_types
         # The two armies only, as the core walks ``all_occupied``: a portal end's byte is in
         # the third owner's block (``WILD``), nobody's piece (Q846).
         present = [0, 0]
         for value in state.board:
-            if value and (value - 1) // stride != WILD:
-                present[(value - 1) // stride] |= 1 << ((value - 1) % n_types)
+            if value and spec.owner_of(value) != WILD:
+                present[spec.owner_of(value)] |= 1 << spec.type_of(value)
         if spec.drops is not None:
             for side in (0, 1):
                 for piece_type, held in enumerate(state.hands[side][:n_types]):
@@ -866,8 +858,8 @@ class Evaluator:
         worth = [0.0, 0.0]
         for value in state.board:
             if value:
-                owner = (value - 1) // stride
-                piece_type = (value - 1) % n_types
+                owner = spec.owner_of(value)
+                piece_type = spec.type_of(value)
                 if owner != WILD and safe[owner] & (1 << piece_type):
                     worth[owner] += self.values[piece_type]
         race = [0.0, 0.0]
@@ -995,22 +987,20 @@ class Evaluator:
         if goals is None:
             return (0, 0)
         threat = capture_threats(spec)
-        n_types = spec.n_types
-        stride = spec.n_facings * n_types
         board = state.board
         sealed = [0, 0]
         for side in (0, 1):
             exposed: int | None = None
             for index, square in enumerate(goals[side]):
                 value = board[square]
-                if not value or (value - 1) // stride != 1 - side:
+                if not value or spec.owner_of(value) != 1 - side:
                     continue
                 if exposed is None:
                     exposed = 0
                     for held in board:
-                        if held and (held - 1) // stride == side:
-                            exposed |= threat[side][(held - 1) % n_types]
-                if not exposed & (1 << ((value - 1) % n_types)):
+                        if held and spec.owner_of(held) == side:
+                            exposed |= threat[side][spec.type_of(held)]
+                if not exposed & (1 << spec.type_of(value)):
                     sealed[side] |= 1 << index
         return (sealed[0], sealed[1])
 
@@ -1019,13 +1009,11 @@ class Evaluator:
         reach a goal square not in ``sealed``, or ``UNREACHABLE``: the compiled union table
         with nothing sealed, the per-goal table over the open goals otherwise."""
         spec = self.spec
-        n_types = spec.n_types
-        stride = spec.n_facings * n_types
         best = UNREACHABLE
         pieces = [
-            (square, (value - 1) % n_types)
+            (square, spec.type_of(value))
             for square, value in enumerate(state.board[: spec.n_squares])
-            if value and (value - 1) // stride == side and types & (1 << ((value - 1) % n_types))
+            if value and spec.owner_of(value) == side and types & (1 << spec.type_of(value))
         ]
         if not sealed:
             for square, piece_type in pieces:
@@ -1069,7 +1057,7 @@ class Evaluator:
             1
             for value in board
             if low <= value < high
-            and (rule.any_piece or ((value - 1) % spec.n_types) in rule.piece_types)
+            and (rule.any_piece or spec.type_of(value) in rule.piece_types)
         )
 
     @property
@@ -1114,7 +1102,7 @@ class Evaluator:
             if value < low or value >= high:
                 continue
             if scoring.count == "material":
-                total += spec.piece_values[(value - 1) % spec.n_types]
+                total += spec.piece_values[spec.type_of(value)]
             elif scoring.count == "region":
                 assert scoring.squares is not None
                 total += 1.0 if square in scoring.squares[player] else 0.0

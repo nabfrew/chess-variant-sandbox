@@ -567,7 +567,7 @@ _SPEC_ATTRIBUTES = frozenset({
 
 # Where `bridge.py` may read them, and why each is still only a flattening.
 #
-# Since CP1 (`docs/plan-smells-python.md` PY8) `build_tables` is the merge of one flattener
+# Since CP1 (`docs/archive/plan-smells-python.md` PY8) `build_tables` is the merge of one flattener
 # per rule, so the flattening is listed by flattener: each reads only its own rule's
 # attributes and writes only its own rule's keys.
 _FLATTENING = "the flattening itself, where its rule's refused keys are written"

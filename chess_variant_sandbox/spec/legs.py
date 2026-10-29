@@ -1,10 +1,10 @@
 """A jump's stated legs (SR1a, `docs/plan-schema-next.md` §1 rank 1), and the symmetry maps
 that turn them.
 
-Kept out of `complexity` on purpose: that module is in the metrics fingerprint
-(`measurement.METRICS_SOURCES`), and the legs are read by the validator, the compiler, the
-relation and the Fairy translation, none of which a score reads. Adding them there would have
-staled every library measurement for a key no stored game writes.
+Kept out of `complexity`, which is in the metrics fingerprint (`measurement.METRICS_SOURCES`):
+these are read by the validator, the compiler, the relation and the Fairy translation, none of
+which a score reads, so an edit here should not stale a library measurement. The legs'
+complexity charge (Q1054) reads the spelling itself, in `complexity._legs_extras`.
 """
 
 from __future__ import annotations

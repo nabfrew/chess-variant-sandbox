@@ -39,8 +39,8 @@ from chess_variant_sandbox.tournament import TournamentConfig, run_tournament
 from chess_variant_sandbox.tournament.analysis import (
     ROUND_COUNTS,
     SPEED_COUNTS,
-    _count_round,
     analyse_corpus,
+    count_round,
 )
 
 HERE = Path(__file__).parent
@@ -301,7 +301,7 @@ def _tally(engine: Engine, state: GameState, first: tuple[str, str],
     pair = (word(0, *first), word(1, *second))
     _, _, events = engine.apply_round_with_phase(state, *pair)
     counts = dict.fromkeys(ROUND_COUNTS + SPEED_COUNTS, 0)
-    _count_round(counts, pair, events)
+    count_round(counts, pair, events)
     return {key: value for key, value in counts.items() if value}
 
 

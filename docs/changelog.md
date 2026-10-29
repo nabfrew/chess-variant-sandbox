@@ -11,7 +11,25 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-29
+
+### A different story each time you open the front page
+
+The front page now picks its story completely at random every time it is opened, reloads included; before, it avoided
+repeating the story you had just seen. A small switch under the opening words lets you step through the other stories
+without reloading.
+
+### Stronger learned players on twelve games
+
+Twelve games in the library now play a stronger, second-generation learned player, trained to aim at each game's own way
+of winning, and their scores were measured again with it. Eighteen games now have a learned player.
+
 ## 2026-10-28
+
+### Chosen jump paths count toward a game's complexity
+
+A piece whose jump can be blocked on squares the designer picks, rather than the usual square beside it, now makes a game
+read a little more complex, as other special movement rules do. Writing out the usual square changes nothing.
 
 ### Replays show each player's purse
 

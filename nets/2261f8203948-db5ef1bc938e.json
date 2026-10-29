@@ -83,5 +83,7 @@
     "decided_after": 200,
     "planned_pairs": 200,
     "gate": "G-A2, plan-teacher.md \u00a78.3 (L1, \u00a710.5)"
-  }
+  },
+  "kept": true,
+  "kept_by": "generation 0, the line's root and generation 1's parent: plan-teacher.md \u00a710.12, graded in \u00a710.13"
 }

@@ -48,7 +48,6 @@ from chess_variant_sandbox.tournament.analysis import (
     _probe,
     _round_leaf,
     _score_roots,
-    _spy_round_blunder,
     analyse_corpus,
     announced_matrix,
     blunder_rng,
@@ -56,6 +55,7 @@ from chess_variant_sandbox.tournament.analysis import (
     replay_spy,
     spy_holders,
     spy_loss,
+    spy_round_blunder,
     spy_steps,
 )
 from chess_variant_sandbox.tournament.record import GameRecord, read_records, write_records
@@ -361,7 +361,7 @@ class TestThePass:
                 if step.phase.name != "announced":
                     continue
                 announcer = step.phase.announcer
-                pair = _spy_round_blunder(engine, record, step, announcer, random.Random(3))
+                pair = spy_round_blunder(engine, record, step, announcer, random.Random(3))
                 if pair is None:
                     continue
                 reading = read_announced(engine, evaluator, step.state, announcer,

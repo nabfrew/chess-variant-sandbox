@@ -350,13 +350,11 @@ def _army_scale(spec: CompiledSpec) -> float:
     depending on which of them was ahead.
     """
     values = Evaluator.for_spec(spec).values
-    n_types = spec.n_types
     total = 0.0
     for value in spec.initial_board:
         if value == 0:
             continue
-        _owner, piece_type = divmod(value - 1, n_types)
-        total += abs(values[piece_type])
+        total += abs(values[spec.type_of(value)])
     return total / 2.0
 
 

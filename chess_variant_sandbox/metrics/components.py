@@ -648,8 +648,56 @@ def _worst_half_rates(
             for name, rates in measured.items()
         },
         "worst_half": worst_of,
+        "rung_depth": _rung_depth(records),
+        "weaker_seat_depth": {
+            name: _weaker_seat_depth(half) for name, half in halves.items()
+        },
     }
     return raw, detail
+
+
+def _rung_depth(records: list[GameRecord]) -> dict[str, float]:
+    """Completed plies per search on each rung of the ladder the split reads, keyed by budget.
+
+    The depth comes from the core: every searching seat's record carries ``depth_sum`` and
+    ``searches``, and this only divides them. Keyed by the budget as a string, so the detail
+    survives a JSON round trip unchanged. A rung that does not deepen (``greedy``) is absent
+    rather than zero, for ``_depth_by_agent``'s reason.
+    """
+    totals: dict[int, list[int]] = {}
+    for record in records:
+        for seat, name in enumerate(record.agents):
+            if record.searches[seat]:
+                entry = totals.setdefault(_budget(name), [0, 0])
+                entry[0] += record.depth_sum[seat]
+                entry[1] += record.searches[seat]
+    return {
+        str(rung): round(depth / searches, 3)
+        for rung, (depth, searches) in sorted(totals.items())
+    }
+
+
+def _weaker_seat_depth(records: list[GameRecord]) -> float | None:
+    """How deep the weaker seat of a half's games completed, in plies per search.
+
+    The quantity the split's budget stands proxy for (`docs/reference/roster-confound.md`
+    section 4): a game is in the strong half when *both* players can see the trap, and what
+    lets a player see one is the depth it completes, not the nodes it was given. So this
+    reads the seat on the lower budget, both seats when the budgets tie, and pools their
+    searches over the half. ``None`` when no such seat searched, which is a weak half whose
+    floor is ``greedy``.
+
+    Reported in the split's detail and gated on by nothing. A floor on it is a threshold
+    the source left open, and `docs/reference/search-depth.md` section 4 holds the options.
+    """
+    depth = searches = 0
+    for record in records:
+        low = min(_budget(name) for name in record.agents)
+        for seat, name in enumerate(record.agents):
+            if _budget(name) == low:
+                depth += record.depth_sum[seat]
+                searches += record.searches[seat]
+    return round(depth / searches, 3) if searches else None
 
 
 def _seat_readings(records: list[GameRecord]) -> tuple[dict[str, float], dict[str, Any]]:

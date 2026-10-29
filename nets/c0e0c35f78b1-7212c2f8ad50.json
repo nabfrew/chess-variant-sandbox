@@ -1,0 +1,80 @@
+{
+  "procedure": "7212c2f8ad50",
+  "ruleset_hash": "c0e0c35f78b1",
+  "inputs_version": 1,
+  "verdict": "refused",
+  "weights_sha256": "138189ce2a9c0edb2fe0c1ddd84c59b7f2c959148b09111bfdeb15b4aebb415c",
+  "build": "774f4d9c5cb34e9a",
+  "digest": "138189ce2a9c",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=db5ef1bc938e,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "db5ef1bc938e",
+      "weights_sha256": "3a2c44bee4397efab52de9e6b57c506cd7937bb773adf24e509c31e04090f1be"
+    }
+  },
+  "data": {
+    "digest": "87c5375de4969d8d61a3478c43b176e44fa8d64c9a6a36d3ffc31de8f034f201",
+    "games": 20000,
+    "positions": 5170917,
+    "most_active": 62
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.00713288,
+      0.00415185,
+      0.00372458,
+      0.00348298,
+      0.00332527,
+      0.00322139,
+      0.00313618,
+      0.00307306
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.165538
+  },
+  "acceptance": {
+    "candidate": "minimax:net=7212c2f8ad50,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.5,
+    "error": 0.0,
+    "games": 400,
+    "identical": 0,
+    "openings": 171,
+    "candidate_nodes": 371092503,
+    "reference_nodes": 371335732,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": false,
+    "decided_after": 200,
+    "planned_pairs": 200
+  },
+  "lineage": {
+    "parent": "db5ef1bc938e",
+    "parent_weights_sha256": "3a2c44bee4397efab52de9e6b57c506cd7937bb773adf24e509c31e04090f1be",
+    "teacher": "parent:3a2c44bee439"
+  }
+}

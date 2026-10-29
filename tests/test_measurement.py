@@ -507,7 +507,22 @@ class TestTheFingerprintsPointAtSomething:
 # **Moved 2026-10-27 by TC7 (`docs/plan-turncoat.md` §5.8)**: the `analysis` files it reads (see
 # `FROZEN_ANALYSIS`): the purse's and the neutrals' tallies, read by no component. No library
 # game has either, so no number can move. It was "d486d18f764a987d" after TC6.
-FROZEN_METRICS = "f1828082d034126a"
+# **Moved 2026-10-28 by Q529 (`docs/reference/search-depth.md` §4)**: `metrics/components.py`'s
+# `ladder_split` detail reports each rung's completed depth and the weaker seat's per half, read
+# by no component and no gate, so no number can move. It was "f1828082d034126a" after TC7.
+# **Moved 2026-10-28 by Q1054 (SR1a's charge, `engine-and-spec-record.md` *Generation 47*)**:
+# `spec/complexity.py` charges a jump's own stated legs (0.5, once). No library game states
+# legs, so no number can move. It was "33f9afcfe12bc603" after Q529; Q1053 re-scores under it.
+# **Moved 2026-10-28 by CP6 (`docs/archive/plan-smells-python.md` PY3, PY15)**: the evaluator, the
+# features, minimax's capture gain and the analysis pass decode a board byte through
+# `spec.owner_of`/`type_of` and `engine.py` names squares through `schema.format_square`: the
+# same arithmetic, so no number can move. It was "a4f94265d46cdd4c" after Q1054; Q1053
+# re-scores under it.
+# **Moved 2026-10-28 by CP7 (`docs/archive/plan-smells-python.md` PY17)**: the analysis pass's eleven round
+# counters lose their underscore and sit in one section of `analysis.py`, which the legality job
+# imports: a rename and a move, no number can move. It was "6f84517cd6271456" after CP6; Q1053
+# re-scores under it.
+FROZEN_METRICS = "92acf3baf7eb5664"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -840,7 +855,14 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # `PURSE_SERIES` in a purse game and `NEUTRAL_SERIES` in a game with a piece nobody owns, each
 # absent from every other game's file. No library game has either, so no `analysis.json` moves.
 # It was "8a5eabc237002364" after TC6.
-FROZEN_ANALYSIS = "c14ee0bda2bdf7b3"
+# **Moved 2026-10-28 by CP6 (`docs/archive/plan-smells-python.md` PY3, PY15)**: `agents/evaluation.py`,
+# `tournament/analysis.py` and `engine/engine.py` decode a board byte through the spec and name
+# squares through `schema.format_square`: the same arithmetic, so no `analysis.json` moves. It was
+# "c14ee0bda2bdf7b3" after TC7; Q1053 re-analyses under it.
+# **Moved 2026-10-28 by CP7 (`docs/archive/plan-smells-python.md` PY17)**: `analysis.py`'s eleven round
+# counters are public and in one section, a rename and a move with no `analysis.json` moving. It was
+# "07a5761524c40241" after CP6; Q1053 re-analyses under it.
+FROZEN_ANALYSIS = "112588bc71efb82d"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

@@ -330,17 +330,17 @@ class TestWordsAndTallies:
     def test_the_analysis_counts_the_wild_owner(self) -> None:
         from chess_variant_sandbox.tournament.analysis import (
             WILD_SIGHT_SERIES,
-            _count_sight,
-            _sight_tally,
+            count_sight,
+            sight_tally,
         )
 
         engine = _engine([{"piece": "W", "route": ["b5"]}], wolf_sight="freeze")
-        tally = _sight_tally(engine)
+        tally = sight_tally(engine)
         assert tally is not None and list(tally)[-3:] == list(WILD_SIGHT_SERIES)
         state = engine.make_state({"a1": ("K", 0), "f6": ("K", 1), "a6": ("R", 1), "b5": ("W", 2)})
-        _count_sight(engine, tally, state, 1)
+        count_sight(engine, tally, state, 1)
         assert tally["wild_frozen"] == [1] and tally["frozen"] == [1]
-        _count_sight(engine, tally, state, 0)
+        count_sight(engine, tally, state, 0)
         assert tally["wild_frozen"] == [1, 0]
         plain = _engine([{"piece": "W", "route": ["b5"]}])
-        assert "wild_frozen" not in (_sight_tally(plain) or {})
+        assert "wild_frozen" not in (sight_tally(plain) or {})

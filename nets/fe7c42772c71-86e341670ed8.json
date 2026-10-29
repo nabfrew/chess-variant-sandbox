@@ -1,0 +1,80 @@
+{
+  "procedure": "86e341670ed8",
+  "ruleset_hash": "fe7c42772c71",
+  "inputs_version": 1,
+  "verdict": "refused",
+  "weights_sha256": "9d840f39f823d6fae1aeea36dee61a5e99baca101da5d652ed9feeb88977cc0d",
+  "build": "774f4d9c5cb34e9a",
+  "digest": "9d840f39f823",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=db5ef1bc938e,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "db5ef1bc938e",
+      "weights_sha256": "0c22bca024a051d09e62d02f25ff69f5f3a3b41533cb36add6fd6eba29b4192e"
+    }
+  },
+  "data": {
+    "digest": "034c053809e1897e155c445f3420c75ff5a1b883da9b34dc5f4c1a8324f054dd",
+    "games": 20000,
+    "positions": 402165,
+    "most_active": 18
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.00246042,
+      0.00206826,
+      0.00164724,
+      0.00130079,
+      0.00107535,
+      0.00091595,
+      0.00082244,
+      0.0007373
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.088343
+  },
+  "acceptance": {
+    "candidate": "minimax:net=86e341670ed8,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.5,
+    "error": 0.0,
+    "games": 400,
+    "identical": 1,
+    "openings": 157,
+    "candidate_nodes": 16073408,
+    "reference_nodes": 16926296,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": false,
+    "decided_after": 200,
+    "planned_pairs": 200
+  },
+  "lineage": {
+    "parent": "db5ef1bc938e",
+    "parent_weights_sha256": "0c22bca024a051d09e62d02f25ff69f5f3a3b41533cb36add6fd6eba29b4192e",
+    "teacher": "parent:0c22bca024a0"
+  }
+}

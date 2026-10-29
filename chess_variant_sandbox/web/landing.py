@@ -1006,7 +1006,30 @@ def _ways(story: dict[str, Any] | None = None) -> str:
             + f'<a class="{today}" href="/game" data-today>{_e(PLAY_TODAY)}</a>')
 
 
-def _hero(story: dict[str, Any] | None) -> str:
+# Q1056: the landing's switch, a quiet line under the hero's words: which story of how many,
+# and a step either way through the pool (`landing.js` `wireStorySwitch`, `story.js`
+# `landingStoryTo`), without loading the page again and without keeping the choice.
+STORY_SWITCH_LABEL = "which story"
+STORY_SWITCH_SAID = "story {at} of {count}"
+STORY_PREVIOUS = "previous story"
+STORY_NEXT = "next story"
+
+
+def story_switch(at: int, count: int) -> str:
+    """The switch for the story at place `at` (from 0) of a pool of `count`, or nothing when
+    there is no other story to switch to."""
+    if count < 2:
+        return ""
+    return (
+        f'<nav class="storySwitch small muted" aria-label="{_e(STORY_SWITCH_LABEL)}">'
+        f'<button type="button" class="quiet" data-story-step="-1" aria-label="{_e(STORY_PREVIOUS)}"'
+        f' title="{_e(STORY_PREVIOUS)}">‹</button>'
+        f'<span>{_e(STORY_SWITCH_SAID.format(at=at + 1, count=count))}</span>'
+        f'<button type="button" class="quiet" data-story-step="1" aria-label="{_e(STORY_NEXT)}"'
+        f' title="{_e(STORY_NEXT)}">›</button></nav>')
+
+
+def _hero(story: dict[str, Any] | None, switch: str = "") -> str:
     ideas = _ideas(story)
     clauses = "".join(
         f'<span class="clause {idea["hue"]}{" on" if n == 0 else ""}">{_e(idea["clause"])}</span>'
@@ -1035,7 +1058,8 @@ def _hero(story: dict[str, Any] | None) -> str:
         f'<p class="landingLead">{_e(LEAD)}</p>'
         f'<div class="row landingWays">{_ways(story)}</div>'
         f'<p class="muted small">{_e(NO_ACCOUNT)}</p>'
-        "</div>"
+        + switch
+        + "</div>"
         '<figure class="heroShow" id="heroShow">'
         f'<div class="heroStage" id="heroStage">{states}</div>'
         f'<div class="row heroDots" role="group" aria-label="which idea">{dots}'
@@ -1310,10 +1334,11 @@ def html_page(version: str = DEFAULT_WEIGHTS,
     `landing.js` keeps one part when it clones the template (`?story=<key>`, else the first;
     LP6 draws one at random) and drops the others, so each part's ids stand once on the page.
     With no story holding, the journey is left out and the hero still turns."""
+    count = len(stories or [])
     parts = "".join(
         f'<div class="storyPart" data-story="{_e(story["key"])}">'
-        + _hero(story) + story_html(story, stories) + "</div>"
-        for story in stories or []) or _hero(None)
+        + _hero(story, story_switch(at, count)) + story_html(story, stories) + "</div>"
+        for at, story in enumerate(stories or [])) or _hero(None)
     pool = " ".join(story["key"] for story in stories or [])
     return (
         f'<div class="landing landingB" id="landing" data-stories="{_e(pool)}">'

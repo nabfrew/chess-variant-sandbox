@@ -52,19 +52,23 @@ ROLLED_OUT = {
     "66b001f1b790": "1851f0c2e373",  # racingkings: generation 1, kept (pilot-plan §6.7)
     "975dde173f01": "ae241123e674",  # gardner: 3c's guard child, accepted and confirmed (§9.20)
     "71912ea8ba7f": "db5ef1bc938e",  # kingofthehill: generation 0, accepted and confirmed
-    # L1's batch 1 (plan-teacher §10.8, 2026-10-22): generation 0, accepted and confirmed.
-    "0be72e61ef24": "db5ef1bc938e",  # marchfield
-    "2261f8203948": "db5ef1bc938e",  # rps annihilation (rps-v1)
-    "3c639d277808": "db5ef1bc938e",  # demotion chess (hierarchy-fall)
-    # L2's batch 2 (plan-teacher §10.11, 2026-10-24): generation 0, accepted and confirmed.
-    "57667d7861ad": "db5ef1bc938e",  # amazon ladder (hierarchy-extended)
-    "a1805ac1adc1": "db5ef1bc938e",  # kyoto
+    # L2's batch 2 (plan-teacher §10.11, 2026-10-24): generation 0, accepted and confirmed;
+    # LG's child of dobutsu was accepted and confirmed but not kept (G-P2), so gen 0 stays.
     "a2f0c65ceedf": "db5ef1bc938e",  # dobutsu
-    "add543cc28c3": "db5ef1bc938e",  # rps repaint (rps-v4)
-    "bdf2801ade24": "db5ef1bc938e",  # rps race (rps-v3)
-    "fb8a67625131": "db5ef1bc938e",  # jeson mor
-    # L2's two owed games, read by L2r (plan-teacher §10.11.7, 2026-10-27): reckoning accepted.
-    "ffc7b604bea0": "db5ef1bc938e",  # reckoning
+    # LG (plan-teacher §10.12-§10.13, 2026-10-29): generation 1, kept (twelve games; three of
+    # them, antichess, circe and rifle, on a refused generation-0 parent).
+    "0be72e61ef24": "c68907df8d4a",  # marchfield
+    "2261f8203948": "b0b1d779058c",  # rps annihilation (rps-v1)
+    "3c639d277808": "fdaace93f9d5",  # demotion chess (hierarchy-fall)
+    "3ec1560124c3": "0a83806cb796",  # antichess
+    "54a0a193da0f": "9e725621900e",  # circe
+    "57667d7861ad": "fb172640322f",  # amazon ladder (hierarchy-extended)
+    "a1805ac1adc1": "a3dd06ddf2ff",  # kyoto
+    "add543cc28c3": "ab3f11451433",  # rps repaint (rps-v4)
+    "bdf2801ade24": "9946eb49d8ae",  # rps race (rps-v3)
+    "f7a789809758": "2372dbe1cacb",  # rifle
+    "fb8a67625131": "ae8c05a4915c",  # jeson mor
+    "ffc7b604bea0": "84055e9929a5",  # reckoning
 }
 
 

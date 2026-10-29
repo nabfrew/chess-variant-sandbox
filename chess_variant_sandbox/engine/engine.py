@@ -71,6 +71,7 @@ from chess_variant_sandbox.engine.state import (
     RestTurn,
     SpyPhase,
 )
+from chess_variant_sandbox.spec.schema import format_square
 
 if TYPE_CHECKING:
     # A stub-only alias: the compiled module exports no such name at runtime.
@@ -958,4 +959,4 @@ class Engine:
 
 
 def _square_name(square: int, width: int) -> str:
-    return f"{chr(ord('a') + square % width)}{square // width + 1}"
+    return format_square(square % width, square // width)

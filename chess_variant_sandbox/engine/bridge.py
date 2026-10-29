@@ -209,7 +209,7 @@ def _flatten_dirs(
 
 # ---------------------------------------------------------------------------- flatteners
 #
-# One flattener per rule (CP1, `docs/plan-smells-python.md` PY8). Each takes the compiled
+# One flattener per rule (CP1, `docs/archive/plan-smells-python.md` PY8). Each takes the compiled
 # spec and returns the boundary keys of its rule, and beside it sits the dict of those keys'
 # inert defaults (`_INERT_DEFAULTS`, assembled after the last of them). `build_tables` is the
 # merge of their dicts, in `_FLATTENERS`' order, and no two flatteners write one key

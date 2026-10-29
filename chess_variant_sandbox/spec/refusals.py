@@ -1,4 +1,4 @@
-"""The refused pairs, by name (PY9, `docs/plan-smells-python.md` §1; box CP4).
+"""The refused pairs, by name (PY9, `docs/archive/plan-smells-python.md` §1; box CP4).
 
 Each row is one plain two-key refusal the validator still makes: two rules (or a rule and a
 property, or a rule and the lattice) that may not stand in one game, refused whenever both

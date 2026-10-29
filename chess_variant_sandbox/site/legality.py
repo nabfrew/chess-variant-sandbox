@@ -120,21 +120,21 @@ from chess_variant_sandbox.tournament.analysis import (
     CorpusAnalysis,
     GameAnalysis,
     SpyStep,
-    _count_rest,
-    _count_round,
-    _count_sight,
-    _mover_kind,
-    _moves_an_instance,
-    _rest_tally,
-    _round_tallies,
-    _sight_tally,
-    _spy_round_blunder,
-    _starting_squares,
-    _takes,
     blunder_rng,
+    count_rest,
+    count_round,
+    count_sight,
+    mover_kind,
+    moves_an_instance,
+    rest_tally,
     round_blunder,
+    round_tallies,
+    sight_tally,
     spy_holders,
     spy_loss,
+    spy_round_blunder,
+    starting_squares,
+    takes,
 )
 from chess_variant_sandbox.tournament.record import GameRecord
 from chess_variant_sandbox.tournament.runner import TournamentConfig
@@ -622,7 +622,7 @@ def trial_side(engine: Engine | None, walked: Walked, seed: int) -> int | None:
     a spy game reads the same. A round's is the pass's own reading of its step, every part
     of `_one_blunder` but the playout: `analysis.round_blunder` (a move short of the best
     against the mix, other than the one played) in a game in rounds or a blind round, and
-    `analysis._spy_round_blunder` in an announced one, where a blunder forced into the
+    `analysis.spy_round_blunder` in an announced one, where a blunder forced into the
     announcer is answered by the record's player, asked of the core. Each draws on the
     trial's own stream (`blunder_rng`), as the pass's does, so the same move is drawn.
     `engine` is needed only for a game walked in steps.
@@ -640,7 +640,7 @@ def trial_side(engine: Engine | None, walked: Walked, seed: int) -> int | None:
     seat = int(record.plies * BLUNDER_FRACTION) - step.ply
     rng = blunder_rng(seed, record)
     if step.phase is not None:
-        pair = _spy_round_blunder(engine, record, step.as_spy_step(), seat, rng)
+        pair = spy_round_blunder(engine, record, step.as_spy_step(), seat, rng)
         return None if pair is None else seat
     forced = round_blunder(engine, step.state, seat, step.moves[seat], rng)
     return None if forced is None else seat
@@ -681,7 +681,7 @@ def walk(
     target = int(len(moves) * BLUNDER_FRACTION)
 
     state = engine.initial_state()
-    starting = _starting_squares(engine, state.board)
+    starting = starting_squares(engine, state.board)
     moved: set[int] = set()
     seen = {state.key}
     keys: list[int] = []
@@ -695,8 +695,8 @@ def walk(
     material: list[float] = []
     captures: list[int] = []
     blunder = (0, 0)
-    sight = _sight_tally(engine)
-    rest = _rest_tally(engine)
+    sight = sight_tally(engine)
+    rest = rest_tally(engine)
 
     for ply, move in enumerate(moves):
         legal = engine.legal_moves(state)
@@ -728,10 +728,10 @@ def walk(
             material.append(round(evaluator.material(state, 0), 4))
 
         board = state.board
-        # The pass's own readings of a move (`analysis._mover_kind`, `_moves_an_instance`,
-        # `_starting_squares`, `_takes`), so the two cannot drift apart again as they did
+        # The pass's own readings of a move (`analysis.mover_kind`, `moves_an_instance`,
+        # `starting_squares`, `takes`), so the two cannot drift apart again as they did
         # over a fold's own move (Q875).
-        kind = _mover_kind(engine, board, move) if counting else None
+        kind = mover_kind(engine, board, move) if counting else None
         if kind is None:
             # `_analyse_game` stops counting at a move from an empty square, saying the
             # record and the spec have drifted apart. A legal move does not start on one
@@ -739,16 +739,16 @@ def walk(
             # so that the two read every game alike.
             counting = False
         else:
-            _count_sight(engine, sight, state, state.side_to_move)
-            _count_rest(engine, rest, state, state.side_to_move)
-            if _moves_an_instance(move) and move_from(move) in starting:
+            count_sight(engine, sight, state, state.side_to_move)
+            count_rest(engine, rest, state, state.side_to_move)
+            if moves_an_instance(move) and move_from(move) in starting:
                 moved.add(move_from(move))
             moves_by_type[kind] += 1
-            if _takes(board, move):
+            if takes(board, move):
                 captures_by_type[kind] += 1
             if ply % PLY_STRIDE == 0 and len(legal) > 1:
                 legal_counts.append(len(legal))
-                capture_counts.append(sum(1 for m in legal if _takes(board, m)))
+                capture_counts.append(sum(1 for m in legal if takes(board, m)))
 
         successor = engine.apply(state, move)
         if series:
@@ -849,7 +849,7 @@ def _walk_steps(
     `_play_spy_python`): once a turn, and twice a round, each seat's own branching. The
     analysis fields are `analysis._analyse_rounds`' and `_analyse_spy`'s reading, the
     round and spy tallies and the sights among them, through the pass's own counters
-    (`_count_round`, `_count_sight`, `spy_holders`, `spy_loss`). A step is sampled where the
+    (`count_round`, `count_sight`, `spy_holders`, `spy_loss`). A step is sampled where the
     pass samples it, and gives a sample for each seat with a choice when both have a move,
     which is when the pass's reading of a round exists.
     """
@@ -860,7 +860,7 @@ def _walk_steps(
     spy = engine.spy
 
     state = engine.initial_state()
-    starting = _starting_squares(engine, state.board)
+    starting = starting_squares(engine, state.board)
     moved: set[int] = set()
     seen = {state.key}
     keys: list[int] = []
@@ -872,12 +872,12 @@ def _walk_steps(
     branching: list[int] = []
     material: list[float] = []
     captures: list[int] = []
-    rounds = _round_tallies(engine)
+    rounds = round_tallies(engine)
     spies: dict[str, Any] | None = (
         {key: (None if key.startswith("lost_") else 0) for key in SPY_COUNTS} if spy else None
     )
-    sight = _sight_tally(engine)
-    rest = _rest_tally(engine)
+    sight = sight_tally(engine)
+    rest = rest_tally(engine)
     trial: Step | None = None
 
     def refuse(name: str, sentence: str, ply: int) -> Refused:
@@ -933,16 +933,16 @@ def _walk_steps(
             value = round(evaluator.material(state, 0), 4)
             material.extend([value] * len(words))
         for seat in seats:
-            _count_sight(engine, sight, state, seat)
-            _count_rest(engine, rest, state, seat)
+            count_sight(engine, sight, state, seat)
+            count_rest(engine, rest, state, seat)
         for move in words:
-            kind = _mover_kind(engine, board, move)
+            kind = mover_kind(engine, board, move)
             if kind is None:  # pragma: no cover - a legal move stands on its origin
                 continue
-            if _moves_an_instance(move) and move_from(move) in starting:
+            if moves_an_instance(move) and move_from(move) in starting:
                 moved.add(move_from(move))
             moves_by_type[kind] += 1
-            if _takes(board, move):
+            if takes(board, move):
                 captures_by_type[kind] += 1
 
         # The pass's sampling: a ply of the step on the stride in a spy game (a round
@@ -956,7 +956,7 @@ def _walk_steps(
             for legal in lists:
                 if len(legal) > 1:
                     legal_counts.append(len(legal))
-                    capture_counts.append(sum(1 for m in legal if _takes(board, m)))
+                    capture_counts.append(sum(1 for m in legal if takes(board, m)))
 
         events: tuple[tuple[int, int, int], ...] = ()
         if len(words) == 2:
@@ -970,7 +970,7 @@ def _walk_steps(
             trial = step
 
         if len(words) == 2:
-            _count_round(rounds, words, events)
+            count_round(rounds, words, events)
         if spies is not None and step_phase is not None:
             if len(words) == 1:
                 turn = "alternating_plies" if step_phase.name == "alternating" else "reply_turns"

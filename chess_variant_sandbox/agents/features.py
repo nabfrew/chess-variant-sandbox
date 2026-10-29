@@ -244,13 +244,12 @@ def feature_context(spec: CompiledSpec) -> FeatureContext:
     """
     base = Evaluator.for_spec(spec, mobility_weight=0.0)
 
-    stride = spec.side_stride
     counts = [0] * spec.n_types
     total = 0.0
     for square in range(spec.n_squares):
         value = spec.initial_board[square]
-        if value and (value - 1) // stride != WILD:
-            piece_type = (value - 1) % spec.n_types
+        if value and spec.owner_of(value) != WILD:
+            piece_type = spec.type_of(value)
             counts[piece_type] += 1
             total += base.values[piece_type]
 
@@ -353,7 +352,7 @@ def _score_ceiling(spec: CompiledSpec, base: Evaluator, counts: list[int]) -> fl
                 spec.npcs.bounty[square]
                 for square in range(spec.n_squares)
                 if spec.initial_board[square]
-                and (spec.initial_board[square] - 1) // spec.side_stride == WILD
+                and spec.owner_of(spec.initial_board[square]) == WILD
             ),
             1.0,
         )
@@ -549,6 +548,7 @@ class FeatureEvaluator:
         if not ctx.has_capture_matrix:
             return 0.0
         n_types = ctx.n_types
+        spec = ctx.base.spec
         board = state.board[: ctx.n_squares]
 
         # One pass for the live army, by owner and type, so the valuation below is a
@@ -556,7 +556,7 @@ class FeatureEvaluator:
         live = [[0] * n_types, [0] * n_types]
         for value in board:
             if value:
-                owner, piece_type = (value - 1) // ctx.side_stride, (value - 1) % n_types
+                owner, piece_type = spec.owner_of(value), spec.type_of(value)
                 if owner == WILD:
                     continue
                 live[owner][piece_type] += 1
@@ -586,7 +586,7 @@ class FeatureEvaluator:
         for value in board:
             if value == 0:
                 continue
-            owner, piece_type = (value - 1) // ctx.side_stride, (value - 1) % n_types
+            owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner == WILD:
                 continue
             # The override is what the live share scales, not the derived table: the
@@ -628,7 +628,7 @@ class FeatureEvaluator:
         """
         if ctx.height < 2:
             return 0.0
-        n_types = ctx.n_types
+        spec = ctx.base.spec
         width = ctx.width
         span = ctx.height - 1
         total = 0.0
@@ -636,7 +636,7 @@ class FeatureEvaluator:
         for square, value in enumerate(state.board[: ctx.n_squares]):
             if value == 0:
                 continue
-            owner, piece_type = (value - 1) // ctx.side_stride, (value - 1) % n_types
+            owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner == WILD or piece_type in ctx.royal_types:
                 continue
             rank = square // width
@@ -656,6 +656,7 @@ class FeatureEvaluator:
         here. Counted as the opponent's, which is what the two-row table did, a boar
         parked on the centre made both players look worse placed than they were.
         """
+        spec = ctx.base.spec
         width = ctx.width
         cx, cy = ctx.centre
         total = 0.0
@@ -663,7 +664,7 @@ class FeatureEvaluator:
         for square, value in enumerate(state.board[: ctx.n_squares]):
             if value == 0:
                 continue
-            owner = (value - 1) // ctx.side_stride
+            owner = spec.owner_of(value)
             if owner == WILD:
                 continue
             rank, file = divmod(square, width)
@@ -758,7 +759,7 @@ class FeatureEvaluator:
         """
         if not ctx.promotable:
             return 0.0
-        n_types = ctx.n_types
+        spec = ctx.base.spec
         share = [0.0, 0.0]
         for side in (0, 1):
             eligible = 0
@@ -767,7 +768,7 @@ class FeatureEvaluator:
             for square, value in enumerate(state.board[: ctx.n_squares]):
                 if value == 0:
                     continue
-                owner, piece_type = (value - 1) // ctx.side_stride, (value - 1) % n_types
+                owner, piece_type = spec.owner_of(value), spec.type_of(value)
                 if owner != side or piece_type not in ctx.promotable:
                     continue
                 eligible += 1
@@ -798,7 +799,7 @@ class FeatureEvaluator:
         """
         if not ctx.reach_types or not ctx.goal_distance:
             return 0.0
-        n_types = ctx.n_types
+        spec = ctx.base.spec
         near = [0.0, 0.0]
         for side in (0, 1):
             if not ctx.reach_squares[side]:
@@ -807,7 +808,7 @@ class FeatureEvaluator:
             for square, value in enumerate(state.board[: ctx.n_squares]):
                 if value == 0:
                     continue
-                owner, piece_type = (value - 1) // ctx.side_stride, (value - 1) % n_types
+                owner, piece_type = spec.owner_of(value), spec.type_of(value)
                 if owner != side or piece_type not in ctx.reach_types:
                     continue
                 distance = ctx.goal_distance[side][piece_type][square]
@@ -857,7 +858,7 @@ class FeatureEvaluator:
         """
         if not ctx.has_facing:
             return 0.0
-        n_types = ctx.n_types
+        spec = ctx.base.spec
         n_facings = ctx.n_facings
         step = 4 // n_facings
         total = 0.0
@@ -865,11 +866,10 @@ class FeatureEvaluator:
         for value in state.board[: ctx.n_squares]:
             if value == 0:
                 continue
-            frame, piece_type = (value - 1) // n_types, (value - 1) % n_types
-            owner = frame // n_facings
+            owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner == WILD or ctx.facing_axes[piece_type] < 2:
                 continue
-            aligned = _ALIGNMENT[(frame % n_facings) * step]
+            aligned = _ALIGNMENT[spec.facing_of(value) * step]
             total += aligned if owner == player else -aligned
             count += 1
         return total / count if count else 0.0
@@ -893,7 +893,7 @@ def _extinction_own(
         lists.append(tuple(
             (piece_type, sum(
                 1 for value in spec.initial_board
-                if low <= value < low + stride and (value - 1) % spec.n_types == piece_type
+                if low <= value < low + stride and spec.type_of(value) == piece_type
             ))
             for piece_type in rule.side_types[player]
         ))
@@ -968,16 +968,16 @@ def _score_gap(state: GameState, ctx: FeatureContext, player: int) -> float:
                     1
                     for square in scoring.squares[side]
                     if state.board[square]
-                    and (state.board[square] - 1) // ctx.side_stride == side
+                    and ctx.base.spec.owner_of(state.board[square]) == side
                 )
             )
     else:
         material = scoring.count == "material"
-        n_types = ctx.n_types
+        spec = ctx.base.spec
         for value in state.board[: ctx.n_squares]:
             if value == 0:
                 continue
-            owner, piece_type = (value - 1) // ctx.side_stride, (value - 1) % n_types
+            owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner == WILD:
                 continue
             counts[owner] += ctx.base.spec.piece_values[piece_type] if material else 1.0

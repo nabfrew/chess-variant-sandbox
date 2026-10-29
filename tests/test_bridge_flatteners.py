@@ -1,4 +1,4 @@
-"""`bridge.build_tables` is one flattener per rule, merged (CP1, `docs/plan-smells-python.md` PY8).
+"""`bridge.build_tables` is one flattener per rule, merged (CP1, `docs/archive/plan-smells-python.md` PY8).
 
 What the split has to keep true: no two flatteners write one key (a later one would
 silently overwrite an earlier one's answer in the merge), each rule's inert rows name only

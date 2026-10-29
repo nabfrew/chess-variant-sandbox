@@ -1858,6 +1858,11 @@ RULES += """
   .landingB .heroDot { width: 12px; height: 12px; min-height: 0; padding: 0; border-radius: 50%;
              border: 1px solid var(--edge); background: transparent; }
   .landingB .heroDot.on { background: var(--ink); border-color: var(--ink); }
+  /* Q1056: the story switch, a quiet line under the hero's words. */
+  .landingB .storySwitch { display: flex; align-items: center; gap: 2px; margin: 4px 0 0 -8px; }
+  .landingB .storySwitch button.quiet { min-height: var(--ctl-h-sm); min-width: var(--ctl-h-sm); padding: 0 8px;
+                                        color: var(--muted); font-weight: 400; font-size: 18px; line-height: 1; }
+  .landingB .storySwitch button.quiet:hover:not(:disabled) { color: var(--ink); text-decoration: none; }
   .landingB .journey { margin: 8px 0 40px; }
   .landingB .journeyTitle { font-size: 30px; line-height: 36px; margin: 0 0 16px; }
   .landingB .journeyGrid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; }

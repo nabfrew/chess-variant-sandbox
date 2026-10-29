@@ -1313,15 +1313,14 @@ def armies(game: Game) -> list[list[dict[str, Any]]]:
     engine = engine_for(game.spec)
     state = engine.initial_state()
     types = engine.spec.n_types
-    # By the army's stride, not the type count: with a facing, `// n_types` is the frame
-    # a piece reads its moves from and the second player's pieces would be counted as a
-    # third and fourth army that does not exist. And by `n_owners` rather than by 2, so
+    # By `owner_of`, not the type count: with a facing, `// n_types` is the frame
+    # a piece reads its moves from. And by `n_owners` rather than by 2, so
     # that a wild piece lands in its own row instead of indexing off the end.
-    stride = engine.spec.side_stride
+    spec = engine.spec
     counts = [[0] * types for _ in range(engine.spec.n_owners)]
     for value in state.board:
         if value:
-            counts[(value - 1) // stride][(value - 1) % types] += 1
+            counts[spec.owner_of(value)][spec.type_of(value)] += 1
     # A ruleset could open with something already in hand; no committed one does, and an
     # army summary that ignored it would be wrong for the first that did. A hand is a
     # player's by construction -- nothing is ever held for a wild piece.

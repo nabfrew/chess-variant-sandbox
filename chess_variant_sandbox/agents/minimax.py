@@ -704,13 +704,13 @@ class MinimaxAgent:
         spec = self.engine.spec
         values = self.evaluator.values
         victim = board[move_to(move)]
-        gain = values[(victim - 1) % spec.n_types] if victim else 0.0
+        gain = values[spec.type_of(victim)] if victim else 0.0
         # Schema 13: a sweep's path victims are summed onto the target's, in ray order, as
         # `agents.rs::capture_gain` sums them.
         if move_type(move) == MOVE_SWEEP:
             for square in spec.sweep_path(board, move_from(move), move_to(move)):
                 if board[square]:
-                    gain += values[(board[square] - 1) % spec.n_types]
+                    gain += values[spec.type_of(board[square])]
         return gain
 
 

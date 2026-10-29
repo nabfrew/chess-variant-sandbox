@@ -865,7 +865,7 @@ _RULES_KEYS = {
 }
 # ------------------------------------------------------------ where a rule names a piece
 #
-# Every schema position that holds a piece id, once (CP2, `docs/plan-smells-python.md`
+# Every schema position that holds a piece id, once (CP2, `docs/archive/plan-smells-python.md`
 # PY10). Two readers walk it: `relate` renames ids at these positions (and `likeness`
 # reads them as ``<piece>``), and `transform.drop_piece` takes a removed piece out of
 # them. Before this map they were two copies, a declarative one in `relate` and a

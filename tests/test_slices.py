@@ -433,6 +433,29 @@ LIBRARY = test_index_quality.RUNS
 # "c14ee0bda2bdf7b3". No index, interval or verdict moved; the replaced measurements, with the
 # stamp this window held, are kept under each game's `runs/<hash>/previous/`
 # (`docs/reference/replay-2026-10-31.md`).
+#
+# **Opened 2026-10-28 by Q529** (`docs/reference/search-depth.md` §4): `metrics/components.py`'s
+# `ladder_split` detail reports `rung_depth` and `weaker_seat_depth`, which moves `metrics`
+# (`FROZEN_METRICS`); `analysis` and the build fingerprint are unmoved. No gate, component or
+# weights version reads the new keys, so no number should move. The window is the stamp RC1 left
+# the library; **the next library re-score empties it**.
+#
+# **Kept open 2026-10-28 by CP6** (`docs/archive/plan-smells-python.md` PY3): the evaluator, the analysis
+# pass and `engine.py` decode a board byte through the spec, which moves `metrics` and `analysis`
+# again with no number on a library game. The window is the stamp RC1 left, as before; **Q1053's
+# re-score empties it**.
+#
+# **Kept open again 2026-10-28 by CP7** (`docs/archive/plan-smells-python.md` PY17): the analysis pass's
+# round counters are renamed public and moved, which moves `metrics` and `analysis` with no number
+# on a library game; the window is still the stamp RC1 left, and **Q1053's re-score empties it**.
+#
+# **Emptied 2026-10-29 by Q1053**, that re-score: the 97 library games the window held (the other
+# 12 re-measured by LG-grade the same day) re-analysed and re-scored from their stored records on
+# core `2bc384e68ed037fa` under `metrics` "92acf3baf7eb5664" and `analysis` "112588bc71efb82d",
+# nothing re-played. No index, interval, viability or verdict moved; every run's `index-v12.json`
+# gained only `ladder_split.rung_depth` and `weaker_seat_depth`. The replaced measurements, with
+# the stamp this window held, are kept under each game's `runs/<hash>/previous/`
+# (`docs/reference/rescore-2026-10-29.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

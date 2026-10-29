@@ -5,9 +5,10 @@ pool on `<html data-stories>`; `web/static/story.js`, in the head after the shel
 draws one before the first paint. Held here: the page's bytes do not depend on the draw; the
 head script is in the digest table and served by both servers; every story in the pool is
 in the markup and the drawn headline; a story that stops holding leaves both; the script's
-draw (`?story=`, a reload or a step back keeping the tab's story, any other load drawing
-among the others, refused storage, no pool); and `/llms.txt`'s stable paragraph. The browser
-half (twenty loads, the scroll, reduced motion) is the look check's and LP6's record.
+draw (`?story=`; Q1056: every other opening, a reload included, uniform over the whole pool
+and keeping nothing; the switch stepping through the pool; refused storage, no pool); the
+switch's markup; and `/llms.txt`'s stable paragraph. The browser half (the loads, the
+switch, the scroll, reduced motion) is the look check's and Q1056's commit.
 """
 
 from __future__ import annotations
@@ -173,8 +174,11 @@ const REFUSED = { getItem() { throw new Error('denied'); }, setItem() { throw ne
 function leave(y) { SHOWN = attrs['data-story']; window.scrollY = y; HIDE.forEach(fn => fn()); SHOWN = null; }
 Object.defineProperty(globalThis, 'sessionStorage', { get: () => STORAGE, configurable: true });
 // A seeded stream in place of the browser's, so a run is the same every time.
-let SEED = 12345;
-Math.random = () => { SEED = (SEED * 1103515245 + 12345) % 2147483648; return SEED / 2147483648; };
+// `FIXED` stands in for the stream's next value when a test names one.
+let SEED = 12345; let FIXED = null;
+Math.random = () => {
+  if (FIXED !== null) return FIXED;
+  SEED = (SEED * 1103515245 + 12345) % 2147483648; return SEED / 2147483648; };
 const SCRIPT = SOURCE;
 // One load: a fresh document holding `pool`, at `where`, arrived by `nav`.
 function load(pool, nav, where) {
@@ -202,13 +206,44 @@ def _run(body: str, storage: str = "STORE") -> Any:
 POOL = " ".join(KEYS)
 
 
-def test_twenty_plain_loads_show_every_story_and_never_one_twice_running() -> None:
-    seen = _run(f"const seen = []; for (let i = 0; i < 20; i++) seen.push(load({POOL!r}).story);"
+def test_the_pick_is_uniform_and_reaches_every_place() -> None:
+    """Q1056: under a uniform stream the pick lands on each place of a pool equally often,
+    for every pool size the stylesheet has room for, the stream's two ends included."""
+    said = _run(f"load({POOL!r}); const out = {{}}; const K = 1000;"
+                f"for (let n = 1; n <= {landing.STORY_SLOTS}; n++) {{"
+                "  const counts = new Array(n).fill(0);"
+                "  for (let k = 0; k < n * K; k++) {"
+                "    FIXED = k / (n * K); counts[window.landingStoryPick(n)]++; }"
+                "  FIXED = 0; const low = window.landingStoryPick(n);"
+                "  FIXED = 1 - Number.EPSILON / 2; const high = window.landingStoryPick(n);"
+                "  FIXED = 1; const one = window.landingStoryPick(n);"
+                "  out[n] = { counts, low, high, one }; }"
+                "console.log(JSON.stringify(out));")
+    for n in range(1, landing.STORY_SLOTS + 1):
+        one = said[str(n)]
+        assert one["counts"] == [1000] * n, n
+        assert (one["low"], one["high"], one["one"]) == (0, n - 1, n - 1), n
+
+
+def test_each_opening_draws_from_the_whole_pool() -> None:
+    """Every story is reachable from a plain load, and what the stream says is what is
+    shown: no story is left out for having been shown last, and nothing is kept."""
+    said = _run(f"const shown = []; const n = {len(KEYS)};"
+                f"for (let i = 0; i < n; i++) {{ FIXED = (i + 0.5) / n; shown.push(load({POOL!r}).story); }}"
+                f"FIXED = 0; const again = [load({POOL!r}).story, load({POOL!r}).story];"
+                "console.log(JSON.stringify({ shown, again, kept: Object.keys(store) }));")
+    assert said["shown"] == KEYS
+    assert said["again"] == [KEYS[0], KEYS[0]]
+    assert said["kept"] == []
+
+
+def test_many_openings_spread_over_every_story() -> None:
+    said = _run("const seen = {}; for (let i = 0; i < 4000; i++) {"
+                f"  const k = load({POOL!r}).story; seen[k] = (seen[k] || 0) + 1; }}"
                 "console.log(JSON.stringify(seen));")
-    assert len(seen) == 20 and set(seen) <= set(KEYS)
-    assert all(a != b for a, b in zip(seen, seen[1:], strict=False))
-    # Each load draws among the three the last did not show (a seeded stream here).
-    assert set(seen) == set(KEYS)
+    assert set(said) == set(KEYS)
+    for key in KEYS:  # a seeded stream: about 4000 / n each
+        assert abs(said[key] - 4000 / len(KEYS)) < 120, said
 
 
 def test_the_place_in_the_pool_goes_with_the_key() -> None:
@@ -218,31 +253,61 @@ def test_the_place_in_the_pool_goes_with_the_key() -> None:
 
 def test_a_named_story_is_kept() -> None:
     said = _run(f"const a = load({POOL!r}, 'navigate', {{ search: '?story=blast' }});"
-                f"const b = load({POOL!r}, 'reload');"
+                f"const b = load({POOL!r}, 'reload', {{ search: '?story=blast' }});"
                 "console.log(JSON.stringify([a.story, a.at, b.story]));")
     assert said == ["blast", str(KEYS.index("blast")), "blast"]
 
 
-def test_a_reload_and_a_step_back_keep_the_tabs_story() -> None:
-    said = _run(f"const a = load({POOL!r}); const b = load({POOL!r}, 'reload');"
-                f"const c = load({POOL!r}, 'back_forward'); const d = load({POOL!r});"
-                "console.log(JSON.stringify([a.story, b.story, c.story, d.story]));")
-    assert said[0] == said[1] == said[2]
-    assert said[3] != said[0]
+def test_a_reload_and_a_step_back_draw_again() -> None:
+    """Q1056: opening the page again, by a reload or a step back, is a fresh draw."""
+    said = _run(f"FIXED = 0; const a = load({POOL!r}); FIXED = 0.99; const b = load({POOL!r}, 'reload');"
+                f"FIXED = 0.3; const c = load({POOL!r}, 'back_forward');"
+                "console.log(JSON.stringify([a.story, b.story, c.story]));")
+    assert said == [KEYS[0], KEYS[-1], KEYS[int(0.3 * len(KEYS))]]
 
 
-def test_a_reload_comes_back_where_the_reader_was() -> None:
-    said = _run(f"const a = load({POOL!r}); leave(2200);"
-                f"const b = load({POOL!r}, 'reload'); const first = window.landingScroll();"
+def test_the_switch_steps_through_the_pool_and_keeps_nothing() -> None:
+    said = _run(f"FIXED = 0; const a = load({POOL!r});"
+                "const steps = [1, 1, -1, -1, -1].map(s => window.landingStoryTo(s));"
+                "const at = document.documentElement.getAttribute('data-story-at');"
+                f"FIXED = 0.99; const b = load({POOL!r}, 'reload');"
+                "console.log(JSON.stringify({ a: a.story, steps, at, b: b.story, kept: Object.keys(store) }));")
+    n = len(KEYS)
+    assert said["a"] == KEYS[0]
+    assert said["steps"] == [KEYS[1], KEYS[2 % n], KEYS[1], KEYS[0], KEYS[-1]]
+    assert said["at"] == str(n - 1)
+    assert said["b"] == KEYS[-1]
+    assert said["kept"] == []
+
+
+def test_the_switch_leaves_a_named_story() -> None:
+    said = _run(f"const a = load({POOL!r}, 'navigate', {{ search: '?story={KEYS[0]}' }});"
+                "const b = window.landingStoryTo(1);"
+                "load(null); const none = window.landingStoryTo(1);"
+                "console.log(JSON.stringify([a.story, b, none]));")
+    assert said == [KEYS[0], KEYS[1], None]
+
+
+def test_a_reload_of_a_named_story_comes_back_where_the_reader_was() -> None:
+    named = f"{{ search: '?story={KEYS[1]}' }}"
+    said = _run(f"const a = load({POOL!r}, 'navigate', {named}); leave(2200);"
+                f"const b = load({POOL!r}, 'reload', {named}); const first = window.landingScroll();"
                 "const again = window.landingScroll(); leave(900);"
-                f"const c = load({POOL!r}, 'back_forward'); const back = window.landingScroll();"
-                f"leave(500); const d = load({POOL!r}); const fresh = window.landingScroll();"
+                f"const c = load({POOL!r}, 'back_forward', {named}); const back = window.landingScroll();"
+                f"leave(500); const d = load({POOL!r}, 'navigate', {named}); const fresh = window.landingScroll();"
                 "console.log(JSON.stringify([a.story === b.story, first, again, back, fresh]));")
     assert said == [True, 2200, None, 900, None]
 
 
+def test_a_reload_of_a_drawn_story_starts_at_the_top() -> None:
+    said = _run(f"FIXED = 0; load({POOL!r}); leave(2200); load({POOL!r}, 'reload');"
+                "console.log(JSON.stringify(window.landingScroll()));")
+    assert said is None
+
+
 def test_refused_storage_comes_back_at_the_top() -> None:
-    said = _run(f"load({POOL!r}); leave(2200); load({POOL!r}, 'reload');"
+    named = f"{{ search: '?story={KEYS[1]}' }}"
+    said = _run(f"load({POOL!r}, 'navigate', {named}); leave(2200); load({POOL!r}, 'reload', {named});"
                 "console.log(JSON.stringify(window.landingScroll()));", storage="REFUSED")
     assert said is None
 
@@ -267,8 +332,7 @@ def test_no_pool_draws_nothing() -> None:
 
 
 def test_a_load_of_the_games_spends_no_draw() -> None:
-    """`/game` and a game's address draw only when the landing is opened from them, so a
-    trip to the games and a step back leave the tab's story where it was."""
+    """`/game` and a game's address draw only when the landing is opened from them."""
     said = _run(f"const a = load({POOL!r});"
                 f"const g = load({POOL!r}, 'navigate', {{ pathname: '/game' }});"
                 f"const h = load({POOL!r}, 'navigate', {{ pathname: '/game/0123456789ab' }});"
@@ -276,8 +340,7 @@ def test_a_load_of_the_games_spends_no_draw() -> None:
                 f"const about = load({POOL!r}, 'navigate', {{ pathname: '/game', hash: '#/about' }});"
                 "console.log(JSON.stringify([a.story, g.story, h.story, back.story, about.story]));")
     assert said[1] is None and said[2] is None
-    assert said[3] == said[0]
-    assert said[4] in KEYS and said[4] != said[0]
+    assert said[0] in KEYS and said[3] in KEYS and said[4] in KEYS
 
 
 def test_the_landing_keeps_the_drawn_part() -> None:
@@ -286,6 +349,45 @@ def test_the_landing_keeps_the_drawn_part() -> None:
     assert "window.landingStory()" in body
     # Without the head script it falls back to `?story=` and then the first.
     assert "get('story')" in body and "parts[0]" in body
+
+
+# ------------------------------------------------------------------ the switch (Q1056)
+
+
+def test_each_story_carries_a_quiet_switch_naming_its_place(drawn: dict[str, Any]) -> None:
+    html = front.home("https://site.example")
+    template = html[html.index('<template id="landingPage">'):]
+    for at, key in enumerate(KEYS):
+        start = template.index(f'<div class="storyPart" data-story="{key}">')
+        part = template[start:template.index("</template>")]
+        nxt = part.find('<div class="storyPart"', 1)
+        part = part[:nxt] if nxt > 0 else part
+        assert part.count('<nav class="storySwitch') == 1, key
+        switch = part[part.index('<nav class="storySwitch'):]
+        switch = switch[:switch.index("</nav>")]
+        assert f'aria-label="{landing.STORY_SWITCH_LABEL}"' in switch
+        assert landing.STORY_SWITCH_SAID.format(at=at + 1, count=len(KEYS)) in switch
+        for step, said in (("-1", landing.STORY_PREVIOUS), ("1", landing.STORY_NEXT)):
+            assert (f'<button type="button" class="quiet" data-story-step="{step}" '
+                    f'aria-label="{said}"') in switch
+    # The switch is in the template only: the drawn headline outside it has none.
+    assert "storySwitch" not in html[:html.index('<template id="landingPage">')]
+
+
+def test_one_story_or_none_has_no_switch() -> None:
+    assert landing.story_switch(0, 1) == "" and landing.story_switch(0, 0) == ""
+    assert "storySwitch" not in landing.html_page(stories=[])
+
+
+def test_the_landing_wires_the_switch_without_a_reload() -> None:
+    script = (Path(page.SCRIPT_DIR) / "landing.js").read_text(encoding="utf-8")
+    body = script[script.index("function wireStorySwitch"):script.index("function dropUnoffered")]
+    assert "window.landingStoryTo(" in body and "showLanding()" in body
+    assert "location.reload" not in body and "location.href =" not in body
+    assert "localStorage" not in body and "sessionStorage" not in body
+    show = script[script.index("async function showLanding"):script.index("function wirePlayDoors")]
+    assert "wireStorySwitch(view)" in show
+    assert ".landingB .storySwitch" in STYLE
 
 
 # ------------------------------------------------------------------ llms.txt

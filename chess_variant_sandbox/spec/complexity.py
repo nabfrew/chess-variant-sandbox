@@ -433,6 +433,60 @@ def _path_extras(pieces: Any) -> float:
     return _PATH_TURN * len(turns)
 
 
+# SR1a (`docs/plan-schema-next.md` §1 rank 1), charged by Q1054 with the metrics move Q529 made:
+# a jump blocked on squares of its own is one clause a player is taught about the jumps the game
+# has (which squares stop which jump), half a rule, charged once for the game as a bounty is,
+# and half of T1's turning path, which is three clauses (how it turns, never back on itself, two
+# paths to one square are one move) where this is one. On top of the descriptor it counts as.
+#
+# Free where the stated legs are the computed one, square by square, on the square lattice: a
+# spec that spells out a default measures as one that omits it (`_count_special_rules`), and a
+# lame's computed leg is the leg every lame is taught with, which is why `screen`, `range` and
+# `blocks_leaps` cost nothing on top either. On a hex lattice there is no computed leg (a lame
+# must state its legs), so stated legs are always the clause. Read off the spelling, as the
+# paths are; `_computed_leg` is `compile._lame_path` restated here because `compile.py` is not
+# in `measurement.METRICS_SOURCES` (`tests/test_lame_legs.py` holds the two together). It is
+# equivariant under every square symmetry, so a base vector's legs answer for all its turns.
+_LEGS_STATED = 0.5
+
+
+def _computed_leg(dx: int, dy: int) -> tuple[int, int]:
+    """`compile._lame_path`: one step along the dominant axis, or the midpoint halved toward
+    the mover when the two are equal."""
+    if abs(dx) == abs(dy):
+        return (abs(dx) // 2) * (1 if dx > 0 else -1), (abs(dy) // 2) * (1 if dy > 0 else -1)
+    if abs(dx) > abs(dy):
+        return (1 if dx > 0 else -1), 0
+    return 0, (1 if dy > 0 else -1)
+
+
+def _states_own_legs(move: Any, hex_lattice: bool) -> bool:
+    """Whether ``move`` states legs other than its computed one."""
+    if not isinstance(move, dict) or "legs" not in move:
+        return False
+    vectors, legs = move.get("vectors"), move.get("legs")
+    if hex_lattice or not isinstance(vectors, list) or not isinstance(legs, list):
+        return True
+    for vector, own in zip(vectors, legs, strict=False):
+        if not isinstance(vector, list) or len(vector) != 2 or not isinstance(own, list):
+            return True
+        stated = {tuple(leg) for leg in own if isinstance(leg, list)}
+        if stated != {_computed_leg(vector[0], vector[1])}:
+            return True
+    return False
+
+
+def _legs_extras(spec: dict[str, Any], pieces: Any) -> float:
+    """What a game's stated legs cost: half a rule once, if any jump states its own."""
+    board = spec.get("board")
+    hex_lattice = isinstance(board, dict) and board.get("lattice") == "hex"
+    return _LEGS_STATED if any(
+        _states_own_legs(move, hex_lattice)
+        for piece in (pieces if isinstance(pieces, list) else []) if isinstance(piece, dict)
+        for move in (piece.get("moves") or [] if isinstance(piece.get("moves"), list) else [])
+    ) else 0.0
+
+
 def _simultaneous_extras(rule: Any) -> float:
     """The part of `rules.simultaneous`' charge `_RULE_COSTS` cannot say (schema 27).
 
@@ -690,6 +744,7 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
     special_rules = (
         _count_special_rules(rules) + _spy_extras(pieces) + _speed_extras(pieces)
         + _rest_extras(pieces) + _sight_extras(pieces) + _path_extras(pieces)
+        + _legs_extras(spec, pieces)
         + _neutral_extras(spec, pieces) + _bounty_extras(pieces) + _hire_extras(spec, pieces)
     )
 

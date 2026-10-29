@@ -20,12 +20,17 @@ import pytest
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.bridge import canonical_tables
-from chess_variant_sandbox.engine.compile import compile_spec
+from chess_variant_sandbox.engine.compile import _lame_path, compile_spec
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.fairy.betza import lame_path
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec import spec_hash, validate_spec
-from chess_variant_sandbox.spec.complexity import expand_symmetry
+from chess_variant_sandbox.spec.complexity import (
+    _LEGS_STATED,
+    _computed_leg,
+    expand_symmetry,
+    measure_complexity,
+)
 from chess_variant_sandbox.spec.describe import move_sentence
 from chess_variant_sandbox.spec.legs import SYMMETRY_MAPS, stated_legs, turn
 
@@ -230,6 +235,57 @@ def test_xiangqi_is_unmoved() -> None:
                 move["legs"] = [[[0, 1]]] if move["vectors"] == [[1, 2]] else [[[1, 1]]]
     assert validate_spec(stated) == []
     assert movement(spec) == movement(stated)
+    # The computed legs written out are the default spelled out: no charge (Q1054).
+    assert measure_complexity(stated).rule_mass == measure_complexity(spec).rule_mass
+
+
+# ------------------------------------------------------------------- the charge (Q1054)
+
+
+def test_complexity_restates_the_compilers_computed_leg() -> None:
+    """`complexity._computed_leg` is `compile._lame_path` (complexity is a metrics source and
+    reads no engine code), on every vector up to four squares out."""
+    for dx, dy in itertools.product(range(-4, 5), repeat=2):
+        assert _computed_leg(dx, dy) == _lame_path(dx, dy), (dx, dy)
+
+
+def test_legs_of_its_own_cost_half_a_rule_once() -> None:
+    plain = probe([piece("E", {"kind": "lame", "vectors": [[2, 3]], "symmetry": "dihedral8"})])
+    janggi = probe([piece("E", ELEPHANT)])
+    blocked_diagonally = probe([piece("H", {"kind": "lame", "vectors": [[1, 2]],
+                                            "symmetry": "dihedral8", "legs": [[[1, 1]]]})])
+    both = probe([piece("E", ELEPHANT), piece("H", blocked_diagonally["pieces"][1]["moves"][0])])
+    base = measure_complexity(plain)
+    for spec in (janggi, blocked_diagonally):
+        assert measure_complexity(spec).special_rules == base.special_rules + _LEGS_STATED
+        assert measure_complexity(spec).rule_mass == base.rule_mass + 6.0 * _LEGS_STATED
+    assert _LEGS_STATED == 0.5
+    # Once for the game, however many jumps state their own.
+    assert measure_complexity(both).special_rules == base.special_rules + _LEGS_STATED
+
+
+def test_the_computed_leg_stated_costs_nothing() -> None:
+    horse = probe([piece("H", {"kind": "lame", "vectors": [[1, 2]], "symmetry": "dihedral8"})])
+    stated = probe([piece("H", {"kind": "lame", "vectors": [[1, 2]], "symmetry": "dihedral8",
+                                "legs": [[[0, 1]]]})])
+    assert measure_complexity(stated).special_rules == measure_complexity(horse).special_rules
+
+
+def test_a_blocked_leaps_own_legs_are_charged_too() -> None:
+    rules = {"obstacles": {"squares": ["e5"], "blocks_leaps": True}}
+    knight = {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}
+    plain = measure_complexity(probe([piece("N", knight)], rules=rules)).special_rules
+    computed = probe([piece("N", {**knight, "legs": [[[0, 1]]]})], rules=rules)
+    own = probe([piece("N", {**knight, "legs": [[[1, 1]]]})], rules=rules)
+    assert measure_complexity(computed).special_rules == plain
+    assert measure_complexity(own).special_rules == plain + _LEGS_STATED
+
+
+def test_a_hex_lames_legs_are_always_the_clause() -> None:
+    """A hex lattice has no computed leg, so stated legs are always taught, even ones that
+    happen to equal the square lattice's."""
+    spec = hex_probe([piece("N", HEX_KNIGHT)])
+    assert measure_complexity(spec).special_rules == _LEGS_STATED
 
 
 # ------------------------------------------------------------------- play

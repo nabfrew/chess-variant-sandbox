@@ -965,6 +965,53 @@ class TestTheGatesReadTheWorseHalfOfTheLadder:
         for name, value in pooled.items():
             assert raw[name + "_worst_half"] == value
 
+    def test_the_split_reports_the_depth_each_rung_and_each_halfs_weaker_seat_completed(
+        self,
+    ) -> None:
+        """Q529's groundwork: the budget split is a proxy for *both players complete enough
+        plies to see it* (`roster-confound.md` section 4), so the detail carries the
+        thing meant beside the proxy. The depth is the core's (`depth_sum`, `searches`);
+        this only divides. `greedy` does not deepen, so a half whose weaker seat is
+        `greedy` reads ``None``, never zero, and a tied pairing pools both seats."""
+        from dataclasses import replace
+
+        from chess_variant_sandbox.metrics.components import _worst_half_rates
+
+        def searched(agents, depth_sum, searches):
+            record = _ladder_record(agents, 3, 0, "checkmate")
+            return replace(record, depth_sum=depth_sum, searches=searches)
+
+        records = [
+            searched(("greedy", "minimax:nodes=6400"), (0, 40), (0, 10)),
+            searched(("minimax:nodes=400", "minimax:nodes=400"), (20, 30), (10, 10)),
+            searched(("minimax:nodes=100", "minimax:nodes=200"), (5, 15), (10, 10)),
+            searched(("minimax:nodes=800", "minimax:nodes=1600"), (30, 25), (10, 10)),
+        ]
+        _, detail = _worst_half_rates(records)
+        assert detail["rung_depth"] == {
+            "100": 0.5, "200": 1.5, "400": 2.5, "800": 3.0, "1600": 2.5, "6400": 4.0,
+        }
+        assert "0" not in detail["rung_depth"]
+        # weak: greedy (no searches) and the 100-node seat; strong: both 400s and the 800.
+        assert detail["weaker_seat_depth"] == {"weak": 0.5, "strong": round(80 / 30, 3)}
+
+        only_greedy = [searched(("greedy", "minimax:nodes=6400"), (0, 40), (0, 10))]
+        assert _worst_half_rates(only_greedy)[1]["weaker_seat_depth"] == {"pooled": None}
+
+    def test_the_depth_in_the_split_moves_no_gate(self) -> None:
+        """Groundwork, not a gate: the four worst-half rates read the same games and give
+        the same numbers whether or not any seat recorded a search."""
+        from dataclasses import replace
+
+        from chess_variant_sandbox.metrics.components import _worst_half_rates
+
+        bare = [
+            _ladder_record(("minimax:nodes=100", "minimax:nodes=6400"), 3, 0, "checkmate"),
+            _ladder_record(("minimax:nodes=400", "minimax:nodes=800"), 300, None, "ply_limit"),
+        ]
+        deep = [replace(r, depth_sum=(9, 99), searches=(3, 3)) for r in bare]
+        assert _worst_half_rates(bare)[0] == _worst_half_rates(deep)[0]
+
     def test_every_worst_half_gate_is_read_in_the_direction_that_can_fail_it(
         self,
     ) -> None:

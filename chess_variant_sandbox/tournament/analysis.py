@@ -438,65 +438,6 @@ def _commands(engine: Engine) -> bool:
     return engine.spec.sight is not None and engine.spec.sight.has_command
 
 
-def _sight_tally(engine: Engine) -> dict[str, list[int]] | None:
-    """`SIGHT_SERIES` empty, for a game with a sight, and `COMMAND_SERIES` beside it for one
-    whose sight commands; ``None`` for every other game."""
-    if engine.spec.sight is None:
-        return None
-    keys = SIGHT_SERIES + (COMMAND_SERIES if _commands(engine) else ())
-    keys += WILD_SIGHT_SERIES if _wild_sees(engine) else ()
-    return {key: [] for key in keys}
-
-
-def _count_sight(
-    engine: Engine,
-    tally: dict[str, list[int]] | None,
-    state: GameState,
-    seat: int,
-    move: int | None = None,
-) -> None:
-    """One side-turn of `SIGHT_SERIES`: ``seat`` choosing on ``state``, as the core reports the
-    effects there. In a round the state names nobody, so it is asked as the seat sees it.
-    In a game whose sight commands, `COMMAND_SERIES` too, ``move`` being the move made."""
-    if tally is None:
-        return
-    seen = state if state.side_to_move == seat else state.with_(side_to_move=seat)
-    effects = engine.effects(seen)
-    spec = engine.spec
-    commands = "commanded" in tally
-    under = [0] * (len(_SIGHT_BITS) if commands else 3)
-    for square, bits in enumerate(effects.bits):
-        if bits and spec.owner_of(state.board[square]) == seat:
-            for index, bit in enumerate(_SIGHT_BITS[: len(under)]):
-                under[index] += int(bool(bits & bit))
-    row: tuple[int, ...] = (
-        seat,
-        effects.frozen,
-        effects.disarmed,
-        effects.shielded,
-        int(effects.binds),
-        *under[:3],
-        int(effects.suppressed),
-    )
-    if commands:
-        made = move is not None and bool(move & MOVE_FOREIGN)
-        row += (
-            *under[3:],
-            effects.commanded,
-            int(made),
-            int(made and move is not None and _takes(state.board, move)),
-        )
-    if "wild_frozen" in tally:
-        wild = [0, 0, 0]
-        for square, bits in enumerate(effects.wild):
-            if bits and spec.owner_of(state.board[square]) == seat:
-                for index, bit in enumerate(_SIGHT_BITS[:3]):
-                    wild[index] += int(bool(bits & bit))
-        row += tuple(wild)
-    for key, value in zip(tally, row, strict=True):
-        tally[key].append(value)
-
-
 # Schema 29 (Q983b, `docs/plan-rest.md` §5.4, §7): what the pass records of a game whose pieces
 # rest, one entry a side-turn (a ply of a game that alternates; each seat's choice in a round),
 # every one the core's (`Engine.rest_turn` on the board the choice was made on):
@@ -511,25 +452,6 @@ def _count_sight(
 #
 # A game without a rest has no ``rest`` key at all, so its `analysis.json` is the bytes it was.
 REST_SERIES = ("side", "binds", "lifted", "resting")
-
-
-def _rest_tally(engine: Engine) -> dict[str, list[int]] | None:
-    """`REST_SERIES` empty, for a game whose pieces rest; ``None`` for every other game."""
-    if not engine.spec.rest:
-        return None
-    return {key: [] for key in REST_SERIES}
-
-
-def _count_rest(
-    engine: Engine, tally: dict[str, list[int]] | None, state: GameState, seat: int
-) -> None:
-    """One side-turn of `REST_SERIES`: ``seat`` choosing on ``state``, as the core answers it."""
-    if tally is None:
-        return
-    turn = engine.rest_turn(state, seat)
-    row = (seat, int(turn.binds), int(turn.lifted), len(state.rest[seat]))
-    for key, value in zip(REST_SERIES, row, strict=True):
-        tally[key].append(value)
 
 
 # TC7 (`docs/plan-turncoat.md` §5.8): what the pass records of a game with a purse, one entry
@@ -697,7 +619,7 @@ def _count_wild(
 ) -> None:
     spec = engine.spec
     target = board[move_to(move)]
-    if _takes(board, move) and target and spec.owner_of(target) == 2:
+    if takes(board, move) and target and spec.owner_of(target) == 2:
         wild["taken_by_players"] += 1
     for step in phase:
         if step.kind == "step":
@@ -739,14 +661,14 @@ def _analyse_game(
     # captured on its home square followed by an enemy piece moving off that square
     # credits the wrong army. Both are worth a handful of instances per game against a
     # denominator in the tens, and neither is worth a per-ply board diff to fix.
-    starting_squares = _starting_squares(engine, state.board)
+    start_squares = starting_squares(engine, state.board)
     moved_squares: set[int] = set()
     seen_keys = {state.key}
     position_keys: list[int] = []
     revisited = 0
     walked = 0
-    sight = _sight_tally(engine)
-    rest = _rest_tally(engine)
+    sight = sight_tally(engine)
+    rest = rest_tally(engine)
     wild = _wild_tally(engine)
     if wild is not None:
         wild["most_standing"] = sum(
@@ -758,19 +680,19 @@ def _analyse_game(
 
     for index, move in enumerate(record.moves):
         board = state.board
-        kind = _mover_kind(engine, board, move)
+        kind = mover_kind(engine, board, move)
         if kind is None:
             # The record and the spec have drifted apart. Stop counting rather than
             # inventing numbers; replay raises on the same condition with a message.
             break
-        _count_sight(engine, sight, state, state.side_to_move, move)
-        _count_rest(engine, rest, state, state.side_to_move)
+        count_sight(engine, sight, state, state.side_to_move, move)
+        count_rest(engine, rest, state, state.side_to_move)
         _count_neutral(engine, neutral, state, move)
         before = state
-        if _moves_an_instance(move) and move_from(move) in starting_squares:
+        if moves_an_instance(move) and move_from(move) in start_squares:
             moved_squares.add(move_from(move))
         moves_by_type[kind] += 1
-        if _takes(board, move):
+        if takes(board, move):
             captures_by_type[kind] += 1
 
         if index % PLY_STRIDE == 0:
@@ -784,7 +706,7 @@ def _analyse_game(
                 # destination" is the same reading of a capture that
                 # `captures_by_type` uses two lines up; en passant is missed by both,
                 # consistently.
-                capture_counts.append(sum(1 for m in legal if _takes(board, m)))
+                capture_counts.append(sum(1 for m in legal if takes(board, m)))
 
         mover = state.side_to_move
         if wild is None:
@@ -812,7 +734,7 @@ def _analyse_game(
         capture_counts=capture_counts,
         revisited_plies=revisited,
         walked_plies=walked,
-        starting_instances=len(starting_squares),
+        starting_instances=len(start_squares),
         moved_instances=len(moved_squares),
         position_keys=position_keys,
         sight=sight,
@@ -829,84 +751,6 @@ def _is_wild_piece(spec: Any, value: int) -> bool:
     if not value or spec.owner_of(value) != 2:
         return False
     return spec.duck is None or spec.type_of(value) != spec.duck.piece_type
-
-
-def _mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
-    """The internal type a move counts under in `moves_by_type`, or `None` from an empty
-    origin, which only a record that has drifted from its spec plays.
-
-    A drop counts under the type it drops. A fold's own move (schema 22, revised at 24)
-    counts under its end's internal type: a fold stands on no byte of the board, so its
-    origin holds nothing, or a piece standing in it that does not move (Q873, Q844's
-    finding: the pass used to stop here). Every other move counts under the type on its
-    origin, a momentum end's own move under its end's byte. `site/legality.py::walk` reads
-    a move through this too.
-    """
-    n_types = engine.spec.n_types
-    kind = move_type(move)
-    if kind in (MOVE_DROP, MOVE_BUY):
-        # TC5: a buy, like a drop, is the type it places.
-        return move_promotion(move) % n_types
-    if kind == MOVE_DUCK:
-        # Generation 42: the duck's moves count under its type, placed or passing as moved.
-        duck = engine.spec.duck
-        assert duck is not None
-        return duck.piece_type
-    if kind == MOVE_FOLD:
-        portals = engine.spec.portals
-        assert portals is not None
-        return portals.end_types[move_fold(move)]
-    occupant = board[move_from(move)]
-    return None if occupant == 0 else (occupant - 1) % n_types
-
-
-def _moves_an_instance(move: int) -> bool:
-    """Whether a move moves the piece on its origin square: a drop or a buy (TC5) moves none,
-    a hire or a bribe (TC6) changes its side where it stands, and a fold's own move leaves
-    the piece standing in it where it is."""
-    return move_type(move) not in (MOVE_DROP, MOVE_BUY, MOVE_FOLD, MOVE_DUCK, MOVE_HIRE)
-
-
-def _starting_squares(engine: Engine, board: bytes) -> set[int]:
-    """The squares of the opening board's pieces: the instances `instance_participation`
-    counts.
-
-    A portal is not one of them (Q875, `docs/reference/portal-showcase-ideas.md` beside
-    finding 1). It is part of the board that pieces move through, held by no player and
-    taken by no capture, so a fixed portal is not an idle piece and a moved one is not a
-    piece that played. A fold stands on no byte and was never counted; a momentum end
-    stands on its byte and is left out here, so the two kinds read alike.
-    """
-    portals = engine.spec.portals
-    n_types = engine.spec.n_types
-    return {
-        square
-        for square in range(engine.spec.n_squares)
-        if board[square] != 0
-        and (portals is None or not portals.is_end((board[square] - 1) % n_types))
-    }
-
-
-def _takes(board: bytes, move: int) -> bool:
-    """Whether a move is read as a capture: it ends on an occupied square, and is not one of
-    the three kinds that end on one and take nothing, as the core's `apply` reads them.
-
-    A rotation's target is its own square, which holds the piece that turns (Q875: it was
-    read as a capture, so a game whose pieces turn offered one in nearly every position).
-    A file-based castling can land the king on its own rook, or on its own square, and
-    moves the rook rather than removing it. A fold's own move may end on a piece and leave
-    it standing (`docs/archive/plan-portals-2.md` §3R.1 rule 6). A duck's pass (generation 42)
-    names the duck's own square. These are the four `agents.rs::capture_gain` and
-    `agents/minimax.py` leave out. A hire or a bribe (TC6) names the piece it buys, which
-    changes sides and is not taken.
-    """
-    return board[move_to(move)] != 0 and move_type(move) not in (
-        MOVE_ROTATE,
-        MOVE_CASTLE,
-        MOVE_FOLD,
-        MOVE_DUCK,
-        MOVE_HIRE,
-    )
 
 
 class _ProbeExhausted(Exception):
@@ -1159,12 +1003,6 @@ _COLLISION, _VOID, _INITIATIVE, _BARRED = 0, 1, 2, 3
 _ORDER, _LOST, _UNPLAYED = 5, 6, 7
 
 
-def _round_tallies(engine: Engine) -> dict[str, int]:
-    """`ROUND_COUNTS` at nought, and `SPEED_COUNTS` beside them where a speed is declared."""
-    sim = engine.spec.simultaneous
-    keys = ROUND_COUNTS + (SPEED_COUNTS if sim is not None and sim.speed else ())
-    return dict.fromkeys(keys, 0)
-
 # The share of a mix read as the solver's residue rather than as a move the equilibrium
 # plays: what the first two of the solver's iterations alone can leave on a move, since
 # its average weights iteration t by t. Regret matching+'s average keeps that much of its
@@ -1316,12 +1154,12 @@ def _analyse_rounds(
     near_best: list[int] = []
     legal_counts: list[int] = []
     capture_counts: list[int] = []
-    counts = _round_tallies(engine)
-    sight = _sight_tally(engine)
-    rest = _rest_tally(engine)
+    counts = round_tallies(engine)
+    sight = sight_tally(engine)
+    rest = rest_tally(engine)
 
     state = engine.initial_state()
-    starting_squares = _starting_squares(engine, state.board)
+    start_squares = starting_squares(engine, state.board)
     moved_squares: set[int] = set()
     seen_keys = {state.key}
     position_keys: list[int] = []
@@ -1335,17 +1173,17 @@ def _analyse_rounds(
             # Drifted from its spec; stop counting, as the alternating walk does.
             break
         for seat in (0, 1):
-            _count_sight(engine, sight, state, seat)
-            _count_rest(engine, rest, state, seat)
+            count_sight(engine, sight, state, seat)
+            count_rest(engine, rest, state, seat)
         board = state.board
         for move in pair:
-            kind = _mover_kind(engine, board, move)
+            kind = mover_kind(engine, board, move)
             if kind is None:  # pragma: no cover - a legal move stands on its origin
                 continue
-            if _moves_an_instance(move) and move_from(move) in starting_squares:
+            if moves_an_instance(move) and move_from(move) in start_squares:
                 moved_squares.add(move_from(move))
             moves_by_type[kind] += 1
-            if _takes(board, move):
+            if takes(board, move):
                 captures_by_type[kind] += 1
 
         # The ply stride, read at the round's first ply: every fourth round.
@@ -1357,11 +1195,11 @@ def _analyse_rounds(
                         near_best.append(reading.near_best(seat, epsilon))
                         legal_counts.append(len(lists[seat]))
                         capture_counts.append(
-                            sum(1 for move in lists[seat] if _takes(board, move))
+                            sum(1 for move in lists[seat] if takes(board, move))
                         )
 
         state, _, events = engine.apply_round_with_phase(state, pair[0], pair[1])
-        _count_round(counts, pair, events)
+        count_round(counts, pair, events)
 
         # Two plies a round, as every per-ply series in the record: the key after the
         # round twice, and a revisit counted on both, so the rate is per round.
@@ -1382,7 +1220,7 @@ def _analyse_rounds(
         capture_counts=capture_counts,
         revisited_plies=revisited,
         walked_plies=walked,
-        starting_instances=len(starting_squares),
+        starting_instances=len(start_squares),
         moved_instances=len(moved_squares),
         position_keys=position_keys,
         rounds=counts,
@@ -1582,13 +1420,12 @@ def _spy_squares(engine: Engine, board: bytes, player: int) -> set[int]:
     spec = engine.spec
     assert spec.spy is not None
     types = spec.spy.types[player]
-    per_owner = spec.n_types * spec.n_facings
     return {
         square
         for square in range(spec.n_squares)
         if board[square] != 0
-        and (board[square] - 1) // per_owner == player
-        and (board[square] - 1) % spec.n_types in types
+        and spec.owner_of(board[square]) == player
+        and spec.type_of(board[square]) in types
     }
 
 
@@ -1701,35 +1538,35 @@ def _analyse_spy(
     near_best: list[int] = []
     legal_counts: list[int] = []
     capture_counts: list[int] = []
-    rounds = _round_tallies(engine)
+    rounds = round_tallies(engine)
     spy: dict[str, Any] = {
         key: (None if key.startswith("lost_") else 0) for key in SPY_COUNTS
     }
 
     start = engine.initial_state()
-    starting_squares = _starting_squares(engine, start.board)
+    start_squares = starting_squares(engine, start.board)
     moved_squares: set[int] = set()
     seen_keys = {start.key}
     position_keys: list[int] = []
     revisited = 0
     walked = 0
 
-    sight = _sight_tally(engine)
-    rest = _rest_tally(engine)
+    sight = sight_tally(engine)
+    rest = rest_tally(engine)
 
     for step in spy_steps(engine, record):
         state, board = step.state, step.state.board
         for seat in step.seats:
-            _count_sight(engine, sight, state, seat)
-            _count_rest(engine, rest, state, seat)
+            count_sight(engine, sight, state, seat)
+            count_rest(engine, rest, state, seat)
         for move in step.moves:
-            kind = _mover_kind(engine, board, move)
+            kind = mover_kind(engine, board, move)
             if kind is None:  # pragma: no cover - a legal move stands on its origin
                 continue
-            if _moves_an_instance(move) and move_from(move) in starting_squares:
+            if moves_an_instance(move) and move_from(move) in start_squares:
                 moved_squares.add(move_from(move))
             moves_by_type[kind] += 1
-            if _takes(board, move):
+            if takes(board, move):
                 captures_by_type[kind] += 1
 
         if any((step.ply + k) % PLY_STRIDE == 0 for k in range(len(step.moves))):
@@ -1748,7 +1585,7 @@ def _analyse_spy(
                 seen_keys.add(after.key)
         else:
             spy[f"{step.phase.name}_rounds"] += 1
-            _count_round(rounds, step.moves, step.events)
+            count_round(rounds, step.moves, step.events)
             # Two plies a round, as the round walk counts them.
             walked += 2
             position_keys.extend((after.key, after.key))
@@ -1774,7 +1611,7 @@ def _analyse_spy(
         capture_counts=capture_counts,
         revisited_plies=revisited,
         walked_plies=walked,
-        starting_instances=len(starting_squares),
+        starting_instances=len(start_squares),
         moved_instances=len(moved_squares),
         position_keys=position_keys,
         rounds=rounds,
@@ -1803,7 +1640,7 @@ def _sample_spy_step(
             best = max(scores)
             near_best.append(sum(1 for s in scores if best - s <= epsilon))
             legal_counts.append(len(legal))
-            capture_counts.append(sum(1 for m in legal if _takes(board, m)))
+            capture_counts.append(sum(1 for m in legal if takes(board, m)))
         return
     lists = (step.lists[0], step.lists[1])
     if step.phase.name == "announced":
@@ -1819,37 +1656,7 @@ def _sample_spy_step(
         if len(lists[seat]) > 1:
             near_best.append(reading.near_best(seat, epsilon))
             legal_counts.append(len(lists[seat]))
-            capture_counts.append(sum(1 for move in lists[seat] if _takes(board, move)))
-
-
-def _count_round(
-    counts: dict[str, int], pair: tuple[int, ...], events: tuple[tuple[int, int, int], ...]
-) -> None:
-    """`ROUND_COUNTS` for one round: the round, a swap read off its words, its events; and
-    `SPEED_COUNTS` where the tallies hold them (an ordered round's events, schema 28)."""
-    counts["rounds"] += 1
-    ordered = any(event == _ORDER for event, _square, _player in events)
-    # Two pieces trading squares in an ordered round did not swap: the faster took the
-    # slower where it stood (`docs/archive/plan-speed.md` §2.5 B).
-    counts["swaps"] += int(not ordered and _is_swap(pair[0], pair[1]))
-    for event, _square, player in events:
-        if event == _COLLISION:
-            counts["collisions"] += 1
-            counts["collisions_both_lost"] += int(player < 0)
-        elif event == _VOID:
-            counts["void_moves"] += 1
-            if ordered:
-                counts["slower_void"] += 1
-        elif event == _ORDER:
-            counts["ordered_rounds"] += 1
-        elif event == _LOST:
-            counts["slower_lost"] += 1
-        elif event == _UNPLAYED:
-            counts["ended_after_faster"] += 1
-        elif event == _INITIATIVE:
-            counts["initiative_ties"] += 1
-        elif event == _BARRED:
-            counts["bars"] += 1
+            capture_counts.append(sum(1 for move in lists[seat] if takes(board, move)))
 
 
 def _one_spy_blunder(
@@ -1881,7 +1688,7 @@ def _one_spy_blunder(
         state = engine.apply(state, rng.choice(alternatives))
     else:
         blundering = target_ply - found.ply
-        pair = _spy_round_blunder(engine, record, found, blundering, rng)
+        pair = spy_round_blunder(engine, record, found, blundering, rng)
         if pair is None:
             return None
         state = engine.apply_round(state, pair[0], pair[1])
@@ -1897,7 +1704,207 @@ def _one_spy_blunder(
     )
 
 
-def _spy_round_blunder(
+# -------------------- the round counters, public (the legality job)
+#
+# These eleven are the second reader's contract: `site/legality.py` (the legality job, Q1000)
+# rebuilds what a browser claims by walking a round game with these same counters. Whoever
+# changes a round event changes what that job must reproduce; the job's tests pin it.
+
+
+def sight_tally(engine: Engine) -> dict[str, list[int]] | None:
+    """`SIGHT_SERIES` empty, for a game with a sight, and `COMMAND_SERIES` beside it for one
+    whose sight commands; ``None`` for every other game."""
+    if engine.spec.sight is None:
+        return None
+    keys = SIGHT_SERIES + (COMMAND_SERIES if _commands(engine) else ())
+    keys += WILD_SIGHT_SERIES if _wild_sees(engine) else ()
+    return {key: [] for key in keys}
+
+
+def count_sight(
+    engine: Engine,
+    tally: dict[str, list[int]] | None,
+    state: GameState,
+    seat: int,
+    move: int | None = None,
+) -> None:
+    """One side-turn of `SIGHT_SERIES`: ``seat`` choosing on ``state``, as the core reports the
+    effects there. In a round the state names nobody, so it is asked as the seat sees it.
+    In a game whose sight commands, `COMMAND_SERIES` too, ``move`` being the move made."""
+    if tally is None:
+        return
+    seen = state if state.side_to_move == seat else state.with_(side_to_move=seat)
+    effects = engine.effects(seen)
+    spec = engine.spec
+    commands = "commanded" in tally
+    under = [0] * (len(_SIGHT_BITS) if commands else 3)
+    for square, bits in enumerate(effects.bits):
+        if bits and spec.owner_of(state.board[square]) == seat:
+            for index, bit in enumerate(_SIGHT_BITS[: len(under)]):
+                under[index] += int(bool(bits & bit))
+    row: tuple[int, ...] = (
+        seat,
+        effects.frozen,
+        effects.disarmed,
+        effects.shielded,
+        int(effects.binds),
+        *under[:3],
+        int(effects.suppressed),
+    )
+    if commands:
+        made = move is not None and bool(move & MOVE_FOREIGN)
+        row += (
+            *under[3:],
+            effects.commanded,
+            int(made),
+            int(made and move is not None and takes(state.board, move)),
+        )
+    if "wild_frozen" in tally:
+        wild = [0, 0, 0]
+        for square, bits in enumerate(effects.wild):
+            if bits and spec.owner_of(state.board[square]) == seat:
+                for index, bit in enumerate(_SIGHT_BITS[:3]):
+                    wild[index] += int(bool(bits & bit))
+        row += tuple(wild)
+    for key, value in zip(tally, row, strict=True):
+        tally[key].append(value)
+
+
+def rest_tally(engine: Engine) -> dict[str, list[int]] | None:
+    """`REST_SERIES` empty, for a game whose pieces rest; ``None`` for every other game."""
+    if not engine.spec.rest:
+        return None
+    return {key: [] for key in REST_SERIES}
+
+
+def count_rest(
+    engine: Engine, tally: dict[str, list[int]] | None, state: GameState, seat: int
+) -> None:
+    """One side-turn of `REST_SERIES`: ``seat`` choosing on ``state``, as the core answers it."""
+    if tally is None:
+        return
+    turn = engine.rest_turn(state, seat)
+    row = (seat, int(turn.binds), int(turn.lifted), len(state.rest[seat]))
+    for key, value in zip(REST_SERIES, row, strict=True):
+        tally[key].append(value)
+
+
+def mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
+    """The internal type a move counts under in `moves_by_type`, or `None` from an empty
+    origin, which only a record that has drifted from its spec plays.
+
+    A drop counts under the type it drops. A fold's own move (schema 22, revised at 24)
+    counts under its end's internal type: a fold stands on no byte of the board, so its
+    origin holds nothing, or a piece standing in it that does not move (Q873, Q844's
+    finding: the pass used to stop here). Every other move counts under the type on its
+    origin, a momentum end's own move under its end's byte. `site/legality.py::walk` reads
+    a move through this too.
+    """
+    n_types = engine.spec.n_types
+    kind = move_type(move)
+    if kind in (MOVE_DROP, MOVE_BUY):
+        # TC5: a buy, like a drop, is the type it places.
+        return move_promotion(move) % n_types
+    if kind == MOVE_DUCK:
+        # Generation 42: the duck's moves count under its type, placed or passing as moved.
+        duck = engine.spec.duck
+        assert duck is not None
+        return duck.piece_type
+    if kind == MOVE_FOLD:
+        portals = engine.spec.portals
+        assert portals is not None
+        return portals.end_types[move_fold(move)]
+    occupant = board[move_from(move)]
+    return None if occupant == 0 else engine.spec.type_of(occupant)
+
+
+def moves_an_instance(move: int) -> bool:
+    """Whether a move moves the piece on its origin square: a drop or a buy (TC5) moves none,
+    a hire or a bribe (TC6) changes its side where it stands, and a fold's own move leaves
+    the piece standing in it where it is."""
+    return move_type(move) not in (MOVE_DROP, MOVE_BUY, MOVE_FOLD, MOVE_DUCK, MOVE_HIRE)
+
+
+def starting_squares(engine: Engine, board: bytes) -> set[int]:
+    """The squares of the opening board's pieces: the instances `instance_participation`
+    counts.
+
+    A portal is not one of them (Q875, `docs/reference/portal-showcase-ideas.md` beside
+    finding 1). It is part of the board that pieces move through, held by no player and
+    taken by no capture, so a fixed portal is not an idle piece and a moved one is not a
+    piece that played. A fold stands on no byte and was never counted; a momentum end
+    stands on its byte and is left out here, so the two kinds read alike.
+    """
+    portals = engine.spec.portals
+    spec = engine.spec
+    return {
+        square
+        for square in range(engine.spec.n_squares)
+        if board[square] != 0
+        and (portals is None or not portals.is_end(spec.type_of(board[square])))
+    }
+
+
+def takes(board: bytes, move: int) -> bool:
+    """Whether a move is read as a capture: it ends on an occupied square, and is not one of
+    the three kinds that end on one and take nothing, as the core's `apply` reads them.
+
+    A rotation's target is its own square, which holds the piece that turns (Q875: it was
+    read as a capture, so a game whose pieces turn offered one in nearly every position).
+    A file-based castling can land the king on its own rook, or on its own square, and
+    moves the rook rather than removing it. A fold's own move may end on a piece and leave
+    it standing (`docs/archive/plan-portals-2.md` §3R.1 rule 6). A duck's pass (generation 42)
+    names the duck's own square. These are the four `agents.rs::capture_gain` and
+    `agents/minimax.py` leave out. A hire or a bribe (TC6) names the piece it buys, which
+    changes sides and is not taken.
+    """
+    return board[move_to(move)] != 0 and move_type(move) not in (
+        MOVE_ROTATE,
+        MOVE_CASTLE,
+        MOVE_FOLD,
+        MOVE_DUCK,
+        MOVE_HIRE,
+    )
+
+
+def round_tallies(engine: Engine) -> dict[str, int]:
+    """`ROUND_COUNTS` at nought, and `SPEED_COUNTS` beside them where a speed is declared."""
+    sim = engine.spec.simultaneous
+    keys = ROUND_COUNTS + (SPEED_COUNTS if sim is not None and sim.speed else ())
+    return dict.fromkeys(keys, 0)
+
+
+def count_round(
+    counts: dict[str, int], pair: tuple[int, ...], events: tuple[tuple[int, int, int], ...]
+) -> None:
+    """`ROUND_COUNTS` for one round: the round, a swap read off its words, its events; and
+    `SPEED_COUNTS` where the tallies hold them (an ordered round's events, schema 28)."""
+    counts["rounds"] += 1
+    ordered = any(event == _ORDER for event, _square, _player in events)
+    # Two pieces trading squares in an ordered round did not swap: the faster took the
+    # slower where it stood (`docs/archive/plan-speed.md` §2.5 B).
+    counts["swaps"] += int(not ordered and _is_swap(pair[0], pair[1]))
+    for event, _square, player in events:
+        if event == _COLLISION:
+            counts["collisions"] += 1
+            counts["collisions_both_lost"] += int(player < 0)
+        elif event == _VOID:
+            counts["void_moves"] += 1
+            if ordered:
+                counts["slower_void"] += 1
+        elif event == _ORDER:
+            counts["ordered_rounds"] += 1
+        elif event == _LOST:
+            counts["slower_lost"] += 1
+        elif event == _UNPLAYED:
+            counts["ended_after_faster"] += 1
+        elif event == _INITIATIVE:
+            counts["initiative_ties"] += 1
+        elif event == _BARRED:
+            counts["bars"] += 1
+
+
+def spy_round_blunder(
     engine: Engine, record: GameRecord, step: SpyStep, seat: int, rng: random.Random
 ) -> tuple[int, int] | None:
     """The round a spy game's trial plays in place of ``step``, with a blunder forced into

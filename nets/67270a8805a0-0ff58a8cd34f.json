@@ -1,0 +1,80 @@
+{
+  "procedure": "0ff58a8cd34f",
+  "ruleset_hash": "67270a8805a0",
+  "inputs_version": 1,
+  "verdict": "refused",
+  "weights_sha256": "9891504b137ac59a88a923584242f67b6f8d72d5d087ddd66504e56b446ae88a",
+  "build": "774f4d9c5cb34e9a",
+  "digest": "9891504b137a",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=db5ef1bc938e,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "db5ef1bc938e",
+      "weights_sha256": "e6cbc3a773ef28d8be92554250ab05724d20c9df6d3b5b714d8a98313895fb3d"
+    }
+  },
+  "data": {
+    "digest": "02d52a4072d2bcf1a8e775cb00497e5b26abfe168720b4ae4a1d395c9bf2b019",
+    "games": 20000,
+    "positions": 5963317,
+    "most_active": 62
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.01154925,
+      0.00794045,
+      0.00720793,
+      0.00677643,
+      0.00646815,
+      0.00624654,
+      0.00608246,
+      0.00594941
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.086349
+  },
+  "acceptance": {
+    "candidate": "minimax:net=0ff58a8cd34f,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.49125,
+    "error": 0.009606,
+    "games": 400,
+    "identical": 0,
+    "openings": 167,
+    "candidate_nodes": 432976945,
+    "reference_nodes": 433534713,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": false,
+    "decided_after": 200,
+    "planned_pairs": 200
+  },
+  "lineage": {
+    "parent": "db5ef1bc938e",
+    "parent_weights_sha256": "e6cbc3a773ef28d8be92554250ab05724d20c9df6d3b5b714d8a98313895fb3d",
+    "teacher": "parent:e6cbc3a773ef"
+  }
+}

@@ -20,14 +20,15 @@ async function showLanding() {
   // The landing page is in none of the header's sections, at `/` or at `#/about`.
   document.querySelectorAll('#sections a').forEach(link => link.removeAttribute('aria-current'));
   dropUnoffered(view);
+  wireStorySwitch(view);
   wireWallDoors();
   wireWallRails();
   // The hero's boards and today's game wait for the listing; the words and the doors do not.
   const listing = api('/api/library').catch(() => null);
   wirePlayDoors(view, listing);
   startJourney();
-  // LP6: a reload or a step back to the same story comes back where the reader was in it
-  // (kept by the head's `story.js`; the router has just put the view at its top).
+  // LP6: a reload or a step back to a named story (`?story=`) comes back where the reader was
+  // in it (kept by the head's `story.js`; the router has just put the view at its top).
   const back = typeof window.landingScroll === 'function' ? window.landingScroll() : null;
   // LP11: the play screen's way back to the story lands on its step.
   const beat = LANDING_BEAT && view.querySelector(`#beats [data-beat="${LANDING_BEAT}"]`);
@@ -176,8 +177,9 @@ async function playNow(door, hash, seat, agent) {
 
 // The template holds every story in the pool, each as one part (its hero and its journey,
 // `landing.html_page`); the page keeps one and drops the rest before it is shown, so each
-// part's ids stand once. The head's `story.js` drew it (LP6: `?story=<key>`, the tab's own on a
-// reload, else one at random among the others); without that script, `?story=` or the first.
+// part's ids stand once. The head's `story.js` drew it (LP6, Q1056: `?story=<key>`, else one
+// at random on each opening, or the one its switch moved to); without that script, `?story=`
+// or the first.
 function chooseStory(fragment) {
   const parts = [...fragment.querySelectorAll('.storyPart')];
   if (!parts.length) return fragment;
@@ -188,6 +190,32 @@ function chooseStory(fragment) {
   const kept = parts.find(part => part.dataset.story === wanted) || parts[0];
   parts.forEach(part => { if (part !== kept) part.remove(); });
   return fragment;
+}
+
+// Q1056: the hero's quiet switch (`landing.story_switch`) shows the story a step either way
+// through the pool, in place: the head's `story.js` moves its draw (`landingStoryTo`), the
+// address loses a `?story=` that named the story left, and the landing is drawn again with the
+// focus back on the button pressed. Nothing is kept, so the next opening draws at random again.
+function wireStorySwitch(root) {
+  root.querySelectorAll('.storySwitch button[data-story-step]').forEach(button => {
+    button.addEventListener('click', () => {
+      if (typeof window.landingStoryTo !== 'function') return;
+      const step = button.dataset.storyStep;
+      if (!window.landingStoryTo(Number(step))) return;
+      Object.values(STORY.players).forEach(player => player.stop());
+      STORY.players = {};
+      try {
+        const address = new URL(location.href);
+        if (address.searchParams.has('story')) {
+          address.searchParams.delete('story');
+          history.replaceState(history.state, '', address.pathname + address.search + address.hash);
+        }
+      } catch (err) { /* the address stays as it was */ }
+      showLanding();
+      const again = view.querySelector(`.storySwitch button[data-story-step="${step}"]`);
+      if (again) again.focus();
+    });
+  });
 }
 
 // A visitor to the site is offered *Sign in*, a member their own page in its place (Q723);
