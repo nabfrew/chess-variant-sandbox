@@ -1431,7 +1431,7 @@ function drawPiece(piece, x, y, cell, square) {
       ? (SESSION.ruleset.facingAngles || [])[piece.player] : null;
     const angle = heading ? heading[piece.facing || 0] || 0 : (icon.rotate ? 180 : 0);
     const spin = angle ? ` transform="rotate(${angle} ${cx} ${cy})"` : '';
-    inner = `${based ? wildBase(cx, cy, cell) : ''}<image href="${esc(icon.href)}" x="${
+    inner = `${based ? wildBase(cx, cy, cell, hireable(SESSION.ruleset, piece.type)) : ''}<image href="${esc(icon.href)}" x="${
              x + corner}" y="${y + corner}" width="${size}"
              height="${size}" preserveAspectRatio="xMidYMid meet"${spin}/>`;
   } else {
@@ -1439,8 +1439,11 @@ function drawPiece(piece, x, y, cell, square) {
                : piece.player === 1 ? 'var(--p1)' : 'var(--p2)';
     const ink = piece.player === 0 ? 'var(--p0-ink)'
               : piece.player === 1 ? 'var(--p1-ink)' : 'var(--p2-ink)';
-    inner = `<circle cx="${cx}" cy="${cy}" r="${cell * 0.36}" fill="${fill}" stroke="var(--ink)"
-             stroke-width="${cell * 0.025}" opacity="0.95"/>
+    // Q1071: a hireable piece nobody owns, with no drawing, is lettered on the shield.
+    const shield = wild && hireable(SESSION.ruleset, piece.type);
+    inner = `${shield ? wildBase(cx, cy, cell * 0.86, true, true)
+             : `<circle cx="${cx}" cy="${cy}" r="${cell * 0.36}" fill="${fill}" stroke="var(--ink)"
+             stroke-width="${cell * 0.025}" opacity="0.95"/>`}
             <text x="${cx}" y="${cy}" fill="${ink}" font-size="${cell * 0.42}" font-weight="600"
              text-anchor="middle" dominant-baseline="central"
              >${esc(SESSION.ruleset.pieceIds[piece.type])}</text>`;
@@ -1702,6 +1705,9 @@ function drawBoard(previous) {
     through.set(m.to, way ? `var(--pair-${way.end.pair})` : 'var(--dot)');
     entries.add(m.portal);
   }
+  // Q1071: every piece the player to move may hire or bribe wears a coin with its cost, off
+  // the engine's hire moves, whatever is picked: never a ring, which is a capture's.
+  const coins = coinSquares();
   const dropTargets = DROP === null ? buyTargets()
     : new Set(SESSION.moves.filter(m => m.drop === DROP).map(m => m.to));
   // Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): with the duck owed, every square it may go
@@ -1835,6 +1841,10 @@ function drawBoard(previous) {
                  data-square="${square}" data-through="1"/>`;
       }
     }
+    if (real && coins.has(square)) {
+      const hire = coins.get(square);
+      out += coinBadge(x, y, cell, hire.cost, hire.bribe);
+    }
     if (real && square === duckRing) {
       out += cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--held-halo)"
                stroke-width="${cell * 0.12}" opacity="0.9" pointer-events="none"`, 0.06)
@@ -1957,6 +1967,13 @@ function drawBoard(previous) {
   // What is coming is about the position the ply *leaves*, so it shows once the ply has
   // finished arriving: held back while the pieces move, then faded in.
   const arrows = svg.querySelector('[data-coming]');
+  // Over the pieces that moved, too (Q1070): `animateChange` lifts every travelling piece
+  // to the top of the drawing so it passes over the stationary ones, which left it over
+  // the arrows as well. Where wild pieces walk in a convoy, each into the square the one
+  // ahead is leaving (pitchfork), every arrow's head and the faint step's start lie on a
+  // piece that has just moved, and the arrows vanished under them. The arrows are held
+  // back until the pieces have landed, so lifting them over the travellers hides nothing.
+  if (arrows && beats) svg.appendChild(arrows);
   if (arrows && busy > 0 && typeof arrows.animate === 'function') {
     arrows.animate([{ opacity: 0 }, { opacity: 1 }],
                    { duration: PACE.beat, delay: busy, fill: 'backwards' });
@@ -1984,6 +2001,7 @@ function drawBoard(previous) {
     ...(ordered.length ? ['order'] : []),
     ...(announced ? ['announced'] : []),
     ...(flight ? ['duckFlight'] : []),
+    ...(coins.size ? ['hire'] : []),
   ]);
   drawCoords(cell, outside);
   fitBoard();
@@ -3439,7 +3457,11 @@ function drawHand() {
   // hire or bribe, each from the engine's list.
   const market = marketHtml(owner);
   const hire = hireHtml();
-  if (!held.length && !market && !hire) { hand.innerHTML = ''; return; }
+  // Q1071 (the user, 2026-10-30: on a phone the purses were under the move list): both
+  // purses on a line of their own just under the board, where the seats' panel is not
+  // beside it (`.purse-line`, shown on a narrow screen and on the full-screen board).
+  const purses = purseLineHtml();
+  if (!held.length && !market && !hire && !purses) { hand.innerHTML = ''; return; }
 
   // Schema 18e (Q785): a held piece may come back as its other face, a second button on
   // the same count. `dropFaces` is the compiled pair per slot (-1 for none), and `DROP`
@@ -3456,7 +3478,7 @@ function drawHand() {
         ${!AT && droppable.has(face) ? '' : 'disabled'}>${esc(ids[face])}${other ? ` (${esc(ids[type])})` : ''} x${count}</button>`);
     });
   });
-  hand.innerHTML = (held.length ? '<span class="muted u-as-center">in hand:</span>' +
+  hand.innerHTML = purses + (held.length ? '<span class="muted u-as-center">in hand:</span>' +
     buttons.join('') : '') + market + hire;
   hand.querySelectorAll('[data-drop]').forEach(node => {
     node.onclick = () => {
@@ -3499,6 +3521,34 @@ function drawPurses() {
     node.textContent = purseWords(purse[Number(node.dataset.purse)] || 0);
     node.title = title;
   });
+}
+
+// Both players' coins on one line (Q1071), each with the coin the board draws, for the strip
+// under the board: the core's counts for the position on screen (`purseShown`). Empty
+// without a purse.
+function purseLineHtml() {
+  const purse = purseShown();
+  if (!purse) return '';
+  const title = purseTitle(SESSION.ruleset.purse);
+  return `<span class="purse-line" data-purse-line title="${esc(title)}">${[0, 1].map(player =>
+    `<span class="purse-seat" data-purse-seat="${player}"><svg class="purse-coin" viewBox="0 0 10 10"
+      aria-hidden="true">${coinBadge(0, 0, 25, null)}</svg><b>${esc(sideName(player))}</b> ${
+      esc(coinsWord(purse[player] || 0))}</span>`).join('')}</span>`;
+}
+
+// The squares the player to move may hire or bribe on (Q1071), each with its move: the
+// engine's hire moves, for a person whose turn it is on the game as it stands. A hire
+// stays on its square, so `from` is the piece's square.
+function coinSquares() {
+  const out = new Map();
+  if (!SESSION || AT || SESSION.outcome || SESSION.awaitingAgent) return out;
+  if (SESSION.seats[SESSION.sideToMove] !== 'human') return out;
+  const between = SESSION.correspondence;
+  if (between && between.you !== SESSION.sideToMove) return out;
+  for (const m of SESSION.moves || []) {
+    if (m.hire !== undefined && !out.has(m.from)) out.set(m.from, m);
+  }
+  return out;
 }
 
 // The squares a picked market piece may be bought onto: the engine's buys of that type.
@@ -3726,6 +3776,16 @@ function clickSquare(square) {
   // reach it (`takeLanding`).
   const ways = movesFrom(SELECTED).filter(m => m.portal === square);
   const candidates = movesFrom(SELECTED).filter(m => m.to === square && m.hire === undefined);
+  // Q1071 (the user, 2026-10-30: with a piece picked that attacks a mercenary, a tap meant to
+  // hire it captured it): a tap on a square the engine offers a hire or bribe on asks which
+  // move, in a small choice at the square, beside any move the picked piece makes there.
+  // Never one picked silently. A tap on it with nothing else to do there asks too, so the
+  // hire is one tap and a confirmation, as a capture's choice would be.
+  const bought = movesFrom(square).filter(m => m.hire !== undefined);
+  if (bought.length && !ways.length) {
+    if (!candidates.length) { SELECTED = square; NOTE = ''; drawBoard(); }
+    if (chooseKind(kindOptions(candidates, bought, square), square)) return;
+  }
   // Schema 22: a piece standing in a fold its side may move, and a square both can reach --
   // the piece's move or the fold's own -- is a choice of which to move, in the user's words
   // (`docs/archive/plan-portals-2.md` §5.3R): *Move the piece* or *Move the portal*, never both.
@@ -3943,6 +4003,140 @@ function pickWhich(which) {
   if (!(ways.length ? takeWays(ways) : takeLanding(moves))) drawBoard();
 }
 
+// ----- which kind of move a tap means (Q1071)
+//
+// One square may take more than one kind of move: the picked piece's capture there and a
+// hire or bribe of the piece standing on it (TC7). The tap asks, in a small card at the
+// square rather than over the whole board, one button a kind: the piece on a light square
+// with the mark the board gives that kind (a capture's ring, a hire's coin with its cost),
+// what it does in words and the engine's text. A tap outside it, Cancel or Escape puts it
+// away with nothing moved; an arrow walks the buttons and a digit presses one. The moves
+// are the engine's list; the page only sorts them by kind.
+let PROMO_KIND = null;     // { square, options } while the choice of kind is open
+
+// The kinds of move a tap on `square` offers: the picked piece's moves there (a capture,
+// since a hire's square always holds a piece), then each hire or bribe of the piece there.
+function kindOptions(candidates, bought, square) {
+  const target = pieceAt(square);
+  const out = [];
+  if (candidates.length) {
+    const mover = promotionWord(pieceAt(candidates[0].from));
+    out.push({ kind: target ? 'capture' : 'move', moves: candidates,
+               words: target ? `Capture with your ${mover}` : `Move your ${mover} here`,
+               text: candidates.length === 1 ? candidates[0].text : '',
+               glyph: kindGlyph(target, 'capture') });
+  }
+  for (const m of bought) {
+    out.push({ kind: m.bribe ? 'bribe' : 'hire', moves: [m],
+               words: `${m.bribe ? 'Bribe' : 'Hire'} for ${coinsWord(m.cost)}`,
+               text: m.text, glyph: kindGlyph(target, 'coin', m) });
+  }
+  return out;
+}
+
+// A kind's picture: the piece on a light square, ringed for a capture, coined for a hire.
+function kindGlyph(piece, mark, hire) {
+  const drawn = piece ? drawPiece({ player: piece.player, type: piece.type,
+                                    facing: piece.facing || 0 }, 0, 0, 10) : '';
+  const over = mark === 'coin'
+    ? coinBadge(0, 0, 10, hire.cost, hire.bribe)
+    : `<circle cx="5" cy="5" r="4.4" fill="none" stroke="var(--dot)" stroke-width="0.5" opacity="0.8"/>`;
+  return `<svg class="promo-kind-glyph" viewBox="0 0 10 10" aria-hidden="true"><rect width="10"
+    height="10" fill="var(--sq-lt)"/>${drawn}${over}</svg>`;
+}
+
+// Open the choice; false where the board has no place for it (the move is then made the
+// old way, the hire from its button under the board).
+function chooseKind(options, square) {
+  if (!document.getElementById('promo') || !options.length) return false;
+  PROMO = [].concat(...options.map(option => option.moves));
+  PROMO_LOOKING = false;
+  PROMO_PIECE = null;
+  PROMO_ROUTE = false;
+  PROMO_EXIT = false;
+  PROMO_WHICH = null;
+  PROMO_KIND = { square: square, options: options };
+  drawPromotion();
+  return true;
+}
+
+function kindHead(options, name) {
+  const buys = options.filter(o => o.kind === 'hire' || o.kind === 'bribe').map(o => o.kind);
+  const verb = buys.length ? buys[0] : 'move';
+  if (options.length === 1) return `${verb.charAt(0).toUpperCase() + verb.slice(1)} the ${name}?`;
+  return options.some(o => o.kind === 'capture') ? `Take the ${name}, or ${verb} it?`
+    : `What to do with the ${name}?`;
+}
+
+function drawKinds(box) {
+  const { square, options } = PROMO_KIND;
+  const W = SESSION.ruleset.width;
+  const where = squareName(square % W, Math.floor(square / W));
+  const name = promotionWord(pieceAt(square));
+  const still = SESSION.correspondence ? ' You can still change your move until you send it.' : '';
+  box.hidden = false;
+  box.onkeydown = promotionKeys;
+  if (box.classList) { box.classList.toggle('looking', false); box.classList.toggle('at', true); }
+  if (box.setAttribute) box.setAttribute('aria-modal', 'true');
+  box.innerHTML = `<div class="promo-at" data-kind-at="${square}">
+    <span class="promo-at-head" id="promoHead">${esc(kindHead(options, name))} <span
+      class="muted">${esc(where)}</span></span>
+    <span class="promo-at-picks">${options.map((o, i) => `<button type="button"
+      class="promo-pick promo-kind" data-kind="${i}" data-kind-is="${o.kind}" aria-keyshortcuts="${i + 1}"
+      title="${esc(o.words)} (key ${i + 1})${esc(still)}">${o.glyph}<span class="promo-kind-words">${
+      esc(o.words)}</span>${o.text ? `<span class="promo-text">${esc(o.text)}</span>` : ''}</button>`).join('')}</span>
+    <button type="button" class="quiet promo-at-cancel" id="promoCancel">Cancel</button>
+  </div>`;
+  // A tap on the board round the card is a tap away from it: nothing is moved.
+  box.onclick = event => { if (event.target === box) cancelPromotion(); };
+  box.querySelectorAll('[data-kind]').forEach(node => {
+    node.onclick = () => pickKind(Number(node.dataset.kind));
+  });
+  document.getElementById('promoCancel').onclick = () => cancelPromotion();
+  const card = box.querySelector('.promo-at');
+  placeAtSquare(box, card, square);
+  promotionInView(box, card, box.querySelector('[data-kind]'));
+}
+
+// The kind picked: its one move, or the choice among its moves (a capture that promotes).
+function pickKind(index) {
+  const chosen = PROMO_KIND ? PROMO_KIND.options[index] : null;
+  closePromotion();
+  if (!chosen) return;
+  if (chosen.moves.length === 1) { send(chosen.moves[0].move); return; }
+  if (!takeLanding(chosen.moves)) drawBoard();
+}
+
+// The card beside its square: above it where the board has room (a finger on the square
+// does not hide it), else below, kept inside the screen's width, with its tip at the
+// square. Where the square is is the drawing's own (`squareXY` in `FRAME`, through the
+// board's screen matrix); nothing here names a square.
+function placeAtSquare(box, card, square) {
+  const svg = document.getElementById('board');
+  if (!card || !svg || !FRAME || typeof svg.getScreenCTM !== 'function') return;
+  const ctm = svg.getScreenCTM();
+  if (!ctm || typeof card.getBoundingClientRect !== 'function') return;
+  const cell = 100 / Math.max(SESSION.ruleset.width, SESSION.ruleset.height);
+  const at = squareXY(square, cell, FRAME);
+  const point = (u, v) => { const p = svg.createSVGPoint(); p.x = u; p.y = v; return p.matrixTransform(ctm); };
+  const a = point(at[0], at[1]), b = point(at[0] + cell, at[1] + cell);
+  const left = Math.min(a.x, b.x), right = Math.max(a.x, b.x);
+  const top = Math.min(a.y, b.y), bottom = Math.max(a.y, b.y);
+  const frame = box.getBoundingClientRect(), r = card.getBoundingClientRect();
+  const screen = document.documentElement.clientWidth || window.innerWidth;
+  const gap = 8, mid = (left + right) / 2, high = window.innerHeight || frame.bottom;
+  const x = Math.max(8, Math.min(mid - r.width / 2, screen - 8 - r.width));
+  // Never over the square itself: above it where the screen has room, else below it, else
+  // on whichever side has more; the card may reach past the board's edge.
+  const room = { above: top - gap, below: high - bottom - gap };
+  const side = room.above >= r.height || room.above >= room.below ? 'above' : 'below';
+  const y = side === 'above' ? top - gap - r.height : bottom + gap;
+  card.style.left = `${Math.round(x - frame.left)}px`;
+  card.style.top = `${Math.round(y - frame.top)}px`;
+  card.style.setProperty('--tip', `${Math.round(Math.max(14, Math.min(r.width - 14, mid - x)))}px`);
+  card.dataset.side = side;
+}
+
 // Schema 19: where a piece comes out of a portal it can reach two ways (D6, §2.3): one
 // button a square, named by the way out the engine says it takes (`exitDir`) as the
 // board is drawn, and the square. The bar under the board rather than the card over it,
@@ -4077,6 +4271,7 @@ function promotionPieces(candidates) {
 // What the open choice asks now: `piece` (what the piece becomes) or `square` (where a
 // strike's survivor goes, from the moves the piece picked leaves).
 function promotionStage() {
+  if (PROMO && PROMO_KIND) return 'kind';
   if (PROMO && PROMO_EXIT) return 'exit';
   if (PROMO && PROMO_WHICH) return 'which';
   if (PROMO && PROMO_ROUTE) return 'route';
@@ -4102,6 +4297,7 @@ function pickPiece(type) {
 function drawPromotion() {
   const box = document.getElementById('promo');
   if (!box || !PROMO) return;
+  if (PROMO_KIND) { drawKinds(box); return; }
   if (PROMO_EXIT) { drawExits(box); return; }
   const candidates = PROMO;
   const mover = pieceAt(candidates[0].from);
@@ -4241,12 +4437,14 @@ function closePromotion() {
   PROMO_ROUTE = false;
   PROMO_EXIT = false;
   PROMO_WHICH = null;
+  PROMO_KIND = null;
   lightExit(null);
   const box = document.getElementById('promo');
   if (!box) return;
   box.hidden = true;
   box.innerHTML = '';
-  if (box.classList) box.classList.toggle('looking', false);
+  box.onclick = null;
+  if (box.classList) { box.classList.toggle('looking', false); box.classList.toggle('at', false); }
 }
 
 // Whether the choice still belongs to the board on screen: the game as it stands, still
@@ -4263,7 +4461,8 @@ function promotionKeys(event) {
   if (!box || !PROMO) return;
   const stops = [...box.querySelectorAll('button')];
   const picks = stops.filter(node => node.dataset.move !== undefined
-    || node.dataset.piece !== undefined || node.dataset.which !== undefined);
+    || node.dataset.piece !== undefined || node.dataset.which !== undefined
+    || node.dataset.kind !== undefined);
   const at = stops.indexOf(document.activeElement);
   if (event.key === 'Escape') {
     event.preventDefault();
@@ -4283,8 +4482,9 @@ function promotionKeys(event) {
     const here = picks.indexOf(document.activeElement);
     const next = here < 0 ? 0 : (here + step + picks.length) % picks.length;
     picks[next].focus();
-  } else if (PROMO_EXIT && /^[1-9]$/.test(event.key)) {
-    // The ways out of a portal by number, as the buttons are ordered (D6).
+  } else if ((PROMO_EXIT || PROMO_KIND) && /^[1-9]$/.test(event.key)) {
+    // The ways out of a portal by number, as the buttons are ordered (D6); and the kinds of
+    // move a square offers (Q1071).
     event.preventDefault();
     event.stopPropagation();
     const pick = picks[Number(event.key) - 1];

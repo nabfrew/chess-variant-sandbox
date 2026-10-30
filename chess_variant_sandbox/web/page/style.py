@@ -822,6 +822,42 @@ RULES = """
   .promo-exit-bar > * { flex: 1 1 100%; }
   .promo-exit-bar .promo-row { align-items: center; }
   .promo-esc { font-size: 13px; }
+  /* Which kind of move a tap means (Q1071): a capture or a hire on one square. A small card
+     at the square, not over the whole board and with no dimming, its tip on the square
+     (`placeAtSquare` sets where and `--tip`); a tap on the board round it puts it away. One
+     button a kind, a large control: the piece with the board's mark for that kind, the
+     words, and the engine's text. */
+  .promo.at { background: transparent; }
+  .promo-at { position: absolute; left: 0; top: 0; z-index: 1; width: max-content;
+              max-width: min(300px, calc(100vw - 16px)); box-sizing: border-box;
+              display: flex; flex-direction: column; gap: 6px; padding: 8px 8px 6px;
+              color: var(--ink); background: var(--paper) 0 0 / 180px, var(--panel);
+              border: 2px solid var(--ink); border-radius: var(--r-panel);
+              box-shadow: var(--shadow-pop); scroll-margin: 12px; }
+  .promo-at::after { content: ""; position: absolute; left: var(--tip, 50%); width: 10px;
+                     height: 10px; margin-left: -7px; background: var(--panel);
+                     border: 2px solid var(--ink); transform: rotate(45deg); }
+  .promo-at[data-side="above"]::after { bottom: -7px; border-top: 0; border-left: 0; }
+  .promo-at[data-side="below"]::after { top: -7px; border-bottom: 0; border-right: 0; }
+  .promo-at-head { font-size: 15px; line-height: 20px; font-weight: 600; padding: 0 2px; }
+  .promo-at-picks { display: flex; flex-direction: column; gap: 6px; }
+  .promo-at .promo-kind { display: flex; align-items: center; gap: 10px; width: 100%;
+                          min-height: var(--hit); padding: 3px 10px 3px 3px;
+                          text-align: left; font-size: 15px; line-height: 20px; white-space: normal; }
+  .promo-kind-glyph { width: 38px; height: 38px; flex: none; border-radius: 5px;
+                      border: 1px solid var(--edge); }
+  .promo-kind-words { flex: 1 1 auto; font-weight: 600; }
+  .promo-at .promo-text { flex: none; color: var(--muted); font: 13px/18px var(--f-mono); }
+  .promo-at .promo-at-cancel { align-self: flex-end; min-height: var(--ctl-h-sm); font-size: 14px; }
+  /* Both purses just under the board (Q1071): where the seats' panel is not beside the board,
+     a phone's stacked page and the full-screen board, so the coins are read without
+     scrolling past the move list. At a desk the panel beside the board says them. */
+  .hand .purse-line { display: none; flex: 1 1 100%; flex-wrap: wrap; gap: 4px 16px;
+                      align-items: center; font-size: 14px; line-height: 20px; }
+  .purse-seat { display: inline-flex; align-items: center; gap: 5px; }
+  .purse-coin { width: 18px; height: 18px; flex: none; }
+  @media (max-width: 860px) { .hand .purse-line { display: flex; } }
+  html.board-full .hand .purse-line { display: flex; }
   /* A portal end (Q838b, `docs/archive/plan-portal-look.md` §2.3, the vortex; Q838f). On a live
      board its arms turn inwards, once every 14 s, on the arms' own group so the trip's
      pulse on the glyph composes with it; never under reduced motion. An end nobody may go

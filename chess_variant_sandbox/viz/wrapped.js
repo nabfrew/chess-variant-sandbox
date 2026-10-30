@@ -941,6 +941,12 @@ const MARK_KINDS = {
   // each move's square (`orderBadge`), off the core's events (`roundOrder`).
   order: { colour: 'var(--order)', shape: 'order', name: 'numbered disc', ink: 'var(--ink)',
            label: "the order the last round's two moves were made in: between pieces of different speeds the faster moves first" },
+  // TC7, Q1071 (the user, 2026-10-30: a hire was easy to mis-click as a capture): a piece the
+  // player to move may hire or bribe, a gold coin on the square's top-left corner with the
+  // cost in it (`coinBadge`), off the engine's hire moves for the position on screen. A coin,
+  // never a ring: a ring is a capture's.
+  hire: { colour: 'var(--coin)', shape: 'coin', name: 'gold coin', ink: 'var(--ink)',
+          label: 'a piece you may hire (nobody\'s) or bribe (the other side\'s) for the coins in the coin: tap it' },
   // Schema 27 (Q935c, `docs/plan-spy.md` §3.6): the move announced in a spy game's announced
   // round, shown to both players before the answer. A solid arrow and a ring on the square
   // it goes to (`announceLine`, `announcedHtml`), in a teal of its own: never the held
@@ -1161,6 +1167,26 @@ function restBadge(x, y, cell, player, left) {
       numbered ? ` data-left="${Number(left)}"` : ''}
       pointer-events="none"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="var(--rest)"
       stroke="var(--held-halo)" stroke-width="${f(cell * 0.03)}"/>${inside}</g>`;
+}
+
+// A piece the player to move may hire or bribe (TC7, Q1071), on the top-left corner of the
+// square at `(x, y)`: a gold coin, rimmed in `--coin-ink` and cased in `--held-halo` so it
+// holds on both woods, the cost in it in `--coin-ink` (none for the legend's key, `cost`
+// null). Small and filled, so it never reads as a capture's ring round the piece; clear of
+// the rested sign and a portal's dot on the top-right corner and the order disc below.
+// `bribe` marks it for the look check and a reader's tools; the words say which.
+function coinBadge(x, y, cell, cost, bribe) {
+  const f = n => n.toFixed(3);
+  const cx = x + cell * 0.2, cy = y + cell * 0.2, r = cell * 0.17;
+  const numeral = cost === null || cost === undefined ? ''
+    : `<text x="${f(cx)}" y="${f(cy)}" fill="var(--coin-ink)" font-size="${f(cell * (cost > 9 ? 0.15 : 0.2))}"
+      font-weight="700" text-anchor="middle" dominant-baseline="central">${Number(cost)}</text>`;
+  return `<g data-mark="hire"${cost === null || cost === undefined ? '' : ` data-cost="${Number(cost)}"`}${
+      bribe ? ' data-bribe="1"' : ''} pointer-events="none"><circle cx="${f(cx)}" cy="${f(cy)}"
+      r="${f(r + cell * 0.025)}" fill="var(--held-halo)"/><circle cx="${f(cx)}" cy="${f(cy)}"
+      r="${f(r)}" fill="var(--coin)" stroke="var(--coin-ink)" stroke-width="${f(cell * 0.022)}"/><circle
+      cx="${f(cx)}" cy="${f(cy)}" r="${f(r * 0.72)}" fill="none" stroke="var(--coin-ink)"
+      stroke-width="${f(cell * 0.01)}" opacity="0.55"/>${numeral}</g>`;
 }
 
 // A move's place in an ordered round (schema 28, Q943b), `n` 1 or 2, on the bottom corner of
@@ -1542,6 +1568,11 @@ function squareBadge(x, y, cell, marks, view, tag) {
     }
     if (kind.shape === 'order') {
       out += orderBadge(x + cell * 0.3, y - cell * 0.3, cell * 1.0, 1);
+      continue;
+    }
+    // A hire's coin (Q1071): only the legend comes here, the coin centred and blank.
+    if (kind.shape === 'coin') {
+      out += coinBadge(x + cell * 0.1, y + cell * 0.1, cell * 2.0, null);
       continue;
     }
     // A walk's key, as a still board draws a step of one (Q852): only the legend comes here.

@@ -303,9 +303,29 @@ function edgeNamesHtml(cell, view, box) {
 // (generation 42, N4c: there is one duck and its picture is the rule's).
 const WILD_ICON = 0.74;
 
-function wildBase(cx, cy, cell) {
+// Q1071 (the user, 2026-10-30: the mercenary's disc *"looks similar to how pieces are circled
+// when they are capturable"*): a piece nobody owns that may be hired (`purse.hire[type]`, the
+// compiled rule) stands on a shield in the third owner's tint rather than the disc, so a
+// round outline on the board is only ever a capture's ring. `hired` picks the shield;
+// `solid` fills it as the lettered disc is filled, for a hireable type with no drawing.
+function wildBase(cx, cy, cell, hired, solid) {
+  if (hired) {
+    const f = n => n.toFixed(3);
+    const at = (u, v) => `${f(cx + u * cell)} ${f(cy + v * cell)}`;
+    return `<path d="M ${at(-0.38, -0.4)} Q ${at(0, -0.47)} ${at(0.38, -0.4)} L ${at(0.38, 0.02)}
+      Q ${at(0.36, 0.3)} ${at(0, 0.47)} Q ${at(-0.36, 0.3)} ${at(-0.38, 0.02)} Z" fill="var(--p2)"
+      fill-opacity="${solid ? 0.95 : 0.6}" stroke="var(--ink)" stroke-width="${cell * 0.025}" stroke-linejoin="round"
+      data-wild="1" data-hired="1"/>`;
+  }
   return `<circle cx="${cx}" cy="${cy}" r="${cell * 0.44}" fill="var(--p2)" fill-opacity="0.6"
     stroke="var(--ink)" stroke-width="${cell * 0.025}" data-wild="1"/>`;
+}
+
+// Whether a piece type is one a player may hire where nobody owns it: the compiled purse's
+// hire cost (`market_payload`), on the play board's rules or a still preview's alike.
+function hireable(rules, type) {
+  const purse = rules && rules.purse;
+  return !!(purse && (purse.hire || [])[type] > 0);
 }
 
 function stillPieceHtml(preview, value, x, y, cell) {
@@ -322,14 +342,16 @@ function stillPieceHtml(preview, value, x, y, cell) {
       ? (preview.facingAngles || [])[player] : null;
     const angle = heading ? heading[facing] || 0 : (icon.rotate ? 180 : 0);
     const size = cell * (based ? WILD_ICON : 0.88), corner = (cell - size) / 2;
-    return `${based ? wildBase(x + cell / 2, y + cell / 2, cell) : ''}<image href="${
+    return `${based ? wildBase(x + cell / 2, y + cell / 2, cell, hireable(preview, type)) : ''}<image href="${
       esc(icon.href)}" x="${x + corner}" y="${y + corner}"
       width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet"${
       angle ? ` transform="rotate(${angle} ${x + cell / 2} ${y + cell / 2})"` : ''}/>`;
   }
-  return `<circle cx="${x + cell / 2}" cy="${y + cell / 2}" r="${cell * 0.34}"
+  const shield = wild && hireable(preview, type);
+  return `${shield ? wildBase(x + cell / 2, y + cell / 2, cell * 0.82, true, true)
+    : `<circle cx="${x + cell / 2}" cy="${y + cell / 2}" r="${cell * 0.34}"
     fill="${player === 0 ? 'var(--p0)' : player === 1 ? 'var(--p1)' : 'var(--p2)'}"
-    stroke="var(--ink)" stroke-width="${cell * 0.025}"/>
+    stroke="var(--ink)" stroke-width="${cell * 0.025}"/>`}
     <text x="${x + cell / 2}" y="${y + cell / 2}" font-size="${cell * 0.4}"
       text-anchor="middle" dominant-baseline="central" font-weight="600"
       fill="${player === 0 ? 'var(--p0-ink)' : player === 1 ? 'var(--p1-ink)' : 'var(--p2-ink)'}"

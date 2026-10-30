@@ -6685,7 +6685,10 @@ class TestWhatReachesThePage:
         # 163 since the sweep's cut (`sweepCut`): the blade along the sweeper's line (numbers
         # and token names) and each half of a cut piece (a clip of numbers and a counted id
         # around the piece drawer's own markup, as `ghostAt` draws it).
-        assert len(sites) == 163
+        # 164 since Q1071: the choice of which kind of move a square means (`drawKinds`): the
+        # head, each kind's words and the engine's text through `esc`, the piece and coin
+        # drawers' own markup, numbers and constant words.
+        assert len(sites) == 164
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")

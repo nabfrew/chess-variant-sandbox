@@ -482,3 +482,65 @@ class TestSteppingBackShowsBoth:
             move = session.history[beat["plies"] - 1]
             last = i + 1 == len(beats) or beats[i + 1]["plies"] != beat["plies"]
             assert beat["comingThen"] == (move["comingThen"] if last else move["coming"]), i
+
+
+# ------------------------------------------------------------------ Q1070: every fixed path
+
+
+def _path_games() -> list[Path]:
+    """Every library file (`rulesets/`, `archive/`) with a piece on a fixed path, read off
+    the files rather than pinned, so a game added later is held too."""
+    found = []
+    for folder in ("rulesets", "archive"):
+        for path in sorted((ROOT / folder).glob("*.json")):
+            spec = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(spec.get("rules"), dict) and spec["rules"].get("npcs"):
+                found.append(path)
+    return found
+
+
+PATH_GAMES = _path_games()
+
+
+class TestEveryFixedPathTelegraphsTwoSteps:
+    """The user, 2026-10-30: *"All npcs with pre-determined paths should telegraph their path
+    two steps ahead the way wolf circuit does."* Pitchfork's arrows were in the data all
+    along; the page drew the pieces that had just moved over them (below). Here: every
+    library game with a piece on a fixed path hands the page both phases, at the opening and
+    after moves, as the core answers them, with something to draw in each."""
+
+    def test_the_library_has_the_games_the_user_named(self) -> None:
+        names = {json.loads(p.read_text(encoding="utf-8"))["name"] for p in PATH_GAMES}
+        assert {"pitchfork", "wolf circuit"} <= names, names
+
+    @pytest.mark.parametrize("path", PATH_GAMES, ids=lambda p: p.stem)
+    def test_both_phases_are_on_every_snapshot(self, path: Path) -> None:
+        spec = load_spec(path)
+        game = library.Game(hash=spec_hash(spec), name=spec["name"],
+                            description=spec.get("description", ""), path=path,
+                            source="archive", spec=spec)
+        session = Sessions().start(game, ("random", "random"), seed=3)
+        for ply in range(3):
+            snapshot = session.snapshot() if ply == 0 else session.play_agent()
+            if snapshot["outcome"] is not None:
+                break
+            first, then = coming_phases(session.engine, session.state)
+            assert snapshot["coming"] == [s.as_dict() for s in first], ply
+            assert snapshot["comingThen"] == [s.as_dict() for s in then], ply
+            walks = [s for s in snapshot["coming"] if s["from"] != s["to"]]
+            after = [s for s in snapshot["comingThen"] if s["from"] != s["to"]]
+            assert walks and after, f"{path.stem} at ply {ply}: nothing to draw"
+
+
+class TestTheArrowsStayOnTop:
+    def test_the_arrows_are_lifted_over_the_pieces_that_moved(self) -> None:
+        """`animateChange` lifts every travelling piece to the top of the board so it passes
+        over the stationary ones; where wild pieces walk in a convoy (pitchfork) each arrow's
+        head lies on a piece that has just moved, and the arrows vanished under them. Once
+        the animation is set up, the arrows' group is lifted over them again (Q1070)."""
+        from page_text import BOARD
+
+        lift = "if (arrows && beats) svg.appendChild(arrows);"
+        assert BOARD.count(lift) == 1
+        assert BOARD.index("animateChange(svg, previous") < BOARD.index(lift)
+        assert BOARD.index(lift) < BOARD.index("arrows.animate([{ opacity: 0 }, { opacity: 1 }]")

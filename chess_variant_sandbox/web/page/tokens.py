@@ -204,6 +204,10 @@ LIGHT: dict[str, str] = {
     # holds by majority, a deep gold of its own beside the goal's teal and the zone's rose;
     # whose it is is the bead's colour.
     "holder": "#8a6400",
+    # Q1071: a piece the player to move may hire or bribe wears a coin (`coinBadge`): a bright
+    # gold disc, brighter than the holder's deep gold ring, its cost and rim in a dark brown
+    # at 4.5 : 1 on it (`FLOORS`). Never a ring: a ring round a piece is a capture's.
+    "coin": "#e8b63a", "coin-ink": "#4a3000",
     # The board dimmed behind a choice drawn over it (Q765: what a promoting piece
     # becomes), so the card is the one lit thing in the reader's eye line.
     "scrim": "rgba(30, 20, 10, .6)",
@@ -321,6 +325,7 @@ DARK: dict[str, str] = {
     "frozen": "#0b4774", "disarmed": "#7e300e", "shielded": "#185a31",
     "commanded": "#622984",
     "holder": "#7a5800",
+    "coin": "#e0ac32", "coin-ink": "#3f2800",
     "scrim": "rgba(0, 0, 0, .6)",
     "p0": "#f0ede7", "p1": "#3b3f45", "p2": "#8f6a2f", "p2-ink": "#f4f2ee",
     "portal-stone": "#9b948a",
@@ -406,6 +411,8 @@ FLOORS: tuple[tuple[str, str, float], ...] = (
     ("held-halo", "shielded", 4.5),
     # A commanded piece's badge (Q1007d), the same way round.
     ("held-halo", "commanded", 4.5),
+    # A hire's coin (Q1071): its cost and rim on the gold.
+    ("coin-ink", "coin", 4.5),
     # A wild piece's walk (Q852): each hue against the casing it is drawn on.
     *((f"walk-{n}", "walk-edge", 3.0) for n in range(1, 5)),
     # A member's mark (R3): each of its eight hues, a graphic, on the page and a panel.

@@ -210,11 +210,13 @@ class TestThePage:
         knight, condottiere = _square("c3"), _square("e3")
         bribe = next(m for m in snap["moves"] if m["text"] == "$Nc3")
         steps = (f"let SENT = null; send = m => {{ SENT = m; }}; clickSquare({knight});"
-                 " const SHOWN_HAND = HAND_HTML, SAID = NOTE;"
+                 " const SHOWN_HAND = HAND_HTML,"
+                 " SAID = PROMO_KIND.options.map(o => o.words);"
                  f" clickSquare({knight}); const AFTER = SENT;")
         hand, said, after, board = _with_hand(snap, steps, "[SHOWN_HAND, SAID, AFTER, DRAWN]")
         assert f'data-hire="{bribe["move"]}"' in hand and "bribe for 8" in hand
-        assert "bribe it for 8 coins" in said
+        # Q1071: the tap also asks, at the square, with the bribe and its cost.
+        assert said == ["Bribe for 8 coins"]
         assert after is None, "a second tap on the piece is not the bribe"
         assert not re.search(rf'<circle[^>]*data-square="{knight}"', board), "no dot on its square"
         steps = (f"let SENT = null; send = m => {{ SENT = m; }}; clickSquare({condottiere});"

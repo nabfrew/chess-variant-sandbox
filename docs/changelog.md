@@ -13,6 +13,19 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-30
 
+### Hiring is never a mis-click for a capture
+
+In a game with coins, a square where you could either take a piece or hire (or bribe) it now asks which, in a small card
+beside the square, instead of capturing straight away. Every piece you can hire or bribe wears a gold coin with its price,
+and a mercenary nobody owns now stands on a shield rather than a disc, so a ring round a piece only ever means you can take
+it. On a phone, both players' coins are shown just under the board, so you no longer scroll past the moves to count them.
+
+### The wild pieces' next two steps stay in view
+
+In every game with wild pieces that walk a fixed path (pitchfork, the wolves, the kraken, the herd and the rest), the dotted
+arrows for their next two steps now stay visible after each move. Before, a pack walking in a line could hide its own arrows
+under the pieces that had just moved.
+
 ### A game with too little left to mate is a draw
 
 Chess, and fifteen library games that play like chess once their special pieces are gone, now end in a draw as soon as

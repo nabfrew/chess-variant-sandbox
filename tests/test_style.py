@@ -142,6 +142,9 @@ class TestTheTokens:
         # Nor this: a quality bar's length on the landing's story (LP4), set by its own rule
         # to nothing and on each bar by `landing.js` from its number.
         set_ |= {"v"}
+        # Nor this: where the tip of a move-kind choice points (Q1071), set on the card by
+        # `board.js`'s `placeAtSquare` at its square, and read with a fallback.
+        set_ |= {"tip"}
         assert read - set_ == set()
 
     def test_dark_sets_only_what_light_sets(self) -> None:
