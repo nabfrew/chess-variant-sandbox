@@ -41,6 +41,9 @@ def _plain() -> dict[str, Any]:
 def test_the_file_is_chess_with_the_knights_shooting() -> None:
     spec = _file()
     chess = json.loads((ROOT / "rulesets" / "chess.json").read_text(encoding="utf-8"))
+    # Q1069a: chess as it was, before it drew on dead material (a strike game is not chess
+    # underneath, so the draw would be inert here).
+    chess["rules"].pop("insufficient_material")
     assert spec["rules"]["strike"] == {
         "effect": "capture", "position": "stay", "immune": ["K"], "by": ["N"],
     }

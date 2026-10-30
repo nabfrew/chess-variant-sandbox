@@ -31,6 +31,8 @@ from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.schema import (
     BARE_ROYAL_HOLDER,
     DEFAULT_RANGE,
+    INSUFFICIENT_LEAPER,
+    INSUFFICIENT_RIDER,
     PURSE_MAX,
     REPETITION_NEVER,
     STOCK_UNLIMITED,
@@ -45,6 +47,8 @@ from chess_variant_sandbox.spec.schema import (
     format_square,
     has_speeds,
     hire_ids,
+    insufficient_material_live,
+    insufficient_material_roles,
     is_nobodys,
     is_simultaneous,
     majority_ids,
@@ -308,8 +312,31 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     )
     lines.extend(_describe_scoring_rules(spec, rules))
     lines.append(_describe_clocks(rules))
+    lines.extend(_describe_insufficient_material(spec, rules))
     lines.extend(_describe_ending_order(rules))
     return lines
+
+
+def _describe_insufficient_material(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """Q1069a: the draw by insufficient material, naming this game's own pieces by role."""
+    if not insufficient_material_live(spec):
+        return []
+    roles, _ = insufficient_material_roles(spec)
+    leapers = sorted(pid for pid, role in roles.items() if role == INSUFFICIENT_LEAPER)
+    riders = sorted(pid for pid, role in roles.items() if role == INSUFFICIENT_RIDER)
+    lone = " or ".join(leapers + riders)
+    parts = ["only the two royal pieces"]
+    if lone:
+        parts.append(f"a royal piece and one {lone} against a lone royal piece")
+    if riders:
+        parts.append(
+            f"any number of {' and '.join(riders)} with every one on squares of one colour"
+        )
+    return [
+        "The game is drawn at once when too little is left for either side to mate: "
+        + "; or ".join(parts)
+        + ". Anything else on the board keeps the game going."
+    ]
 
 
 def describe_changes(parent: dict[str, Any], child: dict[str, Any]) -> list[str]:
@@ -1378,6 +1405,13 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "A move may not leave one of your own pieces somewhere it could never move from "
         "again.",
     ),
+    "insufficient_material": (
+        "a draw when too little is left to mate",
+        "The game is drawn the moment neither side has enough left to mate: the royals "
+        "alone, a royal and one lone minor piece against a royal, or diagonal riders all on "
+        "squares of one colour. It counts only where the game is the classic one once its "
+        "other pieces are gone.",
+    ),
     "max_plies": (
         "the longest a game may run",
         "How many turns the game may run before it stops, counting both players' moves: "
@@ -1508,6 +1542,9 @@ RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
     "contacts": ("merge", "combine", "meet", "join"),
     "promote_on_entry": ("promotion zone", "drop zone"),
     "repetition_draw": ("threefold", "repetition"),
+    "insufficient_material": (
+        "insufficient material", "dead position", "bare kings", "not enough to mate",
+    ),
     "no_progress_draw": ("fifty-move", "fifty move", "50 move", "stall"),
     "max_plies": ("move limit", "length", "turn limit"),
     "royal_facing": ("flying general", "kings facing", "facing"),
@@ -3224,6 +3261,9 @@ _ENDING_ORDER: tuple[tuple[str, str], ...] = (
     ("bare_royal", "being reduced to royalty alone"),
     ("territory", "holding enough ground"),
     ("check_limit", "a count of checks"),
+    # Q1069a: asked after every ending a position declares and before repetition. A draw,
+    # so (as repetition) it is never one of the ways to win and is left out of the sentence.
+    ("insufficient_material", "too little material left to mate"),
     ("repetition", "repetition"),
     ("checkmate", "checkmate"),
     ("scoring", "the clock, decided on the score"),
@@ -3244,6 +3284,8 @@ def _ending_is_declared(key: str, rules: dict[str, Any]) -> bool:
         # A draw is the default and is already stated one line up as "a player with no
         # legal move draws". Only a stalemate that *decides* the game is a way to win.
         return rules.get("stalemate", "draw") != "draw"
+    if key == "insufficient_material":
+        return False  # a draw, never a way to win (Q1069a)
     if key == "repetition":
         # Always available, and always a draw, so it is never one of the ways to win --
         # it is listed in the order because it outranks the clock and a reader comparing

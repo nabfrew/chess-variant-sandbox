@@ -2029,7 +2029,7 @@ class TestTheBumpIsInertOnEveryRulesetThatDoesNotUseIt:
     """
 
     def test_chess_still_hashes_to_what_it_always_did(self, chess: dict[str, Any]) -> None:
-        assert spec_hash(chess) == "4c1922ffae26"
+        assert spec_hash(chess) == "831c77e75650"
 
     def test_every_committed_ruleset_still_validates(self) -> None:
         for path in sorted((ROOT / "rulesets").glob("*.json")):

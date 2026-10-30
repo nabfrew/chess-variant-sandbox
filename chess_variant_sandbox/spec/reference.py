@@ -438,8 +438,10 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "When a game stops",
         "How long a game may run, and when a repetition or a stall draws it; `rules.scoring` "
-        "can decide such an ending instead.",
-        ("rules.max_plies", "rules.repetition_draw", "rules.no_progress_draw"),
+        "can decide such an ending instead. A game that is chess underneath may also be "
+        "drawn the moment too little material is left for anyone to mate.",
+        ("rules.max_plies", "rules.repetition_draw", "rules.no_progress_draw",
+         "rules.insufficient_material"),
     ),
 )
 

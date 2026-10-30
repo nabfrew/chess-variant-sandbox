@@ -2912,6 +2912,7 @@ _ENDING_WORDS = {
     "bare_royal": "by leaving the royal piece alone",
     "check_limit": "by giving check enough times", "coloured": "on ground held",
     "scored": "on points",
+    "insufficient_material": "as too little was left to mate",
 }
 
 

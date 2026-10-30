@@ -41,6 +41,8 @@ QUEEN_TO_KING = [
 def chess(version: int = 1, **rules: Any) -> dict[str, Any]:
     spec = load_spec(ROOT / "rulesets" / "chess.json")
     spec["schema_version"] = version
+    # Q1069a: chess as the costing table named it, before it drew on dead material.
+    spec["rules"].pop("insufficient_material", None)
     spec["rules"].update(rules)
     return spec
 

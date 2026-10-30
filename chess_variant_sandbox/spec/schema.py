@@ -864,6 +864,9 @@ _RULES_KEYS = {
     "duck",
     # TC5 (`docs/plan-turncoat.md` §5.4): coins each player holds, and a market to spend them in.
     "purse",
+    # Q1069a: a draw by FIDE's dead sets of material, where the game is chess once its
+    # other pieces are gone (`insufficient_material_roles`).
+    "insufficient_material",
 }
 # ------------------------------------------------------------ where a rule names a piece
 #
@@ -3462,6 +3465,179 @@ def turn_is_long(rules: dict[str, Any] | None) -> bool:
         isinstance(entry, int) and not isinstance(entry, bool) and entry > 1
         for entry in ramp
     )
+
+
+# ------------------------------------------------- draw by insufficient material (Q1069a)
+#
+# `rules.insufficient_material: true` draws a game the moment the material left is one of
+# FIDE's dead sets (Article 5.2.2 and 9.6.2 as every arbiter and engine reads them): king
+# against king, a king and one lone minor against a king, or kings with any number of
+# colour-bound riders all standing on one square colour. Never a search: the sets are a
+# published result for chess, so the rule only fires where what is left *is* chess.
+# `insufficient_material_roles` is that test, read off the spelling, and
+# `insufficient_material_live` the one answer to "does the rule state anything here", shared
+# by the normal form, the compiler (`compile._compile_insufficient_material`, the one place
+# its meaning becomes tables) and every surface. Written on a game that is not chess
+# underneath, the key is inert: it compiles to the game without it and the normal form drops
+# it, so a variant derived from chess by adding a rule chess lacks is the variant, not a
+# refusal (the precedent is `strike_is_live`). A role is given by how a type moves, never by its name: the one royal
+# must step one square every way, a "lone leaper" must jump exactly (1, 2) every way, and a
+# "colour-bound rider" must ride the four diagonals without limit; every other type is
+# `INSUFFICIENT_OTHER`, whose presence on the board means the material is not dead. The rest
+# of the game must be chess's (an 8x8 square board, checkmate, stalemate a draw, and only
+# chess's other rules), so a variant whose other pieces are gone is chess, and the
+# published result holds for it. `docs/reference/insufficient-material.md` is the record.
+
+INSUFFICIENT_OTHER = 0
+INSUFFICIENT_ROYAL = 1
+INSUFFICIENT_LEAPER = 2
+INSUFFICIENT_RIDER = 3
+
+# The rules a game may state beside the rule: chess's own. Any other key, written at
+# something other than nothing, is a rule FIDE's sets were never proved under.
+_INSUFFICIENT_RULES_ALLOWED = frozenset({
+    "win", "stalemate", "checkmate", "promotion", "en_passant", "castling", "max_plies",
+    "repetition_draw", "no_progress_draw", "insufficient_material",
+})
+# The keys a type with a role may carry: anything else changes how it moves or what it
+# takes, written at something other than its off value.
+_INSUFFICIENT_PIECE_KEYS = frozenset({"id", "name", "value", "royal", "moves"})
+_INSUFFICIENT_MOVE_KEYS = frozenset({"kind", "vectors", "symmetry", "range", "min_range", "mode"})
+
+
+def _ring(base: Sequence[tuple[int, int]]) -> frozenset[tuple[str, tuple[int, int]]]:
+    return frozenset(("leap", v) for b in base for v in expand_symmetry(b, "dihedral8"))
+
+
+# Each role's reach as a set of (kind, vector): a one-square royal step, the (1, 2) leap,
+# and the unlimited diagonal ride.
+_ROYAL_STEP = _ring([(1, 0), (1, 1)])
+_LONE_LEAP = _ring([(1, 2)])
+_DIAGONAL_RIDE = frozenset(("ride", v) for v in expand_symmetry((1, 1), "rotate4"))
+
+
+def _reach_of(piece: dict[str, Any]) -> frozenset[tuple[str, tuple[int, int]]] | None:
+    """A type's moves as (kind, vector) pairs, or ``None`` where any move says more than a
+    plain leap of one jump or a plain unlimited slide, both moving and taking."""
+    moves = piece.get("moves")
+    if not isinstance(moves, list):
+        return None
+    reach: set[tuple[str, tuple[int, int]]] = set()
+    for move in moves:
+        if not isinstance(move, dict) or set(move) - _INSUFFICIENT_MOVE_KEYS:
+            return None
+        if move.get("mode", "both") != "both" or move.get("min_range", 1) != 1:
+            return None
+        kind, length = move.get("kind"), move.get("range", DEFAULT_RANGE.get(str(move.get("kind")), 1))
+        vectors = move.get("vectors")
+        symmetry = move.get("symmetry", "none")
+        if not isinstance(vectors, list) or symmetry not in ("none", "lateral", "rotate4", "dihedral8"):
+            return None
+        for vector in vectors:
+            if not (isinstance(vector, list) and len(vector) == 2
+                    and all(isinstance(c, int) and not isinstance(c, bool) for c in vector)):
+                return None
+            for turned in expand_symmetry((vector[0], vector[1]), str(symmetry)):
+                if kind == "leap" and length == 1:
+                    reach.add(("leap", turned))
+                elif kind == "slide" and length == 1 and max(map(abs, turned)) == 1:
+                    reach.add(("leap", turned))  # a one-square slide is a step
+                elif kind == "slide" and length == 0:
+                    reach.add(("ride", turned))
+                else:
+                    return None
+    return frozenset(reach)
+
+
+def insufficient_material_roles(
+    spec: Any, normalised: bool = False
+) -> tuple[dict[str, int], list[str]]:
+    """Each declared type's role in the dead sets, and why the game cannot take the rule.
+
+    The first is ``{id: role}`` (`INSUFFICIENT_ROYAL`, `_LEAPER`, `_RIDER` or `_OTHER`); the
+    second is empty exactly when the game is chess once its other types are gone, which is
+    when `rules.insufficient_material` states a rule. Read off the normal form
+    (`normal.normal_form`; ``normalised`` says ``spec`` already is one), so a spelling that
+    writes a default out (``"screen": "any"``, ``"royal": false``) reads as the game it is.
+    """
+    reasons: list[str] = []
+    roles: dict[str, int] = {}
+    if not isinstance(spec, dict):
+        return roles, ["the spec is not an object"]
+    if not normalised:
+        from chess_variant_sandbox.spec.normal import normal_form  # noqa: PLC0415 - a cycle
+
+        spec = normal_form(spec)
+    board = spec.get("board") if isinstance(spec.get("board"), dict) else {}
+    assert isinstance(board, dict)
+    if (board.get("width"), board.get("height")) != (8, 8) or board.get(
+        "lattice", "square"
+    ) != "square" or board.get("shape", "grid") != "grid":
+        reasons.append("the board is not an 8x8 square board")
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    extra = sorted(
+        key for key, value in rules.items()
+        if key not in _INSUFFICIENT_RULES_ALLOWED and value not in (False, None, 0, "", [], {})
+    )
+    if extra:
+        reasons.append(f"it states rules chess does not have ({', '.join(extra)})")
+    if rules.get("win", "checkmate") != "checkmate" or rules.get("checkmate", "loss") != "loss":
+        reasons.append("it is not won by checkmate")
+    if rules.get("stalemate", "draw") != "draw":
+        reasons.append("stalemate is not a draw")
+
+    pieces = [p for p in _listed(spec.get("pieces")) if isinstance(p, dict)]
+    royals = 0
+    for piece in pieces:
+        pid = piece.get("id")
+        if not isinstance(pid, str):
+            continue
+        plain = all(
+            key in _INSUFFICIENT_PIECE_KEYS or stated_off(piece, key, PIECE_OFF_VALUES)
+            for key in piece
+        )
+        reach = _reach_of(piece) if plain else None
+        if piece.get("royal") is True:
+            royals += 1
+            if reach != _ROYAL_STEP:
+                reasons.append(f"its royal {pid!r} does not move exactly one square every way")
+            roles[pid] = INSUFFICIENT_ROYAL
+        elif reach == _LONE_LEAP:
+            roles[pid] = INSUFFICIENT_LEAPER
+        elif reach == _DIAGONAL_RIDE:
+            roles[pid] = INSUFFICIENT_RIDER
+        else:
+            roles[pid] = INSUFFICIENT_OTHER
+    if royals != 1:
+        reasons.append("it has not exactly one royal type")
+
+    # A type with a role must never turn into something else, or come from nobody.
+    entries = rules.get("promotion")
+    for entry in _listed(entries) if isinstance(entries, list) else [entries]:
+        if isinstance(entry, dict) and roles.get(str(entry.get("piece")), 0) != INSUFFICIENT_OTHER:
+            reasons.append(f"its promoting piece {entry.get('piece')!r} is one the sets count")
+    castling = rules.get("castling")
+    if isinstance(castling, dict) and roles.get(str(castling.get("rook")), 0) != INSUFFICIENT_OTHER:
+        reasons.append(f"its castling partner {castling.get('rook')!r} is one the sets count")
+    setup = spec.get("setup") if isinstance(spec.get("setup"), dict) else {}
+    assert isinstance(setup, dict)
+    if any(
+        isinstance(p, dict) and p.get("player", 0) not in (0, 1)
+        for p in _listed(setup.get("placements"))
+    ):
+        reasons.append("it places pieces nobody owns")
+    return roles, reasons
+
+
+def insufficient_material_live(spec: Any, normalised: bool = False) -> bool:
+    """Whether ``rules.insufficient_material`` states a rule in ``spec``: written ``true`` on
+    a game that is chess once its other pieces are gone (`insufficient_material_roles` finds
+    no reason against it). Elsewhere the key is inert, and the game is the game without it."""
+    rules = spec.get("rules") if isinstance(spec, dict) else None
+    if not isinstance(rules, dict) or rules.get("insufficient_material") is not True:
+        return False
+    return not insufficient_material_roles(spec, normalised)[1]
 
 
 def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
@@ -6705,7 +6881,7 @@ def _validate_rules(
 
     for flag in (
         "en_passant", "must_capture", "forbid_check", "forbid_immobility",
-        "promote_on_entry",
+        "promote_on_entry", "insufficient_material",
     ):
         if flag in rules and not isinstance(rules[flag], bool):
             errors.append(f"rules.{flag} must be a boolean")

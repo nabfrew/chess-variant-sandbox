@@ -651,7 +651,7 @@ class TestInertness:
 
     def test_the_committed_hashes_have_not_moved(self) -> None:
         """Chess in particular: four schema bumps and the same twelve characters."""
-        assert spec_hash(_load("chess")) == "4c1922ffae26"
+        assert spec_hash(_load("chess")) == "831c77e75650"
 
     @pytest.mark.parametrize("name", WRAPPED)
     def test_the_seam_is_part_of_what_a_ruleset_is(self, name: str) -> None:

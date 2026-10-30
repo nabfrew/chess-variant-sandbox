@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -367,6 +368,9 @@ class TestEveryDescriptionIsUnchanged:
         # nineteen descriptions for a player and re-froze those rows, the describer unchanged.
         for now, then in _WORDED_SINCE:
             text = text.replace(now, then)
+        # Q1069a's rule, said by the games that switched it on: a sentence of its own, taken
+        # out, leaves the frozen text.
+        text = re.sub(r"\n *The game is drawn at once when too little[^\n]*", "", text)
         digest = hashlib.sha256(text.encode()).hexdigest()[:16]
         assert digest == _DESCRIPTIONS_BEFORE_THE_HEXAGON[_key(path)]
 

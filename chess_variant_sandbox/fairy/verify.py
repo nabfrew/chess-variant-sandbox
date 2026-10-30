@@ -403,12 +403,14 @@ class PyffishBackend:
 
         self._sf = pyffish
         self._name = ""
+        self._insufficient = False
 
     def load(self, variant: Variant, config_path: str) -> None:
         self._sf.load_variant_config(variant.config)
         if variant.name not in self._sf.variants():
             raise RuntimeError(f"pyffish did not register {variant.name!r}")
         self._name = variant.name
+        self._insufficient = variant.insufficient_material
 
     def divide(self, fen: str, depth: int) -> dict[str, int]:
         moves = self._sf.legal_moves(self._name, fen, [])
@@ -447,6 +449,12 @@ class PyffishBackend:
         ended, value = self._sf.is_immediate_game_end(self._name, fen, played)
         if ended:
             return "ended", int(value)
+        # Q1069a: a dead position, where the ruleset draws by insufficient material: both
+        # sides short of mating material, as their `has_insufficient_material` reads it.
+        if self._insufficient and all(
+            self._sf.has_insufficient_material(self._name, fen, played)
+        ):
+            return "insufficient material", 0
         claimable, value = self._sf.is_optional_game_end(self._name, fen, played)
         if claimable:
             return "a draw may be claimed", int(value)

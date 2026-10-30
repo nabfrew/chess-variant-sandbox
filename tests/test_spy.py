@@ -474,7 +474,9 @@ def test_phase_is_refused_without_a_spy() -> None:
 # one, and equal (`docs/plan-spy.md` §2.3). Random play is movegen and the seat streams, so
 # only a change to either moves it, and that change owes its perfts too.
 _INERT_TOURNAMENTS = {
-    "rulesets/chess.json": "5a0fe3f6b91534ab6556db450c59dd6a075af82ca19dda0f7f6e6b70c41bfbc1",
+    # Q1069a re-pinned chess on purpose: its new name in every record, and its games that reach
+    # a dead set end there (was 5a0fe3f6b915...).
+    "rulesets/chess.json": "2d93251a0c1437dd689ab5e59158ba382ee9146ada0ca042b0b8d9489e7cdaf7",
     "tests/_retired_gardner_in_rounds.json":
         "79e4c2b3f899124b04381fcde8f4c035851b5deddf4981f9ef24773fecaa8fe6",
 }

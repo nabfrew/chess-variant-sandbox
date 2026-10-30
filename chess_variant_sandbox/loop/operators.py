@@ -74,6 +74,7 @@ from chess_variant_sandbox.spec.schema import (
     has_sights,
     has_speeds,
     hire_ids,
+    insufficient_material_live,
     is_nobodys,
     is_simultaneous,
     majority_ids,
@@ -3170,6 +3171,31 @@ def _either_face(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+def _draw_on_dead_material(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Draw on dead material (Q1069a's ``rules.insufficient_material``), or stop doing so.
+
+    On a game that states it, the key comes off and a bare board plays on to the clocks.
+    Otherwise the key goes on, where it states a rule only on a game that is chess once its
+    other pieces are gone (`schema.insufficient_material_live`); elsewhere it would be
+    inert, which is a draw with nothing to do.
+    """
+    rules = spec.get("rules") or {}
+    trial = copy.deepcopy(spec)
+    if "insufficient_material" in rules:
+        trial["rules"].pop("insufficient_material")
+        said = "too little left to mate is no longer a draw at once; the clocks decide"
+    else:
+        trial.setdefault("rules", {})["insufficient_material"] = True
+        said = "the game is drawn the moment too little is left for either side to mate"
+        if not insufficient_material_live(trial):
+            return None
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 def _gate_the_hand(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Bring a held piece in by gating (Seirawan), or let a gating hand drop anywhere again.
 
@@ -4775,6 +4801,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("place-the-army", _place_the_army),
     Operator("either-face", _either_face),
     Operator("gate-the-hand", _gate_the_hand),
+    Operator("draw-on-dead-material", _draw_on_dead_material),
     Operator("win-by-leaving", _win_by_leaving),
     Operator("open-a-portal", _open_a_portal),
     Operator("ring-the-portals", _ring_the_portals),

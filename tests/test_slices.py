@@ -462,10 +462,15 @@ LIBRARY = test_index_quality.RUNS
 # `describe_move` names a sweep's victims through `CompiledSpec.sweep_victims`, the same squares
 # in the same order, which moves `metrics` and `analysis` with no number on a library game. The
 # window is the stamp Q1053 left the library; **the next library re-analysis empties it**.
+#
+# **Moved 2026-10-30 by Q1069a** (the draw by insufficient material): `metrics` moves with
+# `spec/complexity.py`, `spec/schema.py` and `engine/compile.py`, and no number moves on a game
+# that does not switch the rule on. The window is the stamp the library carries now
+# ("0fade4c28a4b49ff"); **Q1069b's re-measure and re-score empties it**.
 STALE_WINDOW: dict[str, str] = {
     "weights_version": "v12",
-    "metrics": "92acf3baf7eb5664",
-    "analysis": "112588bc71efb82d",
+    "metrics": "0fade4c28a4b49ff",
+    "analysis": "096ef3d32021f620",
 }
 
 

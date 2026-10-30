@@ -25,6 +25,9 @@ generated (`terminal_prefix`); the two below need the move list to be empty
     6. bare royal                            rules.bare_royal
     7. territory                             rules.territory.win_at
     8. check limit                           rules.check_limit
+    8b. insufficient material (Q1069a)       rules.insufficient_material, a draw; it holds
+                                             only where none of 1 to 8 can, so it is pinned
+                                             against 9 to 11 in tests/test_insufficient_material.py
     9. repetition                            always
     10. the no-progress clock                -> rules.scoring, unless it is mate (Q412)
     11. the ply limit                        -> rules.scoring, unless it is mate (Q412)

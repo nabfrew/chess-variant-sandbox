@@ -33,6 +33,7 @@ from chess_variant_sandbox.spec.schema import (
     has_rests,
     has_speeds,
     hire_ids,
+    insufficient_material_live,
     keeping_link_holds,
     majority_ids,
     neutral_ids,
@@ -54,7 +55,7 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 54
+LAST_BUMP = 55
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -1224,6 +1225,17 @@ def _schema_fifty_four_uses(spec: dict[str, Any]) -> set[str]:
     return {"rules.purse.bounty_to"} if purse_pays_loser(spec) else set()
 
 
+def _schema_fifty_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 55 added, by name (Q1069a, the draw by
+    insufficient material; numbered by order of landing, bumping no version). One key:
+
+    * ``rules.insufficient_material`` -- ``true``: drawn the moment the material left is one
+      of FIDE's dead sets, where the game is chess once its other pieces are gone
+      (``schema.insufficient_material_roles``). ``false`` is the off value and names nothing.
+    """
+    return {"rules.insufficient_material"} if insufficient_material_live(spec) else set()
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -1271,4 +1283,5 @@ _COLLECTORS = {
     52: _schema_fifty_two_uses,
     53: _schema_fifty_three_uses,
     54: _schema_fifty_four_uses,
+    55: _schema_fifty_five_uses,
 }

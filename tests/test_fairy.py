@@ -1613,7 +1613,8 @@ class TestTheCompiledSpecCarriesItsSource:
         """It must not move a hash, or every calibration run is orphaned."""
         from chess_variant_sandbox.engine.compile import compile_spec
 
-        assert compile_spec(_spec("chess")).hash == "4c1922ffae26"
+        # Q1069a: 4c1922ffae26 until chess gained the draw by insufficient material.
+        assert compile_spec(_spec("chess")).hash == "831c77e75650"
 
 
 def _as_before_q438(monkeypatch: pytest.MonkeyPatch) -> None:

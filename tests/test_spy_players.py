@@ -400,7 +400,8 @@ def test_a_guarded_spy_is_not_taken_for_a_rook(agent: str) -> None:
 # Q986b (2026-10-20) re-pinned the round game on purpose: a finished round is worth
 # `ROUND_WIN_PIECES` mean pieces in the round search, a new round player. It was a559af13... .
 _INERT = {
-    "rulesets/chess.json": "454a5507328148886b9f5c39b091907dc686caca91ee57beda7cf16a7b64a782",
+    # Q1069a re-pinned chess on purpose: its new name, and its dead-material draws (was 454a5507...).
+    "rulesets/chess.json": "783fd8a917a610026d2631d00d8fd74b6603e689ac7a47645a9bca299164ed14",
     "tests/_retired_gardner_in_rounds.json":
         "ea68bf59be2363fef170199cada924fac4b354a18be67e43e2e3726c2d22c835",
 }

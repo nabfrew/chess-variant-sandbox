@@ -164,6 +164,10 @@ class Variant:
     # lists it as a move that loses. `verify` accepts that one extra move of theirs, and
     # only where their own engine says the drop leaves them mated (Q453).
     drop_mate: str = ""
+    # Q1069a: whether the ruleset draws by insufficient material. No config option carries
+    # it (their search plays a dead position out); the referee asks
+    # ``has_insufficient_material`` instead, a draw where both sides lack mating material.
+    insufficient_material: bool = False
 
 
 def variant_name(ruleset_hash: str) -> str:
@@ -237,6 +241,7 @@ def translate(spec: dict[str, Any] | CompiledSpec) -> Variant:
         notes=tuple(notes),
         approximates=frozenset(approximates),
         drop_mate=_drop_mate_char(compiled, chars, slots),
+        insufficient_material=compiled.insufficient_material is not None,
     )
 
 
@@ -301,6 +306,11 @@ _RULES_TRANSLATED = frozenset(
         "extinction",
         "forbid_check",
         "forbid_immobility",
+        # Q1069a: a referee's rule, no config line: their `has_insufficient_material` (both
+        # sides short of mating material) is asked beside their other endings
+        # (`verify.PyffishBackend.ending`). Only chess once its other pieces are gone can
+        # state it, and theirs reads chess's sets.
+        "insufficient_material",
         "max_plies",
         "must_capture",
         "no_progress_draw",

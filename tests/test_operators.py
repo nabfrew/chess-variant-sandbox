@@ -93,7 +93,7 @@ _NUMBER_WORDS = {
     38: "thirty_eight", 39: "thirty_nine", 40: "forty", 41: "forty_one", 42: "forty_two",
     43: "forty_three", 44: "forty_four", 45: "forty_five", 46: "forty_six",
     47: "forty_seven", 48: "forty_eight", 49: "forty_nine", 50: "fifty", 51: "fifty_one",
-    52: "fifty_two", 53: "fifty_three", 54: "fifty_four",
+    52: "fifty_two", 53: "fifty_three", 54: "fifty_four", 55: "fifty_five",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -2044,7 +2044,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 54
+_FEATURES_ARE_FOR_SCHEMA = 55
 
 
 @dataclass(frozen=True)
@@ -2668,6 +2668,11 @@ def _parent_two_lengths() -> dict:
     return load_spec(Path(__file__).parent / "_sweep_three_slide_on.json")
 
 
+def _parent_dead_material() -> dict:
+    """Chess, which states the draw by insufficient material (Q1069a)."""
+    return load_spec(Path(__file__).parents[1] / "rulesets" / "chess.json")
+
+
 def _parent_paid_to_loser() -> dict:
     """The levy (TC9b's retired showcase) with its bounties paid to the loser (TC9c)."""
     levy = load_spec(Path(__file__).parent / "_retired_the_levy.json")
@@ -2876,16 +2881,15 @@ def _armies_differ(spec: dict) -> bool:
 # so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
 # and `straighten` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    # Generation 54 (TC9c, a bounty paid to the loser): one name, a key of the purse, so its
-    # host is `purse`. `pay-the-loser` enters it (a purse game with a type's bounty paid to
-    # the loser) and leaves it (back to the taker); it names and adds no type, so the army is
-    # kept. Generation 53's row (Q1063) retired with the generation; `shorten-the-sweep`
+    # Generation 55 (Q1069a, the draw by insufficient material): one name, a rule of its
+    # own, so no host. `draw-on-dead-material` enters it (on a game that is chess once its
+    # other pieces are gone) and leaves it (the key taken off); it names and adds no type, so
+    # the army is kept. Generation 54's row (TC9c) retired with the generation; `pay-the-loser`
     # still crosses it.
-    "TC9c bounty to the loser": _Feature(
-        "purse", frozenset({"rules.purse.bounty_to"}), True,
-        "the levy paying its bounties to the loser (tests/_retired_the_levy.json)",
-        _parent_paid_to_loser,
-        likely=lambda spec: isinstance((spec.get("rules") or {}).get("purse"), dict),
+    "Q1069a insufficient material": _Feature(
+        None, frozenset({"rules.insufficient_material"}), True,
+        "chess (rulesets/chess.json), which draws on dead material", _parent_dead_material,
+        likely=lambda spec: (spec.get("board") or {}).get("width") == 8,
     ),
 }
 
@@ -2898,14 +2902,9 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
 _SHOWCASE_OWED: dict[str, str] = {
-    # Generation 54 (TC9c): its showcase, *the indemnity* (docs/plan-turncoat.md §8.6), retired
-    # on V2's market clause (`tests/_retired_the_indemnity.json`), and its successor *the
-    # quartermaster* (§8.7, TC9d) on V2's snowball clause at strength
-    # (`tests/_retired_the_quartermaster.json`); still owed.
-    "TC9c bounty to the loser": (
-        "a successor to the quartermaster (TC9d retired it on V2's snowball clause at "
-        "strength, §8.7; TC9c the indemnity on its market clause, §8.6)"
-    ),
+    # Generation 55 (Q1069a) owes none: `rulesets/chess.json` states the rule and reaches it.
+    # Generation 54's name (TC9c) went to `_NO_SHOWCASE_ON_PURPOSE` when Q1069a retired its
+    # `_FEATURES` row, still owed.
     # Generation 53's name (Q1063) went to `_NO_SHOWCASE_ON_PURPOSE` when TC9c retired its
     # `_FEATURES` row: Q1064's twin was measured and not taken.
     # Generation 51's names (SR2b) went to `_NO_SHOWCASE_ON_PURPOSE` when Q1059a retired
@@ -3063,6 +3062,7 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     52: frozenset({"rules.drops.gating"}),
     53: frozenset({"pieces.moves.sweep.sweep_range"}),
     54: frozenset({"rules.purse.bounty_to"}),
+    55: frozenset({"rules.insufficient_material"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -3071,6 +3071,13 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 54's name (TC9c), owed in `_SHOWCASE_OWED` until generation 55 (Q1069a)
+    # retired its `_FEATURES` row: *the indemnity* (§8.6) and *the quartermaster* (§8.7, TC9d)
+    # both retired, so a successor is still owed.
+    "schema 54: rules.purse.bounty_to": (
+        "a successor to the quartermaster (TC9d retired it on V2's snowball clause at "
+        "strength, §8.7; TC9c the indemnity on its market clause, §8.6)"
+    ),
     # Generation 53's name (Q1063), owed in `_SHOWCASE_OWED` by Q1064 until generation 54
     # (TC9c) retired its `_FEATURES` row. Q1064's twin (sweep three, slide on) was measured
     # and not taken (0.176, not viable: it mates on ply 1), so no game shows the key yet
@@ -4347,7 +4354,7 @@ _PINNED_SCALES: dict[str, float] = {
     "royal_slides": 1.0, "move_orthogonal_share": 1.0, "capture_orthogonal_share": 1.0,
     "mean_step": 3.0, "has_promotion": 1.0, "has_drops": 1.0, "has_stock": 1.0,
     "stock_is_endless": 1.0, "drops_placement": 1.0, "drops_either_face": 1.0,
-    "drops_gating": 1.0,
+    "drops_gating": 1.0, "draws_insufficient_material": 1.0,
     "has_a_moveless_piece": 1.0, "has_castling": 1.0, "win_is_capture": 1.0,
     "wins_by_arrival": 1.0, "wins_by_check_count": 1.0, "wins_by_extinction": 1.0,
     "wins_by_bare_royal": 1.0, "restricts_captures": 1.0, "has_territory": 1.0,
@@ -4456,13 +4463,16 @@ class TestDistanceIsPinnedToTheNumber:
         `price_share`, 120 since TC6's `has_hire` and `has_bribe`, 121 since SR1a's
         `legs_share`, 122 since SR1b's `explodes_shaped`, 123 since Q1059a's
         `drops_gating`, 124 since Q1063's `short_sweep_share` and 125 since TC9c's
-        `bounty_to_loser`, is 0.009866, which rounds to 0.0099."""
+        `bounty_to_loser`, is 0.009866, which rounds to 0.0099; 126 since Q1069a's
+        `draws_insufficient_material`, read with chess's draw on dead material taken off, since
+        a bare-royal rule leaves that draw inert and would be a second difference: 0.0098."""
         chess = _chess()
+        chess["rules"].pop("insufficient_material")
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0099
+        assert distance(chess, twin) == 0.0098
 
 
 def _one_leap_beside_a_stone() -> dict:

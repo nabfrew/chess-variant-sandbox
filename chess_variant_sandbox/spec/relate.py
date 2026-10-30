@@ -62,6 +62,7 @@ from chess_variant_sandbox.spec.schema import (
     en_passant_can_fire,
     format_square,
     has_sights,
+    insufficient_material_roles,
     is_nobodys,
     obstacle_squares,
     parse_square,
@@ -113,6 +114,8 @@ RULE_KINDS: dict[str, str] = {
     "max_plies": "clock",
     "repetition_draw": "clock",
     "no_progress_draw": "clock",
+    # Q1069a: a draw, like the clocks' and repetition's, read off the material left.
+    "insufficient_material": "clock",
     "drops": "hand",
     # TC5 (`docs/plan-turncoat.md` §5.8): coins and a market are a second way pieces enter
     # play, beside the hand.
@@ -155,6 +158,7 @@ RULE_WORDS: dict[str, str] = {
     "max_plies": "how long a game may run",
     "repetition_draw": "how often a position may repeat",
     "no_progress_draw": "how long without progress before a draw",
+    "insufficient_material": "whether too little material left is a draw",
     "drops": "putting captured pieces back on the board",
     "purse": "coins, and buying pieces with them",
     "npcs": "the pieces that belong to nobody",
@@ -290,6 +294,10 @@ class NormalForm:
     rules: dict[str, Any] = field(default_factory=dict)
     # Whether this game's rules could ever bring en passant into play. See `_compare`.
     en_passant_fires: bool = False
+    # Q1069a: whether the draw by insufficient material would state a rule in this game (it is
+    # chess once its other pieces are gone). Outside `key`, as it is read off what is. See
+    # `_compare`.
+    dead_material_applies: bool = False
     key: str = ""
     # What each piece is called, by id. Outside `key`, which a renaming does not move,
     # but a sentence names pieces, so the pair cache is keyed on it too (`relate_forms`).
@@ -354,6 +362,7 @@ def _build(spec: dict[str, Any]) -> NormalForm:
         cells=frozenset(cells),
         rules=_live_rules(spec),
         en_passant_fires=_en_passant_fires(spec),
+        dead_material_applies=not insufficient_material_roles(spec)[1],
         key="",
         names=tuple(sorted((pid, str(piece.get("name", pid))) for pid, piece in pieces.items())),
     )
@@ -1215,6 +1224,13 @@ def _rule_differences(
     """
     for key in sorted(first.rules.keys() | second.rules.keys()):
         if key == "en_passant" and not (first.en_passant_fires and second.en_passant_fires):
+            continue
+        # Q1069a: the same for the draw by insufficient material. A game that is not chess
+        # underneath cannot have it, so that difference is already charged to whatever rule or
+        # piece made it so (atomic is chess and a blast, not chess, a blast and a draw).
+        if key == "insufficient_material" and not (
+            first.dead_material_applies and second.dead_material_applies
+        ):
             continue
         shape = _PIECE_POSITIONS.get(key)
         one = _renamed(first.rules.get(key), shape, ids_a)

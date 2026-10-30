@@ -85,6 +85,9 @@ _RULE_COSTS: dict[str, float] = {
     "max_plies": 0.0,
     "repetition_draw": 0.0,
     "no_progress_draw": 0.0,
+    # Q1069a: the draw by insufficient material is an arbiter's rule of the same kind, a
+    # way a game stops that nobody plays toward, and chess's players already know it.
+    "insufficient_material": 0.0,
     # Endings. Costed only when they differ from the default, handled below.
     "win": 1.0,
     "stalemate": 1.0,

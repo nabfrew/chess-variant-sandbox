@@ -784,6 +784,9 @@ class TestWhatAForkChanged:
     @staticmethod
     def _fork() -> tuple[dict[str, Any], dict[str, Any]]:
         parent = _spec(ROOT / "rulesets" / "chess.json")
+        # Q1069a: without the draw on dead material, whose sentence names the leaper the
+        # fork below changes (a truthful third line, which is not what these tests ask about).
+        parent["rules"].pop("insufficient_material", None)
         child = copy.deepcopy(parent)
         child["name"], child["description"] = "a fork", "renamed, which is not a rule"
         child["pieces"][1]["moves"][0]["vectors"] = [[1, 3]]

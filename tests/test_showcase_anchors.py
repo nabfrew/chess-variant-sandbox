@@ -49,6 +49,9 @@ def test_the_file_is_chess_with_anchors_only_pawns_take() -> None:
             assert "A" not in piece["captures"]
     assert spec["appearance"]["icons"]["A"] == "anchor"
     chess = json.loads((ROOT / "rulesets" / "chess.json").read_text(encoding="utf-8"))
+    # Q1069a: chess as it was, before it drew on dead material (inert beside a royal that
+    # may not take everything, so the showcase does not state it).
+    chess["rules"].pop("insufficient_material")
     assert spec["rules"] == chess["rules"]
     assert spec_hash(chess) == CHESS_HASH
 

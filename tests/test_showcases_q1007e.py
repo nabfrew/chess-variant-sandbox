@@ -28,7 +28,8 @@ from chess_variant_sandbox.spec import load_spec, spec_hash
 
 ARCHIVE = Path(__file__).resolve().parent.parent / "archive"
 R1_FILE, R1_HASH = ARCHIVE / "opposite-colours.json", "ce406100becc"
-R3_FILE, R3_HASH = ARCHIVE / "chess-with-nightriders.json", "cc5e28e9ed0f"
+# Q1069a: R3 draws on dead material, as chess does (was cc5e28e9ed0f).
+R3_FILE, R3_HASH = ARCHIVE / "chess-with-nightriders.json", "ce17f9cdcd55"
 PARENT_HASH = "690631b0e4eb"
 RIDE = {"kind": "slide", "vectors": [[2, 0]], "symmetry": "rotate4"}
 FAST_GAMES, MAX_PLIES = 3, 200
@@ -188,7 +189,10 @@ def test_r3_is_chess_with_one_move_rewritten() -> None:
     spec = load_spec(R3_FILE)
     assert spec_hash(spec) == R3_HASH
     chess = load_spec(ARCHIVE.parent / "rulesets" / "chess.json")
-    assert spec["provenance"]["parents"] == [spec_hash(chess)[:12]]
+    # The parent is chess as it was, before Q1069a's draw on dead material.
+    unruled = {**chess, "rules": {k: v for k, v in chess["rules"].items()
+                                  if k != "insufficient_material"}}
+    assert spec["provenance"]["parents"] == [spec_hash(unruled)[:12]]
     for ours, theirs in zip(spec["pieces"], chess["pieces"], strict=True):
         if ours["id"] == "N":
             assert ours["moves"] == [{"kind": "slide", "vectors": [[1, 2]],

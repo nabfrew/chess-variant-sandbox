@@ -567,7 +567,7 @@ class TestTheShowcase:
         assert validate_spec(spec) == []
         engine = Engine(spec)
         assert engine.spec.n_facings == 4
-        assert engine.spec.hash == "1442513d38d7"
+        assert engine.spec.hash == "241fcd286e26"  # Q1069a; was 1442513d38d7
 
     def test_only_the_pawn_differs_from_sardines(self) -> None:
         """The control is exact, which is what makes the measurement readable."""

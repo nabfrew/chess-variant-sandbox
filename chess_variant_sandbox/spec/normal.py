@@ -49,6 +49,7 @@ from chess_variant_sandbox.spec.schema import (
     PURSE_OFF_VALUES,
     SIGHT_OFF_VALUES,
     SIMULTANEOUS_OFF_VALUES,
+    insufficient_material_live,
     portal_stand_in_shape,
     stated_off,
     strike_is_live,
@@ -64,7 +65,7 @@ _ABSENT_WHEN_EMPTY = frozenset({
     "promotion", "en_passant", "castling", "bare_royal", "check_limit", "reach",
     "extinction", "must_capture", "forbid_check", "drops", "explode_on_capture",
     "forbid_immobility", "scoring", "territory", "turn", "wrap", "obstacles", "strike",
-    "contacts", "npcs", "promote_on_entry", "portals",
+    "contacts", "npcs", "promote_on_entry", "portals", "insufficient_material",
 })
 _EMPTY: tuple[Any, ...] = (False, None, 0, "", [], {})
 
@@ -164,6 +165,13 @@ def _normalise(normal: dict[str, Any]) -> dict[str, Any]:
         shape = board.get("shape") if isinstance(board, dict) else None
         _normal_rules(rules, height, shape)
     drop_off_values(normal)
+    # Q1069a: the draw by insufficient material written on a game that is not chess
+    # underneath states nothing (`schema.insufficient_material_live`, read off this form).
+    if (
+        isinstance(rules, dict) and "insufficient_material" in rules
+        and not insufficient_material_live(normal, normalised=True)
+    ):
+        del rules["insufficient_material"]
     return normal
 
 

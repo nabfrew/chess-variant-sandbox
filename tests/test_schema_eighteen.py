@@ -220,7 +220,7 @@ class TestTheBumpMovedNothing:
         assert tables_fingerprint(spec) == tables, f"{path} compiles to different tables"
 
     def test_chess_is_still_chess(self, games: dict[str, dict[str, Any]]) -> None:
-        assert spec_hash(games["chess"]) == "4c1922ffae26"
+        assert spec_hash(games["chess"]) == "831c77e75650"
 
     def test_only_the_showcases_use_schema_eighteen(self) -> None:
         users = {

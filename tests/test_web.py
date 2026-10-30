@@ -9547,10 +9547,10 @@ class TestTwoRatingTablesThatMustNotMix:
     def test_a_pickers_table_is_invisible_to_the_library(self, tmp_path) -> None:
         from chess_variant_sandbox.web.opponents import stored_path
 
-        path = stored_path("4c1922ffae26", tmp_path)
+        path = stored_path("831c77e75650", tmp_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({
-            "ruleset_hash": "4c1922ffae26",
+            "ruleset_hash": "831c77e75650",
             "standings": [{"name": "minimax:h=abc,nodes=6400", "rating": 900.0, "games": 20}],
         }), encoding="utf-8")
         # Invisible by construction now rather than by a name check: the library reads
@@ -11063,7 +11063,7 @@ class TestBuildingAGameByHand:
         went to chess. The candidate was invisible for ever and nothing warned.
         """
         app = App(RULESETS, tmp_path / "runs", tmp_path / "heur", library.ARCHIVE_DIR)
-        chess = app.get("/api/design/4c1922ffae26")
+        chess = app.get("/api/design/831c77e75650")
         fork = json.loads(json.dumps(chess["spec"]))
         fork["name"] = chess["name"] + " variant"
         fork["description"] = ""
@@ -11084,7 +11084,7 @@ class TestBuildingAGameByHand:
     def test_a_changed_rule_makes_a_different_game_that_saves(self, tmp_path) -> None:
         """The other side of the refusal: it must not stand in the way of a real fork."""
         app = App(RULESETS, tmp_path / "runs", tmp_path / "heur", library.ARCHIVE_DIR)
-        chess = app.get("/api/design/4c1922ffae26")
+        chess = app.get("/api/design/831c77e75650")
         fork = json.loads(json.dumps(chess["spec"]))
         fork["name"] = "wider chess"
         fork["board"]["width"] = 9
@@ -11103,13 +11103,13 @@ class TestBuildingAGameByHand:
         holds whether chess's library measurement is current or stale today.
         """
         app = App(RULESETS, library.RUNS_DIR, "heuristics", library.ARCHIVE_DIR)
-        opened = app.get("/api/design/4c1922ffae26")
-        assert opened["hash"] == "4c1922ffae26"
+        opened = app.get("/api/design/831c77e75650")
+        assert opened["hash"] == "831c77e75650"
         assert opened["name"] == "chess"
         assert opened["stage"] == "committed"
         assert "index" in opened and "staleness" in opened
         assert opened["roster"], "'measured' means nothing without saying against what"
-        game = app.game("4c1922ffae26")
+        game = app.game("831c77e75650")
         assert opened["index"] == (game.current_score or {}).get("index")
         if game.status == library.PROVISIONAL:
             assert opened["index"] is None, "a provisional number never reaches a parent"

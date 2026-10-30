@@ -29,7 +29,10 @@ from chess_variant_sandbox.spec import load_spec, spec_hash
 
 ROOT = Path(__file__).resolve().parent.parent
 FILE = ROOT / "archive" / "crooked-bishops.json"
-HASH, TEST_SPEC_HASH, CHESS_HASH = "23f6613e9fa3", "0ed28ce2fe25", "4c1922ffae26"
+HASH, TEST_SPEC_HASH, CHESS_HASH = "7e57cab1fd7e", "0ed28ce2fe25", "4c1922ffae26"  # Q1069a; HASH was 23f6613e9fa3
+# Q1069a: the file and chess both draw on dead material now, so the twin is chess as it is
+# (`CHESS_NOW`) while the parent named in the provenance stays chess as it was.
+CHESS_NOW = "831c77e75650"
 ZIGZAG = {"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "path": "zigzag"}
 _MOVE = re.compile(r"^~?[A-Za-z]([a-z]\d+)[-x]([a-z]\d+)")
 
@@ -55,12 +58,13 @@ def test_it_is_the_registered_game_and_chess_is_its_twin() -> None:
     assert _bishop(spec)["moves"] == [ZIGZAG] and _bishop(spec)["value"] == 3
     assert spec["appearance"]["icons"]["B"] == "bishop"
     test_spec = copy.deepcopy(spec)
+    test_spec["rules"].pop("insufficient_material")  # T1's test copy predates Q1069a
     _bishop(test_spec)["name"] = "bolt"
     assert spec_hash(test_spec) == TEST_SPEC_HASH  # T1's tests/_path_bolt.json
     twin = copy.deepcopy(spec)
     _bishop(twin)["name"] = "bishop"
     del _bishop(twin)["moves"][0]["path"]
-    assert spec_hash(twin) == CHESS_HASH
+    assert spec_hash(twin) == CHESS_NOW
 
 
 def _targets(engine: Engine, state: GameState, origin: str) -> set[str]:

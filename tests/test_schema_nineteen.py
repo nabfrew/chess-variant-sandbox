@@ -175,7 +175,7 @@ class TestTheBumpMovedNothing:
         assert tables_fingerprint(spec) == tables, f"{path} compiles to different tables"
 
     def test_chess_is_still_chess(self) -> None:
-        assert spec_hash(_ruleset("chess")) == "4c1922ffae26"
+        assert spec_hash(_ruleset("chess")) == "831c77e75650"
 
     def test_only_the_showcases_use_schema_nineteen(self) -> None:
         """Nothing written before the bump uses it: the users are exactly Q772a's seven

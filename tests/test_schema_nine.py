@@ -71,11 +71,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # other 32 gained a fingerprint for a field that says something true about them and
 # changes no game, which is the price of the field existing and is named in the costing.
 FROZEN: dict[str, tuple[str, str]] = {
-    "rulesets/almost.json": ("9c26a04f1ca5", "b5693955ab65e13a"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 9c26a04f1ca5 / b5693955ab65e13a
+    "rulesets/almost.json": ("1605b8619844", "19191d0e94b59804"),
     "rulesets/antichess.json": ("3ec1560124c3", "fe591ce72b1ac298"),
     "rulesets/atomic.json": ("6bd4d9c5769e", "68e2e63e8ea2e0e3"),  # was 4c0a2bc790ce84a3 (Q1032)
     "rulesets/bastion.json": ("9574b0bf9095", "c7b2c37ce93eaaa3"),
-    "rulesets/berolina.json": ("14a126b38a1a", "f2b419020c29d309"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 14a126b38a1a / f2b419020c29d309
+    "rulesets/berolina.json": ("d06cfc337d9c", "4945059532fe19a2"),
     "rulesets/capablanca.json": ("2eefcd835b3b", "304b04afb9d2d47b"),
     # Re-frozen 2026-09-07 by Q98, on the same footing as `intransitive` below: the
     # phantom `"en_passant": true` came off the spec when `_check_inert_rules` learned
@@ -89,8 +91,10 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q869, 2026-10-13: the attack sources keep only the frames a type can stand in, so a
     # piece that faces no way loses its sources for the facings it never holds; the same
     # games move for move (played and perft-compared both ways). was 711c14261a57f2dc
-    "archive/chess-oriented-pawns.json": ("57c73975c905", "d3841caf15b539ee"),
-    "rulesets/chess.json": ("4c1922ffae26", "94a4a49ab238a4e2"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 57c73975c905 / d3841caf15b539ee
+    "archive/chess-oriented-pawns.json": ("7cddf4ba316b", "3bdcb214014fbf5b"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 4c1922ffae26 / 94a4a49ab238a4e2
+    "rulesets/chess.json": ("831c77e75650", "2c8ea5ae0183c323"),
     "rulesets/courier.json": ("0b96463ffba7", "43c2fe4fb1ab1401"),
     # Q869, 2026-10-13: the rear pawn `V` respelled as a pawn placed facing backwards with a
     # facing no move turns (schema 25), so the hand holds one kind of pawn and returns it
@@ -123,6 +127,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/kingofthehill.json": ("71912ea8ba7f", "58ed70e1e5ca6fd5"),
     "rulesets/knightmate.json": ("50a3da8f75e7", "09bf8280bead8d65"),
     "rulesets/losalamos.json": ("fcbb53d53ce4", "48e1a3d58f9c6bd5"),
+    # Q1069a left it off: Fairy-Stockfish also draws makruk's own dead sets (a lone met), which
+    # FIDE's do not hold, so the result check would read a difference no note can admit.
     "rulesets/makruk.json": ("eaa48ed29ad7", "fc1b479eb1a32a55"),
     "archive/onewaycylinder.json": ("b02bbe8da72c", "0449ce95d1a9ac76"),
     "archive/onewaytorus.json": ("c6ff883e5919", "05787a033547e413"),
@@ -151,7 +157,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # `f43d462fe570`/`9ec1b5e290fc928c` when the user gave the pawn its double step.
     # Both older measurements stay in `docs/reference/corpus-replay-2026-09-11.md`,
     # marked superseded.
-    "archive/sardines.json": ("9f538ab85a77", "685dcd4a16589d0e"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 9f538ab85a77 / 685dcd4a16589d0e
+    "archive/sardines.json": ("accd659f2c76", "3d8af62d5a84cc9b"),
     "rulesets/seirawan.json": ("3dafe910108f", "8160793ce6039e0f"),  # Q1059b, generation 52
     "rulesets/shatranj.json": ("67270a8805a0", "14a6ff87ac93cbe0"),
     # Q454 (B3 of `docs/reference/traditional-shogi.md`), 2026-09-25: re-frozen on purpose,
@@ -214,17 +221,21 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/hierarchy-rise-throw.json": ("78130df01edd", "5f32c46b0cd9e3f9"),
     # Q21, 2026-09-14: schema 13's showcase, chess with sweeping bishops. The only spec in
     # the tree that compiles a sweep table, so this row pins that path.
+    # Q1069a left it off: the landing's sweep story replays its recorded games by this name.
     "archive/chess-sweeping-bishops.json": ("42bd7d06828d", "de55d69b00587dc2"),
     # LPD, 2026-10-26: its one-change fix, the sweep given range 3 (the landing's fourth pair).
+    # Q1069a left it off, as its pair above.
     "archive/short-sweeping-bishop-chess.json": ("c7c6907901b3", "f47ff465aa55f168"),
     # Q1023, 2026-10-26: L1, chess with galloping knights, schema 31's lame rider (`range`,
     # `min_range`; `docs/archive/plan-schema-31.md` §6.4; `tests/test_showcase_galloping_knights.py`),
     # from `4c1922ffae26`. New.
-    "archive/chess-with-galloping-knights.json": ("69f1e486af87", "e11db59559c33321"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 69f1e486af87 / e11db59559c33321
+    "archive/chess-with-galloping-knights.json": ("e1bb4740516e", "299bf2a242982945"),
     # Q1024, 2026-10-26: P1, chess with preaching bishops, schema 31's command and captures_own
     # (`docs/archive/plan-schema-31.md` §6.5; `tests/test_showcase_preaching_bishops.py`), from
     # `4c1922ffae26`. New.
-    "archive/chess-with-preaching-bishops.json": ("91c2c24305e5", "1dbafa64248e5732"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 91c2c24305e5 / 1dbafa64248e5732
+    "archive/chess-with-preaching-bishops.json": ("bafc4a7011a3", "2750cd4caa033e97"),
     "archive/marchfield.json": ("0be72e61ef24", "3a2d5a7fddb76113"),
     # Schema 10's seven showcases (Q101, 2026-09-07), rows 23--30 of
     # `docs/reference/schema-showcase-coverage.md`. Frozen *at* schema 10 rather than
@@ -234,7 +245,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # stock or a never-repeating clock, so a compiler change to any of the five would
     # otherwise move no committed ruleset's tables and pass in silence.
     "archive/merger.json": ("85555467a4ca", "d4079562891aafd2"),
-    "archive/perpetual.json": ("df2fbba0ca76", "3f3573664d563043"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was df2fbba0ca76 / 3f3573664d563043
+    "archive/perpetual.json": ("a5e2a7e05c9a", "433c4033a4faf829"),
     # Q880, 2026-10-13: a one-square diagonal step passes over nothing under
     # `blocks_leaps` (`compile._lame_path` halves toward zero, not floor), so a wall
     # beside a king or a pawn no longer stops two of its four diagonals. Quarry is the
@@ -267,7 +279,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q869, 2026-10-13: the attack sources keep only the frames a type can stand in, so a
     # piece that faces no way loses its sources for the facings it never holds; the same
     # games move for move (played and perft-compared both ways). was 0664986abe7f9b25
-    "archive/weathervane-half-turn.json": ("8fc3939243d5", "7e9a6e3b57386450"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 8fc3939243d5 / 7e9a6e3b57386450
+    "archive/weathervane-half-turn.json": ("6784c35550d8", "9565a1ca033bf369"),
     # The family's facing cell, Q180, seed 20261254. Re-frozen from
     # `b88e98dab286`/`55501435ca71e297`, which was the pre-edit sardines plus facing and
     # so had stopped being the plain cell's control. This one is `archive/sardines`'
@@ -276,7 +289,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q869, 2026-10-13: the attack sources keep only the frames a type can stand in, so a
     # piece that faces no way loses its sources for the facings it never holds; the same
     # games move for move (played and perft-compared both ways). was 462cb3cb5476254f
-    "archive/weathervane.json": ("1442513d38d7", "ba2232e42e5b3915"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 1442513d38d7 / ba2232e42e5b3915
+    "archive/weathervane.json": ("241fcd286e26", "f54c6980ccd8992d"),
     "archive/wolves.json": ("ceb4916bdabc", "5a0c6e8ef7f53176"),
     # `wolves-immune` is `wolves` re-spelled with `npcs[].immune` and its tables are
     # `wolves`' but for the Zobrist draws, which the fingerprint covers -- so the two
@@ -479,7 +493,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # (`docs/reference/preview-call-2026-10.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     # Q1005, 2026-10-23: `archive/breather-by-weight.json` (`7ea0357fa8de`/`abaae18d917e8aab`) retired from the previews
     # (`docs/reference/preview-call-2026-10.md`), its file kept as `tests/_retired_*.json`; its runs stay.
-    "archive/chess-with-a-weary-queen.json": ("fee1ab560013", "e0e507662bfb777a"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was fee1ab560013 / e0e507662bfb777a
+    "archive/chess-with-a-weary-queen.json": ("b48942ad079f", "b67f54263d64f2a5"),
     # Q999b, 2026-10-22: the user's colour-bound showcase of schema 30's lines of sight
     # (`docs/archive/plan-passive.md` §6.5; `tests/test_showcase_opposite_colours.py`): chess's array
     # with every piece bound to its colour, the colours meeting only by sight. New.
@@ -489,20 +504,25 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/opposite-colours.json": ("ce406100becc", "2b08f4f685f2a455"),
     # Q999d, 2026-10-22: schema 30's three one-change showcases on chess (`docs/archive/plan-passive.md`
     # §6.1; `tests/test_showcases_q999.py`), Q999a's test specs archived as registered. New.
-    "archive/madrasi.json": ("59a118c8ee38", "94492725c59178b8"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 59a118c8ee38 / 94492725c59178b8
+    "archive/madrasi.json": ("38ba9c25e715", "3501c15429a2135f"),
     "archive/chess-with-a-sheltering-king.json": ("1aa8c4705681", "64883471fd520e34"),
-    "archive/chess-with-daunting-knights.json": ("c2b124298181", "39d7f80d78350661"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was c2b124298181 / 39d7f80d78350661
+    "archive/chess-with-daunting-knights.json": ("3fdad4d69d87", "f609ea475b989439"),
     # Q1007e, 2026-10-24: R3, chess with the knight made a nightrider, schema 31's ridden leap
     # (`docs/archive/plan-schema-31.md` §6.2; `tests/test_showcases_q1007e.py`), from `4c1922ffae26`. New.
-    "archive/chess-with-nightriders.json": ("cc5e28e9ed0f", "1c16ddb9f0bfe37b"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was cc5e28e9ed0f / 1c16ddb9f0bfe37b
+    "archive/chess-with-nightriders.json": ("ce17f9cdcd55", "1a5cc1141ac9f9ab"),
     # T2, 2026-10-25: Z1, chess with zigzag bishops, generation 34's turning path
     # (`docs/archive/plan-pieces-moves.md` §5.7; `tests/test_showcase_crooked_bishops.py`), from
     # `4c1922ffae26`. New.
-    "archive/crooked-bishops.json": ("23f6613e9fa3", "e4e79b5a3a3a78e9"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 23f6613e9fa3 / e4e79b5a3a3a78e9
+    "archive/crooked-bishops.json": ("7e57cab1fd7e", "f1b7e71f411451ff"),
     # T3, 2026-10-25: C1, chess with the queen's lines turned to circles, generation 34's turning
     # path (`docs/archive/plan-pieces-moves.md` §5.7; `tests/test_showcase_circling_queen.py`), from
     # `4c1922ffae26`. New.
-    "archive/circling-queen.json": ("379efba235c5", "8374456cbf75c3ec"),
+    # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 379efba235c5 / 8374456cbf75c3ec
+    "archive/circling-queen.json": ("4bf09661fdd9", "0409a5b5227b3d5b"),
     # A2, 2026-10-25: the horse archers, chess whose knights shoot, generation 35's strike `by`
     # (`docs/archive/plan-pieces-moves.md` §6.7, the registered fallback over the archers;
     # `tests/test_showcase_horse_archers.py`), from `4c1922ffae26`. New.

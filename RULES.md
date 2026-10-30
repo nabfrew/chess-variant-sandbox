@@ -44,7 +44,7 @@ fire, is refused with a line saying why, so trying an unfamiliar rule costs a ro
 - **Pieces nobody owns.** Wild pieces that walk a fixed route, one step after every move, eat what they may, and pay a bounty to whoever takes them; the duck, which every turn ends by moving to an empty square, where nothing may take it; and neutral pieces placed for nobody, which stand and block until taken, or are moved by whichever player has more pieces next to them. (`rules.npcs`, `rules.duck`, `pieces[].control`)
 - **Coins and a market.** Each player can hold a purse of coins, filled by the bounties on the pieces they take (or, where the game says so, on the pieces they lose), and spend a whole move buying a piece from a market onto their own back rank (or any squares the game names), hiring a priced piece nobody owns that stands next to one of theirs, or bribing an enemy one away at twice its price. Every exchange is then priced twice, in material and in coins, and every turn asks whether to raise a piece or move one. (`rules.purse`, `pieces[].price`)
 - **Chess's own rules.** None is assumed: promotion, en passant and castling, each chess's answer to a problem chess has; and limits on giving check, on the royal pieces facing each other down an open file (xiangqi's rule), and on moves that strand a piece. (`rules.promotion`, `rules.en_passant`, `rules.castling`, `rules.forbid_check`, `rules.royal_facing`, `rules.forbid_immobility`)
-- **When a game stops.** How long a game may run, and when a repetition or a stall draws it; `rules.scoring` can decide such an ending instead. (`rules.max_plies`, `rules.repetition_draw`, `rules.no_progress_draw`)
+- **When a game stops.** How long a game may run, and when a repetition or a stall draws it; `rules.scoring` can decide such an ending instead. A game that is chess underneath may also be drawn the moment too little material is left for anyone to mate. (`rules.max_plies`, `rules.repetition_draw`, `rules.no_progress_draw`, `rules.insufficient_material`)
 
 ## A valid game is not yet a good one
 
@@ -245,6 +245,10 @@ Its keys:
 ### `rules.forbid_immobility`: no move that strands a piece
 
 *boolean*. Default `false`. A move may not leave its own piece somewhere it could never move from again.
+
+### `rules.insufficient_material`: a draw when too little is left to mate
+
+*boolean*. Leave it out for no such rule. Draw by insufficient material (FIDE's dead positions): the game is drawn as soon as nothing is left but the royals, a royal and one lone knight or bishop against a royal, or bishops all on squares of one colour. It states a rule only where the game is chess once its other pieces are gone, and elsewhere does nothing: an 8x8 board, one royal moving as a king, won by checkmate, stalemate a draw, and only chess's other rules (promotion, en passant, castling, the clocks). Pieces count by how they move: a knight is a type that jumps (1, 2) every way, a bishop one that rides the four diagonals; any other type on the board keeps the game alive.
 
 ### `rules.royal_facing`: royal pieces facing each other
 

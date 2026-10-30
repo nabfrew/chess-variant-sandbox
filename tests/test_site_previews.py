@@ -88,10 +88,12 @@ JOINED_TURNS = {
     # Q1005 (2026-10-23): Q983d's U3 (schema 29's rest) and Q999d's S1 to S3 (schema 30's lines
     # of sight). Q999b's colour-bound game (`690631b0e4eb`) joined then too; Q1007e retired it
     # (2026-10-24) when R1 replaced it under its name, a game that was never a preview.
-    "chess-with-a-weary-queen.json": "fee1ab560013",
-    "madrasi.json": "59a118c8ee38",
+    # Q1069a (2026-10-30) switched the draw by insufficient material on in three of them, a
+    # mechanics edit: was fee1ab560013, 59a118c8ee38 and c2b124298181.
+    "chess-with-a-weary-queen.json": "b48942ad079f",
+    "madrasi.json": "38ba9c25e715",
     "chess-with-a-sheltering-king.json": "1aa8c4705681",
-    "chess-with-daunting-knights.json": "c2b124298181",
+    "chess-with-daunting-knights.json": "3fdad4d69d87",
 }
 """Games played by turns that were previews and joined the same way (Q936t, Q1005): Library
 games offered the alternating ladder (`opponents.RUNGS`)."""

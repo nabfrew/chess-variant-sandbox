@@ -87,7 +87,7 @@ class TestTheFieldMovesNoGame:
     def test_the_hash_ignores_it(self) -> None:
         spec = load_spec(ROOT / "rulesets" / "chess.json")
         moved = {**spec, "provenance": {**spec["provenance"], "added": "2030-01-01"}}
-        assert spec_hash(moved) == spec_hash(spec) == "4c1922ffae26"
+        assert spec_hash(moved) == spec_hash(spec) == "831c77e75650"
 
     def test_the_validator_takes_a_day_and_refuses_anything_else(self) -> None:
         spec = load_spec(ROOT / "rulesets" / "chess.json")

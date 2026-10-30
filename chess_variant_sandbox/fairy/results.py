@@ -86,6 +86,7 @@ RESULT_KEYS: dict[str, str] = {
     "ply_limit": "max_plies",
     "no_progress": "no_progress_draw",
     "repetition": "repetition_draw",
+    "insufficient_material": "insufficient_material",
     "extinction": "extinction",
     "reached": "reach",
     "check_limit": "check_limit",
@@ -263,6 +264,8 @@ def in_play(compiled: CompiledSpec) -> list[str]:
         keys.append("reach")
     if compiled.check_limit:
         keys.append("check_limit")
+    if compiled.insufficient_material is not None:
+        keys.append("insufficient_material")
     if compiled.explosion is not None and compiled.royal_types:
         keys.append("explode_on_capture")
     return sorted(keys)

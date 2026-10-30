@@ -1437,6 +1437,20 @@ impl SightTables {
     }
 }
 
+/// Q1069a: a type's role in the dead sets of material (`compile.InsufficientMaterialRule`).
+pub const INSUFFICIENT_ROYAL: u8 = 1;
+pub const INSUFFICIENT_LEAPER: u8 = 2;
+pub const INSUFFICIENT_RIDER: u8 = 3;
+
+/// Q1069a: the draw by insufficient material, as the compiler resolved it. `roles[type]`
+/// is what a piece of that type counts as (0: anything else, which keeps the game alive),
+/// `colour[square]` the square's class in the riders' move graph. The core reads both and
+/// works out no square (`Game::material_is_dead`).
+pub struct InsufficientMaterial {
+    pub roles: Vec<u8>,
+    pub colour: Vec<u8>,
+}
+
 pub struct Tables {
     pub width: usize,
     pub height: usize,
@@ -1753,6 +1767,8 @@ pub struct Tables {
     /// switch is the `Option` rather than a sentinel value, because "draw" is a
     /// result the validator accepts and once shared the sentinel with "off".
     pub bare_royal: Option<i8>,
+    /// Q1069a: the draw by insufficient material, `None` when the rule is off.
+    pub insufficient_material: Option<InsufficientMaterial>,
     /// `immobile_squares[player * n_types * n_squares + piece_type * n_squares + square]`
     pub immobile_squares: Vec<bool>,
 
@@ -2475,6 +2491,7 @@ impl Tables {
             capture_allowed: flags(source, keys::CAPTURE_ALLOWED)?,
             has_capture_matrix: field(source, keys::HAS_CAPTURE_MATRIX)?,
             bare_royal,
+            insufficient_material: Self::insufficient_material_rule(source, n_types, n_squares)?,
             immobile_squares: flags(source, keys::IMMOBILE_SQUARES)?,
             zobrist_pieces: field(source, keys::ZOBRIST_PIECES)?,
             zobrist_side: field(source, keys::ZOBRIST_SIDE)?,
@@ -2742,6 +2759,26 @@ impl Tables {
         } else {
             None
         })
+    }
+
+    /// Q1069a: the draw by insufficient material, if stated: each type's role in the dead
+    /// sets and each square's rider class, both empty when the rule is off.
+    fn insufficient_material_rule(
+        source: &Bound<'_, PyDict>,
+        n_types: usize,
+        n_squares: usize,
+    ) -> PyResult<Option<InsufficientMaterial>> {
+        let roles: Vec<u8> = field(source, keys::INSUFFICIENT_ROLES)?;
+        let colour: Vec<u8> = field(source, keys::INSUFFICIENT_COLOUR)?;
+        if roles.is_empty() {
+            return Ok(None);
+        }
+        if roles.len() != n_types || colour.len() != n_squares {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "insufficient_roles must have one entry per type and insufficient_colour one per square",
+            ));
+        }
+        Ok(Some(InsufficientMaterial { roles, colour }))
     }
 
     /// Explosion: who is immune, the blast per square, and whose captures fire it on whom.
@@ -4334,6 +4371,8 @@ pub mod keys {
         GOAL_DISTANCE => "goal_distance",
         GOAL_DISTANCE_EACH => "goal_distance_each",
         HAS_BARE_ROYAL => "has_bare_royal",
+        INSUFFICIENT_COLOUR => "insufficient_colour",
+        INSUFFICIENT_ROLES => "insufficient_roles",
         HAS_CAPTURE_MATRIX => "has_capture_matrix",
         HAS_DROPS => "has_drops",
         HAS_EXPLOSION => "has_explosion",

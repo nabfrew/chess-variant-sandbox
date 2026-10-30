@@ -142,6 +142,9 @@ _SCALES: dict[str, float] = {
     "wins_by_check_count": 1.0,
     "wins_by_extinction": 1.0,
     "wins_by_bare_royal": 1.0,
+    # Q1069a: not costed in `complexity` (a clock-like draw), so it needs a feature, or two
+    # specs differing only by it read as one game.
+    "draws_insufficient_material": 1.0,
     # Schema 3 and 4. All three separate a *kind* of game rather than a size of one, so
     # each is worth as much as a win condition. `repaints_territory` earns its own entry
     # rather than folding into `has_territory` for the reason the test below exists:
@@ -512,6 +515,10 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         "wins_by_check_count": 1.0 if rules.get("check_limit") else 0.0,
         "wins_by_extinction": 1.0 if rules.get("extinction") else 0.0,
         "wins_by_bare_royal": 1.0 if rules.get("bare_royal") else 0.0,
+        # Read off the key as written rather than `schema.insufficient_material_live`, so an
+        # inert rule elsewhere (a strike or contact table that changes nothing) measures as no
+        # rule here as it does in every other feature.
+        "draws_insufficient_material": 1.0 if rules.get("insufficient_material") is True else 0.0,
         "restricts_captures": 1.0 if any(
             isinstance(piece.get("captures"), list) for piece in spec.get("pieces", [])
         ) else 0.0,

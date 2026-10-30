@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-30
 
+### A game with too little left to mate is a draw
+
+Chess, and fifteen library games that play like chess once their special pieces are gone, now end in a draw as soon as
+neither side has enough left to give checkmate: king against king, a king and one bishop or knight against a king, or only
+bishops all on squares of one colour. The rules text and the game-over line say so.
+
 ### Every page says it plainly: free, online, in your browser
 
 Each page, and each game's page, now says in its title, its description and its link preview that you can play free online

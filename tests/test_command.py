@@ -39,6 +39,8 @@ KING_COMMAND = {"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
 def chess() -> dict[str, Any]:
     spec: dict[str, Any] = json.loads((ROOT / "rulesets" / "chess.json").read_text("utf-8"))
     spec.pop("provenance", None)
+    # Q1069a: chess as these were built on, before it drew on dead material.
+    spec["rules"].pop("insufficient_material", None)
     return spec
 
 

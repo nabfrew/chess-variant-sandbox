@@ -223,7 +223,8 @@
     },
     "max_plies": 400,
     "repetition_draw": 3,
-    "no_progress_draw": 100
+    "no_progress_draw": 100,
+    "insufficient_material": true
   },
   "appearance": {
     "icons": {

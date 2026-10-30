@@ -538,7 +538,12 @@ class TestTheFingerprintsPointAtSomething:
 # **Moved 2026-10-29 by Q1059a (gating)**: `engine/moves.py` reads the gate (bits 25-29 and 31)
 # and `engine.py`'s `describe_move` writes it, only where `drops.gating` compiled a gate, which no
 # library game has: no number moves. It was "e9461d1dd6217d99" after RS3 and CS2.
-FROZEN_METRICS = "0fade4c28a4b49ff"
+# **Moved 2026-10-30 by Q1069a (the draw by insufficient material)**: `spec/complexity.py`
+# costs `rules.insufficient_material` at 0 (a draw, as the clocks), `spec/schema.py` reads the
+# rule's roles and `engine/compile.py` compiles it. Sixteen library games switch it on (a
+# mechanics edit, new hashes); every other game's tables and complexity are unmoved. It was
+# "0fade4c28a4b49ff" after Q1059a; Q1069b re-measures the switched-on games and re-scores.
+FROZEN_METRICS = "aed6e32deb790eec"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:

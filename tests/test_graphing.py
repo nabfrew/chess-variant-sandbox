@@ -1260,17 +1260,29 @@ def test_the_map_modules_name_no_piece_and_no_game() -> None:
 #: retired games are kept, rebuilt from their twins by `retired_specs` (`REBUILT`): `hex-glinski-
 #: promoting` (Q868) and `wolves-immune` (Q876), the corpus's one twin pair, which is what keeps
 #: the merge claimed in the plans measured on a real pair and not only on `TestTwins`' made ones.
+#:
+#: Re-read at Q1069b (2026-10-30): Q1069a switched `rules.insufficient_material` on in eight of
+#: the 60, a mechanics edit, so they are here under their new hashes (old -> new): `chess`
+#: 4c1922ffae26 -> 831c77e75650, `almost` 9c26a04f1ca5 -> 1605b8619844, `berolina`
+#: 14a126b38a1a -> d06cfc337d9c, `chess-oriented-pawns` 57c73975c905 -> 7cddf4ba316b,
+#: `perpetual` df2fbba0ca76 -> a5e2a7e05c9a, `sardines` 9f538ab85a77 -> accd659f2c76,
+#: `weathervane-half-turn` 8fc3939243d5 -> 6784c35550d8, `weathervane` 1442513d38d7 ->
+#: 241fcd286e26. Every pinned number re-derived on the same 60 holds except one, left red on
+#: purpose: `lineage` reads 5, not 9, because the children's `provenance.parents` still name
+#: chess's old hash, which is no longer on the map, so `graphing._lineage` drops their arrows.
+#: That is a lost fact (those games were made from chess), not a new reading of the corpus, so
+#: the 9 stands until the arrows resolve again (Q1069b's report).
 PLAN_CORPUS = frozenset({
-    "03aa7c3f2f18", "0b96463ffba7", "0be72e61ef24", "1442513d38d7", "14a126b38a1a", "151582aed409",
+    "03aa7c3f2f18", "0b96463ffba7", "0be72e61ef24", "241fcd286e26", "d06cfc337d9c", "151582aed409",
     "15593fc47f6d", "1ba3d61e5961", "2261f8203948", "279f92a97530", "29d5213b02b2", "2eefcd835b3b",
     "313c913a5b3b", "328cab4db5cc", "3c639d277808", "3ec1560124c3", "42bd7d06828d", "482ddc556331",
-    "4c1922ffae26", "50a3da8f75e7", "51d9b36b4e93", "54b38fb8cba8", "54c731ca6e95", "57667d7861ad",
-    "57c73975c905", "5f9c1bfcf85a", "66b001f1b790", "67270a8805a0", "6bd4d9c5769e", "71912ea8ba7f",
-    "78130df01edd", "82a4788c02f0", "85555467a4ca", "8d9fb1b4c0b4", "8fc3939243d5", "93b02b591c87",
-    "9574b0bf9095", "9598e603241d", "975dde173f01", "9c26a04f1ca5", "9f538ab85a77", "a2193fb37097",
+    "831c77e75650", "50a3da8f75e7", "51d9b36b4e93", "54b38fb8cba8", "54c731ca6e95", "57667d7861ad",
+    "7cddf4ba316b", "5f9c1bfcf85a", "66b001f1b790", "67270a8805a0", "6bd4d9c5769e", "71912ea8ba7f",
+    "78130df01edd", "82a4788c02f0", "85555467a4ca", "8d9fb1b4c0b4", "6784c35550d8", "93b02b591c87",
+    "9574b0bf9095", "9598e603241d", "975dde173f01", "1605b8619844", "accd659f2c76", "a2193fb37097",
     "a2f0c65ceedf", "a7b6f22e6b73", "a9306688fe57", "add543cc28c3", "b02bbe8da72c", "b1f536573c22",
     "bb5d97520084", "bdf2801ade24", "c0e0c35f78b1", "c2925e027455", "c6ff883e5919", "ceb4916bdabc",
-    "df2fbba0ca76", "e7293070b5be", "eaa48ed29ad7", "fcbb53d53ce4", "fe7c42772c71", "ffc7b604bea0",
+    "a5e2a7e05c9a", "e7293070b5be", "eaa48ed29ad7", "fcbb53d53ce4", "fe7c42772c71", "ffc7b604bea0",
 })
 
 

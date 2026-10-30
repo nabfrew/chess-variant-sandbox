@@ -288,7 +288,7 @@ class TestTheCompiler:
     def test_an_alternating_game_is_untouched(self) -> None:
         chess = json.loads((ROOT / "rulesets" / "chess.json").read_text(encoding="utf-8"))
         compiled = compile_spec(chess)
-        assert compiled.hash == "4c1922ffae26"
+        assert compiled.hash == "831c77e75650"
         assert compiled.simultaneous is None
         tables = canonical_tables(compiled)
         assert not {"sim_rule", "sim_collision", "zobrist_sim"} & set(tables)

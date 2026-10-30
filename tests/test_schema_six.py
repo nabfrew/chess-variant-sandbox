@@ -153,7 +153,8 @@ def test_the_bump_moved_no_committed_hash() -> None:
     """
     root = Path(__file__).resolve().parents[1]
     frozen = {
-        "chess": "4c1922ffae26",
+        # Q1069a, 2026-10-30: re-frozen on purpose, the draw by insufficient material (was 4c1922ffae26).
+        "chess": "831c77e75650",
         "xiangqi": "151582aed409",
         # Q454, 2026-09-25: traditional shogi, re-frozen on purpose (was 630828e31147).
         "shogi": "54c731ca6e95",

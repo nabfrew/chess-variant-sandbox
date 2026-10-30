@@ -60,6 +60,8 @@ RESULT_RULES = {
     "check_limit",
     "win",
     "explode_on_capture",
+    # Q1069a: the draw by insufficient material, asked of theirs as `has_insufficient_material`.
+    "insufficient_material",
 }
 
 FOOLS_MATE = ["f2f3", "e7e5", "g2g4", "d8h4"]

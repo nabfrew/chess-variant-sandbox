@@ -77,6 +77,8 @@ pub enum Reason {
     RoyalDestroyed,
     Annihilated,
     Repetition,
+    /// Q1069a: the material left is one of FIDE's dead sets. A draw.
+    InsufficientMaterial,
     NoProgress,
     PlyLimit,
     Checkmate,
@@ -103,6 +105,7 @@ impl Reason {
             Reason::RoyalDestroyed => "royal_destroyed",
             Reason::Annihilated => "annihilated",
             Reason::Repetition => "repetition",
+            Reason::InsufficientMaterial => "insufficient_material",
             Reason::NoProgress => "no_progress",
             Reason::PlyLimit => "ply_limit",
             Reason::Checkmate => "checkmate",
@@ -5356,6 +5359,17 @@ impl<'t> Game<'t> {
             }
         }
 
+        // Q1069a: the draw by insufficient material, after every ending a position declares
+        // and before repetition. A dead set admits no mate, so nothing above can disagree.
+        if let Some(ref rule) = t.insufficient_material {
+            if self.material_is_dead(rule) {
+                return Some(Outcome {
+                    winner: -1,
+                    reason: Reason::InsufficientMaterial,
+                });
+            }
+        }
+
         // Generation 42 (N4b): repetition is asked only at a turn's start, never with a duck
         // move owed.
         if !self.history.is_empty()
@@ -5368,6 +5382,42 @@ impl<'t> Game<'t> {
             });
         }
         None
+    }
+
+    /// Q1069a: whether the material on the board is one of FIDE's dead sets, read off the
+    /// compiled roles (`compile.InsufficientMaterialRule`): besides the royals, nothing, one
+    /// lone leaper or rider, or only riders all of one colour class. Walks each player's
+    /// pieces and stops at the first that keeps the game alive, which in an opening is the
+    /// first square; never a search.
+    fn material_is_dead(&self, rule: &InsufficientMaterial) -> bool {
+        let t = self.t;
+        let occupied = self.occupied();
+        if !occupied[2].is_empty() {
+            return false;
+        }
+        let mut minors = 0u32;
+        let mut leapers = 0u32;
+        let mut classes = 0u8;
+        for mine in &occupied[..2] {
+            for square in mine.iter() {
+                match rule.roles[t.type_of(self.board[square])] {
+                    INSUFFICIENT_ROYAL => {}
+                    INSUFFICIENT_LEAPER => {
+                        minors += 1;
+                        leapers += 1;
+                    }
+                    INSUFFICIENT_RIDER => {
+                        minors += 1;
+                        classes |= 1 << (rule.colour[square] & 7);
+                    }
+                    _ => return false,
+                }
+                if minors > 1 && leapers > 0 {
+                    return false;
+                }
+            }
+        }
+        minors <= 1 || classes.count_ones() == 1
     }
 
     /// Which clock has run out, the no-progress clock before the ply limit.

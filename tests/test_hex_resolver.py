@@ -282,6 +282,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "contacts_keep_the_mover",  # Q781
     "extinction_per_type", "promotes_only_lost",  # Q783
     "drops_placement",  # Q784
+    "draws_insufficient_material",  # Q1069a
     "drops_either_face",  # Q785
     "drops_gating",  # Q1059a
     "short_sweep_share",  # Q1063

@@ -179,7 +179,7 @@ def test_the_old_switch_is_read_only_through_the_converter() -> None:
 
 
 def test_without_a_rest_nothing_crosses_and_chess_is_chess() -> None:
-    assert spec_hash(CHESS) == "4c1922ffae26"
+    assert spec_hash(CHESS) == "831c77e75650"
     tables = canonical_tables(compile_spec(CHESS))
     assert "piece_rest" not in tables and "zobrist_rest" not in tables
     compiled = compile_spec(resting(GARDNER, {"Q": 2, "R": 1}))

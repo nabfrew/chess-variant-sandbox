@@ -555,7 +555,7 @@ def test_effects_counts_the_moves_removed_by_reason() -> None:
 
 def test_a_game_without_a_sight_compiles_and_crosses_as_before() -> None:
     compiled = compile_spec(CHESS)
-    assert compiled.sight is None and compiled.hash == "4c1922ffae26"
+    assert compiled.sight is None and compiled.hash == "831c77e75650"
     tables = build_tables(compiled)
     assert all(tables[key] == [] for key in ("sight_index", "sight_srcs", "sight_paths", "sight_flags"))
     assert not any(key.startswith("sight") for key in canonical_tables(compiled))

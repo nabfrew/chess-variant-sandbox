@@ -3043,6 +3043,7 @@ const REASON_WORDS = {
   stalemate_win: 'by stalemate', royal_captured: 'by capturing the royal piece',
   royal_destroyed: 'by destroying the royal piece', annihilated: 'by taking every piece',
   repetition: 'by repetition', no_progress: 'by the no-progress rule',
+  insufficient_material: 'as too little was left to mate',
   ply_limit: 'at the move limit', reached: 'by reaching the goal',
   extinction: 'by wiping out a whole kind of piece',
   bare_royal: 'by leaving the royal piece alone',

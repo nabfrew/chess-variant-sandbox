@@ -33,7 +33,10 @@ from chess_variant_sandbox.spec import load_spec, spec_hash
 ROOT = Path(__file__).resolve().parent.parent
 FILE = ROOT / "archive" / "chess-with-galloping-knights.json"
 TWIN = ROOT / "archive" / "chess-with-nightriders.json"
-HASH, CHESS_HASH = "69f1e486af87", "4c1922ffae26"
+HASH, CHESS_HASH = "e1bb4740516e", "4c1922ffae26"  # Q1069a; HASH was 69f1e486af87
+# Q1069a: the file and chess both draw on dead material now, so the twin is chess as it is
+# (`CHESS_NOW`) while the parent named in the provenance stays chess as it was.
+CHESS_NOW = "831c77e75650"
 LEAP = {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}
 GALLOP = {"kind": "lame", "vectors": [[1, 2]], "symmetry": "dihedral8", "range": 0, "min_range": 2,
           "mode": "both"}
@@ -69,7 +72,7 @@ def test_it_is_the_registered_game_and_chess_is_its_parent() -> None:
     # One change on chess: the knight's name, value and gallop.
     chess = copy.deepcopy(spec)
     _knight(chess).update(name="knight", value=3, moves=[LEAP])
-    assert spec_hash(chess) == CHESS_HASH
+    assert spec_hash(chess) == CHESS_NOW
 
 
 def _targets(engine: Engine, state: GameState, origin: str) -> set[str]:

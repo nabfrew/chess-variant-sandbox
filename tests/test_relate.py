@@ -630,67 +630,70 @@ class TestAMatchedPairIsNamedFromBothSides:
 # re-running `relate` over the library and reading every new neighbour (tests.md: a slow
 # test pins a named snapshot, never a bare count the next game makes stale).
 HUB_LIBRARY = frozenset({
-    "03aa7c3f2f18", "0448722861a3", "0b96463ffba7", "0be72e61ef24", "0f126fe608ef", "1442513d38d7",
-    "14a126b38a1a", "1501615e08e2", "151582aed409", "15593fc47f6d", "1aa8c4705681", "1ba3d61e5961",
-    "1f85f50a23f6", "2135109e8191", "2261f8203948", "23f6613e9fa3", "26636602fae0", "29d5213b02b2",
-    "2cb9cb3c018c", "2eefcd835b3b", "313c913a5b3b", "328cab4db5cc", "3732e55621b1", "379efba235c5",
+    "03aa7c3f2f18", "0448722861a3", "0b96463ffba7", "0be72e61ef24", "0f126fe608ef", "241fcd286e26",
+    "d06cfc337d9c", "1501615e08e2", "151582aed409", "15593fc47f6d", "1aa8c4705681", "1ba3d61e5961",
+    "1f85f50a23f6", "2135109e8191", "2261f8203948", "7e57cab1fd7e", "26636602fae0", "29d5213b02b2",
+    "2cb9cb3c018c", "2eefcd835b3b", "313c913a5b3b", "328cab4db5cc", "3732e55621b1", "4bf09661fdd9",
     "393dfeada70d", "3c639d277808", "3dafe910108f", "3ec1560124c3", "417c19c2f6bd", "42bd7d06828d",
-    "482ddc556331", "4c1922ffae26", "50a3da8f75e7", "51d9b36b4e93", "54a0a193da0f", "54b38fb8cba8",
-    "54c731ca6e95", "57667d7861ad", "57c73975c905", "58afebca2286", "59a118c8ee38", "5abb0b804cf6",
-    "5f9c1bfcf85a", "61c4e247dc3c", "66b001f1b790", "67270a8805a0", "69f1e486af87", "6bd4d9c5769e",
+    "482ddc556331", "831c77e75650", "50a3da8f75e7", "51d9b36b4e93", "54a0a193da0f", "54b38fb8cba8",
+    "54c731ca6e95", "57667d7861ad", "7cddf4ba316b", "58afebca2286", "38ba9c25e715", "5abb0b804cf6",
+    "5f9c1bfcf85a", "61c4e247dc3c", "66b001f1b790", "67270a8805a0", "e1bb4740516e", "6bd4d9c5769e",
     "6cd3785c7246", "6eaaad41673b", "71912ea8ba7f", "771c1a22e182", "78130df01edd", "82a4788c02f0",
-    "8478a3301cfd", "85555467a4ca", "8d9fb1b4c0b4", "8fc3939243d5", "91c2c24305e5", "93b02b591c87",
-    "9574b0bf9095", "9598e603241d", "975dde173f01", "9c26a04f1ca5", "9c90463dc10f", "9f538ab85a77",
+    "8478a3301cfd", "85555467a4ca", "8d9fb1b4c0b4", "6784c35550d8", "bafc4a7011a3", "93b02b591c87",
+    "9574b0bf9095", "9598e603241d", "975dde173f01", "1605b8619844", "9c90463dc10f", "accd659f2c76",
     "a1805ac1adc1", "a2f0c65ceedf", "a7b6f22e6b73", "a9306688fe57", "ad0750e4ec47", "add543cc28c3",
     "b02bbe8da72c", "b1f536573c22", "b2011455c4af", "b8687024cfc6", "bb5d97520084", "bdf2801ade24",
-    "c0e0c35f78b1", "c2925e027455", "c2b124298181", "c68b69c57219", "c6ff883e5919", "c7c6907901b3",
-    "ca1fdd0b00bb", "cc5e28e9ed0f", "ce406100becc", "ceb4916bdabc", "d2a722b461ff", "d32ef74e88c0",
-    "d50c552b49da", "d6cb641394dd", "d90706fec9c0", "dd17d71412a7", "df2fbba0ca76", "e7293070b5be",
+    "c0e0c35f78b1", "c2925e027455", "3fdad4d69d87", "c68b69c57219", "c6ff883e5919", "c7c6907901b3",
+    "ca1fdd0b00bb", "ce17f9cdcd55", "ce406100becc", "ceb4916bdabc", "d2a722b461ff", "d32ef74e88c0",
+    "d50c552b49da", "d6cb641394dd", "d90706fec9c0", "dd17d71412a7", "a5e2a7e05c9a", "e7293070b5be",
     "e7d2d7406586", "ea249ab8fbfc", "eaa48ed29ad7", "f1e40e35a6d9", "f3c624d2f297", "f7a789809758",
-    "f9e5dbf3ff1f", "fb8a67625131", "fcbb53d53ce4", "fe7c42772c71", "feaad3754a7e", "fee1ab560013",
+    "f9e5dbf3ff1f", "fb8a67625131", "fcbb53d53ce4", "fe7c42772c71", "feaad3754a7e", "b48942ad079f",
     "ffb9a99dbd01", "ffc7b604bea0",
 })
 
-# Chess's one-rule neighbours in `HUB_LIBRARY`, by hash, named for the reader.
+# Chess's one-rule neighbours in `HUB_LIBRARY`, by hash, named for the reader. Q1069a
+# (2026-10-30) re-pinned it on purpose: chess and the sixteen games that are chess underneath
+# draw on dead material, under new hashes; `chess-sweeping-bishops` (42bd7d06828d) and
+# `short-sweeping-bishop-chess` (c7c6907901b3) are chess underneath but were left without it
+# (the landing's sweep story replays their recorded games by name), so each is two rules
+# from chess now, its sweep and that draw.
 CHESS_NEIGHBOURS = {
-    "14a126b38a1a",  # berolina
+    "d06cfc337d9c",  # berolina
     "1aa8c4705681",  # chess-with-a-sheltering-king
     "1ba3d61e5961",  # hierarchy-rise
-    "23f6613e9fa3",  # crooked-bishops
+    "7e57cab1fd7e",  # crooked-bishops
     "313c913a5b3b",  # queen-bomb
     "328cab4db5cc",  # queens-wake
-    "379efba235c5",  # circling-queen
+    "4bf09661fdd9",  # circling-queen
     "3c639d277808",  # hierarchy-fall
-    "42bd7d06828d",  # chess-sweeping-bishops
     "482ddc556331",  # hierarchy-rise-stay
     "51d9b36b4e93",  # quarry
     "54a0a193da0f",  # circe
-    "69f1e486af87",  # chess-with-galloping-knights
+    "e1bb4740516e",  # chess-with-galloping-knights
     "6bd4d9c5769e",  # atomic
     "6cd3785c7246",  # kamikaze
     "71912ea8ba7f",  # kingofthehill
     "78130df01edd",  # hierarchy-rise-throw
     "85555467a4ca",  # merger
-    "91c2c24305e5",  # chess-with-preaching-bishops
-    "9c26a04f1ca5",  # almost
+    "bafc4a7011a3",  # chess-with-preaching-bishops
+    "1605b8619844",  # almost
     "9c90463dc10f",  # horse-archers
     "a9306688fe57",  # cylinder
     "b02bbe8da72c",  # onewaycylinder
     "b1f536573c22",  # threecheck
     "bb5d97520084",  # crazyhouse
-    "c2b124298181",  # chess-with-daunting-knights
+    "3fdad4d69d87",  # chess-with-daunting-knights
     "c6ff883e5919",  # onewaytorus
-    "c7c6907901b3",  # short-sweeping-bishop-chess
-    "cc5e28e9ed0f",  # chess-with-nightriders
+    "ce17f9cdcd55",  # chess-with-nightriders
     "d2a722b461ff",  # pitchfork
     "d32ef74e88c0",  # circe-mortal-diagonals
     "d50c552b49da",  # pawn-knockdown
-    "df2fbba0ca76",  # perpetual
+    "a5e2a7e05c9a",  # perpetual
     "e7293070b5be",  # succession
     "f3c624d2f297",  # sluice
     "f7a789809758",  # rifle
     "f9e5dbf3ff1f",  # andernach
-    "fee1ab560013",  # chess-with-a-weary-queen
+    "b48942ad079f",  # chess-with-a-weary-queen
 }
 
 
@@ -698,7 +701,7 @@ CHESS_NEIGHBOURS = {
 def test_the_committed_corpus_has_one_hub() -> None:
     """`docs/archive/plan-game-graph.md`'s acceptance, named by game because the plan names it.
 
-    Chess is where the library's variants hang from, and 38 of the other 109 games of
+    Chess is where the library's variants hang from, and 36 (38 before Q1069a) of the other 109 games of
     `HUB_LIBRARY` differ from it in exactly one rule. The probe measured 21 before the
     folds; the twenty-second was `wolves-immune`, which was chess plus a wild piece and the
     one pair the probe's operator sweep reached and its diff did not; since Q876 retired

@@ -371,6 +371,10 @@ BLOCKS: tuple[Block, ...] = (
         Word("a turn limit", "rules.max_plies", "the longest a game may run"),
         Word("repetition", "rules.repetition_draw", "drawing by repetition"),
         Word("a stall", "rules.no_progress_draw", "how long a game may stall"),
+        Word(
+            "too little to mate", "rules.insufficient_material",
+            "a draw when too little is left to mate",
+        ),
     )),
 )
 

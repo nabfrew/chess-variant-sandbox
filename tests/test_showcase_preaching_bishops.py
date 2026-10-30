@@ -35,7 +35,7 @@ from chess_variant_sandbox.spec import load_spec, spec_hash
 ROOT = Path(__file__).resolve().parent.parent
 FILE = ROOT / "archive" / "chess-with-preaching-bishops.json"
 CHESS = ROOT / "rulesets" / "chess.json"
-HASH = "91c2c24305e5"
+HASH = "bafc4a7011a3"  # Q1069a; was 91c2c24305e5
 PREACHING = {"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "effect": "command",
              "whose": "enemy", "affects": ["P"], "through": True, "captures_own": True}
 
@@ -57,7 +57,10 @@ def test_it_is_the_registered_game_and_chess_is_its_parent() -> None:
     spec = load_spec(FILE)
     assert spec_hash(spec)[:12] == HASH
     chess = json.loads(CHESS.read_text(encoding="utf-8"))
-    assert spec_hash(chess)[:12] == "4c1922ffae26"
+    # Q1069a: chess as it was, before both it and the showcase drew on dead material.
+    unruled = copy.deepcopy(chess)
+    unruled["rules"].pop("insufficient_material")
+    assert spec_hash(unruled)[:12] == "4c1922ffae26"
     assert game()["provenance"]["parents"] == ["4c1922ffae26"]
     built = copy.deepcopy(chess)
     for piece in built["pieces"]:

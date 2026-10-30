@@ -48,7 +48,7 @@ CHESS_HASH = "4c1922ffae26"
 
 # label: (archived file, its hash, Q999a's test spec, the one sight §6.1 registered)
 SHOWCASES = {
-    "S1": ("madrasi", "59a118c8ee38", "_sight_madrasi", {
+    "S1": ("madrasi", "38ba9c25e715", "_sight_madrasi", {
         "P": [{"vectors": [[1, 1]], "symmetry": "lateral", "range": 1, "effect": "freeze",
                "whose": "enemy", "affects": ["P"]}],
         "N": [{"vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1, "effect": "freeze",
@@ -64,7 +64,7 @@ SHOWCASES = {
         "K": [{"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 2, "through": True,
                "effect": "shield", "whose": "own"}],
     }),
-    "S3": ("chess-with-daunting-knights", "c2b124298181", "_sight_daunting_knights", {
+    "S3": ("chess-with-daunting-knights", "3fdad4d69d87", "_sight_daunting_knights", {
         "N": [{"vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1, "effect": "disarm",
                "whose": "enemy"}],
     }),
@@ -106,12 +106,18 @@ def test_the_file_is_chess_with_the_one_registered_sight(label: str) -> None:
     assert {p["id"]: p["sight"] for p in raw["pieces"] if "sight" in p} == sights
     stripped = [{k: v for k, v in p.items() if k != "sight"} for p in raw["pieces"]]
     assert stripped == parent["pieces"]
+    # Q1069a: chess as the parent was, before it drew on dead material; a showcase that is
+    # chess underneath states that draw too, one that is not leaves it out.
+    for rules in (raw["rules"], parent["rules"]):
+        rules.pop("insufficient_material", None)
     for key in ("board", "setup", "rules"):
         assert raw[key] == parent[key], key
     spec = load_spec(path_of(label))
     assert spec_hash(spec) == digest
     assert spec_hash(load_spec(ROOT / "tests" / f"{test_spec}.json")) == digest
-    assert spec_hash(load_spec(CHESS)) == CHESS_HASH
+    unruled = load_spec(CHESS)
+    unruled["rules"].pop("insufficient_material")
+    assert spec_hash(unruled) == CHESS_HASH
     assert "preview" not in spec["provenance"], "joined the library from preview (Q1005)"
     assert spec["provenance"]["parents"] == [CHESS_HASH]
 

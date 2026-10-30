@@ -825,6 +825,21 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "from again."
                 ),
             },
+            # Q1069a: what `compile.InsufficientMaterialRule` reads.
+            "insufficient_material": {
+                "type": "boolean",
+                "description": (
+                    "Draw by insufficient material (FIDE's dead positions): the game is "
+                    "drawn as soon as nothing is left but the royals, a royal and one lone "
+                    "knight or bishop against a royal, or bishops all on squares of one "
+                    "colour. It states a rule only where the game is chess once its other "
+                    "pieces are gone, and elsewhere does nothing: an 8x8 board, one royal moving as a king, won by checkmate, "
+                    "stalemate a draw, and only chess's other rules (promotion, en passant, "
+                    "castling, the clocks). Pieces count by how they move: a knight is a "
+                    "type that jumps (1, 2) every way, a bishop one that rides the four "
+                    "diagonals; any other type on the board keeps the game alive."
+                ),
+            },
             "royal_facing": {
                 "type": "string",
                 "enum": ["allowed", "forbidden"],

@@ -47,6 +47,8 @@ from chess_variant_sandbox.spec.schema import (
     has_third_owner,
     hex_distance,
     hire_ids,
+    insufficient_material_live,
+    insufficient_material_roles,
     is_nobodys,
     majority_ids,
     neutral_ids,
@@ -753,6 +755,81 @@ def _compile_control(
     if duck is not None:
         kind[duck.piece_type] = CONTROL_DUCK
     return ControlRule(kind=tuple(kind))
+
+
+# Q1069a: what each type counts as in a dead set of material (`schema.INSUFFICIENT_*`).
+INSUFFICIENT_OTHER = 0
+INSUFFICIENT_ROYAL = 1
+INSUFFICIENT_LEAPER = 2
+INSUFFICIENT_RIDER = 3
+
+
+@dataclass(frozen=True)
+class InsufficientMaterialRule:
+    """Q1069a: the draw by insufficient material (`docs/reference/insufficient-material.md`).
+
+    ``roles[piece_type]`` is what a piece of that type is in FIDE's dead sets, read by how it
+    moves (`schema.insufficient_material_roles`, which the validator also asks):
+    ``INSUFFICIENT_ROYAL`` for the one royal, ``INSUFFICIENT_LEAPER`` for a type that jumps
+    exactly (1, 2) every way, ``INSUFFICIENT_RIDER`` for one that rides the four diagonals,
+    and ``INSUFFICIENT_OTHER`` for every other type, whose presence means the material is
+    not dead. ``colour[square]`` is the square's class in the riders' move graph (the
+    component a rider standing there can reach), 0 or 1 on the 8x8 board the rule needs:
+    the square colour, worked out from the tables rather than from a file and rank.
+
+    The position is drawn when the board holds, besides the two royals, nothing, exactly
+    one leaper or rider (a lone minor piece), or only riders, all on one class (any number
+    of them on one square colour). The core asks `Game::material_is_dead`; it
+    computes no square and searches nothing.
+    """
+
+    roles: tuple[int, ...]
+    colour: tuple[int, ...]
+
+
+def _compile_insufficient_material(
+    spec: dict[str, Any],
+    index_of: dict[str, int],
+    n_types: int,
+    n_squares: int,
+    slides: Sequence[Sequence[Sequence[Sequence[Entry]]]],
+) -> InsufficientMaterialRule | None:
+    """``InsufficientMaterialRule`` where ``rules.insufficient_material`` states a rule, else
+    ``None``: on a game that is not chess once its other types are gone the key is inert
+    (`schema.insufficient_material_live`), so every type given a role here moves exactly as
+    its counterpart in FIDE's game."""
+    if not insufficient_material_live(spec):
+        return None
+    by_id, _ = insufficient_material_roles(spec)
+    roles = [INSUFFICIENT_OTHER] * n_types
+    for piece_id, role in by_id.items():
+        roles[index_of[piece_id]] = role
+    # The riders' classes: union every square with each square a rider standing there can
+    # reach, in the first frame (the riders' moves read alike for both players).
+    parent = list(range(n_squares))
+
+    def root(square: int) -> int:
+        while parent[square] != square:
+            parent[square] = parent[parent[square]]
+            square = parent[square]
+        return square
+
+    riders = [t for t in range(n_types) if roles[t] == INSUFFICIENT_RIDER]
+    for piece_type in riders[:1]:
+        for square in range(n_squares):
+            for landings, _modes, _flag in slides[0][piece_type][square]:
+                for landing in landings:
+                    parent[root(landing)] = root(square)
+    classes: dict[int, int] = {}
+    colour = tuple(classes.setdefault(root(square), len(classes)) for square in range(n_squares))
+    if riders and len(classes) != 2:
+        raise SpecError([
+            "rules.insufficient_material: the diagonal riders do not split the board into "
+            "two colours"
+        ])
+    return InsufficientMaterialRule(
+        roles=tuple(roles), colour=colour if riders else (0,) * n_squares
+    )
 
 
 @dataclass(frozen=True)
@@ -1976,6 +2053,9 @@ class CompiledSpec:
     # TC4 and TC5 (§5.2, §5.4): the purse and its market, from ``rules.purse``, or ``None``
     # -- every game without one. See ``PurseRule``.
     purse: PurseRule | None = None
+    # Q1069a: the draw by insufficient material, from ``rules.insufficient_material``, or
+    # ``None`` -- every game without it. See ``InsufficientMaterialRule``.
+    insufficient_material: InsufficientMaterialRule | None = None
 
     @property
     def rest_max(self) -> int:
@@ -2690,6 +2770,9 @@ def _compile(
         pounce=_compile_pounce(
             rules, index_of, tuple(float(p.get("value", 1)) for p in pieces), attack_sources,
             width, height, orientation, board_spec.get("lattice", "square") == "hex",
+        ),
+        insufficient_material=_compile_insufficient_material(
+            spec, index_of, n_types, n_squares, slides
         ),
     )
     if obstacles:

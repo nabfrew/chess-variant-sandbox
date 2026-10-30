@@ -53,6 +53,8 @@ SHOWCASES = {
 def chess_with(pid: str, sight: dict[str, Any]) -> dict[str, Any]:
     spec: dict[str, Any] = json.loads(CHESS.read_text(encoding="utf-8"))
     spec = copy.deepcopy(spec)
+    # Q1069a: chess as it was when these were built, before it drew on dead material.
+    spec["rules"].pop("insufficient_material", None)
     for piece in spec["pieces"]:
         if piece["id"] == pid:
             piece["sight"] = [copy.deepcopy(sight)]

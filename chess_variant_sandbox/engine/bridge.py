@@ -434,6 +434,23 @@ def _bare_royal_fields(spec: CompiledSpec) -> dict[str, Any]:
     }
 
 
+# Q1069a: the draw by insufficient material. Both empty without the rule, so no other game's
+# tables move.
+_INSUFFICIENT_MATERIAL_INERT: dict[str, Any] = {
+    "insufficient_roles": [],
+    "insufficient_colour": [],
+}
+
+
+def _insufficient_material_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """Each type's role in the dead sets and each square's rider class
+    (`compile.InsufficientMaterialRule`), or nothing where the rule is off."""
+    rule = spec.insufficient_material
+    if rule is None:
+        return dict(_INSUFFICIENT_MATERIAL_INERT)
+    return {"insufficient_roles": list(rule.roles), "insufficient_colour": list(rule.colour)}
+
+
 _EN_PASSANT_INERT: dict[str, Any] = {
     "ep_type": -1,
     "ep_pass_flat": [],
@@ -1465,6 +1482,7 @@ _FLATTENERS: tuple[tuple[Callable[[CompiledSpec], dict[str, Any]], dict[str, Any
     (_attack_fields, _ATTACK_INERT),
     (_ending_fields, _ENDING_INERT),
     (_bare_royal_fields, _BARE_ROYAL_INERT),
+    (_insufficient_material_fields, _INSUFFICIENT_MATERIAL_INERT),
     (_en_passant_fields, _EN_PASSANT_INERT),
     (_royal_facing_fields, _ROYAL_FACING_INERT),
     (_promotion_fields, _PROMOTION_INERT),

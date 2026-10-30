@@ -29,7 +29,10 @@ from chess_variant_sandbox.spec import load_spec, spec_hash
 
 ROOT = Path(__file__).resolve().parent.parent
 FILE = ROOT / "archive" / "circling-queen.json"
-HASH, CHESS_HASH = "379efba235c5", "4c1922ffae26"
+HASH, CHESS_HASH = "4bf09661fdd9", "4c1922ffae26"  # Q1069a; HASH was 379efba235c5
+# Q1069a: the file and chess both draw on dead material now, so the twin is chess as it is
+# (`CHESS_NOW`) while the parent named in the provenance stays chess as it was.
+CHESS_NOW = "831c77e75650"
 RING = {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "path": "circle"}
 _MOVE = re.compile(r"^~?[A-Za-z]([a-z]\d+)[-x]([a-z]\d+)")
 
@@ -55,12 +58,13 @@ def test_it_is_the_registered_game_and_chess_is_its_twin() -> None:
     assert _queen(spec)["moves"] == [RING] and _queen(spec)["value"] == 9
     assert spec["appearance"]["icons"]["Q"] == "queen"
     test_spec = copy.deepcopy(spec)
+    test_spec["rules"].pop("insufficient_material")  # T3's test copy predates Q1069a
     _queen(test_spec)["name"] = "ring queen"
     assert spec_hash(test_spec) == spec_hash(load_spec(ROOT / "tests" / "_path_ring.json"))
     twin = copy.deepcopy(spec)
     _queen(twin)["name"] = "queen"
     del _queen(twin)["moves"][0]["path"]
-    assert spec_hash(twin) == CHESS_HASH
+    assert spec_hash(twin) == CHESS_NOW
 
 
 def _targets(engine: Engine, state: GameState, origin: str) -> set[str]:

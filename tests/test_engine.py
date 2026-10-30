@@ -452,15 +452,19 @@ class TestTerminalDetection:
         assert sorted(chess.move_texts(state)) == ["Ke1-d1", "Ke1-d2", "Ke1-f1", "Ke1-f2"]
 
     def test_the_no_progress_clock_draws(self, chess: Engine) -> None:
+        # A rook beside the royals: royals alone are a draw by insufficient material, which
+        # is asked before the clocks (Q1069a).
         state = chess.make_state(
-            {"e1": ("K", 0), "e8": ("K", 1)},
+            {"e1": ("K", 0), "e8": ("K", 1), "a1": ("R", 0)},
             halfmove=chess.spec.no_progress_draw,
         )
         outcome = chess.terminal(state)
         assert outcome is not None and outcome.reason == "no_progress"
 
     def test_the_ply_limit_draws(self, chess: Engine) -> None:
-        state = chess.make_state({"e1": ("K", 0), "e8": ("K", 1)}, ply=chess.spec.max_plies)
+        state = chess.make_state(
+            {"e1": ("K", 0), "e8": ("K", 1), "a1": ("R", 0)}, ply=chess.spec.max_plies
+        )
         outcome = chess.terminal(state)
         assert outcome is not None and outcome.reason == "ply_limit"
 
