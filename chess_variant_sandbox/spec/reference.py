@@ -376,10 +376,14 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "dropped back into play. A piece can shoot, taking what it captures without moving "
         "onto its square; a player can start with pieces in hand; captures can be "
         "compulsory; and taking a piece can pay its bounty into points counted when time "
-        "runs out.",
+        "runs out. A move can push instead of taking: the piece it lands on goes one step "
+        "on, or off the board at the edge (push chess), and each piece may push only the "
+        "kinds it names, or those no heavier than itself, or a row no heavier in all than "
+        "its strength.",
         ("pieces[].captures", "rules.strike", "rules.contacts", "rules.explode_on_capture",
          "rules.drops", "pieces[].promoted_from", "rules.promote_on_entry",
-         "rules.must_capture", "pieces[].bounty"),
+         "rules.must_capture", "pieces[].bounty", "rules.push", "pieces[].pushes",
+         "pieces[].weight", "pieces[].strength"),
     ),
     (
         "The board",

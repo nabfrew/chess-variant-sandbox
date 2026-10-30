@@ -592,8 +592,9 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # 107 since LPD's short sweeping bishop chess, which declares none; 108 since Q1023's chess
     # with galloping knights, which declares none; 109 since Q1024's chess with preaching
     # bishops, which declares none; 110 since Q1059b's seirawan, which declares none; 111 since
-    # TC8's crowd, which declares none; 112 since TC10b's free companies, which declares none.
-    assert len(paths) == 112
+    # TC8's crowd, which declares none; 112 since TC10b's free companies, which declares none;
+    # 113 since Q1074bg1's brink, which declares none; 114 since Q1074bg2's dohyo, which declares none.
+    assert len(paths) == 114
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:

@@ -789,11 +789,17 @@ MAX_LEGS = 4
 _MOVE_KEYS = {
     "kind", "vectors", "symmetry", "range", "min_range", "mode", "condition",
     "screen_range", "screen", "path", "legs", "sweep_range",
+    # Q1074b2 (`docs/plan-push.md` §1.2): the move pushes the piece it lands on.
+    "push",
 }
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
     "id", "name", "royal", "value", "moves", "region", "promoted_from", "captures",
     "facing", "beats", "spy", "speed", "rest", "sight", "control", "bounty", "price",
+    # Q1074b2 (`docs/plan-push.md` §1.2): who a pusher may push, and its weight.
+    "pushes", "weight",
+    # Q1074b4s (§2's correction): a pusher's strength under chain "weight", apart from its weight.
+    "strength",
 }
 # ``appearance`` and ``provenance`` are deliberately *outside* the mechanics.
 # ``canonical.MECHANIC_KEYS`` is what the content hash covers, so anything added inside
@@ -867,6 +873,8 @@ _RULES_KEYS = {
     # Q1069a: a draw by FIDE's dead sets of material, where the game is chess once its
     # other pieces are gone (`insufficient_material_roles`).
     "insufficient_material",
+    # Q1074b2 (`docs/plan-push.md` §1.2): the push rule's game-wide physics.
+    "push",
 }
 # ------------------------------------------------------------ where a rule names a piece
 #
@@ -1007,6 +1015,10 @@ PIECE_FIELDS: dict[str, Any] = {
     # the removed one leaves it, and an emptied list stays: written empty it says *beats
     # nothing*, which is not what an absent `beats` says (its captures, else everyone).
     "beats": Names(PIECE_IDS, KEPT_EMPTY),
+    # Q1074b2: the types a pusher may push. The removed one leaves it; an emptied list is
+    # kept, since dropping it would read as *every type*. Written empty it pushes nothing,
+    # which the validator refuses beside a push, so such a removal is refused, not reread.
+    "pushes": Names(PIECE_IDS, KEPT_EMPTY),
     # Schema 30 (Q999a): a line of sight names the types it touches; one that touched only
     # the removed type goes (an `affects` emptied would read as *every type*), and the key
     # with its last line.
@@ -1190,7 +1202,8 @@ SIMULTANEOUS_OFF_VALUES: dict[str, Any] = {"tie": "both", "swap": "chase", "both
 PORTAL_OFF_VALUES: dict[str, Any] = {"kind": "momentum"}
 CONTACT_LINK_OFF_VALUES: dict[str, Any] = {"own": False}
 # T1: a move descriptor's (a piece's, or a portal group's).
-MOVE_OFF_VALUES: dict[str, Any] = {"path": "straight"}
+# Q1074b1: ``push: false`` is a move that takes on an occupied landing, as every move did.
+MOVE_OFF_VALUES: dict[str, Any] = {"path": "straight", "push": False}
 # N1: a wild-piece entry's (``rules.npcs[]``): ``respawn: 0`` is a piece that, once taken, is gone.
 # N5: ``turns_back: false`` is a route walked as a cycle, as every route was before the key.
 NPC_OFF_VALUES: dict[str, Any] = {"respawn": 0, "turns_back": False}
@@ -3748,6 +3761,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_neutral_coherence(spec, pieces, rules, errors)
     _check_bounty_coherence(pieces, rules, errors)
     _check_purse_coherence(spec, pieces, rules, errors)
+    _check_push_coherence(spec, pieces, rules, errors)
 
     if isinstance(rules.get("castling"), dict):
         castling = rules["castling"]
@@ -6219,7 +6233,9 @@ def _validate_pieces(
         if not isinstance(piece, dict):
             errors.append(f"{where} must be an object")
             continue
-        _check_keys(piece, _PIECE_KEYS, where, errors, required={"id", "moves"})
+        _check_keys(
+            piece, _PIECE_KEYS, where, errors, required={"id", "moves"}
+        )
 
         pid = piece.get("id")
         if not isinstance(pid, str) or not pid or len(pid) > 2:
@@ -6261,6 +6277,7 @@ def _validate_pieces(
             _validate_captures(
                 piece.get("beats"), f"pieces[{index}]", ids, errors, key="beats"
             )
+            _validate_push_piece(piece, f"pieces[{index}]", ids, errors)
 
     return ids
 
@@ -6407,7 +6424,9 @@ def _validate_moves(
         if not isinstance(move, dict):
             errors.append(f"{loc} must be an object")
             continue
-        _check_keys(move, _MOVE_KEYS, loc, errors, required={"kind", "vectors"})
+        _check_keys(
+            move, _MOVE_KEYS, loc, errors, required={"kind", "vectors"}
+        )
 
         kind = move.get("kind")
         if kind not in MOVE_KINDS:
@@ -6513,6 +6532,8 @@ def _validate_moves(
         errors.extend(path_refusals(move, loc, hex_lattice))
         if "legs" in move:
             errors.extend(legs_refusals(move, loc, hex_lattice))
+        if "push" in move:
+            errors.extend(_push_entry_refusals(move, loc, hex_lattice))
 
 
 def jump_length(vector: Sequence[int], hex_lattice: bool) -> int:
@@ -6842,6 +6863,7 @@ def _validate_rules(
         errors.append("rules must be an object")
         return
     _check_keys(rules, _RULES_KEYS, "rules", errors)
+    _validate_push_rule(rules.get("push"), errors)
     if hex_lattice:
         _refuse_square_readings(rules, errors)
     _check_landing_symmetries(rules, errors, hex_lattice)
@@ -10040,4 +10062,521 @@ def _check_purse_coherence(
             errors.append(
                 f"{where} has no square in rules.purse.region it may stand on (walls, the "
                 "hexagon's edge and the type's own region taken out)"
+            )
+
+
+# ------------------------------------------------------------------------------- push
+#
+# Q1074b1 (`docs/plan-push.md` §1 to §3): a move that lands on a piece may push it one step
+# further along the move's direction (or off the board) instead of, or as well as, taking it.
+# The keys are validated, normalised and compiled here and in `engine/compile.py`, and the
+# core plays the single push since Q1074b2 (`MOVE_PUSH`; `bridge.rust_supports` holds what it
+# does not play yet). Q1074b2 folded them into `_MOVE_KEYS`, `_PIECE_KEYS` and `_RULES_KEYS`.
+
+PUSH_WHOSE = ("enemy", "own", "any")
+PUSH_ALONG = ("move", "rank", "file")
+PUSH_CHAINS = ("one", "row", "weight")
+PUSH_EDGES = ("removes", "blocks")
+PUSH_WALLS = ("block", "crush")
+# §2: a weight is 1 to 9; 0 is refused (a weightless piece would let a pusher move an
+# unbounded row of them), and is not an off value.
+WEIGHT_MAX = 9
+# Q1074b4s (§2's correction): a pusher's strength under ``chain: "weight"``, 1 to 99 (a line
+# moves when the strength is at least its summed weight; a line of 16 pieces of weight 9 is
+# 144, so 99 is a cap on what is worth writing, not on what a row can weigh).
+STRENGTH_MAX = 99
+_PUSH_ENTRY_KEYS = {"whose", "captures", "along"}
+_PUSH_RULE_KEYS = {"chain", "edge", "walls", "no_push_back"}
+# A move entry's push, each key at its default: ``"push": true`` and ``"push": {}`` are this.
+PUSH_ENTRY_DEFAULTS: dict[str, Any] = {"whose": "enemy", "captures": False, "along": "move"}
+# ``rules.push`` written at every default is its absence (§1.2): ``{"chain": "one"}`` is what
+# a push game without the key reads.
+PUSH_OFF_VALUES: dict[str, Any] = {
+    "chain": "one", "edge": "removes", "walls": "block", "no_push_back": False,
+}
+
+
+def move_push(move: Any) -> dict[str, Any] | None:
+    """The push a move entry states, every key filled from `PUSH_ENTRY_DEFAULTS`, or ``None``
+    where it states none (absent, ``false``, or malformed). The one reader of the key, shared
+    by the validator, the normal form and the compiler."""
+    if not isinstance(move, dict) or "push" not in move:
+        return None
+    push = move["push"]
+    if push is True:
+        return dict(PUSH_ENTRY_DEFAULTS)
+    if isinstance(push, dict):
+        return {**PUSH_ENTRY_DEFAULTS, **push}
+    return None
+
+
+def piece_pushes(piece: Any) -> bool:
+    """Whether some move entry of ``piece`` pushes."""
+    return isinstance(piece, dict) and any(
+        move_push(move) is not None for move in _listed(piece.get("moves"))
+    )
+
+
+def pushing_ids(spec_or_pieces: Any) -> list[str]:
+    """The ids of the declared types some move of which pushes, in declaration order."""
+    pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    return [
+        piece["id"] for piece in _listed(pieces)
+        if piece_pushes(piece) and isinstance(piece.get("id"), str)
+    ]
+
+
+def push_rule(spec: Any) -> dict[str, Any] | None:
+    """``rules.push`` as the compiler reads it, every key filled from `PUSH_OFF_VALUES`, or
+    ``None`` in a game no move of which pushes (where the rule can never fire)."""
+    if not pushing_ids(spec):
+        return None
+    rules = spec.get("rules") if isinstance(spec, dict) else None
+    stated = rules.get("push") if isinstance(rules, dict) else None
+    return {**PUSH_OFF_VALUES, **(stated if isinstance(stated, dict) else {})}
+
+
+# Q1074b5: the `rules` keys a push is refused beside, any spelling of them that states a
+# rule (§3.14; `_check_push_coherence` refuses each by its id: portals W4, a strike and
+# contacts X2, a blast X3, rounds S1, reach G1, territory G2, the purse M1), and `wrap`
+# beside a row (H4). `push_bars` is the question an operator asks before adding one.
+PUSH_BARRED_RULES = frozenset({
+    "portals", "strike", "contacts", "explode_on_capture", "simultaneous", "reach",
+    "territory", "purse",
+})
+
+
+def push_bars(spec: Any, key: str) -> bool:
+    """Whether the push in ``spec`` refuses ``rules.<key>`` beside it: one of
+    `PUSH_BARRED_RULES` in a game where a move pushes, or ``wrap`` where a row moves
+    (``chain`` ``"row"`` or ``"weight"``). ``False`` in a game without a push."""
+    rule = push_rule(spec)
+    if rule is None:
+        return False
+    if key == "wrap":
+        return rule["chain"] != "one"
+    if key == "en_passant":
+        # E2 (Q1074bg1 made it a question an operator asks): only where a piece en passant
+        # is defined against has a pushing move that may land on a piece.
+        by_id = {
+            piece["id"]: piece for piece in _listed(spec.get("pieces"))
+            if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+        }
+        return any(
+            move_push(move) is not None and move.get("mode", "both") != "move"
+            for pid in en_passant_pieces(spec) if pid in by_id
+            for move in _listed(by_id[pid].get("moves"))
+        )
+    return key in PUSH_BARRED_RULES
+
+
+def piece_weights(spec_or_pieces: Any) -> dict[str, int]:
+    """Each declared type's ``weight``, by id, where it states a valid one (§2)."""
+    pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    weights: dict[str, int] = {}
+    for piece in _listed(pieces):
+        if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
+            continue
+        value = piece.get("weight")
+        if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= WEIGHT_MAX:
+            weights[piece["id"]] = value
+    return weights
+
+
+def piece_strengths(spec_or_pieces: Any) -> dict[str, int]:
+    """Each declared type's strength under ``chain: "weight"``, by id (§2's correction,
+    Q1074b4s): its ``strength`` where it states a valid one, else its weight (a strength
+    defaults to the weight, so a game that states only weights reads as before)."""
+    pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    strengths = piece_weights(pieces)
+    for piece in _listed(pieces):
+        if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
+            continue
+        value = piece.get("strength")
+        if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= STRENGTH_MAX:
+            strengths[piece["id"]] = value
+    return strengths
+
+
+def pushable_ids(spec: Any) -> set[str]:
+    """The ids of the types some pusher's list lets it push (§1.4): a pusher with no list
+    pushes every type but nobody's (a wild type, the duck). Empty where nothing pushes."""
+    lists = push_lists(spec)
+    if not lists:
+        return set()
+    rules = spec.get("rules") if isinstance(spec, dict) else None
+    rules = rules if isinstance(rules, dict) else {}
+    ids = {
+        piece["id"] for piece in _listed(spec.get("pieces"))
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    }
+    nobodys = {
+        npc["piece"] for npc in _listed(rules.get("npcs"))
+        if isinstance(npc, dict) and isinstance(npc.get("piece"), str)
+    }
+    duck = duck_piece(rules)
+    if duck:
+        nobodys.add(duck)
+    pushable: set[str] = set()
+    for listed in lists.values():
+        pushable |= (ids - nobodys) if listed is None else set(listed)
+    return pushable
+
+
+def push_lists(spec: Any) -> dict[str, frozenset[str] | None]:
+    """Who each pushing type may push, by id (§1.4, §2): ``None`` for every type.
+
+    The one reading of ``pieces[].pushes`` and the weight shorthand. Under ``chain: "weight"``
+    the list is as written (the weights are a second test). Under ``"one"`` and ``"row"`` a
+    pusher with a weight and no list may push every type whose weight is at most its own, and
+    a type with no weight is pushed by none of them, so the shorthand and the list it stands
+    for are one matrix (and one game: `normal.normal_form` writes the list)."""
+    rule = push_rule(spec)
+    if rule is None:
+        return {}
+    weights = piece_weights(spec)
+    pieces = spec.get("pieces") if isinstance(spec, dict) else None
+    lists: dict[str, frozenset[str] | None] = {}
+    for piece in _listed(pieces):
+        if not piece_pushes(piece) or not isinstance(piece.get("id"), str):
+            continue
+        pid = piece["id"]
+        written = piece.get("pushes")
+        if isinstance(written, list):
+            lists[pid] = frozenset(entry for entry in written if isinstance(entry, str))
+        elif rule["chain"] != "weight" and pid in weights:
+            lists[pid] = frozenset(
+                other for other, weight in weights.items() if weight <= weights[pid]
+            )
+        else:
+            lists[pid] = None
+    return lists
+
+
+def push_directions_of(move: dict[str, Any]) -> set[tuple[int, int]]:
+    """A move entry's directions as written for the first player (`expand_symmetry`), or
+    nothing for a malformed one: what ``along`` is read against (D3)."""
+    symmetry = move.get("symmetry", "none")
+    directions: set[tuple[int, int]] = set()
+    for vector in _listed(move.get("vectors")):
+        if not (
+            isinstance(vector, list) and len(vector) == 2
+            and all(isinstance(c, int) and not isinstance(c, bool) for c in vector)
+        ):
+            return set()
+        try:
+            directions |= expand_symmetry((vector[0], vector[1]), str(symmetry))
+        except (KeyError, ValueError):
+            return set()
+    return directions
+
+
+def _push_entry_refusals(move: dict[str, Any], loc: str, hex_lattice: bool) -> list[str]:
+    """A move entry's ``push``: its shape, and the move shapes a push is refused on (§1.2,
+    §1.3, §3.1)."""
+    push = move["push"]
+    where = f"{loc}.push"
+    if push is False:
+        return []
+    if push is not True and not isinstance(push, dict):
+        return [f"{where} must be true, false or an object of whose, captures and along"]
+    errors: list[str] = []
+    if isinstance(push, dict):
+        unknown = sorted(set(push) - _PUSH_ENTRY_KEYS)
+        if unknown:
+            errors.append(f"{where} has unknown keys: {', '.join(unknown)}")
+        if push.get("whose", "enemy") not in PUSH_WHOSE:
+            errors.append(f"{where}.whose must be one of {PUSH_WHOSE}, got {push.get('whose')!r}")
+        if not isinstance(push.get("captures", False), bool):
+            errors.append(f"{where}.captures must be a boolean")
+        if push.get("along", "move") not in PUSH_ALONG:
+            errors.append(f"{where}.along must be one of {PUSH_ALONG}, got {push.get('along')!r}")
+    if errors:
+        return errors
+    stated = move_push(move)
+    assert stated is not None
+    if move.get("kind") == "sweep":
+        errors.append(
+            f"{where} on a sweep (D6): a sweep's capture is its path, and a push of its landing "
+            "beside a cleared path is a second rule; a push game may still have sweepers"
+        )
+    if path_of(move) != "straight":
+        errors.append(
+            f"{where} on a turning path (D7): which way a turning path pushes is not settled; "
+            "push on a straight slide"
+        )
+    if stated["captures"] and move.get("mode", "both") == "move":
+        errors.append(
+            f"{where}.captures is true on a move that never captures (mode 'move'): there is "
+            "no capture to offer beside the push"
+        )
+    if stated["captures"] and stated["whose"] == "own":
+        errors.append(
+            f"{where}.captures is true on a push of one's own pieces only (whose 'own'): it "
+            "says whether a push of an enemy also offers the capture, and this one pushes none"
+        )
+    if stated["along"] != "move":
+        if hex_lattice:
+            errors.append(
+                f"{where}.along {stated['along']!r} on a hex lattice (H1): an axial vector has "
+                "no rank or file component that reads as the eye expects; push along the move"
+            )
+        else:
+            axis = 0 if stated["along"] == "rank" else 1
+            for direction in sorted(push_directions_of(move)):
+                if direction[axis] == 0:
+                    errors.append(
+                        f"{where}.along {stated['along']!r} on the direction {list(direction)} "
+                        f"(D3), which has no {stated['along']} component: the push would have "
+                        "no direction"
+                    )
+                    break
+    return errors
+
+
+def _validate_push_rule(push: Any, errors: list[str]) -> None:
+    """``rules.push``'s shape (§1.2), and the values only round 2 plays (``walls: "crush"``
+    until Q1074b7; Q1074b6 lifted ``no_push_back``)."""
+    if push is None:
+        return
+    if not isinstance(push, dict):
+        errors.append("rules.push must be an object of chain, edge, walls and no_push_back")
+        return
+    _check_keys(push, _PUSH_RULE_KEYS, "rules.push", errors)
+    for key, allowed in (("chain", PUSH_CHAINS), ("edge", PUSH_EDGES), ("walls", PUSH_WALLS)):
+        if key in push and push[key] not in allowed:
+            errors.append(f"rules.push.{key} must be one of {allowed}, got {push[key]!r}")
+    if "no_push_back" in push and not isinstance(push["no_push_back"], bool):
+        errors.append("rules.push.no_push_back must be a boolean")
+    if push.get("walls") == "crush":
+        errors.append(
+            "rules.push.walls 'crush' (W1) is refused until the push rule's round 2: a piece "
+            "pressed against a wall blocks the line"
+        )
+
+
+def _validate_push_piece(
+    piece: dict[str, Any], where: str, ids: list[str], errors: list[str]
+) -> None:
+    """A type's ``pushes`` (a list of ids, as ``captures``), ``weight`` (1 to 9) and
+    ``strength`` (1 to 99)."""
+    _validate_captures(piece.get("pushes"), where, ids, errors, key="pushes")
+    if "weight" in piece:
+        weight = piece["weight"]
+        if (
+            isinstance(weight, bool) or not isinstance(weight, int)
+            or not 1 <= weight <= WEIGHT_MAX
+        ):
+            errors.append(
+                f"{where}.weight must be a whole number from 1 to {WEIGHT_MAX} (a weightless "
+                "piece would let one pusher move an unbounded row of them)"
+            )
+    if "strength" in piece:
+        strength = piece["strength"]
+        if (
+            isinstance(strength, bool) or not isinstance(strength, int)
+            or not 1 <= strength <= STRENGTH_MAX
+        ):
+            errors.append(f"{where}.strength must be a whole number from 1 to {STRENGTH_MAX}")
+
+
+def _check_push_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """The push rule's cross-field refusals (§1.2 to §3), each by name.
+
+    * **nothing pushes**: ``rules.push`` stating anything, a ``pushes`` list or a weight, in a
+      game no move of which pushes (each can never fire);
+    * **the refused pairs** (`refusals.PUSH_REFUSALS`): portals, a live strike, contacts, a
+      blast, rounds; and round 1's en passant, sights, rest, reach, territory, the purse and
+      rows on a wrapped board;
+    * **a list**: ``pushes: []`` beside a push (inert), ``pushes`` on a type that never pushes,
+      a list naming a wild type or the duck (N1, N2: they block, and are never pushed); a wild
+      type or the duck that pushes;
+    * **weights**: under ``"one"`` and ``"row"`` a weight and a list on one type (say it once),
+      a weight no pusher reads, and any strength; under ``"weight"`` a pusher with neither a
+      strength nor a weight, a type it may push without a weight, a weight on a type that
+      neither pushes nor may be pushed, a strength on a type that does not push, and a weight
+      beside a different strength on a pusher nobody may push (Q1074b4s);
+    * **along a rank or file** on a type that turns a quarter (a turned direction has no such
+      component, D3 and D8);
+    * **a bar no move can meet** (K5, Q1074b6): ``no_push_back`` where no move pushes an
+      enemy piece and no turn is long, so a pushed piece's owner never moves next and the bar
+      is never set (the portals' Q879 reading).
+    """
+    pushers = pushing_ids(pieces)
+    stated = rules.get("push")
+    by_id = {p["id"]: p for p in pieces if isinstance(p, dict) and isinstance(p.get("id"), str)}
+    if not pushers:
+        if isinstance(stated, dict) and any(
+            not stated_off(stated, key, PUSH_OFF_VALUES) for key in stated
+        ):
+            errors.append(
+                "rules.push states a push rule and no move pushes (pieces[].moves[].push), so "
+                "it can never fire"
+            )
+        for pid, piece in by_id.items():
+            if "pushes" in piece:
+                errors.append(
+                    f"piece {pid!r} states pushes and no move in the game pushes: give a move "
+                    "'push', or leave the list out"
+                )
+            if "weight" in piece:
+                errors.append(
+                    f"piece {pid!r} states a weight and no move in the game pushes, so nothing "
+                    "reads it"
+                )
+            if "strength" in piece:
+                errors.append(
+                    f"piece {pid!r} states a strength and no move in the game pushes, so "
+                    "nothing reads it"
+                )
+        return
+
+    rule = push_rule(spec)
+    assert rule is not None
+    if rule["no_push_back"] is True and not turn_is_long(rules) and not any(
+        (stated_push := move_push(move)) is not None and stated_push["whose"] != "own"
+        for piece in by_id.values() for move in _listed(piece.get("moves"))
+    ):
+        errors.append(
+            "rules.push.no_push_back (K5) and no move pushes an enemy piece: a pushed piece is "
+            "the pusher's own, whose owner does not move next, so the bar can never bind"
+        )
+    if portal_groups(rules):
+        errors.append(refusal("push.W4"))
+    if strike_is_live(rules.get("strike")):
+        errors.append(refusal("push.X2", "rules.strike"))
+    if isinstance(rules.get("contacts"), dict) and rules["contacts"].get("links"):
+        errors.append(refusal("push.X2", "rules.contacts"))
+    if rules.get("explode_on_capture"):
+        errors.append(refusal("push.X3"))
+    if is_simultaneous(rules):
+        errors.append(refusal("push.S1"))
+    if has_sights(pieces):
+        errors.append(refusal("push.N4"))
+    if has_rests(pieces):
+        errors.append(refusal("push.N5"))
+    if rules.get("reach"):
+        errors.append(refusal("push.G1"))
+    if rules.get("territory"):
+        errors.append(refusal("push.G2"))
+    if purse_rule(rules) is not None:
+        errors.append(refusal("push.M1"))
+    if rules.get("en_passant") and push_bars(spec, "en_passant"):
+        errors.append(refusal("push.E2"))
+    if rule["chain"] != "one" and any(
+        edge != "none"
+        for pair in wrap_stated(rules.get("wrap"), board_shape(spec)).values()
+        for edge in pair
+    ):
+        errors.append(refusal("push.H4"))
+
+    wild = {
+        npc["piece"] for npc in _listed(rules.get("npcs"))
+        if isinstance(npc, dict) and isinstance(npc.get("piece"), str)
+    }
+    duck = duck_piece(rules)
+    nobodys = wild | ({duck} if duck else set())
+    weights = piece_weights(pieces)
+    for pid, piece in by_id.items():
+        pushes = piece_pushes(piece)
+        written = piece.get("pushes")
+        if "pushes" in piece and not pushes:
+            errors.append(
+                f"piece {pid!r} states pushes and none of its moves pushes: give a move 'push', "
+                "or leave the list out"
+            )
+        if pushes and written == []:
+            errors.append(
+                f"piece {pid!r} pushes and its pushes list is empty, so no push ever fires: name "
+                "the types it may push, or take 'push' off its moves"
+            )
+        if pushes and pid in nobodys:
+            errors.append(
+                f"piece {pid!r} pushes and is nobody's (a wild piece or the duck): a wild piece "
+                "walks its route and the duck is placed, and neither pushes (N1, N2)"
+            )
+        for named in sorted(str(n) for n in set(_listed(written)) & nobodys):
+            errors.append(
+                f"piece {pid!r} pushes {named!r}, which is nobody's (a wild piece or the duck): "
+                "it blocks a push and is never pushed (N1, N2)"
+            )
+        facing = piece.get("facing")
+        if pushes and isinstance(facing, dict) and facing.get("axes") == 4 and any(
+            (move_push(move) or {}).get("along", "move") != "move"
+            and any(0 in direction for direction in push_directions_of(move))
+            for move in _listed(piece.get("moves"))
+        ):
+            errors.append(
+                f"piece {pid!r} turns a quarter (facing.axes 4) and pushes along a rank or file "
+                "on a straight line: turned, the line has no such component (D3, D8)"
+            )
+
+    if rule["chain"] != "weight":
+        for pid, piece in by_id.items():
+            if "strength" in piece:
+                errors.append(
+                    f"piece {pid!r} states a strength and rules.push.chain is "
+                    f"{rule['chain']!r}: a strength is read only under chain 'weight', where a "
+                    "line moves when the pusher's strength is at least its summed weight"
+                )
+        readers = [pid for pid in pushers if pid in weights and "pushes" not in by_id[pid]]
+        for pid in pushers:
+            if pid in weights and "pushes" in by_id[pid]:
+                errors.append(
+                    f"piece {pid!r} states both a weight and a pushes list: under chain "
+                    f"{rule['chain']!r} a weight is the list's shorthand, so say it once"
+                )
+        if weights and not readers:
+            errors.append(
+                f"pieces state weights and under chain {rule['chain']!r} only a pusher with a "
+                "weight and no pushes list reads them (the shorthand for its list): use chain "
+                "'weight', or leave the weights out"
+            )
+        return
+
+    lists = push_lists(spec)
+    pushable: set[str] = set()
+    for pid in pushers:
+        listed = lists.get(pid)
+        pushable |= (set(by_id) - nobodys) if listed is None else set(listed)
+    # Q1074b4s (§2's correction): a pusher's strength is its ``strength``, else its weight; a
+    # pushed piece's load is its weight. So a pusher needs one or the other, a type that may
+    # be pushed needs a weight (a pusher among them), and a number nothing reads is refused:
+    # a strength off a pusher, a weight on a type that neither pushes nor may be pushed, and
+    # a weight beside a different strength on a pusher nobody may push (there the weight is
+    # read as nothing; written equal, the strength is its off value).
+    strengths = {
+        pid: piece["strength"] for pid, piece in by_id.items()
+        if isinstance(piece.get("strength"), int)
+    }
+    for pid in pushers:
+        if pid not in weights and pid not in strengths:
+            errors.append(
+                f"piece {pid!r} pushes under chain 'weight' and states neither a strength nor "
+                "a weight: a pusher moves a line only when its strength (its weight unless "
+                "stated) is at least the line's summed weight"
+            )
+    for pid in sorted(pushable):
+        if pid not in weights:
+            errors.append(
+                f"piece {pid!r} may be pushed under chain 'weight' and states no weight: give "
+                "it one, or leave it out of every pushes list"
+            )
+    for pid in sorted(set(weights) - set(pushers) - pushable):
+        errors.append(
+            f"piece {pid!r} states a weight and under chain 'weight' it neither pushes nor may "
+            "be pushed, so nothing reads it"
+        )
+    for pid in sorted(set(strengths) - set(pushers)):
+        errors.append(
+            f"piece {pid!r} states a strength and none of its moves pushes, so nothing reads "
+            "it: a strength is the pusher's"
+        )
+    for pid in sorted((set(strengths) & set(weights) & set(pushers)) - pushable):
+        if strengths[pid] != weights[pid]:
+            errors.append(
+                f"piece {pid!r} states a weight and a different strength, and nothing may push "
+                "it, so its weight is never read: state the strength alone"
             )

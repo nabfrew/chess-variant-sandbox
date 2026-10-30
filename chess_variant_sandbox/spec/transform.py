@@ -683,11 +683,40 @@ def settle_inert_rules(spec: dict[str, Any]) -> list[str]:
     if not isinstance(listed, list) or not isinstance(rules, dict):
         return []
     gone: list[str] = _settle_leap_legs(listed, rules)
+    if settle_push(spec):
+        gone.append("push")
     while True:
         dropped = _drop_inert(spec, listed, rules)
         if not dropped:
             return gone
         gone.extend(dropped)
+
+
+def settle_push(spec: dict[str, Any]) -> bool:
+    """Q1074b5: take away what the push's keys read nothing of after an edit, as
+    `schema._check_push_coherence` would refuse it: ``rules.push``, every list, weight and
+    strength where no move pushes any more (an edit took the last pusher or its last pushing
+    move away), and a list or a strength on a type that no longer pushes. A no-op on a spec
+    the validator accepts. Whether anything went."""
+    from chess_variant_sandbox.spec.schema import pushing_ids
+
+    listed = spec.get("pieces")
+    rules = spec.get("rules")
+    if not isinstance(listed, list) or not isinstance(rules, dict):
+        return False
+    pushers = set(pushing_ids(listed))
+    changed = False
+    for piece in listed:
+        if not isinstance(piece, dict) or piece.get("id") in pushers:
+            continue
+        for key in ("pushes", "strength") + (() if pushers else ("weight",)):
+            if key in piece:
+                del piece[key]
+                changed = True
+    if not pushers and "push" in rules:
+        del rules["push"]
+        changed = True
+    return changed
 
 
 def _settle_leap_legs(listed: list[Any], rules: dict[str, Any]) -> list[str]:

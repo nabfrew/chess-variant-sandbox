@@ -45,6 +45,10 @@ from chess_variant_sandbox.spec.schema import (
     PORTAL_PASSAGES,
     PRICE_MAX,
     PURSE_MAX,
+    PUSH_ALONG,
+    PUSH_CHAINS,
+    PUSH_EDGES,
+    PUSH_WHOSE,
     REACH_ON,
     REPETITION_NEVER,
     REST_MAX,
@@ -57,10 +61,12 @@ from chess_variant_sandbox.spec.schema import (
     SIGHT_WHOSE,
     STALEMATE_RESULTS,
     STOCK_UNLIMITED,
+    STRENGTH_MAX,
     STRIKE_EFFECTS,
     STRIKE_POSITIONS,
     SYMMETRIES,
     TERRITORY_MODES,
+    WEIGHT_MAX,
     WIN_CONDITIONS,
     WRAP_FILE_EDGES,
     WRAP_PAIRS,
@@ -249,6 +255,59 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "For hops only, whose piece may serve as the screen. 'any' is the "
                     "xiangqi cannon and the default, 'own' is a piece that vaults its "
                     "own army, and 'enemy' is one that can only jump an opponent."
+                ),
+            },
+            # Q1074b2 (`docs/plan-push.md` §1.2, §1.3).
+            "push": {
+                "anyOf": [
+                    {"type": "boolean"},
+                    _object(
+                        {
+                            "whose": {
+                                "type": "string",
+                                "enum": list(PUSH_WHOSE),
+                                "description": (
+                                    "Whose pieces this move pushes: 'enemy' (the default), "
+                                    "'own' or 'any'. Nobody's pieces, wild pieces and the "
+                                    "duck are never pushed; they block."
+                                ),
+                            },
+                            "captures": {
+                                "type": "boolean",
+                                "description": (
+                                    "false (the default): landing on an enemy piece it may "
+                                    "push, the move pushes and never captures. true: both "
+                                    "are offered, a capture and a push. Only on a move that "
+                                    "can capture and pushes enemies."
+                                ),
+                            },
+                            "along": {
+                                "type": "string",
+                                "enum": list(PUSH_ALONG),
+                                "description": (
+                                    "Which way the pushed piece goes: 'move' (the default), "
+                                    "the move's own step (a leap's vector over its "
+                                    "components' common divisor: a knight pushes a further "
+                                    "knight jump); 'rank' or 'file', that component of the "
+                                    "step (a knight's 'rank' push is one square sideways). "
+                                    "Not 'rank'/'file' on a hex lattice."
+                                ),
+                            },
+                        },
+                        required=[],
+                        strict=strict,
+                    ),
+                ],
+                "description": (
+                    "This move pushes: landing on a piece it may push, the piece goes one "
+                    "step further along the push direction, if the square there is empty, "
+                    "or off the board at the edge (removed). A slide pushes only at the "
+                    "first piece it reaches. Which types it may push is the piece's "
+                    "pushes list. true is every default. On a move with mode 'move' it "
+                    "is a piece that pushes and never captures. Not on a sweep, a turning "
+                    "path, or beside portals, strike, contacts, explode_on_capture, "
+                    "simultaneous, en passant's pushing captures, sights, rest, reach, "
+                    "territory or a purse."
                 ),
             },
             "condition": _object(
@@ -603,6 +662,45 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "or rules.purse, whose coins it also pays (capped at "
                     f"{PURSE_MAX}). Never on a royal, a wild type (its rules.npcs entry "
                     "carries its bounty) or the duck."
+                ),
+            },
+            # Q1074b2 (`docs/plan-push.md` §1.4, §2).
+            "pushes": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "The piece types this piece's pushing moves may push, read as captures "
+                    "is: omitted, every type (never a wild type or the duck). A circle "
+                    "(A pushes B, B pushes C, C pushes A) is three lists. Only on a piece "
+                    "with a pushing move, and never empty."
+                ),
+            },
+            "weight": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": WEIGHT_MAX,
+                "description": (
+                    f"1 to {WEIGHT_MAX}: shorthand for a pushes list, every type whose "
+                    "weight is at most this one's (types without a weight are never pushed "
+                    "by it). Not beside a pushes list on the same piece, and only where "
+                    "some move pushes. Under rules.push.chain 'weight' it is instead the "
+                    "piece's load when pushed (and its strength when it pushes, unless it "
+                    "states a strength): a line moves only if the pusher's strength is at "
+                    "least the line's summed weight."
+                ),
+            },
+            # Q1074b4s (§2's correction): strength apart from weight.
+            "strength": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": STRENGTH_MAX,
+                "description": (
+                    f"1 to {STRENGTH_MAX}, only under rules.push.chain 'weight' and only on a "
+                    "piece that pushes: how much it can push. A line moves only if the "
+                    "pusher's strength is at least the sum of the weights in it. Omitted, a "
+                    "piece's strength is its weight; a light, strong piece states a small "
+                    "weight and a large strength. A pusher nothing may push needs only a "
+                    "strength; one that may be pushed needs a weight too."
                 ),
             },
             "price": {
@@ -1595,6 +1693,60 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "(rules.simultaneous), portals or explode_on_capture; under "
                     "drops.placement a held hand is placed first. In a turn of several moves "
                     "each buy is a move, paid from the purse as the move before left it."
+                ),
+            ),
+            # Q1074b2 (`docs/plan-push.md` §1.2, §2): the core plays the single push, and
+            # since Q1074b4 rows and weights, since Q1074b6 no push back (K5); `walls` is
+            # not offered until Q1074b7 plays the crush.
+            "push": _object(
+                {
+                    "chain": {
+                        "type": "string",
+                        "enum": list(PUSH_CHAINS),
+                        "description": (
+                            "'one' (the default): a push moves one piece, so a piece "
+                            "standing behind the one landed on blocks the push. 'row': a "
+                            "push moves the whole line, the piece landed on and every piece "
+                            "behind it up to the first empty square, each one step (the "
+                            "last falls off at the edge, taken); the push is allowed only "
+                            "if the pusher may push every piece in the line. 'weight': as "
+                            "'row', and only if the pusher's strength (pieces[].strength, "
+                            "else its weight) is at least the sum of the weights in the "
+                            "line; every piece that may be pushed then needs a weight, every "
+                            "pusher a strength or a weight, and a pushes list still applies. "
+                            "Not on a wrapped board beside 'row' or 'weight'."
+                        ),
+                    },
+                    "edge": {
+                        "type": "string",
+                        "enum": list(PUSH_EDGES),
+                        "description": (
+                            "'removes' (the default): a piece pushed off the board (or into "
+                            "a hexagon's missing corner) is removed, counted as taken by the "
+                            "pusher; never the mover's own royal. 'blocks': a push that "
+                            "would leave the board is not offered. A wall always blocks."
+                        ),
+                    },
+                    "no_push_back": {
+                        "type": "boolean",
+                        "description": (
+                            "true: a piece just pushed from one square to the next, and not "
+                            "removed, may not on its owner's very next move push from where "
+                            "it now stands onto the square it was pushed from (no shoving "
+                            "straight back); any other move is allowed, and the bar lasts one "
+                            "move. false (the default): no such bar. Needs a move that pushes "
+                            "enemy pieces (or a turn of several moves)."
+                        ),
+                    },
+                },
+                required=[],
+                strict=strict,
+                description=(
+                    "How pushes behave, for a game in which some move pushes "
+                    "(pieces[].moves[].push); leave it out for the defaults. A pushed piece "
+                    "is not moved by its owner: it does not promote, and it loses any "
+                    "first-move right (a double step, castling). A push threat on a royal "
+                    "is check, as a capture threat is."
                 ),
             ),
             "duck": _object(

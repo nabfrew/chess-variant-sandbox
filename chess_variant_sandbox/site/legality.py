@@ -748,11 +748,11 @@ def walk(
             if moves_an_instance(move) and move_from(move) in starting:
                 moved.add(move_from(move))
             moves_by_type[kind] += 1
-            if takes(board, move):
+            if takes(engine, board, move):
                 captures_by_type[kind] += 1
             if ply % PLY_STRIDE == 0 and len(legal) > 1:
                 legal_counts.append(len(legal))
-                capture_counts.append(sum(1 for m in legal if takes(board, m)))
+                capture_counts.append(sum(1 for m in legal if takes(engine, board, m)))
 
         successor = engine.apply(state, move)
         if series:
@@ -946,7 +946,7 @@ def _walk_steps(
             if moves_an_instance(move) and move_from(move) in starting:
                 moved.add(move_from(move))
             moves_by_type[kind] += 1
-            if takes(board, move):
+            if takes(engine, board, move):
                 captures_by_type[kind] += 1
 
         # The pass's sampling: a ply of the step on the stride in a spy game (a round
@@ -960,7 +960,7 @@ def _walk_steps(
             for legal in lists:
                 if len(legal) > 1:
                     legal_counts.append(len(legal))
-                    capture_counts.append(sum(1 for m in legal if takes(board, m)))
+                    capture_counts.append(sum(1 for m in legal if takes(engine, board, m)))
 
         events: tuple[tuple[int, int, int], ...] = ()
         if len(words) == 2:

@@ -22,7 +22,8 @@ use crate::net::{Net, NetEvaluator};
 use crate::rng::PyRandom;
 use crate::tables::{
     move_kind, move_from, move_promotion, move_to, Tables, MOVE_CASTLE, MOVE_DROP,
-    MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_PORTAL, MOVE_PROMOTION, MOVE_ROTATE, MOVE_SWEEP,
+    MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_PORTAL, MOVE_PROMOTION, MOVE_PUSH, MOVE_ROTATE,
+    MOVE_SWEEP,
 };
 
 // Schema 26 (Q918b): the players for rounds, a child of this module so they share the
@@ -966,6 +967,12 @@ impl Player {
     #[inline]
     fn is_loud(&self, game: &Game<'_>, m: u32) -> bool {
         let kind = move_kind(m);
+        if kind == MOVE_PUSH {
+            // Q1074b3: a push always lands on a piece, and is loud only where it throws an
+            // enemy off the board (`Tables::push_takes`) or the pusher promotes (P1).
+            // Mirrored by `agents/minimax.py::_is_loud`.
+            return move_promotion(m) != 0 || game.t.push_takes(&game.board, m);
+        }
         // Two kinds end on an occupied square and take nothing. A rotation's "target"
         // is the square the turning piece stands on, and a file-based castling can send
         // the king to its own rook's square -- a quiescence search that chased either
@@ -1157,6 +1164,13 @@ fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> f64 {
         return 0.0;
     }
     let victim = board[move_to(m)];
+    if kind == MOVE_PUSH {
+        // Q1074b3: a push gains only the enemy it throws off the board, which under a row
+        // (Q1074b4) is the line's last piece, not the target's. Mirrored by
+        // `agents/minimax.py::_capture_gain`.
+        let taken = t.push_taken(board, m);
+        return if taken != 0 { values[t.type_of(taken)] } else { 0.0 };
+    }
     let mut gain = if victim == 0 { 0.0 } else { values[t.type_of(victim)] };
     // Schema 13: a sweep also takes every piece on its path, and they are summed onto
     // the target's. Mirrored by `agents/minimax.py::_capture_gain`.

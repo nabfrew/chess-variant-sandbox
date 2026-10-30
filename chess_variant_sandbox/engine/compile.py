@@ -22,9 +22,17 @@ import json
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from math import gcd
 from typing import Any
 
-from chess_variant_sandbox.engine.moves import MOVE_SWEEP, move_from, move_to, move_type
+from chess_variant_sandbox.engine.moves import (
+    MOVE_PUSH,
+    MOVE_SWEEP,
+    move_from,
+    move_to,
+    move_type,
+)
+from chess_variant_sandbox.engine.moves import move_push as move_push_direction
 from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.legs import Legs, stated_legs
@@ -42,6 +50,7 @@ from chess_variant_sandbox.spec.schema import (
     blast_directions,
     bribe_ids,
     control_geometry,
+    duck_piece,
     has_rests,
     has_speeds,
     has_third_owner,
@@ -51,6 +60,7 @@ from chess_variant_sandbox.spec.schema import (
     insufficient_material_roles,
     is_nobodys,
     majority_ids,
+    move_push,
     neutral_ids,
     npc_immune_attackers,
     npc_pounce,
@@ -67,6 +77,8 @@ from chess_variant_sandbox.spec.schema import (
     piece_rests,
     piece_sights,
     piece_speeds,
+    piece_strengths,
+    piece_weights,
     portal_end_ids,
     portal_groups,
     portal_has_folds,
@@ -78,6 +90,8 @@ from chess_variant_sandbox.spec.schema import (
     purse_pays_loser,
     purse_rule,
     purse_squares,
+    push_lists,
+    push_rule,
     reach_reflection,
     reflect_square,
     sight_affected_ids,
@@ -97,6 +111,23 @@ from chess_variant_sandbox.spec.schema import (
 MODE_MOVE = 1
 MODE_CAPTURE = 2
 MODE_BOTH = 3
+# Q1074b1 (`docs/plan-push.md` §1.3): a landing on a piece this entry may push, the piece
+# the enemy's (4) or the mover's own (8). A ``push.captures: false`` entry keeps its capture
+# bit off where it pushes enemies. Bits nobody's tables held before, so every stored spec's
+# masks are unchanged.
+MODE_PUSH_ENEMY = 4
+MODE_PUSH_OWN = 8
+MODE_PUSH = MODE_PUSH_ENEMY | MODE_PUSH_OWN
+# `PushRule.next`: off the board (an edge or a hexagon's absent cell, W2), and a square nothing
+# may enter (a wall, §3.6 W1's block).
+PUSH_OFF = -1
+PUSH_STOP = -2
+# `PushRule.leap_dirs` (and slides', hops'): a landing that pushes nothing.
+PUSH_NO_DIRECTION = -1
+PUSH_CHAIN = {"one": 0, "row": 1, "weight": 2}
+# `PushRule.attack_kinds`: what a source attacks by, a capture (1), a push of an enemy (2).
+ATTACK_BY_CAPTURE = 1
+ATTACK_BY_PUSH = 2
 
 # What ``rules.repetition_draw: "never"`` compiles to (schema 10). ``u32::MAX``, because
 # the core's threshold is a ``u32`` and a repetition count can never reach it -- so the
@@ -1754,6 +1785,62 @@ def _compile_spy(
 
 
 @dataclass(frozen=True)
+class PushRule:
+    """Q1074b1 (`docs/plan-push.md` §1 to §3): the push rule's tables. ``None`` on
+    `CompiledSpec` in every game no move of which pushes, so no other game's tables move.
+
+    The masks themselves are the movement tables' landing modes (`MODE_PUSH_ENEMY`,
+    `MODE_PUSH_OWN`). Beside them:
+
+    * ``chain`` (`PUSH_CHAIN`) and ``edge_removes``: the game-wide physics (§2);
+    * ``directions``: each push direction as ``(player, dx, dy)``, the step a pushed piece
+      takes in the board's own coordinates, keyed by the mover (whose wrap it reads, D1);
+    * ``next[dir][square]``: where a piece on ``square`` goes, `PUSH_OFF` off the board (the
+      edge, or a hexagon's absent cell, W2) or `PUSH_STOP` (a wall); `_land` decides it, as
+      it decides every step, so the core never computes a square;
+    * ``leap_dirs``/``slide_dirs``/``hop_dirs`` ``[frame][type][square]``: per entry, per
+      landing, the direction id of the push there, `PUSH_NO_DIRECTION` where it pushes nothing
+      (parallel to the movement tables' landings, as portal momentum masks are);
+    * ``allowed[pusher][victim]``: the type lists (`schema.push_lists`), owner-blind (whose is
+      the landing's mode bits); never a wild type or the duck, either way (N1, N2);
+    * ``weight[type]``: empty unless ``chain`` is ``"weight"``; a pushed piece's load, 0 for
+      a type nothing may push;
+    * ``strength[type]``: empty unless ``chain`` is ``"weight"``; a pusher's strength, its
+      ``strength`` or else its weight (Q1074b4s, `schema.piece_strengths`), 0 for a type that
+      never pushes: a line moves when its summed weight is at most this;
+    * ``stand[player][type]``: per square, whether a pushed piece of that type may stand there
+      (its ``region``, W5); ``()`` for a type that may stand anywhere, and ``()`` whole unless
+      some type has a region;
+    * ``attack_kinds``: parallel to `CompiledSpec.attack_sources`, what each source attacks by
+      (`ATTACK_BY_CAPTURE`, `ATTACK_BY_PUSH`), so the core can read a push source against
+      ``allowed`` and a capture source against the capture matrix (R1);
+    * ``zobrist_bar`` (Q1074b6, K5, ``rules.push.no_push_back``): the push-back bar's keys,
+      ``[x]`` and ``[n_squares + y]`` for a piece standing on ``y`` that was pushed there
+      from ``x`` (``Game::push_bar``); drawn last of all and only under the rule
+      (`_build_zobrist`), ``()`` otherwise, which is the one flag the core reads.
+    """
+
+    chain: int
+    edge_removes: bool
+    directions: tuple[tuple[int, int, int], ...]
+    next: tuple[tuple[int, ...], ...]
+    leap_dirs: Any
+    slide_dirs: Any
+    hop_dirs: Any
+    allowed: tuple[tuple[bool, ...], ...]
+    weight: tuple[int, ...]
+    strength: tuple[int, ...]
+    stand: tuple[tuple[tuple[bool, ...], ...], ...]
+    attack_kinds: tuple[tuple[tuple[int, ...], ...], ...]
+    zobrist_bar: tuple[int, ...] = ()
+
+    @property
+    def no_back(self) -> bool:
+        """Whether a piece pushed may not push straight back on the next move (K5)."""
+        return bool(self.zobrist_bar)
+
+
+@dataclass(frozen=True)
 class CompiledSpec:
     """Immutable, position-independent tables derived from one rule spec."""
 
@@ -2056,6 +2143,8 @@ class CompiledSpec:
     # Q1069a: the draw by insufficient material, from ``rules.insufficient_material``, or
     # ``None`` -- every game without it. See ``InsufficientMaterialRule``.
     insufficient_material: InsufficientMaterialRule | None = None
+    # Q1074b1: the push rule's tables, or ``None`` -- every game no move of which pushes.
+    push: PushRule | None = None
 
     @property
     def rest_max(self) -> int:
@@ -2101,6 +2190,60 @@ class CompiledSpec:
             for square in self.sweep_path(board, move_from(move), move_to(move))
             if board[square]
         )
+
+    def push_takes(self, board: bytes, move: int) -> bool:
+        """Q1074b3 (`docs/plan-push.md` §3.3): whether ``move`` is a push that throws an
+        enemy piece off the board, read off the position it is played in.
+
+        The one answer the Python side gives to *does this push take*, mirroring
+        `Tables::push_takes` in the core: a removal counts as a capture where a capture
+        takes an enemy piece (`must_capture`, quiescence, the ordering's gain). A push that
+        throws the pusher's own piece off changes material (the clocks, the window) but
+        takes nothing. ``False`` for any word that is not a ``MOVE_PUSH``.
+        """
+        return self.push_taken(board, move) != 0
+
+    def push_removed(self, board: bytes, move: int) -> int:
+        """Q1074b4 (`docs/plan-push.md` §2, C5): the board byte ``move`` throws off the board,
+        whoever's it is, or 0 where it throws none off (``0`` too for any word that is not a
+        ``MOVE_PUSH``). Under ``chain`` ``"one"`` that is the target's piece; under ``"row"``
+        and ``"weight"`` the last of the line (the target's piece and every piece behind it
+        up to the first empty square, the pusher's origin counting as empty). Read off the
+        position the move is played in; the move was offered, so its line may move.
+        `Tables::push_taken` walks the same line in the core."""
+        line = self.push_line(board, move)
+        if line and line[-1][1] == PUSH_OFF:
+            return board[line[-1][0]]
+        return 0
+
+    def push_line(self, board: bytes, move: int) -> list[tuple[int, int]]:
+        """Q1074b5: what ``move`` pushes, read off the position it is played in, as
+        ``(square, to)`` for each piece of its line in order from the target, ``to`` the square
+        it is pushed onto or `PUSH_OFF` for the one thrown off the board. Empty for any word
+        that is not a ``MOVE_PUSH``. The walk `push_removed` reads its removal from, and the
+        page its animation (`viz.wrapped.push_transit`); the move was offered, so its line may
+        move."""
+        if move_type(move) != MOVE_PUSH or self.push is None:
+            return []
+        origin, square = move_from(move), move_to(move)
+        following = self.push.next[move_push_direction(move)]
+        line: list[tuple[int, int]] = []
+        for _ in range(self.n_squares):
+            behind = following[square]
+            line.append((square, behind))
+            if behind < 0 or behind == origin or not board[behind]:
+                return line
+            square = behind
+        return line
+
+    def push_taken(self, board: bytes, move: int) -> int:
+        """Q1074b4: the enemy piece ``move`` throws off the board (`push_removed`), or 0
+        where it throws none off or throws off the pusher's own. `Tables::push_taken`'s
+        copy."""
+        removed = self.push_removed(board, move)
+        if removed and self.owner_of(removed) != self.owner_of(board[move_from(move)]):
+            return removed
+        return 0
 
     def square_index(self, file: int, rank: int) -> int:
         return rank * self.width + file
@@ -2317,6 +2460,9 @@ class _Frames:
     leap_dirs: list[list[list[Any]]]
     slide_dirs: list[list[list[Any]]]
     hop_dirs: list[list[list[Any]]]
+    # Q1074b1: each square's push steps (`PushSteps`), ``[frame][type][square]``. Built only
+    # in a push game; every other game compiles exactly as it did.
+    push_at: list[list[list[PushSteps]]]
 
 
 def _compile_frames(
@@ -2332,6 +2478,7 @@ def _compile_frames(
     radius: int,
     has_portals: bool,
     share: _Frames | None,
+    push: bool = False,
 ) -> _Frames | None:
     """Every piece's entries on every square, one pass per *frame*.
 
@@ -2346,10 +2493,10 @@ def _compile_frames(
     """
     inputs = (
         pieces, n_facings, width, height, wrap, obstacles, blocks_leaps, radius,
-        has_portals,
+        has_portals, push,
     )
     shared = share if share is not None and share.inputs == inputs else None
-    frames = _Frames(inputs, [], [], [], [], [], [], [], [])
+    frames = _Frames(inputs, [], [], [], [], [], [], [], [], [])
     for frame in range(n_facings * 2):
         player, facing = divmod(frame, n_facings)
         if shared is not None and player == 0:
@@ -2362,6 +2509,7 @@ def _compile_frames(
             frames.leap_dirs.append(list(shared.leap_dirs[frame]))
             frames.slide_dirs.append(list(shared.slide_dirs[frame]))
             frames.hop_dirs.append(list(shared.hop_dirs[frame]))
+            frames.push_at.append(list(shared.push_at[frame]))
             continue
         frame_leaps: list[list[tuple[Entry, ...]]] = []
         frame_slides: list[list[tuple[Entry, ...]]] = []
@@ -2369,21 +2517,26 @@ def _compile_frames(
         frame_sweeps: list[list[tuple[SweepEntry, ...]]] = []
         frame_dedup: list[frozenset[int]] = []
         frame_dirs: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
+        frame_push: list[list[PushSteps]] = []
         for piece_type, piece in enumerate(pieces):
             type_leaps: list[tuple[Entry, ...]] = []
             type_slides: list[tuple[Entry, ...]] = []
             type_hops: list[tuple[HopEntry, ...]] = []
             type_sweeps: list[tuple[SweepEntry, ...]] = []
             type_dirs: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
+            type_push: list[PushSteps] = []
             ambiguous: set[int] = set()
             for square in range(n_squares):
+                push_at: list[PushSteps] | None = [] if push else None
                 built, momentum = _compile_square_full(
                     piece, player, square, width, height, orientation, wrap,
                     obstacles, blocks_leaps,
                     facing_quarter_turns(facing, n_facings),
                     radius,
                     momentum=has_portals,
+                    push_out=push_at,
                 )
+                type_push.append(push_at[0] if push_at else ((), (), ()))
                 type_leaps.append(built[0])
                 type_slides.append(built[1])
                 type_hops.append(built[2])
@@ -2409,6 +2562,7 @@ def _compile_frames(
             frame_dedup.append(frozenset(ambiguous))
             for kept_frame, kept_type in zip(frame_dirs, type_dirs, strict=True):
                 kept_frame.append(kept_type)
+            frame_push.append(type_push)
         frames.leaps.append(frame_leaps)
         frames.slides.append(frame_slides)
         frames.hops.append(frame_hops)
@@ -2417,6 +2571,7 @@ def _compile_frames(
         frames.leap_dirs.append(frame_dirs[0])
         frames.slide_dirs.append(frame_dirs[1])
         frames.hop_dirs.append(frame_dirs[2])
+        frames.push_at.append(frame_push)
     return frames
 
 
@@ -2476,10 +2631,12 @@ def _compile(
         else ()
     )
     n_frames = n_facings * 2
+    # Q1074b1: whether some move pushes; every other game compiles exactly as it did.
+    has_push = push_rule(spec) is not None
     frames = _compile_frames(
         _without_self_destroying_captures(pieces, rules, index_of),
         n_facings, n_squares, width, height, orientation, wrap, obstacles,
-        blocks_leaps, radius, has_portals, share,
+        blocks_leaps, radius, has_portals, share, push=has_push,
     )
     if frames is None:
         return None, None
@@ -2520,7 +2677,7 @@ def _compile(
     simultaneous = rules.get("simultaneous")
     (
         zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim, zob_rest,
-        zob_respawn, zob_heading, zob_purse,
+        zob_respawn, zob_heading, zob_purse, zob_push_bar,
     ) = (
         _build_zobrist(
             digest, n_squares, n_types, width, n_facings, n_owners,
@@ -2534,6 +2691,7 @@ def _compile(
                 square for square in range(n_squares) if npcs is not None and npcs.on_line(square)
             ),
             purse=purse_rule(spec) is not None,
+            push_bar=bool((push_rule(spec) or {}).get("no_push_back")),
         )
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
@@ -2568,6 +2726,7 @@ def _compile(
     )
     promotions = _settle_only_lost(promotions, board, n_types, n_facings, drops)
     attack_dirs: list[list[list[int]]] | None = [] if has_portals else None
+    attack_kinds: list[list[list[int]]] | None = [] if has_push else None
     attack_sources = _build_attack_sources(
         leaps,
         slides,
@@ -2581,6 +2740,7 @@ def _compile(
         momentum=(leap_dirs, slide_dirs, hop_dirs) if has_portals else None,
         dirs_out=attack_dirs,
         facing_axes=facing_axes,
+        kinds_out=attack_kinds,
     )
     one_way_types = _one_way_types(
         leaps,
@@ -2673,7 +2833,7 @@ def _compile(
             for frame in range(n_frames)
         ),
         has_hop_attacks=any(
-            any(modes[i] & 2 for i in range(len(modes)))
+            any(modes[i] & (MODE_CAPTURE | MODE_PUSH_ENEMY) for i in range(len(modes)))
             for frame_hops in hops
             for type_hops in frame_hops
             for square_hops in type_hops
@@ -2774,6 +2934,10 @@ def _compile(
         insufficient_material=_compile_insufficient_material(
             spec, index_of, n_types, n_squares, slides
         ),
+        push=_compile_push(
+            spec, frames, pieces, index_of, n_types, n_squares, width,
+            height, orientation, wrap, obstacles, absent, radius, attack_kinds, zob_push_bar,
+        ) if has_push else None,
     )
     if obstacles:
         _reject_walled_in(compiled)
@@ -3134,6 +3298,13 @@ _Built = tuple[tuple[Entry, ...], tuple[Entry, ...], tuple[HopEntry, ...], tuple
 # masks per entry, parallel to the entry's landings (`momentum_bits`).
 _Momentum = tuple[tuple[int, ...], ...]
 _NO_MOMENTUM: tuple[_Momentum, _Momentum, _Momentum] = ((), (), ())
+# Q1074b1: one square's push steps, parallel to its leaps, slides and hops: per entry, per
+# landing, the step a pushed piece takes, or ``None`` where the landing pushes nothing.
+PushSteps = tuple[
+    tuple[tuple[tuple[int, int] | None, ...], ...],
+    tuple[tuple[tuple[int, int] | None, ...], ...],
+    tuple[tuple[tuple[int, int] | None, ...], ...],
+]
 
 
 def _compile_square(
@@ -3172,6 +3343,7 @@ def _compile_square_full(
     facing: int = 0,
     radius: int = 0,
     momentum: bool = False,
+    push_out: list[PushSteps] | None = None,
 ) -> tuple[_Built, tuple[_Momentum, _Momentum, _Momentum]]:
     """Build the four entry lists for one piece type standing on one square.
 
@@ -3181,6 +3353,17 @@ def _compile_square_full(
     overlap resolution out (`_resolve_overlaps`), so every landing keeps the direction it
     was reached by and the runtime uniqueness pass folds the duplicates instead: on a seam
     a leap and a slide can reach one square from opposite sides.
+
+    ``push_out`` (Q1074b1, a push game) receives the step a pushed piece takes from every
+    landing (`PushSteps`, parallel to the leaps, slides and hops returned), in the board's
+    coordinates (§3.1): a ray's own step (D1, D5), a leap's or a lame's vector over the gcd of
+    its components (D2, D4), or its rank or file component (D3), read in the mover's frame
+    (D8). The entries' modes gain `MODE_PUSH_ENEMY`/`MODE_PUSH_OWN` (`_push_mode`). As under
+    ``momentum``, the overlap resolution is left out, so every landing keeps the way it was
+    reached and the runtime uniqueness pass folds the duplicates: on a seam one square can be
+    pushed two ways (a cylinder's rook reaches its rank both ways round). Within one merged
+    entry (the leaps of one kind, the descriptors of one ray) a landing has one step; two
+    descriptors that disagree there are refused. ``None`` changes nothing.
 
     ``radius`` is a hexagon's R (Q281a2, unreachable until the gate); 0 is every board
     before it and every rectangle after, and it is what selects the grid or hex reading
@@ -3260,6 +3443,10 @@ def _compile_square_full(
     # and with a seam in play there is no arithmetic that could rebuild it.
     ray_squares: dict[_RayKey, list[int]] = {}
     # Schema 22: each ray's mode at every distance a continued walk may reach.
+    # Q1074b1: the push steps of each merged entry, beside its modes.
+    leap_push: dict[bool, dict[int, tuple[int, int]]] = {}
+    lame_push: list[tuple[tuple[int, int] | None, ...]] = []
+    ray_push: dict[Any, dict[int, tuple[int, int]]] = {}
 
     for descriptor in piece["moves"]:
         condition = descriptor.get("condition") or {}
@@ -3275,6 +3462,9 @@ def _compile_square_full(
 
         kind = descriptor["kind"]
         mode = _MODE_BITS[descriptor.get("mode", "both")]
+        pushed = move_push(descriptor) if push_out is not None else None
+        if pushed is not None:
+            mode = _push_mode(mode, pushed)
         symmetry = descriptor.get("symmetry", "none")
         min_range = descriptor.get("min_range", 1)
         max_range = descriptor.get("range", DEFAULT_RANGE.get(kind, 1))
@@ -3356,6 +3546,11 @@ def _compile_square_full(
                     continue
                 bucket = leap_targets.setdefault(requires_unmoved, {})
                 bucket[target] = bucket.get(target, 0) | mode
+                if pushed is not None:
+                    _push_landing(
+                        leap_push.setdefault(requires_unmoved, {}), target,
+                        _push_step(step_x, step_y, pushed, True),
+                    )
                 if momentum:
                     signs = leap_momentum.setdefault(requires_unmoved, {})
                     signs[target] = signs.get(target, 0) | momentum_bits(step_x, step_y, mode)
@@ -3373,6 +3568,12 @@ def _compile_square_full(
                 if ride is not None:
                     path, path_modes = ride
                     lame_entries.append((path, path_modes, requires_unmoved))
+                    lame_step = (
+                        _push_step(step_x, step_y, pushed, True) if pushed is not None else None
+                    )
+                    lame_push.append(tuple(
+                        lame_step if at_mode & MODE_PUSH else None for at_mode in path_modes
+                    ))
                     lame_momentum.append(
                         tuple(momentum_bits(step_x, step_y, m) if m else 0 for m in path_modes)
                     )
@@ -3431,6 +3632,11 @@ def _compile_square_full(
                     walked.append(current)
                 if distance >= min_range and (confine is None or current in confine):
                     modes[index] = modes.get(index, 0) | mode
+                    if pushed is not None:
+                        _push_landing(
+                            ray_push.setdefault(key, {}), index,
+                            _push_step(step_x, step_y, pushed, False),
+                        )
 
     leap_entries = [
         (tuple(sorted(targets)), tuple(targets[t] for t in sorted(targets)), unmoved_flag)
@@ -3448,6 +3654,8 @@ def _compile_square_full(
     sweep_entries: list[SweepEntry] = []
     slide_signs: list[tuple[int, ...]] = []
     hop_signs: list[tuple[int, ...]] = []
+    slide_push: list[tuple[tuple[int, int] | None, ...]] = []
+    hop_push: list[tuple[tuple[int, int] | None, ...]] = []
     for key in sorted(ray_groups):
         kind, step_x, step_y, requires_unmoved, screen_range, screen_owner = key
         ray = ray_squares.get(key, [])
@@ -3463,9 +3671,14 @@ def _compile_square_full(
         if not any(entry[1]):
             continue
         ray_signs = tuple(momentum_bits(step_x, step_y, mode) for mode in entry[1])
+        ray_steps = tuple(
+            ray_push.get(key, {}).get(index) if mode & MODE_PUSH else None
+            for index, mode in enumerate(entry[1])
+        )
         if kind == "slide":
             slide_entries.append(entry)
             slide_signs.append(ray_signs)
+            slide_push.append(ray_steps)
         elif kind == "sweep":
             # Schema 13: a ray the core walks through pieces. A region square keeps mode
             # 0 and stays on the ray, so a sweeper passes over it without stopping.
@@ -3477,8 +3690,22 @@ def _compile_square_full(
         else:
             hop_entries.append((*entry, screen_range, screen_owner))
             hop_signs.append(ray_signs)
+            hop_push.append(ray_steps)
 
-    if momentum:
+    if push_out is not None:
+        push_out.append((
+            tuple(
+                tuple(
+                    leap_push.get(unmoved_flag, {}).get(t) if targets[t] & MODE_PUSH else None
+                    for t in sorted(targets)
+                )
+                for unmoved_flag, targets in sorted(leap_targets.items())
+                if targets
+            ),
+            tuple(slide_push + lame_push + [(None,) * len(e[0]) for e in turning_entries]),
+            tuple(hop_push),
+        ))
+    if momentum or push_out is not None:
         return (
             (
                 tuple(leap_entries), tuple(slide_entries + lame_entries + turning_entries),
@@ -3493,6 +3720,199 @@ def _compile_square_full(
         leap_entries, slide_entries + lame_entries + turning_entries, hop_entries,
         sweep_entries,
     ), _NO_MOMENTUM
+
+
+def _push_mode(mode: int, pushed: dict[str, Any]) -> int:
+    """A move entry's landing mode with its push (§1.3): the push bits ``whose`` names, and
+    the capture bit off where it pushes enemies and ``captures`` is false."""
+    whose = pushed["whose"]
+    if whose in ("enemy", "any"):
+        mode |= MODE_PUSH_ENEMY
+        if not pushed["captures"]:
+            mode &= ~MODE_CAPTURE
+    if whose in ("own", "any"):
+        mode |= MODE_PUSH_OWN
+    return mode
+
+
+def _push_step(step_x: int, step_y: int, pushed: dict[str, Any], leap: bool) -> tuple[int, int]:
+    """The step a pushed piece takes (§3.1): along the move, a ray's own step (D1, D5) or a
+    leap's over its components' gcd (D2, D4); along a rank or file, that component's sign (D3).
+    Already in the mover's frame (D8)."""
+    along = pushed["along"]
+    if along == "rank":
+        step = ((step_x > 0) - (step_x < 0), 0)
+    elif along == "file":
+        step = (0, (step_y > 0) - (step_y < 0))
+    elif leap:
+        divisor = gcd(abs(step_x), abs(step_y)) or 1
+        step = (step_x // divisor, step_y // divisor)
+    else:
+        step = (step_x, step_y)
+    if step == (0, 0):
+        raise SpecError([
+            f"a push along the {along} on the step ({step_x}, {step_y}), which has no "
+            f"{along} component (D3)"
+        ])
+    return step
+
+
+def _push_landing(steps: dict[int, tuple[int, int]], at: int, step: tuple[int, int]) -> None:
+    """Record the step a push at ``at`` (a landing, or a ray's index) takes in one merged
+    entry, which holds one step per landing."""
+    known = steps.setdefault(at, step)
+    if known != step:
+        raise SpecError([
+            f"two moves of one piece push the piece on one landing two ways ({known} and "
+            f"{step}) through one table entry: give the moves one 'along'"
+        ])
+
+
+def _push_next(
+    player: int, step: tuple[int, int], width: int, height: int, wrap: WrapRule | None,
+    radius: int, obstacles: frozenset[int], absent: frozenset[int],
+) -> tuple[int, ...]:
+    """Where a piece on each square goes when ``player``'s push moves it by ``step``: through
+    `_land` with the mover's wrap (D1, H3), `PUSH_OFF` off the board or onto a hexagon's
+    absent cell (W2), `PUSH_STOP` onto a wall (W1) or back onto itself."""
+    low_file, high_file = wrap.files[player] if wrap else (False, False)
+    low_rank, high_rank = wrap.ranks[player] if wrap else (False, False)
+    permitted = (lambda side: wrap.may_leave(side, player)) if (radius and wrap) else None
+    row: list[int] = []
+    for square in range(width * height):
+        target = _land(
+            square % width + step[0], square // width + step[1], width, height,
+            low_file, high_file, low_rank, high_rank, radius, permitted,
+        )
+        if target is None or target in absent:
+            row.append(PUSH_OFF)
+        elif target in obstacles or target == square:
+            row.append(PUSH_STOP)
+        else:
+            row.append(target)
+    return tuple(row)
+
+
+def _compile_push(
+    spec: dict[str, Any],
+    frames: _Frames,
+    pieces: list[dict[str, Any]],
+    index_of: dict[str, int],
+    n_types: int,
+    n_squares: int,
+    width: int,
+    height: int,
+    orientation: str,
+    wrap: WrapRule | None,
+    obstacles: frozenset[int],
+    absent: frozenset[int],
+    radius: int,
+    attack_kinds: list[list[list[int]]] | None,
+    zobrist_bar: tuple[int, ...] = (),
+) -> PushRule:
+    """The push rule's tables (`PushRule`), from the frames' push landings."""
+    rule = push_rule(spec)
+    assert rule is not None
+    rules = spec.get("rules", {})
+    duck = duck_piece(rules)
+    # Nobody's types are never pushed (N1, N2), and neither are portal ends (refused beside a
+    # push, W4), which are not declared pieces.
+    pushable = {piece["id"] for piece in spec["pieces"]} - {
+        npc["piece"] for npc in rules.get("npcs") or []
+    } - ({duck} if duck else set())
+    n_facings = len(frames.push_at) // 2
+    keys = sorted({
+        (frame // n_facings, step[0], step[1])
+        for frame, frame_push in enumerate(frames.push_at)
+        for type_push in frame_push
+        for square_push in type_push
+        for table_steps in square_push
+        for entry_steps in table_steps
+        for step in entry_steps
+        if step is not None
+    })
+    number = {key: index for index, key in enumerate(keys)}
+
+    def parallel(which: int) -> Any:
+        return tuple(
+            tuple(
+                tuple(
+                    tuple(
+                        tuple(
+                            PUSH_NO_DIRECTION if step is None
+                            else number[(frame // n_facings, step[0], step[1])]
+                            for step in entry_steps
+                        )
+                        for entry_steps in frames.push_at[frame][kind][square][which]
+                    )
+                    for square in range(n_squares)
+                )
+                for kind in range(n_types)
+            )
+            for frame in range(len(frames.push_at))
+        )
+
+    lists = push_lists(spec)
+    ids = [piece["id"] for piece in pieces]
+
+    def may_push(pusher: str, victim: str) -> bool:
+        if pusher not in lists or victim not in pushable:
+            return False
+        named = lists[pusher]
+        return named is None or victim in named
+
+    allowed = tuple(tuple(may_push(pusher, victim) for victim in ids) for pusher in ids)
+    weights = piece_weights(spec)
+    strengths = piece_strengths(spec)
+    regions = [piece.get("region") for piece in pieces]
+    stand: tuple[tuple[tuple[bool, ...], ...], ...] = ()
+    if any(regions):
+        stand = tuple(
+            tuple(
+                () if region is None else tuple(
+                    square in confine for square in range(n_squares)
+                )
+                for region in regions
+                for confine in [
+                    _region_squares(region, player, width, height, orientation) or frozenset()
+                ]
+            )
+            for player in range(2)
+        )
+    return PushRule(
+        chain=PUSH_CHAIN[rule["chain"]],
+        edge_removes=rule["edge"] == "removes",
+        directions=tuple(keys),
+        next=tuple(
+            _push_next(player, (dx, dy), width, height, wrap, radius, obstacles, absent)
+            for player, dx, dy in keys
+        ),
+        leap_dirs=parallel(0),
+        slide_dirs=parallel(1),
+        hop_dirs=parallel(2),
+        allowed=allowed,
+        # A weight only a pushed piece's load reads: 0 for a type nothing may push, so a
+        # pusher's one number spelt as a weight or as a strength is one table (Q1074b4s).
+        weight=(
+            tuple(
+                weights.get(piece["id"], 0) if any(row[kind] for row in allowed) else 0
+                for kind, piece in enumerate(pieces)
+            )
+            if rule["chain"] == "weight" else ()
+        ),
+        strength=(
+            tuple(
+                strengths.get(piece["id"], 0) if piece["id"] in lists else 0
+                for piece in pieces
+            )
+            if rule["chain"] == "weight" else ()
+        ),
+        stand=stand,
+        attack_kinds=tuple(
+            tuple(tuple(kinds) for kinds in owner) for owner in (attack_kinds or [])
+        ),
+        zobrist_bar=zobrist_bar,
+    )
 
 
 def _resolve_overlaps(
@@ -3578,6 +3998,11 @@ def _freeze(table: list[list[list[Any]]]) -> Any:
     return tuple(tuple(tuple(squares) for squares in types) for types in table)
 
 
+# The landing modes that attack: a capture, and (Q1074b1, R1) a push of an enemy piece. No
+# stored spec's tables hold a push bit, so every one keeps its sources.
+_ATTACKS = MODE_CAPTURE | MODE_PUSH_ENEMY
+
+
 def _build_attack_sources(
     leaps: list[list[list[tuple[Entry, ...]]]],
     slides: list[list[list[tuple[Entry, ...]]]],
@@ -3591,6 +4016,7 @@ def _build_attack_sources(
     momentum: tuple[Any, Any, Any] | None = None,
     dirs_out: list[list[list[int]]] | None = None,
     facing_axes: tuple[int, ...] = (),
+    kinds_out: list[list[list[int]]] | None = None,
 ) -> tuple[tuple[tuple[AttackSource, ...], ...], ...]:
     """Invert the move tables into "who could attack this square?".
 
@@ -3626,17 +4052,27 @@ def _build_attack_sources(
     # Schema 19: the capture directions of every source, in lockstep with ``table``
     # (`PortalRule.attack_dirs`). Read only when ``momentum`` is given.
     dirs: list[list[list[int]]] = [[[] for _ in range(n_squares)] for _ in range(2)]
+    # Q1074b1: what each source attacks by, in lockstep with ``table`` (`PushRule.attack_kinds`).
+    # A push of an enemy attacks its landing as a capture does (R1); read only in a push game.
+    kinds: list[list[list[int]]] = [[[] for _ in range(n_squares)] for _ in range(2)]
     leap_dirs, slide_dirs, hop_dirs = momentum if momentum is not None else (None, None, None)
 
-    def add(player: int, target: int, source: AttackSource, sign: int = 0) -> None:
+    def add(
+        player: int, target: int, source: AttackSource, sign: int = 0, mode: int = MODE_CAPTURE
+    ) -> None:
         table[player][target].append(source)
         dirs[player][target].append(sign >> MOMENTUM_CAPTURE_SHIFT)
+        kinds[player][target].append(
+            (ATTACK_BY_CAPTURE if mode & MODE_CAPTURE else 0)
+            | (ATTACK_BY_PUSH if mode & MODE_PUSH_ENEMY else 0)
+        )
 
     if third_block and npcs is None:
         # Schema 19: portals are the third owner's and attack nothing, so its block is
         # there and empty -- the core indexes the attack table by owner.
         table.append([[] for _ in range(n_squares)])
         dirs.append([[] for _ in range(n_squares)])
+        kinds.append([[] for _ in range(n_squares)])
     if npcs is not None:
         wild: list[list[AttackSource]] = [[] for _ in range(n_squares)]
         for origin, target in enumerate(npcs.next):
@@ -3646,6 +4082,7 @@ def _build_attack_sources(
             wild[target].append((origin, value, (), (), 0, False, SCREEN_ANY, 0, ()))
         table.append(wild)
         dirs.append([[0] * len(sources) for sources in wild])
+        kinds.append([[ATTACK_BY_CAPTURE] * len(sources) for sources in wild])
 
     for frame in range(len(leaps)):
         player, facing = divmod(frame, n_facings)
@@ -3660,31 +4097,33 @@ def _build_attack_sources(
                     leaps[frame][piece_type][origin]
                 ):
                     for index, target in enumerate(targets):
-                        if modes[index] & 2:
+                        if modes[index] & _ATTACKS:
                             add(
                                 player, target,
                                 (origin, piece_value, (), (), 0, unmoved, SCREEN_ANY, 0, ()),
                                 leap_dirs[frame][piece_type][origin][number][index]
                                 if leap_dirs else 0,
+                                modes[index],
                             )
 
                 for number, (ray, modes, unmoved) in enumerate(
                     slides[frame][piece_type][origin]
                 ):
                     for index, target in enumerate(ray):
-                        if modes[index] & 2:
+                        if modes[index] & _ATTACKS:
                             add(
                                 player, target,
                                 (origin, piece_value, ray[:index], (), 0, unmoved, SCREEN_ANY,
                                  0, ()),
                                 slide_dirs[frame][piece_type][origin][number][index]
                                 if slide_dirs else 0,
+                                modes[index],
                             )
 
                 for number, entry in enumerate(hops[frame][piece_type][origin]):
                     ray, modes, unmoved, screen_range, screen_owner = entry
                     for index, target in enumerate(ray):
-                        if not modes[index] & 2:
+                        if not modes[index] & _ATTACKS:
                             continue
                         path = ray[:index]
                         sign = (
@@ -3698,14 +4137,14 @@ def _build_attack_sources(
                                 player, target,
                                 (origin, piece_value, path[:split], path[split:], 1,
                                  unmoved, screen_owner, 0, ()),
-                                sign,
+                                sign, modes[index],
                             )
                         else:
                             add(
                                 player, target,
                                 (origin, piece_value, (), path, 1, unmoved, screen_owner,
                                  0, ()),
-                                sign,
+                                sign, modes[index],
                             )
 
                 # Schema 13, decision A: one source per ray square. The square is attacked
@@ -3732,6 +4171,8 @@ def _build_attack_sources(
 
     if dirs_out is not None and momentum is not None:
         dirs_out.extend(dirs)
+    if kinds_out is not None:
+        kinds_out.extend(kinds)
     return tuple(tuple(tuple(sources) for sources in player_table) for player_table in table)
 
 
@@ -5755,6 +6196,7 @@ def _build_zobrist(
     respawn_keys: int = 0,
     heading_squares: tuple[int, ...] = (),
     purse: bool = False,
+    push_bar: bool = False,
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
@@ -5764,6 +6206,7 @@ def _build_zobrist(
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, tuple[int, ...], tuple[int, ...]] | None,
+    tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
@@ -5845,4 +6288,13 @@ def _build_zobrist(
     # to ``PURSE_MAX``, drawn last of all and only under the rule, so no other game's key
     # moves.
     coins = tuple(rng.getrandbits(64) for _ in range(2 * (PURSE_MAX + 1))) if purse else ()
-    return pieces, side, ep, colours, turns, bar, fold, sim, resting, respawn, heading, coins
+    # Q1074b6 (K5, `docs/plan-push.md` §3.12): the push-back bar, ``[left]`` and
+    # ``[n_squares + standing on]``, drawn last of all and only under
+    # ``rules.push.no_push_back``, so no other game's key moves.
+    push_bar_keys = (
+        tuple(rng.getrandbits(64) for _ in range(2 * n_squares)) if push_bar else ()
+    )
+    return (
+        pieces, side, ep, colours, turns, bar, fold, sim, resting, respawn, heading, coins,
+        push_bar_keys,
+    )

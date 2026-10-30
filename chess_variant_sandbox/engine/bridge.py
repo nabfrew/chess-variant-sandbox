@@ -284,7 +284,9 @@ def _movement_fields(spec: CompiledSpec) -> dict[str, Any]:
         # for the same reason everything else here is: the core wants one index, not two
         # pointer hops, on a path that runs per capture test.
         "capture_allowed": [int(allowed) for row in spec.capture_allowed for allowed in row],
-        "has_capture_matrix": spec.has_capture_matrix,
+        # Q1074b2: a push game always reads the victim's type, since a push source attacks
+        # only what its pusher's list names (R1, `Game::attacks_square_as`).
+        "has_capture_matrix": spec.has_capture_matrix or spec.push is not None,
         "has_hop_attacks": spec.has_hop_attacks,
         "immobile_squares": [
             int(square in spec.immobile_squares[frame][piece_type])
@@ -1259,6 +1261,12 @@ def _portal_fields(spec: CompiledSpec) -> dict[str, Any]:
         attack_dirs = [
             bits for owner in portals.attack_dirs for per_square in owner for bits in per_square
         ]
+    elif spec.push is not None:
+        # Q1074b2 (R1): in a push game (portals refused beside it) the attack sources' byte
+        # says what each attacks by, capture or push (`compile.PushRule.attack_kinds`).
+        attack_dirs = [
+            kind for owner in spec.push.attack_kinds for per_square in owner for kind in per_square
+        ]
     return {
         "has_portals": portals is not None,
         "portal_dest": portal_dest,
@@ -1272,6 +1280,57 @@ def _portal_fields(spec: CompiledSpec) -> dict[str, Any]:
         "attack_dirs": attack_dirs,
         "portal_no_back": portal_no_back,
         "zobrist_portal_bar": zobrist_portal_bar,
+    }
+
+
+# Q1074b2 (`docs/plan-push.md`). Empty unless some move pushes.
+_PUSH_INERT: dict[str, Any] = {
+    "push_rule": [],
+    "push_next": [],
+    "push_leap_dirs": [],
+    "push_slide_dirs": [],
+    "push_hop_dirs": [],
+    "push_allowed": [],
+    "push_weight": [],
+    "push_strength": [],
+    "push_stand": [],
+    "zobrist_push_bar": [],
+}
+
+
+def _push_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """The push rule (Q1074b2, `compile.PushRule`): ``[chain, edge removes]``; where a pushed
+    piece goes, ``[direction * n_squares + square]``; the push direction at each landing,
+    parallel to the three movement tables' landings in `_flatten_entries`' order (-1 none);
+    who may push whom, ``[pusher * n_types + victim]``; the weights and (Q1074b4s) the
+    strengths; and where a pushed piece may stand,
+    ``[(player * n_types + type) * n_squares + square]`` (empty without a region); and
+    (Q1074b6, K5) the push-back bar's keys, empty without ``no_push_back``, which is the
+    core's flag for the rule. Every one empty without a push, so no other game's fingerprint
+    moves. What each attack source attacks by crosses as ``attack_dirs`` (`_portal_fields`)."""
+    push = spec.push
+    if push is None:
+        return dict(_PUSH_INERT)
+    n_types, n_squares, n_frames = spec.n_types, spec.n_squares, spec.n_frames
+    stand: list[int] = []
+    if push.stand:
+        stand = [
+            int(allowed[square]) if allowed else 1
+            for per_player in push.stand
+            for allowed in per_player
+            for square in range(n_squares)
+        ]
+    return {
+        "push_rule": [push.chain, int(push.edge_removes)],
+        "push_next": [square for row in push.next for square in row],
+        "push_leap_dirs": _flatten_dirs(push.leap_dirs, n_frames, n_types, n_squares),
+        "push_slide_dirs": _flatten_dirs(push.slide_dirs, n_frames, n_types, n_squares),
+        "push_hop_dirs": _flatten_dirs(push.hop_dirs, n_frames, n_types, n_squares),
+        "push_allowed": [int(flag) for row in push.allowed for flag in row],
+        "push_weight": list(push.weight),
+        "push_strength": list(push.strength),
+        "push_stand": stand,
+        "zobrist_push_bar": list(push.zobrist_bar),
     }
 
 
@@ -1510,6 +1569,7 @@ _FLATTENERS: tuple[tuple[Callable[[CompiledSpec], dict[str, Any]], dict[str, Any
     (_spy_fields, _SPY_INERT),
     (_rest_fields, _REST_INERT),
     (_sight_fields, _SIGHT_INERT),
+    (_push_fields, _PUSH_INERT),
     (_zobrist_fields, _NO_INERT),
 )
 
@@ -1603,6 +1663,47 @@ def canonical_tables(spec: CompiledSpec) -> dict[str, Any]:
     }
 
 
+# Q1074b2: the push directions a move word's tag field (bits 25-29) can name.
+PUSH_DIRECTIONS_MAX = 32
+
+
+def _push_holds(spec: CompiledSpec) -> list[str]:
+    """Q1074b2 (`docs/plan-push.md` §3.14, §7): what a push game holds that this core does not
+    play, each named. §3.14's refused rows first (the validator refuses each by name; this
+    holds a spec that reached the compiler some other way), then the round-1 stages after
+    this one, then what the move word and the attack sources cannot carry. Q1074b3 lifted
+    the capture hand and `must_capture`: a removing push counts as a capture at every site
+    that counts one (`Tables::push_takes`). Q1074b4 lifted rows and weights (`chain`
+    ``"row"``, ``"weight"``), off a wrapped board (H4 is Q1074b7's)."""
+    push = spec.push
+    assert push is not None
+    held: list[str] = []
+    beside = (
+        # §3.14, refused for now or until round 2.
+        (spec.portals is not None, "rules.portals (push.W4)"),
+        (spec.strike is not None, "rules.strike or rules.contacts (push.X2)"),
+        (spec.explosion is not None, "rules.explode_on_capture (push.X3)"),
+        (spec.simultaneous is not None, "rules.simultaneous (push.S1)"),
+        (spec.sight is not None, "pieces[].sight (push.N4)"),
+        (any(spec.rest), "pieces[].rest (push.N5)"),
+        (spec.reach is not None, "rules.reach (push.G1)"),
+        (spec.territory is not None, "rules.territory (push.G2)"),
+        (spec.purse is not None, "rules.purse (push.M1)"),
+        (spec.wrap is not None and push.chain != 0, "a row on a wrapped board (push.H4)"),
+        # Not in the plan's rows, held until a stage reads them (`plan-push.md`, Q1074b2's notes).
+        (spec.drops is not None and spec.drops.gates is not None,
+         "rules.drops.gating: a push by an unmoved piece gating (E5)"),
+        (spec.neutrals is not None and spec.neutrals.has_majority,
+         "majority control: a held piece's push"),
+        (spec.pounce is not None and 2 in spec.pounce.kind,
+         'rules.npcs[].pounce "attackers": a push source as an attacker of a wild piece'),
+        (len(push.directions) > PUSH_DIRECTIONS_MAX,
+         f"more than {PUSH_DIRECTIONS_MAX} push directions, which the move word cannot name"),
+    )
+    held.extend(name for present, name in beside if present)
+    return held
+
+
 def rust_supports(spec: CompiledSpec) -> str | None:
     """``None`` if the Rust core can play this ruleset, else why it cannot.
 
@@ -1671,6 +1772,12 @@ def rust_supports(spec: CompiledSpec) -> str | None:
     core the thing they guarded -- which is what a guard is for. The constants stay as
     the honest record of the ordering.
     """
+    # Q1074b2 (`docs/plan-push.md` §7): the core plays the single push (`MOVE_PUSH`,
+    # `chain: "one"`); what it does not yet play is held shut here (`_push_holds`).
+    if spec.push is not None:
+        held = _push_holds(spec)
+        if held:
+            return "pieces[].moves[].push beside " + "; ".join(held)
     # Schema 19 (Q771): the core's portal arm walks a transit as one landing and keeps
     # portals in the third owner's block, so it has no reading for a portal beside a wild
     # piece (the same block), a strike, a blast or a sweep (a second landing rule), a

@@ -203,6 +203,10 @@ _RULE_COSTS: dict[str, float] = {
     # half a rule (numbers on the pieces a player is taught to read). One charge, since the
     # purse needs its market and its prices.
     "purse": 2.0,
+    # Q1074b2 (`docs/plan-push.md`): 0 here on purpose. A push game's charge is on its moves
+    # (`moves[].push`), which `rules.push` need not state, so `_push_extras` charges the whole
+    # rule from the pieces and reads `rules.push` there (Q1074b5, §4).
+    "push": 0.0,
     # Schema 9. One sentence -- "a pawn dropped or struck onto the far rank is a queen at
     # once" -- and an exception rather than a parameter of `promotion`: it changes what a
     # drop and a strike *do* in one part of the board, and a player who has not been told
@@ -490,6 +494,74 @@ def _legs_extras(spec: dict[str, Any], pieces: Any) -> float:
     ) else 0.0
 
 
+# Q1074b5 (`docs/plan-push.md` §4): a push is one rule a player is taught (landing on a piece
+# shoves it a square on, and off the board is taken), 1.0, charged once for the game however
+# many moves push, since `rules.push` need not be stated. A line that moves whole (`chain`
+# `"row"`) is half a rule more; one weighed against the pusher (`"weight"`) half a rule on top
+# of that (the row, and the sum); a pusher's strength stated apart from its weight (Q1074b4s)
+# a quarter, the user's second number; the bar on pushing straight back half a rule (round 2,
+# K5, refused until Q1074b6 lifts it). The weights themselves are numbers on the pieces, as
+# bounties are, and `whose`, `captures`, `along` and `edge` are clauses of the push's own
+# sentence, costed at nothing, as a hop's `screen` is. A pusher's type list (`pushes`, or the
+# weight shorthand that stands for one under `"one"` and `"row"`) is a line of the rules
+# table, counted in `capture_restrictions` beside `captures`. Read off the spelling, as the
+# sights are (`schema.py` is not in `measurement.METRICS_SOURCES`).
+_PUSH = 1.0
+_PUSH_ROW = 0.5
+_PUSH_WEIGHT = 0.5
+_PUSH_STRENGTH = 0.25
+_PUSH_NO_BACK = 0.5
+
+
+def _pushes(piece: Any) -> bool:
+    """Whether some move of ``piece`` pushes: its ``push`` is ``true`` or an object."""
+    moves = piece.get("moves") if isinstance(piece, dict) else None
+    return any(
+        isinstance(move, dict) and (move.get("push") is True or isinstance(move.get("push"), dict))
+        for move in (moves if isinstance(moves, list) else [])
+    )
+
+
+def _push_chain(rules: Any) -> str:
+    rule = rules.get("push") if isinstance(rules, dict) else None
+    chain = rule.get("chain", "one") if isinstance(rule, dict) else "one"
+    return chain if isinstance(chain, str) else "one"
+
+
+def _push_lists(rules: Any, pieces: Any) -> int:
+    """How many pushers name whom they push: a ``pushes`` list, or under ``"one"`` and
+    ``"row"`` a weight with no list (the shorthand the normal form writes as that list)."""
+    weighed = _push_chain(rules) == "weight"
+    return sum(
+        1 for piece in (pieces if isinstance(pieces, list) else [])
+        if _pushes(piece) and (
+            isinstance(piece.get("pushes"), list)
+            or (not weighed and isinstance(piece.get("weight"), int))
+        )
+    )
+
+
+def _push_extras(rules: Any, pieces: Any) -> float:
+    """What a game's push costs: the rule once, the chain, a strength apart, no push back."""
+    listed = pieces if isinstance(pieces, list) else []
+    pushers = [piece for piece in listed if _pushes(piece)]
+    if not pushers:
+        return 0.0
+    chain = _push_chain(rules)
+    rule = rules.get("push") if isinstance(rules, dict) else None
+    strength = chain == "weight" and any(
+        isinstance(piece.get("strength"), int) and piece.get("strength") != piece.get("weight")
+        for piece in pushers
+    )
+    return (
+        _PUSH
+        + (_PUSH_ROW if chain in ("row", "weight") else 0.0)
+        + (_PUSH_WEIGHT if chain == "weight" else 0.0)
+        + (_PUSH_STRENGTH if strength else 0.0)
+        + (_PUSH_NO_BACK if isinstance(rule, dict) and rule.get("no_push_back") is True else 0.0)
+    )
+
+
 def _simultaneous_extras(rule: Any) -> float:
     """The part of `rules.simultaneous`' charge `_RULE_COSTS` cannot say (schema 27).
 
@@ -750,7 +822,10 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
         + _rest_extras(pieces) + _sight_extras(pieces) + _path_extras(pieces)
         + _legs_extras(spec, pieces)
         + _neutral_extras(spec, pieces) + _bounty_extras(pieces) + _hire_extras(spec, pieces)
+        + _push_extras(rules, pieces)
     )
+    # Q1074b5: whom a pusher may push is a line of the rules table, as `captures` is.
+    capture_restrictions += _push_lists(rules, pieces)
 
     # Schema 12: a `landing` set is charged as a descriptor is, per set and per expanded
     # direction, so a wide throw costs rule mass. Its directions are counted apart from the

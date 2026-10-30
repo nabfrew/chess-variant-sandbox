@@ -31,6 +31,7 @@ from chess_variant_sandbox.spec.schema import (
     REPETITION_NEVER,
     SCORING_COUNTS,
     opening_counts,
+    push_bars,
 )
 from tests import feature_inventory
 from tests.feature_inventory import LAST_BUMP
@@ -94,6 +95,7 @@ _NUMBER_WORDS = {
     43: "forty_three", 44: "forty_four", 45: "forty_five", 46: "forty_six",
     47: "forty_seven", 48: "forty_eight", 49: "forty_nine", 50: "fifty", 51: "fifty_one",
     52: "fifty_two", 53: "fifty_three", 54: "fifty_four", 55: "fifty_five",
+    56: "fifty_six",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -395,6 +397,9 @@ class TestMutation:
         # TC9c's `pay-the-loser` pays the bounties of a purse game a game already has: the
         # levy's (TC9b's retired showcase).
         parents.append(load_spec(ROOT / "tests" / "_retired_the_levy.json"))
+        # Q1074b5's `shape-the-push` and `name-the-pushed` turn a push a game already has, and
+        # no stored game pushes: sumo chess stands in.
+        parents.append(_parent_push())
 
         def fires(operator) -> bool:
             return any(
@@ -2044,7 +2049,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 55
+_FEATURES_ARE_FOR_SCHEMA = 56
 
 
 @dataclass(frozen=True)
@@ -2673,6 +2678,75 @@ def _parent_dead_material() -> dict:
     return load_spec(Path(__file__).parents[1] / "rulesets" / "chess.json")
 
 
+def _sumo(push=True, ids: str = "NBRQ", **rule) -> dict:
+    """Chess whose ``ids`` push with every move, ``push`` as written on each (Q1074b5)."""
+    spec = load_spec(Path(__file__).parents[1] / "rulesets" / "chess.json")
+    for piece in spec["pieces"]:
+        if piece["id"] in ids:
+            for move in piece["moves"]:
+                move["push"] = copy.deepcopy(push)
+    if rule:
+        spec["rules"]["push"] = rule
+    return spec
+
+
+def _parent_push() -> dict:
+    """Sumo chess: every piece but the king and the pawn pushes instead of capturing."""
+    return _sumo()
+
+
+def _parent_push_whose() -> dict:
+    """Chess whose knights push any piece, their own too."""
+    return _sumo({"whose": "any"}, ids="N")
+
+
+def _parent_push_captures() -> dict:
+    """Chess whose rooks may push an enemy or take it."""
+    return _sumo({"captures": True}, ids="R")
+
+
+def _parent_push_along() -> dict:
+    """Chess whose knights push along the rank they jump across (sumo chess's knight)."""
+    return _sumo({"along": "rank"}, ids="N")
+
+
+def _parent_pushes() -> dict:
+    """Chess whose rooks push, pawns and knights only."""
+    spec = _sumo(ids="R")
+    for piece in spec["pieces"]:
+        if piece["id"] == "R":
+            piece["pushes"] = ["N", "P"]
+    return spec
+
+
+def _parent_push_weight() -> dict:
+    """Chess whose rooks push rows, by the weight shorthand: what weighs no more than it."""
+    spec = _sumo(ids="R", chain="row")
+    for piece in spec["pieces"]:
+        piece["weight"] = {"K": 9, "P": 1, "N": 3, "B": 3, "R": 5, "Q": 9}[piece["id"]]
+    return spec
+
+
+def _parent_push_strength() -> dict:
+    """Chess whose rooks and queens push weighed rows, the rook stronger than it is heavy."""
+    spec = _sumo(ids="RQ", chain="weight")
+    for piece in spec["pieces"]:
+        piece["weight"] = {"K": 1, "P": 1, "N": 3, "B": 3, "R": 5, "Q": 9}[piece["id"]]
+        if piece["id"] == "R":
+            piece["strength"] = 7
+    return spec
+
+
+def _parent_push_row() -> dict:
+    """Sumo chess pushing whole rows."""
+    return _sumo(chain="row")
+
+
+def _parent_push_edge() -> dict:
+    """Sumo chess whose edge blocks: nothing is pushed off."""
+    return _sumo(edge="blocks")
+
+
 def _parent_paid_to_loser() -> dict:
     """The levy (TC9b's retired showcase) with its bounties paid to the loser (TC9c)."""
     levy = load_spec(Path(__file__).parent / "_retired_the_levy.json")
@@ -2880,16 +2954,57 @@ def _armies_differ(spec: dict) -> bool:
 # list dropped, every piece striking again), keeping the strike. It names types and adds none,
 # so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
 # and `straighten` still cross them.
+def _eight_wide(spec: dict) -> bool:
+    return (spec.get("board") or {}).get("width") == 8
+
+
+# Generation 56 (Q1074b1 to Q1074b4s, the push; surfaces closed by Q1074b5): nine names, one
+# row each. No stored game pushes, so each is entered from a game without a push in one draw:
+# `push-instead` gives a type its push and, at a draw each, one knob of it, a list, a row or
+# a blocking edge; `weigh-the-push` gives the weights, the chain "weight" and a strength. Each
+# is left by the operator that sets it (`push-instead` the push, `shape-the-push` the knobs,
+# the row and the edge, `name-the-pushed` the list and the shorthand's weight, `weigh-the-push`
+# the weighed chain and the strength). A push may be stated on the moves alone, so no row has
+# a host rule; none names or adds a type, so the army is kept. Generation 55's row (Q1069a)
+# retired with the generation; `draw-on-dead-material` still crosses it.
 _FEATURES: dict[str, _Feature] = {
-    # Generation 55 (Q1069a, the draw by insufficient material): one name, a rule of its
-    # own, so no host. `draw-on-dead-material` enters it (on a game that is chess once its
-    # other pieces are gone) and leaves it (the key taken off); it names and adds no type, so
-    # the army is kept. Generation 54's row (TC9c) retired with the generation; `pay-the-loser`
-    # still crosses it.
-    "Q1069a insufficient material": _Feature(
-        None, frozenset({"rules.insufficient_material"}), True,
-        "chess (rulesets/chess.json), which draws on dead material", _parent_dead_material,
-        likely=lambda spec: (spec.get("board") or {}).get("width") == 8,
+    "Q1074 a push": _Feature(
+        None, frozenset({"pieces.moves.push"}), True,
+        "sumo chess (chess, every piece but king and pawn pushing)", _parent_push,
+        likely=_eight_wide,
+    ),
+    "Q1074 whose a push moves": _Feature(
+        None, frozenset({"pieces.moves.push.whose"}), True,
+        "chess whose knights push any piece", _parent_push_whose, likely=_eight_wide,
+    ),
+    "Q1074 a push beside a capture": _Feature(
+        None, frozenset({"pieces.moves.push.captures"}), True,
+        "chess whose rooks push or take", _parent_push_captures, likely=_eight_wide,
+    ),
+    "Q1074 a push along a rank": _Feature(
+        None, frozenset({"pieces.moves.push.along"}), True,
+        "chess whose knights push along the rank", _parent_push_along, likely=_eight_wide,
+    ),
+    "Q1074 whom a pusher pushes": _Feature(
+        None, frozenset({"pieces.pushes"}), True,
+        "chess whose rooks push pawns and knights", _parent_pushes, likely=_eight_wide,
+    ),
+    "Q1074 a weight": _Feature(
+        None, frozenset({"pieces.weight"}), True,
+        "chess whose rooks push rows by weight", _parent_push_weight, likely=_eight_wide,
+    ),
+    "Q1074b4s a strength": _Feature(
+        None, frozenset({"pieces.strength"}), True,
+        "chess whose rook pushes stronger than it weighs", _parent_push_strength,
+        likely=_eight_wide,
+    ),
+    "Q1074 a row": _Feature(
+        None, frozenset({"rules.push.chain"}), True,
+        "sumo chess pushing rows", _parent_push_row, likely=_eight_wide,
+    ),
+    "Q1074 an edge that blocks": _Feature(
+        None, frozenset({"rules.push.edge"}), True,
+        "sumo chess with an edge that blocks", _parent_push_edge, likely=_eight_wide,
     ),
 }
 
@@ -2902,6 +3017,16 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
 _SHOWCASE_OWED: dict[str, str] = {
+    # Generation 56 (the push): no game pushes until batch P's replay; sumo chess (Q1074bg1),
+    # Dohyo (Q1074bg2) and the other push showcases (Q1074bs) are owed, `docs/plan-push.md` §6.
+    # "Q1074 a push" and "Q1074 a push along a rank" went on 2026-10-30, when Q1074bg1 put
+    # `rulesets/brink.json` (the published push-instead-of-capture rules, its knight pushing
+    # along the rank) in the library. "whose a push moves", "a weight", "a strength" and "a row"
+    # (`chain: "weight"` is a row weighed) went the same day, when Q1074bg2 put `rulesets/dohyo.json` (a bouncer that shoves its own
+    # side, every piece weighed, three of four with a strength above their weight) in it.
+    "Q1074 a push beside a capture": "Q1074bs",
+    "Q1074 whom a pusher pushes": "Q1074bs, the circle",
+    "Q1074 an edge that blocks": "Q1074bs",
     # Generation 55 (Q1069a) owes none: `rulesets/chess.json` states the rule and reaches it.
     # Generation 54's name (TC9c) went to `_NO_SHOWCASE_ON_PURPOSE` when Q1069a retired its
     # `_FEATURES` row, still owed.
@@ -3063,6 +3188,11 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     53: frozenset({"pieces.moves.sweep.sweep_range"}),
     54: frozenset({"rules.purse.bounty_to"}),
     55: frozenset({"rules.insufficient_material"}),
+    56: frozenset({
+        "pieces.moves.push", "pieces.moves.push.whose", "pieces.moves.push.captures",
+        "pieces.moves.push.along", "pieces.pushes", "pieces.weight", "pieces.strength",
+        "rules.push.chain", "rules.push.edge",
+    }),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -3788,8 +3918,8 @@ class TestTheOwnLinkIsReachable:
             if parent["rules"].get("must_capture") or any(
                 parent["rules"].get(key)
                 for key in ("strike", "explode_on_capture", "drops", "npcs")
-            ):
-                continue
+            ) or push_bars(parent, "contacts"):
+                continue  # where the operator declines before asking `merge_links`
             for link in merge_links(parent):
                 child = set_own_link(copy.deepcopy(parent), link)
                 assert validate_spec(child) == [], f"{name} + {link}: {validate_spec(child)}"
@@ -4393,6 +4523,10 @@ _PINNED_SCALES: dict[str, float] = {
     "speed_by_reach": 1.0, "rest_mean": 1.0, "rest_max": 1.0, "sight_freeze_share": 1.0,
     "sight_disarm_share": 1.0, "sight_shield_share": 1.0, "sight_command_share": 1.0,
     "sight_aura_share": 1.0, "sight_turncoat_share": 1.0,
+    # Q1074b5: the push's ten, the two numbers on the weight's own scale.
+    "push_share": 1.0, "push_whose": 1.0, "push_captures": 1.0, "push_along": 1.0,
+    "push_lists": 1.0, "push_reach": 1.0, "push_chain": 1.0, "push_edge_blocks": 1.0,
+    "push_weight": 9.0, "push_strength": 9.0,
 }
 
 
@@ -4465,14 +4599,15 @@ class TestDistanceIsPinnedToTheNumber:
         `drops_gating`, 124 since Q1063's `short_sweep_share` and 125 since TC9c's
         `bounty_to_loser`, is 0.009866, which rounds to 0.0099; 126 since Q1069a's
         `draws_insufficient_material`, read with chess's draw on dead material taken off, since
-        a bare-royal rule leaves that draw inert and would be a second difference: 0.0098."""
+        a bare-royal rule leaves that draw inert and would be a second difference: 0.0098;
+        136 since Q1074b5's ten push features: 0.0091."""
         chess = _chess()
         chess["rules"].pop("insufficient_material")
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0098
+        assert distance(chess, twin) == 0.0091
 
 
 def _one_leap_beside_a_stone() -> dict:

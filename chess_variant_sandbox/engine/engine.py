@@ -55,6 +55,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_NORMAL,
     MOVE_PORTAL,
     MOVE_PROMOTION,
+    MOVE_PUSH,
     MOVE_ROTATE,
     MOVE_SWEEP,
     decode_move,
@@ -63,6 +64,7 @@ from chess_variant_sandbox.engine.moves import (
     move_gate_rook,
     move_landing,
     move_portal,
+    move_push,
 )
 from chess_variant_sandbox.engine.state import (
     NO_SQUARE,
@@ -125,9 +127,9 @@ def _pack(state: GameState) -> tuple[Any, ...]:
             bytes(state.respawn),
             # Generation 38 (N5): the squares of the wild pieces walking their line back.
             list(state.heading_back),
-            # TC4: each player's coins, the twelfth and last element PyO3 converts; the next
-            # field must restructure this group into a struct.
-            state.purse,
+            # The twelfth and last element PyO3 converts, the group every later field joins:
+            # TC4's coins, then Q1074b6's push-back bar.
+            (state.purse, state.push_bar),
         ),
     )
 
@@ -165,7 +167,8 @@ def _unpack(packed: State) -> GameState:
         ),
         respawn=tuple(packed[11][9]),
         heading_back=tuple(packed[11][10]),
-        purse=(packed[11][11][0], packed[11][11][1]),
+        purse=(packed[11][11][0][0], packed[11][11][0][1]),
+        push_bar=(packed[11][11][1][0], packed[11][11][1][1]),
     )
 
 
@@ -603,6 +606,26 @@ class Engine:
             )
         if kind == MOVE_PORTAL:
             return self._transit_text(state, move)
+        if kind == MOVE_PUSH:
+            # Q1074b2 (`docs/plan-push.md` K6): ``>`` for a push, ``>>`` for one that threw the
+            # piece off the board (``Rd1>d5``, ``Rd1>>d8``); the promotion field is the type
+            # plus one. Not ``x``: a push word and a capture word can share origin and target
+            # (``push.captures: true``), and the text must tell them apart.
+            # On a joined board one landing can be pushed two ways from one origin (round the
+            # seam either way), so there the text also names where the piece goes.
+            # Q1074b4: under a row, ``>>`` when the line's last piece falls off.
+            assert spec.push is not None
+            behind = spec.push.next[move_push(move)][target]
+            off = spec.push_removed(state.board, move) != 0
+            text = (
+                f"{piece}{_square_name(origin, spec.width)}{'>>' if off else '>'}"
+                f"{_square_name(target, spec.width)}"
+            )
+            if promoted:
+                text += f"={spec.piece_ids[promoted - 1]}"
+            if spec.wrap is not None and not off:
+                text += f" (to {_square_name(behind, spec.width)})"
+            return text
         if spec.portals is not None and spec.owner_of(state.board[origin]) == WILD:
             # Schema 19 (N1): a portal's own move names its pair and end, so two portals of
             # one type are told apart: ``1o:e3-f3``.

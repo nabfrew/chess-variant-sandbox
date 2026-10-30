@@ -28,6 +28,7 @@ from chess_variant_sandbox.spec.schema import (
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
     PURSE_OFF_VALUES,
+    PUSH_OFF_VALUES,
     SIGHT_OFF_VALUES,
     SIMULTANEOUS_OFF_VALUES,
 )
@@ -100,6 +101,19 @@ def _own(spec: dict[str, Any]) -> None:
         link.setdefault("own", False)
 
 
+def _no_push(spec: dict[str, Any]) -> None:
+    for piece in spec["pieces"]:
+        for move in piece.get("moves", []):
+            move.setdefault("push", False)
+
+
+def _push_rule(key: str, value: Any) -> Callable[[dict[str, Any]], None]:
+    """Q1074b1: ``rules.push`` at its defaults is the rule's absence, pushing or not."""
+    def write(spec: dict[str, Any]) -> None:
+        spec["rules"].setdefault("push", {})[key] = value
+    return write
+
+
 def _bribe(spec: dict[str, Any]) -> None:
     spec["rules"]["purse"]["bribe"] = False
 
@@ -127,6 +141,11 @@ CASES = [
     ("rules.portals[].kind", "archive/wormhole.json", _kind),
     ("rules.contacts.links[].own", "archive/einstein.json", _own),
     ("pieces[].moves[].path", "rulesets/chess.json", _straight),
+    ("pieces[].moves[].push", "rulesets/chess.json", _no_push),
+    ("rules.push.chain", "rulesets/chess.json", _push_rule("chain", "one")),
+    ("rules.push.edge", "rulesets/chess.json", _push_rule("edge", "removes")),
+    ("rules.push.walls", "rulesets/chess.json", _push_rule("walls", "block")),
+    ("rules.push.no_push_back", "rulesets/chess.json", _push_rule("no_push_back", False)),
     ("rules.npcs[].respawn", "archive/wolves.json", _respawn),
     ("rules.npcs[].turns_back", "archive/wolves.json", _turns_back),
     ("rules.duck.goes", "tests/_duck_chess.json", _goes),
@@ -146,6 +165,7 @@ def test_every_off_value_has_a_case() -> None:
         **{f"rules.npcs[].{key}": 1 for key in NPC_OFF_VALUES},
         **{f"rules.duck.{key}": 1 for key in DUCK_OFF_VALUES},
         **{f"rules.purse.{key}": 1 for key in PURSE_OFF_VALUES},
+        **{f"rules.push.{key}": 1 for key in PUSH_OFF_VALUES},
     }
     assert set(named) == {where for where, _, _ in CASES}
 

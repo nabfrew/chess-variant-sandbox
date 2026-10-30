@@ -1692,6 +1692,22 @@ def onto_hex(spec: Any) -> dict[str, Any]:
             moved.append(str(piece.get("name") or piece.get("id") or "a piece"))
     if moved:
         said.append(f"the moves of the {', '.join(moved)} now go the hexagons' six ways")
+    # Q1074bg1: a push along a rank or file (H1) has no hex reading; its twin pushes along
+    # the move, as the validator's refusal says.
+    along = []
+    for piece in draft.get("pieces") or []:
+        if not isinstance(piece, dict) or not isinstance(piece.get("moves"), list):
+            continue
+        turned = False
+        for move in piece["moves"]:
+            push = move.get("push") if isinstance(move, dict) else None
+            if isinstance(push, dict) and push.get("along") in ("rank", "file"):
+                del push["along"]
+                turned = True
+        if turned:
+            along.append(str(piece.get("name") or piece.get("id") or "a piece"))
+    if along:
+        said.append(f"the {', '.join(along)} now pushes along its move")
     # Schema 30 (Q999c): a line of sight is written as a slide is, so it takes the same twin.
     seeing = []
     for piece in draft.get("pieces") or []:

@@ -338,6 +338,8 @@ READERS: dict[str, dict[str, str]] = {
         "features.rs::promotion_occupancy": "asked of a piece on the board",
         "foreign.rs::push_foreign_piece": "asked of a commanded piece's origin and targets (Q1007c), "
         "behind `is_promoting`, as the moving piece's are",
+        "push.rs::push_offered": "asked of a pusher's landing, behind `promoting`, as "
+        "`push_arrival` asks it (Q1074b2)",
     },
     "promotes_on_leaving()": {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
@@ -354,6 +356,7 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::push_hops": "asked of the moving piece at a hop's empty landing (CS4)",
         "game.rs::push_arrival": "asked of the moving piece",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
+        "push.rs::push_offered": "asked of the pushing piece, as `push_arrival` asks it (Q1074b2)",
     },
     "entry_promotion": {"tables.rs::arriving_value": "the accessor; its callers are followed"},
     "arriving_value()": {
@@ -608,6 +611,9 @@ BRIDGE_READERS: dict[str, str] = {
     "_entry_promotion_fields": _FLATTENING,
     "rust_supports": "a support check whose every branch sits behind a `_CORE_KNOWS_*` "
     "constant that is True; it sends nothing across the boundary",
+    # Q1074b2: `rust_supports`' push arm, which reads a refused rule only to hold it shut
+    # beside a push; it sends nothing across the boundary either.
+    "_push_holds": "a support check that refuses the rule beside a push and sends nothing",
 }
 
 # Where `bridge.py` may spell the refused keys, and why.
@@ -616,7 +622,10 @@ _INERT_ROWS = (
     "read by `canonical_tables` for every key alike, never for one rule"
 )
 BRIDGE_SPELLERS: dict[str, str] = {
-    **{name: "writes them" for name in BRIDGE_READERS if name != "rust_supports"},
+    **{
+        name: "writes them" for name in BRIDGE_READERS
+        if name not in ("rust_supports", "_push_holds")
+    },
     "_ENDING_INERT": _INERT_ROWS,
     "_BARE_ROYAL_INERT": _INERT_ROWS,
     "_EN_PASSANT_INERT": _INERT_ROWS,

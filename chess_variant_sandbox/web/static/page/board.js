@@ -2181,6 +2181,17 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
       && gone.includes(last.from) && came.includes(last.to)) {
     pairs.push([last.from, last.to]);
   }
+  // Q1074b5: a push, from the engine's account of it (`lastMove.pushed`,
+  // `viz.wrapped.push_transit`), never from the diff: a row of like pieces shifted one square
+  // reads in two positions as one piece jumping the row. Each piece of the line is paired with
+  // the square it was shoved onto and slides there as the pusher lands (`shoved`); the one
+  // shoved off the board falls away over the edge (`thrown`).
+  const pushed = last && Array.isArray(last.pushed) ? last.pushed : [];
+  const shoved = new Set(), thrown = [];
+  for (const [sq, onto] of pushed) {
+    if (onto === null || onto === undefined) thrown.push(sq);
+    else if (!pairs.some(p => p[0] === sq || p[1] === onto)) { pairs.push([sq, onto]); shoved.add(onto); }
+  }
   // Then anything else that moved without changing what it is: the castling rook.
   for (const to of came) {
     if (pairs.some(p => p[1] === to)) continue;
@@ -2240,6 +2251,15 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
       lastBlow = Math.max(lastBlow, time.blow.at);
       landed = Math.max(landed, time.landed);
       busy = Math.max(busy, time.landed);
+      continue;
+    }
+    if (shoved.has(to)) {
+      // Shoved one square on, starting as the pusher strikes it.
+      const pushAt = (blows.get(last.to) || { at: 0 }).at;
+      const [dx, dy] = stepXY(stepOf(from, to), cell, view);
+      const flight = travel(node, -dx, -dy, false, pushAt);
+      landed = Math.max(landed, pushAt + flight);
+      busy = Math.max(busy, pushAt + flight);
       continue;
     }
     const step = stepOf(from, to);
@@ -2378,6 +2398,19 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
     return null;
   };
 
+  // Q1074b5: the piece a push threw off the board falls away over the edge as the pusher
+  // lands, along the push's own step (`lastMove.pushStep`), and is no capture's victim.
+  if (thrown.length && last && Array.isArray(last.pushStep)) {
+    const pushAt = (blows.get(last.to) || { at: lastBlow }).at;
+    const step = stepXY({ files: last.pushStep[0], ranks: last.pushStep[1] }, cell, view);
+    for (const sq of thrown) {
+      const piece = pieceOf(before[sq]);
+      if (!piece) continue;
+      const [x, y] = at(sq);
+      busy = Math.max(busy, pushFall(svg, piece, x, y, cell, step, pushAt));
+      cut.add(sq);
+    }
+  }
   for (const sq of gone) {
     if (moved.has(sq) || cut.has(sq)) continue;
     const piece = pieceOf(before[sq]);

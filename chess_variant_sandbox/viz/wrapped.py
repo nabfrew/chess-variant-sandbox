@@ -51,6 +51,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_PORTAL,
     move_fold,
     move_portal,
+    move_push,
     move_to,
     move_type,
 )
@@ -308,6 +309,29 @@ def sweep_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
     """
     swept = [square for square, _ in engine.spec.sweep_victims(state.board, move)]
     return {"swept": swept} if swept else None
+
+
+def push_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
+    """Q1074b5 (`docs/plan-push.md` K6): what a push moved, read off the position it is played
+    in, or ``None`` for any move that is not a ``MOVE_PUSH``.
+
+    ``pushed`` is each piece of the line as ``[square, to]``, in order from the target, ``to``
+    ``None`` for the piece thrown off the board; ``pushStep`` the push's step in the board's
+    own coordinates (``[files, ranks]``), which way a piece thrown off falls. Two positions
+    cannot say which pieces a push moved -- a row of like pieces shifted one square reads as
+    one piece jumping the whole row -- so the page's animation (`board.js`) reads these and
+    works out nothing: the line is the compiler's (`CompiledSpec.push_line`), as the move's
+    text is.
+    """
+    spec = engine.spec
+    line = spec.push_line(state.board, move)
+    if not line or spec.push is None:
+        return None
+    _, dx, dy = spec.push.directions[move_push(move)]
+    return {
+        "pushed": [[square, to if to >= 0 else None] for square, to in line],
+        "pushStep": [dx, dy],
+    }
 
 
 # The JavaScript half, a plain file beside this one: the application serves it as one of

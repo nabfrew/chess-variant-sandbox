@@ -602,6 +602,64 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "owns standing next to one of yours, or (twice it) to bribe an enemy one. Leave it "
         "empty and it is not for sale.",
     ),
+    # Q1074b2 (`docs/plan-push.md`): pushing, sumo chess's capture.
+    "pieces.moves.push": (
+        "pushes",
+        "Landing on a piece it may push, this way of moving shoves it one step further on, "
+        "onto an empty square, or off the board at the edge, where it is gone. A piece behind "
+        "it blocks the shove. A slide shoves only the first piece it reaches.",
+    ),
+    "pieces.moves.push.whose": (
+        "whose pieces it pushes",
+        "The other side's (the usual way), its own side's, or either. Pieces nobody owns, wild "
+        "pieces and the duck are never pushed; they block.",
+    ),
+    "pieces.moves.push.captures": (
+        "may also take",
+        "Off (the usual way): landing on an enemy piece it may push, it pushes and never "
+        "takes. On: it may do either, so the player picks.",
+    ),
+    "pieces.moves.push.along": (
+        "which way it pushes",
+        "The way the move went (a knight shoves a piece a knight's jump further), or only "
+        "sideways along the row, or only up or down the column, one square.",
+    ),
+    "pieces.pushes": (
+        "what it may push",
+        "The kinds of piece its pushing moves may shove. Leave it empty for every kind. Three "
+        "kinds each pushing only the next make a circle.",
+    ),
+    "pieces.weight": (
+        "weight",
+        "A short way to say what it may push, 1 to 9: every kind no heavier than this one. "
+        "Kinds with no weight are never pushed by it.",
+    ),
+    "pieces.strength": (
+        "strength",
+        "How heavy a row of pieces it can push, 1 to 99: a row moves only if the weights in "
+        "it add up to no more than this. Left out, it is the piece's weight.",
+    ),
+    "rules.push.chain": (
+        "what a push moves",
+        "One piece: the piece landed on moves one step, and a piece behind it blocks. A "
+        "row: the whole line behind it moves one step, if the pusher may push every piece "
+        "in it. A weighed row: the same, only if the pusher is at least as heavy as the "
+        "whole line together.",
+    ),
+    "rules.push.edge": (
+        "the edge",
+        "A piece shoved off the board is gone, counted as taken (the usual way); or a shove "
+        "that would leave the board is not allowed. A player's own royal piece is never "
+        "shoved off.",
+    ),
+    # Q1074b6 (K5, `docs/plan-push.md` §3.12): the bar on shoving straight back.
+    "rules.push.no_push_back": (
+        "no shoving straight back",
+        "When on, a piece that has just been shoved one square on, and is still on the board, "
+        "may not shove straight back from where it now stands onto the square it came from on "
+        "its owner's very next move: it can do anything else, and shove back the move after. "
+        "It stops two pieces shoving each other to and fro until the game is drawn.",
+    ),
     # TC4 (`docs/plan-turncoat.md` §5.1): what taking a piece pays.
     "pieces.bounty": (
         "bounty",

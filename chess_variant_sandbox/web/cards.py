@@ -56,6 +56,8 @@ PIECE_PATHS = frozenset({
     "pieces[].captures",
     # Schema 26 (Q918a): who a piece beats in a collision, a list of piece ids as `captures`.
     "pieces[].beats",
+    # Q1074b2: who a pusher may push, a list of piece ids as `captures`.
+    "pieces[].pushes",
     "setup.placements[].piece",
     "rules.promotion.piece",
     "rules.promotion.to",

@@ -148,6 +148,12 @@ class GameState:
     # purse changes only beside a material change), but a transposition table does, since
     # one board can be reached holding different coins.
     purse: tuple[int, int] = (0, 0)
+    # Q1074b6 (K5, ``rules.push.no_push_back``, `docs/plan-push.md` §3.12): ``(y, x)`` when
+    # the last move pushed a piece from ``x`` to ``y`` without removing it, so that piece may
+    # not push from ``y`` onto ``x`` on this move; ``(-1, -1)`` for none, and for every game
+    # without the rule. In the Zobrist key, as ``portal_bar`` is: the same board with and
+    # without a bar has different legal moves.
+    push_bar: tuple[int, int] = (-1, -1)
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)

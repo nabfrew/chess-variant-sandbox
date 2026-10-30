@@ -11,6 +11,22 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-31
+
+### Dohyo: a wrestling ring where weight decides
+
+New in the library: Dohyo, a 7 x 7 ring where nothing is ever captured. Pieces shove, and a piece is lost only when it is
+driven out of the ring; throwing out the enemy champion wins. Every piece has a weight and a strength, and a line of pieces
+moves only if the pusher's strength is at least the whole line's weight, so a heavy piece standing behind your champion
+braces it against a shove, at the price of not shoving anyone itself.
+
+### Brink: pieces shove instead of taking
+
+New in the library: brink, chess where a piece never takes an enemy. It shoves it one square instead, and a piece is lost
+only when it is shoved off the edge of the board. The king alone still captures, and a piece just shoved may not shove its
+attacker straight back. Rules like these, push-instead-of-capture chess, are played online; brink is our own reading of
+them, measured like every library game.
+
 ## 2026-10-30
 
 ### Hiring is never a mis-click for a capture

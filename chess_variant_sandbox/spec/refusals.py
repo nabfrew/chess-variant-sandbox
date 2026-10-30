@@ -392,21 +392,80 @@ REFUSALS: tuple[Refusal, ...] = (
 )
 
 
+# Q1074b1 (`docs/plan-push.md` §3.14): the push rule's refused pairs, by that plan's row ids,
+# each prefixed ``push.`` so they never collide with `docs/plan-schema-next.md` §2's (which has
+# its own R1, X2, W4 ...). A table of their own, beside `REFUSALS`, because that one is held
+# row for row to `plan-schema-next.md` §2 (`docs_tests/test_refused_pair_ids.py`); the lookups
+# below read both. A lift deletes the row, as there.
+_PUSH = "pieces[].moves[].push"
+
+
+def _push(rid: str, second: str, why: str) -> Refusal:
+    return Refusal(
+        f"push.{rid}", _PUSH, second, f"a push (pieces[].moves[].push) beside {second}: {why}"
+    )
+
+
+_ROUND_TWO = "refused until the push rule's round 2 reads the pair (docs/plan-push.md)"
+
+PUSH_REFUSALS: tuple[Refusal, ...] = (
+    # Refused for now, each with its reason (§3.1 D6 and D7 are a move's own shape and stay
+    # inline in `schema._push_entry_refusals`).
+    _push(
+        "W4", "rules.portals",
+        "whether a pushed piece goes through a portal end, and whether a push transits one, "
+        "are rules not written",
+    ),
+    _push(
+        "X2", "rules.strike",
+        "a strike acts on a capture landing, and a push that removes lands nowhere",
+    ),
+    _push(
+        "X2", "rules.contacts",
+        "a contact acts on a capture landing, and a push that removes lands nowhere",
+    ),
+    _push(
+        "X3", "rules.explode_on_capture",
+        "a push that removes has no capture square on the board to centre a blast on",
+    ),
+    _push(
+        "S1", "rules.simultaneous",
+        "two pushes in one round can move each other's pushers, and a round has no order "
+        "for a moved bystander",
+    ),
+    # Round 1's refusals that round 2 lifts (§3.14).
+    _push("E2", "rules.en_passant", f"what an en passant push would push is unstated; {_ROUND_TWO}"),
+    _push("N4", "pieces[].sight", f"whether a frozen, disarmed or shielded piece pushes or is pushed; {_ROUND_TWO}"),
+    _push("N5", "pieces[].rest", f"whether a pushed piece still rests; {_ROUND_TWO}"),
+    _push("G1", "rules.reach", f"whether a piece pushed onto a goal decides the game; {_ROUND_TWO}"),
+    _push("G2", "rules.territory", f"whether a pushed piece claims its new square; {_ROUND_TWO}"),
+    _push("M1", "rules.purse", f"a bought piece's market region beside a push; {_ROUND_TWO}"),
+    _push(
+        "H4", "rules.wrap",
+        "a row (rules.push.chain \"row\" or \"weight\") on a board with a seam has a ring "
+        f"to read; {_ROUND_TWO}",
+    ),
+)
+
+
 def _index() -> dict[tuple[str, str], Refusal]:
     by: dict[tuple[str, str], Refusal] = {}
-    for row in REFUSALS:
+    for row in REFUSALS + PUSH_REFUSALS:
         assert (row.id, row.second) not in by, (row.id, row.second)
         by[row.id, row.second] = row
     return by
 
 
 _BY_ID_AND_KEY = _index()
-_BY_MESSAGE = {row.message: row for row in REFUSALS}
+_BY_MESSAGE = {row.message: row for row in REFUSALS + PUSH_REFUSALS}
 
 
 def refusal(rid: str, second: str | None = None) -> str:
     """The message of the refused pair ``rid`` (beside ``second``, for an id of several rows)."""
-    rows = [row for row in REFUSALS if row.id == rid and (second is None or row.second == second)]
+    rows = [
+        row for row in REFUSALS + PUSH_REFUSALS
+        if row.id == rid and (second is None or row.second == second)
+    ]
     if len(rows) != 1:
         raise KeyError(f"{rid!r} beside {second!r} names {len(rows)} refused pairs")
     return rows[0].message
@@ -414,7 +473,7 @@ def refusal(rid: str, second: str | None = None) -> str:
 
 def refusal_rows(rid: str) -> tuple[Refusal, ...]:
     """Every row the id ``rid`` holds, in the table's order (empty for an id not in it)."""
-    return tuple(row for row in REFUSALS if row.id == rid)
+    return tuple(row for row in REFUSALS + PUSH_REFUSALS if row.id == rid)
 
 
 def refused_ids(errors: Iterable[str]) -> set[str]:

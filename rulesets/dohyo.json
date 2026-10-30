@@ -1,0 +1,78 @@
+{
+  "schema_version": 31,
+  "name": "dohyo",
+  "description": "A wrestling match on a small square board, named after the ring sumo is fought in. Nothing is ever captured where it stands: a piece that moves onto an enemy shoves it one square onward, and whatever is shoved over the edge of the board is out. Throw the enemy champion out and you win. Every piece has a weight and a strength, and a shove moves the whole line in front of the shover, up to the first gap, only if the shover's strength is at least the line's total weight. So the game turns on bracing: a heavy piece standing behind your champion makes the line too heavy to shove, but a piece spent bracing is not shoving anyone, and every attack is a sum of whether the line ahead weighs less than the piece you send. The champion weighs least of all and is strong for its size, able to throw a lone heavyweight out by itself, yet easily thrown when it stands alone, so it fights best with a wall at its back. The heavyweights move up to two squares straight, shoving the first piece they meet, and only walk on the diagonals; the bouncers step one square and shove anyone, a friend included, to close a brace or clear a line, at the risk of shoving their own piece out (never their own champion); the apprentices shove only straight ahead. A piece just shoved may not shove straight back on its next move, so a shoving match has to go somewhere, and a game that stalls or runs long goes to the side whose pieces left in the ring are worth more.",
+  "board": {
+    "width": 7,
+    "height": 7
+  },
+  "pieces": [
+    {
+      "id": "D",
+      "name": "apprentice",
+      "value": 1,
+      "weight": 1,
+      "moves": [
+        {"kind": "leap", "vectors": [[0, 1]], "mode": "move", "push": true},
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "lateral", "mode": "move"}
+      ]
+    },
+    {
+      "id": "O",
+      "name": "bouncer",
+      "value": 3,
+      "weight": 2,
+      "strength": 3,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "move", "push": {"whose": "any"}}
+      ]
+    },
+    {
+      "id": "S",
+      "name": "heavyweight",
+      "value": 5,
+      "weight": 3,
+      "strength": 4,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "range": 2, "mode": "move", "push": true},
+        {"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "range": 2, "mode": "move"}
+      ]
+    },
+    {
+      "id": "C",
+      "name": "champion",
+      "value": 0,
+      "royal": true,
+      "weight": 1,
+      "strength": 3,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move", "push": true}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "D", "squares": ["b2", "c2", "d2", "e2", "f2"]},
+      {"piece": "S", "squares": ["b1", "f1"]},
+      {"piece": "O", "squares": ["c1", "e1"]},
+      {"piece": "C", "squares": ["d1"]}
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "push": {"chain": "weight", "no_push_back": true},
+    "scoring": {"count": "material"},
+    "max_plies": 200,
+    "repetition_draw": 3,
+    "no_progress_draw": 60
+  },
+  "appearance": {
+    "icons": {"D": "pawn", "O": "wazir", "S": "queen", "C": "king"}
+  },
+  "provenance": {
+    "added": "2026-10-30",
+    "origin": "human",
+    "history": "Q1074bg2: designed for the library as the showcase of pushing a line by weight and strength, of a piece that pushes its own side, and of a piece that shoves on some lines and only walks on others (docs/plan-push.md section 6.2; the design log is docs/reference/dohyo.md)."
+  }
+}

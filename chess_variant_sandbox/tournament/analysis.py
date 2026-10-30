@@ -53,6 +53,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_FOREIGN,
     MOVE_HIRE,
     MOVE_PROMOTION,
+    MOVE_PUSH,
     MOVE_ROTATE,
     move_fold,
     move_from,
@@ -619,7 +620,7 @@ def _count_wild(
 ) -> None:
     spec = engine.spec
     target = board[move_to(move)]
-    if takes(board, move) and target and spec.owner_of(target) == 2:
+    if takes(engine, board, move) and target and spec.owner_of(target) == 2:
         wild["taken_by_players"] += 1
     for step in phase:
         if step.kind == "step":
@@ -692,7 +693,7 @@ def _analyse_game(
         if moves_an_instance(move) and move_from(move) in start_squares:
             moved_squares.add(move_from(move))
         moves_by_type[kind] += 1
-        if takes(board, move):
+        if takes(engine, board, move):
             captures_by_type[kind] += 1
 
         if index % PLY_STRIDE == 0:
@@ -706,7 +707,7 @@ def _analyse_game(
                 # destination" is the same reading of a capture that
                 # `captures_by_type` uses two lines up; en passant is missed by both,
                 # consistently.
-                capture_counts.append(sum(1 for m in legal if takes(board, m)))
+                capture_counts.append(sum(1 for m in legal if takes(engine, board, m)))
 
         mover = state.side_to_move
         if wild is None:
@@ -1183,7 +1184,7 @@ def _analyse_rounds(
             if moves_an_instance(move) and move_from(move) in start_squares:
                 moved_squares.add(move_from(move))
             moves_by_type[kind] += 1
-            if takes(board, move):
+            if takes(engine, board, move):
                 captures_by_type[kind] += 1
 
         # The ply stride, read at the round's first ply: every fourth round.
@@ -1195,7 +1196,7 @@ def _analyse_rounds(
                         near_best.append(reading.near_best(seat, epsilon))
                         legal_counts.append(len(lists[seat]))
                         capture_counts.append(
-                            sum(1 for move in lists[seat] if takes(board, move))
+                            sum(1 for move in lists[seat] if takes(engine, board, move))
                         )
 
         state, _, events = engine.apply_round_with_phase(state, pair[0], pair[1])
@@ -1566,7 +1567,7 @@ def _analyse_spy(
             if moves_an_instance(move) and move_from(move) in start_squares:
                 moved_squares.add(move_from(move))
             moves_by_type[kind] += 1
-            if takes(board, move):
+            if takes(engine, board, move):
                 captures_by_type[kind] += 1
 
         if any((step.ply + k) % PLY_STRIDE == 0 for k in range(len(step.moves))):
@@ -1640,7 +1641,7 @@ def _sample_spy_step(
             best = max(scores)
             near_best.append(sum(1 for s in scores if best - s <= epsilon))
             legal_counts.append(len(legal))
-            capture_counts.append(sum(1 for m in legal if takes(board, m)))
+            capture_counts.append(sum(1 for m in legal if takes(engine, board, m)))
         return
     lists = (step.lists[0], step.lists[1])
     if step.phase.name == "announced":
@@ -1656,7 +1657,7 @@ def _sample_spy_step(
         if len(lists[seat]) > 1:
             near_best.append(reading.near_best(seat, epsilon))
             legal_counts.append(len(lists[seat]))
-            capture_counts.append(sum(1 for move in lists[seat] if takes(board, move)))
+            capture_counts.append(sum(1 for move in lists[seat] if takes(engine, board, move)))
 
 
 def _one_spy_blunder(
@@ -1757,7 +1758,7 @@ def count_sight(
             *under[3:],
             effects.commanded,
             int(made),
-            int(made and move is not None and takes(state.board, move)),
+            int(made and move is not None and takes(engine, state.board, move)),
         )
     if "wild_frozen" in tally:
         wild = [0, 0, 0]
@@ -1845,9 +1846,14 @@ def starting_squares(engine: Engine, board: bytes) -> set[int]:
     }
 
 
-def takes(board: bytes, move: int) -> bool:
+def takes(engine: Engine, board: bytes, move: int) -> bool:
     """Whether a move is read as a capture: it ends on an occupied square, and is not one of
     the three kinds that end on one and take nothing, as the core's `apply` reads them.
+
+    A push (Q1074b5, `docs/plan-push.md` §3.3 C1) always ends on an occupied square, and
+    takes only where it throws an enemy piece off the board: `CompiledSpec.push_takes`, the
+    reading `Tables::push_takes` and `restrict`'s `takes` share. A push that moves its line
+    on the board takes nothing, and nor does one that throws the pusher's own piece off.
 
     A rotation's target is its own square, which holds the piece that turns (Q875: it was
     read as a capture, so a game whose pieces turn offered one in nearly every position).
@@ -1858,6 +1864,8 @@ def takes(board: bytes, move: int) -> bool:
     `agents/minimax.py` leave out. A hire or a bribe (TC6) names the piece it buys, which
     changes sides and is not taken.
     """
+    if move_type(move) == MOVE_PUSH:
+        return engine.spec.push_takes(board, move)
     return board[move_to(move)] != 0 and move_type(move) not in (
         MOVE_ROTATE,
         MOVE_CASTLE,

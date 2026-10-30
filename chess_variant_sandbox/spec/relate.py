@@ -40,6 +40,7 @@ ending word that happens to spell one. `tests/test_relate.py` pins both tables a
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from collections import defaultdict
@@ -49,6 +50,7 @@ from typing import Any
 
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.legs import stated_legs
+from chess_variant_sandbox.spec.normal import normal_push
 from chess_variant_sandbox.spec.schema import (
     ANY_KEY,
     DEFAULT_RANGE,
@@ -58,12 +60,14 @@ from chess_variant_sandbox.spec.schema import (
     PIECE_IDS,
     PIECE_KEYED,
     PIECE_POSITIONS,
+    PUSH_OFF_VALUES,
     absent_squares,
     en_passant_can_fire,
     format_square,
     has_sights,
     insufficient_material_roles,
     is_nobodys,
+    move_push,
     obstacle_squares,
     parse_square,
     piece_shapes,
@@ -100,6 +104,8 @@ RULE_KINDS: dict[str, str] = {
     "explode_on_capture": "capture",
     "strike": "capture",
     "contacts": "capture",
+    # Q1074b2 (`docs/plan-push.md`): a push is a third answer to an occupied landing.
+    "push": "capture",
     "win": "ending",
     "stalemate": "ending",
     "bare_royal": "ending",
@@ -144,6 +150,7 @@ RULE_WORDS: dict[str, str] = {
     "explode_on_capture": "a capture taking its neighbours with it",
     "strike": "taking a piece without moving onto it",
     "contacts": "what a piece becomes when it takes one",
+    "push": "how a pushed piece moves and what the edge does to it",
     "win": "how the game is won",
     "stalemate": "what a player with no move gets",
     "bare_royal": "what becomes of a lone royal piece",
@@ -336,6 +343,11 @@ def _build(spec: dict[str, Any]) -> NormalForm:
     # A portal group's moves read as the stand-in piece every portal game had before
     # spelling 31 (`schema.portal_stand_in_shape`), so no relation moves with the re-spelling.
     spec = portal_stand_in_shape(spec)
+    # Q1074b5: the push in one spelling (`normal.normal_push`): a move's push at its
+    # defaults is `true`, and under `chain` "one" and "row" the weight shorthand is the list
+    # it stands for, so a game written either way is one form.
+    spec = copy.deepcopy(spec)
+    normal_push(spec)
     board = spec.get("board") or {}
     width, height = _int(board.get("width"), 8), _int(board.get("height"), 8)
     setup = spec.get("setup") or {}
@@ -401,7 +413,11 @@ def _key_of(form: NormalForm) -> str:
                   # TC5: a price decides what buying one costs.
                   | ({"price": piece["price"]} if "price" in piece else {})
                   | ({"control": _frozen(piece["control"])} if "control" in piece else {})
-                  | ({"sight": _sight_form(piece)} if "sight" in piece else {})),
+                  | ({"sight": _sight_form(piece)} if "sight" in piece else {})
+                  # Q1074b5: whom a pusher may push, and under chain "weight" what each
+                  # piece weighs and what a pusher can shift, are rules of the piece.
+                  | {key: _frozen(piece[key]) for key in ("pushes", "weight", "strength")
+                     if key in piece}),
             )
             for pid, piece in form.pieces.items()
         )),
@@ -707,6 +723,12 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
             # "straight", the off value, is the key's absence.
             move.get("path", "straight"),
         )
+        push = move_push(move)
+        if push is not None:
+            # Q1074b5: a move that shoves what it lands on is another movement over the same
+            # directions, and whose, a capture beside it and the way it shoves are part of
+            # it. Added only where a move pushes, so no other move's reading moves.
+            attrs = (*attrs, ("push", push["whose"], push["captures"], push["along"]))
         if sweep_length(move):
             # Q1063: a sweep that clears only part of its line is another movement. Added
             # only where it is one, so no stored reading of any other move's words moves.
@@ -806,6 +828,10 @@ def _live_rules(spec: dict[str, Any]) -> dict[str, Any]:
         # Schema 26: `"simultaneous": {}` is the whole rule, not an empty one.
         and (value not in (None, False, 0, "", [], {}) or key == "simultaneous")
         and _WRITTEN_DEFAULTS.get(key) != value
+        # Q1074b5: `rules.push` at every default is the push a game without the key plays.
+        and not (key == "push" and isinstance(value, dict) and all(
+            PUSH_OFF_VALUES.get(name) == stated for name, stated in value.items()
+        ))
     }
 
 
@@ -1014,6 +1040,7 @@ def _compare(
 
     turns = False
     takers: list[str] = []
+    shovers: list[str] = []
     for id_a, id_b in sorted(back.items()):
         one, other = first.pieces[id_a], second.pieces[id_b]
         name = str(one.get("name", id_a))
@@ -1034,6 +1061,11 @@ def _compare(
             other.get("captures"), _IDS, ids_b
         ):
             takers.append(name)
+        # Q1074b5: whom a pusher may push is the push's own capture table.
+        if _folded(one.get("pushes"), _IDS, ids_a) != _folded(
+            other.get("pushes"), _IDS, ids_b
+        ):
+            shovers.append(name)
         if _frozen(one.get("facing")) != _frozen(other.get("facing")):
             turns = True
             found.append(Difference("pieces", "piece.facing", words.turns()))
@@ -1043,9 +1075,10 @@ def _compare(
         # Schema 30's sight (Q999a) one that decides what the pieces it sees may do.
         # TC4's bounty one that decides what taking it pays, TC3's control who moves it.
         # TC5's price one that decides what buying it costs.
+        # Q1074b5's weight and strength, what a pushed piece weighs and a pusher can shift.
         rest = (
             "region", "promoted_from", "beats", "spy", "speed", "rest", "bounty", "control",
-            "price",
+            "price", "weight", "strength",
         )
         if _folded(_stated_sight(one, rest), _PIECE_FIELDS, ids_a) != _folded(
             _stated_sight(other, rest), _PIECE_FIELDS, ids_b
@@ -1060,6 +1093,14 @@ def _compare(
             f"who may take whom, declared on {len(takers)} piece"
             f"{'' if len(takers) == 1 else 's'}",
             len(takers),
+        ))
+    if shovers:
+        found.append(Difference(
+            "capture",
+            "piece.pushes",
+            f"who may push whom, declared on {len(shovers)} piece"
+            f"{'' if len(shovers) == 1 else 's'}",
+            len(shovers),
         ))
 
     _setup_differences(first, second, mapping, gone_a, gone_b, turns, found)
@@ -1408,6 +1449,13 @@ def rules_involved(form: NormalForm) -> frozenset[str]:
     # rule; held only where the compiler keeps it (`_live_sights`).
     if any("sight" in piece for piece in form.pieces.values()):
         involved.add("piece.sight")
+    # Q1074b5: a move that shoves what it lands on changes what a move is, as a sweep's path
+    # does, whether or not `rules.push` is written.
+    if any(
+        move_push(move) is not None
+        for piece in form.pieces.values() for move in piece.get("moves") or []
+    ):
+        involved.add("piece.push")
     return frozenset(involved)
 
 

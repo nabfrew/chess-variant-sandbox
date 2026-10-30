@@ -1019,6 +1019,8 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_PIECE}/rest": {"minimum": 1, "maximum": 4},
     f"{_PIECE}/bounty": {"minimum": 1, "maximum": 20},  # TC4
     f"{_PIECE}/price": {"minimum": 1, "maximum": 40},  # TC5
+    f"{_PIECE}/weight": {"minimum": 1, "maximum": 9},  # Q1074b2
+    f"{_PIECE}/strength": {"minimum": 1, "maximum": 99},  # Q1074b4s
     # Schema 30 (Q999a): 1 to 4 lines of sight, each with a slide's geometry bounds.
     f"{_PIECE}/sight": {"minItems": 1, "maxItems": 4},
     **_vector_bounds(f"{_PIECE}/sight/items{_P}/vectors", _AT_LEAST_ONE),

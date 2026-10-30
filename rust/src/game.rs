@@ -54,6 +54,10 @@ mod pounce;
 // Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck, the second half of every turn.
 #[path = "duck.rs"]
 mod duck;
+// Q1074b2 (`docs/plan-push.md`): the push rule, a move that moves the piece it lands on.
+#[path = "push.rs"]
+mod push;
+use push::{PUSH_ARM_HOP, PUSH_ARM_LEAP, PUSH_ARM_SLIDE};
 
 /// What one entry of the phase log is (`Game::npc_log`'s fourth field): a wild piece's step
 /// along its route, `(from, to, eaten)`.
@@ -482,6 +486,21 @@ pub struct Game<'t> {
     /// read-back, because the cap makes a payment lossy: 98 and a bounty of 3 is 99, and
     /// 99 less 3 is not 98.
     purse_log: Vec<[u16; 2]>,
+    /// Q1074b6 (K5, `rules.push.no_push_back`, `docs/plan-push.md` §3.12): the piece standing
+    /// on `push_bar[0]` was pushed there from `push_bar[1]` by the last move, and may not push
+    /// from `push_bar[0]` onto `push_bar[1]` on this one; `NO_BAR` for none. Set by `make`
+    /// on a push that moved its target's piece and did not remove it, where that piece's
+    /// owner makes the next piece move (`push::push_bar_after`), cleared by every other move
+    /// of `make`'s (a duck half leaves it, being no piece move). Restored from
+    /// `push_bar_log` only under the rule; `portal_bar`'s shape.
+    ///
+    /// **In the key** (`PushTables::bar_key`): two positions alike but for a bar have
+    /// different legal moves, so the repetition rule and a transposition table tell them
+    /// apart. `NO_BAR` in every game without the rule, where `make` never writes it.
+    pub push_bar: [i16; 2],
+    /// `push_bar` before each move still on the undo stack, oldest first: empty and never
+    /// touched without the rule.
+    push_bar_log: Vec<[i16; 2]>,
     /// Guard against infinite recursion in drop-mate checking.
     checking_drop_mate: bool,
     /// The key the move in progress is building. Scratch, not state: seeded from `key`
@@ -506,6 +525,11 @@ pub struct Game<'t> {
     /// `resting` before each move still on the undo stack, oldest first: `goal_left_log`'s
     /// shape, empty and never touched without the rule, so `Undo` does not grow.
     rest_log: Vec<RestLists>,
+    /// Q1074b4 (`docs/plan-push.md` K2): the direction of each `MOVE_PUSH` still on the undo
+    /// stack, oldest first, under `chain: "row"` or `"weight"` only (a line of one needs
+    /// none), for `unmake` to walk a row's middle back (`push_unshift`). Empty and never
+    /// touched otherwise, so `Undo` does not grow.
+    push_log: Vec<u8>,
     /// Schema 26: one `RoundUndo` per round still on the stack.
     round_undo: Vec<rounds::RoundUndo>,
     /// Schema 26: what the last round did, `(event, square, player)` (`rounds::EVENT_*`),
@@ -560,6 +584,8 @@ pub struct Snapshot {
     pub heading_back: SquareSet,
     /// TC4: each player's coins.
     pub purse: [u16; 2],
+    /// Q1074b6 (K5): the push-back bar, `NO_BAR` for none.
+    pub push_bar: [i16; 2],
 }
 
 /// Schema 26: who holds the initiative at the start, or -1 where the tie is not it.
@@ -626,6 +652,8 @@ impl<'t> Game<'t> {
             heading_log: Vec::new(),
             purse: t.purse.as_deref().map_or([0, 0], |purse| [purse.start, purse.start]),
             purse_log: Vec::new(),
+            push_bar: NO_BAR,
+            push_bar_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -634,6 +662,7 @@ impl<'t> Game<'t> {
             bars: Vec::new(),
             resting: NO_REST,
             rest_log: Vec::new(),
+            push_log: Vec::new(),
             round_undo: Vec::new(),
             round_log: Vec::new(),
             spy_deals: Vec::new(),
@@ -692,6 +721,8 @@ impl<'t> Game<'t> {
             heading_log: Vec::new(),
             purse: snapshot.purse,
             purse_log: Vec::new(),
+            push_bar: snapshot.push_bar,
+            push_bar_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -700,6 +731,7 @@ impl<'t> Game<'t> {
             bars: snapshot.bars.clone(),
             resting: snapshot.resting,
             rest_log: Vec::new(),
+            push_log: Vec::new(),
             round_undo: Vec::new(),
             round_log: Vec::new(),
             spy_deals: Vec::new(),
@@ -735,6 +767,7 @@ impl<'t> Game<'t> {
             respawn: self.respawn.clone(),
             heading_back: self.heading_back,
             purse: self.purse,
+            push_bar: self.push_bar,
         }
     }
 
@@ -780,12 +813,15 @@ impl<'t> Game<'t> {
         self.bars.clone_from(&snapshot.bars);
         self.resting = snapshot.resting;
         self.rest_log.clear();
+        self.push_log.clear();
         self.respawn.clone_from(&snapshot.respawn);
         self.respawn_log.clear();
         self.heading_back = snapshot.heading_back;
         self.heading_log.clear();
         self.purse = snapshot.purse;
         self.purse_log.clear();
+        self.push_bar = snapshot.push_bar;
+        self.push_bar_log.clear();
         self.round_undo.clear();
         self.round_log.clear();
         // The check bits describe the position that just went away. The royal hint is
@@ -890,6 +926,10 @@ impl<'t> Game<'t> {
         // TC4: the purse; zero in a game without one.
         if let Some(purse) = t.purse.as_deref() {
             digest ^= purse.key(0, self.purse[0]) ^ purse.key(1, self.purse[1]);
+        }
+        // Q1074b6 (K5): the push-back bar; zero without one and without the rule.
+        if let Some(push) = t.push.as_deref() {
+            digest ^= push.bar_key(t.n_squares, self.push_bar);
         }
         digest
     }
@@ -1085,7 +1125,14 @@ impl<'t> Game<'t> {
             // the source matched against.
             if t.has_capture_matrix && victim != usize::MAX {
                 let attacker = t.type_of(source.piece_value);
-                if !t.may_capture(attacker, victim) {
+                // Q1074b2 (R1): in a push game a source attacks by capture, by push or both
+                // (its `dirs` byte), each under its own list. A push game always crosses the
+                // capture matrix, so this is the branch it takes.
+                let reaches = match t.push.as_deref() {
+                    None => t.may_capture(attacker, victim),
+                    Some(push) => self.push_game_attacks(push, source.dirs, attacker, victim),
+                };
+                if !reaches {
                     continue;
                 }
             }
@@ -2282,6 +2329,7 @@ impl<'t> Game<'t> {
         );
         self.write_goal_left(&played);
         self.write_portal_bar(&played, &mut key);
+        self.write_push_bar(m, &played, &mut key);
         self.write_rest(&played, &mut key);
 
         self.undo.push(Undo {
@@ -2481,6 +2529,36 @@ impl<'t> Game<'t> {
         } else if kind == MOVE_PORTAL && move_promotion(m) != 0 {
             // Schema 19: a transit that promotes at its exit carries the type plus one.
             self.write(target, t.entering_value(played.player, move_promotion(m) as usize - 1));
+        } else if kind == MOVE_PUSH {
+            self.write_push(m, played);
+        }
+    }
+
+    /// Q1074b2 (`docs/plan-push.md` K1, K2): a push's own writes, after the pusher has
+    /// landed. The pusher promotes by its landing (P1, the type plus one); the line it landed
+    /// on shifts as `push_shift_line` says (Q1074b4: one piece under `chain: "one"`, the whole
+    /// line under `"row"` and `"weight"`). The piece that falls off is `captured`, from the
+    /// square it fell from; when none falls it is 0, and `captured_square` names the sink, so
+    /// `unmake`'s generic restore empties it (`push.rs`). Every pushed piece loses its
+    /// `unmoved` bit (E1, E3): it stands on a square the move wrote. Under the longer chains
+    /// the direction goes on `push_log`, for `unmake` to walk the line's middle back.
+    #[inline(never)]
+    fn write_push(&mut self, m: u32, played: &mut Played) {
+        let t = self.t;
+        if move_promotion(m) != 0 {
+            self.write(
+                played.target, t.entering_value(played.player, move_promotion(m) as usize - 1),
+            );
+        }
+        let (captured, captured_square) =
+            self.push_shift_line(m, played.target_before, |game, square, value| {
+                game.write(square, value);
+                game.unmoved.clear(square);
+            });
+        played.captured = captured;
+        played.captured_square = captured_square;
+        if t.push.as_deref().is_some_and(|push| push.chain != PUSH_CHAIN_ONE) {
+            self.push_log.push(move_push(m) as u8);
         }
     }
 
@@ -2621,6 +2699,9 @@ impl<'t> Game<'t> {
             && kind != MOVE_PROMOTION
             && kind != MOVE_PORTAL
             && kind != MOVE_HIRE
+            // Q1074b2: a push opens no window, the pusher's (it took the square in front) nor
+            // the pushed piece's (it made no double step, E1).
+            && kind != MOVE_PUSH
             // Schema 22: a move that went through a fold opens no window (rule 9). The
             // extension is empty on every other move that gets here: a strike's landing
             // index rides only on a capture. Q1007c: a commanded move carries bit 30
@@ -2709,7 +2790,12 @@ impl<'t> Game<'t> {
         if let Some(ref drops_rule) = t.drops {
             if played.kind == MOVE_DROP {
                 // Already handled above (hand decremented)
-            } else if played.captured != 0 && drops_rule.from_captures {
+            } else if played.captured != 0
+                && drops_rule.from_captures
+                // Q1074b3 (C2): a piece the mover pushed off its own side reaches no hand,
+                // as a swept friendly piece does not. Every other capture takes an enemy.
+                && !(played.kind == MOVE_PUSH && t.owner_of(played.captured) == played.player)
+            {
                 let demoted = t.demotions[t.type_of(played.captured)];
                 // An unlimited slot takes no deposit either (schema 10, Q51). Taking a
                 // stone does not give you a stone you already always have, and leaving
@@ -2932,6 +3018,15 @@ impl<'t> Game<'t> {
                 };
                 self.put(placed_on, 0);
             }
+            // Q1074b4 (K2): a row's middle, walked back before the generic restore writes
+            // its two ends.
+            if undo.kind == MOVE_PUSH
+                && self.t.push.as_deref().is_some_and(|push| push.chain != PUSH_CHAIN_ONE)
+            {
+                let direction =
+                    self.push_log.pop().expect("push log shorter than the undo stack");
+                self.push_unshift(direction as usize, undo.target, undo.captured_square);
+            }
             self.put(undo.target, undo.target_before);
             self.put(undo.captured_square, undo.captured);
             if !enters_play(undo.kind) {
@@ -2983,6 +3078,9 @@ impl<'t> Game<'t> {
         // TC4: the purse, from its log (the key came back with `undo.key`).
         if self.t.purse.is_some() {
             self.purse = self.purse_log.pop().expect("purse log shorter than the undo stack");
+        }
+        if self.t.push.as_deref().is_some_and(PushTables::no_back) {
+            self.push_bar = self.push_bar_log.pop().expect("push bar log shorter than the undo stack");
         }
         if self.t.reach_leaves {
             self.goal_left_by =
@@ -3352,8 +3450,19 @@ impl<'t> Game<'t> {
                         if mode & 1 == 0 {
                             continue;
                         }
-                    } else if !may_land(t, mode, piece_type, occupant, low, high) {
-                        continue;
+                    } else {
+                        // Q1074b2: a landing that may push offers the push beside (or, its
+                        // capture bit off, instead of) the capture. One bit test here for
+                        // every game without a push.
+                        if mode & MODE_PUSH != 0 {
+                            self.push_offered(
+                                out, origin, target, piece_type, player, mode, PUSH_ARM_LEAP,
+                                entry.start as usize + index, promoting, leaving, promo_optional,
+                            );
+                        }
+                        if !may_land(t, mode, piece_type, occupant, low, high) {
+                            continue;
+                        }
                     }
                     self.push_arrival(
                         out, origin, target, piece_type, player, promoting, leaving,
@@ -3391,11 +3500,21 @@ impl<'t> Game<'t> {
                         if mode & 1 == 0 {
                             continue;
                         }
-                    } else if !may_land(t, mode, piece_type, occupant, low, high) {
-                        // An occupied square ends the ray whether or not it can be
-                        // taken: a piece this one may not capture blocks it exactly as
-                        // a friendly piece with no own contact link does.
-                        break;
+                    } else {
+                        // Q1074b2: a slider pushes only at its first occupied square, where
+                        // a capture would have been (§1.3).
+                        if mode & MODE_PUSH != 0 {
+                            self.push_offered(
+                                out, origin, target, piece_type, player, mode, PUSH_ARM_SLIDE,
+                                entry.start as usize + index, promoting, leaving, promo_optional,
+                            );
+                        }
+                        if !may_land(t, mode, piece_type, occupant, low, high) {
+                            // An occupied square ends the ray whether or not it can be
+                            // taken: a piece this one may not capture blocks it exactly as
+                            // a friendly piece with no own contact link does.
+                            break;
+                        }
                     }
                     self.push_arrival(
                         out, origin, target, piece_type, player, promoting, leaving,
@@ -3567,6 +3686,13 @@ impl<'t> Game<'t> {
                     index += 1;
                     continue;
                 }
+                // Q1074b2: a hop pushes the first piece past its screen (D5).
+                if mode & MODE_PUSH != 0 {
+                    self.push_offered(
+                        out, origin, target, piece_type, player, mode, PUSH_ARM_HOP,
+                        entry.start as usize + index, promoting, leaving, promo_optional,
+                    );
+                }
                 if may_land(t, mode, piece_type, occupant, low, high) {
                     self.push_arrival(
                         out, origin, target, piece_type, player, promoting, leaving,
@@ -3711,9 +3837,14 @@ fn progress_of(
     // flag lookup rather than a rule.
     // Schema 19: a transit is a move like any other and can be walked back through the
     // other end, so it is reversible unless it promoted.
-    let promoted = kind == MOVE_PROMOTION || (kind == MOVE_PORTAL && move_promotion(m) != 0);
+    // Q1074b2 (K4): so is a push that removes nothing and promotes nothing, a step of two
+    // pieces either of which may step back; one that removes is a material change.
+    let promoted = kind == MOVE_PROMOTION
+        || ((kind == MOVE_PORTAL || kind == MOVE_PUSH) && move_promotion(m) != 0);
     let irreversible = material_changed
-        || (kind != MOVE_NORMAL && kind != MOVE_ROTATE && (kind != MOVE_PORTAL || promoted))
+        || (kind != MOVE_NORMAL
+            && kind != MOVE_ROTATE
+            && ((kind != MOVE_PORTAL && kind != MOVE_PUSH) || promoted))
         || t.is_one_way(piece_type)
         || rights_changed
         || laid_colour;
@@ -4665,6 +4796,17 @@ impl<'t> Game<'t> {
             debug_assert_eq!(saved.spill.is_empty(), victims + 2 <= Saved::INLINE);
         } else if kind == MOVE_PORTAL && move_promotion(m) != 0 {
             self.board[target] = t.entering_value(player, move_promotion(m) as usize - 1);
+        } else if kind == MOVE_PUSH {
+            // Q1074b2: the push as `write_push` plays it, `push_shift_line` the one reading
+            // (Q1074b4: the whole line under the longer chains, every square saved).
+            if move_promotion(m) != 0 {
+                self.board[target] = t.entering_value(player, move_promotion(m) as usize - 1);
+            }
+            (captured, captured_square) =
+                self.push_shift_line(m, target_before, |game, square, value| {
+                    saved.push((square, game.board[square]));
+                    game.board[square] = value;
+                });
         }
         // Q1059a: a gating move's piece stands on the origin it vacated, and may block a line.
         self.gate_for_filter(m, origin, origin, saved);
@@ -4994,6 +5136,9 @@ impl<'t> Game<'t> {
                         let hop_relevant = !hop_lines.is_empty();
 
                         let has_strike = t.strike.is_some();
+                        // Q1074b2 (R5): a push moves a second piece, which may have been the
+                        // sole blocker of a line onto the royal, so every push is asked.
+                        let has_push = t.push.is_some();
                         let mut write = base;
                         for index in base..out.len() {
                             let m = out[index];
@@ -5002,6 +5147,7 @@ impl<'t> Game<'t> {
                                 || pinned.get(origin)
                                 || move_kind(m) == MOVE_EN_PASSANT
                                 || enters_play(move_kind(m))
+                                || (has_push && move_kind(m) == MOVE_PUSH)
                                 || (hop_relevant && (hop_lines.get(origin) || hop_lines.get(move_to(m))))
                                 || (has_strike && self.board[move_to(m)] != 0);
                             if suspect && self.leaves_royal_attacked(m) {
@@ -5121,7 +5267,8 @@ impl<'t> Game<'t> {
                         t.frame_of_value(t.entering_value(player, move_promotion(m) as usize)),
                     ),
                     // Schema 19: a transit that promotes carries the type plus one.
-                    MOVE_PORTAL if move_promotion(m) != 0 => (
+                    // Q1074b2: and so does a push that promotes the pusher.
+                    MOVE_PORTAL | MOVE_PUSH if move_promotion(m) != 0 => (
                         move_promotion(m) as usize - 1,
                         t.frame_of_value(t.entering_value(player, move_promotion(m) as usize - 1)),
                     ),
@@ -5181,6 +5328,9 @@ impl<'t> Game<'t> {
                     || kind == MOVE_SWEEP
                     || ((kind == MOVE_NORMAL || kind == MOVE_PROMOTION || kind == MOVE_PORTAL)
                         && board[move_to(m)] != 0)
+                    // Q1074b3 (C6): a push that throws an enemy off the board takes it; one
+                    // that moves its piece, or throws the mover's own off, does not.
+                    || (kind == MOVE_PUSH && t.push_takes(board, m))
             };
             let has_capture = (base..out.len()).any(|index| takes(out[index], &self.board));
             if has_capture {

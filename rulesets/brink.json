@@ -1,0 +1,104 @@
+{
+  "schema_version": 31,
+  "name": "brink",
+  "description": "Chess in which nothing is taken where it stands. A piece that lands on an enemy shoves it one square further along its line instead of capturing it, and a piece is lost only when it is shoved off the edge of the board; the king alone still captures in the ordinary way and is never the one shoving. So the middle of the board is a refuge and the rim is a cliff: a rook in the centre fears nothing but the enemy king, while the same rook on the edge can be knocked out by a pawn. An attack becomes a plan to drive the enemy outward, and a defence is a matter of what stands behind your pieces, because a piece with a friend or an enemy directly behind it cannot be shoved at all. Pawns shove on their diagonals, a knight shoves its target one square sideways, a piece just shoved may not shove straight back on its next move, and a king that an enemy could shove is in check just as one that could be taken is, so the game is still won by checkmate. Push-instead-of-capture chess is played online; these are its rules under a name of our own.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {
+          "kind": "slide",
+          "vectors": [[0, 1]],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {"from_rank": 1}
+        },
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture", "push": true}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[1, 2]],
+          "symmetry": "dihedral8",
+          "mode": "both",
+          "push": {"along": "rank"}
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both", "push": true}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both", "push": true}]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both", "push": true}
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[1, 0], [1, 1]],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "push": {"no_push_back": true},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "insufficient_material": true
+  },
+  "provenance": {
+    "added": "2026-10-30",
+    "origin": "human",
+    "source": "a push-instead-of-capture chess played online; the sources are in docs/plan-push.md section 6.1",
+    "history": "Q1074bg1: the push rules' showcase on an otherwise ordinary chess, built from the published rule list (docs/plan-push.md section 6.1), with that plan's readings where the list is silent: a knight shoves along the rank, a shoved piece loses its first-move rights and does not promote, no en passant."
+  }
+}

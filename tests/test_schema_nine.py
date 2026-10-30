@@ -78,6 +78,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/bastion.json": ("9574b0bf9095", "c7b2c37ce93eaaa3"),
     # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 14a126b38a1a / f2b419020c29d309
     "rulesets/berolina.json": ("d06cfc337d9c", "4945059532fe19a2"),
+    "rulesets/brink.json": ("07484b9a09a5", "b041b3f25ccbe796"),  # Q1074bg1, 2026-10-30: the push showcase on chess
+    "rulesets/dohyo.json": ("242c02248dd2", "c6f2bc89e805c2be"),  # Q1074bg2, 2026-10-30: pushing a line by weight and strength
     "rulesets/capablanca.json": ("2eefcd835b3b", "304b04afb9d2d47b"),
     # Re-frozen 2026-09-07 by Q98, on the same footing as `intransitive` below: the
     # phantom `"en_passant": true` came off the spec when `_check_inert_rules` learned

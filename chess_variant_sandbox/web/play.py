@@ -60,6 +60,7 @@ from chess_variant_sandbox.viz.wrapped import (
     fold_payload,
     fold_transit,
     portal_transit,
+    push_transit,
     sweep_transit,
     walls_payload,
 )
@@ -884,6 +885,10 @@ class Session:
                 # Schema 13: the squares a sweep cleared (`viz.wrapped.sweep_transit`), so
                 # the page cuts them down along its path. Absent for every other move.
                 **(sweep_transit(engine, self.state, move) or {}),
+                # Q1074b5: what a push moved, each piece of its line and where it went, and
+                # the way one thrown off falls (`viz.wrapped.push_transit`), so the page slides
+                # the line and drops the one off the edge. Absent for every other move.
+                **(push_transit(engine, self.state, move) or {}),
                 **({"folds": folds} if (folds := fold_payload(engine, state)) else {}),
                 # How many moves ahead the machine's search got before it chose this
                 # one, counting both sides', from the core. `None` for a person's move

@@ -88,6 +88,13 @@ pub const MOVE_BUY: u32 = 10;
 /// which: nobody's is a hire at its type's price, the opponent's a bribe at twice it
 /// (`PurseTables::cost`). `make` rehomes it (`Tables::rehome_value`) and spends the coins.
 pub const MOVE_HIRE: u32 = 11;
+/// Q1074b2 (`docs/plan-push.md` §3.12 K1): a move that lands on a piece it may push and moves
+/// that piece one step on along the push direction, or off the board. Origin and target as a
+/// normal move; the promotion field the pusher's promoted type plus one (0 none), as
+/// `MOVE_PORTAL`'s; the tag field (bits 25-29, `with_push`) the push direction's id
+/// (`PushTables::next`'s row), since on a seam one landing can be pushed two ways from one
+/// origin. What moves and what falls off is recomputed from the board in `make` (`push.rs`).
+pub const MOVE_PUSH: u32 = 12;
 pub const DUCK_STEP: u32 = 0;
 pub const DUCK_PLACE: u32 = 1;
 pub const DUCK_PASS: u32 = 2;
@@ -150,8 +157,9 @@ pub const SWEEP_LENGTH_SHIFT: u8 = 2;
 /// |-------|-----------|------------------------------------------------------------------|
 /// | 0-7   | origin    | every kind                                                       |
 /// | 8-15  | target    | every kind                                                       |
-/// | 16-19 | kind      | every kind (`MOVE_NORMAL` .. `MOVE_HIRE`, 0 to 11 of 16)         |
-/// | 20-24 | promotion | `MOVE_PROMOTION` (the type); `MOVE_PORTAL` (type + 1, 0 none);   |
+/// | 16-19 | kind      | every kind (`MOVE_NORMAL` .. `MOVE_PUSH`, 0 to 12 of 16)         |
+/// | 20-24 | promotion | `MOVE_PROMOTION` (the type); `MOVE_PORTAL`, `MOVE_PUSH` (type    |
+/// |       |           | + 1, 0 none);                                                    |
 /// |       |           | `MOVE_DROP`, `MOVE_BUY` (the type); `MOVE_ROTATE` (the facing);  |
 /// |       |           | `MOVE_DUCK` (`DUCK_*`)                                           |
 /// | 25-29 | landing   | a strike's capture under `position: "choose"`: the landing's     |
@@ -163,6 +171,8 @@ pub const SWEEP_LENGTH_SHIFT: u8 = 2;
 /// | 25-29 | gate      | Q1059a (`drops.gating`): the type a gating move places, plus one;|
 /// |       |           | 0 none (`with_gate`, below `MAX_PIECE_TYPES`, 24). On a          |
 /// |       |           | `MOVE_NORMAL`, `EN_PASSANT`, `PROMOTION` or `CASTLE` word        |
+/// | 25-29 | push      | Q1074b2: `MOVE_PUSH`: the push direction's id (`with_push`, <    |
+/// |       |           | 32; `bridge.rust_supports` refuses a game with more)             |
 /// | 30    | foreign   | a move of a piece the mover does not own (`with_foreign`)        |
 /// | 31    | gate_rook | Q1059a: a gating castle places on the rook's origin, not the     |
 /// |       |           | king's (`with_gate`); 0 on every other word                      |
@@ -215,7 +225,7 @@ pub const MOVE_EXTENSION_MASK: u32 = !0 << MOVE_TAG_SHIFT;
 pub const MOVE_BASE_MASK: u32 = !MOVE_EXTENSION_MASK;
 /// The field map as `(name, shift, width)`, for `lib.rs` to export and a test to pin
 /// `engine/moves.py`'s copy to. Landing, portal and fold are the one tag field's names.
-pub const MOVE_FIELDS: [(&str, u32, u32); 10] = [
+pub const MOVE_FIELDS: [(&str, u32, u32); 11] = [
     ("origin", MOVE_ORIGIN_SHIFT, MOVE_ORIGIN_BITS),
     ("target", MOVE_TARGET_SHIFT, MOVE_TARGET_BITS),
     ("kind", MOVE_KIND_SHIFT, MOVE_KIND_BITS),
@@ -224,13 +234,14 @@ pub const MOVE_FIELDS: [(&str, u32, u32); 10] = [
     ("portal", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
     ("fold", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
     ("gate", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
+    ("push", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
     ("foreign", MOVE_FOREIGN_SHIFT, 1),
     ("gate_rook", MOVE_GATE_ROOK_SHIFT, 1),
 ];
 
 /// Every move kind by name, for `lib.rs` to export and a test to pin `engine/moves.py`'s
 /// `MOVE_*` to.
-pub const MOVE_KINDS: [(&str, u32); 12] = [
+pub const MOVE_KINDS: [(&str, u32); 13] = [
     ("MOVE_NORMAL", MOVE_NORMAL),
     ("MOVE_EN_PASSANT", MOVE_EN_PASSANT),
     ("MOVE_CASTLE", MOVE_CASTLE),
@@ -243,6 +254,7 @@ pub const MOVE_KINDS: [(&str, u32); 12] = [
     ("MOVE_DUCK", MOVE_DUCK),
     ("MOVE_BUY", MOVE_BUY),
     ("MOVE_HIRE", MOVE_HIRE),
+    ("MOVE_PUSH", MOVE_PUSH),
 ];
 
 #[inline(always)]
@@ -331,6 +343,17 @@ pub fn with_fold(m: u32, value: usize) -> u32 {
 #[inline(always)]
 pub fn move_gate(m: u32) -> usize {
     move_tag(m)
+}
+
+/// Q1074b2: a `MOVE_PUSH`'s direction id (`PushTables::next`'s row).
+#[inline(always)]
+pub fn move_push(m: u32) -> usize {
+    move_tag(m)
+}
+
+#[inline(always)]
+pub fn with_push(m: u32, direction: usize) -> u32 {
+    with_tag(m, direction, "push direction")
 }
 
 /// Whether a gating castle places its piece on the rook's origin (bit 31) rather than the
@@ -1141,6 +1164,103 @@ impl RestTables {
     }
 }
 
+/// Q1074b2 (`docs/plan-push.md` §1 to §3): the push rule, as the compiler resolved it
+/// (`compile.PushRule`). Boxed, as the rest is, so a game no move of which pushes pays one
+/// pointer, and `None` is the one flag every push branch in the core tests. The landing modes
+/// say where a push may happen (`MODE_PUSH_ENEMY` 4, `MODE_PUSH_OWN` 8); these say how.
+pub struct PushTables {
+    /// `rules.push.chain` (`compile.PUSH_CHAIN`): `PUSH_CHAIN_ONE`, `_ROW` or `_WEIGHT`
+    /// (Q1074b4, §2): how long a line a push may move, and whether it is weighed.
+    pub chain: u8,
+    /// Whether a piece pushed past the edge (or onto a hexagon's absent cell) is removed;
+    /// under `"blocks"` such a push is not offered.
+    pub edge_removes: bool,
+    /// `[direction * n_squares + square]`: where a piece on `square` goes when pushed in that
+    /// direction, `PUSH_OFF` off the board, `PUSH_STOP` a wall. `_land`'s answer; the core
+    /// computes no square.
+    pub next: Vec<i16>,
+    /// Parallel to each movement table's landings: the push direction at that landing, -1
+    /// where it pushes nothing.
+    pub leap_dirs: Vec<i8>,
+    pub slide_dirs: Vec<i8>,
+    pub hop_dirs: Vec<i8>,
+    /// `[pusher * n_types + victim]`: the type lists (`pieces[].pushes`), owner-blind.
+    pub allowed: Vec<bool>,
+    /// `[type]`: each type's weight under `PUSH_CHAIN_WEIGHT` (a pushed piece's load);
+    /// empty under the other chains.
+    pub weight: Vec<u8>,
+    /// `[type]`: each pusher's strength under `PUSH_CHAIN_WEIGHT` (Q1074b4s: its stated
+    /// strength, else its weight; 0 for a type that never pushes): a line moves when its
+    /// summed weight is at most this. Empty under the other chains.
+    pub strength: Vec<u8>,
+    /// `[(player * n_types + type) * n_squares + square]`: whether a pushed piece of that
+    /// player and type may stand there (its region, W5). Empty unless some type has a region.
+    pub stand: Vec<bool>,
+    /// Q1074b6 (K5, `rules.push.no_push_back`): the bar's keys, `[x]` and `[n_squares + y]`
+    /// for a bar on the piece standing on `y`, pushed there from `x` (`Game::push_bar`).
+    /// Empty without the rule, which is the one flag the bar's branches test.
+    pub zobrist_bar: Vec<u64>,
+}
+
+/// Q1074b2: the landing mode bits of a push (`compile.MODE_PUSH_ENEMY`, `MODE_PUSH_OWN`): the
+/// landing's occupant is pushed when it is the enemy's, or the mover's own.
+pub const MODE_PUSH_ENEMY: u8 = 4;
+pub const MODE_PUSH_OWN: u8 = 8;
+pub const MODE_PUSH: u8 = MODE_PUSH_ENEMY | MODE_PUSH_OWN;
+/// `PushTables::chain` (`compile.PUSH_CHAIN`, Q1074b4): a push moves one piece, a piece
+/// behind it blocks; a push moves the whole line behind it, every piece of which it may
+/// push; and the same line, only where the pusher's strength is at least the line's summed
+/// weight.
+pub const PUSH_CHAIN_ONE: u8 = 0;
+pub const PUSH_CHAIN_ROW: u8 = 1;
+pub const PUSH_CHAIN_WEIGHT: u8 = 2;
+/// `PushTables::next`: off the board.
+pub const PUSH_OFF: i16 = -1;
+/// `PushTables::next`: a wall, which nothing may be pushed onto.
+pub const PUSH_STOP: i16 = -2;
+/// `AttackSource::dirs` in a push game (`compile.ATTACK_BY_CAPTURE`, `ATTACK_BY_PUSH`).
+pub const ATTACK_BY_CAPTURE: u8 = 1;
+pub const ATTACK_BY_PUSH: u8 = 2;
+
+impl PushTables {
+    /// Where a piece on `square` goes when pushed in `direction`.
+    #[inline(always)]
+    pub fn next_of(&self, n_squares: usize, direction: usize, square: usize) -> i16 {
+        self.next[direction * n_squares + square]
+    }
+
+    /// Whether a piece of `pusher` type may push one of `victim` type.
+    #[inline(always)]
+    pub fn may_push(&self, n_types: usize, pusher: usize, victim: usize) -> bool {
+        self.allowed[pusher * n_types + victim]
+    }
+
+    /// Whether `player`'s piece of `piece_type`, pushed, may stand on `square` (W5).
+    #[inline(always)]
+    pub fn may_stand(
+        &self, n_types: usize, n_squares: usize, player: usize, piece_type: usize, square: usize,
+    ) -> bool {
+        self.stand.is_empty() || self.stand[(player * n_types + piece_type) * n_squares + square]
+    }
+
+    /// Whether the game bars pushing straight back (K5).
+    #[inline(always)]
+    pub fn no_back(&self) -> bool {
+        !self.zobrist_bar.is_empty()
+    }
+
+    /// The key term of a push-back bar `[y, x]`: zero for no bar (`NO_BAR`), and for every
+    /// game without the rule.
+    #[inline]
+    pub fn bar_key(&self, n_squares: usize, bar: [i16; 2]) -> u64 {
+        if bar[0] < 0 || self.zobrist_bar.is_empty() {
+            0
+        } else {
+            self.zobrist_bar[bar[1] as usize] ^ self.zobrist_bar[n_squares + bar[0] as usize]
+        }
+    }
+}
+
 /// One route of wild pieces that come back (generation 36, N1, `docs/archive/plan-npc.md` §4.1): an
 /// `npcs` entry with `respawn`, or its mirrored half, each with a clock of its own.
 pub struct RespawnHalf {
@@ -1728,6 +1848,11 @@ pub struct Tables {
     pub rest: Option<Box<RestTables>>,
     /// Schema 30 (Q999a): lines of sight, `None` for every game in which no type sees.
     pub sight: Option<Box<SightTables>>,
+    /// Q1074b2 (`docs/plan-push.md`): the push rule, `None` for every game no move of which
+    /// pushes. In a push game an attack source's `dirs` byte holds what it attacks by
+    /// (`ATTACK_BY_CAPTURE`, `ATTACK_BY_PUSH`): portals, which read it as directions, are
+    /// refused beside a push.
+    pub push: Option<Box<PushTables>>,
     /// TC3 (`docs/plan-turncoat.md` §4): the majority types' neighbours, `None` for every
     /// game in which no piece nobody owns may be moved by the majority.
     pub majority: Option<Box<NeutralTables>>,
@@ -2266,6 +2391,55 @@ impl Tables {
         self.immobile_squares[self.slot(frame, piece_type, square)]
     }
 
+    /// Q1074b3 (`docs/plan-push.md` §3.3): whether the `MOVE_PUSH` word `m` throws an enemy
+    /// piece off the board, read off the position it is played in (`board` before the move).
+    ///
+    /// A push that removes counts as a capture where a capture takes an enemy piece:
+    /// `restrict`'s `takes` (`must_capture`, C6), `is_loud` and `capture_gain`, each of which
+    /// asks this beside its own capture kinds; `make` sets `captured` for any removal, so
+    /// material, the clocks, the window, a bounty and the hand follow there. A push that
+    /// throws the pusher's own piece off (`whose: "own"`/`"any"`) changes material but takes
+    /// nothing, as a bounty and a hand already read it (C2, C3). `CompiledSpec.push_takes`
+    /// is the Python side's copy.
+    #[cold]
+    #[inline(never)]
+    pub fn push_takes(&self, board: &[u8], m: u32) -> bool {
+        self.push_taken(board, m) != 0
+    }
+
+    /// Q1074b4 (`docs/plan-push.md` §2, C5): the enemy piece the `MOVE_PUSH` word `m` throws
+    /// off the board, or 0 where it throws none off or throws off the pusher's own. Under
+    /// `chain: "one"` the removed piece is the target's; under `"row"` and `"weight"` it is
+    /// the last of the line (the target's piece and every piece behind it up to the first
+    /// empty square, the pusher's origin counting as empty), which falls off where the
+    /// line meets the edge. Read off `board` before the move; the word was offered, so the
+    /// line is one that may move. `CompiledSpec.push_taken` is the Python side's copy.
+    #[cold]
+    #[inline(never)]
+    pub fn push_taken(&self, board: &[u8], m: u32) -> u8 {
+        let Some(push) = self.push.as_deref() else {
+            return 0;
+        };
+        let (origin, direction) = (move_from(m), move_push(m));
+        let mut square = move_to(m);
+        for _ in 0..self.n_squares {
+            let behind = push.next_of(self.n_squares, direction, square);
+            if behind == PUSH_OFF {
+                let removed = board[square];
+                return if self.owner_of(removed) != self.owner_of(board[origin]) {
+                    removed
+                } else {
+                    0
+                };
+            }
+            if behind < 0 || behind as usize == origin || board[behind as usize] == 0 {
+                return 0;
+            }
+            square = behind as usize;
+        }
+        0
+    }
+
     /// Whether a piece of `attacker` type may capture one of `victim` type.
     ///
     /// Hot: this sits on the capture test in move generation and on every consumer of
@@ -2476,6 +2650,7 @@ impl Tables {
             spy: None,
             rest: None,
             sight: None,
+            push: None,
             majority,
             respawn: None,
             npc_lines: None,
@@ -2514,6 +2689,7 @@ impl Tables {
         }
         tables.simultaneous = Self::simultaneous_rule(&tables, source)?;
         tables.rest = Self::rest_rule(&tables, source)?;
+        tables.push = Self::push_rule(&tables, source)?;
         tables.sight = Self::sight_rule(&tables, source)?;
         tables.npc_shield = tables.has_npcs && tables.sight.as_ref().is_some_and(|sight| sight.has_shield);
         tables.spy = Self::spy_rule(&tables, source)?;
@@ -3685,6 +3861,88 @@ impl Tables {
         Ok(Some(Box::new(RestTables { turns: piece_rest, zobrist: zobrist_rest, slots: max })))
     }
 
+    /// The push rule (Q1074b2): every table empty unless some move pushes. Read after the
+    /// portals, beside which a push is refused (the attack sources' `dirs` byte is the push's).
+    fn push_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<PushTables>>> {
+        let rule: Vec<u8> = field(source, keys::PUSH_RULE)?;
+        let next: Vec<i16> = field(source, keys::PUSH_NEXT)?;
+        let leap_dirs: Vec<i8> = field(source, keys::PUSH_LEAP_DIRS)?;
+        let slide_dirs: Vec<i8> = field(source, keys::PUSH_SLIDE_DIRS)?;
+        let hop_dirs: Vec<i8> = field(source, keys::PUSH_HOP_DIRS)?;
+        let allowed: Vec<u8> = field(source, keys::PUSH_ALLOWED)?;
+        let weight: Vec<u8> = field(source, keys::PUSH_WEIGHT)?;
+        let strength: Vec<u8> = field(source, keys::PUSH_STRENGTH)?;
+        let stand: Vec<u8> = field(source, keys::PUSH_STAND)?;
+        let zobrist_bar: Vec<u64> = field(source, keys::ZOBRIST_PUSH_BAR)?;
+        let fail = |what: String| Err(pyo3::exceptions::PyValueError::new_err(what));
+        // `compile.PUSH_CHAIN` is `push_rule[0]` (`PUSH_CHAIN_ONE`, `_ROW`, `_WEIGHT`; Q1074b4
+        // the last two), and `push_weight` and `push_strength` (Q1074b4s) are a number per
+        // type under `"weight"` alone.
+        // `push_rule[1]` is `edge: "removes"`.
+        if rule.is_empty() {
+            let stray = !(next.is_empty() && leap_dirs.is_empty() && slide_dirs.is_empty()
+                && hop_dirs.is_empty() && allowed.is_empty() && weight.is_empty()
+                && strength.is_empty() && stand.is_empty() && zobrist_bar.is_empty());
+            if stray {
+                return fail("push tables without a push rule".to_string());
+            }
+            return Ok(None);
+        }
+        if tables.portals.is_some() {
+            return fail("a push beside portals; the validator refuses them together".to_string());
+        }
+        let (n_types, n_squares) = (tables.n_types, tables.n_squares);
+        if rule.len() != 2
+            || !matches!(rule[0], PUSH_CHAIN_ONE | PUSH_CHAIN_ROW | PUSH_CHAIN_WEIGHT)
+            || rule[1] > 1
+        {
+            return fail(format!("push_rule {rule:?} names no chain and edge this core plays"));
+        }
+        let chain = rule[0];
+        if !next.len().is_multiple_of(n_squares) {
+            return fail(format!("push_next holds {} squares", next.len()));
+        }
+        let n_directions = next.len() / n_squares;
+        let off_board = |square: &i16| *square < PUSH_STOP || *square as i32 >= n_squares as i32;
+        if n_directions > 1 << MOVE_TAG_BITS || next.iter().any(off_board) {
+            return fail("push_next does not fit this board and the move word".to_string());
+        }
+        for (name, dirs, table) in [
+            ("leap", &leap_dirs, &tables.leaps),
+            ("slide", &slide_dirs, &tables.slides),
+            ("hop", &hop_dirs, &tables.hops),
+        ] {
+            if dirs.len() != table.n_landings()
+                || dirs.iter().any(|dir| *dir < -1 || i32::from(*dir) >= n_directions as i32)
+            {
+                return fail(format!(
+                    "push_{name}_dirs holds {} ids for {} landings", dirs.len(), table.n_landings(),
+                ));
+            }
+        }
+        if allowed.len() != n_types * n_types
+            || weight.len() != (if chain == PUSH_CHAIN_WEIGHT { n_types } else { 0 })
+            || strength.len() != weight.len()
+            || !(stand.is_empty() || stand.len() == 2 * n_types * n_squares)
+            || !(zobrist_bar.is_empty() || zobrist_bar.len() == 2 * n_squares)
+        {
+            return fail("the push lists do not fit this ruleset's types and squares".to_string());
+        }
+        Ok(Some(Box::new(PushTables {
+            chain,
+            edge_removes: rule[1] != 0,
+            next,
+            leap_dirs,
+            slide_dirs,
+            hop_dirs,
+            allowed: allowed.iter().map(|flag| *flag != 0).collect(),
+            weight,
+            strength,
+            stand: stand.iter().map(|flag| *flag != 0).collect(),
+            zobrist_bar,
+        })))
+    }
+
     /// Lines of sight (schema 30, Q999a; generation 31's command): all four tables empty
     /// unless a type sees. Read after the portals, beside which a sight is refused.
     fn sight_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<SightTables>>> {
@@ -4048,15 +4306,15 @@ fn unknown(what: &str, value: &str) -> PyErr {
 mod tests {
     use super::*;
 
-    /// CS2: the field map's fields tile the word without overlap, but for the tag's four
-    /// names, which share bits 25-29 by design. Q1059a's `gate_rook` took bit 31, the last
-    /// free one, so the fields now fill the word.
+    /// CS2: the field map's fields tile the word without overlap, but for the tag's five
+    /// names, which share bits 25-29 by design (Q1074b2's push direction the fifth).
+    /// Q1059a's `gate_rook` took bit 31, the last free one, so the fields now fill the word.
     #[test]
     fn the_move_word_fields_tile_the_word() {
         let mut seen = 0u32;
         for &(name, shift, width) in MOVE_FIELDS.iter() {
             let mask = (((1u64 << width) - 1) as u32) << shift;
-            if name == "portal" || name == "fold" || name == "gate" {
+            if name == "portal" || name == "fold" || name == "gate" || name == "push" {
                 assert_eq!(mask, MOVE_TAG_MASK, "{name}");
                 continue;
             }
@@ -4488,6 +4746,16 @@ pub mod keys {
         SPY_TYPES => "spy_types",
         ZOBRIST_REST => "zobrist_rest",
         PIECE_REST => "piece_rest",
+        PUSH_RULE => "push_rule",
+        PUSH_NEXT => "push_next",
+        PUSH_LEAP_DIRS => "push_leap_dirs",
+        PUSH_SLIDE_DIRS => "push_slide_dirs",
+        PUSH_HOP_DIRS => "push_hop_dirs",
+        PUSH_ALLOWED => "push_allowed",
+        PUSH_WEIGHT => "push_weight",
+        PUSH_STRENGTH => "push_strength",
+        PUSH_STAND => "push_stand",
+        ZOBRIST_PUSH_BAR => "zobrist_push_bar",
         NPC_RESPAWN => "npc_respawn",
         ZOBRIST_RESPAWN => "zobrist_respawn",
         NPC_PREV => "npc_prev",

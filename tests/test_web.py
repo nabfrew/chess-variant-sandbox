@@ -11184,9 +11184,11 @@ class TestBuildingAGameByHand:
         # `archive/the-shepherds-duck`.
         # `purse` (TC5) joined it, and left on 2026-10-30 with TC10b's
         # `archive/the-free-companies` (the war chest and the levy retired first).
+        # `push` (Q1074b2) joined it, and left on 2026-10-30 with Q1074bg1's
+        # `rulesets/brink.json`.
         assert _RULES_KEYS - seen == {
             "checkmate", "turn",
-        }, "the rule keys nothing in the library uses have changed"
+        },"the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(
         self,

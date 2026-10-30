@@ -310,6 +310,8 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "npcs_pounce",  # N3b
     "npcs_pounce_attackers",  # N3c
     "npcs_split",  # N3d
+    "push_share", "push_whose", "push_captures", "push_along", "push_lists",  # Q1074b5
+    "push_reach", "push_chain", "push_edge_blocks", "push_weight", "push_strength",  # Q1074b5
     "has_duck",  # N4b
     "duck_by_moves",  # N4b
     "nobody_share", "majority_share", "majority_geometry",  # TC3
@@ -325,6 +327,8 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/atomic": "da0551bdcad0ddad",
     "rulesets/bastion": "04500d3db1737a81",
     "rulesets/berolina": "488735d94bc4a1ee",
+    "rulesets/brink": "acbee9311ba0b12b",  # Q1074bg1, 2026-10-30
+    "rulesets/dohyo": "046edcf48e185db7",  # Q1074bg2, 2026-10-30
     "rulesets/capablanca": "8cfb5815c674f10c",
     "archive/chess-oriented-pawns": "f1530cae8408d901",
     "rulesets/chess": "c638843d0cbb3fe4",

@@ -26,22 +26,23 @@ from typing import Any
 # (board, side_to_move, unmoved, ep_target, ep_victim, halfmove, ply, key,
 #  repetition, checks, hands,
 #  (colour, remaining, turns_taken, points, goal_left_by, portal_bar, folds,
-#   (initiative, void_run, bars), rest, respawn, heading_back, purse))
+#   (initiative, void_run, bars), rest, respawn, heading_back, (purse, push_bar)))
 # The round group is schema 26's (Q918a): who holds the initiative (-1 for no such rule),
 # the void run's pair ((-1, -1) for none) and the barred pairs. ``rest`` is schema 29's
 # (Q983a): each player's resting pieces, ``(square, turns left)`` by square, empty for none.
 # ``respawn`` is generation 36's (N1): one clock per respawning half, empty without the rule.
 # ``heading_back`` is generation 38's (N5): the squares of the wild pieces walking their line
-# back, ascending, empty without the rule. ``purse`` is TC4's: each player's coins, ``(0, 0)``
-# without a purse; the twelfth element of the group, PyO3's ceiling, so the next field needs
-# a struct.
+# back, ascending, empty without the rule. The twelfth element of the group, PyO3's ceiling,
+# is the tail every later field joins: ``purse`` is TC4's, each player's coins, ``(0, 0)``
+# without a purse; ``push_bar`` Q1074b6's, ``(y, x)`` or ``(-1, -1)``.
 Rounds = tuple[int, tuple[int, int], list[tuple[int, int]]]
 Rest = tuple[list[tuple[int, int]], list[tuple[int, int]]]
+Tail = tuple[tuple[int, int], tuple[int, int]]
 State = tuple[
     bytes, int, bytes, int, int, int, int, int, list[int],
     tuple[int, int], tuple[list[int], list[int]],
     tuple[bytes, int, int, tuple[float, float], int, tuple[int, int], list[int], Rounds, Rest,
-          bytes, list[int], tuple[int, int]],
+          bytes, list[int], Tail],
 ]
 
 # What a round's meetings did (schema 26): ``(event, square, player)``, the event 0 a

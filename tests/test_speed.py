@@ -726,9 +726,13 @@ def walk_digest(names: list[str], seeds: int = 3, rounds: int = 60) -> str:
                 # TC4 added `GameState.purse`; no round game has one (it is refused beside
                 # rounds), and it is left out of the row so the digest stays one.
                 assert state.purse == (0, 0)
+                # Q1074b6 added `GameState.push_bar`; no round game pushes (refused beside rounds),
+                # and it is left out of the row so the digest stays one.
+                assert state.push_bar == (-1, -1)
                 row = repr((name, seed, state.with_(rest=(-1, -1)), phase, events))
                 rows.append(row.replace(", respawn=()", "").replace(", kind='step'", "")
-                            .replace(", heading_back=()", "").replace(", purse=(0, 0)", ""))
+                            .replace(", heading_back=()", "").replace(", purse=(0, 0)", "")
+                            .replace(", push_bar=(-1, -1)", ""))
     return hashlib.sha256("\n".join(rows).encode()).hexdigest()
 
 

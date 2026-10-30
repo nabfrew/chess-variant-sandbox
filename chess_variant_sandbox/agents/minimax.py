@@ -40,6 +40,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_FOLD,
     MOVE_PORTAL,
     MOVE_PROMOTION,
+    MOVE_PUSH,
     MOVE_ROTATE,
     MOVE_SWEEP,
     decode_move,
@@ -595,6 +596,11 @@ class MinimaxAgent:
         either would never come to rest.
         """
         _, target, kind, promoted = decode_move(move)
+        if kind == MOVE_PUSH:
+            # Q1074b3: a push lands on a piece and is loud only where it throws an enemy
+            # off the board (`CompiledSpec.push_takes`) or the pusher promotes (P1), as
+            # `agents.rs::is_loud` reads it.
+            return promoted != 0 or self.engine.spec.push_takes(state.board, move)
         # Schema 22: a fold moved onto a piece takes nothing either.
         if kind not in (MOVE_ROTATE, MOVE_CASTLE, MOVE_FOLD, MOVE_DUCK) and state.board[target]:
             return True
@@ -703,6 +709,12 @@ class MinimaxAgent:
         spec = self.engine.spec
         values = self.evaluator.values
         victim = board[move_to(move)]
+        if move_type(move) == MOVE_PUSH:
+            # Q1074b3: a push gains only the enemy it throws off the board (Q1074b4: under a
+            # row the line's last piece, not the target's); one that moves its piece, or
+            # throws the pusher's own off, gains nothing.
+            taken = spec.push_taken(board, move)
+            return values[spec.type_of(taken)] if taken else 0.0
         gain = values[spec.type_of(victim)] if victim else 0.0
         # Schema 13: a sweep's path victims are summed onto the target's, in ray order, as
         # `agents.rs::capture_gain` sums them (`CompiledSpec.sweep_victims`).

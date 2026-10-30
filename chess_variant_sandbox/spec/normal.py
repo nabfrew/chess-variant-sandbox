@@ -47,10 +47,17 @@ from chess_variant_sandbox.spec.schema import (
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
     PURSE_OFF_VALUES,
+    PUSH_ENTRY_DEFAULTS,
+    PUSH_OFF_VALUES,
     SIGHT_OFF_VALUES,
     SIMULTANEOUS_OFF_VALUES,
     insufficient_material_live,
+    piece_weights,
     portal_stand_in_shape,
+    push_lists,
+    push_rule,
+    pushable_ids,
+    pushing_ids,
     stated_off,
     strike_is_live,
     sweep_range_stated_off,
@@ -165,6 +172,7 @@ def _normalise(normal: dict[str, Any]) -> dict[str, Any]:
         shape = board.get("shape") if isinstance(board, dict) else None
         _normal_rules(rules, height, shape)
     drop_off_values(normal)
+    normal_push(normal)
     # Q1069a: the draw by insufficient material written on a game that is not chess
     # underneath states nothing (`schema.insufficient_material_live`, read off this form).
     if (
@@ -234,6 +242,11 @@ def drop_off_values(spec: dict[str, Any]) -> None:
         _drop_off(rules["duck"], DUCK_OFF_VALUES)
     if isinstance(rules.get("purse"), dict):
         _drop_off(rules["purse"], PURSE_OFF_VALUES)
+    # Q1074b1: ``rules.push`` at every default is the rule's absence (a push game reads it so).
+    if isinstance(rules.get("push"), dict):
+        _drop_off(rules["push"], PUSH_OFF_VALUES)
+        if not rules["push"]:
+            del rules["push"]
 
 
 def _drop_off(where: dict[str, Any], off_values: dict[str, Any]) -> None:
@@ -242,6 +255,61 @@ def _drop_off(where: dict[str, Any], off_values: dict[str, Any]) -> None:
 
 
 # ------------------------------------------------------------------------------ rewrites
+
+
+def normal_push(spec: dict[str, Any]) -> None:
+    """The push rule in one spelling (Q1074b1, `docs/plan-push.md` §1.2, §2).
+
+    A move's ``push`` is ``true`` at every default (``{}`` and the object with its defaults
+    written are the same push) and otherwise the object less its defaults. A pusher's list is
+    sorted and its repeats dropped (the compiled matrix reads a set). Under ``chain`` ``"one"``
+    and ``"row"`` the weight shorthand is written as the list it stands for
+    (`schema.push_lists`) and every weight dropped, since nothing else reads one there: the
+    shorthand and its list-written twin are one game, one name. Under ``"weight"`` a
+    pusher's ``strength`` equal to its weight is its off value and dropped, so a spec written
+    before the key hashes as it did (Q1074b4s); and on a pusher nothing may push, a strength
+    with no weight is written as the weight (the one number it has is read only as its
+    strength, which a weight there already is), so the two spellings are one name. Only where
+    the push rule is well formed enough to read (`schema.push_rule`)."""
+    pieces = _dicts(spec.get("pieces"))
+    for piece in pieces:
+        for move in _dicts(piece.get("moves")):
+            push = move.get("push")
+            if isinstance(push, dict):
+                _drop_defaults(push, PUSH_ENTRY_DEFAULTS)
+                if not push:
+                    move["push"] = True
+    rule = push_rule(spec)
+    if rule is None:
+        return
+    weighed = rule["chain"] == "weight"
+    lists = {} if weighed else push_lists(spec)
+    for piece in pieces:
+        pid = piece.get("id")
+        if not weighed and isinstance(pid, str) and piece.get("pushes") is None:
+            stated = lists.get(pid)
+            if stated is not None and pid in piece_weights([piece]):
+                piece["pushes"] = sorted(stated)
+        if isinstance(piece.get("pushes"), list) and all(
+            isinstance(entry, str) for entry in piece["pushes"]
+        ):
+            piece["pushes"] = sorted(set(piece["pushes"]))
+    if not weighed:
+        for piece in pieces:
+            piece.pop("weight", None)
+        return
+    pushers = set(pushing_ids(spec))
+    pushable = pushable_ids(spec)
+    for piece in pieces:
+        if "strength" not in piece:
+            continue
+        if piece.get("weight") == piece["strength"]:
+            del piece["strength"]
+        elif (
+            "weight" not in piece and piece.get("id") in pushers
+            and piece.get("id") not in pushable
+        ):
+            piece["weight"] = piece.pop("strength")
 
 
 def _normal_move(move: dict[str, Any]) -> None:

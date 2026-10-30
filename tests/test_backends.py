@@ -402,6 +402,52 @@ def test_the_bounty_arm_reaches_the_points() -> None:
     assert "scored" in reasons
 
 
+def _sumo(**rules: Any) -> Engine:
+    """Q1074b3 (`docs/plan-push.md` §3.3): chess whose every non-royal capture is a push (the
+    knight's along the rank), no en passant. The searches read a push as loud only where it
+    throws an enemy off the board (`is_loud`, `capture_gain` and their mirrors), so a push
+    game is where those readings show. No committed ruleset pushes."""
+    spec: dict[str, Any] = load_spec(RULESETS / "chess.json")
+    spec["name"] = "sumo backends"
+    for piece in spec["pieces"]:
+        if piece.get("royal"):
+            continue
+        for move in piece["moves"]:
+            if move.get("mode") != "move":
+                move["push"] = {"along": "rank"} if piece["id"] == "N" else True
+    del spec["rules"]["en_passant"]
+    spec["rules"]["max_plies"] = 80
+    spec["rules"].update(rules)
+    return Engine(spec)
+
+
+@pytest.mark.parametrize(
+    "rules", [
+        {}, {"must_capture": True}, {"drops": {"from_captures": True}},
+        # Q1074b4: under a row the piece thrown off is the line's last, not the target's.
+        {"push": {"chain": "row"}}, {"push": {"chain": "row"}, "must_capture": True},
+    ],
+    ids=["plain", "must_capture", "hand", "row", "row-must_capture"],
+)
+@pytest.mark.parametrize(
+    "agents", [("greedy", "random"), ("minimax:nodes=150", "greedy")],
+    ids=lambda pair: "-vs-".join(pair),
+)
+def test_a_push_game_is_played_the_same_way_on_both_sides(
+    rules: dict[str, Any], agents: tuple[str, str]
+) -> None:
+    """A removing push is a capture to `must_capture`, the hand, quiescence and the ordering,
+    on both sides of the boundary."""
+    _assert_same_played(_sumo(**rules), agents)
+
+
+def test_the_push_arm_throws_pieces_off() -> None:
+    """Otherwise the arm above would compare games no removing push ever reached."""
+    engine = _sumo()
+    game = play_game(engine, ("minimax:nodes=150", "greedy"), seed=5)
+    assert any(game.captures)
+
+
 def _condottieri() -> Engine:
     """TC6 (`docs/plan-turncoat.md` §5.5): chess with two mercenaries nobody owns for hire at
     2, knights bribable at twice 3, captures paying bounties into a purse of 2. No committed

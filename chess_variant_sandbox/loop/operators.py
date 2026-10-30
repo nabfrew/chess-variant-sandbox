@@ -51,6 +51,7 @@ from chess_variant_sandbox.spec.schema import (
     POUNCE_KINDS,
     PRICE_MAX,
     PURSE_MAX,
+    PUSH_ENTRY_DEFAULTS,
     REPETITION_NEVER,
     REST_MAX,
     SIGHT_EFFECTS,
@@ -58,7 +59,9 @@ from chess_variant_sandbox.spec.schema import (
     SPLIT_MAX,
     SPLIT_MIN,
     SQUARE_SYMMETRIES,
+    STRENGTH_MAX,
     TURNING_PATHS,
+    WEIGHT_MAX,
     _any_equal_speed_meeting,
     _check_extinction_coherence,
     _sight_entry,
@@ -78,6 +81,7 @@ from chess_variant_sandbox.spec.schema import (
     is_nobodys,
     is_simultaneous,
     majority_ids,
+    move_push,
     neutral_ids,
     npc_pounce,
     npc_respawn,
@@ -103,6 +107,10 @@ from chess_variant_sandbox.spec.schema import (
     purse_market,
     purse_pays_loser,
     purse_rule,
+    push_bars,
+    push_rule,
+    pushable_ids,
+    pushing_ids,
     reach_reflection,
     reads_alike_for_both,
     reflect_square,
@@ -134,6 +142,7 @@ from chess_variant_sandbox.spec.transform import (
     set_wrap,
     settle_en_passant,
     settle_inert_rules,
+    settle_push,
     split_piece,
     strip_rule,
 )
@@ -195,6 +204,7 @@ class Operator:
 
 # How `Operator.apply` names a rule `settle_inert_rules` took away, in a player's words.
 _GONE_WORDS = {
+    "push": "the push's rule",
     "must_capture": "compulsory capture",
     "explode_on_capture": "the explosion",
     "drops": "the hand",
@@ -636,10 +646,24 @@ def _add_a_direction(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     piece, move = rng.choice(movers)
     vector = list(rng.choice(_SHORT_VECTORS))
+    if _no_push_way(move, vector):
+        return None  # Q1074b5: a push along a rank or file needs that component (D3)
     if vector in move.get("vectors", []) or _no_leg_for(move, vector) or "legs" in move:
         return None  # SR1a: a move with stated legs lists one per vector; `state-the-legs`
     move.setdefault("vectors", []).append(vector)
     return f"gave the {piece.get('name', piece['id'])} a {vector[0]},{vector[1]} step"
+
+
+def _no_push_way(move: dict[str, Any], vector: list[int]) -> bool:
+    """Q1074b5: whether ``vector`` would give ``move``'s push no direction: a push along a
+    rank (or a file) needs a step with a component along it (D3, `schema._push_entry_refusals`)."""
+    push = move_push(move)
+    along = push["along"] if push is not None else "move"
+    if along == "move":
+        return False
+    axis = 0 if along == "rank" else 1
+    turned = expand_symmetry((vector[0], vector[1]), str(move.get("symmetry", "none")))
+    return any(direction[axis] == 0 for direction in turned)
 
 
 def _remove_a_direction(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -918,6 +942,8 @@ def _toggle_a_rule(spec: dict[str, Any], rng: random.Random) -> str | None:
             return None
         if not en_passant_can_fire(spec):
             return None
+        if push_bars(spec, "en_passant"):
+            return None  # E2: a pushing capture on the en passant piece (Q1074bg1)
         rules["en_passant"] = True
         return "added en passant"
 
@@ -1150,6 +1176,8 @@ def _win_by_arrival(spec: dict[str, Any], rng: random.Random) -> str | None:
     not settle the stamp, so twelve schema-1 parents lost every child to `rules uses
     reach, added in schema 2`. 72 of 282 in the sweep.
     """
+    if push_bars(spec, "reach"):
+        return None  # Q1074b5: `rules.reach` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
     if majority_ids(spec):
         return None
@@ -1273,7 +1301,9 @@ def _add_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
         else:
             move.pop("legs")
         change = "its jumps blocked elsewhere"
-    elif vector in move.get("vectors", []) or _no_leg_for(move, vector):
+    elif vector in move.get("vectors", []) or _no_leg_for(move, vector) or _no_push_way(
+        move, vector
+    ):
         _set_symmetry(spec, move, rng)
         change = f"a {move['symmetry']} symmetry"
     else:
@@ -1347,6 +1377,8 @@ def _claim_the_ground(spec: dict[str, Any], rng: random.Random) -> str | None:
     with nothing to count is a spec the validator rejects by name -- and an operator
     that produced one would spend a draw on a candidate that could never be played.
     """
+    if push_bars(spec, "territory"):
+        return None  # Q1074b5: `rules.territory` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
     if majority_ids(spec):
         return None
@@ -1418,6 +1450,8 @@ def _join_the_edges(spec: dict[str, Any], rng: random.Random) -> str | None:
     `ne_sw` gives 21 moves across it, and `nw_se`, the empty flanks, none. It declines
     when no pair is clear, and so does any vector the joined board would refuse.
     """
+    if push_bars(spec, "wrap"):
+        return None  # Q1074b5: a row is refused on a joined board (push.H4)
     rules = spec.setdefault("rules", {})
     if rules.get("wrap"):
         strip_rule(spec, "wrap")
@@ -1584,6 +1618,8 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     no legal move at all -- every position has exactly the moves it had before, and only
     what they do is different.
     """
+    if push_bars(spec, "strike"):
+        return None  # Q1074b5: `rules.strike` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
@@ -1648,6 +1684,8 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     left to the validator, on the module's own rule: what is checked here is what would
     otherwise make *every* draw a rejection.
     """
+    if push_bars(spec, "contacts"):
+        return None  # Q1074b5: `rules.contacts` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
@@ -1804,6 +1842,8 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
     an entry, and takes the table with its last link. A deletion can remove the only link
     that kept a target alive, so it settles `choose` as `transform.settle_landing` does.
     """
+    if push_bars(spec, "contacts"):
+        return None  # Q1074b5: `rules.contacts` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
@@ -1852,6 +1892,8 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None  # two rules cannot both say what happens to a taken piece
     if uses_sweep(spec):
         return None  # a contact table is refused beside a sweep
+    if push_bars(spec, "contacts"):
+        return None  # X2: a contact table is refused beside a push (Q1074bg1)
     candidates = merge_links(spec)
     if not candidates:
         return None
@@ -1946,6 +1988,10 @@ def _place_a_stone(spec: dict[str, Any], rng: random.Random) -> str | None:
     if not spare:
         return None
     set_stone(spec, spare[0])
+    rule = push_rule(spec)
+    if rule is not None and rule["chain"] == "weight" and spare[0] in pushable_ids(spec):
+        # Q1074b5: under a weighed push every type a push may move weighs something (§2).
+        next(p for p in pieces(spec) if p.get("id") == spare[0])["weight"] = 1
     return (
         "each player may place a stone on any empty square instead of moving, as often "
         "as they like; a stone never moves again and blocks what stands beside it"
@@ -1973,6 +2019,8 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
     than left to the validator, on the module's own rule: what is checked here is what
     would otherwise make *every* draw a rejection.
     """
+    if push_bars(spec, "explode_on_capture"):
+        return None  # Q1074b5: `rules.explode_on_capture` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
     if majority_ids(spec):
         return None
@@ -2150,6 +2198,8 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules a round has no use for are dropped (a wild piece's pounce among them). Out: the rule, every `beats` and the tie go,
     and the royal capture win stays, which an alternating game plays as it is.
     """
+    if push_bars(spec, "simultaneous"):
+        return None  # Q1074b5: `rules.simultaneous` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
@@ -2769,9 +2819,15 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None  # the validator refuses each of these beside a wild piece
 
     # T1: a wild type's moves are never read, so the validator refuses a turning path on one.
+    # Q1074b5: nor a type the push reads (a pusher, a type a list names, a weighed type):
+    # a wild type neither pushes nor is pushed (N1, N2).
+    read = set(pushing_ids(spec)) | {
+        str(named) for piece in pieces(spec) for named in piece.get("pushes") or []
+    }
     candidates = [
         piece for piece in _non_royal(spec)
         if all(path_of(move) == "straight" for move in piece.get("moves", []))
+        and piece.get("id") not in read and "weight" not in piece
     ]
     if not candidates:
         return None
@@ -3182,6 +3238,10 @@ def _draw_on_dead_material(spec: dict[str, Any], rng: random.Random) -> str | No
     rules = spec.get("rules") or {}
     trial = copy.deepcopy(spec)
     if "insufficient_material" in rules:
+        if not insufficient_material_live(spec):
+            # Stated where it states nothing (Q1074b5: a row or a blocking edge makes the
+            # game other than chess underneath), so taking it off is the same game.
+            return None
         trial["rules"].pop("insufficient_material")
         said = "too little left to mate is no longer a draw at once; the clocks decide"
     else:
@@ -3763,6 +3823,8 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     being taken off (half the draws), and a new strike may be rifle given to one type (the
     archers). *Arm everyone*: a strike with ``by`` loses it, every piece striking again.
     """
+    if push_bars(spec, "strike"):
+        return None  # Q1074b5: `rules.strike` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
@@ -3917,6 +3979,7 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     movers = [
         (p, m) for p, m in _movers(spec, "slide")
         if p.get("id") not in promoting and p.get("id") != duck
+        and move_push(m) is None  # Q1074b5: a sweep never pushes (D6)
     ]
     if not movers:
         return None
@@ -4772,6 +4835,288 @@ def _pay_the_loser(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+# --------------------------------------------------------------------------- the push
+#
+# Q1074b5 (`docs/plan-push.md` §4, generation 56): four operators that add and take away each
+# of the push's features, so a design run can cross every one in either direction. Each makes
+# its edit and asks the validator, declining where it refuses (the push is refused beside a
+# dozen rules, §3.14, and an operator that copied those clauses would drift from them).
+
+
+def _push_candidates(spec: dict[str, Any]) -> list[str]:
+    """The types a push could be given: a player's piece with a move that may carry one (no
+    sweep, no turning path), never a wild type, the duck or a spy, in declaration order."""
+    rules = spec.get("rules") or {}
+    nobodys = {
+        npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
+    } | {duck_piece(rules)}
+    spies = set(spy_ids(spec))
+    return [
+        piece["id"] for piece in pieces(spec)
+        if isinstance(piece.get("id"), str) and piece["id"] not in nobodys
+        and piece["id"] not in spies and _push_entries(piece)
+    ]
+
+
+def _push_entries(piece: dict[str, Any]) -> list[dict[str, Any]]:
+    """A piece's move entries a push may ride on (D6, D7: never a sweep, never a turning
+    path)."""
+    return [
+        move for move in piece.get("moves") or []
+        if isinstance(move, dict) and move.get("kind", "slide") in ("slide", "leap", "hop", "lame")
+        and move.get("path", "straight") == "straight"
+    ]
+
+
+def _give_push(spec: dict[str, Any], pid: str, push: Any) -> int:
+    """Put ``push`` on every move of ``pid`` that may carry one; how many it went on."""
+    piece = next(piece for piece in pieces(spec) if piece.get("id") == pid)
+    entries = _push_entries(piece)
+    for move in entries:
+        move["push"] = copy.deepcopy(push)
+    return len(entries)
+
+
+def _push_instead(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Give a piece a push, or take one away (`docs/plan-push.md` §1).
+
+    In a game where nothing pushes, one type's every move that may carry a push shoves what it
+    lands on one square on instead of taking it, and, each at a draw of its own, that push is
+    given one of its knobs (whose pieces, a capture beside it, the way it shoves), a list of
+    whom it may push, a whole row moved (`chain` ``"row"``) or an edge that blocks: one edit
+    that can reach every name of the push from a game without one. In a game that pushes, one
+    of two, at random: another type pushes too, or one pushing type stops, and what the push's
+    keys then read nothing of goes with it. The validator decides the rest.
+    """
+    trial = copy.deepcopy(spec)
+    pushers = pushing_ids(trial)
+    others = [pid for pid in _push_candidates(trial) if pid not in pushers]
+    if pushers and (not others or rng.random() < 0.5):
+        pid = rng.choice(pushers)
+        piece = next(piece for piece in pieces(trial) if piece.get("id") == pid)
+        for move in piece.get("moves") or []:
+            if isinstance(move, dict):
+                move.pop("push", None)
+        settle_push(trial)
+        said = f"the {pid} no longer pushes what it lands on"
+    elif others:
+        pid = rng.choice(others)
+        push: dict[str, Any] = {}
+        knob = rng.choice(("plain", "plain", "whose", "captures", "along"))
+        if knob == "whose":
+            push["whose"] = rng.choice(("own", "any"))
+        elif knob == "captures":
+            push["captures"] = True
+        elif knob == "along":
+            push["along"] = rng.choice(("rank", "file"))
+        _give_push(trial, pid, push or True)
+        said = f"the {pid} pushes what it lands on one square on instead of taking it"
+        if push:
+            said += f" ({', '.join(f'{key} {value}' for key, value in push.items())})"
+        if not pushers:
+            extra = rng.choice(("none", "none", "pushes", "row", "edge"))
+            if extra == "pushes":
+                named = sorted(
+                    p for p in _push_candidates(trial) if not _is_royal(trial, p)
+                ) or [pid]
+                listed = sorted(rng.sample(named, rng.randint(1, len(named))))
+                next(p for p in pieces(trial) if p.get("id") == pid)["pushes"] = listed
+                said += f", and only {', '.join(listed)}"
+            elif extra == "row":
+                trial.setdefault("rules", {})["push"] = {"chain": "row"}
+                said += ", a whole row at once"
+            elif extra == "edge":
+                trial.setdefault("rules", {})["push"] = {"edge": "blocks"}
+                said += ", never off the board"
+    else:
+        return None
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _is_royal(spec: dict[str, Any], pid: str) -> bool:
+    return any(piece.get("id") == pid and piece.get("royal") for piece in pieces(spec))
+
+
+def _shape_the_push(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Turn one knob of a push the game has (`docs/plan-push.md` §1.2): a pushing type's
+    ``whose``, ``captures`` or ``along`` on its every pushing move, or the game's ``chain``
+    (one piece or a row) or ``edge`` (off the board or blocked). A knob off its default goes
+    back to it; one at its default is set. Nothing to do where nothing pushes, and under
+    ``chain`` ``"weight"``, which `weigh-the-push` crosses. The validator decides the rest.
+    """
+    trial = copy.deepcopy(spec)
+    rule = push_rule(trial)
+    if rule is None:
+        return None
+    knob = rng.choice(("whose", "captures", "along", "chain", "edge"))
+    rules = trial.setdefault("rules", {})
+    if knob in ("chain", "edge"):
+        if knob == "chain" and rule["chain"] == "weight":
+            return None
+        stated = dict(rules.get("push") or {})
+        off, on = ("one", "row") if knob == "chain" else ("removes", "blocks")
+        if rule[knob] == off:
+            stated[knob] = on
+            said = "a whole row moves at once" if knob == "chain" else "nothing is pushed off the board"
+        else:
+            stated.pop(knob, None)
+            said = "only one piece is pushed at a time" if knob == "chain" else "a piece pushed over the edge is gone"
+        if stated:
+            rules["push"] = stated
+        else:
+            rules.pop("push", None)
+    else:
+        pid = rng.choice(pushing_ids(trial))
+        piece = next(piece for piece in pieces(trial) if piece.get("id") == pid)
+        moves = [move for move in piece.get("moves") or [] if move_push(move) is not None]
+        current = move_push(moves[0])
+        assert current is not None
+        if current[knob] != PUSH_ENTRY_DEFAULTS[knob]:
+            value = PUSH_ENTRY_DEFAULTS[knob]
+        else:
+            value = {
+                "whose": rng.choice(("own", "any")), "captures": True,
+                "along": rng.choice(("rank", "file")),
+            }[knob]
+        for move in moves:
+            push = {**(move_push(move) or {}), knob: value}
+            stated = {k: v for k, v in push.items() if PUSH_ENTRY_DEFAULTS[k] != v}
+            move["push"] = stated or True
+        said = f"the {pid}'s push: {knob} {str(value).lower()}"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _name_the_pushed(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Name whom one pusher may push, or let it push every type again (`pieces[].pushes`,
+    `docs/plan-push.md` §1.4). A pusher with a list loses it (and, under ``chain`` ``"one"``
+    or ``"row"``, a pusher with the weight shorthand its weight, which is the same list); one
+    with none gets a list of one to all of the types a push may move, the circle's way in.
+    The validator decides the rest.
+    """
+    trial = copy.deepcopy(spec)
+    rule = push_rule(trial)
+    if rule is None:
+        return None
+    pid = rng.choice(pushing_ids(trial))
+    piece = next(piece for piece in pieces(trial) if piece.get("id") == pid)
+    if "pushes" in piece:
+        piece.pop("pushes")
+        said = f"the {pid} may push every piece"
+    elif rule["chain"] != "weight" and "weight" in piece:
+        piece.pop("weight")
+        if not any("weight" in p and p.get("id") in pushing_ids(trial) for p in pieces(trial)):
+            for other in pieces(trial):
+                other.pop("weight", None)
+        said = f"the {pid} may push every piece, whatever it weighs"
+    else:
+        named = sorted(p for p in _push_candidates(trial) if not _is_royal(trial, p)) or [pid]
+        listed = sorted(rng.sample(named, rng.randint(1, len(named))))
+        piece["pushes"] = listed
+        said = f"the {pid} may push only {', '.join(listed)}"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _weight_of(piece: dict[str, Any]) -> int:
+    value = piece.get("value", 1)
+    return max(1, min(WEIGHT_MAX, round(value if isinstance(value, (int, float)) else 1)))
+
+
+def _weigh_the_push(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Weigh the pushes, or stop weighing them (`chain` ``"weight"``, `pieces[].weight` and
+    `.strength`, `docs/plan-push.md` §2 and its correction).
+
+    Off ``"weight"`` (a game that pushes, or one given its first pusher here, as
+    `push-instead` gives one): a line moves only when the pusher's strength is at least its
+    summed weight, every pusher and every type it may push weighing its value (1 to 9), and
+    at a draw one pusher stronger than it weighs. Under ``"weight"``, one of three, at random:
+    a pusher's strength stated apart goes, or one is given; or the weights go, and with them
+    the chain, a row no longer weighed (the lists stay). The validator decides the rest.
+    """
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    rule = push_rule(trial)
+    if rule is not None and rule["chain"] == "weight":
+        pushers = pushing_ids(trial)
+        strong = [
+            p for p in pieces(trial)
+            if p.get("id") in pushers and "strength" in p and p.get("strength") != p.get("weight")
+        ]
+        draw = rng.random()
+        if strong and draw < 0.4:
+            piece = rng.choice(strong)
+            piece.pop("strength")
+            if "weight" not in piece:
+                piece["weight"] = _weight_of(piece)
+            said = f"the {piece['id']} is as strong as it is heavy"
+        elif draw < 0.7:
+            chosen = rng.choice(pushers)
+            piece = next(p for p in pieces(trial) if p.get("id") == chosen)
+            # A strength it already has hands back the parent (Q1074bg2: Dohyo's pushers
+            # are stronger than they weigh), so only a new one is drawn.
+            weight = piece.get("weight", _weight_of(piece))
+            fresh = sorted(
+                {min(STRENGTH_MAX, weight + step) for step in range(1, 5)}
+                - {piece.get("strength", weight)}
+            )
+            if not fresh:
+                return None
+            piece["strength"] = rng.choice(fresh)
+            said = f"the {piece['id']} pushes with strength {piece['strength']}"
+        else:
+            stated = dict(rules.get("push") or {})
+            stated.pop("chain", None)
+            if stated:
+                rules["push"] = stated
+            else:
+                rules.pop("push", None)
+            for piece in pieces(trial):
+                piece.pop("weight", None)
+                piece.pop("strength", None)
+            said = "nothing is weighed: a push moves one piece at a time"
+    else:
+        said = ""
+        if rule is None:
+            others = _push_candidates(trial)
+            if not others:
+                return None
+            pid = rng.choice(others)
+            _give_push(trial, pid, True)
+            said = f"the {pid} pushes what it lands on, and "
+        stated = dict(rules.get("push") or {})
+        stated["chain"] = "weight"
+        rules["push"] = stated
+        for piece in pieces(trial):
+            piece.pop("weight", None)
+            piece.pop("strength", None)
+        weighed = set(pushing_ids(trial)) | pushable_ids(trial)
+        for piece in pieces(trial):
+            if piece.get("id") in weighed:
+                piece["weight"] = _weight_of(piece)
+        said += "a line moves only when the pusher outweighs it, each piece weighing its value"
+        if rng.random() < 0.3:
+            chosen = rng.choice(pushing_ids(trial))
+            piece = next(p for p in pieces(trial) if p.get("id") == chosen)
+            piece["strength"] = min(STRENGTH_MAX, piece["weight"] + rng.randint(1, 4))
+            said += f", the {piece['id']} pushing with strength {piece['strength']}"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -4851,6 +5196,10 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("blind-a-piece", _blind_a_piece),
     Operator("widen-a-gaze", _widen_a_gaze),
     Operator("turn-the-gaze", _turn_the_gaze),
+    Operator("push-instead", _push_instead),
+    Operator("shape-the-push", _shape_the_push),
+    Operator("name-the-pushed", _name_the_pushed),
+    Operator("weigh-the-push", _weigh_the_push),
 )
 
 

@@ -1114,9 +1114,10 @@ class TestARuleNobodyConsideredIsRefusedRatherThanDropped:
         considered = (
             variant._RULES_TRANSLATED | variant._RULES_REFUSED | set(variant._RULES_IRRELEVANT)
         )
-        assert considered == schema._RULES_KEYS, (
-            f"new in the schema: {sorted(schema._RULES_KEYS - considered)}; "
-            f"gone from the schema: {sorted(considered - schema._RULES_KEYS)}"
+        known = schema._RULES_KEYS
+        assert considered == known, (
+            f"new in the schema: {sorted(known - considered)}; "
+            f"gone from the schema: {sorted(considered - known)}"
         )
         overlap = variant._RULES_TRANSLATED & variant._RULES_REFUSED
         assert not overlap, f"a rule cannot both cross and be refused: {sorted(overlap)}"
@@ -1199,7 +1200,6 @@ class TestAKeyOutsideTheRulesIsRefusedRatherThanDropped:
         "move": ("_MOVE_KEYS", lambda spec: spec["pieces"][0]["moves"][0]),
         "move.condition": ("_CONDITION_KEYS", _first_condition),
     }
-
     def _grown(self, monkeypatch: pytest.MonkeyPatch, level: str) -> dict[str, Any]:
         """Chess with one key nobody has been through, valid under a grown schema."""
         from chess_variant_sandbox.spec import schema

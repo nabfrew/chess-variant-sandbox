@@ -333,6 +333,8 @@ _RULES_REFUSED = frozenset(
         "promote_on_entry",
         # TC5 (`docs/plan-turncoat.md` §5.7): read off `compiled.purse`.
         "purse",
+        # Q1074b1 (`docs/plan-push.md` §4): read off `compiled.push`.
+        "push",
         "scoring",
         "simultaneous",
         "strike",
@@ -463,6 +465,15 @@ def _check_unsupported_rules(
         reasons.append(
             "rules.purse: currency, and a market that sells pieces for it, have no "
             "counterpart in Fairy-Stockfish"
+        )
+    if compiled.push is not None:
+        # Q1074b1 (`docs/plan-push.md` §4): a move there is a capture or a quiet move onto its
+        # target, and nothing displaces a second piece. Read off the compiled rule, so a
+        # ``push: false`` (or ``rules.push`` at its defaults with no move that pushes) refuses
+        # nothing. Every push game is engine-only; `tests/push_oracle.py` is its second opinion.
+        reasons.append(
+            "pieces[].moves[].push: a move that pushes the piece it lands on one step on (or "
+            "off the board) has no counterpart; Fairy-Stockfish never displaces a second piece"
         )
     if compiled.territory is not None:
         reasons.append("rules.territory: no square changes hands in Fairy-Stockfish")
@@ -893,6 +904,21 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             "rules.purse, which is "
             "refused off the compiled rule (compiled.purse); a pocket is a count, not a price",
         ),
+        "pushes": (
+            _REFUSED,
+            "Q1074b1: who a pusher may push, read only beside a move that pushes, which is "
+            "refused off the compiled rule (compiled.push)",
+        ),
+        "weight": (
+            _REFUSED,
+            "Q1074b1: a push's weight or the list's shorthand, read only beside a move that "
+            "pushes, which is refused off the compiled rule (compiled.push)",
+        ),
+        "strength": (
+            _REFUSED,
+            "Q1074b4s: a pusher's strength under rules.push.chain 'weight', read only beside a "
+            "move that pushes, which is refused off the compiled rule (compiled.push)",
+        ),
         "sight": (
             _REFUSED,
             "schema 30: lines of sight and their effects, read off the compiled rule "
@@ -924,6 +950,11 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             _REFUSED,
             "Q1063: only on a sweep, which `_descriptor_term` refuses by name whatever its "
             "lengths (Betza has no piece that captures what it passes over)",
+        ),
+        "push": (
+            _REFUSED,
+            "Q1074b1: a move that pushes the piece it lands on, refused off the compiled rule "
+            "(compiled.push); false, the off value, refuses nothing",
         ),
         "path": (
             _REFUSED,

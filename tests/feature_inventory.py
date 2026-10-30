@@ -36,6 +36,7 @@ from chess_variant_sandbox.spec.schema import (
     insufficient_material_live,
     keeping_link_holds,
     majority_ids,
+    move_push,
     neutral_ids,
     npc_pounce,
     npc_respawn,
@@ -48,6 +49,7 @@ from chess_variant_sandbox.spec.schema import (
     purse_bribes,
     purse_pays_loser,
     purse_rule,
+    push_rule,
     strike_is_live,
     sweep_range_stated_off,
     turn_is_long,
@@ -55,7 +57,7 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 55
+LAST_BUMP = 56
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -1236,6 +1238,62 @@ def _schema_fifty_five_uses(spec: dict[str, Any]) -> set[str]:
     return {"rules.insufficient_material"} if insufficient_material_live(spec) else set()
 
 
+def _schema_fifty_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 56 added, by name (Q1074b1 to Q1074b4s, the
+    push, `docs/plan-push.md`; numbered by order of landing, bumping no version; its
+    surfaces closed by Q1074b5). Nine names, each at a value other than its off value:
+
+    * ``pieces.moves.push`` -- a move that, landing on a piece it may push, shoves it one
+      square on along the move (or off the board) instead of taking it;
+    * ``pieces.moves.push.whose`` -- ``"own"`` or ``"any"``: it pushes its own side's pieces
+      too (``"enemy"``, the default, names nothing);
+    * ``pieces.moves.push.captures`` -- ``true``: it may take an enemy as well as push it;
+    * ``pieces.moves.push.along`` -- ``"rank"`` or ``"file"``: the pushed piece goes along
+      the move's rank or file rather than the move's own way;
+    * ``pieces.pushes`` -- a pusher's list of the types it may push;
+    * ``pieces.weight`` -- a piece's weight: the list's shorthand under ``chain`` ``"one"``
+      and ``"row"``, a pushed piece's load under ``"weight"``;
+    * ``pieces.strength`` -- under ``"weight"``, a pusher's strength stated apart from its
+      weight (written equal it is the off value, Q1074b4s);
+    * ``rules.push.chain`` -- ``"row"`` or ``"weight"``: a whole line moves;
+    * ``rules.push.edge`` -- ``"blocks"``: nothing is pushed off the board.
+
+    Read only in a game where some move pushes (`schema.push_rule`), as the validator refuses
+    every one of them elsewhere.
+    """
+    rule = push_rule(spec)
+    if rule is None:
+        return set()
+    used = {"pieces.moves.push"}
+    for piece in spec.get("pieces") or []:
+        if not isinstance(piece, dict):
+            continue
+        for move in piece.get("moves") or []:
+            push = move_push(move)
+            if push is None:
+                continue
+            if push["whose"] != "enemy":
+                used.add("pieces.moves.push.whose")
+            if push["captures"] is True:
+                used.add("pieces.moves.push.captures")
+            if push["along"] != "move":
+                used.add("pieces.moves.push.along")
+        if isinstance(piece.get("pushes"), list):
+            used.add("pieces.pushes")
+        if "weight" in piece:
+            used.add("pieces.weight")
+        if (
+            rule["chain"] == "weight" and "strength" in piece
+            and piece.get("strength") != piece.get("weight")
+        ):
+            used.add("pieces.strength")
+    if rule["chain"] != "one":
+        used.add("rules.push.chain")
+    if rule["edge"] != "removes":
+        used.add("rules.push.edge")
+    return used
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -1284,4 +1342,5 @@ _COLLECTORS = {
     53: _schema_fifty_three_uses,
     54: _schema_fifty_four_uses,
     55: _schema_fifty_five_uses,
+    56: _schema_fifty_six_uses,
 }

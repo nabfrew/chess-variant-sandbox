@@ -543,7 +543,27 @@ class TestTheFingerprintsPointAtSomething:
 # rule's roles and `engine/compile.py` compiles it. Sixteen library games switch it on (a
 # mechanics edit, new hashes); every other game's tables and complexity are unmoved. It was
 # "0fade4c28a4b49ff" after Q1059a; Q1069b re-measures the switched-on games and re-scores.
-FROZEN_METRICS = "aed6e32deb790eec"
+# **Moved 2026-10-30 by Q1074b2 (the single push, `docs/plan-push.md`)**: `engine/moves.py`
+# names `MOVE_PUSH` and its direction, `engine.py`'s `describe_move` writes a push, and
+# `spec/complexity.py` costs `rules.push` at 0 until Q1074b5 sets it. No library game pushes,
+# so no number moves; the core change stales the library by the build anyway, and batch P's
+# replay (Q1074br) re-measures it. It was "aed6e32deb790eec" after Q1069a.
+# **Moved 2026-10-30 by Q1074b4 (rows and weights)**: `engine.py`'s `describe_move` reads a
+# row's removal off its last piece (`CompiledSpec.push_removed`), and `spec/describe.py` states
+# the chain. Read only in a push game, which no library game is, so no number moves; batch P's
+# replay (Q1074br) re-measures. It was "f3f6e6a02ff8fdc6" after Q1074b2.
+# **Moved 2026-10-30 by Q1074b5 (the push's round-1 surfaces)**: `spec/complexity.py` charges
+# the push from the pieces (`_push_extras`: 1.0, a row +0.5, weighed +0.5, a strength apart
+# +0.25) and counts a pusher's list as a capture restriction, and `tournament/analysis.py`'s
+# `takes` reads a push through `CompiledSpec.push_takes`. Both read only a game some move of
+# which pushes, which no library game is, so no rule mass, complexity or `analysis.json`
+# moves; batch P's replay (Q1074br) re-measures. It was "171b7050b7c95b19" after Q1074b4.
+# **Moved 2026-10-30 by Q1074b6 (no push back, K5)**: `engine/compile.py` draws the bar's keys
+# (`PushRule.zobrist_bar`, last of all, only under `rules.push.no_push_back`), `engine/state.py`
+# and `engine.py` carry `GameState.push_bar`, and `spec/describe.py` states the bar. Read only in
+# a push game, which no library game is, so no number moves; batch P's replay (Q1074br)
+# re-measures. It was "fc1dd3f84e30f9be" after Q1074b5.
+FROZEN_METRICS = "45d196cca374ce25"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -892,7 +912,20 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-29 by Q1059a (gating)**: `engine/moves.py`'s gate accessors and
 # `describe_move`'s gate text, read only under `drops.gating`, so no `analysis.json` moves. It was
 # "1a1138b2581d1236" after CS2.
-FROZEN_ANALYSIS = "096ef3d32021f620"
+# **Moved 2026-10-30 by Q1074b2 (the single push)**: `engine/moves.py`'s `MOVE_PUSH` and
+# `describe_move`'s push text, read only in a push game, which no library game is, so no
+# `analysis.json` moves. It was "096ef3d32021f620" after Q1059a.
+# **Moved 2026-10-30 by Q1074b4 (rows and weights)**: `describe_move`'s `>>` reads a row's
+# removal off its last piece, only in a push game, so no `analysis.json` moves. It was
+# "910f6067a58c518e" after Q1074b2.
+# **Moved 2026-10-30 by Q1074b5**: `analysis.takes`, the record's capture tally, counts a push
+# only where it throws an enemy off the board (`CompiledSpec.push_takes`), not every push as its
+# occupied target read; only in a push game, which no library game is, so no `analysis.json`
+# moves. It was "aa8dc40bf1f3cc15" after Q1074b4.
+# **Moved 2026-10-30 by Q1074b6 (no push back)**: `GameState.push_bar` crosses the boundary
+# (`engine.py`'s pack and unpack) and the compiler draws its keys, only in a game under
+# `rules.push.no_push_back`, so no `analysis.json` moves. It was "15b9bee78794e7b2" after Q1074b5.
+FROZEN_ANALYSIS = "1969ab0341161e29"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

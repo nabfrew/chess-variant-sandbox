@@ -312,6 +312,8 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/atomic": "e77e414d76c510af",
     "rulesets/bastion": "74c12b0fe52b876b",
     "rulesets/berolina": "733c98e8156d9fb6",  # Q614 (W7): its description, for a player; 2026-10-18: its description, written as the game's idea (was 32995edcf561f5e3)
+    "rulesets/brink": "2307e963db78b4b2",  # Q1074bg1, 2026-10-30
+    "rulesets/dohyo": "ee04f5c4ac063dae",  # Q1074bg2, 2026-10-30
     "rulesets/capablanca": "536dd74dd518d9da",  # 2026-10-18: its description, written as the game's idea (was d828fec94fd054ae)
     "rulesets/chess": "9d9595bc228f1a31",  # Q614 (W7): its description, for a player
     "archive/chess-oriented-pawns": "853eb17527f25798",  # Q868: its description, what its difference does in play (was e6142ab640c179da); Q870: its name (was e47286e8484e42c2); 2026-10-18: its description, written as the game's idea (was e5f76b8db6fdd732)

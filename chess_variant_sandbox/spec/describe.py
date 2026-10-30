@@ -52,6 +52,7 @@ from chess_variant_sandbox.spec.schema import (
     is_nobodys,
     is_simultaneous,
     majority_ids,
+    move_push,
     neutral_ids,
     npc_pounce,
     npc_respawn,
@@ -64,12 +65,16 @@ from chess_variant_sandbox.spec.schema import (
     piece_rests,
     piece_sights,
     piece_speeds,
+    piece_strengths,
+    piece_weights,
     portal_groups,
     portal_stand_in_shape,
     purse_bribes,
     purse_market,
     purse_pays_loser,
     purse_rule,
+    push_rule,
+    pushing_ids,
     simultaneous_switch,
     spy_ids,
     sweep_length,
@@ -270,6 +275,8 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     # Schema 19: a portal changes where a line goes, so it is read with the walls and
     # the wild pieces, before any sentence about what a capture or a promotion does.
     lines.extend(_describe_portals(spec, rules))
+    # Q1074b4 (`docs/plan-push.md` §2): what a push moves, read with the moves that push.
+    lines.extend(_describe_push(spec))
 
     lines.append(
         ("A player with no legal move at the start of a round " if is_simultaneous(rules)
@@ -771,10 +778,35 @@ def _move_descriptor(move: dict[str, Any]) -> str:
     if len(directions) > len(move["vectors"]):
         text += f" [{len(directions)} directions]"
 
+    pushes = _push_clause(move)
+    if pushes:
+        text += f"; {pushes}"
     clauses = _condition_clauses(move.get("condition"))
     if clauses:
         text += " - " + " and ".join(clauses)
     return text
+
+
+def _push_clause(move: dict[str, Any]) -> str:
+    """Q1074b2 (`docs/plan-push.md` §1.2): what this move does to a piece it lands on that it
+    may push, or ``""`` for a move that pushes nothing."""
+    push = move_push(move)
+    if push is None:
+        return ""
+    whose = {"enemy": "an enemy piece", "own": "one of its own pieces", "any": "any piece"}[
+        push["whose"]
+    ]
+    along = {
+        "move": "one step further the way it came",
+        "rank": "one square along the rank, the way it came",
+        "file": "one square along the file, the way it came",
+    }[push["along"]]
+    instead = (
+        " (or takes it)" if push["captures"]
+        else " instead of taking it" if push["whose"] != "own" and move.get("mode") != "move"
+        else ""
+    )
+    return f"landing on {whose} it may push, pushes it {along}{instead}"
 
 
 def _condition_clauses(condition: dict[str, Any] | None) -> list[str]:
@@ -947,7 +979,8 @@ def _move_sentence(move: dict[str, Any], hexy: bool = False) -> str | None:
     )
     clauses = _condition_clauses(move.get("condition"))
     only = (", and " + " and ".join(clauses)) if clauses else ""
-    return f"{body}{mode}{only}"
+    pushes = _push_clause(move)
+    return f"{body}{mode}{only}" + (f"; {pushes}" if pushes else "")
 
 
 def _aim(move: dict[str, Any], hexy: bool) -> _Aim | None:
@@ -1376,6 +1409,11 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "moves the duck to an empty square, where it blocks lines and nothing may take it.",
     ),
     # TC5 (`docs/plan-turncoat.md` §5.4).
+    "push": (
+        "how pushing works",
+        "How a pushed piece moves: one piece at a time, and whether a piece pushed off the "
+        "edge of the board is removed or the push is not allowed.",
+    ),
     "purse": (
         "coins and a market",
         "Each player holds coins, paid by the bounties on what they take, and may spend a "
@@ -1531,6 +1569,7 @@ RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
     "npcs": ("wild", "neutral", "monster", "non-player"),
     "duck": ("duck chess", "duck", "neutral blocker", "wall"),
     "purse": ("coins", "money", "buy", "market", "shop", "gold", "currency"),
+    "push": ("sumo", "push", "shove"),
     "turn": ("double move", "marseillais", "progressive", "several moves", "two moves"),
     "castling": ("castle",),
     "en_passant": ("en passant",),
@@ -2136,6 +2175,52 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
             "try again until either of their squares changes. " + ending
         )
     )
+    return lines
+
+
+def _describe_push(spec: dict[str, Any]) -> list[str]:
+    """Q1074b4 (`docs/plan-push.md` §2): what a push moves (`rules.push.chain`) and what the
+    edge does to it, in a game some move of which pushes; and (Q1074b6, K5) the bar on
+    pushing straight back."""
+    rule = push_rule(spec)
+    if rule is None:
+        return []
+    edge = (
+        "a piece pushed off the board is removed, as if taken by the pusher (never the "
+        "pusher's own royal)" if rule["edge"] == "removes"
+        else "a push that would put a piece off the board is not allowed"
+    )
+    chain = {
+        "one": "A push moves only the piece landed on, one step: a piece standing behind it "
+        "blocks the push.",
+        "row": "A push moves the whole line, the piece landed on and every piece behind it "
+        "up to the first empty square, each one step on; it is allowed only if the pusher "
+        "may push every piece in the line, and the last falls off at the edge.",
+        "weight": "A push moves the whole line, the piece landed on and every piece behind "
+        "it up to the first empty square, each one step on; it is allowed only if the "
+        "pusher may push every piece in the line and its strength is at least the line's "
+        "weights added together, and the last falls off at the edge.",
+    }[rule["chain"]]
+    lines = [f"{chain} A wall blocks a push, and {edge}."]
+    if rule["no_push_back"] is True:
+        lines.append(
+            "No push back: a piece just pushed to a new square, and not removed, may not on "
+            "its owner's very next move push from there onto the square it was pushed from; "
+            "the bar lasts that one move."
+        )
+    if rule["chain"] == "weight":
+        # Q1074b4s: the numbers themselves, a weight per piece and a strength per pusher (its
+        # weight unless it states one), or a player cannot tell which line moves.
+        names = {
+            piece["id"]: str(piece.get("name") or piece["id"])
+            for piece in spec.get("pieces", []) if isinstance(piece, dict) and "id" in piece
+        }
+        weights, strengths = piece_weights(spec), piece_strengths(spec)
+        weighed = ", ".join(f"{names[pid]} {weight}" for pid, weight in weights.items())
+        strong = ", ".join(
+            f"{names[pid]} {strengths[pid]}" for pid in pushing_ids(spec) if pid in strengths
+        )
+        lines.append(f"Weights: {weighed}. Strengths, of the pieces that push: {strong}.")
     return lines
 
 

@@ -42,6 +42,7 @@ from chess_variant_sandbox.spec.schema import (
     facing_turns,
     hire_ids,
     majority_ids,
+    move_push,
     neutral_ids,
     npc_pounce,
     npc_respawn,
@@ -53,6 +54,8 @@ from chess_variant_sandbox.spec.schema import (
     piece_rests,
     piece_sights,
     piece_speeds,
+    piece_strengths,
+    piece_weights,
     portal_groups,
     portal_map_shape,
     portal_stand_in_shape,
@@ -60,6 +63,10 @@ from chess_variant_sandbox.spec.schema import (
     purse_bribes,
     purse_pays_loser,
     purse_rule,
+    push_lists,
+    push_rule,
+    pushable_ids,
+    pushing_ids,
     simultaneous_switch,
     spy_ids,
     strike_changes_anything,
@@ -400,6 +407,25 @@ _SCALES: dict[str, float] = {
     # TC9c (§5.10): a bounty paid to the player who lost the piece, a flag, so a purse game
     # and its twin paying the loser are not at distance zero.
     "bounty_to_loser": 1.0,
+    # Q1074b5 (`docs/plan-push.md` §4): the push, so a game and its pushing twin, or two push
+    # games apart in one knob, are not at distance zero. The share of move entries that push;
+    # over those entries, whose pieces they push (enemy 0, any 0.5, own 1), the share that also
+    # capture, and the way the pushed piece goes (the move 0, its rank 0.5, its file 1); over
+    # the pushers, the share that name whom they push and the mean share of the declared types
+    # they may push; the chain (one 0, row 0.5, weight 1) and an edge that blocks; and under
+    # `"weight"` the mean weight and the pushers' mean strength, on the weight's own scale
+    # (a weight is 1 to 9). Under `"one"` and `"row"` a weight is the list's shorthand, read
+    # through the lists, so the two spellings of one game measure alike.
+    "push_share": 1.0,
+    "push_whose": 1.0,
+    "push_captures": 1.0,
+    "push_along": 1.0,
+    "push_lists": 1.0,
+    "push_reach": 1.0,
+    "push_chain": 1.0,
+    "push_edge_blocks": 1.0,
+    "push_weight": 9.0,
+    "push_strength": 9.0,
 }
 
 
@@ -565,7 +591,65 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         **_neutral_features(spec),
         **_bounty_features(spec),
         **_purse_features(spec),
+        **_push_features(spec, total_moves),
     }
+
+
+# Q1074b5: each push knob's values, in the order a feature reads them from 0 to 1.
+_PUSH_WHOSE = {"enemy": 0.0, "any": 0.5, "own": 1.0}
+_PUSH_ALONG = {"move": 0.0, "rank": 0.5, "file": 1.0}
+_PUSH_CHAIN = {"one": 0.0, "row": 0.5, "weight": 1.0}
+
+
+def _push_features(spec: dict[str, Any], total_moves: int) -> dict[str, float]:
+    """Q1074b5: the push, read through `schema.move_push`, `push_rule` and `push_lists`, the
+    readers the validator and the compiler share; every feature 0 in a game without one."""
+    rule = push_rule(spec)
+    entries = [
+        push for piece in spec.get("pieces") or [] if isinstance(piece, dict)
+        for move in piece.get("moves") or []
+        if (push := move_push(move)) is not None
+    ]
+    if rule is None or not entries:
+        return {name: 0.0 for name in _PUSH_FEATURES}
+    declared = [
+        piece["id"] for piece in spec.get("pieces") or []
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    ]
+    lists = push_lists(spec)
+    pushable = pushable_ids(spec)
+    reach = [
+        len(pushable if listed is None else listed) / len(declared) if declared else 0.0
+        for listed in lists.values()
+    ]
+    weighed = rule["chain"] == "weight"
+    weights = piece_weights(spec) if weighed else {}
+    strengths = piece_strengths(spec) if weighed else {}
+    pushers = set(pushing_ids(spec))
+    pusher_strengths = [value for pid, value in strengths.items() if pid in pushers]
+    return {
+        "push_share": len(entries) / total_moves,
+        "push_whose": sum(_PUSH_WHOSE.get(e["whose"], 0.0) for e in entries) / len(entries),
+        "push_captures": sum(1.0 for e in entries if e["captures"] is True) / len(entries),
+        "push_along": sum(_PUSH_ALONG.get(e["along"], 0.0) for e in entries) / len(entries),
+        "push_lists": (
+            sum(1.0 for listed in lists.values() if listed is not None) / len(lists)
+            if lists else 0.0
+        ),
+        "push_reach": sum(reach) / len(reach) if reach else 0.0,
+        "push_chain": _PUSH_CHAIN.get(rule["chain"], 0.0),
+        "push_edge_blocks": 1.0 if rule["edge"] == "blocks" else 0.0,
+        "push_weight": sum(weights.values()) / len(weights) if weights else 0.0,
+        "push_strength": (
+            sum(pusher_strengths) / len(pusher_strengths) if pusher_strengths else 0.0
+        ),
+    }
+
+
+_PUSH_FEATURES = (
+    "push_share", "push_whose", "push_captures", "push_along", "push_lists", "push_reach",
+    "push_chain", "push_edge_blocks", "push_weight", "push_strength",
+)
 
 
 def _purse_features(spec: dict[str, Any]) -> dict[str, float]:

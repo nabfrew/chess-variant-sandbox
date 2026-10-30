@@ -27,7 +27,7 @@ use crate::agents::{AgentSpec, Player};
 use crate::eval::Evaluator;
 use crate::game::{count_colours, scan_occupied, Game, Snapshot};
 use crate::rng::PyRandom;
-use crate::tables::{SquareSet, Tables, MAX_PORTAL_ENDS, MAX_SQUARES, PURSE_MAX};
+use crate::tables::{PushTables, SquareSet, Tables, MAX_PORTAL_ENDS, MAX_SQUARES, NO_BAR, PURSE_MAX};
 
 /// The full state crossing the boundary. Twelve fields: the original nine, plus checks
 /// (two u32), hands (two Vec<u32>), and everything schema 4 added grouped into one --
@@ -47,8 +47,13 @@ type StateIn = (
     Vec<u8>, u8, Vec<u8>, i16, i16, u32, u32, u64, Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>, (u16, u16)),
+    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>, Tail),
 );
+/// Slot 11's twelfth and last element, the group every later state field joins (PyO3
+/// converts a tuple of at most twelve, and slot 11 is at twelve): TC4's purse, each
+/// player's coins, then Q1074b6's push-back bar (`Game::push_bar`, `(-1, -1)` for none).
+/// The next field is its third element.
+type Tail = ((u16, u16), (i16, i16));
 /// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element.
 type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
 /// Schema 29 (Q983a): each player's resting pieces, `(square, turns left)` by square, slot
@@ -58,9 +63,8 @@ type Rest = (Vec<(i16, u8)>, Vec<(i16, u8)>);
 // Generation 36 (N1): the respawn clocks, one per respawning half, slot 11's tenth element
 // (empty without the rule; an empty one is every clock idle). Generation 38 (N5): the squares
 // of the wild pieces walking their line back, slot 11's eleventh element. TC4
-// (`docs/plan-turncoat.md` §5.2): each player's coins, slot 11's **twelfth and last**
-// element, PyO3's ceiling: the next field of any rule must restructure the group into a
-// struct.
+// (`docs/plan-turncoat.md` §5.2): each player's coins, the first element of slot 11's
+// twelfth and last, `Tail`, the group Q1074b6's push-back bar joined.
 type StateOut<'py> = (
     Bound<'py, PyBytes>,
     u8,
@@ -73,7 +77,7 @@ type StateOut<'py> = (
     Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>, (u16, u16)),
+    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>, Tail),
 );
 
 /// What the wild-piece phase did on the way to a position (schema 9): one
@@ -171,10 +175,24 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         // TC4: read only under a purse, and capped, so a hand-built position cannot key off
         // the end of the table; `[0, 0]` in every other game, whatever Python sent.
         purse: if t.purse.is_some() {
-            [state.11.11.0.min(PURSE_MAX), state.11.11.1.min(PURSE_MAX)]
+            [state.11.11.0.0.min(PURSE_MAX), state.11.11.0.1.min(PURSE_MAX)]
         } else {
             [0, 0]
         },
+        // Q1074b6 (K5): read only under the rule, and only a bar on the board, so a
+        // hand-built position cannot key off the end of the table; `NO_BAR` otherwise.
+        push_bar: push_bar_in(t, state.11.11.1),
+    }
+}
+
+/// Q1074b6 (K5): the push-back bar as Python holds it, `(y, x)`, as `Game::push_bar`:
+/// `NO_BAR` without the rule, and for a pair not on the board.
+fn push_bar_in(t: &Tables, (standing, left): (i16, i16)) -> [i16; 2] {
+    let on_board = |square: i16| square >= 0 && (square as usize) < t.n_squares;
+    if t.push.as_deref().is_some_and(PushTables::no_back) && on_board(standing) && on_board(left) {
+        [standing, left]
+    } else {
+        NO_BAR
     }
 }
 
@@ -237,7 +255,7 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
             (game.resting_of(0), game.resting_of(1)),
             game.respawn.clone(),
             game.heading_back.iter().map(|square| square as u16).collect(),
-            (game.purse[0], game.purse[1]),
+            ((game.purse[0], game.purse[1]), (game.push_bar[0], game.push_bar[1])),
         ),
     )
 }

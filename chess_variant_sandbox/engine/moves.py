@@ -70,6 +70,12 @@ MOVE_BUY = 10
 # target, the bought piece's square; the promotion field is 0. It becomes the buyer's and the
 # coins leave the buyer's purse. Takes nothing.
 MOVE_HIRE = 11
+# Q1074b2 (`docs/plan-push.md` §3.12 K1): a move that lands on a piece it may push and moves
+# that piece one step on along the push direction, or off the board. The promotion field holds
+# the pusher's promoted type *plus one* (0 none), as ``MOVE_PORTAL``'s; the tag (bits 25-29)
+# the push direction's id (``move_push``, a row of ``compile.PushRule.next``), since on a seam
+# one landing can be pushed two ways from one origin. Not a capture until Q1074b3 counts it.
+MOVE_PUSH = 12
 DUCK_STEP = 0
 DUCK_PLACE = 1
 DUCK_PASS = 2
@@ -97,6 +103,7 @@ MOVE_TYPE_NAMES = {
     MOVE_DUCK: "duck",
     MOVE_BUY: "buy",
     MOVE_HIRE: "hire",
+    MOVE_PUSH: "push",
 }
 
 
@@ -113,6 +120,7 @@ MOVE_FIELDS: dict[str, tuple[int, int]] = {
     "portal": (25, 5),
     "fold": (25, 5),
     "gate": (25, 5),
+    "push": (25, 5),
     "foreign": (30, 1),
     "gate_rook": (31, 1),
 }
@@ -137,9 +145,9 @@ def encode_move(
     =====  =========  ==========================================================
     0-7    origin     every kind
     8-15   target     every kind
-    16-19  kind       every kind (``MOVE_NORMAL`` .. ``MOVE_HIRE``, 0 to 11 of 16)
-    20-24  promotion  ``MOVE_PROMOTION`` (the type), ``MOVE_PORTAL`` (type + 1, 0
-                      none), ``MOVE_DROP``/``MOVE_BUY`` (the type), ``MOVE_ROTATE``
+    16-19  kind       every kind (``MOVE_NORMAL`` .. ``MOVE_PUSH``, 0 to 12 of 16)
+    20-24  promotion  ``MOVE_PROMOTION`` (the type), ``MOVE_PORTAL`` and ``MOVE_PUSH``
+                      (type + 1, 0 none), ``MOVE_DROP``/``MOVE_BUY`` (the type), ``MOVE_ROTATE``
                       (the facing), ``MOVE_DUCK`` (``DUCK_*``)
     25-29  landing    a strike's capture under ``position: "choose"``: the
                       landing's index (< 32, ``MAX_LANDING_CANDIDATES``)
@@ -149,6 +157,7 @@ def encode_move(
     25-29  gate       Q1059a, ``drops.gating``: the type a move places on the
                       square it vacates, plus one (0 none); on a ``MOVE_NORMAL``,
                       ``MOVE_EN_PASSANT``, ``MOVE_PROMOTION`` or ``MOVE_CASTLE``
+    25-29  push       Q1074b2: ``MOVE_PUSH``: the push direction's id (< 32)
     30     foreign    a move of a piece the mover does not own (``MOVE_FOREIGN``)
     31     gate_rook  Q1059a: a gating castle places on the rook's origin
     =====  =========  ==========================================================
@@ -204,6 +213,12 @@ def move_fold(move: int) -> int:
 def move_gate(move: int) -> int:
     """Q1059a: the tag read as a gate, the type a gating move places plus one (0 none).
     Meaningful only in a game with ``drops.gating``; elsewhere the tag is another field."""
+    return (move >> _TAG_SHIFT) & _TAG_MASK
+
+
+def move_push(move: int) -> int:
+    """Q1074b2: the tag read as a ``MOVE_PUSH``'s direction id (a row of
+    ``compile.PushRule.next``)."""
     return (move >> _TAG_SHIFT) & _TAG_MASK
 
 

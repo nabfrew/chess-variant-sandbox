@@ -47,6 +47,10 @@ const PACE = {
   sweepSlash: 280,
   sweepSparks: 420,
   sweepFade: 360,
+  // A push (Q1074b5, `pushFall`): each piece the pusher shoves slides one square on as it
+  // lands, in a travel's time; one shoved over the edge falls away in this long, tipping
+  // out past the edge and shrinking as it goes.
+  pushFall: 520,
   // A void move in a round (schema 26, Q918c): the piece steps toward the square it went
   // for and back, in this long, reaching this share of the way.
   voidStep: 460,
@@ -291,6 +295,24 @@ function strike(svg, ghost, x, y, cell, blow) {
   flash.onfinish = () => ring.remove();
 
   return blow.at + Math.max(PACE.strike, PACE.burst);
+}
+
+// A push that throws a piece off the board (Q1074b5): not a capture's knock, because
+// nothing struck it where it stood; the piece is shoved one square on, over the edge, and
+// falls away there, sliding out along the push and shrinking as it drops. `step` is the
+// push's step on the drawing (`stepXY` of the engine's `pushStep`), and `at` when the pusher
+// lands. Returns when it is gone.
+function pushFall(svg, piece, x, y, cell, step, at) {
+  const ghost = ghostAt(svg, piece, x, y, cell);
+  ghost.setAttribute('data-journey', 'push-fall');
+  const [sx, sy] = step;
+  const fall = ghost.animate([
+    { opacity: 1, transform: 'translate(0px, 0px) scale(1)' },
+    { opacity: 0.9, transform: `translate(${sx * 0.7}px, ${sy * 0.7}px) scale(0.92)`, offset: 0.45 },
+    { opacity: 0, transform: `translate(${sx * 1.1}px, ${sy * 1.1 + cell * 0.35}px) scale(0.35)` },
+  ], { duration: PACE.pushFall, delay: at, easing: 'ease-in', fill: 'both' });
+  fall.onfinish = () => ghost.remove();
+  return at + PACE.pushFall;
 }
 
 // A sweep (schema 13): not a blow on one square but an edge drawn down a line. A blade
