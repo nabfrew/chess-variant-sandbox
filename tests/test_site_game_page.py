@@ -217,9 +217,10 @@ class TestWhatACrawlerReads:
 
         assert page.status == 200
         assert page.headers["content-type"] == "text/html; charset=utf-8"
-        assert page.title == "Short walk: play it online · Chess variant sandbox"
+        assert page.title == "Play Short walk free online in your browser"
         assert page.meta("description") == (
-            "A small test game where every piece walks forward.")
+            "Play Short walk free online in your browser. A small test game where every piece "
+            "walks forward.")
         assert page.canonical == f"{SITE_URL}/game/{SHORT_HASH}"
         assert page.meta("robots") is None
         # The page is the application's, under its policy: no script runs inline.
@@ -413,7 +414,7 @@ class TestTheRouterReadsTheAddress:
                       "location.pathname = '/game'; onHistory();")
         assert said["shown"] == ["library", f"game {self.GAME}", "library"]
         assert said["moved"] == [f"push /game/{self.GAME}"]
-        assert said["title"] == "Games · Chess variant sandbox"
+        assert said["title"] == "Chess-like games to play free online in your browser"
 
     def test_a_copied_link_is_the_games_own_address(self) -> None:
         done = node_session.run(

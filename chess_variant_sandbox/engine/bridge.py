@@ -1009,6 +1009,8 @@ _MARKET_INERT: dict[str, Any] = {
     "purse_bribe": [],
     "purse_neighbour_index": [],
     "purse_neighbour_squares": [],
+    # TC9c (§5.10). False unless a bounty is paid to the player who lost the piece.
+    "purse_to_loser": False,
 }
 
 
@@ -1021,7 +1023,7 @@ def _market_fields(spec: CompiledSpec) -> dict[str, Any]:
         return {
             "purse_market": [], "purse_price": [], "purse_square_index": [], "purse_squares": [],
             "purse_hire": [], "purse_bribe": [], "purse_neighbour_index": [],
-            "purse_neighbour_squares": [],
+            "purse_neighbour_squares": [], "purse_to_loser": False,
         }
     index = [0]
     squares: list[int] = []
@@ -1050,6 +1052,7 @@ def _market_fields(spec: CompiledSpec) -> dict[str, Any]:
         "purse_bribe": list(purse.bribe),
         "purse_neighbour_index": near_index,
         "purse_neighbour_squares": near,
+        "purse_to_loser": purse.to_loser,
     }
 
 

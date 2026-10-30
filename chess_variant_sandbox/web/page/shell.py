@@ -306,12 +306,18 @@ def theme_switch() -> str:
     return f'<span class="themePick" role="group" aria-label="colour theme">{buttons}</span>'
 
 
+SIGN_SAID = "chess variants, free to play online in your browser"
+"""What the footer's signature says after the name (Q1068): on every page of both servers,
+so every page says in its visible text what the site is, whatever its view draws."""
+
+
 def footer(links: str = "") -> str:
-    """The footer on both servers (V7): the mark and the name signing the page, the links
-    (`#foot`, which the application's `paintIdentity` writes and the site's pages are
-    handed), and the theme switch, which no view rewrites."""
+    """The footer on both servers (V7): the mark and the name signing the page, with what the
+    site is (`SIGN_SAID`), the links (`#foot`, which the application's `paintIdentity` writes
+    and the site's pages are handed), and the theme switch, which no view rewrites."""
     return (
         '<footer class="muted small">'
-        f'<span class="sign">{mark(16)}<span>{NAME}</span></span>'
+        f'<span class="sign">{mark(16)}<span>{NAME}</span>'
+        f'<span class="signFree">{SIGN_SAID}</span></span>'
         f'<span id="foot">{links}</span>{theme_switch()}</footer>'
     )

@@ -1468,11 +1468,17 @@ function wireGameLinks() {
 
 // What the tab says, on every view (G3): a tab and a bookmark name what they hold. The
 // site's name closes it; a view with nothing of its own says the name alone.
+// Q1068: the titles the server writes say the games are free online in your browser
+// (`web/page/front.py`'s `FREE`, `HOME_TITLE`, `titled`), and these say the same.
 const SITE_NAME = 'Chess variant sandbox';
+const FREE_SAID = 'free online in your browser';
+const HOME_TITLE = `${SITE_NAME}: play ${FREE_SAID}`;
+const TITLE_LIMIT = 60;
 
 function setTitle(words) {
   if (words === null || words === undefined) return;
-  document.title = words ? words + ' · ' + SITE_NAME : SITE_NAME;
+  const named = words + ' · ' + SITE_NAME;
+  document.title = !words ? HOME_TITLE : named.length <= TITLE_LIMIT ? named : words;
 }
 
 // The title a route opens with, before its view has fetched anything. A game whose name is
@@ -1490,17 +1496,17 @@ function viewTitle(parts) {
     return known ? `Proven positions on ${known.name || 'an unnamed game'}` : null;
   }
   const named = {
-    map: 'The map of games', 'whats-new': "What's new", round: 'The round',
-    score: 'How the score works',
-    play: 'A game in progress', design: 'Build a game', opponent: 'Build an opponent',
-    run: 'Inventing a game',
+    map: 'The map of games', 'whats-new': "What's new · Free chess variants online in your browser",
+    round: 'The round', score: 'How the score works',
+    play: 'A game in progress', design: `Build a game ${FREE_SAID}`,
+    opponent: 'Build an opponent', run: 'Inventing a game',
   };
-  return named[parts[0]] || 'Games';
+  return named[parts[0]] || `Chess-like games to play ${FREE_SAID}`;
 }
 
 // A game's own title, the one the server writes for its address (`web/page/game.py`).
 function gameTitle(name) {
-  return (name || 'An unnamed game') + ': play it online';
+  return `Play ${name || 'an unnamed game'} ${FREE_SAID}`;
 }
 
 // Q723: the page answers two addresses. `/` is the landing page and `/game` the games, for

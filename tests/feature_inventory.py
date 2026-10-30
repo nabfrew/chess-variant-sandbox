@@ -45,6 +45,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     promoting_piece_ids,
     purse_bribes,
+    purse_pays_loser,
     purse_rule,
     strike_is_live,
     sweep_range_stated_off,
@@ -53,7 +54,7 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 53
+LAST_BUMP = 54
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -1212,6 +1213,17 @@ def _schema_fifty_three_uses(spec: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _schema_fifty_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 54 added, by name (TC9c,
+    `docs/plan-turncoat.md` §5.10; numbered by order of landing, bumping no version). One
+    nested key:
+
+    * ``rules.purse.bounty_to`` -- ``"loser"``: a capture's bounty paid to the player who
+      lost the piece, not the taker. ``"taker"`` is the off value and names nothing.
+    """
+    return {"rules.purse.bounty_to"} if purse_pays_loser(spec) else set()
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -1258,4 +1270,5 @@ _COLLECTORS = {
     51: _schema_fifty_one_uses,
     52: _schema_fifty_two_uses,
     53: _schema_fifty_three_uses,
+    54: _schema_fifty_four_uses,
 }

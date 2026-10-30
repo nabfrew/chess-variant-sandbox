@@ -442,6 +442,25 @@ def test_the_condottieri_arm_hires() -> None:
     assert MOVE_HIRE in kinds
 
 
+def _paid_to_loser() -> Engine:
+    """TC9c (`docs/plan-turncoat.md` §5.10): the levy (TC9b's retired showcase) with its
+    bounties paid to the player who lost the piece, so the purse the coin term reads moves on
+    the opponent's capture."""
+    spec: dict[str, Any] = load_spec(RULESETS.parent / "tests" / "_retired_the_levy.json")
+    spec["rules"]["purse"]["bounty_to"] = "loser"
+    return Engine(spec)
+
+
+@pytest.mark.parametrize(
+    "agents", [("random", "random"), ("greedy", "random"), ("minimax:nodes=200", "greedy")],
+    ids=lambda pair: "-vs-".join(pair),
+)
+def test_a_loser_paid_game_is_played_the_same_way_on_both_sides(
+    agents: tuple[str, str]
+) -> None:
+    _assert_same_played(_paid_to_loser(), agents)
+
+
 def _with_rules(name: str, version: int, **rules: Any) -> Engine:
     """The same ruleset with extra rules bolted on, so the rule is the only difference."""
     spec: dict[str, Any] = load_spec(RULESETS / f"{name}.json")

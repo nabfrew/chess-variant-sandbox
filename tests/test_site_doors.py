@@ -449,10 +449,10 @@ class TestThePreviews:
 
     def test_each_kind_of_page_previews_under_its_own_title(self, site: Site) -> None:
         titles = {path: _tag(_fetch(site.port, path), "og:title") for path in PUBLIC}
-        assert titles["/"] == NAME
-        assert titles["/game"] == "Games"
+        assert titles["/"] == f"{NAME}: play free online in your browser"
+        assert titles["/game"] == "Chess-like games to play free online in your browser"
         # A game's own page names the game, never the site alone.
-        assert titles[f"/game/{SHORT_HASH}"] == "Short walk: play it online"
+        assert titles[f"/game/{SHORT_HASH}"] == "Play Short walk free online in your browser"
         assert len(set(titles.values())) == len(titles), titles
 
     def test_a_games_page_points_at_the_sites_picture_until_its_own_is_made(

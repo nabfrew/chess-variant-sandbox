@@ -64,6 +64,7 @@ from chess_variant_sandbox.spec.schema import (
     portal_stand_in_shape,
     purse_bribes,
     purse_market,
+    purse_pays_loser,
     purse_rule,
     simultaneous_switch,
     spy_ids,
@@ -186,9 +187,11 @@ def describe_pieces(spec: dict[str, Any]) -> list[PieceProse]:
     listed = portal_stand_in_shape(spec)["pieces"]
     fates = _moveless_fates(spec, listed)
     sights = _sight_notes(spec, hexy)
+    loser = purse_pays_loser(spec)
     return [
         _describe_piece(
-            piece, hexy, fates.get(piece["id"], _MOVELESS["taken"]), sights.get(piece["id"], ())
+            piece, hexy, fates.get(piece["id"], _MOVELESS["taken"]), sights.get(piece["id"], ()),
+            loser,
         )
         for piece in listed
     ]
@@ -526,6 +529,7 @@ def _describe_piece(
     hexy: bool = False,
     moveless: str = _MOVELESS["taken"],
     sights: Sequence[str] = (),
+    paid_to_loser: bool = False,
 ) -> PieceProse:
     notes: list[str] = []
     region = piece.get("region")
@@ -546,7 +550,9 @@ def _describe_piece(
     bounty = piece.get("bounty")
     if isinstance(bounty, int) and not isinstance(bounty, bool) and bounty > 0:
         # TC4: the rules say who is paid; the piece says how much.
-        notes.append(f"pays a bounty of {bounty} to whoever takes it (see the rules)")
+        # TC9c: under `bounty_to: "loser"` the side that loses it is paid.
+        payee = "to the side that loses it" if paid_to_loser else "to whoever takes it"
+        notes.append(f"pays a bounty of {bounty} {payee} (see the rules)")
     price = piece.get("price")
     if isinstance(price, int) and not isinstance(price, bool) and price > 0:
         # TC5: the rules say where a bought piece goes; the piece says what it costs. TC6: a
@@ -1700,6 +1706,14 @@ def _describe_bounties(spec: dict[str, Any]) -> list[str]:
         return []
     listed = ", ".join(f"{pid} {worth}" for pid, worth in sorted(bounties.items()))
     into = "into the points and the purse" if purse_rule(spec) is not None else "into the points"
+    if purse_pays_loser(spec):
+        # TC9c (`docs/plan-turncoat.md` §5.10): the payee is the player who lost the piece.
+        return [
+            f"Taking a piece pays its bounty ({listed}) {into} of the player who lost it, not "
+            "the player whose move took it: coins run against the lead. Taking a piece nobody "
+            "owns pays nobody, taking your own piece pays nothing, and a piece removed by "
+            "anything but a move's capture pays nobody."
+        ]
     return [
         f"Taking a piece pays its bounty ({listed}) {into} of the player whose move "
         "took it, whoever owned it, a piece nobody owns included; taking your own piece pays "
@@ -1717,7 +1731,9 @@ def _describe_purse(spec: dict[str, Any]) -> list[str]:
     prices = piece_prices(spec)
     lines = [
         f"Each player has a purse of coins, starting at {purse.get('start', 0)}, filled by "
-        f"every bounty its owner is paid and holding at most {PURSE_MAX} (what passes that "
+        "every bounty its owner is paid"
+        + (" (for each of their own pieces taken)" if purse_pays_loser(spec) else "")
+        + f" and holding at most {PURSE_MAX} (what passes that "
         "is lost). Spending coins is the whole move, and cannot be taken back, so it resets "
         "the clocks a capture resets."
     ]

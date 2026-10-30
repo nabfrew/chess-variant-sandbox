@@ -134,6 +134,7 @@ RULES = """
   footer .sign { display: inline-flex; align-items: center; gap: 8px; color: var(--muted);
                  font: 600 14px/20px var(--f-head); }
   footer .sign .mark { display: block; flex: none; }
+  footer .sign .signFree { font: 400 13px/20px var(--f-body); }
   /* The theme switch (§3.6): light, dark, or the system's, kept in this browser. */
   .wrap { max-width: 1120px; margin: 0 auto; }
   .muted { color: var(--muted); }

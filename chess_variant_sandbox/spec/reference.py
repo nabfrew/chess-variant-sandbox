@@ -420,7 +420,7 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "Coins and a market",
         "Each player can hold a purse of coins, filled by the bounties on the pieces they "
-        "take, and spend a whole move buying a piece from a market onto their own back rank "
+        "take (or, where the game says so, on the pieces they lose), and spend a whole move buying a piece from a market onto their own back rank "
         "(or any squares the game names), hiring a priced piece nobody owns that stands next "
         "to one of theirs, or bribing an enemy one away at twice its price. Every exchange "
         "is then priced twice, in material and in coins, and every turn asks whether to "

@@ -30,7 +30,6 @@ from typing import Any
 
 from chess_variant_sandbox.web.page import front, game_picture, page
 from chess_variant_sandbox.web.page import picture as site_picture
-from chess_variant_sandbox.web.page.shell import NAME
 
 # The address. The hash is `spec.canonical.HASH_LENGTH` lowercase hex characters today; the
 # pattern takes a range so the address outlives a change of length, and a lookup decides.
@@ -164,14 +163,28 @@ def board_words(spec: Mapping[str, Any]) -> str:
     return " · ".join(said)
 
 
+def play_free(name: str) -> str:
+    """*Play ‹game› free online in your browser* (Q1068): the game's title and the first
+    words of its search result and of its page."""
+    return f"Play {name or 'an unnamed game'} {front.FREE}"
+
+
+# Shorter than this, what is left of a description after `play_free` is not worth a
+# sentence cut to fit it, and the line says what the game is in words of its own instead.
+_ROOM = 40
+
+
 def meta_description(drawn: Drawn) -> str:
-    """The search result's line: the description's first sentence, or one said for it."""
+    """The search result's line: *Play ‹game› free online in your browser*, then the
+    description's first sentence, cut to fit `DESCRIPTION_LIMIT`, or one said for it."""
+    lead = play_free(drawn.name) + "."
     said = paragraphs(drawn.description)
-    if said:
-        return first_sentence(said[0])
+    room = DESCRIPTION_LIMIT - len(lead) - 1
+    if said and room >= _ROOM:
+        return f"{lead} {first_sentence(said[0], room)}"
     return first_sentence(
-        f"{drawn.name or 'An unnamed game'}, a chess-like game: play it in the browser "
-        "against the computer, with no account."
+        f"{play_free(drawn.name)}, a chess-like game, against the computer, with no "
+        "account needed."
     )
 
 
@@ -238,7 +251,7 @@ SCORE_MEANS = "The score is how interesting a game looks when the computer plays
 
 def title(name: str) -> str:
     """The tab's and the search result's title; `core.js`'s `gameTitle` says the same."""
-    return f"{name or 'An unnamed game'}: play it online · {NAME}"
+    return front.titled(play_free(name))
 
 
 def canonical(drawn: Drawn) -> str:
@@ -292,7 +305,8 @@ def view(drawn: Drawn) -> str:
         + about
         + f'\n<p class="drawnScore">{escape(score_line(drawn.score, drawn.stale))} '
         f'<span class="muted">{escape(SCORE_MEANS)}</span></p>\n'
-        '<p>Play it here in the browser, against the computer, with no account needed.</p>\n'
+        f'<p>{escape(play_free(drawn.name))}, against the computer, with no account '
+        'needed.</p>\n'
         '<noscript><p class="muted">Playing needs JavaScript switched on.</p></noscript>\n'
         + (f'<p><a href="{escape(proven_path(drawn.hash), quote=True)}">'
            f"{escape(proven_said(drawn.proven))}</a></p>\n" if drawn.proven else "")

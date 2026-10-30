@@ -104,6 +104,10 @@ def _bribe(spec: dict[str, Any]) -> None:
     spec["rules"]["purse"]["bribe"] = False
 
 
+def _bounty_to(spec: dict[str, Any]) -> None:
+    spec["rules"]["purse"]["bounty_to"] = "taker"
+
+
 # (where it is written, the game it is written on, the edit). Every off value of every place.
 CASES = [
     ("pieces[].rest", "tests/_simultaneous_gardner.json", _piece("rest", 0)),
@@ -127,6 +131,7 @@ CASES = [
     ("rules.npcs[].turns_back", "archive/wolves.json", _turns_back),
     ("rules.duck.goes", "tests/_duck_chess.json", _goes),
     ("rules.purse.bribe", "tests/_purse_market.json", _bribe),
+    ("rules.purse.bounty_to", "tests/_purse_market.json", _bounty_to),
 ]
 
 

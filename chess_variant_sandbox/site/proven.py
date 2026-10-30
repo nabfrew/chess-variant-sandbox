@@ -952,9 +952,9 @@ def position_description(sides: Sequence[str], position: Position) -> str:
     turns = _turns(position.ends_in)
     if position.single:
         return (f"{side} to move, and one move here wins, in {turns} with best play on both "
-                "sides, as the computer proved. Find it in the browser, with no account.")
+                "sides, as the computer proved. Find it free online in your browser.")
     return (f"{side} to move, and the computer proved a win from here in {turns} with best "
-            "play on both sides. Play it out against the strongest computer player.")
+            "play on both sides. Play it out free online in your browser.")
 
 
 def picture_words(sides: Sequence[str], position: Position) -> tuple[str, ...]:
@@ -986,9 +986,11 @@ def positions_description(name: str, record: Record) -> str:
         return game_drawing.first_sentence(NONE_LEFT)
     what = ("find the winning move, or play the win out against the computer"
             if record.singles else "play each win out against the computer")
+    # Q1068: *free online in your browser* ahead of what to do, so a long name cuts the
+    # task short rather than the words a search result should carry.
     return game_drawing.first_sentence(
         f"{_plural(count, 'position')} from {name or 'an unnamed game'} that the computer "
-        f"proved won for the side to move: {what}.")
+        f"proved won for the side to move, free online in your browser: {what}.")
 
 
 def _row_said(sides: Sequence[str], position: Position) -> str:

@@ -73,6 +73,7 @@ from chess_variant_sandbox.spec.schema import (
     promotion_squares,
     promotion_targets,
     purse_market,
+    purse_pays_loser,
     purse_rule,
     purse_squares,
     reach_reflection,
@@ -1299,6 +1300,10 @@ class PurseRule:
     **empty when nothing can be hired** (or bribed). ``neighbours[type][square]`` is what
     *next to* means for such a type (`_next_to`), empty for every other type and empty
     altogether when neither list is: the hirer or briber needs a piece of theirs on one.
+
+    Who is paid (TC9c, §5.10): ``to_loser`` pays a capture's bounty to the player who owned
+    the piece taken (nobody, for a piece nobody owns), not to the taker; the tally follows
+    the same payee. ``False`` is ``rules.purse.bounty_to: "taker"``, today's rule.
     """
 
     start: int
@@ -1309,6 +1314,7 @@ class PurseRule:
     hire: tuple[int, ...] = ()
     bribe: tuple[int, ...] = ()
     neighbours: tuple[tuple[tuple[int, ...], ...], ...] = ()
+    to_loser: bool = False
 
     @property
     def bribes(self) -> bool:
@@ -1357,6 +1363,7 @@ def _compile_purse(
         hire=tuple(hire) if hired else (),
         bribe=tuple(bribe) if bribed else (),
         neighbours=tuple(neighbours) if contested else (),
+        to_loser=purse_pays_loser(spec),
     )
 
 

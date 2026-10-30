@@ -222,6 +222,13 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "stands next to one of theirs, for twice its price. It changes sides where it "
         "stands. Off: never.",
     ),
+    # TC9c (`docs/plan-turncoat.md` §5.10): who a bounty is paid to.
+    "rules.purse.bounty_to": (
+        "who a bounty pays",
+        "The player whose move took the piece (the usual way), or the player who lost it, so "
+        "coins go to the side behind and it can buy pieces back. Paid to the loser, a piece "
+        "nobody owns pays nobody.",
+    ),
     "rules.duck.piece": (
         "the duck",
         "The piece every turn ends by moving: after each move the same player moves it to an "

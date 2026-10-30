@@ -1544,6 +1544,20 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "points. false (the default) never."
                         ),
                     },
+                    "bounty_to": {
+                        "type": "string",
+                        "enum": ["taker", "loser"],
+                        "description": (
+                            "Who a capture's bounty (pieces[].bounty) is paid to, into the "
+                            "purse and the points alike. \"taker\" (the default): the player "
+                            "whose move took the piece. \"loser\": the player who owned it, "
+                            "so coins run against the lead and a side that loses a piece can "
+                            "buy one back; a piece nobody owns then pays nobody. \"loser\" "
+                            "needs a pieces[].bounty and is refused beside a wild piece's "
+                            "bounty. Keep a type's bounty under what the coins buy back, or "
+                            "losing it is no loss."
+                        ),
+                    },
                     "region": {
                         "type": "array",
                         "items": {"type": "string"},

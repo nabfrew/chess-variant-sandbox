@@ -37,11 +37,11 @@ from chess_variant_sandbox.web.page import assets, front, shell, stylesheet_link
 PATH = reference.PAGE
 """The page's address, `reference.PAGE`; `/rules.md` stays the Markdown file."""
 
-TITLE = f"The rule language: write a chess-like game of your own · {shell.NAME}"
+TITLE = f"The rule language: design a game {front.FREE}"
 
 DESCRIPTION = (
-    "The rule language every game here is written in: the board, the pieces and their moves, "
-    "the setup and the rules, for a person or an AI to write a game from."
+    "The rule language every game is written in: the board, the pieces and their moves, the "
+    "setup and the rules. Write one and play it free online in your browser."
 )
 """What a search result says (under `game.DESCRIPTION_LIMIT`, never another page's)."""
 

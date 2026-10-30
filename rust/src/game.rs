@@ -2667,8 +2667,11 @@ impl<'t> Game<'t> {
         } else {
             0.0
         };
-        if paid != 0.0 {
-            self.points[player] += paid;
+        // TC9c (§5.10): the payee is the taker, or under `bounty_to: "loser"` the taken
+        // piece's owner (`WILD`: nobody's piece, no one is paid). Asked only for a payment.
+        let payee = if paid != 0.0 { t.bounty_payee(played.captured, player) } else { player };
+        if paid != 0.0 && payee < 2 {
+            self.points[payee] += paid;
         }
         if let Some(purse) = t.purse.as_deref() {
             self.purse_log.push(self.purse);
@@ -2681,12 +2684,17 @@ impl<'t> Game<'t> {
             }
             // TC6: a hire or a bribe spends what `PurseTables::cost` said, read above.
             after -= played.spent;
-            if paid > 0.0 {
-                after = (after + paid as u16).min(PURSE_MAX);
-            }
             if after != before {
                 self.working_key ^= purse.key(player, before) ^ purse.key(player, after);
                 self.purse[player] = after;
+            }
+            if paid > 0.0 && payee < 2 {
+                let before = self.purse[payee];
+                let after = (before + paid as u16).min(PURSE_MAX);
+                if after != before {
+                    self.working_key ^= purse.key(payee, before) ^ purse.key(payee, after);
+                    self.purse[payee] = after;
+                }
             }
         }
     }
@@ -2962,7 +2970,11 @@ impl<'t> Game<'t> {
         if self.t.pays && undo.captured != 0 {
             let paid = self.t.bounty_paid(undo.captured, undo.captured_square, self.side);
             if paid != 0.0 {
-                self.points[self.side] -= paid;
+                // TC9c: the same payee `make` paid.
+                let payee = self.t.bounty_payee(undo.captured, self.side);
+                if payee < 2 {
+                    self.points[payee] -= paid;
+                }
             }
         }
         // TC4: the purse, from its log (the key came back with `undo.key`).

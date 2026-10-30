@@ -917,7 +917,7 @@ LEAD = (
     "Every one of those is a game here, built from one palette of rules. Put your idea "
     "together the same way: the site plays it at once, tells you how it plays, and gives you "
     "an opponent.")
-NO_ACCOUNT = "No account needed to build or to play."
+NO_ACCOUNT = "Free to build and to play online, in your browser, with no account needed."
 START = "Start building a game"
 PLAY_TODAY = "Play today's game"
 
@@ -925,7 +925,7 @@ PLAY_TODAY = "Play today's game"
 # first story's ending (`web/page/front.py`): what the site does, in the lead's words. Fixed
 # text, so the page's description is the same whichever stories hold.
 DESCRIPTION_TAIL = (
-    "Build one from a palette of rules; the site plays it at once and gives you an opponent.")
+    "Build one from a palette of rules and play it free online in your browser.")
 
 
 def question(clause: str) -> str:
@@ -1093,6 +1093,7 @@ def drawn_intro(story: dict[str, Any] | None = None) -> str:
         f'<h2 class="landingTitle"><span class="wcbi">{_e(QUESTION)}</span> {clause}</h2>'
         f'<p class="landingLead">{_e(LEAD)}</p>'
         f'<div class="row landingWays">{_ways()}</div>'
+        f'<p class="muted small">{_e(NO_ACCOUNT)}</p>'
         "</div></section></div>"
     )
 

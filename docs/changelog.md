@@ -13,6 +13,16 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-30
 
+### Every page says it plainly: free, online, in your browser
+
+Each page, and each game's page, now says in its title, its description and its link preview that you can play free online
+in your browser, and the footer of every page says so too.
+
+### A bounty can go to the side that loses the piece
+
+A game with a purse can now pay a captured piece's bounty to the player who lost it instead of the one who took it. The side
+that falls behind gets the coins to buy its way back, so an early capture no longer snowballs.
+
 ### The free companies join the library
 
 A new game: chess with four mercenary companies standing in the middle of the board, belonging to nobody. Either side can

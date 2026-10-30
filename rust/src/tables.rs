@@ -1184,6 +1184,9 @@ pub struct PurseTables {
     /// or bribable piece of `type` on `square`; both empty when neither list is.
     near_index: Vec<u32>,
     near_squares: Vec<u8>,
+    /// TC9c (`docs/plan-turncoat.md` §5.10): `rules.purse.bounty_to: "loser"`, a capture's
+    /// bounty paid to the player who owned the piece taken (`Tables::bounty_payee`).
+    pub to_loser: bool,
 }
 
 impl PurseTables {
@@ -2174,6 +2177,19 @@ impl Tables {
             paid += self.piece_bounty[self.type_of(captured)];
         }
         paid
+    }
+
+    /// TC9c (`docs/plan-turncoat.md` §5.10): who `bounty_paid` pays when `taker`'s move takes
+    /// `captured`: the taker, or under `rules.purse.bounty_to: "loser"` the player who owned
+    /// the piece (`WILD`, nobody, for a piece nobody owns: no one is paid). Asked only where
+    /// the payment is not zero, by `make` and `unmake` alike; rounds are refused beside a
+    /// purse, so the round's payment never meets the rule.
+    #[inline]
+    pub fn bounty_payee(&self, captured: u8, taker: usize) -> usize {
+        match self.purse.as_deref() {
+            Some(purse) if purse.to_loser => self.owner_of(captured),
+            _ => taker,
+        }
     }
 
     /// Whether a piece type is royal. One load, for the callers that ask per piece per
@@ -3486,6 +3502,8 @@ impl Tables {
         let bribe: Vec<u16> = field(source, keys::PURSE_BRIBE)?;
         let near_index: Vec<u32> = field(source, keys::PURSE_NEIGHBOUR_INDEX)?;
         let near_squares: Vec<u8> = field(source, keys::PURSE_NEIGHBOUR_SQUARES)?;
+        // TC9c (§5.10): who a capture's bounty is paid to.
+        let to_loser: bool = field(source, keys::PURSE_TO_LOSER)?;
         let contested = !hire.is_empty() || !bribe.is_empty();
         if (!hire.is_empty() && hire.len() != tables.n_types)
             || (!bribe.is_empty() && bribe.len() != tables.n_types)
@@ -3510,6 +3528,7 @@ impl Tables {
             bribe,
             near_index,
             near_squares,
+            to_loser,
         })))
     }
 
@@ -4363,6 +4382,7 @@ pub mod keys {
         PURSE_BRIBE => "purse_bribe",
         PURSE_NEIGHBOUR_INDEX => "purse_neighbour_index",
         PURSE_NEIGHBOUR_SQUARES => "purse_neighbour_squares",
+        PURSE_TO_LOSER => "purse_to_loser",
         ZOBRIST_PURSE => "zobrist_purse",
         NPC_NEXT => "npc_next",
         ONE_WAY_TYPES => "one_way_types",

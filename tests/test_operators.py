@@ -31,7 +31,6 @@ from chess_variant_sandbox.spec.schema import (
     REPETITION_NEVER,
     SCORING_COUNTS,
     opening_counts,
-    uses_sweep,
 )
 from tests import feature_inventory
 from tests.feature_inventory import LAST_BUMP
@@ -94,7 +93,7 @@ _NUMBER_WORDS = {
     38: "thirty_eight", 39: "thirty_nine", 40: "forty", 41: "forty_one", 42: "forty_two",
     43: "forty_three", 44: "forty_four", 45: "forty_five", 46: "forty_six",
     47: "forty_seven", 48: "forty_eight", 49: "forty_nine", 50: "fifty", 51: "fifty_one",
-    52: "fifty_two", 53: "fifty_three",
+    52: "fifty_two", 53: "fifty_three", 54: "fifty_four",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -393,6 +392,9 @@ class TestMutation:
         # Q1063's `shorten-the-sweep` shortens a sweep a game already has: the sweeping
         # bishops.
         parents.append(load_spec(ARCHIVE / "chess-sweeping-bishops.json"))
+        # TC9c's `pay-the-loser` pays the bounties of a purse game a game already has: the
+        # levy's (TC9b's retired showcase).
+        parents.append(load_spec(ROOT / "tests" / "_retired_the_levy.json"))
 
         def fires(operator) -> bool:
             return any(
@@ -2042,7 +2044,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 53
+_FEATURES_ARE_FOR_SCHEMA = 54
 
 
 @dataclass(frozen=True)
@@ -2666,6 +2668,13 @@ def _parent_two_lengths() -> dict:
     return load_spec(Path(__file__).parent / "_sweep_three_slide_on.json")
 
 
+def _parent_paid_to_loser() -> dict:
+    """The levy (TC9b's retired showcase) with its bounties paid to the loser (TC9c)."""
+    levy = load_spec(Path(__file__).parent / "_retired_the_levy.json")
+    levy["rules"]["purse"]["bounty_to"] = "loser"
+    return levy
+
+
 def _parent_command_strike() -> dict:
     """Chess whose knights command the enemy a knight's jump away, beside rifle (SR2b, V5)."""
     spec = _parent_sight("N", {
@@ -2867,17 +2876,16 @@ def _armies_differ(spec: dict) -> bool:
 # so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
 # and `straighten` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    # Generation 53 (Q1063, a sweep with two lengths): one name, a key on a sweep move, which
-    # is no `rules` key, so it has no host. `shorten-the-sweep` enters it (a sweep given a
-    # length short of its range) and leaves it (the length taken off), and `sweep-a-slider`
-    # leaves it too (the sweep a slide again); neither names or adds a type, so the army is
-    # kept. Generation 52's row (Q1059a) retired with the generation; `gate-the-hand` still
-    # crosses it.
-    "Q1063 sweep length": _Feature(
-        None, frozenset({"pieces.moves.sweep.sweep_range"}), True,
-        "a bishop sweeping three and sliding on (tests/_sweep_three_slide_on.json)",
-        _parent_two_lengths,
-        likely=uses_sweep,
+    # Generation 54 (TC9c, a bounty paid to the loser): one name, a key of the purse, so its
+    # host is `purse`. `pay-the-loser` enters it (a purse game with a type's bounty paid to
+    # the loser) and leaves it (back to the taker); it names and adds no type, so the army is
+    # kept. Generation 53's row (Q1063) retired with the generation; `shorten-the-sweep`
+    # still crosses it.
+    "TC9c bounty to the loser": _Feature(
+        "purse", frozenset({"rules.purse.bounty_to"}), True,
+        "the levy paying its bounties to the loser (tests/_retired_the_levy.json)",
+        _parent_paid_to_loser,
+        likely=lambda spec: isinstance((spec.get("rules") or {}).get("purse"), dict),
     ),
 }
 
@@ -2890,9 +2898,16 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
 _SHOWCASE_OWED: dict[str, str] = {
-    # Generation 53 (Q1063): the twin of short sweeping bishop chess that sweeps three and
-    # slides on, Q1064, the game the key was built for.
-    "Q1063 sweep length": "Q1064, short sweeping bishop chess against its two-length twin",
+    # Generation 54 (TC9c): its showcase, *the indemnity* (docs/plan-turncoat.md §8.6), retired
+    # on V2's market clause (`tests/_retired_the_indemnity.json`), and its successor *the
+    # quartermaster* (§8.7, TC9d) on V2's snowball clause at strength
+    # (`tests/_retired_the_quartermaster.json`); still owed.
+    "TC9c bounty to the loser": (
+        "a successor to the quartermaster (TC9d retired it on V2's snowball clause at "
+        "strength, §8.7; TC9c the indemnity on its market clause, §8.6)"
+    ),
+    # Generation 53's name (Q1063) went to `_NO_SHOWCASE_ON_PURPOSE` when TC9c retired its
+    # `_FEATURES` row: Q1064's twin was measured and not taken.
     # Generation 51's names (SR2b) went to `_NO_SHOWCASE_ON_PURPOSE` when Q1059a retired
     # their `_FEATURES` rows, still owed by SR2s1.
     # Generation 50's names (SR2) went to `_NO_SHOWCASE_ON_PURPOSE` when SR2b retired their
@@ -3047,6 +3062,7 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     51: frozenset({"pieces.sight.command.strike", "pieces.sight.command.contacts"}),
     52: frozenset({"rules.drops.gating"}),
     53: frozenset({"pieces.moves.sweep.sweep_range"}),
+    54: frozenset({"rules.purse.bounty_to"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -3055,6 +3071,13 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 53's name (Q1063), owed in `_SHOWCASE_OWED` by Q1064 until generation 54
+    # (TC9c) retired its `_FEATURES` row. Q1064's twin (sweep three, slide on) was measured
+    # and not taken (0.176, not viable: it mates on ply 1), so no game shows the key yet
+    # (`docs/reference/short-sweeping-bishop-twin.md`).
+    "schema 53: pieces.moves.sweep.sweep_range": (
+        "Q1064's twin measured and not taken (not viable); no showcase yet"
+    ),
     # Generation 51's names (SR2b), owed in `_SHOWCASE_OWED` until generation 52 (Q1059a)
     # retired their `_FEATURES` rows. Still owed by SR2s1 (`docs/plan-schema-next.md` §3.2).
     **{
@@ -4353,7 +4376,7 @@ _PINNED_SCALES: dict[str, float] = {
     "nobody_share": 1.0, "majority_share": 1.0, "majority_geometry": 1.0,
     "bounty_share": 1.0,
     "has_purse": 1.0, "purse_start": 1.0, "purse_region": 1.0, "price_share": 1.0,
-    "has_hire": 1.0, "has_bribe": 1.0,
+    "has_hire": 1.0, "has_bribe": 1.0, "bounty_to_loser": 1.0,
     "legs_share": 1.0,
     "explodes_shaped": 1.0,
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
@@ -4432,8 +4455,8 @@ class TestDistanceIsPinnedToTheNumber:
         `bounty_share`, 118 since TC5's `has_purse`, `purse_start`, `purse_region` and
         `price_share`, 120 since TC6's `has_hire` and `has_bribe`, 121 since SR1a's
         `legs_share`, 122 since SR1b's `explodes_shaped`, 123 since Q1059a's
-        `drops_gating` and 124 since Q1063's `short_sweep_share`, is 0.009945, which rounds
-        to 0.0099."""
+        `drops_gating`, 124 since Q1063's `short_sweep_share` and 125 since TC9c's
+        `bounty_to_loser`, is 0.009866, which rounds to 0.0099."""
         chess = _chess()
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"

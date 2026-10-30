@@ -240,6 +240,22 @@ RETIRED_PREVIEWS = {
     # retires a miss. Kept here because its V1 mechanism tests read it
     # (`tests/test_showcase_levy.py`).
     "the-levy": "8693c6554669",
+    # TC9c (2026-10-30, `docs/plan-turncoat.md` §8.6): the showcase of bounties paid to the
+    # loser (`rules.purse.bounty_to`), the levy's market with each piece's bounty paid to the
+    # player who lost it, built, measured and retired before it ever joined: V2's market clause
+    # missed (rooks 0.758 of graded buys, the bar 0.70), though both snowball clauses and the
+    # buying from behind held, and the call registered before its first measured game retires
+    # a miss. Kept here because its V1 mechanism tests read it
+    # (`tests/test_showcase_indemnity.py`).
+    "the-indemnity": "d9787f06e362",
+    # TC9d (2026-10-30, `docs/plan-turncoat.md` §8.7): the indemnity's successor, its bounties
+    # and payee with the bishop added to the market and the bishop and rook priced a coin over
+    # their value, built, measured and retired before it ever joined: V2's snowball clause at
+    # strength missed (the first capturer 0.719 of decided top-three games, the bar chess's
+    # 0.492 + 0.10), though the market clause held (rooks 0.563 of graded buys), and the call
+    # registered before its first measured game retires a miss. Kept here because its V1
+    # mechanism tests read it (`tests/test_showcase_quartermaster.py`).
+    "the-quartermaster": "4d02af0670b2",
 }
 
 # Retired previews kept byte for byte though the validator now refuses them, so a test can hold

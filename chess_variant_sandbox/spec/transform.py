@@ -880,6 +880,15 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
             if isinstance(piece, dict) and "bounty" in piece:
                 piece.pop("bounty")
                 dropped.append(f"bounty:{piece.get('id')}")
+    # TC9c (§5.10): a bounty paid to the loser with no type's bounty left, or beside a wild
+    # bounty, is refused; the payee goes back to the taker (its off value, so the key goes).
+    purse = rules.get("purse")
+    if isinstance(purse, dict) and purse.get("bounty_to") == "loser" and (
+        not piece_bounties(spec)
+        or any(isinstance(npc, dict) and npc.get("bounty") for npc in rules.get("npcs") or [])
+    ):
+        purse.pop("bounty_to")
+        dropped.append("bounty_to")
     # A strike that states more than plain capture and is played as it (Q538,
     # `schema.strike_states_nothing`). `drop_piece` settles the one route Q538 found, a
     # chain pruned down to its immune links; this holds any other edit that empties a

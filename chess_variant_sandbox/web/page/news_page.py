@@ -33,11 +33,11 @@ from chess_variant_sandbox.web.page import front
 
 PATH = front.NEWS_PATH
 
-TITLE = "What's new · Chess variant sandbox"
+TITLE = front.short_title("What's new")
 
 DESCRIPTION = (
-    "Every change to Chess variant sandbox in plain words, newest first: new games, new "
-    "rules, new things to try. There is a feed to follow."
+    "Every change to Chess variant sandbox in plain words, newest first: new games and "
+    "rules to try free online in your browser. There is a feed to follow."
 )
 
 LEAD = (

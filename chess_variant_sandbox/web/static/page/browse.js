@@ -63,7 +63,7 @@ async function showLibrary() {
     `${data.games.length} games, ${
       data.games.filter(g => g.source !== 'committed').length} invented here${
       (data.previews || []).length ? `, and ${data.previews.length} preview${
-        data.previews.length === 1 ? '' : 's'}` : ''}`;
+        data.previews.length === 1 ? '' : 's'}` : ''}, each free to play online in your browser`;
 
   // Q788 had this page open on the search and the filters, the shelves being the landing's.
   // LP3 (`docs/archive/plan-landing.md` §4.2, the user's decision of 2026-10-24) moves them here:

@@ -89,7 +89,7 @@ async function showBoard(snapshot, how) {
   OPEN_TAB = null;
   const rules = snapshot.ruleset;
   // G3: the tab says which game is on the board. An inline board leaves its page's title.
-  if (!inline && !proven && rules && rules.name) setTitle('Playing ' + rules.name);
+  if (!inline && !proven && rules && rules.name) setTitle(`Playing ${rules.name} ${FREE_SAID}`);
   // A deep link to a game in progress never visited the picker, so the roster that
   // names the seats has to be fetched here as well. Without it a rule of thumb is
   // labelled with its own digest. A draft has no page to ask, so it takes the ladder

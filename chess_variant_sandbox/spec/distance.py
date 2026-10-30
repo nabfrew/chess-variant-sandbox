@@ -58,6 +58,7 @@ from chess_variant_sandbox.spec.schema import (
     portal_stand_in_shape,
     promotion_squares,
     purse_bribes,
+    purse_pays_loser,
     purse_rule,
     simultaneous_switch,
     spy_ids,
@@ -393,6 +394,9 @@ _SCALES: dict[str, float] = {
     # each a flag, so a purse game and its hiring or bribing twin are not at distance zero.
     "has_hire": 1.0,
     "has_bribe": 1.0,
+    # TC9c (§5.10): a bounty paid to the player who lost the piece, a flag, so a purse game
+    # and its twin paying the loser are not at distance zero.
+    "bounty_to_loser": 1.0,
 }
 
 
@@ -574,6 +578,7 @@ def _purse_features(spec: dict[str, Any]) -> dict[str, float]:
         "price_share": len(piece_prices(spec)) / len(declared) if declared else 0.0,
         "has_hire": 1.0 if hire_ids(spec) else 0.0,
         "has_bribe": 1.0 if purse_bribes(spec) else 0.0,
+        "bounty_to_loser": 1.0 if purse_pays_loser(spec) else 0.0,
     }
 
 

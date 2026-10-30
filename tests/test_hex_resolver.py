@@ -285,6 +285,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "drops_either_face",  # Q785
     "drops_gating",  # Q1059a
     "short_sweep_share",  # Q1063
+    "bounty_to_loser",  # TC9c
     "simultaneous", "simultaneous_initiative", "simultaneous_impossible", "beats_share",  # Q918a
     "wins_by_leaving",  # Q786
     "portal_pairs", "portals_move", "portals_one_way",  # Q771

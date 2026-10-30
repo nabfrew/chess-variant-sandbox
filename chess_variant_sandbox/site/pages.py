@@ -589,8 +589,8 @@ SIGNIN_SAYS = (
     "each game and publish the games you design."
 )
 ASK_SAYS = (
-    "Accounts on Chess variant sandbox are by invitation: leave your email address, and the "
-    "person who runs the site can send you one."
+    "Every game on Chess variant sandbox is free to play online in your browser. Accounts "
+    "are by invitation: leave your email address, and you can be sent one."
 )
 CHALLENGE_SAYS = "A challenge to a game by correspondence on Chess variant sandbox."
 PROFILE_SAYS = "Your own page on Chess variant sandbox: your games, your ratings and your badges."
@@ -601,20 +601,20 @@ SUGGESTIONS_SAYS = (
 )
 ADMIN_SAYS = "The maintenance page of Chess variant sandbox."
 CREDITS_SAYS = (
-    "Who drew the pieces on Chess variant sandbox, under which free licence, and the "
-    "typefaces the site is set in."
+    "Who drew the pieces on Chess variant sandbox, where chess variants are free to play "
+    "online in your browser, under which free licence, and the site's typefaces."
 )
 BADGES_SAYS = (
-    "Every badge on Chess variant sandbox and the one rule that earns it: the same list "
-    "for everybody."
+    "Every badge on Chess variant sandbox, where chess variants are free to play online in "
+    "your browser, and the one rule that earns it: the same list for everybody."
 )
 PRIVACY_SAYS = (
-    "What Chess variant sandbox keeps about you and why: an account, your games and "
-    "ratings, and what leaving does."
+    "What Chess variant sandbox, free to play online in your browser, keeps about you and "
+    "why: an account, your games and ratings, and what leaving does."
 )
 TERMS_SAYS = (
-    "The terms of Chess variant sandbox: a game published here is for everybody, the site "
-    "claims no rights in it, and what it does not promise."
+    "The terms of Chess variant sandbox, free to play online in your browser: a game "
+    "published here is for everybody, and the site claims no rights in it."
 )
 
 
@@ -812,7 +812,7 @@ def request_invitation() -> str:
         f"<h1>{asking.BUTTON}</h1>\n"
         '<p class="lead">Accounts here are by invitation. Leave your email address and the '
         "person who runs the site can send you one. Looking at the games, and playing "
-        "practice games, need no account.</p>\n"
+        "them free online in your browser against the computer, need no account.</p>\n"
         '<form class="panel form" id="ask-form">\n'
         '<label><span>email address</span><input id="ask-email" type="email" '
         'autocomplete="email" autocapitalize="off" spellcheck="false" '
@@ -829,7 +829,8 @@ def request_invitation() -> str:
         '<p class="small muted"><a href="/signin">I already have an account</a> · '
         '<a href="/privacy">what the site keeps</a></p>'
     )
-    return _shell(asking.BUTTON, body, ("post", "ask"), description=ASK_SAYS, path=asking.PATH)
+    return _shell(front.short_title(asking.BUTTON), body, ("post", "ask"), description=ASK_SAYS,
+                  path=asking.PATH)
 
 
 def challenge_link(token: str) -> str:
@@ -1857,7 +1858,7 @@ def credits() -> str:
         "1.1, served from this site rather than from a font service:</p>\n"
         f"<ul>\n{faces}</ul>\n"
     )
-    return _shell("Credits", body, kind="prose wide", here="/credits",
+    return _shell(front.short_title("Credits"), body, kind="prose wide", here="/credits",
                   description=CREDITS_SAYS, path="/credits")
 
 
@@ -1921,7 +1922,7 @@ def badges() -> str:
         "game played out from each position. Nothing here expires and nothing is taken "
         "back.</p>\n"
     )
-    return _shell("The badges on Chess variant sandbox", body, kind="prose", here="/badges",
+    return _shell(front.short_title("The badges"), body, kind="prose", here="/badges",
                   description=BADGES_SAYS, path="/badges")
 
 
@@ -2071,7 +2072,7 @@ def privacy() -> str:
         f'<p class="under">The <a href="{terms.PATH}">terms</a> say what publishing a game '
         "gives away and what the site does not promise.</p>\n"
     )
-    return _shell("Privacy", body, kind="prose", here="/privacy",
+    return _shell(front.short_title("Privacy"), body, kind="prose", here="/privacy",
                   description=PRIVACY_SAYS, path="/privacy")
 
 
@@ -2107,7 +2108,7 @@ def terms_page() -> str:
         f'on GitHub at <a href="{terms.CONTACT}" rel="noopener">'
         f"{escape(terms.CONTACT_SAID)}</a>.</p>\n"
     )
-    return _shell("Terms", body, kind="prose wide", here=terms.PATH,
+    return _shell(front.short_title("Terms"), body, kind="prose wide", here=terms.PATH,
                   description=TERMS_SAYS, path=terms.PATH)
 
 

@@ -31,19 +31,46 @@ from chess_variant_sandbox.web.page.shell import NAME
 GAMES_PATH = "/game"
 """The games, `web/server.py`'s `GAMES_PATH`; a game's own address is under it."""
 
-HOME_TITLE = NAME
-"""The front page's title: the site's name alone, which `core.js`'s `setTitle('')` writes."""
+FREE = "free online in your browser"
+"""What every page the site serves says it is, in its title or description and in its visible
+text (Q1068, the user, 2026-10-30: *"make sure indexing sees free online in browser on all the
+pages"*): the games are free, they are on the web, and they play in the browser, nothing to
+install. Said once a place, in the page's own sentence, never as a list of keywords."""
 
-GAMES_TITLE = f"Games · {NAME}"
-"""The games' title, as `core.js`'s `viewTitle` names the view (*Games*) and `setTitle` writes it."""
+FREE_TAIL = "Free chess variants online in your browser"
+"""What a short page's title says after its own word (*Privacy · Free chess variants online in
+your browser*), in the place the site's name stood: the name is still `og:site_name`, the
+header and the footer, and a title has room for one of the two."""
+
+TITLE_LIMIT = 60
+"""About as many characters as a search result shows of a title."""
+
+
+def titled(words: str) -> str:
+    """A page's title: its own words, then the site's name where both fit in `TITLE_LIMIT`,
+    else the words alone (`core.js`'s `setTitle` does the same)."""
+    named = f"{words} · {NAME}"
+    return named if len(named) <= TITLE_LIMIT else words
+
+
+def short_title(words: str) -> str:
+    """A short page's title: its word, then `FREE_TAIL`."""
+    return f"{words} · {FREE_TAIL}"
+
+
+HOME_TITLE = f"{NAME}: play {FREE}"
+"""The front page's title, which `core.js`'s `setTitle('')` writes (`HOME_TITLE` there)."""
+
+GAMES_TITLE = titled(f"Chess-like games to play {FREE}")
+"""The games' title, as `core.js`'s `viewTitle` names the view and `setTitle` writes it."""
 
 HOME_DESCRIPTION = f"{landing.question(stories.STORIES[0].clause)} {landing.DESCRIPTION_TAIL}"
 """The search result's line for the front page (LP4): the question with the first story's
 ending, as the hero leads with it, and what the site does. The same whichever stories hold."""
 
 GAMES_DESCRIPTION = (
-    "Every chess-like game here, each playable in the browser against the computer: search "
-    "them, filter by the kind of game, and sort by any ingredient of the score."
+    "Every chess-like game here, each free to play online in your browser against the "
+    "computer: search them, filter by kind, and sort by any part of the score."
 )
 
 GAMES_HEADING = "The games"

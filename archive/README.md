@@ -1119,6 +1119,46 @@ and its runs are kept.
   were taken in the end, against 286 hires. Where bribes came, the side that bribed first
   lost more often than it won (13 of 64 decided). Its weakest family was depth (0.77).
 
+## `the-quartermaster.json` — generation 54, bounties paid to the loser, a successor (TC9d; retired)
+
+2026-10-30, built, measured and **retired without joining**, by the call registered before its
+first measured game (`docs/plan-turncoat.md` §8.7): a showcase that misses any of V2 to V4
+retires, and is not tuned after the miss. Its file is `tests/_retired_the_quartermaster.json`,
+`tests/test_showcase_quartermaster.py` holds V1 on it, `tests/quartermaster_study.py` reads the
+runs (through TC9c's `tests/indemnity_study.py`), and its runs are kept.
+
+- **`the-quartermaster`** (`4d02af0670b2`): the indemnity's bounties and payee (knight, bishop,
+  rook and queen paying 1, 1, 2 and 4 coins to the player who **lost** them, 2 coins to start),
+  with a four-type market: a pawn for 1, a knight for 3, a bishop for 4 and a rook for 6, the
+  long pieces a coin over their value, so the market is a choice and not the rook. Seven draft
+  reads on a graded-like mini roster chose the prices. **0.916 [0.890, 0.936], viable 4-0**, seat
+  level (0.512), the ladder read in every run; buys at 0.040 of graded side-turns and in 0.852
+  of graded games, 0.747 of them made by the side behind. The market clause held: rooks 0.563
+  of graded buys, pawns 0.244, bishops 0.131, knights 0.062 (in the top three, pawns 0.398 and
+  rooks 0.365). The graded snowball held (the first capturer 0.713, chess 0.737), but V2's
+  snowball at strength missed: the first capturer won 0.719 of decided top-three games (the
+  bar chess's 0.492 + 0.10; the indemnity read 0.588). Its weakest family was depth (0.83).
+
+## `the-indemnity.json` — generation 54, bounties paid to the loser (TC9c; retired)
+
+2026-10-30, built, measured and **retired without joining**, by the call registered before its
+first measured game (`docs/plan-turncoat.md` §8.6): a showcase that misses any of V2 to V4
+retires, and is not tuned after the miss. Its file is `tests/_retired_the_indemnity.json`,
+`tests/test_showcase_indemnity.py` holds V1 on it, `tests/indemnity_study.py` reads the runs
+(through TC9's `tests/war_chest_study.py`), and its runs are kept.
+
+- **`the-indemnity`** (`d9787f06e362`): the chess army and setup, each knight, bishop, rook or
+  queen taken paying 1, 1, 2 or 4 coins to the player who **lost** it
+  (`rules.purse.bounty_to: "loser"`, §5.10), both players starting with 2 coins, and the levy's
+  market (a pawn for 1, a knight for 3, a rook for 5, onto the buyer's first rank). Designed so
+  the coins run against the lead, after the war chest and the levy retired on the snowball.
+  **0.916 [0.901, 0.933], viable 4-0**, seat level (0.496), the ladder read in every run; buys at
+  0.047 of graded side-turns and in 0.883 of graded games, 0.744 of them made by the side behind
+  in material. Both snowball clauses held: the first capturer won 0.686 of decided graded games
+  (chess 0.737) and 0.588 in the top three (the bar chess's 0.492 + 0.10). Missed V2's market
+  clause: rooks were 0.758 of graded buys (the bar 0.70), pawns 0.195, knights 0.048. Its weakest
+  family was depth (0.86).
+
 ## `the-levy.json` — generations 44 and 45, bounties, the purse and the market, a successor (TC9b; retired)
 
 2026-10-30, built, measured and **retired without joining**, by the call registered before its

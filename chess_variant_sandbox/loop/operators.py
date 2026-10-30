@@ -100,6 +100,7 @@ from chess_variant_sandbox.spec.schema import (
     promoting_piece_ids,
     purse_bribes,
     purse_market,
+    purse_pays_loser,
     purse_rule,
     reach_reflection,
     reads_alike_for_both,
@@ -2737,6 +2738,10 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
+    # TC9c (§5.10): a wild piece's bounty is refused beside a bounty paid to the loser, and
+    # every patrol this draws carries one.
+    if purse_pays_loser(spec):
+        return None
     from chess_variant_sandbox.spec.schema import (
         absent_squares,
         obstacle_squares,
@@ -4715,6 +4720,32 @@ def _offer_a_bribe(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+def _pay_the_loser(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Pay a capture's bounty to the player who lost the piece, or back to the taker (TC9c,
+    ``rules.purse.bounty_to``, `docs/plan-turncoat.md` §5.10).
+
+    Only in a game with a purse and a bounty on some type: under ``"loser"`` the key goes
+    (the taker is paid again); otherwise it is set to ``"loser"``. The validator decides the
+    rest (a wild piece's bounty refuses it).
+    """
+    del rng
+    trial = copy.deepcopy(spec)
+    purse = (trial.get("rules") or {}).get("purse")
+    if not isinstance(purse, dict) or not piece_bounties(trial):
+        return None
+    if purse_pays_loser(trial):
+        purse.pop("bounty_to")
+        said = "a bounty is paid to the player who takes the piece again"
+    else:
+        purse["bounty_to"] = "loser"
+        said = "a bounty is paid to the player who loses the piece, not the one who takes it"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -4736,6 +4767,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("open-a-market", _open_a_market),
     Operator("hire-a-sword", _hire_a_sword),
     Operator("offer-a-bribe", _offer_a_bribe),
+    Operator("pay-the-loser", _pay_the_loser),
     Operator("promote-what-arrives", _promote_what_arrives),
     Operator("promote-on-leaving", _promote_on_leaving),
     Operator("count-each-kind", _count_each_kind),

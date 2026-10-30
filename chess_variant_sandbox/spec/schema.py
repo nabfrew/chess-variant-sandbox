@@ -1194,7 +1194,8 @@ NPC_OFF_VALUES: dict[str, Any] = {"respawn": 0, "turns_back": False}
 # N4b: ``rules.duck``'s: ``goes: "anywhere"`` is the classic duck, as is leaving it out.
 DUCK_OFF_VALUES: dict[str, Any] = {"goes": "anywhere"}
 # TC6: ``rules.purse``'s: ``bribe: false`` is a purse that never buys an enemy piece.
-PURSE_OFF_VALUES: dict[str, Any] = {"bribe": False}
+# TC9c: ``bounty_to: "taker"`` is a bounty paid to the player whose move took the piece.
+PURSE_OFF_VALUES: dict[str, Any] = {"bribe": False, "bounty_to": "taker"}
 
 # TC4 (`docs/plan-turncoat.md` §5.1, §5.2): the largest bounty a type may carry, and the most
 # coins a purse may hold (`rust/src/tables.rs::PURSE_MAX`), which bounds the purse's keys.
@@ -9571,7 +9572,10 @@ def _check_bounty_coherence(
 
 # --------------------------------------------------------------------------- the purse
 
-_PURSE_KEYS = {"start", "market", "region", "bribe"}
+_PURSE_KEYS = {"start", "market", "region", "bribe", "bounty_to"}
+
+# TC9c (`docs/plan-turncoat.md` §5.10): who a bounty is paid to under a purse.
+BOUNTY_PAYEES = ("taker", "loser")
 
 
 def purse_rule(spec_or_rules: Any) -> dict[str, Any] | None:
@@ -9603,6 +9607,13 @@ def purse_bribes(spec_or_rules: Any) -> bool:
     price."""
     purse = purse_rule(spec_or_rules)
     return purse is not None and purse.get("bribe") is True
+
+
+def purse_pays_loser(spec_or_rules: Any) -> bool:
+    """TC9c (`docs/plan-turncoat.md` §5.10): whether ``rules.purse.bounty_to`` is ``"loser"``:
+    a bounty is paid to the player who owned the piece taken, not to the taker."""
+    purse = purse_rule(spec_or_rules)
+    return purse is not None and purse.get("bounty_to") == "loser"
 
 
 def hire_ids(spec: Any) -> set[str]:
@@ -9693,6 +9704,10 @@ def _validate_purse(
     _check_keys(purse, _PURSE_KEYS, "rules.purse", errors, required={"start"})
     if "bribe" in purse and not isinstance(purse["bribe"], bool):
         errors.append(f"rules.purse.bribe must be true or false, got {purse['bribe']!r}")
+    if "bounty_to" in purse and purse["bounty_to"] not in BOUNTY_PAYEES:
+        errors.append(
+            f'rules.purse.bounty_to must be "taker" or "loser", got {purse["bounty_to"]!r}'
+        )
     if "start" in purse:
         start = purse["start"]
         if isinstance(start, bool) or not isinstance(start, int) or not 0 <= start <= PURSE_MAX:
@@ -9793,6 +9808,20 @@ def _check_purse_coherence(
             errors.append(
                 f"rules.npcs[{index}].bounty {bounty!r} under a purse: a purse holds whole coins"
             )
+    # TC9c (§5.10): a bounty paid to the loser needs a bounty a type carries, and no wild
+    # bounty (a wild piece is nobody's, so its bounty could never be paid).
+    if purse_pays_loser(rules):
+        if not piece_bounties(pieces):
+            errors.append(
+                'rules.purse.bounty_to "loser" with no pieces[].bounty: no capture pays '
+                "anything, so the rule would never change a game"
+            )
+        for index, npc in enumerate(_listed(rules.get("npcs"))):
+            if isinstance(npc, dict) and npc.get("bounty"):
+                errors.append(
+                    f'rules.npcs[{index}].bounty beside rules.purse.bounty_to "loser": a wild '
+                    "piece is nobody's, so its bounty could never be paid"
+                )
     if not market and not hired and not bribed:
         errors.append(
             "rules.purse has nothing to spend on: list the types a player may buy in "
