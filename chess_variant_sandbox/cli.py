@@ -1671,6 +1671,10 @@ def _report_staleness(targets: list[str], args: argparse.Namespace) -> int:
         said = status.reason or f"current, {status.runs} run{'' if status.runs == 1 else 's'}"
         if status.current and status.certified:
             said += f", {status.certified}"
+        if status.current and status.measured is False:
+            # Current, with no verdict either way (plan-teacher §10.16): not stale, and
+            # not counted as work owed.
+            said += ", not measured"
         print(f"  {status.name:22} [{status.hash}] {said}")
 
     behind = stale_build()
@@ -1972,7 +1976,11 @@ def _measure_candidate(
             seeds=seeds, adopt_from=adopt,
         )
     say(f"  {corpus.measurement_dir(candidate.hash, runs)}")
-    if not stored.stored.get("viable"):
+    if stored.stored.get("measured") is False:
+        # The third verdict (plan-teacher §10.16): no verdict either way, current.
+        say("  not measured: its computer players could not tell a stronger search from a "
+            "weaker one on most of its runs; it cannot be promoted as it stands")
+    elif not stored.stored.get("viable"):
         say("  not viable on this roster; it cannot be promoted as it stands")
 
 
@@ -2824,12 +2832,17 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
     # How many runs each entry's index rests on, beside it rather than on it: a
     # `ScoredEntry` is `metrics/calibration.py`'s, in the fingerprinted set.
     runs: list[int] = []
+    # The entries whose verdict is *not measured* (plan-teacher §10.16): marked so, never
+    # *gated out*. They are withheld, so the band already leaves them out.
+    unread: set[str] = set()
     for run in sorted(p for p in root.iterdir() if p.is_dir()):
         scored = _load_scored(run, args.weights)
         if scored is None:
             continue
         result, label, base = scored
         runs.append(_runs_behind(run, result))
+        if result.get("measured") is False:
+            unread.add(result["ruleset_name"])
         entries.append(
             ScoredEntry(
                 name=result["ruleset_name"],
@@ -2854,7 +2867,8 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
         print("\n  ruleset                          label     index   +/-  runs")
         rows = sorted(zip(entries, runs, strict=True), key=lambda row: -row[0].total)
         for entry, count in rows:
-            mark = "" if entry.viable else "  (gated out)"
+            mark = ("  (not measured)" if entry.name in unread
+                    else "" if entry.viable else "  (gated out)")
             if entry.label == "human" and not entry.measurable:
                 mark += f"  (ladder {entry.ladder:.2f}: unreadable by this roster)"
             # The pill's words (`web/static/page/core.js`'s `runsShort`), and no number at all

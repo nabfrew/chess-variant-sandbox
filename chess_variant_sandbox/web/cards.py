@@ -142,6 +142,8 @@ PIECE_ROW: dict[str, tuple[str, ...]] = {
 MOVE_KIND_ONLY: dict[str, tuple[str, ...]] = {
     "screen_range": ("hop",),
     "screen": ("hop",),
+    # Q1063: how far a sweep clears, beside how far it moves.
+    "sweep_range": ("sweep",),
     # T1: a path that turns is a slide's (`docs/archive/plan-pieces-moves.md` §5.2).
     "path": ("slide",),
     # SR1a: stated legs block a lame's jumps. A leap's legs (under blocks_leaps only) are

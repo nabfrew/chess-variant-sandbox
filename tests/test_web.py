@@ -3326,7 +3326,7 @@ class TestWhatEveryNumberRestsOn:
         """
         card = self._four(tmp_path, accepting=2)
         assert card["viable"] is False
-        assert card["runVerdict"]["rule"] == "vote-tie-refuses+pooled-seat"
+        assert card["runVerdict"]["rule"] == "vote-tie-refuses+pooled-seat+blind-abstains"
         assert card["runVerdict"]["split"] == (
             "Two of its four runs accept it and two refuse it. A tie refuses, so it is"
             " ruled out."
@@ -11179,9 +11179,10 @@ class TestBuildingAGameByHand:
         # model's design from RULES.md alone, became the first library spec to use it.
         # `duck` (generation 42, N4b) joined it, and left on 2026-10-26 with N6's
         # `archive/the-shepherds-duck`.
-        # `purse` (TC5) joined it; TC9's *war chest* takes it out.
+        # `purse` (TC5) joined it, and left on 2026-10-30 with TC10b's
+        # `archive/the-free-companies` (the war chest and the levy retired first).
         assert _RULES_KEYS - seen == {
-            "checkmate", "turn", "purse",
+            "checkmate", "turn",
         }, "the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(

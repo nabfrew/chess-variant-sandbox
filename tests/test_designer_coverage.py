@@ -803,7 +803,7 @@ class TestOnlyAHopsFieldsOnAHop:
     @pytest.mark.parametrize("key", sorted(cards.MOVE_KIND_ONLY))
     def test_the_validator_refuses_each_on_every_other_kind(self, key: str) -> None:
         value = {"screen": "own", "screen_range": 1, "path": "zigzag",
-                 "legs": [[[1, 1]]]}[key]
+                 "legs": [[[1, 1]]], "sweep_range": 1}[key]
         for kind in schema.MOVE_KINDS:
             spec = _template("skirmish")
             # A zigzag needs two directions to turn between (T1), so every kind is drawn

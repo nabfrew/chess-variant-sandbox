@@ -80,6 +80,8 @@ class SweepItem:
     error: str = ""
     index: float | None = None
     viable: bool | None = None
+    # False only for *not measured* (plan-teacher §10.16), which the page says plainly.
+    measured: bool | None = None
     seeds: tuple[int, ...] = ()
     seconds: float = 0.0
 
@@ -99,6 +101,7 @@ class SweepItem:
             return
         self.index = result.get("index")
         self.viable = result.get("viable")
+        self.measured = result.get("measured") is not False
         self.seeds = tuple(int(seed) for seed in seeds)
 
     def as_dict(self) -> dict[str, Any]:
@@ -110,6 +113,7 @@ class SweepItem:
             "error": self.error,
             "index": self.index,
             "viable": self.viable,
+            "measured": self.measured,
             # How many runs `index` is the mean of, and which. Empty exactly when there
             # is no number to go with it.
             "seeds": list(self.seeds),

@@ -163,7 +163,7 @@ impl<'t> Game<'t> {
             }
             None => false,
         };
-        let word = |target: usize| encode_move(origin, target, MOVE_NORMAL, 0) | MOVE_FOREIGN;
+        let word = |target: usize| with_foreign(encode_move(origin, target, MOVE_NORMAL, 0));
         let slot = t.slot(frame, piece_type, origin);
         let segment_start = out.len();
 
@@ -253,7 +253,7 @@ impl<'t> Game<'t> {
             let facing = frame % t.n_facings;
             for turn in 1..axes {
                 let to = (facing + turn * step) % t.n_facings;
-                out.push(encode_move(origin, origin, MOVE_ROTATE, to as u32) | MOVE_FOREIGN);
+                out.push(with_foreign(encode_move(origin, origin, MOVE_ROTATE, to as u32)));
             }
         }
     }

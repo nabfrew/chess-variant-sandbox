@@ -241,7 +241,7 @@ impl AgentSpec {
             }
             if !weights.is_empty() || !values.is_empty() {
                 return Err(
-                    "a net was given beside a weight vector or piece values; the net is                      the whole objective, and a player naming two is one nobody measured"
+                    "a net was given beside a weight vector or piece values; the net is the whole objective, and a player naming two is one nobody measured"
                         .to_string(),
                 );
             }
@@ -1156,18 +1156,15 @@ fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> f64 {
     if kind == MOVE_ROTATE || kind == MOVE_CASTLE || kind == MOVE_FOLD || kind == MOVE_DUCK {
         return 0.0;
     }
-    let n_types = t.n_types;
-    let victim = board[move_to(m)] as usize;
-    let mut gain = if victim == 0 { 0.0 } else { values[(victim - 1) % n_types] };
+    let victim = board[move_to(m)];
+    let mut gain = if victim == 0 { 0.0 } else { values[t.type_of(victim)] };
     // Schema 13: a sweep also takes every piece on its path, and they are summed onto
     // the target's. Mirrored by `agents/minimax.py::_capture_gain`.
     if kind == MOVE_SWEEP {
         let origin = move_from(m);
-        for &square in t.sweep_path(board[origin], origin, move_to(m)) {
-            let swept = board[square as usize] as usize;
-            if swept != 0 {
-                gain += values[(swept - 1) % n_types];
-            }
+        let mut victims = t.sweep_victims(board[origin], origin, move_to(m));
+        while let Some((_, swept)) = victims.next_on(board) {
+            gain += values[t.type_of(swept)];
         }
     }
     gain

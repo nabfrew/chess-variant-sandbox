@@ -20,7 +20,7 @@ the answer down beside it.
 What is walked, and what the walk does not see:
 
 * **The boundary.** Each refused key of `bridge.build_tables`' dict is read into `Tables` by
-  `keys::X` in `Tables::from_py` and nowhere else; `TestTheBoundaryReadsThemOnce` holds it.
+  `keys::X` in `Tables::from_py` or a reader it calls (`BOUNDARY`) and nowhere else; `TestTheBoundaryReadsThemOnce` holds it.
 * **The core.** Every `.member` of `Tables` that carries one of those keys, in every file of
   `rust/src/`, by function. A `Tables` method that reads one is an *accessor*, and the
   callers of it are followed to a fixed point, since "reached through a method rather than
@@ -141,7 +141,7 @@ MEMBERS: dict[str, frozenset[str]] = {
 READERS: dict[str, dict[str, str]] = {
     # -- case 1, and case 13 where `en_passant` is declared beside a phantom promotion.
     "ep_type": {
-        "game.rs::make": "sets the en passant window after the promoting piece's two-square "
+        "game.rs::write_ep_window": "`make`'s phase (CS8): sets the en passant window after the promoting piece's two-square "
         "move; `ep_passes` holds no entry for a piece that cannot double-step, and a piece "
         "that never stands never moves",
         "game.rs::generate_pseudo_legal_as": "`capturable_ep`, the three arms that take in "
@@ -154,7 +154,7 @@ READERS: dict[str, dict[str, str]] = {
     },
     # -- case 4.
     "explosion": {
-        "game.rs::make": "the blast, behind `captured != 0`, which no move reaches when "
+        "game.rs::write_blast": "`make`'s phase (CS8): the blast, behind `captured != 0`, which no move reaches when "
         "nothing can be taken",
         "game.rs::leaves_royal_attacked": "the blast in the legality filter, behind an "
         "occupied target, and who is capturing; neither exists without a capture",
@@ -163,25 +163,33 @@ READERS: dict[str, dict[str, str]] = {
         "eval.rs::of": "`Immunity::of` declines the immunity term under an explosion. "
         "**Evaluator, not rules**: with no capture the term's premise is gone anyway; "
         "re-read this site if case 4 is ever re-proven",
-        "rounds.rs::resolve_step": "schema 26's blast, over the round's captures, of which "
-        "there are none when nothing can be taken",
+        "rounds.rs::blasts": "schema 26's blast (§4 step 6), over the round's captures, of "
+        "which there are none when nothing can be taken",
     },
     # -- cases 5 and 6.
     "drops": {
         "game.rs::initial": "the opening hands: empty, since the refusals need no stock",
-        "game.rs::make": "the drop branch and the fill; the fill is behind `captured != 0` "
-        "and `from_captures`, which the two refusals switch off between them",
+        "game.rs::write_entry": "`make`'s drop branch (CS8): spends a hand slot, which is "
+        "empty for the life of the game, so no drop is ever generated to reach it",
+        "game.rs::deposit_capture": "`make`'s fill (CS8), behind `captured != 0` and "
+        "`from_captures`, which the two refusals switch off between them",
+        "game.rs::write_gate": "`make`'s gate (Q1059a, CS8): asks whether the hand gates; the "
+        "refusals state no `gating`, so `gates` is `None` and it writes nothing",
         "game.rs::generate_pseudo_legal_as": "calls `generate_drops`, which returns at once on "
         "an empty hand; schema 18's placement gate (Q784) fires only on a non-empty one",
         "game.rs::royal_in_hand": "asks `royal_stocked` first (Q784), which needs a royal in "
         "the stock; the refusals need no stock, so it answers false",
         "game.rs::generate_drops": "walks the hand, which is empty for the life of the game",
+        "game.rs::gate_for_filter": "Q1059a: asks whether the hand gates; the refusals state no "
+        "`gating`, so `gates` is `None` and it returns before reading anything",
         "foreign.rs::push_commanded": "schema 18's placement gate (Q1007c's commanded moves wait "
         "on it as the own moves do), which fires only on a non-empty hand",
         "foreign.rs::push_held": "schema 18's placement gate (TC3's held neutrals wait on it as "
         "the own moves do), which fires only on a non-empty hand",
-        "rounds.rs::resolve_step": "schema 26's drop branch and fill, as `make`'s: the fill "
-        "is behind a capture and `from_captures`",
+        "rounds.rs::departures": "schema 26's drop branch, as `make`'s (§4 step 2): a drop "
+        "leaves the hand, which is empty for the life of the game",
+        "rounds.rs::what_captures_cause": "schema 26's fill, as `make`'s (§4 step 5): behind "
+        "a capture and `from_captures`",
         "game.rs::restrict": "the drop-mate filter; it filters drops, and there are none",
         "eval.rs::new": "`mean_non_royal` skips unlimited types; the refusals need no "
         "stock, so no type is unlimited and the mean is the undeclared one; also copies "
@@ -211,7 +219,7 @@ READERS: dict[str, dict[str, str]] = {
     },
     # -- cases 8 and 11.
     "check_limit": {
-        "game.rs::make": "`delivered`; false at every ply with no royal (case 8) or with "
+        "game.rs::count_check": "`make`'s phase (CS8): `delivered`; false at every ply with no royal (case 8) or with "
         "no move allowed to give check (case 11, which excludes an explosion)",
         "game.rs::make_fold": "schema 22: `make`'s `delivered` for a fold's own move, the same "
         "count under the same two cases",
@@ -267,7 +275,7 @@ READERS: dict[str, dict[str, str]] = {
         "eval.rs::of": "`Seal::of` asks whether the race is priced; the seal it builds is "
         "read only as above",
         "features.rs::reach_progress": "`REACH_PROGRESS`, over pieces on the board",
-        "game.rs::make": "schema 18f (Q786): whether the move took the named piece off a goal "
+        "game.rs::write_goal_left": "`make`'s phase (CS8), schema 18f (Q786): whether the move took the named piece off a goal "
         "square, read only under `reach_leaves`, from the mover as it set out, so a piece "
         "that never stands never leaves",
         "rounds.rs::goal_left": "schema 26's leaving test, `make`'s, per player (schema 28 "
@@ -324,6 +332,7 @@ READERS: dict[str, dict[str, str]] = {
     "promotes_on()": {
         "game.rs::generate_pseudo_legal_as": "asked of a moving piece's origin",
         "game.rs::push_arrival": "asked of a moving piece's target",
+        "game.rs::push_hops": "asked of a hop's empty landing, behind `promoting` (CS4)",
         "game.rs::push_transits": "asked of a moving piece's exit (schema 19)",
         "game.rs::push_portal_moves": "asked of a moving piece's origin (schema 19)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
@@ -342,20 +351,25 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::push_through": "asked of the moving piece going through a fold (schema 24)",
     },
     "promotion_targets()": {
-        "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
+        "game.rs::push_hops": "asked of the moving piece at a hop's empty landing (CS4)",
         "game.rs::push_arrival": "asked of the moving piece",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
     },
     "entry_promotion": {"tables.rs::arriving_value": "the accessor; its callers are followed"},
     "arriving_value()": {
-        "game.rs::make": "the value of a piece entering play, by drop or by strike",
+        "game.rs::write_entry": "`make`'s phase (CS8): the value of a piece entering play "
+        "by drop or buy",
+        "game.rs::write_gate": "`make`'s phase (CS8): a gated piece's value, reached only "
+        "under `drops.gating`",
         "game.rs::strike_writes": "the value a struck piece becomes where it lands",
         "game.rs::play_move_for_filter": "the same write in the legality filter",
         "game.rs::restrict": "the immobility filter, asking of a dropped piece as it "
         "stands after arrival",
         "game.rs::is_forbidden_drop_mate": "the dropped piece's value",
+        "game.rs::gate_for_filter": "Q1059a: a gated piece's value in the legality filter, "
+        "reached only under `drops.gating`",
         "rounds.rs::plan": "schema 26: a dropped piece's value, as `make`'s drop branch",
-        "rounds.rs::resolve_step": "schema 26: an own merge's mover, as `strike_writes`",
+        "rounds.rs::own_consequences": "schema 26: an own merge's mover, as `strike_writes`",
         "rounds.rs::contact_in_place": "schema 26: a contact's two pieces, as `strike_writes`",
         "rounds.rs::strike_after": "schema 26: a struck piece and its captor, as "
         "`strike_writes`",
@@ -367,15 +381,17 @@ READERS: dict[str, dict[str, str]] = {
         "struck piece becomes where it lands",
         "rounds.rs::contact_in_place": "TC1, schema 26: a contact flip, as `strike_writes`",
         "rounds.rs::strike_after": "TC1, schema 26: a captor that switches, as `strike_writes`",
-        "game.rs::make": "TC6: a hire or a bribe, the bought piece entering play for its "
+        "game.rs::write_board": "`make`'s board phase (CS8), TC6: a hire or a bribe, the bought piece entering play for its "
         "new owner where it stands (`promote_on_entry` counts both as a way in)",
         "game.rs::play_move_for_filter": "TC6: the same hire or bribe in the legality filter",
         "game.rs::restrict": "TC6: the immobility filter, asking of a hired or bribed piece "
         "as it stands after the change of side",
     },
     "rounds.rs:mover": {
-        "rounds.rs::resolve_step": "schema 26: the dropped piece's value `plan` read, placed "
-        "as `make` places it",
+        "rounds.rs::own_consequences": "schema 26: the dropped piece's value `plan` read, "
+        "placed as `make` places it",
+        "rounds.rs::contacts_that_stood": "schema 26: whether a contact that stays still has "
+        "its mover on its origin as itself; a drop has no origin and is never standing",
         "rounds.rs::make_round": "schema 28: whether the slower move's piece still stands "
         "on its origin as itself, compared with the board; a drop has no origin and is "
         "never asked",
@@ -388,7 +404,7 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::royal_count": "how many royals a side has standing",
         "game.rs::in_check_at": "whether any standing royal is attacked",
         "game.rs::compute_in_check": "the same, memoised",
-        "game.rs::make": "`delivered`, over standing royals",
+        "game.rs::count_check": "`make`'s phase (CS8): `delivered`, over standing royals",
         "game.rs::make_fold": "schema 22: the same `delivered` after a fold's own move",
         "game.rs::leaves_royal_attacked": "the legality filter, over standing royals",
         "game.rs::generate_checked": "the pin shortcut's single-royal premise",
@@ -529,8 +545,16 @@ class TestEveryReaderOfARefusedFieldIsNamed:
         assert set(MEMBERS) == REFUSED_KEYS
 
 
+# `Tables::from_py` and the readers it calls, one per rule (CS1, `docs/plan-smells-rust.md`
+# R7): together they are the boundary, called once when the tables are built.
+BOUNDARY = frozenset({
+    "from_py", "royal_facing_lines", "castling_rule", "promotion_rule", "bare_royal_rule",
+    "explosion_rule", "drop_rule", "goal_distances", "reach_rule", "entry_promotion_rule",
+})
+
+
 class TestTheBoundaryReadsThemOnce:
-    """Each refused key crosses into `Tables` in `from_py` and is never looked up again."""
+    """Each refused key crosses into `Tables` at the boundary and is never looked up again."""
 
     @staticmethod
     def _const(key: str) -> str:
@@ -550,7 +574,7 @@ class TestTheBoundaryReadsThemOnce:
                     if not re.search(r"\b" + self._const(key) + r"\b", code):
                         continue
                     site = f"{name}::{fn}"
-                    if site == f"{TABLES.name}::from_py":
+                    if name == TABLES.name and fn in BOUNDARY:
                         read.add(key)
                     elif site != f"{TABLES.name}::<item>":
                         stray.append(f"{site} names keys::{self._const(key)}")

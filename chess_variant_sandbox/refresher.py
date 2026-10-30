@@ -514,7 +514,9 @@ def repair(
     taken: dict[str, Any] = {"route": FULL if fell_back else route, "fell_back": fell_back}
     index = _number(measured.stored.get("index"))
     viable = measured.stored.get("viable")
-    if before.viable is True and viable is False:
+    # *Not measured* (plan-teacher §10.16) is no verdict, so it is not a gate newly failed.
+    unread = measured.stored.get("measured") is False
+    if before.viable is True and viable is False and not unread:
         violations = "; ".join(str(v) for v in measured.stored.get("violations") or ())
         return done(needs, GATE_NEWLY_FAILED,
                     "the stored measurement passed its gates and the repair fails "

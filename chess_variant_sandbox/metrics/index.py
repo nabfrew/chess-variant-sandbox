@@ -48,6 +48,31 @@ from chess_variant_sandbox.tournament.record import GameRecord
 # declaring them moves no `analysis` fingerprint.
 _FROM_THE_PASS = frozenset(ANALYSIS_COMPONENTS) | frozenset(KEYED_COMPONENTS)
 
+# The third verdict, *not measured* (plan-teacher §10.16.4 point 5): this roster on this
+# game produced no verdict. It is current, not provisional, and it carries no number, so
+# it enters no band, gap or leaderboard comparison. Readers print these words.
+VIABLE = "viable"
+NOT_VIABLE = "not viable"
+NOT_MEASURED = "not measured"
+NOT_MEASURED_MANY = (
+    "its computer players could not tell a stronger search from a weaker one on most of "
+    "its runs"
+)
+NOT_MEASURED_ONE = (
+    "its computer players could not tell a stronger search from a weaker one on this run"
+)
+
+
+def verdict_word(viable: bool | None, measured: bool | None = True) -> str:
+    """The verdict in the words every reader shows: `viable`, `not viable`, `not measured`.
+
+    ``measured`` is False only for the third outcome; a stored file that predates it has
+    no such key, and reads as measured, which is what its verdict was taken as.
+    """
+    if measured is False:
+        return NOT_MEASURED
+    return VIABLE if viable else NOT_VIABLE
+
 
 @dataclass
 class IndexResult:
@@ -74,6 +99,16 @@ class IndexResult:
     # was too small to resample, and absent is reported as absent -- a zero here would
     # read as "perfectly precise", which is the one thing it never is.
     interval: dict[str, Any] | None = None
+    # False for one result alone: a run the roster could not read whose readable gates all
+    # passed (`_unreadable_result`, plan-teacher §10.16.4 point 1). It neither accepts nor
+    # refuses, so its word is *not measured*; `viable` stays False beside it because it
+    # was not admitted, and every reader asks this first. A refusal is always measured.
+    measured: bool = True
+
+    @property
+    def verdict_word(self) -> str:
+        """`viable`, `not viable` or `not measured`: the run's own verdict."""
+        return verdict_word(self.viable, self.measured)
 
     @property
     def sd(self) -> float:
@@ -170,7 +205,10 @@ class IndexResult:
         else:
             head += f"no score (weights {self.weights_version})"
         lines = [head]
-        if not self.viable:
+        if not self.measured:
+            lines.append(f"  NOT MEASURED: {NOT_MEASURED_ONE}")
+            lines.extend(f"    - {violation}" for violation in self.violations)
+        elif not self.viable:
             lines.append("  NOT VIABLE:")
             lines.extend(f"    - {violation}" for violation in self.violations)
         if self.families:
@@ -315,6 +353,16 @@ def _unreadable_result(
 
     The components that *were* measured are still reported, because they are still
     facts, and because the next reader's question is going to be "how badly?".
+
+    **The blind-run abstention** (plan-teacher §10.16.4 point 1, rule (e)). Gates
+    disqualify, and a gate read on a component this instrument *can* read is a fact
+    whatever happened to the ladder. So the run's readable gates are checked: the weights'
+    gates whose component is neither withheld here nor in `LADDER_DEPENDENT`, and that
+    the corpus measured. Any failure refuses the run, in the usual gate sentence, with the
+    *cannot read* sentence beside it. Otherwise the run abstains: `measured` is False, and
+    its word is *not measured*. The seat gates are not among the readable ones: they are
+    not the weights version's gates, and they read the ladder's top rungs by budget; a
+    library game's pooled seat still refuses on top (`seeds.combine`).
     """
     partial = {
         component: weights.curves[component].score(components.raw[component])
@@ -329,16 +377,18 @@ def _unreadable_result(
         if monotonicity < MEASURABLE_LADDER
         else f"a larger search rates *worse* here ({gradient:.1f} Elo per doubling)"
     )
+    refusals = readable_gate_violations(components, weights, unreadable)
     return IndexResult(
         ruleset_hash=spec_hash_value,
         ruleset_name=name,
         weights_version=weights.version,
         total=0.0,
         viable=False,
-        violations=[
+        violations=refusals + [
             f"this roster cannot read this ruleset: {why}, so "
             f"{', '.join(unreadable)} would describe the players rather than the game"
         ],
+        measured=bool(refusals),
         scores={k: round(v, 4) for k, v in partial.items()},
         contributions={},
         raw={k: round(v, 4) for k, v in components.raw.items()},
@@ -348,6 +398,24 @@ def _unreadable_result(
         llm_score=llm_score,
         llm_notes=llm_notes,
     )
+
+
+def readable_gate_violations(
+    components: Components, weights: Weights, unreadable: tuple[str, ...]
+) -> list[str]:
+    """The failures of the gates a blind run can still read (§10.16.4 point 1).
+
+    A gate whose component is withheld, or derives from the ladder, describes the
+    players here and is not read. A gate whose component the corpus did not supply was
+    not read either: a gate it could not read is not one it failed.
+    """
+    blind = set(unreadable) | LADDER_DEPENDENT
+    readable = [
+        gate for gate in weights.gates
+        if gate.component not in blind and gate.component in components.raw
+    ]
+    failures = (gate.check(components.raw[gate.component]) for gate in readable)
+    return [failure for failure in failures if failure]
 
 
 def gate_violations(components: Components, weights: Weights) -> list[str]:

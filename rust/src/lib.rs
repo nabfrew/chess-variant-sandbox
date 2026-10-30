@@ -27,7 +27,7 @@ use crate::agents::{AgentSpec, Player};
 use crate::eval::Evaluator;
 use crate::game::{count_colours, scan_occupied, Game, Snapshot};
 use crate::rng::PyRandom;
-use crate::tables::{SquareSet, Tables, MAX_SQUARES, PURSE_MAX};
+use crate::tables::{SquareSet, Tables, MAX_PORTAL_ENDS, MAX_SQUARES, PURSE_MAX};
 
 /// The full state crossing the boundary. Twelve fields: the original nine, plus checks
 /// (two u32), hands (two Vec<u32>), and everything schema 4 added grouped into one --
@@ -181,17 +181,17 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
 /// Schema 22: the folds as Python holds them -- one square per fold end, in end order --
 /// as `Game::fold_at`, indexed by end. An empty tuple is where the folds start, which is
 /// what a position built by hand without saying where they stand means.
-fn folds_in(t: &Tables, folds: &[i16]) -> [i16; 8] {
+fn folds_in(t: &Tables, folds: &[i16]) -> [i16; MAX_PORTAL_ENDS] {
     let Some(starts) = t.portals.as_deref().and_then(|p| p.folds.as_ref()).map(|f| f.starts)
     else {
-        return [-1; 8];
+        return [-1; MAX_PORTAL_ENDS];
     };
     if folds.is_empty() {
         return starts;
     }
-    let mut at = [-1i16; 8];
+    let mut at = [-1i16; MAX_PORTAL_ENDS];
     let mut given = folds.iter();
-    for end in 0..8 {
+    for end in 0..MAX_PORTAL_ENDS {
         if starts[end] >= 0 {
             at[end] = given.next().copied().unwrap_or(starts[end]);
         }
@@ -205,7 +205,7 @@ fn folds_out(game: &Game<'_>) -> Vec<i16> {
     else {
         return Vec::new();
     };
-    (0..8).filter(|end| starts[*end] >= 0).map(|end| game.fold_at[end]).collect()
+    (0..MAX_PORTAL_ENDS).filter(|end| starts[*end] >= 0).map(|end| game.fold_at[end]).collect()
 }
 
 fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
@@ -317,6 +317,40 @@ fn refuse_a_round(tables: &Tables, snapshot: &Snapshot) -> PyResult<()> {
     Ok(())
 }
 
+/// R12 (CS6): `Core.apply` plays only a word the position offers. `make` trusts its word:
+/// a kind the game does not have reaches an `expect` (a `PanicException` in Python), and a
+/// drop from an empty hand slot wraps the count and returns a corrupted position. A
+/// hand-built word (a test, the CLI, a page) is refused here, as a `ValueError`, unless the
+/// position's own generator offers it: `pseudo_legal_moves` or `legal_moves`. Pseudo-legal
+/// stays playable because the declared oracles judge legality themselves by applying each
+/// pseudo-legal word and walking the board after it, and `make` plays any word the
+/// generator wrote (the legality filters do exactly that). One generation per call (two
+/// only for a word outside the pseudo-legal list), on the per-move Python path only; the
+/// core's own loops call `make` directly and never come through here.
+fn refuse_unoffered(tables: &Tables, snapshot: &Snapshot, m: u32) -> PyResult<()> {
+    // A fresh game, so the one that plays the move keeps an untouched phase log.
+    let mut game = Game::from_snapshot(tables, snapshot);
+    let mut offered = Vec::new();
+    game.generate_pseudo_legal(&mut offered);
+    if offered.contains(&m) || game.legal_moves().contains(&m) {
+        return Ok(());
+    }
+    // A castling word names only the king's squares; say which half is missing.
+    if tables::move_kind(m) == tables::MOVE_CASTLE
+        && game
+            .castling_partner(tables::move_from(m), tables::move_to(m))
+            .is_none()
+    {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "castling move applied to a position with no partner rook",
+        ));
+    }
+    Err(pyo3::exceptions::PyValueError::new_err(format!(
+        "move {m} (kind {}) is not a move this position offers",
+        tables::move_kind(m)
+    )))
+}
+
 #[pymethods]
 impl Core {
     #[new]
@@ -350,11 +384,18 @@ impl Core {
     /// the mover's move inside the same `make`, so one move makes two board changes and
     /// a caller with only the end position has to work the second one out. It gets the
     /// steps themselves instead.
+    ///
+    /// `offered_only` (R12, CS6) refuses a word the position does not offer
+    /// (`refuse_unoffered`). Only a declared test oracle turns it off: `tests/sight_oracle.py`
+    /// plays commanded words it builds itself on its sight-stripped twin, which never
+    /// generates them, and owns the risk that a word `make` cannot play panics.
+    #[pyo3(signature = (state, m, offered_only = true))]
     fn apply<'py>(
         &self,
         py: Python<'py>,
         state: StateIn,
         m: u32,
+        offered_only: bool,
     ) -> PyResult<(StateOut<'py>, PhaseOut)> {
         // Schema 27 (Q935a): a spy game's turn, in an alternating or reply phase only, played
         // by `spy_turn` so the initiative's deal (E10) is made where rounds begin.
@@ -364,9 +405,12 @@ impl Core {
             let phase = game.phase();
             if phase.is_round() {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "this spy game is in its {} phase, played in rounds; apply both players'                      moves together with apply_round",
+                    "this spy game is in its {} phase, played in rounds; apply both players' moves together with apply_round",
                     phase.name()
                 )));
+            }
+            if offered_only {
+                refuse_unoffered(&self.tables, &snapshot, m)?;
             }
             game.spy_turn(m);
             let steps = game
@@ -387,20 +431,10 @@ impl Core {
             ));
         }
         let snapshot = snapshot_from(&self.tables, &state);
-        let mut game = Game::from_snapshot(&self.tables, &snapshot);
-        // A castling move names only the king's squares, so applying one to a position
-        // with no partner rook is the one way a caller holding a hand-built move can
-        // reach an unrecoverable state inside the core. Reject it here, where it can
-        // still be an ordinary Python exception.
-        if tables::move_kind(m) == tables::MOVE_CASTLE
-            && game
-                .castling_partner(tables::move_from(m), tables::move_to(m))
-                .is_none()
-        {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "castling move applied to a position with no partner rook",
-            ));
+        if offered_only {
+            refuse_unoffered(&self.tables, &snapshot, m)?;
         }
+        let mut game = Game::from_snapshot(&self.tables, &snapshot);
         game.make(m);
         // The game was built from the snapshot a moment ago, so its phase log holds
         // this move's steps and nothing else.
@@ -448,7 +482,7 @@ impl Core {
             let phase = game.phase();
             if !phase.is_round() {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "this spy game is in its {} phase, played one move at a time; apply the                      move with apply",
+                    "this spy game is in its {} phase, played one move at a time; apply the move with apply",
                     phase.name()
                 )));
             }
@@ -1014,7 +1048,7 @@ impl Core {
         let spec = agent_spec(&self.tables, &agent)?;
         if !matches!(spec.kind, agents::Kind::Greedy | agents::Kind::Matrix) {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "round_values asks a round player that searches (greedy, matrix) for its                  value; {} is not one",
+                "round_values asks a round player that searches (greedy, matrix) for its value; {} is not one",
                 agent.0
             )));
         }
@@ -1026,7 +1060,7 @@ impl Core {
             }
             if !agents::one_round_teacher(&spec) {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "a score payoff is the one-round teacher's (greedy or matrix:nodes=1); {}                      searches deeper, and its deeper cells are sub-games solved in units",
+                    "a score payoff is the one-round teacher's (greedy or matrix:nodes=1); {} searches deeper, and its deeper cells are sub-games solved in units",
                     agent.0
                 )));
             }
@@ -1188,6 +1222,13 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("ROUND_WIN_PIECES", crate::eval::ROUND_WIN_PIECES)?;
     // Q935h: what holding the only spy is worth, for the same reason again.
     m.add("SPY_PIECES", crate::eval::SPY_PIECES)?;
+    // CS7 (R15): the widest portal game the core holds, for a test to pin it equal to
+    // `spec/schema.py::MAX_PORTAL_ENDS`, the validator's ceiling.
+    m.add("MAX_PORTAL_ENDS", MAX_PORTAL_ENDS)?;
+    // CS2 (R1): the move word's field map as `(name, shift, width)` and its kinds as
+    // `(name, value)`, for `tests/test_move_word.py` to pin `engine/moves.py`'s copies to.
+    m.add("MOVE_FIELDS", PyTuple::new(m.py(), crate::tables::MOVE_FIELDS)?)?;
+    m.add("MOVE_KINDS", PyTuple::new(m.py(), crate::tables::MOVE_KINDS)?)?;
     m.add("__doc__", "Move generation, search and tournament execution.")?;
     Ok(())
 }

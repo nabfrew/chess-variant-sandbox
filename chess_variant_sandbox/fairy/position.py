@@ -23,9 +23,12 @@ from typing import TYPE_CHECKING
 
 from chess_variant_sandbox.engine.moves import (
     DUCK_PASS,
+    MOVE_CASTLE,
     MOVE_DROP,
     MOVE_PROMOTION,
     decode_move,
+    move_gate,
+    move_gate_rook,
 )
 from chess_variant_sandbox.engine.state import NO_SQUARE, GameState
 from chess_variant_sandbox.fairy.variant import board_letters
@@ -54,6 +57,7 @@ def fen(
     drops: bool = False,
     check_limit: int = 0,
     castling: bool = False,
+    gating: bool = False,
 ) -> str:
     """``state`` as a Fairy-Stockfish FEN under the translated variant."""
     board = _board_field(compiled, state, chars)
@@ -62,7 +66,7 @@ def fen(
     fields = [
         board,
         "w" if their_side(compiled, state) == 0 else "b",
-        _castling_field(compiled, state, king) if castling else "-",
+        _castling_field(compiled, state, king, gating) if castling or gating else "-",
         format_square(state.ep_target % compiled.width, state.ep_target // compiled.width) if state.ep_target != NO_SQUARE else "-",
     ]
     if check_limit:
@@ -157,7 +161,9 @@ def _pocket_field(
     return held
 
 
-def _castling_field(compiled: CompiledSpec, state: GameState, king: int | None) -> str:
+def _castling_field(
+    compiled: CompiledSpec, state: GameState, king: int | None, gating: bool = False
+) -> str:
     """Which castlings are still available, in the usual four letters.
 
     Derived from the `unmoved` mask rather than tracked, because that mask *is* the
@@ -172,8 +178,9 @@ def _castling_field(compiled: CompiledSpec, state: GameState, king: int | None) 
     piece is royal and whether it castles are two questions.
     """
     rule = compiled.castling
+    gates = _gate_letters(compiled, state) if gating else ""
     if rule is None:
-        return "-"
+        return gates or "-"
     text = ""
     for player, letters in ((0, "KQ"), (1, "kq")):
         kings = _unmoved_squares(compiled, state, player, rule.king_type)
@@ -191,7 +198,30 @@ def _castling_field(compiled: CompiledSpec, state: GameState, king: int | None) 
             text += letters[0]
         if any(file < king_file for file in rooks):
             text += letters[1]
-    return text or "-"
+    return text + gates or "-"
+
+
+def _gate_letters(compiled: CompiledSpec, state: GameState) -> str:
+    """Q1059a: the gates still open, as file letters after the castling letters.
+
+    A gate is open where a piece of its side still stands unmoved on it (the core's own
+    reading, its `unmoved` bit). Written only while the side holds something in hand:
+    over there a file letter with an empty hand is read as a chess960 castling right, and
+    a gate with nothing to put through it changes no move.
+    """
+    drops = compiled.drops
+    if drops is None or drops.gates is None:
+        return ""
+    text = ""
+    for player in (0, 1):
+        if not any(state.hands[player]):
+            continue
+        for square in sorted(drops.gates[player]):
+            value = state.board[square]
+            if value and compiled.owner_of(value) == player and state.unmoved >> square & 1:
+                letter = chr(ord("A") + square % compiled.width)
+                text += letter if player == 0 else letter.lower()
+    return text
 
 
 def _unmoved_squares(
@@ -239,6 +269,11 @@ def uci_of(
         mark = "+" if slot != face else ""
         return f"{mark}{chars[slot].upper()}@{format_square(target % width, target // width)}"
     text = f"{format_square(origin % width, origin // width)}{format_square(target % width, target // width)}"
+    gate = move_gate(move) if compiled.drops is not None and compiled.drops.gates is not None else 0
+    if gate and kind == MOVE_CASTLE and move_gate_rook(move):
+        # Q1059a: a castle gating on the rook's square is written rook to king there.
+        rook = castle_rook_origin(compiled, state, move)
+        text = f"{format_square(rook % width, rook // width)}{format_square(origin % width, origin // width)}"
     if kind == MOVE_PROMOTION:
         if promotion_suffix == "plus":
             # A turn back to the piece's `promoted_from` is `pieceDemotion`'s move there,
@@ -248,7 +283,34 @@ def uci_of(
             text += "-" if back else "+"
         else:
             text += chars[promoted].lower()
+    if gate:
+        text += chars[gate - 1].lower()
     return text
+
+
+def castle_rook_origin(compiled: CompiledSpec, state: GameState, move: int) -> int:
+    """Q1059a: where a castle's rook stands before it, to spell a gate on its square.
+
+    The core's `castling_rook_squares`, read for spelling only: the move is already one
+    our engine offered. File-based castling carries the rook's file in the promotion
+    field; a step count castles with the first rook outward from the king.
+    """
+    origin, target, _, promoted = decode_move(move)
+    rule = compiled.castling
+    assert rule is not None
+    width = compiled.width
+    base = origin - origin % width
+    if rule.king_files is not None:
+        return base + promoted
+    step = 1 if target > origin else -1
+    side = compiled.owner_of(state.board[origin])
+    file = origin % width + step
+    while 0 <= file < width:
+        value = state.board[base + file]
+        if value and compiled.owner_of(value) == side and compiled.type_of(value) == rule.rook_type:
+            return base + file
+        file += step
+    raise ValueError("a castle with no rook to gate on")
 
 
 def turn_word(
@@ -323,6 +385,7 @@ def variant_fen(variant: Variant, compiled: CompiledSpec, state: GameState) -> s
         drops=variant.drops,
         check_limit=_limit(compiled, variant),
         castling=variant.castling,
+        gating=variant.gating,
     )
 
 

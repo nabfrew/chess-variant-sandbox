@@ -1,0 +1,291 @@
+{
+  "schema_version": 31,
+  "name": "the condottieri",
+  "description": "Chess with four mercenaries standing between the armies, loyal to whoever paid them last. A mercenary moves like a king or a knight, belongs to neither side at the start and never moves until someone hires it: a player with a piece next to one may spend the whole move paying three coins, and it is theirs where it stands. Coins come from captures (one for a pawn, two for any other piece, a mercenary included) on top of the three each player starts with, and a purse holds at most 99. Loyalty is for sale twice over: an enemy mercenary next to one of your pieces can be bribed away for six. So each mercenary is first a race, to march a piece beside it with coins in hand, and then a liability, since every enemy piece that comes to stand next to it is a threat to buy it out from under you. Nobody's mercenary can also simply be taken by either side for its two coins, so every one asks whether it is worth more hired than removed. They stand on b4, g4, b5 and g5, within reach of each side's bishop and queen once a pawn moves, which makes the opening a scramble over who gets to them first and how.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "bounty": 1
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "bounty": 2
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "bounty": 2
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "bounty": 2
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "bounty": 2
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "M",
+      "name": "mercenary",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "price": 3,
+      "bounty": 2
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "M",
+        "player": "nobody",
+        "squares": [
+          "b4",
+          "g4"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "purse": {
+      "start": 3,
+      "bribe": true
+    }
+  },
+  "appearance": {
+    "icons": {
+      "M": "sword"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-30",
+    "origin": "human",
+    "source": "international chess",
+    "history": "Hand-written as the showcase of hiring and bribing (TC10, docs/plan-turncoat.md section 8.3): the chess army and setup with four mercenaries nobody owns on b4, g4, b5 and g5, hired for coins that captures pay and bribed away at twice the price."
+  }
+}

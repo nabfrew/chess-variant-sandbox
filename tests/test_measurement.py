@@ -522,7 +522,23 @@ class TestTheFingerprintsPointAtSomething:
 # counters lose their underscore and sit in one section of `analysis.py`, which the legality job
 # imports: a rename and a move, no number can move. It was "6f84517cd6271456" after CP6; Q1053
 # re-scores under it.
-FROZEN_METRICS = "92acf3baf7eb5664"
+# **Moved 2026-10-29 by CS11 (`docs/plan-smells-rust.md` CS11, PY6)**: `engine.py`'s
+# `describe_move` reads a sweep's victims from `CompiledSpec.sweep_victims`, the same squares in
+# the same order: no number can move. It was "92acf3baf7eb5664" after CP7 (Q1053's re-score).
+# **Moved 2026-10-29 by CS2 (`docs/plan-smells-rust.md` R1; PY1)**: `engine/moves.py`'s
+# `move_landing`, `move_portal` and `move_fold` mask bits 25-29 only (the foreign bit out), off a
+# field map the core exports. No stored word sets a tag past 8 beside the foreign bit, so no number
+# can move. It was "1d87965292ac0e66" after CS11; CS2 alone made it "0c1281ba5751f391".
+# **Moved 2026-10-29 by RS3 (`docs/plan-teacher.md` §10.16, rule (e)), on top of CS2**:
+# `metrics/index.py`'s `_unreadable_result` reads a blind run's readable gates and marks a run that
+# fails none of them `measured: false`, and `metrics/seeds.py` gains the `blind-abstains` vote and
+# the third outcome, *not measured*. A blind run's verdict moves (one-run scores too), so this is a
+# re-score; Q635r applies it to the library and grades §10.17. Recomputed from the merged tree,
+# with both RS3's and CS2's changes in it; RS3 alone over CS11 read "29e37120048c9ea2".
+# **Moved 2026-10-29 by Q1059a (gating)**: `engine/moves.py` reads the gate (bits 25-29 and 31)
+# and `engine.py`'s `describe_move` writes it, only where `drops.gating` compiled a gate, which no
+# library game has: no number moves. It was "e9461d1dd6217d99" after RS3 and CS2.
+FROZEN_METRICS = "0fade4c28a4b49ff"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -862,7 +878,16 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-28 by CP7 (`docs/archive/plan-smells-python.md` PY17)**: `analysis.py`'s eleven round
 # counters are public and in one section, a rename and a move with no `analysis.json` moving. It was
 # "07a5761524c40241" after CP6; Q1053 re-analyses under it.
-FROZEN_ANALYSIS = "112588bc71efb82d"
+# **Moved 2026-10-29 by CS11 (`docs/plan-smells-rust.md` CS11, PY6)**: `engine.py`'s
+# `describe_move` names a sweep's victims through `CompiledSpec.sweep_victims`, the same squares in
+# the same order, so no `analysis.json` moves. It was "112588bc71efb82d" after CP7 (Q1053).
+# **Moved 2026-10-29 by CS2 (`docs/plan-smells-rust.md` R1; PY1)**: `engine/moves.py`'s tag
+# accessors mask bits 25-29 only, off a field map the core exports: the same reading of every
+# stored word, so no `analysis.json` moves. It was "e5698374cdad4bdd" after CS11.
+# **Moved 2026-10-29 by Q1059a (gating)**: `engine/moves.py`'s gate accessors and
+# `describe_move`'s gate text, read only under `drops.gating`, so no `analysis.json` moves. It was
+# "1a1138b2581d1236" after CS2.
+FROZEN_ANALYSIS = "096ef3d32021f620"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

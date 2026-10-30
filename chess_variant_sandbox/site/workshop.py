@@ -294,6 +294,7 @@ def score(game: library.Game | None) -> dict[str, Any] | None:
         "measuredAt": found.get("measured_at"),
         "certified": found.get("certified"),
         "viable": found.get("viable"),
+        "measured": found.get("measured") is not False,
         "weights": found.get("weights_version"),
         "seeds": list(found.get("seeds") or []),
         "totalsUsed": found.get("totals_used"),

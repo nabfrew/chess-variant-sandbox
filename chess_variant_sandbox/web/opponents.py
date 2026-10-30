@@ -208,8 +208,10 @@ class Opponent:
 
 # Schema 26 (Q918c, `docs/archive/plan-simultaneous.md` §6.2): the rungs of a game played in rounds.
 # `minimax:` and `mcts:` are refused there (one name never means two algorithms on one
-# game), and so is every stored objective (`h=`, `values=`, `net=`): the round
-# players read the built-in evaluator only (Q918b). The names are the ladder's, so *medium*
+# game), and so is every stored objective (`h=`, `values=`): the round players read the
+# built-in evaluator (Q918b), or a net trained on rounds, which the picker offers beside
+# these rungs as the learned player where one is accepted (RS, `docs/plan-teacher.md`
+# §10.14; the watering hole since 2026-10-29). The names are the ladder's, so *medium*
 # is the middle of the picker on both kinds of game; each is its own rated player, named
 # by its own agent string, never the alternating rung's.
 #
@@ -364,8 +366,9 @@ def for_game(
         # A spy game plays its own ladder (`SPY_RUNGS`), and nothing stored.
         return ladder(spy=True)
     if spec is not None and plays_in_rounds(spec):
-        # Nothing stored for a game that alternates plays rounds (`ROUND_RUNGS`).
-        return ladder(rounds=True)
+        # Nothing stored for a game that alternates plays rounds (`ROUND_RUNGS`); only the
+        # game's own round net, where one is accepted (RS, `docs/plan-teacher.md` §10.14).
+        return ladder(rounds=True) + learned_for(ruleset_hash, nets, spec)
     roster = ladder()
     roster.extend(fairy_stockfish_for(spec))
     roster.extend(valued_for(ruleset_hash, valuations))
@@ -550,14 +553,17 @@ def _fairy_plan(verified: Any) -> str:
 VALUED_LABEL = "own piece values"
 
 
-def _against(nodes: int, ordinary: bool = False) -> str:
+def _against(nodes: int, ordinary: bool = False, kind: str = "minimax") -> str:
     """The rung a stored objective was measured against: the ladder's player at its
     budget, by name (*hard*, or with `ordinary` *the ordinary hard player*), else the
-    ordinary player at that budget."""
-    for agent, name, _tail in RUNGS:
-        if agent == f"minimax:nodes={nodes}":
+    ordinary player at that budget. A `matrix` player (a round net, RS) is read off the
+    round ladder, its budget in rounds."""
+    rungs = ROUND_RUNGS if kind == "matrix" else RUNGS
+    for agent, name, _tail in rungs:
+        if agent == f"{kind}:nodes={nodes}":
             return f"the ordinary {name} player" if ordinary else name
-    return f"the ordinary player at {nodes:,} positions"
+    unit = "rounds" if kind == "matrix" else "positions"
+    return f"the ordinary player at {nodes:,} {unit}"
 
 
 # What a searched-valuation opponent searches: **the budget its own search was run at**,
@@ -703,6 +709,8 @@ class _Learned:
     # cannot write it, since keeping needs gates it does not play; the `kept` field in
     # the store's JSON is written when the plan records the verdict.
     kept: bool | None = None
+    # The search the net plays inside: `minimax`, or `matrix` for a round net (RS).
+    kind: str = "minimax"
 
 
 def _learned_record(path: Path, ruleset_hash: str) -> _Learned | None:
@@ -734,7 +742,8 @@ def _learned_record(path: Path, ruleset_hash: str) -> _Learned | None:
         return None
     nodes = config.options.get("nodes")
     named = config.options.get("net")
-    if (config.kind != "minimax" or not isinstance(nodes, int) or named is None
+    # A round net's candidate is `matrix:` (Q918g); seated on its game since RS.
+    if (config.kind not in ("minimax", "matrix") or not isinstance(nodes, int) or named is None
             or normalise_procedure(named) != procedure):
         return None
     lineage = data.get("lineage")
@@ -749,6 +758,7 @@ def _learned_record(path: Path, ruleset_hash: str) -> _Learned | None:
         games=int(acceptance.get("games", 0)),
         nodes=nodes,
         kept=kept if isinstance(kept, bool) else None,
+        kind=config.kind,
     )
 
 
@@ -896,11 +906,15 @@ def _learned_plan(learned: _Learned, rated: bool = False) -> str:
     above it. The share is the acceptance duel's, the number that is the reason it is
     offered, as the valued players' plans give theirs.
     """
-    rung = _against(learned.nodes, ordinary=True)
+    rung = _against(learned.nodes, ordinary=True, kind=learned.kind)
+    same = (
+        "both weighing the same number of rounds" if learned.kind == "matrix"
+        else "both looking at the same number of positions"
+    )
     taught = (
         "It taught itself this game by playing against itself, and it took "
         f"{learned.score * 100:.0f}% of the points from {rung} over "
-        f"{learned.games} games, both looking at the same number of positions."
+        f"{learned.games} games, {same}."
     )
     if rated:
         return (

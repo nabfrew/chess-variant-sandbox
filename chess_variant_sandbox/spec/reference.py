@@ -184,6 +184,7 @@ DEFAULTS: dict[str, str] = {
     "pieces[].moves[].mode": "`\"both\"`",
     "pieces[].moves[].screen": "`\"any\"`",
     "pieces[].moves[].screen_range": "`0`",
+    "pieces[].moves[].sweep_range": "the move's `range`: the sweep clears every square it moves over",
     "pieces[].moves[].path": "`\"straight\"`, every step the same direction",
     "pieces[].moves[].legs": "absent: a lame is blocked on one computed square, a step along "
     "its longer axis or an even diagonal's midpoint",
@@ -355,7 +356,8 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "How pieces move",
         "Besides chess's slides and leaps: a hop vaults one screening piece, as the xiangqi "
         "cannon captures or a grasshopper lands; a lame leap can be blocked on its way; a "
-        "sweep clears every piece along its line. A leap can be ridden, jump after jump in "
+        "sweep clears every piece along its line, or only along its first few steps before "
+        "it slides on. A leap can be ridden, jump after jump in "
         "one direction: as a slide over the jump it is stopped only where it would land "
         "(the nightrider), and as a lame move with a range each jump is also stopped by a "
         "piece on the one square it passes, the square a lame leap is blocked on. A slide's "

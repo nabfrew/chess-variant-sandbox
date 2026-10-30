@@ -67,6 +67,7 @@ from chess_variant_sandbox.spec.schema import (
     purse_rule,
     simultaneous_switch,
     spy_ids,
+    sweep_length,
     wrap_stated,
 )
 
@@ -695,6 +696,15 @@ def _move_descriptor(move: dict[str, Any]) -> str:
             f"jumping {span} along the line, and every piece it passes over, its own "
             "included, is removed; a piece it may not capture stops it"
         )
+        cleared = sweep_length(move)
+        if cleared:
+            # Q1063: a sweep that clears only its first steps, then slides on.
+            reach = (
+                f"jumping {span} along the line; every piece it passes over in its first "
+                f"{cleared} square{'s' if cleared > 1 else ''}, its own included, is "
+                "removed, and past them it slides on, stopped by the first piece (taken if "
+                "it is an enemy it may capture); a piece it may not capture stops it anywhere"
+            )
     elif kind == "slide" and path_of(move) != "straight":
         # T1: a turning path, counted in steps.
         steps = "any number of steps" if max_range == 0 else f"up to {max_range} steps"
@@ -1271,6 +1281,14 @@ def _sweep_words(move: dict[str, Any], aim: _Aim) -> str | None:
     span = _span_words(move, aim)
     if span is None:
         return None
+    cleared = sweep_length(move)
+    if cleared:
+        # Q1063: past its sweep length the line is a slide's.
+        return (
+            f"{span}, sweeping away every piece it passes over in its first "
+            f"{_count(cleared)} square{'s' if cleared > 1 else ''}, its own included, and "
+            "past them stopped by the first piece; a piece it may not capture stops it"
+        )
     return (
         f"{span}, sweeping away every piece it passes over, its own included; a piece "
         "it may not capture stops it"
@@ -2971,11 +2989,24 @@ def _describe_extra_rules(rules: dict[str, Any], hexy: bool = False) -> list[str
             lines.append(f"Holding fewer than {count} of {what} is a {result}.")
     drops = rules.get("drops")
     if drops:
-        lines.append(
-            "Captured pieces change sides and may be played back onto the board."
-            if drops.get("from_captures", True)
-            else "Held pieces may be played onto the board."
-        )
+        gating = drops.get("gating")
+        if isinstance(gating, dict):
+            # Q1059a: Seirawan's gating. The one way a held piece enters, so it replaces the
+            # sentence about playing one onto the board rather than adding to it.
+            lines.append(
+                "Held pieces never drop. A piece in hand enters only by gating: when a piece "
+                f"leaves {_gate_squares(gating)} for the first time from where it started, "
+                "its owner may, as part of that move, put one held piece on the square it "
+                "left; a castling may put it on the square either castling piece left. Once no such "
+                "piece is left unmoved, what is still in hand can never enter. A gate is not "
+                "a capture, so it does not reset the no-progress count."
+            )
+        else:
+            lines.append(
+                "Captured pieces change sides and may be played back onto the board."
+                if drops.get("from_captures", True)
+                else "Held pieces may be played onto the board."
+            )
         lines.extend(_describe_stock(drops.get("stock")))
         if drops.get("placement") is True:
             # Schema 18 (Q784): the placement phase, which changes what a turn *is* for
@@ -2995,6 +3026,16 @@ def _describe_extra_rules(rules: dict[str, Any], hexy: bool = False) -> list[str
         lines.extend(_drop_restrictions(drops))
     lines.extend(_describe_explosion(rules.get("explode_on_capture"), hexy))
     return lines
+
+
+def _gate_squares(gating: dict[str, Any]) -> str:
+    """Q1059a: where ``drops.gating`` opens, in words: its rows or its squares."""
+    if "squares" in gating:
+        return f"one of the squares {', '.join(map(str, gating['squares']))} (the first player's)"
+    ranks = sorted(rank for rank in gating.get("ranks", []) if isinstance(rank, int))
+    if ranks == [0]:
+        return "its own back row"
+    return "a row " + " or ".join(str(rank) for rank in ranks) + " counted from its own side"
 
 
 def _describe_explosion(explosion: Any, hexy: bool = False) -> list[str]:

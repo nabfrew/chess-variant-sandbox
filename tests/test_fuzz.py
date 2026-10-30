@@ -20,6 +20,7 @@ from collections.abc import Iterable
 import pytest
 
 from chess_variant_sandbox import fuzz
+from chess_variant_sandbox.spec.schema import is_simultaneous
 
 
 def test_the_generator_actually_produces_specs() -> None:
@@ -82,10 +83,12 @@ def test_a_seeded_batch_builds_hexagons_joined_and_unjoined() -> None:
 
 
 # Two hexagons the generator builds, one of each kind (the seeded batch above finds nine
-# among seeds 0-63): seed 32 unjoined, seed 36 joined, 0.3 s together where the batch took
+# among seeds 0-63): seed 29 unjoined, seed 36 joined, 0.3 s together where the batch took
 # 9 s (Q749). Asked of by name, so a generator that stops building them fails here. Seed 29
-# was the unjoined one until N5's `pace-a-line` joined the operators the generator draws from.
-TWO_HEXAGONS = (32, 36)
+# was the unjoined one until N5's `pace-a-line` joined the operators the generator draws from,
+# and again since Q1059a's `gate-the-hand` joined them, when seed 32 became a game in rounds
+# (`play-at-once`), which the walk does not play.
+TWO_HEXAGONS = (29, 36)
 
 
 def _one_of_each() -> list[fuzz.Case]:
@@ -117,7 +120,11 @@ def test_a_hexagon_walks_under_every_oracle() -> None:
 def test_every_hexagon_in_the_fixed_seed_set_walks_under_every_oracle() -> None:
     hexagons = _hexagons(range(200))
     assert len(hexagons) >= 15
+    # A game in rounds is played with `apply_round`, which the walk does not do (`fuzz.run`
+    # counts it rather than walks it, and so does this; Q1061, seed 32 since Q1059a).
     for case in hexagons:
+        if is_simultaneous(case.spec):
+            continue
         fuzz.walk(case.spec, case.seed)
 
 

@@ -11,7 +11,8 @@
 //!
 //! **The clock reads the board.** A half's clock starts when fewer of its pieces stand on
 //! its route than it has starts, whatever took one: the phase notices, so `make`, the
-//! legality filter and `coming_phases` play the one rule (`respawn_due`) and a position
+//! legality filter and `coming_phases` play the one rule (`respawn_due`, walked by
+//! `phase.rs::respawn_walk` for all three) and a position
 //! built by hand with a piece missing is well defined. Started at `every` by the capture,
 //! it is counted down by the phase that follows it; at 0 the first start that is empty or
 //! holds a player's non-royal piece the wild type may take gets the piece back (eating
@@ -81,72 +82,6 @@ impl<'t> Game<'t> {
             Some(start) => {
                 let next = if standing + 1 < half.starts.len() { half.every } else { 0 };
                 (next, Some(start))
-            }
-        }
-    }
-
-    /// Step 3 of the phase, played for real: every square through `write`, every clock
-    /// change into the working key, every return on the phase log. Returns whether a return
-    /// ate anything (a material change, as a step's eating is).
-    pub(super) fn respawn_phase(&mut self, shields: &SquareSet) -> bool {
-        let t = self.t;
-        let Some(rule) = t.respawn.as_deref() else {
-            return false;
-        };
-        let mut ate = false;
-        for index in 0..rule.halves.len() {
-            let before = self.respawn[index];
-            let (after, start) = self.respawn_due(index, before, shields);
-            if after != before {
-                self.working_key ^= rule.key(index, before) ^ rule.key(index, after);
-                self.respawn[index] = after;
-            }
-            if let Some(start) = start {
-                let eaten = self.board[start];
-                self.write(start, rule.halves[index].value);
-                self.unmoved.clear(start);
-                ate |= eaten != 0;
-                self.close_ep_window_over(start, start);
-                self.npc_log.push((start, start, eaten, PHASE_RETURN));
-            }
-        }
-        ate
-    }
-
-    /// Step 3 on the raw board for a legality filter, every square written pushed to
-    /// `saved`. The clocks are read, never written: the filter asks about one position.
-    pub(super) fn respawn_phase_for_filter(&mut self, saved: &mut Saved, shields: &SquareSet) {
-        let Some(rule) = self.t.respawn.as_deref() else {
-            return;
-        };
-        for index in 0..rule.halves.len() {
-            if let (_, Some(start)) = self.respawn_due(index, self.respawn[index], shields) {
-                saved.push((start, self.board[start]));
-                self.board[start] = rule.halves[index].value;
-            }
-        }
-    }
-
-    /// Step 3 for `coming_phases`, on the raw board with the clocks in `clocks`, which it
-    /// moves on a phase; each return pushed to `steps`.
-    pub(super) fn respawn_coming(
-        &mut self,
-        clocks: &mut [u8],
-        saved: &mut Saved,
-        steps: &mut Vec<(usize, usize, u8, u8)>,
-        shields: &SquareSet,
-    ) {
-        let Some(rule) = self.t.respawn.as_deref() else {
-            return;
-        };
-        for (index, clock) in clocks.iter_mut().enumerate() {
-            let (after, start) = self.respawn_due(index, *clock, shields);
-            *clock = after;
-            if let Some(start) = start {
-                let eaten = self.board[start];
-                saved.push((start, eaten));
-                self.board[start] = rule.halves[index].value;
-                steps.push((start, start, eaten, PHASE_RETURN));
             }
         }
     }

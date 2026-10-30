@@ -1099,6 +1099,105 @@ of 0.977 (0.953), the top three's games 0.917 decided, graded games 98.7 plies a
 87.9, the first seat 0.509 of decided games. Pawns took 1.22 anchors a graded game, 1.64 between
 the strongest. `tests/test_showcase_anchors.py` holds the mechanism.
 
+## `the-condottieri.json` — generation 46, hiring and bribing (TC10; retired)
+
+2026-10-30, built, measured and **retired without joining**, by the call registered before its
+first measured game (`docs/plan-turncoat.md` §8.3): a showcase that misses any of V2 to V4
+retires, and is not tuned after the miss. Its file is `tests/_retired_the_condottieri.json`,
+`tests/test_showcase_condottieri.py` holds V1 on it, `tests/condottieri_study.py` reads the runs,
+and its runs are kept.
+
+- **`the-condottieri`** (`80134a4bced2`): the chess army and setup with four mercenaries
+  nobody owns on b4, g4, b5 and g5 (a king's or a knight's move, price 3, bounty 2), each
+  player starting with 3 coins, captures paying 1 for a pawn and 2 for any other piece, and a
+  whole move hiring a mercenary next to one of your pieces for 3 or bribing an enemy one for 6.
+  **0.899 [0.876, 0.926], viable 4-0**, seat level (0.527), the ladder read in every run,
+  graded games 87.6 plies against chess's 87.9. V2 missed on both clauses: a hire in 0.323 of
+  graded games (the bar 0.60), a bribe in 0.098 (the bar 0.20). The mercenaries hang: b5 and
+  g4 stand on the white bishop's and queen's lines once a pawn moves, b4 and g5 on Black's,
+  and a nobody's mercenary pays its taker 2 coins, so 3,004 of the 3,136 placed in graded games
+  were taken in the end, against 286 hires. Where bribes came, the side that bribed first
+  lost more often than it won (13 of 64 decided). Its weakest family was depth (0.77).
+
+## `the-levy.json` — generations 44 and 45, bounties, the purse and the market, a successor (TC9b; retired)
+
+2026-10-30, built, measured and **retired without joining**, by the call registered before its
+first measured game (`docs/plan-turncoat.md` §8.4): a showcase that misses any of V2 to V4
+retires, and is not tuned after the miss. Its file is `tests/_retired_the_levy.json`,
+`tests/test_showcase_levy.py` holds V1 on it, `tests/levy_study.py` reads the runs (through
+TC9's `tests/war_chest_study.py`), and its runs are kept.
+
+- **`the-levy`** (`8693c6554669`): the chess army and setup, every capture paying one coin
+  into the taker's purse whatever it took, both purses starting empty, and a whole move buying
+  a pawn for 1, a knight for 3 or a rook for 5 (each at its declared value) onto an empty
+  square of the buyer's first rank; bishops not for sale. Designed against the war chest's two
+  failures, coins that followed the material and a market of bishops. **0.920 [0.905, 0.940],
+  viable 4-0**, above chess's 0.909, seat level (0.514), the ladder read in every run; buys at
+  0.033 of graded side-turns and in 0.742 of graded games, graded games 87.8 plies. The market
+  became a choice (rooks 0.62 of graded buys, pawns 0.31, knights 0.07), and in the graded band
+  the first capturer won 0.731 of decided games, under chess's own 0.737. Missed V2's snowball
+  bar at strength: among the top three players the first capturer won 0.618 of decided games
+  (84 of 136) against a bar of chess's 0.492 + 0.10, though below the war chest's 0.731 there.
+  Its weakest family was pacing (0.85).
+
+## `the-war-chest.json` — generations 44 and 45, bounties, the purse and the market (TC9; retired)
+
+2026-10-30, built, measured and **retired without joining**, by the call registered before its
+first measured game (`docs/plan-turncoat.md` §8.2): a showcase that misses any of V2 to V4
+retires, and is not tuned after the miss. Its file is `tests/_retired_the_war_chest.json`,
+`tests/test_showcase_war_chest.py` holds V1 on it, `tests/war_chest_study.py` reads the runs,
+and its runs are kept.
+
+- **`the-war-chest`** (`0495d0f9f2d2`): the chess army and setup, every capture paying a
+  bounty into the taker's purse (pawn 1, knight and bishop 2, rook 3, queen 5), both players
+  starting with 2 coins, and a whole move buying a pawn for 2 or a knight or bishop for 5 onto
+  an empty square of the buyer's first rank. **0.898 [0.879, 0.916], viable 4-0**, seat level
+  (0.521), the ladder read in every run; buys at 0.050 of graded side-turns and in 0.843 of
+  graded games, graded games 99.1 plies against chess's 87.9. V2's snowball bar missed: the
+  side that captured first won 0.754 of decided graded games against a bar of 0.70, though
+  chess itself reads 0.737 on the same measure; between the two strongest players the purse
+  lifts it from chess's 0.368 to 0.655. The market was bishops (3,332 of 3,917 buys): a
+  back-rank bishop sees a diagonal where a knight at the same price reaches two or three
+  squares. Its weakest family was depth (0.76).
+
+## `the-crowd.json` — generation 43, pieces nobody owns moved by the majority beside them (TC8)
+
+2026-10-30, **in the library** (`961b230bc5eb`). The showcase of `docs/plan-turncoat.md` §8.1,
+registered before any measured game: the chess army and setup with four condottieri nobody owns
+on c4, f4, c5 and f5, each moving as a knight, moved (as the whole move) by whichever player has
+strictly more pieces on the eight squares round it, taking only the other player's non-royal
+pieces and staying nobody's; a tie, none against none included, moves it for nobody. Either side
+may take one. It shows `setup.placements[].player: "nobody"` and `pieces[].control: "majority"`
+with the king's step as adjacency; the named geometry is left without a showcase on purpose (a
+second rule in one game). Registered as drafted after a self-play read. Fairy-Stockfish has no
+counterpart of a neutral piece, so `tests/neutral_oracle.py` is V1's second reading. Measured
+2026-10-30: **0.909 [0.890, 0.929], viable 4-0**, every registered bar met: a neutral move offered
+at 0.271 of graded side-turns (0.345 between the two strongest players) and made at 0.047
+(0.052), a neutral still standing at ply 40 in 0.908 of graded games, graded games 90.3 plies
+against chess's 87.9, the first seat 0.514 of decided games. The neutrals are moved more than
+they are taken (3,344 moves, 2,364 takings), the registration's prediction the other way.
+`tests/test_showcase_crowd.py` holds the mechanism, and `tests/crowd_study.py` reads the runs.
+
+## `the-free-companies.json` — generations 44 to 46, mercenaries hired and bribed (TC10b)
+
+2026-10-30, **in the library** (`f858b7a63dea`). The successor showcase of hiring and bribing,
+registered before any measured game (`docs/plan-turncoat.md` §8.5) after *the condottieri*
+(above) retired: the chess army and setup with four mercenaries nobody owns on c4, f4, c5 and
+f5 (a king's or a knight's move, price 2, no bounty), standing until hired; each player starts
+with 2 coins, captures pay 1 for a pawn and 2 for any other piece but a mercenary, and a whole
+move hires a mercenary next to one of your pieces for 2 or bribes an enemy one for 4. Designed
+against the condottieri's failure: its mercenaries stood on opening lines and paid whoever took
+them. Chosen from four self-play draft reads (price 3 or 2, knight's moves, the centre squares).
+Measured 2026-10-30: **0.942 [0.924, 0.954], viable 4-0**, every registered bar met: a hire in
+0.980 of graded games and a bribe in 0.212 (bars 0.60 and 0.20), the first briber winning 48 of
+144 decided graded games that held a bribe (the bar chess's first capturer 0.737 + 0.03), graded
+games 77.4 plies, the first seat 0.491 against chess's 0.525. The first hire comes by ply 20 in
+0.948 of graded games; hires outnumber bribes 1,800 to 316. It also carries bounties and a purse,
+so it is their library game too, though its bars grade hiring and bribing, not a market or the
+bounty's snowball (the first capturer won 0.647 of decided graded games, under chess's 0.737).
+Its weakest families were depth, pacing and variety (0.91 each). `tests/test_showcase_free_companies.py`
+holds the mechanism, and `tests/free_companies_study.py` reads the runs.
+
 ## `the-herd.json` — generations 37 and 42, wild pieces that see and the duck that walks (N9)
 
 2026-10-26, **in the library** (`2135109e8191`). The showcase of `docs/archive/plan-npc.md` §6.4, the

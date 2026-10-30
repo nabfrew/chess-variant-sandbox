@@ -3909,10 +3909,12 @@ function rungStates(check, standing, screen) {
   } else if (m.state === 'current') {
     states.canonical = ACCOUNTS
       ? { mark: 'done', says: `scored ${measuredNumberHtml(m, ', the ')} (${
-        esc(rulesVersion(m.weights || '?'))})${m.viable === false ? '; ruled out' : ''}`,
+        esc(rulesVersion(m.weights || '?'))})${isNotMeasured(m) ? '; not measured'
+        : m.viable === false ? '; ruled out' : ''}`,
       html: true }
       : { mark: 'done', says: `measured, ${measuredNumberHtml(m)},
-      under weights ${esc(m.weights || '?')}${m.viable === false ? ', not viable' : ''}`, html: true };
+      under weights ${esc(m.weights || '?')}${isNotMeasured(m) ? ', not measured'
+        : m.viable === false ? ', not viable' : ''}`, html: true };
   } else if (m.state === 'stale') {
     states.canonical = { mark: 'ahead', says: ACCOUNTS
       ? 'measured, but out of date: no score is shown until it is measured again'

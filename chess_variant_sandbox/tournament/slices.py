@@ -570,9 +570,14 @@ def measure_in_slices(
     process rather than in workers is the only difference, and it is deliberately the
     only one -- each unit still goes out as a request string and comes back as text, so
     a bug that lives in the serialisation cannot hide behind a shared object.
+
+    With no ``config`` it plays `roster_for(spec)`, the roster `corpus.measure` and the
+    page's gather play: a game with a rated net is measured on its net ladder. Until Q1062
+    the default was the net-free `canonical_config()`, so the reference measured a netted
+    game (dobutsu, since L2c rated its net) on players its own measurement does not use.
     """
     say = report if callable(report) else (lambda _message: None)
-    chosen = config if config is not None else canonical_config()
+    chosen = config if config is not None else roster_for(spec)
 
     say(f"tournament, in {slices} slice(s)")
     records = _run_phase(
@@ -792,6 +797,7 @@ def _page_result(gathered: Gathered, roster: TournamentConfig) -> dict[str, Any]
         "name": spec.get("name", ""),
         "index": result.headline if result.scored else None,
         "viable": result.viable,
+        "measured": result.measured,
         "violations": list(result.violations),
         "unreadable": list(result.unreadable),
         "weights": result.weights_version,

@@ -1,0 +1,90 @@
+{
+  "procedure": "0f87b7f93850",
+  "ruleset_hash": "417c19c2f6bd",
+  "inputs_version": 1,
+  "verdict": "accepted",
+  "weights_sha256": "e452afedaf54ca9ecba7ecda31d9a463f0bd8b991da62edd0aaa8316aba0bdec",
+  "build": "27cf83295d37ea9d",
+  "digest": "e452afedaf54",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "matrix:nodes=1600"
+    ],
+    "games": 20000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "player",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0
+  },
+  "data": {
+    "digest": "ad18c45521efa037544e0bc9f9b1e82211c6f73f477de9e210ad3128095ff847",
+    "games": 20000,
+    "positions": 138880,
+    "most_active": 24
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.06505599,
+      0.04317597,
+      0.03949073,
+      0.03531494,
+      0.03248783,
+      0.03038554,
+      0.02889943,
+      0.02779341
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.169818
+  },
+  "acceptance": {
+    "candidate": "matrix:net=0f87b7f93850,nodes=1600",
+    "reference": "matrix:nodes=1600",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.75,
+    "error": 0.020667,
+    "games": 400,
+    "identical": 1,
+    "openings": 157,
+    "candidate_nodes": 4699200,
+    "reference_nodes": 4699200,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200
+  },
+  "confirmation": {
+    "candidate": "matrix:net=0f87b7f93850,nodes=1600",
+    "reference": "matrix:nodes=1600",
+    "seed": 2000000,
+    "opening_plies": 8,
+    "score": 0.755,
+    "error": 0.020358,
+    "games": 400,
+    "identical": 7,
+    "openings": 145,
+    "candidate_nodes": 4486400,
+    "reference_nodes": 4486400,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200,
+    "gate": "G-A2, plan-teacher.md §10.9 (RN); re-played on build ac47a8f423553db1 by RS, §10.14"
+  },
+  "kept": true,
+  "kept_by": "generation 0 of the round recipe, kept by RN (plan-teacher.md §10.9, graded in §10.10); seated by RS (§10.14), its three keeping duels re-played on build ac47a8f423553db1"
+}

@@ -1,0 +1,250 @@
+{
+  "schema_version": 31,
+  "name": "the levy",
+  "description": "Chess in which captures are paid by the head, not by the weight. Taking anything, a pawn or a queen, puts one coin in the taker's purse, and instead of moving a player may spend the whole turn raising a pawn for one coin, a knight for three or a rook for five, set on any empty square of their own back rank. Because a coin counts captures rather than what they took, an even trade pays both sides alike, and a player who wins a queen for a pawn is paid no more than the opponent who took the pawn: the coins do not follow the material, so winning the first exchange buys an advantage on the board but not the means to buy more of it. The market then asks a question of timing. A pawn now plugs a hole in front of the king; three captures saved bring a knight; five bring a fresh rook onto a rank that has emptied. Every turn spent buying is a move the opponent gets to use. Bishops are not for sale, so a bishop lost stays lost. Both purses start empty, and a purse holds at most 99. Middle games tend to refill rather than thin out, and an attack has to land before the defender has bought the pieces to meet it.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "price": 1,
+      "bounty": 1
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "price": 3,
+      "bounty": 1
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "bounty": 1
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "bounty": 1,
+      "price": 5
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "bounty": 1
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "purse": {
+      "start": 0,
+      "market": [
+        "P",
+        "N",
+        "R"
+      ]
+    }
+  },
+  "provenance": {
+    "added": "2026-10-30",
+    "origin": "human",
+    "source": "international chess",
+    "history": "Hand-written as the successor showcase of bounties, the purse and the market (TC9b, docs/plan-turncoat.md section 8.4), after the war chest (section 8.2) retired on its snowball bar with a market of bishops: every capture pays one coin whatever it took, and coins buy a pawn, knight or rook onto the back rank."
+  }
+}

@@ -71,6 +71,7 @@ from chess_variant_sandbox.engine.compile import (
     SIGHT_FREEZE,
     SIGHT_SHIELD,
 )
+from chess_variant_sandbox.engine.engine import _pack, _unpack
 from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
     MOVE_DROP,
@@ -82,7 +83,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_SWEEP,
     decode_move,
 )
-from chess_variant_sandbox.engine.state import GameState
+from chess_variant_sandbox.engine.state import GameState, PhaseStep
 
 NO_SQUARE = -1
 
@@ -206,9 +207,13 @@ class SightOracle:
         """The position ``move`` makes: the twin's, with the wild phase played here (a
         shielded piece is never taken) in a game with wild pieces."""
         spec = self.compiled
+        # The twin never generates a commanded word, so it plays the word unvetted
+        # (`Core.apply`'s `offered_only`, CS6): the oracle builds its words itself.
+        packed, phase = self.twin.core.apply(_pack(state), move, False)
+        after = _unpack(packed)
         if spec.npcs is None:
-            return self.twin.apply(state, move)
-        after, steps = self.twin.apply_with_phase(state, move)
+            return after
+        steps = tuple(PhaseStep.from_core(step) for step in phase)
         board = bytearray(after.board)
         for step in reversed(steps):
             assert step.kind == "step", "the oracle reads no returns"

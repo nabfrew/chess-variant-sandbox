@@ -40,6 +40,10 @@ mod foreign;
 #[path = "respawn.rs"]
 mod respawn;
 pub use respawn::respawn_clocks_from;
+// R6 (CS10a, `docs/plan-smells-rust.md`): the wild phase's walk, once, generic over its sink.
+#[path = "phase.rs"]
+mod phase;
+use phase::{Coming, Filter, Live};
 // Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): wild pieces that turn back, step 2 on a line.
 #[path = "turning.rs"]
 mod turning;
@@ -411,7 +415,7 @@ pub struct Game<'t> {
     /// `make` moves one on its `MOVE_FOLD`, `unmake` moves it back from the move's origin,
     /// it rides on `Snapshot` and across the boundary (`GameState.folds`), and it is **in
     /// the key** (`FoldTables::key`).
-    pub fold_at: [i16; 8],
+    pub fold_at: [i16; MAX_PORTAL_ENDS],
     /// Where each player's royal stands: a *hint*, not state.
     ///
     /// A hint because it is validated rather than invalidated -- `royal_square` checks
@@ -540,7 +544,7 @@ pub struct Snapshot {
     /// Schema 20 (Q807): the straight-back bar, `[-1, -1]` for none.
     pub portal_bar: [i16; 2],
     /// Schema 22 (Q843c): where each fold end stands, -1 for none.
-    pub fold_at: [i16; 8],
+    pub fold_at: [i16; MAX_PORTAL_ENDS],
     /// Schema 26 (Q918a): the initiative, the void run and the bars.
     pub initiative: i8,
     pub void_run: [i16; 2],
@@ -561,11 +565,11 @@ fn initiative_start(t: &Tables) -> i8 {
 }
 
 /// Schema 22: where the folds start, from the tables; all -1 without folds.
-fn fold_starts(t: &Tables) -> [i16; 8] {
+fn fold_starts(t: &Tables) -> [i16; MAX_PORTAL_ENDS] {
     t.portals
         .as_deref()
         .and_then(|portals| portals.folds.as_ref())
-        .map_or([-1; 8], |folds| folds.starts)
+        .map_or([-1; MAX_PORTAL_ENDS], |folds| folds.starts)
 }
 
 impl<'t> Game<'t> {
@@ -1155,6 +1159,15 @@ impl<'t> Game<'t> {
     /// landing further along would sweep it: an empty square with move mode, or the other
     /// side's piece on a square with capture mode. The occupant of the square itself was
     /// already judged by the caller's matrix test.
+    ///
+    /// Q1063: from the sweep's length on (`SWEEP_LENGTH_SHIFT`), the path is a ride: any
+    /// piece there before the square blocks, and a landing past such a square never counts,
+    /// since it would have to pass over the piece on it (the compiler gives a ride square no
+    /// `SWEEP_BEYOND`, and the walk beyond stops at the first piece on the ride).
+    ///
+    /// Its own walk over the attack path, not `Tables::sweep_victims`: that one answers
+    /// what a played sweep removes, this one whether a sweep could reach the square. A
+    /// change to what a sweep clears or what stops it changes both.
     #[inline(never)]
     fn sweep_attacks(&self, player: usize, source: &AttackSource) -> bool {
         let t = self.t;
@@ -1165,6 +1178,14 @@ impl<'t> Game<'t> {
             occupant != 0 && t.has_capture_matrix && !t.may_capture(attacker, t.type_of(occupant))
         };
         if path[..index].iter().any(|square| blocks(self.board[*square as usize])) {
+            return false;
+        }
+        let swept = (source.sweep >> SWEEP_LENGTH_SHIFT) as usize;
+        let rides_from = if swept == 0 { usize::MAX } else { swept };
+        if swept != 0
+            && swept < index
+            && path[swept..index].iter().any(|square| self.board[*square as usize] != 0)
+        {
             return false;
         }
         if source.sweep & SWEEP_LANDS != 0 {
@@ -1187,6 +1208,8 @@ impl<'t> Game<'t> {
                 return false;
             } else if !(low <= occupant as u16 && (occupant as u16) < high) && mode & 2 != 0 {
                 return true;
+            } else if beyond >= rides_from {
+                return false;
             }
         }
         false
@@ -1276,9 +1299,9 @@ impl<'t> Game<'t> {
     /// can carry a portal off a square is that portal's own, so an end the hint missed has
     /// moved, and one scan of the board finds it.
     #[inline(never)]
-    fn portal_squares(&self, portals: &PortalTables) -> [u16; 8] {
+    fn portal_squares(&self, portals: &PortalTables) -> [u16; MAX_PORTAL_ENDS] {
         let t = self.t;
-        let mut at = [u16::MAX; 8];
+        let mut at = [u16::MAX; MAX_PORTAL_ENDS];
         let mut found = 0;
         for square in self.occupied[PORTAL_OWNER].iter() {
             found += self.note_portal(portals, &mut at, square);
@@ -1294,7 +1317,7 @@ impl<'t> Game<'t> {
     /// `portal_squares`' one step: record the end standing on `square`, if one does and it
     /// is not recorded yet, and say how many were added.
     #[inline(always)]
-    fn note_portal(&self, portals: &PortalTables, at: &mut [u16; 8], square: usize) -> usize {
+    fn note_portal(&self, portals: &PortalTables, at: &mut [u16; MAX_PORTAL_ENDS], square: usize) -> usize {
         let value = self.board[square];
         if !self.t.is_portal_end(value) {
             return 0;
@@ -1332,7 +1355,7 @@ impl<'t> Game<'t> {
                 continue;
             }
             let mut wanted = 0u8;
-            for direction in 0..8 {
+            for direction in 0..EXIT_DIRECTIONS {
                 if portals.exit(t.n_squares, player, far as usize, direction) == square as i16 {
                     wanted |= 1 << direction;
                 }
@@ -2000,20 +2023,10 @@ impl<'t> Game<'t> {
         if self.t.npc_shield {
             return self.npc_phase_shielded();
         }
-        let none = SquareSet::EMPTY;
-        let ate = if self.t.npc_queues {
-            let order = self.npc_step_order();
-            self.npc_phase_in::<_, false>(order, &none)
-        } else {
-            let order = self.npc_here().iter();
-            self.npc_phase_in::<_, false>(order, &none)
-        };
-        // Generation 36 (N1): step 3, the returns, after every step.
-        if self.t.respawn.is_some() {
-            self.respawn_phase(&none) | ate
-        } else {
-            ate
-        }
+        // The steps, then (generation 36, N1) the returns: one walk (`phase.rs`).
+        let mut live = Live::new();
+        self.wild_phase::<_, false>(&mut live);
+        live.ate
     }
 
     /// `npc_phase` in a game with a shield beside wild pieces (generation 37): the shields
@@ -2022,19 +2035,9 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn npc_phase_shielded(&mut self) -> bool {
-        let shields = self.wild_shields();
-        let ate = if self.t.npc_queues {
-            let order = self.npc_step_order();
-            self.npc_phase_in::<_, true>(order, &shields)
-        } else {
-            let order = self.npc_here().iter();
-            self.npc_phase_in::<_, true>(order, &shields)
-        };
-        if self.t.respawn.is_some() {
-            self.respawn_phase(&shields) | ate
-        } else {
-            ate
-        }
+        let mut live = Live::new();
+        self.wild_phase::<_, true>(&mut live);
+        live.ate
     }
 
     /// `make`'s phase: the respawn clocks logged first (generation 36, only under the rule),
@@ -2081,34 +2084,6 @@ impl<'t> Game<'t> {
             self.heading_back =
                 self.heading_log.pop().expect("heading log shorter than the undo stack");
         }
-    }
-
-    /// `npc_phase` over the wild pieces in `order`: monomorphised twice, so a game with one
-    /// wild piece per route runs exactly the ascending walk it ran before schema 23.
-    #[inline(always)]
-    fn npc_phase_in<I: Iterator<Item = usize>, const SHIELDS: bool>(
-        &mut self, order: I, shields: &SquareSet,
-    ) -> bool {
-        let mut ate = false;
-        for square in order {
-            let Some(next) = self.npc_step_of::<SHIELDS>(square, shields) else {
-                continue;
-            };
-            let value = self.board[square];
-            let eaten = self.board[next];
-            self.write(square, 0);
-            self.write(next, value);
-            // A square a wild piece has walked over is a square something has happened
-            // on. Wild squares carry no `unmoved` bit at ply zero, so the only bit this
-            // ever clears is a piece's -- and that piece has just been eaten, which is a
-            // material change and irreversible on its own account.
-            self.unmoved.clear(square);
-            self.unmoved.clear(next);
-            ate |= eaten != 0;
-            self.close_ep_window_over(square, next);
-            self.npc_log.push((square, next, eaten, PHASE_STEP));
-        }
-        ate
     }
 
     /// What the phase did, oldest step first: `(from, to, eaten)` per wild piece that
@@ -2158,29 +2133,17 @@ impl<'t> Game<'t> {
         for steps in phases.iter_mut() {
             // Generation 37: each phase's shields, read on the board it starts from.
             let shields = self.wild_shields();
+            let mut sink =
+                Coming { saved: &mut saved, steps, clocks: &mut clocks, heading: &mut heading };
             if self.t.npc_lines.is_some() {
-                self.npc_coming_lines(&mut heading, &mut saved, steps, &shields);
-                if self.t.respawn.is_some() {
-                    self.respawn_coming(&mut clocks, &mut saved, steps, &shields);
-                }
-                continue;
+                self.line_steps(&mut sink, &shields);
+            } else {
+                // Once per drawn position, never in a search, so the one order (and the
+                // shielded step) serves every game.
+                let order = self.npc_step_order();
+                self.wild_steps::<_, _, true>(&mut sink, order, &shields);
             }
-            // Once per drawn position, never in a search, so the one walk serves every game.
-            for square in self.npc_step_order() {
-                let Some(next) = self.npc_step_of::<true>(square, &shields) else {
-                    continue;
-                };
-                let value = self.board[square];
-                let eaten = self.board[next];
-                saved.push((square, value));
-                saved.push((next, eaten));
-                self.board[square] = 0;
-                self.board[next] = value;
-                steps.push((square, next, eaten, PHASE_STEP));
-            }
-            if self.t.respawn.is_some() {
-                self.respawn_coming(&mut clocks, &mut saved, steps, &shields);
-            }
+            self.respawn_walk(&mut sink, &shields);
         }
         saved.restore(&mut self.board);
         phases
@@ -2208,56 +2171,15 @@ impl<'t> Game<'t> {
         if self.t.npc_shield {
             return self.npc_phase_for_filter_shielded(saved);
         }
-        let none = SquareSet::EMPTY;
-        if self.t.npc_queues {
-            let order = self.npc_step_order();
-            self.npc_phase_for_filter_in::<_, false>(saved, order, &none);
-        } else {
-            let order = self.npc_here().iter();
-            self.npc_phase_for_filter_in::<_, false>(saved, order, &none);
-        }
-        // Generation 36 (N1): step 3, the returns.
-        if self.t.respawn.is_some() {
-            self.respawn_phase_for_filter(saved, &none);
-        }
+        // The steps, then (generation 36, N1) the returns: `npc_phase`'s walk (`phase.rs`).
+        self.wild_phase::<_, false>(&mut Filter { saved });
     }
 
     /// `npc_phase_for_filter` beside a shield (generation 37), as `npc_phase_shielded`.
     #[cold]
     #[inline(never)]
     fn npc_phase_for_filter_shielded(&mut self, saved: &mut Saved) {
-        let shields = self.wild_shields();
-        if self.t.npc_queues {
-            let order = self.npc_step_order();
-            self.npc_phase_for_filter_in::<_, true>(saved, order, &shields);
-        } else {
-            let order = self.npc_here().iter();
-            self.npc_phase_for_filter_in::<_, true>(saved, order, &shields);
-        }
-        if self.t.respawn.is_some() {
-            self.respawn_phase_for_filter(saved, &shields);
-        }
-    }
-
-    /// `npc_phase_for_filter` over the wild pieces in `order`, monomorphised as
-    /// `npc_phase_in` is.
-    #[inline(always)]
-    fn npc_phase_for_filter_in<I: Iterator<Item = usize>, const SHIELDS: bool>(
-        &mut self,
-        saved: &mut Saved,
-        order: I,
-        shields: &SquareSet,
-    ) {
-        for square in order {
-            let Some(next) = self.npc_step_of::<SHIELDS>(square, shields) else {
-                continue;
-            };
-            let value = self.board[square];
-            saved.push((square, value));
-            saved.push((next, self.board[next]));
-            self.board[square] = 0;
-            self.board[next] = value;
-        }
+        self.wild_phase::<_, true>(&mut Filter { saved });
     }
 
     /// Close the en passant window if the phase wrote either of its two squares.
@@ -2278,10 +2200,12 @@ impl<'t> Game<'t> {
         }
     }
 
+    /// Play `m`: the board, then the rights and the window, the payments, the wild phase,
+    /// the hand, the counters and the key's tail, each a phase of its own (R5, CS8). Every
+    /// phase is `#[inline(always)]`, so the body the compiler sees is the one it saw when
+    /// this was one function; what the phases share travels as one `Copy` struct, `Played`.
     pub fn make(&mut self, m: u32) {
         let t = self.t;
-        let origin = move_from(m);
-        let target = move_to(m);
         let kind = move_kind(m);
         // Schema 22: a fold's own move touches no square of the board byte. Generation 42:
         // the duck's half is its own function too. One comparison on the hot path for both
@@ -2300,7 +2224,6 @@ impl<'t> Game<'t> {
         let previous_ep = self.ep_target;
         let previous_ep_victim = self.ep_victim;
         let previous_checks = self.checks;
-        let mut hand: Option<(u8, u8, i8)> = None;
         // Taken before anything moves, because `Undo` is pushed further down and the
         // decrement below has to happen before the key is finished.
         let previous_remaining = self.remaining;
@@ -2309,264 +2232,12 @@ impl<'t> Game<'t> {
         // flip is undone further down when the same player moves again.
         self.working_key = self.key ^ t.zobrist_side;
 
-        // Handle MOVE_DROP separately -- it has no origin piece on the board. TC5: nor has a
-        // buy (`MOVE_BUY`), which places what arrives the same way and spends coins, not a
-        // hand slot (the purse is written below, beside the bounty, under its log).
-        let (moving, piece_type) = if enters_play(kind) {
-            let pt = move_promotion(m) as usize;
-            // What stands on the square afterwards is the table's business (schema 9's
-            // `promote_on_entry`): a pawn dropped on the far rank is a queen there, or a
-            // tokin in shogi. The hand still gives up `pt`, the dropped type, and
-            // `Undo.hand` records `pt` rather than the board value, so `unmake` needs
-            // nothing -- and neither does the move word, whose promotion field carries
-            // the dropped type.
-            let value = t.arriving_value(player, pt, target);
-            self.write(target, value);
-            if kind == MOVE_DROP {
-                // The slot the drop spends: `pt` itself, or under schema 18's `either_face`
-                // (Q785) the base whose other face `pt` is. `Undo.hand` records the slot, so
-                // `unmake` gives back what was spent.
-                let slot = t.drops.as_ref().map_or(pt, |rule| rule.slot_of(pt));
-                // Remove from hand -- unless the slot is a supply rather than a count
-                // (schema 10, Q51). An unlimited slot is never spent, so it records no undo
-                // delta either, which is the whole of what `unmake` needs to know about it.
-                if !t.drops.as_ref().is_some_and(|rule| rule.is_unlimited(slot)) {
-                    self.hands[player][slot] -= 1;
-                    hand = Some((player as u8, slot as u8, -1));
-                }
-            }
-            (value, pt)
-        } else {
-            let mv = self.board[origin];
-            (mv, t.type_of(mv))
-        };
-        let target_before = if enters_play(kind) { 0 } else { self.board[target] };
-        // Two kinds end on an occupied square without taking what stands there, and
-        // saying so here is what keeps the hand, the explosion, the material clock and
-        // the strike rule out of both. A rotation's target *is* its origin, so the square
-        // holds the piece that is turning; a file-based castling can land the king on its
-        // own rook, which the castling branch below moves rather than removes.
-        // TC6: a hire's or a bribe's target is the piece bought where it stands, so it takes
-        // nothing either.
-        let mut captured = if kind == MOVE_ROTATE || kind == MOVE_CASTLE || kind == MOVE_HIRE {
-            0
-        } else {
-            target_before
-        };
-        let mut captured_square = target;
-        let mut rook = None;
-        let mut struck: Option<(usize, u8)> = None;
-        let mut placed: u8 = 0;
-        let mut contact_changed_mover = false;
-        // Schema 18 (Q786): whether the mover kept its origin. A strike placed `Stay`
-        // leaves the attacker where it was, so its capture takes nothing off a goal.
-        let mut stayed = false;
         let mut cleared: Vec<(usize, u8)> = Vec::new();
-        // TC6: what a hire or a bribe spends, read off whose the piece was before it changes
-        // sides (written into the purse below, beside a buy's price and the bounty).
-        let mut spent: u16 = 0;
-
-        if kind == MOVE_HIRE {
-            // TC6 (`docs/plan-turncoat.md` §5.5): the whole of the move. The piece stays where
-            // it stands and becomes the mover's through the one change of side
-            // (`rehome_value`, which keeps a facing piece's heading, §6); `write` keys it.
-            let purse = t.purse.as_deref().expect("a hire without a purse");
-            spent = purse.cost(piece_type, t.owner_of(moving), player);
-            self.write(origin, t.rehome_value(moving, player, origin));
-        } else if kind == MOVE_ROTATE {
-            // The whole of the move. `write` puts the change into the key as it happens,
-            // and a piece value that carries a facing has its own Zobrist row -- so two
-            // positions that differ only in which way a piece points are different
-            // positions, and the repetition test can see that they are.
-            // Q1007c: the turning piece's owner, which a commanded turn is not the mover.
-            self.write(
-                origin,
-                t.piece_value(t.owner_of(moving), move_promotion(m) as usize, piece_type),
-            );
-        } else if kind == MOVE_CASTLE {
-            // Both pieces leave before either arrives, which is the order
-            // `play_move_for_filter` already plays a castling in. Under file-based
-            // castling the two squares can overlap -- the king's destination is the
-            // rook's own square, the rook's the king's -- and any other order writes one
-            // piece over the other. The rook's value is read before the king moves for
-            // the same reason.
-            let (rook_from, rook_to) =
-                self.castling_rook_squares(origin, target, move_promotion(m) as i32);
-            let rook_value = self.board[rook_from];
-            self.write(origin, 0);
-            self.write(rook_from, 0);
-            self.write(target, moving);
-            self.write(rook_to, rook_value);
-            rook = Some((rook_from, rook_to, rook_value));
-            self.unmoved.clear(rook_from);
-            self.unmoved.clear(rook_to);
-        } else if !enters_play(kind) {
-            self.write(origin, 0);
-            self.write(target, moving);
-
-            if kind == MOVE_PROMOTION {
-                self.write(target, t.entering_value(player, move_promotion(m) as usize));
-            } else if kind == MOVE_EN_PASSANT {
-                captured_square = self.ep_victim as usize;
-                captured = self.board[captured_square];
-                self.write(captured_square, 0);
-            } else if kind == MOVE_SWEEP {
-                // Schema 13: every piece on the path goes, in ray order, onto the same
-                // log an explosion writes. `write` keys each clear as it happens.
-                for &square in t.sweep_path(moving, origin, target) {
-                    let square = square as usize;
-                    let value = self.board[square];
-                    if value != 0 {
-                        cleared.push((square, value));
-                        self.write(square, 0);
-                    }
-                }
-            } else if kind == MOVE_PORTAL && move_promotion(m) != 0 {
-                // Schema 19: a transit that promotes at its exit carries the type plus one.
-                self.write(target, t.entering_value(player, move_promotion(m) as usize - 1));
-            }
-
-            // Strike (schema 6): a taken piece may be transformed rather than removed.
-            // Movegen never got here -- the move was generated, blocked and permitted
-            // exactly as a capture -- and the only question left is where the two pieces
-            // stand afterwards, which `strike_writes` answers for all three callers.
-            let landing_index = move_landing(m);
-            if let Some(outcome) = self.strike_writes(
-                piece_type, captured, origin, target, captured_square, landing_index,
-            ) {
-                for &(square, value) in outcome.writes() {
-                    self.write(square, value);
-                }
-                struck = outcome.survivor;
-                contact_changed_mover = outcome.mover_material_changed;
-                stayed = t.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Stay);
-                if struck.is_some() {
-                    // Both positions that place a survivor off the three squares the
-                    // generic restore knows mark it here: `choose` with its landing
-                    // index, schema 17's `home` with 1 (`unmake` reads the square back off
-                    // the rebirth table, which `Undo` already has the keys to).
-                    match t.strike.as_ref().map(|rule| rule.position) {
-                        Some(StrikePosition::Choose) => placed = landing_index as u8 + 1,
-                        Some(StrikePosition::Home) => placed = 1,
-                        _ => {}
-                    }
-                }
-            }
-
-            // Explosion: captures destroy neighbourhood.
-            //
-            // Schema 10 (Q18) asks `fires` first: `by` names the capturer types whose
-            // captures explode and `of` the victim types whose being taken does, and both
-            // empty is atomic. `piece_type` is the mover as it stood *before* the move,
-            // so a pawn that captures and promotes is a pawn's capture -- which is what
-            // "a capture by P" has to mean if it is to be readable.
-            if let Some(explosion) = t.explosion.as_ref() {
-                if captured != 0 && explosion.fires(piece_type, t.type_of(captured)) {
-                    // Capturing piece goes up
-                    cleared.push((target, self.board[target]));
-                    self.write(target, 0);
-                    // Neighbourhood
-                    for &sq in &explosion.blast[target] {
-                        let value = self.board[sq];
-                        if value != 0 && !explosion.immune_types[t.type_of(value)] {
-                            cleared.push((sq, value));
-                            self.write(sq, 0);
-                        }
-                    }
-                }
-            }
-        }
-
-        self.unmoved.clear(origin);
-        self.unmoved.clear(target);
-        // A struck piece that survived has been through something, so it is no longer
-        // unmoved. Origin and target are already cleared above and cover `Stay` and
-        // `Swap` on an ordinary capture; this catches the one square they do not, which
-        // is an en passant victim standing off both of them.
-        //
-        // Schema 17 (Q540): a piece reborn on its home square is the opposite case. It is
-        // back where the setup stood it, as if it had never moved, so it gets its unmoved
-        // bit -- a pawn may make its first move again, and a rook may castle (orthodox
-        // circe). The key does not carry `unmoved`; `rights_changed` below sees the bit
-        // go up and clears the repetition window, as it does when one goes down.
-        if let Some((square, _)) = struck {
-            if placed != 0
-                && t.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Home)
-            {
-                self.unmoved.set(square);
-            } else {
-                self.unmoved.clear(square);
-            }
-        }
-
-        self.ep_target = NO_SQUARE;
-        self.ep_victim = NO_SQUARE;
-        if !enters_play(kind)
-            && t.ep_type >= 0
-            && piece_type == t.ep_type as usize
-            && captured == 0
-            && kind != MOVE_PROMOTION
-            && kind != MOVE_PORTAL
-            && kind != MOVE_HIRE
-            // Schema 22: a move that went through a fold opens no window (rule 9). Bits
-            // 25-31 are zero on every other move that gets here: a strike's landing index
-            // rides only on a capture. Q1007c: a commanded move carries bit 30
-            // (`MOVE_FOREIGN`), so it opens none either (`docs/archive/plan-schema-31.md` §3.2).
-            && move_landing(m) == 0
-        {
-            // The square stepped over is a table fact, not arithmetic on the delta:
-            // where the board's opposite edges are joined, a move's raw delta is not
-            // the distance it travelled, and the midpoint of the wrong delta is a
-            // square the piece never crossed.
-            if let Some(passed) = t.ep_passed(t.frame_of_value(moving), origin, target) {
-                self.ep_target = passed as i16;
-                self.ep_victim = target as i16;
-            }
-        }
-
-        // The tally (schema 9), before the phase and after `captured` is known: a player
-        // whose move takes a wild piece is paid the bounty of the route it walked, and
-        // (TC4) one whose move takes any piece but their own is paid its type's bounty
-        // (`Tables::bounty_paid`). A phase step never awards anything -- a boar eating a
-        // boar is refused by the rule, and a boar eating a player's piece is nobody's gain.
-        //
-        // **Not logged.** `unmake` reads the award back off `captured`, `captured_square`
-        // and the side that moved, which `Undo` already carries -- one statement of what
-        // a bounty is, asked twice, rather than a second copy of the number stored beside
-        // the first. Measured, not tidied: an `Option<(usize, f64)>` here cost 24 bytes
-        // on a struct `make` writes at every node of every search, and chess -- which has
-        // no wild piece and never reads it -- paid for it in perft.
-        //
-        // TC4: under a purse the same payment also fills the payee's purse, capped at
-        // `PURSE_MAX`. That one *is* logged (`purse_log`, only under the rule), because
-        // the cap loses what passes it and a read-back could not find it again.
-        let paid = if t.pays && captured != 0 {
-            t.bounty_paid(captured, captured_square, player)
-        } else {
-            0.0
-        };
-        if paid != 0.0 {
-            self.points[player] += paid;
-        }
-        if let Some(purse) = t.purse.as_deref() {
-            self.purse_log.push(self.purse);
-            let before = self.purse[player];
-            let mut after = before;
-            // TC5: a buy spends its type's price; movegen offered it only when the purse held
-            // it, and a buy takes nothing, so nothing is paid on the same move.
-            if kind == MOVE_BUY {
-                after -= purse.price[piece_type];
-            }
-            // TC6: a hire or a bribe spends what `PurseTables::cost` said, read above.
-            after -= spent;
-            if paid > 0.0 {
-                after = (after + paid as u16).min(PURSE_MAX);
-            }
-            if after != before {
-                self.working_key ^= purse.key(player, before) ^ purse.key(player, after);
-                self.purse[player] = after;
-            }
-        }
+        let mut played = self.write_board(m, player, &mut cleared);
+        self.write_gate(m, &mut played);
+        self.write_unmoved(&played);
+        self.write_ep_window(m, &played);
+        self.write_payments(&played);
 
         // The phase (schema 9): every wild piece walks, after the player's move is
         // complete and the en passant window has been set, and before the hand, the
@@ -2600,25 +2271,452 @@ impl<'t> Game<'t> {
             key ^= t.zobrist_ep_file(self.ep_target);
         }
 
-        // Drops: captured pieces go to captor's hand
+        self.deposit_capture(&mut played);
+        self.count_check(player);
+        let coloured = self.write_territory(&played, &mut key);
+        let (irreversible, progress) = progress_of(
+            t, m, &played, phase_ate, !cleared.is_empty(), coloured.is_some(), rights_changed,
+        );
+        self.write_goal_left(&played);
+        self.write_portal_bar(&played, &mut key);
+        self.write_rest(&played, &mut key);
+
+        self.undo.push(Undo {
+            origin: played.origin,
+            target: played.target,
+            kind,
+            moving: played.moving,
+            captured: played.captured,
+            captured_square: played.captured_square,
+            target_before: played.target_before,
+            rook: played.rook,
+            unmoved: previous_unmoved,
+            ep_target: previous_ep,
+            ep_victim: previous_ep_victim,
+            halfmove: self.halfmove,
+            key: self.key,
+            window: self.window,
+            checks: previous_checks,
+            hand: played.hand,
+            cleared,
+            coloured,
+            remaining: previous_remaining,
+            turns_taken: previous_turns,
+            npc_log,
+            placed: played.placed,
+        });
+        self.end_ply(player, key, previous_remaining, irreversible, progress);
+    }
+
+    /// `make`'s board phase: every square the player's own move writes, by kind (a drop or
+    /// a buy, a hire, a turn, a castling, a step with what it takes), and what the rest of
+    /// `make` reads off them. The gate is `write_gate`'s; the wild phase comes later.
+    #[inline(always)]
+    fn write_board(&mut self, m: u32, player: usize, cleared: &mut Vec<(usize, u8)>) -> Played {
+        let t = self.t;
+        let origin = move_from(m);
+        let target = move_to(m);
+        let kind = move_kind(m);
+        let mut hand: Option<(u8, u8, i8)> = None;
+
+        // Handle MOVE_DROP separately -- it has no origin piece on the board. TC5: nor has a
+        // buy (`MOVE_BUY`), which places what arrives the same way and spends coins, not a
+        // hand slot (the purse is written below, beside the bounty, under its log).
+        let (moving, piece_type) = if enters_play(kind) {
+            self.write_entry(m, player, &mut hand)
+        } else {
+            let mv = self.board[origin];
+            (mv, t.type_of(mv))
+        };
+        let target_before = if enters_play(kind) { 0 } else { self.board[target] };
+        // Two kinds end on an occupied square without taking what stands there, and
+        // saying so here is what keeps the hand, the explosion, the material clock and
+        // the strike rule out of both. A rotation's target *is* its origin, so the square
+        // holds the piece that is turning; a file-based castling can land the king on its
+        // own rook, which the castling branch below moves rather than removes.
+        // TC6: a hire's or a bribe's target is the piece bought where it stands, so it takes
+        // nothing either.
+        let captured = if kind == MOVE_ROTATE || kind == MOVE_CASTLE || kind == MOVE_HIRE {
+            0
+        } else {
+            target_before
+        };
+        let mut played = Played {
+            origin,
+            target,
+            kind,
+            player,
+            moving,
+            piece_type,
+            target_before,
+            captured,
+            captured_square: target,
+            rook: None,
+            struck: None,
+            placed: 0,
+            contact_changed_mover: false,
+            // Schema 18 (Q786): whether the mover kept its origin. A strike placed `Stay`
+            // leaves the attacker where it was, so its capture takes nothing off a goal.
+            stayed: false,
+            // TC6: what a hire or a bribe spends, read off whose the piece was before it
+            // changes sides (written into the purse below, beside a buy's price and the
+            // bounty).
+            spent: 0,
+            hand,
+            gated: false,
+        };
+
+        if kind == MOVE_HIRE {
+            // TC6 (`docs/plan-turncoat.md` §5.5): the whole of the move. The piece stays where
+            // it stands and becomes the mover's through the one change of side
+            // (`rehome_value`, which keeps a facing piece's heading, §6); `write` keys it.
+            let purse = t.purse.as_deref().expect("a hire without a purse");
+            played.spent = purse.cost(piece_type, t.owner_of(moving), player);
+            self.write(origin, t.rehome_value(moving, player, origin));
+        } else if kind == MOVE_ROTATE {
+            // The whole of the move. `write` puts the change into the key as it happens,
+            // and a piece value that carries a facing has its own Zobrist row -- so two
+            // positions that differ only in which way a piece points are different
+            // positions, and the repetition test can see that they are.
+            // Q1007c: the turning piece's owner, which a commanded turn is not the mover.
+            self.write(
+                origin,
+                t.piece_value(t.owner_of(moving), move_promotion(m) as usize, piece_type),
+            );
+        } else if kind == MOVE_CASTLE {
+            self.write_castle(m, &mut played);
+        } else if !enters_play(kind) {
+            self.write_step(m, &mut played, cleared);
+            self.write_strike(m, &mut played);
+            self.write_blast(&played, cleared);
+        }
+        played
+    }
+
+    /// A drop's or a buy's square, and the hand slot a drop spends: what stands on the
+    /// target afterwards and the type that entered.
+    #[inline(always)]
+    fn write_entry(
+        &mut self,
+        m: u32,
+        player: usize,
+        hand: &mut Option<(u8, u8, i8)>,
+    ) -> (u8, usize) {
+        let t = self.t;
+        let target = move_to(m);
+        let pt = move_promotion(m) as usize;
+        // What stands on the square afterwards is the table's business (schema 9's
+        // `promote_on_entry`): a pawn dropped on the far rank is a queen there, or a
+        // tokin in shogi. The hand still gives up `pt`, the dropped type, and
+        // `Undo.hand` records `pt` rather than the board value, so `unmake` needs
+        // nothing -- and neither does the move word, whose promotion field carries
+        // the dropped type.
+        let value = t.arriving_value(player, pt, target);
+        self.write(target, value);
+        if move_kind(m) == MOVE_DROP {
+            // The slot the drop spends: `pt` itself, or under schema 18's `either_face`
+            // (Q785) the base whose other face `pt` is. `Undo.hand` records the slot, so
+            // `unmake` gives back what was spent.
+            let slot = t.drops.as_ref().map_or(pt, |rule| rule.slot_of(pt));
+            // Remove from hand -- unless the slot is a supply rather than a count
+            // (schema 10, Q51). An unlimited slot is never spent, so it records no undo
+            // delta either, which is the whole of what `unmake` needs to know about it.
+            if !t.drops.as_ref().is_some_and(|rule| rule.is_unlimited(slot)) {
+                self.hands[player][slot] -= 1;
+                *hand = Some((player as u8, slot as u8, -1));
+            }
+        }
+        (value, pt)
+    }
+
+    /// A castling's four writes and the two rooks' `unmoved` bits.
+    #[inline(always)]
+    fn write_castle(&mut self, m: u32, played: &mut Played) {
+        let (origin, target) = (played.origin, played.target);
+        // Both pieces leave before either arrives, which is the order
+        // `play_move_for_filter` already plays a castling in. Under file-based
+        // castling the two squares can overlap -- the king's destination is the
+        // rook's own square, the rook's the king's -- and any other order writes one
+        // piece over the other. The rook's value is read before the king moves for
+        // the same reason.
+        let (rook_from, rook_to) =
+            self.castling_rook_squares(origin, target, move_promotion(m) as i32);
+        let rook_value = self.board[rook_from];
+        self.write(origin, 0);
+        self.write(rook_from, 0);
+        self.write(target, played.moving);
+        self.write(rook_to, rook_value);
+        played.rook = Some((rook_from, rook_to, rook_value));
+        self.unmoved.clear(rook_from);
+        self.unmoved.clear(rook_to);
+    }
+
+    /// A piece's step from its origin to its target, with what the kind adds there: a
+    /// promotion's new type, en passant's victim, a sweep's path, a promoting transit.
+    #[inline(always)]
+    fn write_step(&mut self, m: u32, played: &mut Played, cleared: &mut Vec<(usize, u8)>) {
+        let t = self.t;
+        let (origin, target, kind) = (played.origin, played.target, played.kind);
+        self.write(origin, 0);
+        self.write(target, played.moving);
+
+        if kind == MOVE_PROMOTION {
+            self.write(target, t.entering_value(played.player, move_promotion(m) as usize));
+        } else if kind == MOVE_EN_PASSANT {
+            played.captured_square = self.ep_victim as usize;
+            played.captured = self.board[played.captured_square];
+            self.write(played.captured_square, 0);
+        } else if kind == MOVE_SWEEP {
+            // Schema 13: every piece on the path goes, in ray order, onto the same
+            // log an explosion writes (`Tables::sweep_victims`). `write` keys each
+            // clear as it happens.
+            let mut victims = t.sweep_victims(played.moving, origin, target);
+            while let Some((square, value)) = victims.next_on(&self.board) {
+                cleared.push((square, value));
+                self.write(square, 0);
+            }
+        } else if kind == MOVE_PORTAL && move_promotion(m) != 0 {
+            // Schema 19: a transit that promotes at its exit carries the type plus one.
+            self.write(target, t.entering_value(played.player, move_promotion(m) as usize - 1));
+        }
+    }
+
+    /// Strike (schema 6): a taken piece may be transformed rather than removed.
+    /// Movegen never got here -- the move was generated, blocked and permitted
+    /// exactly as a capture -- and the only question left is where the two pieces
+    /// stand afterwards, which `strike_writes` answers for all three callers.
+    #[inline(always)]
+    fn write_strike(&mut self, m: u32, played: &mut Played) {
+        let t = self.t;
+        let landing_index = move_landing(m);
+        if let Some(outcome) = self.strike_writes(
+            played.piece_type,
+            played.captured,
+            played.origin,
+            played.target,
+            played.captured_square,
+            landing_index,
+        ) {
+            for &(square, value) in outcome.writes() {
+                self.write(square, value);
+            }
+            played.struck = outcome.survivor;
+            played.contact_changed_mover = outcome.mover_material_changed;
+            played.stayed =
+                t.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Stay);
+            if played.struck.is_some() {
+                // Both positions that place a survivor off the three squares the
+                // generic restore knows mark it here: `choose` with its landing
+                // index, schema 17's `home` with 1 (`unmake` reads the square back off
+                // the rebirth table, which `Undo` already has the keys to).
+                match t.strike.as_ref().map(|rule| rule.position) {
+                    Some(StrikePosition::Choose) => played.placed = landing_index as u8 + 1,
+                    Some(StrikePosition::Home) => played.placed = 1,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    /// Explosion: captures destroy neighbourhood.
+    ///
+    /// Schema 10 (Q18) asks `fires` first: `by` names the capturer types whose
+    /// captures explode and `of` the victim types whose being taken does, and both
+    /// empty is atomic. `piece_type` is the mover as it stood *before* the move,
+    /// so a pawn that captures and promotes is a pawn's capture -- which is what
+    /// "a capture by P" has to mean if it is to be readable.
+    #[inline(always)]
+    fn write_blast(&mut self, played: &Played, cleared: &mut Vec<(usize, u8)>) {
+        let t = self.t;
+        let target = played.target;
+        if let Some(explosion) = t.explosion.as_ref() {
+            if played.captured != 0 && explosion.fires(played.piece_type, t.type_of(played.captured))
+            {
+                // Capturing piece goes up
+                cleared.push((target, self.board[target]));
+                self.write(target, 0);
+                // Neighbourhood
+                for &sq in explosion.reach(target) {
+                    let value = self.board[sq];
+                    if explosion.clears(t, value) {
+                        cleared.push((sq, value));
+                        self.write(sq, 0);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Q1059a (`drops.gating`): the held piece enters on the square the move vacated, the
+    /// origin or a castle's rook origin, spent from the hand as a drop spends it. After
+    /// the move, so it stands on an emptied square; `unmake`'s restore of that square
+    /// writes over it. A gating hand never fills from captures (the validator), so this
+    /// is the move's one hand entry. One mask test on every move of every game.
+    /// The tag is a fold end in a fold game, so the rule is asked as well as the bits.
+    #[inline(always)]
+    fn write_gate(&mut self, m: u32, played: &mut Played) {
+        let t = self.t;
+        played.gated =
+            move_gate(m) != 0 && t.drops.as_ref().is_some_and(|rule| rule.gates.is_some());
+        if played.gated {
+            let player = played.player;
+            let pt = move_gate(m) - 1;
+            let square = if move_gate_rook(m) {
+                played.rook.expect("a rook-square gate on a move that is not a castle").0
+            } else {
+                played.origin
+            };
+            self.write(square, t.arriving_value(player, pt, square));
+            let rule = t.drops.as_ref().expect("checked above");
+            let slot = rule.slot_of(pt);
+            if !rule.is_unlimited(slot) {
+                self.hands[player][slot] -= 1;
+                debug_assert!(played.hand.is_none(), "a move changed two hand entries");
+                played.hand = Some((player as u8, slot as u8, -1));
+            }
+        }
+    }
+
+    /// The `unmoved` bits the move spends (and the one a reborn piece gets back).
+    #[inline(always)]
+    fn write_unmoved(&mut self, played: &Played) {
+        let t = self.t;
+        self.unmoved.clear(played.origin);
+        self.unmoved.clear(played.target);
+        // A struck piece that survived has been through something, so it is no longer
+        // unmoved. Origin and target are already cleared above and cover `Stay` and
+        // `Swap` on an ordinary capture; this catches the one square they do not, which
+        // is an en passant victim standing off both of them.
+        //
+        // Schema 17 (Q540): a piece reborn on its home square is the opposite case. It is
+        // back where the setup stood it, as if it had never moved, so it gets its unmoved
+        // bit -- a pawn may make its first move again, and a rook may castle (orthodox
+        // circe). The key does not carry `unmoved`; `rights_changed` in `make` sees the
+        // bit go up and clears the repetition window, as it does when one goes down.
+        if let Some((square, _)) = played.struck {
+            if played.placed != 0
+                && t.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Home)
+            {
+                self.unmoved.set(square);
+            } else {
+                self.unmoved.clear(square);
+            }
+        }
+    }
+
+    /// The en passant window: closed by every move, opened by a double step.
+    #[inline(always)]
+    fn write_ep_window(&mut self, m: u32, played: &Played) {
+        let t = self.t;
+        let kind = played.kind;
+        self.ep_target = NO_SQUARE;
+        self.ep_victim = NO_SQUARE;
+        if !enters_play(kind)
+            && t.ep_type >= 0
+            && played.piece_type == t.ep_type as usize
+            && played.captured == 0
+            && kind != MOVE_PROMOTION
+            && kind != MOVE_PORTAL
+            && kind != MOVE_HIRE
+            // Schema 22: a move that went through a fold opens no window (rule 9). The
+            // extension is empty on every other move that gets here: a strike's landing
+            // index rides only on a capture. Q1007c: a commanded move carries bit 30
+            // (`MOVE_FOREIGN`), so it opens none either (`docs/archive/plan-schema-31.md` §3.2).
+            // Q1059a: a gate rides in the extension too, and a gating double step opens the
+            // window as the plain one does.
+            && !move_extended(if played.gated { without_gate(m) } else { m })
+        {
+            // The square stepped over is a table fact, not arithmetic on the delta:
+            // where the board's opposite edges are joined, a move's raw delta is not
+            // the distance it travelled, and the midpoint of the wrong delta is a
+            // square the piece never crossed.
+            if let Some(passed) =
+                t.ep_passed(t.frame_of_value(played.moving), played.origin, played.target)
+            {
+                self.ep_target = passed as i16;
+                self.ep_victim = played.target as i16;
+            }
+        }
+    }
+
+    /// The payments: the bounty into `points`, and the purse (a buy's price, a hire's or a
+    /// bribe's cost, the bounty again) under its log and its key.
+    ///
+    /// The tally (schema 9), before the phase and after `captured` is known: a player
+    /// whose move takes a wild piece is paid the bounty of the route it walked, and
+    /// (TC4) one whose move takes any piece but their own is paid its type's bounty
+    /// (`Tables::bounty_paid`). A phase step never awards anything -- a boar eating a
+    /// boar is refused by the rule, and a boar eating a player's piece is nobody's gain.
+    ///
+    /// **Not logged.** `unmake` reads the award back off `captured`, `captured_square`
+    /// and the side that moved, which `Undo` already carries -- one statement of what
+    /// a bounty is, asked twice, rather than a second copy of the number stored beside
+    /// the first. Measured, not tidied: an `Option<(usize, f64)>` here cost 24 bytes
+    /// on a struct `make` writes at every node of every search, and chess -- which has
+    /// no wild piece and never reads it -- paid for it in perft.
+    ///
+    /// TC4: under a purse the same payment also fills the payee's purse, capped at
+    /// `PURSE_MAX`. That one *is* logged (`purse_log`, only under the rule), because
+    /// the cap loses what passes it and a read-back could not find it again.
+    #[inline(always)]
+    fn write_payments(&mut self, played: &Played) {
+        let t = self.t;
+        let player = played.player;
+        let paid = if t.pays && played.captured != 0 {
+            t.bounty_paid(played.captured, played.captured_square, player)
+        } else {
+            0.0
+        };
+        if paid != 0.0 {
+            self.points[player] += paid;
+        }
+        if let Some(purse) = t.purse.as_deref() {
+            self.purse_log.push(self.purse);
+            let before = self.purse[player];
+            let mut after = before;
+            // TC5: a buy spends its type's price; movegen offered it only when the purse held
+            // it, and a buy takes nothing, so nothing is paid on the same move.
+            if played.kind == MOVE_BUY {
+                after -= purse.price[played.piece_type];
+            }
+            // TC6: a hire or a bribe spends what `PurseTables::cost` said, read above.
+            after -= played.spent;
+            if paid > 0.0 {
+                after = (after + paid as u16).min(PURSE_MAX);
+            }
+            if after != before {
+                self.working_key ^= purse.key(player, before) ^ purse.key(player, after);
+                self.purse[player] = after;
+            }
+        }
+    }
+
+    /// Drops: captured pieces go to captor's hand.
+    #[inline(always)]
+    fn deposit_capture(&mut self, played: &mut Played) {
+        let t = self.t;
         if let Some(ref drops_rule) = t.drops {
-            if kind == MOVE_DROP {
+            if played.kind == MOVE_DROP {
                 // Already handled above (hand decremented)
-            } else if captured != 0 && drops_rule.from_captures {
-                let demoted = t.demotions[t.type_of(captured)];
+            } else if played.captured != 0 && drops_rule.from_captures {
+                let demoted = t.demotions[t.type_of(played.captured)];
                 // An unlimited slot takes no deposit either (schema 10, Q51). Taking a
                 // stone does not give you a stone you already always have, and leaving
                 // the slot constant is what makes "the hand is out of the Zobrist key"
                 // still true of a supply rather than merely still safe.
                 if !drops_rule.is_unlimited(demoted) {
-                    self.hands[player][demoted] += 1;
-                    debug_assert!(hand.is_none(), "a move changed two hand entries");
-                    hand = Some((player as u8, demoted as u8, 1));
+                    self.hands[played.player][demoted] += 1;
+                    debug_assert!(played.hand.is_none(), "a move changed two hand entries");
+                    played.hand = Some((played.player as u8, demoted as u8, 1));
                 }
             }
         }
+    }
 
-        // Check limit tracking
+    /// Check limit tracking: one more check to the mover's count if the move gave one.
+    #[inline(always)]
+    fn count_check(&mut self, player: usize) {
+        let t = self.t;
         if t.check_limit > 0 {
             let opponent = 1 - player;
             let delivered = if t.multi_royal {
@@ -2631,13 +2729,19 @@ impl<'t> Game<'t> {
                 self.checks[player] += 1;
             }
         }
+    }
 
-        // Territory: the moving side claims the square it lands on. A repainting rule
-        // takes it whatever was there; a permanent one only claims an unclaimed square,
-        // which is what makes the colouring monotone and the Zobrist term unnecessary.
+    /// Territory: the moving side claims the square it lands on. A repainting rule
+    /// takes it whatever was there; a permanent one only claims an unclaimed square,
+    /// which is what makes the colouring monotone and the Zobrist term unnecessary.
+    /// Returns `Undo.coloured`.
+    #[inline(always)]
+    fn write_territory(&mut self, played: &Played, key: &mut u64) -> Option<(usize, u8)> {
+        let t = self.t;
+        let (player, target) = (played.player, played.target);
         let mut coloured = None;
         // TC6: a hire or a bribe moves no piece onto anything, so it claims no square.
-        if let Some(rule) = t.territory.as_ref().filter(|_| kind != MOVE_HIRE) {
+        if let Some(rule) = t.territory.as_ref().filter(|_| played.kind != MOVE_HIRE) {
             let want = (player + 1) as u8;
             let before = self.colour[target];
             if before != want && (rule.repaints || before == 0) {
@@ -2648,162 +2752,94 @@ impl<'t> Game<'t> {
                     self.colour_counts[before as usize - 1] -= 1;
                 }
                 if rule.repaints {
-                    key ^= t.zobrist_colour(before, target);
-                    key ^= t.zobrist_colour(want, target);
+                    *key ^= t.zobrist_colour(before, target);
+                    *key ^= t.zobrist_colour(want, target);
                 }
             }
         }
+        coloured
+    }
 
-        // What the no-progress clock is actually about is *progress*, and until schema 6
-        // "a piece was taken" and "the board holds less material than it did" were the
-        // same sentence. A strike separates them: a demotion moves material down and is
-        // progress, a promotion moves it up, and a pure swap moves nothing at all -- a
-        // swap-and-promote game could shuffle for ever if the old test were kept.
-        // Resolved as **the board's total declared material changed**, which is
-        // objective, is the same quantity `scoring.count: "material"` already reads, and
-        // is true of every plain capture -- so nothing before this schema moves.
-        //
-        // A wild piece that ate in the phase is a material change on the same reading --
-        // the board holds less than it did -- so `|| phase_ate` is the whole of schema
-        // 9's claim on this test, and on the no-progress clock below it.
-        // Schema 10 adds the second half of the same reading: a contact can change what
-        // the *attacker* is worth, and a pawn that takes a rook and becomes a knight has
-        // moved the board's declared material even though nothing left the board and the
-        // struck piece's own worth may not have moved at all.
-        // Schema 13: a sweep that took only path pieces changed material too.
-        let material_changed = phase_ate
-            || contact_changed_mover
-            || !cleared.is_empty()
-            || match struck {
-                Some((_, survivor)) => {
-                    t.piece_values[t.type_of(captured)] != t.piece_values[t.type_of(survivor)]
-                }
-                None => captured != 0,
-            };
-        // A rotation is **reversible**: the piece can turn back, and a game that turns
-        // back and forth has to be caught by the repetition rule rather than have its
-        // window cleared under it every ply. So it is not on this list -- and it does
-        // not reset the no-progress clock below either, for the same reason. What it
-        // *does* do is clear the turning piece's `unmoved` bit, which is a right that
-        // cannot come back, so the first turn of any piece is irreversible via
-        // `rights_changed` and every turn after it is not.
-        // A one-way piece can never return to a square it left, so its move is progress
-        // however quiet it looks. **This clause used to read `piece_type == ep_type`**,
-        // and `ep_type` is set only when `en_passant` is declared -- so *a pawn move is
-        // progress*, a fact about chess, was switched on by a spelling of an unrelated
-        // capturing rule. Q113 separated them: `one_way` is derived from the movement
-        // tables by the compiler, which is where the geometry already is, and this is a
-        // flag lookup rather than a rule.
-        // Schema 19: a transit is a move like any other and can be walked back through the
-        // other end, so it is reversible unless it promoted.
-        let promoted = kind == MOVE_PROMOTION || (kind == MOVE_PORTAL && move_promotion(m) != 0);
-        let irreversible = material_changed
-            || (kind != MOVE_NORMAL && kind != MOVE_ROTATE && (kind != MOVE_PORTAL || promoted))
-            || t.is_one_way(piece_type)
-            || rights_changed
-            // A permanent colour laid down is a one-way step and has to reset the
-            // window, or the repetition test could compare two positions with different
-            // colourings and the key -- which deliberately does not carry colour --
-            // would call them the same position.
-            || (coloured.is_some() && !t.territory.as_ref().is_some_and(|r| r.repaints));
-
-        // Schema 18 (Q786): win by leaving. Read off the move's origin and the mover as it
-        // set out, never off the board, which the phase may have changed since; the ending
-        // reads the field in reach's slot. Every ruleset without the rule skips this on
-        // one flag, and never writes the field or its log.
+    /// Schema 18 (Q786): win by leaving. Read off the move's origin and the mover as it
+    /// set out, never off the board, which the phase may have changed since; the ending
+    /// reads the field in reach's slot. Every ruleset without the rule skips this on
+    /// one flag, and never writes the field or its log.
+    #[inline(always)]
+    fn write_goal_left(&mut self, played: &Played) {
+        let t = self.t;
         if t.reach_leaves {
+            let (player, origin, kind) = (played.player, played.origin, played.kind);
             self.goal_left_log.push(self.goal_left_by);
             // A drop or a buy (TC5) leaves nothing: neither has a piece on its origin.
             // TC6: nor does a hire or a bribe, which moves no piece.
-            let set_out = !(stayed || enters_play(kind) || kind == MOVE_HIRE);
+            let set_out = !(played.stayed || enters_play(kind) || kind == MOVE_HIRE);
             let left = set_out
                 && kind != MOVE_ROTATE
-                && !(kind == MOVE_CASTLE && target == origin)
+                && !(kind == MOVE_CASTLE && played.target == origin)
                 && t.reach.as_ref().is_some_and(|rule| {
                     rule.squares[player][origin]
-                        && (rule.piece_type < 0 || piece_type == rule.piece_type as usize)
+                        && (rule.piece_type < 0 || played.piece_type == rule.piece_type as usize)
                 });
             self.goal_left_by = if left { player as i8 } else { -1 };
         }
+    }
 
-        // Schema 20 (Q807): the straight-back bar. Set by a barring end's own move to
-        // (where it stands now, where it came from), cleared by every other move, and
-        // keyed. Every game without the rule skips this on one flag. Q883: set only when
-        // the player to move next may move that end (`sets_bar`); `remaining` is not yet
-        // spent, so the same player moves again exactly when more than one is left.
+    /// Schema 20 (Q807): the straight-back bar. Set by a barring end's own move to
+    /// (where it stands now, where it came from), cleared by every other move, and
+    /// keyed. Every game without the rule skips this on one flag. Q883: set only when
+    /// the player to move next may move that end (`sets_bar`); `remaining` is not yet
+    /// spent, so the same player moves again exactly when more than one is left.
+    #[inline(always)]
+    fn write_portal_bar(&mut self, played: &Played, key: &mut u64) {
+        let t = self.t;
         if let Some(portals) = t.portals.as_deref().filter(|portals| portals.has_no_back) {
+            let player = played.player;
             self.portal_bar_log.push(self.portal_bar);
             let next = if t.turn.is_some() && self.remaining > 1 { player } else { 1 - player };
-            let bar = if kind == MOVE_NORMAL && portals.sets_bar(piece_type, next) {
-                [target as i16, origin as i16]
+            let bar = if played.kind == MOVE_NORMAL && portals.sets_bar(played.piece_type, next) {
+                [played.target as i16, played.origin as i16]
             } else {
                 NO_BAR
             };
-            key ^= portals.bar_key(t.n_squares, self.portal_bar)
+            *key ^= portals.bar_key(t.n_squares, self.portal_bar)
                 ^ portals.bar_key(t.n_squares, bar);
             self.portal_bar = bar;
         }
+    }
 
-        // Schema 29 (Q983a, `docs/plan-rest.md` §3.2-§3.4): the end of the player's turn (a
-        // long turn is refused beside rest). The piece that made the move stands where the
-        // move ended: its origin for a turn in place or a strike that stays, else the
-        // target; one blown up or eaten in the phase stands nowhere, which the board says.
-        if t.rest.is_some() {
+    /// Schema 29 (Q983a, `docs/plan-rest.md` §3.2-§3.4): the end of the player's turn (a
+    /// long turn is refused beside rest). The piece that made the move stands where the
+    /// move ended: its origin for a turn in place or a strike that stays, else the
+    /// target; one blown up or eaten in the phase stands nowhere, which the board says.
+    #[inline(always)]
+    fn write_rest(&mut self, played: &Played, key: &mut u64) {
+        if self.t.rest.is_some() {
             self.rest_log.push(self.resting);
-            let end = if kind == MOVE_ROTATE || stayed { origin } else { target };
+            let kind = played.kind;
+            let end = if kind == MOVE_ROTATE || played.stayed { played.origin } else { played.target };
             // TC6: a hire or a bribe moves no piece, so nothing enters a rest; a bribed piece's
             // own rest ends because its square no longer holds the code that rested there.
-            key ^= self.rest_after_turn(player, (kind != MOVE_HIRE).then_some(end));
+            *key ^= self.rest_after_turn(played.player, (kind != MOVE_HIRE).then_some(end));
         }
+    }
 
-        self.undo.push(Undo {
-            origin,
-            target,
-            kind,
-            moving,
-            captured,
-            captured_square,
-            target_before,
-            rook,
-            unmoved: previous_unmoved,
-            ep_target: previous_ep,
-            ep_victim: previous_ep_victim,
-            halfmove: self.halfmove,
-            key: self.key,
-            window: self.window,
-            checks: previous_checks,
-            hand,
-            cleared,
-            coloured,
-            remaining: previous_remaining,
-            turns_taken: previous_turns,
-            npc_log,
-            placed,
-        });
+    /// The ply's end, after `Undo` is pushed: the turn's move spent, the key set, the
+    /// no-progress clock, the side and the turn counter, the history and its window.
+    #[inline(always)]
+    fn end_ply(
+        &mut self,
+        player: usize,
+        key: u64,
+        previous_remaining: u32,
+        irreversible: bool,
+        progress: bool,
+    ) {
+        let t = self.t;
         // One move of the turn is spent. A ruleset without a turn rule spends the whole
         // turn, which is what makes the flip below unconditional for every game so far.
         self.remaining = if t.turn.is_some() { self.remaining - 1 } else { 0 };
 
         self.key = key;
-        // The no-progress clock asks the same question the window above asks, so it reads
-        // the same derived flag. **This clause used to read `t.is_promoting(piece_type)`**
-        // -- so *declaring a promotion rule* was what made a piece's every move count as
-        // progress, including the quiet ones and including a rotation, which the comment
-        // above calls reversible. Q135 separated them (Q113's separation, one key on).
-        //
-        // `kind == MOVE_PROMOTION` is what the old term carried and keeps: a piece that
-        // changes type at the far end has spent itself, and that is progress whether or
-        // not the piece could have walked back. It is a fact about the move rather than
-        // about the type's rule sheet, which is the whole difference.
-        // TC5: a buy adds material to the board (`docs/plan-turncoat.md` §5.4), so it is
-        // progress as a capture is; `material_changed` asks only what left the board.
-        // TC6: so does a hire or a bribe, which moves material from one army to another.
-        let progress = material_changed
-            || kind == MOVE_BUY
-            || kind == MOVE_HIRE
-            || t.is_one_way(piece_type)
-            || promoted
-            || (coloured.is_some() && !t.territory.as_ref().is_some_and(|r| r.repaints));
         self.halfmove = if progress { 0 } else { self.halfmove + 1 };
         // The side flips when the turn runs out of moves, which for every ruleset
         // without a turn rule is every move -- `remaining` was set to zero above.
@@ -2969,7 +3005,7 @@ impl<'t> Game<'t> {
         let t = self.t;
         let origin = move_from(m);
         let target = move_to(m);
-        let end = move_landing(m);
+        let end = move_fold(m);
         let player = self.side;
         let portals = t.portals.as_deref().expect("a fold move without portals");
         let folds = portals.folds.as_ref().expect("a fold move without folds");
@@ -3066,7 +3102,7 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn unmake_fold(&mut self, undo: &Undo) {
-        let end = (0..8)
+        let end = (0..MAX_PORTAL_ENDS)
             .find(|&end| self.fold_at[end] == undo.target as i16)
             .expect("no fold stands where the fold move put it");
         self.set_fold(end, undo.origin as i16);
@@ -3098,16 +3134,16 @@ impl<'t> Game<'t> {
 }
 
 /// Schema 22: `dedup_segment` for a fold game (`docs/archive/plan-portals-2.md` §3.3). Two words
-/// alike but for the fold end they went through (bits 25-31) reach one position, so they
+/// alike but for the fold end they went through (`move_fold`) reach one position, so they
 /// are one move: the first occurrence keeps its place and takes the lowest tag, which is
 /// the direct move's 0 where there is one, else the lowest fold end's.
 fn dedup_fold_segment(out: &mut Vec<u32>, start: usize) {
-    const WORD: u32 = (1 << 25) - 1;
+    const WORD: u32 = MOVE_BASE_MASK;
     let mut write = start;
     for index in start..out.len() {
         let m = out[index];
         if let Some(kept) = out[start..write].iter_mut().find(|kept| **kept & WORD == m & WORD) {
-            if m >> 25 < *kept >> 25 {
+            if move_fold(m) < move_fold(*kept) {
                 *kept = m;
             }
             continue;
@@ -3198,6 +3234,8 @@ impl<'t> Game<'t> {
         let t = self.t;
         let player = self.side;
         let folded = if FOLDS { t.portals.as_deref() } else { None };
+        // Q1059a: where this call's moves begin, for gating to read back (`push_gates`).
+        let base = out.len();
         // Schema 18 (Q784): the placement phase. While the side to move holds anything in
         // hand, a drop is its only move (Fairy-Stockfish's `mustDrop`). One `Option` test
         // for a ruleset with no hand, which is the price every other game pays.
@@ -3354,130 +3392,20 @@ impl<'t> Game<'t> {
                 }
             }
 
-            for entry in t.hops.entries(slot) {
-                if entry.requires_unmoved && !origin_unmoved {
-                    continue;
-                }
-                let squares = t.hops.squares(entry);
-                let modes = t.hops.modes(entry);
-                let length = squares.len();
-                let mut index = 0;
-                while index < length && self.board[squares[index] as usize] == 0 {
-                    index += 1;
-                }
-                if index >= length {
-                    continue; // nothing to hop over
-                }
-                // Schema 3: whose piece the screen is. A hop still stops at the *first*
-                // occupied square whatever the answer -- a piece it may not vault blocks
-                // the line rather than being skipped over, exactly as a piece it may not
-                // capture blocks a slide.
-                if !screen_matches(
-                    entry.screen_owner, self.board[squares[index] as usize] as u16, low, high
-                ) {
-                    continue;
-                }
-                index += 1;
-                // A cannon may land anywhere beyond its screen; a grasshopper only just
-                // past it. `screen_range` of zero means the rest of the ray.
-                let stop = if entry.screen_range == 0 {
-                    length
-                } else {
-                    length.min(index + entry.screen_range as usize)
-                };
-                while index < stop {
-                    let target = squares[index] as usize;
-                    let occupant = self.board[target] as u16;
-                    let mode = modes[index];
-                    if occupant == 0 {
-                        // The third arm, and it read differently from the other two until
-                        // Q121: a hop that may capture on the empty square a piece just
-                        // crossed may take it there, exactly as a leap or a slide may.
-                        // The window this consumes is never one a hop *opened* -- a hop's
-                        // passed square is its own screen, so `_ep_passes` builds none --
-                        // but a slide's double step opens one a hop can reach.
-                        if capturable_ep && target as i16 == ep_target && mode & 2 != 0 {
-                            self.push_capture(
-                                out,
-                                encode_move(origin, target, MOVE_EN_PASSANT, 0),
-                                piece_type,
-                                player,
-                                ep_victim as usize,
-                                choosing,
-                            );
-                        }
-                        if FOLDS && mode != 0 && self.fold_on(target) {
-                            self.push_through(out, origin, target, mode, piece_type, leaving);
-                        }
-                        if mode & 1 != 0 {
-                            if promoting
-                                && (leaving || t.promotes_on(player, piece_type, target))
-                            {
-                                for &promoted in t.promotion_targets(player, piece_type) {
-                                    if self.promotion_offered(player, piece_type, promoted) {
-                                        out.push(encode_move(
-                                            origin, target, MOVE_PROMOTION, promoted,
-                                        ));
-                                    }
-                                }
-                                if promo_optional {
-                                    out.push(encode_move(origin, target, MOVE_NORMAL, 0));
-                                }
-                            } else {
-                                out.push(encode_move(origin, target, MOVE_NORMAL, 0));
-                            }
-                        }
-                        index += 1;
-                        continue;
-                    }
-                    if may_land(t, mode, piece_type, occupant, low, high) {
-                        self.push_arrival(
-                            out, origin, target, piece_type, player, promoting, leaving,
-                            promo_optional, choosing,
-                        );
-                    }
-                    break;
-                }
-            }
-
-            // Schema 13: sweeps. The ray does not break at a piece; every piece before a
-            // landing is swept, friendly included, and one the sweeper may not capture
-            // ends the ray. A landing over an empty path is `MOVE_NORMAL`, so the
-            // uniqueness pass below folds it into a slide or leap to the same square.
+            let piece = PieceAt {
+                origin, slot, piece_type, player, low, high, origin_unmoved, promoting, leaving,
+                promo_optional, capturable_ep, choosing,
+            };
+            self.push_hops::<FOLDS>(out, &piece);
+            // Schema 13: one test for every game without a sweep.
             if t.has_sweep {
-                for entry in t.sweeps.entries(slot) {
-                    if entry.requires_unmoved && !origin_unmoved {
-                        continue;
-                    }
-                    debug_assert!(!promoting, "a sweeper may not be a promoting piece");
-                    let squares = t.sweeps.squares(entry);
-                    let modes = t.sweeps.modes(entry);
-                    let mut path_holds_piece = false;
-                    for index in 0..squares.len() {
-                        let target = squares[index] as usize;
-                        let occupant = self.board[target] as u16;
-                        if occupant != 0 && !may_take(t, piece_type, occupant) {
-                            break;
-                        }
-                        let mode = modes[index];
-                        let lands = if occupant == 0 {
-                            mode & 1 != 0
-                        } else {
-                            may_land(t, mode, piece_type, occupant, low, high)
-                        };
-                        if lands {
-                            let kind = if path_holds_piece { MOVE_SWEEP } else { MOVE_NORMAL };
-                            out.push(encode_move(origin, target, kind, 0));
-                        }
-                        path_holds_piece |= occupant != 0;
-                    }
-                }
+                self.push_sweeps(out, &piece);
             }
 
             // Schema 24: a go-through to a square also reached directly, or through two
             // folds, is one move (`dedup_fold_segment`); only a segment holding a tagged
             // word can have one.
-            if FOLDS && out[segment_start..].iter().any(|m| m >> 25 != 0) {
+            if FOLDS && out[segment_start..].iter().any(|&m| move_fold(m) != 0) {
                 dedup_fold_segment(out, segment_start);
             } else if ambiguous {
                 dedup_segment(out, segment_start);
@@ -3515,8 +3443,13 @@ impl<'t> Game<'t> {
         if t.castling.is_some() {
             self.generate_castling(out);
         }
-        if t.drops.is_some() {
-            self.generate_drops(out);
+        if let Some(rule) = t.drops.as_ref() {
+            // Q1059a: a gating hand enters only on a square a move vacates, never by a drop.
+            if let Some(gates) = rule.gates.as_ref() {
+                self.push_gates(out, base, gates);
+            } else {
+                self.generate_drops(out);
+            }
         }
         // TC5 (`docs/plan-turncoat.md` §5.4): buys from the market. One null test for every
         // game without a purse.
@@ -3528,6 +3461,289 @@ impl<'t> Game<'t> {
             }
         }
     }
+
+    /// The hop arm of `generate_pseudo_legal_as`: every hop of `piece`, in table order.
+    /// A hop vaults the first occupied square on its line (the screen, if its owner
+    /// matches) and lands on the empty squares past it up to `screen_range`, or on the
+    /// first piece past it that it may take. Its own function so a task that edits hops
+    /// edits one body (R20); `#[inline(always)]` keeps it in the movegen loop.
+    #[inline(always)]
+    fn push_hops<const FOLDS: bool>(&self, out: &mut Vec<u32>, piece: &PieceAt) {
+        let t = self.t;
+        let PieceAt {
+            origin, slot, piece_type, player, low, high, origin_unmoved, promoting, leaving,
+            promo_optional, capturable_ep, choosing,
+        } = *piece;
+        let ep_target = self.ep_target;
+        let ep_victim = self.ep_victim;
+        for entry in t.hops.entries(slot) {
+            if entry.requires_unmoved && !origin_unmoved {
+                continue;
+            }
+            let squares = t.hops.squares(entry);
+            let modes = t.hops.modes(entry);
+            let length = squares.len();
+            let mut index = 0;
+            while index < length && self.board[squares[index] as usize] == 0 {
+                index += 1;
+            }
+            if index >= length {
+                continue; // nothing to hop over
+            }
+            // Schema 3: whose piece the screen is. A hop still stops at the *first*
+            // occupied square whatever the answer -- a piece it may not vault blocks
+            // the line rather than being skipped over, exactly as a piece it may not
+            // capture blocks a slide.
+            if !screen_matches(
+                entry.screen_owner, self.board[squares[index] as usize] as u16, low, high
+            ) {
+                continue;
+            }
+            index += 1;
+            // A cannon may land anywhere beyond its screen; a grasshopper only just
+            // past it. `screen_range` of zero means the rest of the ray.
+            let stop = if entry.screen_range == 0 {
+                length
+            } else {
+                length.min(index + entry.screen_range as usize)
+            };
+            while index < stop {
+                let target = squares[index] as usize;
+                let occupant = self.board[target] as u16;
+                let mode = modes[index];
+                if occupant == 0 {
+                    // The third arm, and it read differently from the other two until
+                    // Q121: a hop that may capture on the empty square a piece just
+                    // crossed may take it there, exactly as a leap or a slide may.
+                    // The window this consumes is never one a hop *opened* -- a hop's
+                    // passed square is its own screen, so `_ep_passes` builds none --
+                    // but a slide's double step opens one a hop can reach.
+                    if capturable_ep && target as i16 == ep_target && mode & 2 != 0 {
+                        self.push_capture(
+                            out,
+                            encode_move(origin, target, MOVE_EN_PASSANT, 0),
+                            piece_type,
+                            player,
+                            ep_victim as usize,
+                            choosing,
+                        );
+                    }
+                    if FOLDS && mode != 0 && self.fold_on(target) {
+                        self.push_through(out, origin, target, mode, piece_type, leaving);
+                    }
+                    if mode & 1 != 0 {
+                        if promoting
+                            && (leaving || t.promotes_on(player, piece_type, target))
+                        {
+                            for &promoted in t.promotion_targets(player, piece_type) {
+                                if self.promotion_offered(player, piece_type, promoted) {
+                                    out.push(encode_move(
+                                        origin, target, MOVE_PROMOTION, promoted,
+                                    ));
+                                }
+                            }
+                            if promo_optional {
+                                out.push(encode_move(origin, target, MOVE_NORMAL, 0));
+                            }
+                        } else {
+                            out.push(encode_move(origin, target, MOVE_NORMAL, 0));
+                        }
+                    }
+                    index += 1;
+                    continue;
+                }
+                if may_land(t, mode, piece_type, occupant, low, high) {
+                    self.push_arrival(
+                        out, origin, target, piece_type, player, promoting, leaving,
+                        promo_optional, choosing,
+                    );
+                }
+                break;
+            }
+        }
+    }
+
+    /// The sweep arm of `generate_pseudo_legal_as` (schema 13): every sweep of `piece`,
+    /// in table order. The ray does not break at a piece; every piece before a landing is
+    /// swept, friendly included, and one the sweeper may not capture ends the ray. A
+    /// landing over an empty path is `MOVE_NORMAL`, so the uniqueness pass folds it into
+    /// a slide or leap to the same square. What a played sweep removes is
+    /// `Tables::sweep_victims`'. Its own function for the same reason as `push_hops`.
+    #[inline(always)]
+    fn push_sweeps(&self, out: &mut Vec<u32>, piece: &PieceAt) {
+        let t = self.t;
+        let PieceAt { origin, slot, piece_type, low, high, origin_unmoved, promoting, .. } = *piece;
+        for entry in t.sweeps.entries(slot) {
+            if entry.requires_unmoved && !origin_unmoved {
+                continue;
+            }
+            debug_assert!(!promoting, "a sweeper may not be a promoting piece");
+            let squares = t.sweeps.squares(entry);
+            let modes = t.sweeps.modes(entry);
+            // Q1063: from this index on the ray is a slide's (`usize::MAX`: never).
+            let rides_from = entry.sweep_length();
+            let mut path_holds_piece = false;
+            for index in 0..squares.len() {
+                let target = squares[index] as usize;
+                let occupant = self.board[target] as u16;
+                if occupant != 0 && !may_take(t, piece_type, occupant) {
+                    break;
+                }
+                let mode = modes[index];
+                let lands = if occupant == 0 {
+                    mode & 1 != 0
+                } else {
+                    may_land(t, mode, piece_type, occupant, low, high)
+                };
+                if lands {
+                    let kind = if path_holds_piece { MOVE_SWEEP } else { MOVE_NORMAL };
+                    out.push(encode_move(origin, target, kind, 0));
+                }
+                if occupant != 0 {
+                    if index >= rides_from {
+                        break;
+                    }
+                    path_holds_piece = true;
+                }
+            }
+        }
+    }
+}
+
+/// What `make`'s board phase leaves for its later phases to read (CS8): the move's
+/// squares and kind, the piece as it set out, what it took and where, and the marks the
+/// later phases and `Undo` need. Every phase is inlined, so it never reaches memory.
+#[derive(Clone, Copy)]
+struct Played {
+    origin: usize,
+    target: usize,
+    kind: u32,
+    player: usize,
+    moving: u8,
+    piece_type: usize,
+    target_before: u8,
+    captured: u8,
+    captured_square: usize,
+    rook: Option<(usize, usize, u8)>,
+    struck: Option<(usize, u8)>,
+    placed: u8,
+    contact_changed_mover: bool,
+    stayed: bool,
+    spent: u16,
+    hand: Option<(u8, u8, i8)>,
+    gated: bool,
+}
+
+/// `make`'s two flags about progress: `(irreversible, progress)`, whether the repetition
+/// window clears and whether the no-progress clock resets.
+#[inline(always)]
+fn progress_of(
+    t: &Tables,
+    m: u32,
+    played: &Played,
+    phase_ate: bool,
+    cleared_any: bool,
+    coloured: bool,
+    rights_changed: bool,
+) -> (bool, bool) {
+    let kind = played.kind;
+    let piece_type = played.piece_type;
+    let captured = played.captured;
+    // What the no-progress clock is actually about is *progress*, and until schema 6
+    // "a piece was taken" and "the board holds less material than it did" were the
+    // same sentence. A strike separates them: a demotion moves material down and is
+    // progress, a promotion moves it up, and a pure swap moves nothing at all -- a
+    // swap-and-promote game could shuffle for ever if the old test were kept.
+    // Resolved as **the board's total declared material changed**, which is
+    // objective, is the same quantity `scoring.count: "material"` already reads, and
+    // is true of every plain capture -- so nothing before this schema moves.
+    //
+    // A wild piece that ate in the phase is a material change on the same reading --
+    // the board holds less than it did -- so `|| phase_ate` is the whole of schema
+    // 9's claim on this test, and on the no-progress clock below it.
+    // Schema 10 adds the second half of the same reading: a contact can change what
+    // the *attacker* is worth, and a pawn that takes a rook and becomes a knight has
+    // moved the board's declared material even though nothing left the board and the
+    // struck piece's own worth may not have moved at all.
+    // Schema 13: a sweep that took only path pieces changed material too.
+    let material_changed = phase_ate
+        || played.contact_changed_mover
+        || cleared_any
+        || match played.struck {
+            Some((_, survivor)) => {
+                t.piece_values[t.type_of(captured)] != t.piece_values[t.type_of(survivor)]
+            }
+            None => captured != 0,
+        };
+    // A permanent colour laid down is a one-way step and has to reset the
+    // window, or the repetition test could compare two positions with different
+    // colourings and the key -- which deliberately does not carry colour --
+    // would call them the same position.
+    let laid_colour = coloured && !t.territory.as_ref().is_some_and(|r| r.repaints);
+    // A rotation is **reversible**: the piece can turn back, and a game that turns
+    // back and forth has to be caught by the repetition rule rather than have its
+    // window cleared under it every ply. So it is not on this list -- and it does
+    // not reset the no-progress clock below either, for the same reason. What it
+    // *does* do is clear the turning piece's `unmoved` bit, which is a right that
+    // cannot come back, so the first turn of any piece is irreversible via
+    // `rights_changed` and every turn after it is not.
+    // A one-way piece can never return to a square it left, so its move is progress
+    // however quiet it looks. **This clause used to read `piece_type == ep_type`**,
+    // and `ep_type` is set only when `en_passant` is declared -- so *a pawn move is
+    // progress*, a fact about chess, was switched on by a spelling of an unrelated
+    // capturing rule. Q113 separated them: `one_way` is derived from the movement
+    // tables by the compiler, which is where the geometry already is, and this is a
+    // flag lookup rather than a rule.
+    // Schema 19: a transit is a move like any other and can be walked back through the
+    // other end, so it is reversible unless it promoted.
+    let promoted = kind == MOVE_PROMOTION || (kind == MOVE_PORTAL && move_promotion(m) != 0);
+    let irreversible = material_changed
+        || (kind != MOVE_NORMAL && kind != MOVE_ROTATE && (kind != MOVE_PORTAL || promoted))
+        || t.is_one_way(piece_type)
+        || rights_changed
+        || laid_colour;
+    // The no-progress clock asks the same question the window above asks, so it reads
+    // the same derived flag. **This clause used to read `t.is_promoting(piece_type)`**
+    // -- so *declaring a promotion rule* was what made a piece's every move count as
+    // progress, including the quiet ones and including a rotation, which the comment
+    // above calls reversible. Q135 separated them (Q113's separation, one key on).
+    //
+    // `kind == MOVE_PROMOTION` is what the old term carried and keeps: a piece that
+    // changes type at the far end has spent itself, and that is progress whether or
+    // not the piece could have walked back. It is a fact about the move rather than
+    // about the type's rule sheet, which is the whole difference.
+    // TC5: a buy adds material to the board (`docs/plan-turncoat.md` §5.4), so it is
+    // progress as a capture is; `material_changed` asks only what left the board.
+    // TC6: so does a hire or a bribe, which moves material from one army to another.
+    // Q1059a: a gating move is not progress by itself. It adds a piece, but it is the
+    // move it rides on that the clock reads, as Seirawan's own fifty-move rule (and
+    // Fairy-Stockfish's) has it; the window is cleared by the gate's spent right.
+    let progress = material_changed
+        || kind == MOVE_BUY
+        || kind == MOVE_HIRE
+        || t.is_one_way(piece_type)
+        || promoted
+        || laid_colour;
+    (irreversible, progress)
+}
+
+/// What movegen's loop knows about the piece it is generating for, handed whole to the
+/// arms that are their own functions (`push_hops`, `push_sweeps`) rather than as a dozen
+/// arguments. Built per piece; both arms are inlined, so it never reaches memory.
+#[derive(Clone, Copy)]
+struct PieceAt {
+    origin: usize,
+    slot: usize,
+    piece_type: usize,
+    player: usize,
+    low: u16,
+    high: u16,
+    origin_unmoved: bool,
+    promoting: bool,
+    leaving: bool,
+    promo_optional: bool,
+    capturable_ep: bool,
+    choosing: bool,
 }
 
 impl<'t> Game<'t> {
@@ -3557,7 +3773,7 @@ impl<'t> Game<'t> {
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
     fn push_transits(
-        &self, out: &mut Vec<u32>, portals: &PortalTables, at: &[u16; 8], origin: usize,
+        &self, out: &mut Vec<u32>, portals: &PortalTables, at: &[u16; MAX_PORTAL_ENDS], origin: usize,
         slot: usize, piece_type: usize, leaving: bool,
     ) {
         let t = self.t;
@@ -3566,7 +3782,7 @@ impl<'t> Game<'t> {
         let high = low + t.side_stride as u16;
         let origin_unmoved = self.unmoved.get(origin);
         // (entry square, momentum) for each end this piece reaches.
-        let mut entered = [(0u16, 0u16); 8];
+        let mut entered = [(0u16, 0u16); MAX_PORTAL_ENDS];
         let mut n_entered = 0;
         let mut enter = |square: usize, bits: u16| {
             let value = self.board[square];
@@ -3643,7 +3859,7 @@ impl<'t> Game<'t> {
         }
 
         // Every (exit, entry square, entry type) the momentum allows, deduplicated.
-        let mut exits = [(0u16, 0u16, 0u8); 64];
+        let mut exits = [(0u16, 0u16, 0u8); MAX_PORTAL_ENDS * EXIT_DIRECTIONS];
         let mut n_exits = 0;
         for &(entry, bits) in &entered[..n_entered] {
             let entry_type = t.type_of(self.board[entry as usize]);
@@ -3655,9 +3871,9 @@ impl<'t> Game<'t> {
             if far == u16::MAX {
                 continue;
             }
-            for direction in 0..8 {
+            for direction in 0..EXIT_DIRECTIONS {
                 let quiet = bits & (1 << direction) != 0;
-                let taking = bits & (1 << (8 + direction)) != 0;
+                let taking = bits & (1 << (EXIT_DIRECTIONS + direction)) != 0;
                 if !quiet && !taking {
                     continue;
                 }
@@ -3685,7 +3901,7 @@ impl<'t> Game<'t> {
         let promo_optional = promoting && t.promotion_optional(piece_type);
         for &(exit, _, entry_type) in exits.iter() {
             let exit = exit as usize;
-            let word = encode_move(origin, exit, MOVE_PORTAL, 0) | ((entry_type as u32) << 25);
+            let word = with_portal(encode_move(origin, exit, MOVE_PORTAL, 0), entry_type as usize);
             if promoting && (leaving || t.promotes_on(player, piece_type, exit)) {
                 for &promoted in t.promotion_targets(player, piece_type) {
                     if self.promotion_offered(player, piece_type, promoted) {
@@ -3725,7 +3941,7 @@ impl<'t> Game<'t> {
                 && t.promotes_on(player, piece_type, origin);
             self.push_transits(out, portals, at, origin, slot, piece_type, leaving);
         }
-        let mut ends = [(u16::MAX, 0usize); 8];
+        let mut ends = [(u16::MAX, 0usize); MAX_PORTAL_ENDS];
         for (end, item) in ends.iter_mut().enumerate().take(portals.n_ends) {
             *item = (at[end], end);
         }
@@ -3821,7 +4037,7 @@ impl<'t> Game<'t> {
     /// mover's own square (a pass). Only where the fold admits this piece for the side to
     /// move and leads somewhere. Pushed as `push_arrival` would push a move ending there,
     /// so promotion is the far square's, every word tagged with the end gone in by plus
-    /// one in bits 25 to 31 (which `make` reads to open no window). The caller has
+    /// one in the tag field (`with_fold`, which `make` reads to open no window). The caller has
     /// already asked `fold_on`; a move goes through one fold at most, since it ends there.
     #[cold]
     #[inline(never)]
@@ -3856,9 +4072,8 @@ impl<'t> Game<'t> {
         self.push_arrival(
             out, origin, far, piece_type, player, promoting, leaving, promo_optional, false,
         );
-        let tag = (end as u32 + 1) << 25;
         for word in &mut out[start..] {
-            *word |= tag;
+            *word = with_fold(*word, end + 1);
         }
     }
 
@@ -3874,7 +4089,7 @@ impl<'t> Game<'t> {
         let player = self.side;
         let low = t.value_low(player);
         let high = low + t.side_stride as u16;
-        let mut ends = [(u16::MAX, 0usize); 8];
+        let mut ends = [(u16::MAX, 0usize); MAX_PORTAL_ENDS];
         let mut n_ends = 0;
         for end in 0..portals.n_ends {
             let square = self.fold_at[end];
@@ -3894,7 +4109,7 @@ impl<'t> Game<'t> {
             let piece_type = portals.first_type + end;
             let slot = t.slot(player * t.n_facings, piece_type, origin);
             let word = |target: usize| {
-                encode_move(origin, target, MOVE_FOLD, 0) | ((end as u32) << 25)
+                with_fold(encode_move(origin, target, MOVE_FOLD, 0), end)
             };
             let segment_start = out.len();
             for entry in t.leaps.entries(slot) {
@@ -4016,6 +4231,60 @@ impl<'t> Game<'t> {
                     // The move word's promotion field carries the face, what stands on
                     // the square afterwards; `make` spends `slot_of(face)` from the hand.
                     out.push(encode_move(square, square, MOVE_DROP, face as u32));
+                }
+            }
+        }
+    }
+
+    /// Q1059a (`drops.gating`, Seirawan's gating): for every move in `out[base..]` that takes
+    /// a piece off one of the mover's gate squares for the first time (its `unmoved` bit up),
+    /// the same move once more per type held, placing that piece on the vacated square. A
+    /// castle vacates two, the king's origin and the rook's (`with_gate`'s bit 31 says which).
+    /// The plain move stays: entering is a choice. Appended after every other move, in move
+    /// order then hand order, so the moves of a game without gating are the ones it had.
+    ///
+    /// Only the kinds that leave a piece's origin: a drop, a turn or a buy vacates nothing,
+    /// and the rules that make the other kinds are refused beside gating.
+    #[cold]
+    #[inline(never)]
+    fn push_gates(&self, out: &mut Vec<u32>, base: usize, gates: &[SquareSet; 2]) {
+        let t = self.t;
+        let player = self.side;
+        let gates = &gates[player];
+        let hand = &self.hands[player];
+        if hand.iter().all(|&count| count == 0) {
+            return;
+        }
+        let end = out.len();
+        for index in base..end {
+            let m = out[index];
+            let kind = move_kind(m);
+            let origin = move_from(m);
+            let (first, second) = match kind {
+                MOVE_NORMAL | MOVE_EN_PASSANT | MOVE_PROMOTION => (origin, usize::MAX),
+                MOVE_CASTLE => {
+                    // A square is vacated only if neither piece lands back on it: a castle
+                    // that leaves the king in place, or file-based castling that puts one
+                    // piece where the other stood, vacates fewer than two.
+                    let target = move_to(m);
+                    let (rook_from, rook_to) =
+                        self.castling_rook_squares(origin, target, move_promotion(m) as i32);
+                    let vacated = |square: usize| square != target && square != rook_to;
+                    (
+                        if vacated(origin) { origin } else { usize::MAX },
+                        if vacated(rook_from) { rook_from } else { usize::MAX },
+                    )
+                }
+                _ => continue,
+            };
+            for (square, at_rook) in [(first, false), (second, true)] {
+                if square == usize::MAX || !gates.get(square) || !self.unmoved.get(square) {
+                    continue;
+                }
+                for (slot, &held) in hand.iter().enumerate().take(t.n_types) {
+                    if held > 0 {
+                        out.push(with_gate(m, slot, at_rook));
+                    }
                 }
             }
         }
@@ -4346,6 +4615,7 @@ impl<'t> Game<'t> {
             self.board[rook_from] = 0;
             self.board[target] = moving;
             self.board[rook_to] = rook_value;
+            self.gate_for_filter(m, origin, rook_from, saved);
             return None;
         }
 
@@ -4369,20 +4639,20 @@ impl<'t> Game<'t> {
         } else if kind == MOVE_SWEEP {
             // Schema 13: the path is cleared as `make` clears it. Three victims fit inline
             // beside the origin and the target; a fourth spills, correctly and rarely.
+            // `Tables::sweep_victims` names them.
             let mut victims = 0;
-            for &square in t.sweep_path(moving, origin, target) {
-                let square = square as usize;
-                let value = self.board[square];
-                if value != 0 {
-                    saved.push((square, value));
-                    self.board[square] = 0;
-                    victims += 1;
-                }
+            let mut path = t.sweep_victims(moving, origin, target);
+            while let Some((square, value)) = path.next_on(&self.board) {
+                saved.push((square, value));
+                self.board[square] = 0;
+                victims += 1;
             }
             debug_assert_eq!(saved.spill.is_empty(), victims + 2 <= Saved::INLINE);
         } else if kind == MOVE_PORTAL && move_promotion(m) != 0 {
             self.board[target] = t.entering_value(player, move_promotion(m) as usize - 1);
         }
+        // Q1059a: a gating move's piece stands on the origin it vacated, and may block a line.
+        self.gate_for_filter(m, origin, origin, saved);
 
         // Strike (schema 6): the surviving piece has to be on the board before the
         // attack query, or a victim that a strike turns into a checking piece is
@@ -4405,6 +4675,25 @@ impl<'t> Game<'t> {
         }
 
         Some(target_before)
+    }
+
+    /// Q1059a: a gating move's held piece, written onto the square it enters (the origin, or
+    /// `rook_from` under bit 31) for a legality filter, saved for the restore. A gated piece
+    /// fills a square the move emptied, so it can only block: a pinned piece may leave its
+    /// square when one enters behind it, which is why the filter must see it. One mask test
+    /// on every other move.
+    #[inline(always)]
+    fn gate_for_filter(&mut self, m: u32, origin: usize, rook_from: usize, saved: &mut Saved) {
+        if move_gate(m) == 0 {
+            return;
+        }
+        let t = self.t;
+        if t.drops.as_ref().is_none_or(|rule| rule.gates.is_none()) {
+            return;
+        }
+        let square = if move_gate_rook(m) { rook_from } else { origin };
+        saved.push((square, self.board[square]));
+        self.board[square] = t.arriving_value(self.side, move_gate(m) - 1, square);
     }
 
     /// Legality test that skips building a successor state: only the board and the
@@ -4449,9 +4738,9 @@ impl<'t> Game<'t> {
                 // The captor blows up where it now stands. Its square is already saved
                 // holding `target_before`, which is what the restore has to put back.
                 self.board[target] = 0;
-                for &sq in &explosion.blast[target] {
+                for &sq in explosion.reach(target) {
                     let value = self.board[sq];
-                    if value != 0 && !explosion.immune_types[t.type_of(value)] {
+                    if explosion.clears(t, value) {
                         saved.push((sq, value));
                         self.board[sq] = 0;
                     }
@@ -4529,7 +4818,7 @@ impl<'t> Game<'t> {
         if move_kind(m) != MOVE_FOLD {
             return None;
         }
-        let end = move_landing(m);
+        let end = move_fold(m);
         let before = self.fold_at[end];
         self.set_fold(end, move_to(m) as i16);
         Some((end, before))
@@ -5541,7 +5830,7 @@ fn decide(actor: usize, result: i8, reason: Reason) -> Outcome {
 /// piece whose next square holds no pending piece. With one wild piece per route that is
 /// the first pass alone, ascending, the order the phase always had -- but the phase and the
 /// filter walk this only under `Tables::npc_queues` and otherwise walk `npc_here` directly
-/// (`npc_phase_in` is monomorphised for both): walking this everywhere cost wolves' perft
+/// (`phase.rs::wild_phase` is monomorphised for both): walking this everywhere cost wolves' perft
 /// 10%. Holds the tables and a snapshot, never the game, so the caller writes the board
 /// while it walks.
 pub struct NpcOrder<'t> {

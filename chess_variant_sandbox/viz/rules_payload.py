@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from chess_variant_sandbox.engine.moves import move_gate
 from chess_variant_sandbox.spec.schema import PURSE_MAX
 from chess_variant_sandbox.viz.heading import directional_types
 from chess_variant_sandbox.viz.wrapped import (
@@ -58,6 +59,8 @@ def rules_payload(engine: Any) -> dict[str, Any]:
         # Schema 18e (Q785): each hand slot's other face, or -1; ``None`` where a held
         # piece comes back as itself only.
         "dropFaces": drop_faces_payload(drops),
+        # Q1059a: each player's gate squares, ``None`` where a held piece drops anywhere.
+        "gates": gates_payload(drops),
         # Whether the game has hands at all, and whether they fill from captures.
         "handsUsed": drops is not None,
         "handsFromCaptures": bool(drops is not None and drops.from_captures),
@@ -136,6 +139,26 @@ def market_payload(engine: Any) -> dict[str, Any] | None:
         "hire": list(purse.hire),
         "bribe": list(purse.bribe),
     }
+
+
+def gate_entry(engine: Any, move: int) -> int | None:
+    """Q1059a: the type a gating move brings in from the hand, or ``None``.
+
+    Read off the compiled rule as well as the word, since the tag is another field in a
+    game without gating.
+    """
+    drops = engine.spec.drops
+    gate = move_gate(move)
+    if drops is None or drops.gates is None or not gate:
+        return None
+    return int(gate - 1)
+
+
+def gates_payload(drops: Any) -> list[list[int]] | None:
+    """Q1059a: each player's gate squares under ``drops.gating``, or ``None`` without it."""
+    if drops is None or drops.gates is None:
+        return None
+    return [sorted(drops.gates[0]), sorted(drops.gates[1])]
 
 
 def drop_faces_payload(drops: Any) -> list[int] | None:

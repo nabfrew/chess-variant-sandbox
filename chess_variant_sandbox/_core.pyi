@@ -104,7 +104,9 @@ class Core:
     def initial_state(self) -> State: ...
     def legal_moves(self, state: tuple[Any, ...]) -> list[int]: ...
     def pseudo_legal_moves(self, state: tuple[Any, ...]) -> list[int]: ...
-    def apply(self, state: tuple[Any, ...], move: int) -> tuple[State, Phase]: ...
+    def apply(
+        self, state: tuple[Any, ...], move: int, offered_only: bool = True
+    ) -> tuple[State, Phase]: ...
     def legal_moves_for(self, state: tuple[Any, ...], player: int) -> list[int]: ...
     def apply_round(
         self, state: tuple[Any, ...], first: int, second: int
@@ -242,6 +244,12 @@ RESTED_ROYAL_PIECES: float
 ROUND_WIN_PIECES: float
 # Q935h: the spy term's weight, in mean non-royal pieces, for the oracle to be held to it.
 SPY_PIECES: float
+# CS7 (R15): the most portal ends the core holds; `spec/schema.py::MAX_PORTAL_ENDS` is its twin.
+MAX_PORTAL_ENDS: int
+# CS2 (R1): the move word's fields as `(name, shift, width)` and its kinds as `(name, value)`;
+# `engine/moves.py` holds the copies `tests/test_move_word.py` pins to them.
+MOVE_FIELDS: tuple[tuple[str, int, int], ...]
+MOVE_KINDS: tuple[tuple[str, int], ...]
 
 # Hash of the `rust/src/` sources this extension was compiled from, baked in by
 # `build.rs`. `chess_variant_sandbox.measurement` compares it against the same hash of the source on

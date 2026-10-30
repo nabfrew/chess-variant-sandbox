@@ -1,0 +1,314 @@
+{
+  "schema_version": 31,
+  "name": "seirawan",
+  "description": "Seirawan chess, devised by the grandmaster Yasser Seirawan and Bruce Harper in 2007, keeps the whole of chess and adds two pieces each side holds in reserve: a hawk, which moves as a bishop or a knight, and an elephant, which moves as a rook or a knight. Neither can simply be dropped in. A reserve piece enters only through a door on its own back rank: when a piece leaves its starting square there for the first time, its owner may place the hawk or the elephant on the vacated square as part of the same move, and when the king castles it may come in on either the king's or the rook's square. Gating costs no extra move, so the question it poses is timing rather than time. Every developing move in the opening asks whether to bring a reserve piece with it; a piece gated early stands on its home square before the position shows where it is needed, and can get in the way of castling, while every back-rank piece that moves without one closes a door for good, and a player who waits too long can find the last door shut and the strongest piece they own stranded in reserve.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "H",
+      "name": "hawk",
+      "value": 7,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "name": "elephant",
+      "value": 8,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "E",
+        "H",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "drops": {
+      "from_captures": false,
+      "stock": {
+        "H": 1,
+        "E": 1
+      },
+      "gating": {
+        "ranks": [
+          0
+        ]
+      }
+    }
+  },
+  "appearance": {
+    "icons": {
+      "H": "archbishop",
+      "E": "chancellor"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-29",
+    "origin": "human",
+    "author": "Yasser Seirawan and Bruce Harper",
+    "year": "2007",
+    "source": "a published chess variant, also called S-chess",
+    "history": "The user asked for it (Q1059). The rule language could not express gating, so Q1059a built `rules.drops.gating` for it; this is gating's showcase, and it reaches Fairy-Stockfish's published seirawan perft."
+  }
+}

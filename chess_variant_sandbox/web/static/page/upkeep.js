@@ -204,7 +204,8 @@ function sweepHtml(sweep) {
     </div>
     ${done.length ? `<div class="muted small u-mt-4">${done.slice(-6).map(i =>
       `${esc(i.name)} ${scoredAs(i)}${
-        i.viable === false ? ' gated' : ''}`).join(' &middot; ')}</div>` : ''}
+        isNotMeasured(i) ? ' not measured' : i.viable === false ? ' gated' : ''}`).join(
+        ' &middot; ')}</div>` : ''}
     ${failed.length ? `<div class="error u-mt-6">${failed.map(i =>
       `${esc(i.name)}: ${esc(i.error)}`).join('<br>')}</div>` : ''}`;
 }
@@ -317,6 +318,14 @@ function scoreTag(game) {
     // Measured, and still without a number: too few of its runs could be read for a
     // mean to be honest. "Nobody has measured this" and "it was measured and cannot be
     // scored" are different news, and the second used to read as the first.
+    // The third verdict (plan-teacher §10.16): measured, current, and no verdict either
+    // way. Said plainly, with its run count, and never as a refusal or as stale.
+    if (runs && isNotMeasured(game)) {
+      const why = notMeasuredSentence(runs)
+        + ` It was measured as the ${runsPhrase(game.seeds)}.`;
+      return `<span class="tag" title="${esc(why)}">not measured <span class="muted">${
+        esc(runsShort(game.seeds))}</span></span>`;
+    }
     if (runs) {
       const read = game.totalsUsed || 0;
       const why = ACCOUNTS
@@ -365,15 +374,19 @@ function scoreTag(game) {
     }
     return `<span class="tag">not measured</span>`;
   }
-  const cls = game.viable === false ? 'tag gated' : 'tag score';
+  // A number whose runs reached no verdict (plan-teacher §10.16) is not ruled out.
+  const unread = isNotMeasured(game);
+  const cls = game.viable === false && !unread ? 'tag gated' : 'tag score';
   // The run count is part of the number and never a detail beside it, so it is inside
   // the pill rather than in the hover -- a phone has no hover.
   const count = runs ? ` <span class="muted">${esc(runsShort(game.seeds))}</span>` : '';
-  const label = game.viable === false
-    ? `${fmt(game.index)} ruled out${count}` : `${fmt(game.index)}${count}`;
-  const said = (game.viable === false
-    ? 'scored, then ruled out because something about it does not work as a game'
-    : 'the score out of 1, from a few hundred games')
+  const label = unread ? `${fmt(game.index)} not measured${count}`
+    : game.viable === false
+      ? `${fmt(game.index)} ruled out${count}` : `${fmt(game.index)}${count}`;
+  const said = (unread ? notMeasuredSentence(runs).replace(/\.$/, '')
+    : game.viable === false
+      ? 'scored, then ruled out because something about it does not work as a game'
+      : 'the score out of 1, from a few hundred games')
     + (runs ? `, as the ${runsPhrase(game.seeds)}` : '')
     + (ACCOUNTS ? `, under ${rulesVersion(game.weights)}` : ` (scoring rules ${game.weights})`);
   const split = splitSentences(game.runVerdict, game.runs).join(' ');
@@ -422,12 +435,13 @@ function provisionalTag(p) {
   const count = runsShort(p.seeds);
   const runs = count ? ` <span class="muted">${esc(count)}</span>` : '';
   const scored = p.index !== null && p.index !== undefined;
-  const number = !scored ? 'no score'
+  const number = isNotMeasured(p) ? 'not measured,' : !scored ? 'no score'
     : p.viable === false ? `${fmt(p.index)} ruled out,` : fmt(p.index);
   const said = words.label.replace(/^./, c => c.toUpperCase())
     + (count ? `, as the ${runsPhrase(p.seeds)}` : '')
     + (p.weights ? ` (scoring rules ${p.weights})` : '') + '. ' + words.why;
-  const cls = p.viable === false ? 'tag gated provisional' : 'tag provisional';
+  const cls = p.viable === false && !isNotMeasured(p)
+    ? 'tag gated provisional' : 'tag provisional';
   return `<span class="${cls}" title="${esc(said)}">${number} ${esc(words.short)}${runs}</span>`;
 }
 

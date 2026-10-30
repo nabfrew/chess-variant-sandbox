@@ -1442,6 +1442,8 @@ STORE: dict[str, tuple[str, ...]] = {
         "updated",
         # `0030_spot_check.sql`, Q503e: the shortlist's 30-day grace starts here.
         "stale_since",
+        # `0043_provisional_measured.sql`, RS3: false only for *not measured*.
+        "measured",
     ),
     # `0017_reports.sql`, Q503d. One report a person a game, which is the primary key;
     # `reporter` does not cascade, for `suggestions.author`'s reason.

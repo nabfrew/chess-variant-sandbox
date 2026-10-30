@@ -716,7 +716,8 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
         # Costed at 2.0 -- between a direction and a conditional move. A hop's `screen`
         # field is deliberately *not* costed separately, for the same reason `range` and
         # `screen_range` are not: it parameterises a primitive already counted as a move
-        # descriptor, rather than adding an exception on top of one.
+        # descriptor, rather than adding an exception on top of one. A sweep's
+        # `sweep_range` (Q1063) is not costed either, on the same grounds.
         if isinstance(piece.get("captures"), list):
             capture_restrictions += 1
         # Schema 26: a piece's collision table is a second such line, beside `captures`.

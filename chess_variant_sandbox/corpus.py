@@ -52,7 +52,7 @@ from chess_variant_sandbox.metrics.components import plays_in_rounds, plays_with
 from chess_variant_sandbox.metrics.scoring import WeightsError
 from chess_variant_sandbox.metrics.seat import seat_details
 from chess_variant_sandbox.metrics.seeds import (
-    VOTE_POOLED_SEAT,
+    VOTE_BLIND_ABSTAINS,
     RunReading,
     combine,
     minimum_totals,
@@ -106,8 +106,9 @@ CANONICAL_SEED = 0
 # greedy under other names: a round player always finishes greedy's whole one-round matrix
 # and spends nothing more when that matrix holds its budget. `loop.screen.round_roster`
 # applies the same factor, so one rule says what a budget means in rounds. The round
-# players play the built-in objective only, and whether they need their own is read from
-# this ladder's monotonicity (the plan's *Q918d, as built*). The stamp names the roster,
+# players play the built-in objective, except where the game has a rated round net, which
+# every matrix rung then plays (`canonical_agents`; RS, `docs/plan-teacher.md` §10.14:
+# the watering hole since 2026-10-29). The stamp names the roster,
 # so a round game's score is never read as though the ladder were the alternating one.
 ROUND_AGENTS = ("random", "greedy") + tuple(
     f"matrix:nodes={budget * ROUND_BUDGET_FACTOR}" for budget in LADDER_BUDGETS
@@ -122,7 +123,7 @@ def canonical_agents(
     digest: str, nets_dir: Path | None = None, spec: dict[str, Any] | None = None
 ) -> tuple[str, ...]:
     """The roster this game's committed score means: `CANONICAL_AGENTS`, its net ladder,
-    or for a game played in rounds `ROUND_AGENTS`.
+    or for a game played in rounds `ROUND_AGENTS` or its round net ladder.
 
     **A game in rounds** is known by its spec (``rules.simultaneous``), so a caller holding
     one passes it; without it the alternating roster is named, which matches no round
@@ -141,18 +142,26 @@ def canonical_agents(
     thinking harder wins, and a ladder whose top rung alone priced the game differently
     would win for two reasons at once. The shape (eight players, the same budgets) and
     the weights version stay, so every score still sits in one leaderboard; which players
-    measured it is in its `Basis.agents` and `Basis.net`.
+    measured it is in its `Basis.agents` and `Basis.net`. **In rounds** the rule is the
+    same (RS, `docs/plan-teacher.md` §10.14): with a rated round net every matrix rung of
+    `ROUND_AGENTS` plays `matrix:net=<procedure>,nodes=N` at its own budget.
 
     Read off `nets/` every call, so a newly kept generation stales its game's score the
     moment its store lands, and the refresher replays it (`docs/archive/plan-evolving-score.md` §6.4).
     """
     if spec is not None and plays_with_spies(spec):
         return CANONICAL_AGENTS
-    if spec is not None and plays_in_rounds(spec):
-        return ROUND_AGENTS
+    rounds = spec is not None and plays_in_rounds(spec)
     procedure = rated_net(digest, NETS_DIR if nets_dir is None else nets_dir)
     if not procedure:
-        return CANONICAL_AGENTS
+        return ROUND_AGENTS if rounds else CANONICAL_AGENTS
+    if rounds:
+        # The same rule in rounds (RS, `docs/plan-teacher.md` §10.14): every matrix rung
+        # plays the game's kept round net at its own budget.
+        return ("random", "greedy") + tuple(
+            f"matrix:net={procedure},nodes={budget * ROUND_BUDGET_FACTOR}"
+            for budget in LADDER_BUDGETS
+        )
     return ("random", "greedy") + tuple(
         f"minimax:net={procedure},nodes={budget}" for budget in LADDER_BUDGETS
     )
@@ -185,7 +194,12 @@ KNOWN_SEED_SETS = (ONE_SEED, LIBRARY_SEEDS)
 # tolerated share (`docs/reference/seat-effect-size.md` §13). A one-run measurement is
 # unmoved by the name, and `measurement.py` stales a file by verdict rule only above one
 # seed for that reason.
-VERDICT_RULE = VOTE_POOLED_SEAT
+#
+# Since 2026-10-29 (plan-teacher §10.16, RS3): the same vote, but a run the roster could
+# not read abstains unless it failed a gate it could read, and a game is *not measured*
+# where its abstaining runs could have swung it. A new name, so every four-run stamp
+# reads stale by name and is repaired by re-score.
+VERDICT_RULE = VOTE_BLIND_ABSTAINS
 
 
 def expected_seeds(stage: str) -> tuple[int, ...]:
@@ -516,6 +530,9 @@ class ScoringStatus:
     index: float | None = None
     sd: float | None = None
     viable: bool | None = None
+    # False only for a current score whose verdict is *not measured* (plan-teacher
+    # §10.16); `None` where the number does not travel (stale or absent).
+    measured: bool | None = None
     weights_version: str = ""
     # How many runs the stored file names. Travels with every number, because a mean of
     # four runs and a single run are not the same claim and nothing that shows one should
@@ -540,6 +557,7 @@ class ScoringStatus:
             "index": self.index,
             "sd": self.sd,
             "viable": self.viable,
+            "measured": self.measured,
             "weights_version": self.weights_version,
             "runs": self.runs,
             "certified": self.certified,
@@ -606,6 +624,7 @@ def status_of(
         index=numbers.get("index") if stored.current else None,
         sd=numbers.get("sd") if stored.current else None,
         viable=numbers.get("viable") if stored.current else None,
+        measured=(numbers.get("measured") is not False) if stored.current else None,
         weights_version=str(numbers.get("weights_version", "")),
         runs=len(numbers.get("runs") or []),
         certified=(
@@ -1186,6 +1205,9 @@ def _store(
         "ci_low": combined.ci_low,
         "ci_high": combined.ci_high,
         "viable": combined.viable,
+        # False only for *not measured* (plan-teacher §10.16): no verdict, current, and
+        # never *provisional*. `viable` is False beside it; a reader asks this first.
+        "measured": combined.measured,
         "verdict": combined.verdict.as_dict(),
         # The seat check over the runs pooled, whether or not it refused: the split of
         # each band, the share its favoured seat took and the lean that share is, so a
@@ -1284,7 +1306,10 @@ def _summary(candidate: Candidate, combined: Any, weights_version: str) -> str:
             f"({over}, weights {weights_version})"
         )
     lines = [head]
-    if not combined.viable:
+    if not combined.measured:
+        lines.append("  NOT MEASURED:")
+        lines.extend(f"    - {violation}" for violation in combined.violations)
+    elif not combined.viable:
         lines.append("  NOT VIABLE:")
         lines.extend(f"    - {violation}" for violation in combined.violations)
     if combined.families:
@@ -1784,8 +1809,9 @@ def promotion_blocker(
         )
     if not stored.stored.get("viable"):
         violations = "; ".join(str(item) for item in stored.stored.get("violations", [])[:3])
+        state = "not measured" if stored.stored.get("measured") is False else "not viable"
         return (
-            f"{candidate.name} is not viable on the corpus roster"
+            f"{candidate.name} is {state} on the corpus roster"
             + (f": {violations}" if violations else "")
         )
     return None

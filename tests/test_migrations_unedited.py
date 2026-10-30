@@ -55,6 +55,8 @@ PINNED = {
     "0040_proven_names.sql": "43c1e7ad4c53baa144713dac89130d1023a7780c35844dc5d9d3177e50189fb8",
     "0041_one_spelling.sql": "041c74e56c1be0a22933add441cfb18f1354959141b47585463226cb55dcd88b",
     "0042_portal_moves.sql": "6e3369c6137e47d36ee7146ff08202d2892ad3be718bdab07d2080fe787cc84d",
+    "0043_provisional_measured.sql": (
+        "9c9a9835f07fcd85f9006864b7c38634268e10b2d1677a5dc11c61a72a52152b"),
 }
 
 

@@ -123,6 +123,8 @@ _SEAT_POOLED = re.compile(
     r"^(\w+)=\S+ below minimum \S+: the (first|second) seat took (\d+)% of the (\d+) "
     r"decided games(, each different game counted once)?.* rules out a seat held to "
     r"(\d+)% or less", re.S)
+# The third verdict's own sentence (`seeds._violations`): no verdict, not a failure.
+_NOT_MEASURED = re.compile(r"^Not measured: (.*?)\.?$", re.S)
 _GATE = re.compile(r"^(\w+)=(\S+) (below minimum|above maximum) (\S+?)(?: \(.*\))?$", re.S)
 
 
@@ -141,6 +143,9 @@ def violation(text: str, seeds: list[int] | None = None) -> str:
         where = (f"run {order.index(seed) + 1} of {len(order)}" if seed in order
                  else "one run")
         return f"{where}: {violation(rest)}"
+    found = _NOT_MEASURED.match(text)
+    if found:
+        return f"not measured: {found.group(1)}, so it has no verdict either way"
     found = _UNREADABLE.match(text)
     if found:
         why, parts = found.groups()
@@ -198,10 +203,22 @@ def split(verdict: dict[str, Any] | None, viable: bool | None) -> str:
     if not verdict or not verdict.get("split"):
         return ""
     accept, refuse = int(verdict.get("accept") or 0), int(verdict.get("refuse") or 0)
-    total = accept + refuse
-    if total < 2 or not accept or not refuse:
+    abstain = int(verdict.get("abstain") or 0)
+    total = accept + refuse + abstain
+    if total < 2 or (not abstain and (not accept or not refuse)):
         return ""
-    ending = "it stays in" if viable else "it is ruled out"
+    # *Not measured* (plan-teacher §10.16) is no verdict, said plainly: never *ruled out*.
+    ending = ("it is not measured" if verdict.get("measured") is False
+              else "it stays in" if viable else "it is ruled out")
+    if abstain:
+        parts = [f"{_word(accept)} {'passes' if accept == 1 else 'pass'} it"] if accept else []
+        if refuse:
+            parts.append(f"{_word(refuse)} {'rules' if refuse == 1 else 'rule'} it out")
+        parts.append(f"{_word(abstain)} could not be read")
+        said = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+        if abstain == total:
+            said = "none could be read"
+        return f"Of its {_word(total)} runs, {said}, so {ending}."
     head = (f"{_word(accept).capitalize()} of its {_word(total)} runs "
             f"{'passes' if accept == 1 else 'pass'} it and {_word(refuse)} "
             f"{'rules' if refuse == 1 else 'rule'} it out")

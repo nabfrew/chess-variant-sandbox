@@ -172,6 +172,24 @@ def test_the_tree_search_agrees_move_for_move(name: str) -> None:
     _assert_same_game(name, ("mcts:nodes=30", "random"))
 
 
+# Q1059a: no committed ruleset gates until Q1059b's Seirawan lands, so the gating test spec
+# (`tests/_gating_seirawan.json`) is played through both sides here: a gate is a second piece
+# on one move word, and the Python loop and the core must agree on every one.
+@pytest.mark.parametrize("agents", FAST_ROSTER, ids=lambda pair: f"{pair[0]}-vs-{pair[1]}")
+def test_a_gating_game_is_identical_move_for_move(agents: tuple[str, str]) -> None:
+    engine = Engine(load_spec(Path(__file__).parent / "_gating_seirawan.json"))
+    _assert_same_played(engine, agents)
+
+
+# Q1063: no committed ruleset sweeps with two lengths until Q1064's twin lands, so its test
+# spec (`tests/_sweep_three_slide_on.json`) is played through both sides here: what a sweep
+# clears and where its ride stops are priced by both loops alike.
+@pytest.mark.parametrize("agents", FAST_ROSTER, ids=lambda pair: f"{pair[0]}-vs-{pair[1]}")
+def test_a_two_length_sweep_game_is_identical_move_for_move(agents: tuple[str, str]) -> None:
+    engine = Engine(load_spec(Path(__file__).parent / "_sweep_three_slide_on.json"))
+    _assert_same_played(engine, agents)
+
+
 # Schema 26 (Q918b): the round players. Q918a's test specs (`tests/_simultaneous_*.json`):
 # a mirrored Gardner-sized game, drops and promotion, an explosion, an own-merge contact, a
 # static portal pair beside a fold; and Q942a's schema-27 switches (the rest; all three with

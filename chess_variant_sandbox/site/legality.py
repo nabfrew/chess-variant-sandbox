@@ -301,6 +301,8 @@ class Scored:
     viable: bool | None
     files: dict[str, str] = field(default_factory=dict)
     unscored: str = ""
+    # False only for *not measured* (plan-teacher §10.16.4 point 4).
+    measured: bool = True
 
 
 def refuse_basis(submitted: Mapping[str, Any] | None, current: Basis) -> None:
@@ -392,17 +394,19 @@ def score(checked: Checked, weights: str) -> Scored:
             )
             headline: float | None = gathered.index
             viable: bool | None = bool(gathered.result.viable)
+            measured = bool(gathered.result.measured)
             unscored = ""
         except WeightsError as error:
             # A run the scorer cannot read is a fact about the run: it carries the
             # sentence and no number, as `corpus._score_run` keeps it.
-            headline, viable, unscored = None, None, str(error)
+            headline, viable, unscored, measured = None, None, str(error), True
         files = {
             path.name: path.read_text(encoding="utf-8")
             for path in sorted(out.iterdir())
             if path.is_file()
         }
-    return Scored(headline=headline, viable=viable, files=files, unscored=unscored)
+    return Scored(headline=headline, viable=viable, files=files, unscored=unscored,
+                  measured=measured)
 
 
 # ------------------------------------------------------------------- reading lines
@@ -1361,6 +1365,7 @@ def _check_and_record(
         viable=scored.viable,
         files=scored.files,
         job=job,
+        measured=scored.measured,
     ), text
 
 

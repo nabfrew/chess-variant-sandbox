@@ -59,6 +59,8 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_SWEEP,
     decode_move,
     move_fold,
+    move_gate,
+    move_gate_rook,
     move_landing,
     move_portal,
 )
@@ -620,8 +622,7 @@ class Engine:
             # Schema 13: the pieces a sweep passed over, which two positions cannot name.
             swept = [
                 _square_name(square, spec.width)
-                for square in spec.sweep_path(state.board, origin, target)
-                if state.board[square]
+                for square, _ in spec.sweep_victims(state.board, move)
             ]
             text += f" (sweeps {', '.join(swept)})"
         # A strike is generated as a capture and written as one, so "Rh8xf8" would say
@@ -696,6 +697,27 @@ class Engine:
             text += " (castle)"
         elif kind == MOVE_EN_PASSANT:
             text += " e.p."
+        return text + self._gate_text(state, move)
+
+    def _gate_text(self, state: GameState, move: int) -> str:
+        """Q1059a: a gating move's piece in hand, ``/E`` after the move (Seirawan's ``Nf3/E``).
+
+        A castle can gate on either square it vacates, so one gating on the rook's names
+        it (``/E@h1``). Which square that is is the core's answer: the move is played and
+        the square read back, as a circe rebirth's is.
+        """
+        drops = self.spec.drops
+        gate = move_gate(move)
+        if drops is None or drops.gates is None or not gate:
+            return ""
+        text = f"/{self.spec.piece_ids[gate - 1]}"
+        if not move_gate_rook(move):
+            return text
+        after = self.apply(state, move)
+        origin = decode_move(move)[0]
+        for square, (before, now) in enumerate(zip(state.board, after.board, strict=True)):
+            if square != origin and before and now and before != now:
+                return f"{text}@{_square_name(square, self.spec.width)}"
         return text
 
     def _transit_text(self, state: GameState, move: int) -> str:

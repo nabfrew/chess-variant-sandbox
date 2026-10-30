@@ -491,7 +491,8 @@ function hereOwnHtml(run, check) {
   return `<div class="u-fs-26 u-fw-600 u-lh-1_1">${
       scored ? Number(r.index).toFixed(4) : '<span class="muted">no score</span>'}</div>
     <div class="muted small">measured on your computer${info('provisional')}, as one run of ${
-      Number(r.games)} games${r.viable === false ? ', and ruled out' : ''} &middot; ${
+      Number(r.games)} games${isNotMeasured(r) ? ', and not measured'
+      : r.viable === false ? ', and ruled out' : ''} &middot; ${
       esc(rulesVersion(r.weights))}${info('weights')}</div>
     ${check ? hereCheckHtml(check, run)
       : `<div class="small u-mt-6">${unsent}</div>`}`;
@@ -564,7 +565,8 @@ function hereKeptHtml(check, p) {
   return `<div class="u-fs-26 u-fw-600 u-lh-1_1">${
       scored ? Number(p.index).toFixed(4) : '<span class="muted">no score</span>'}</div>
     <div class="muted small">${esc(words.label)}${info('provisional')}${
-      p.viable === false ? ', and ruled out' : ''} &middot; ${esc(runsPhrase(p.seeds))}${
+      isNotMeasured(p) ? ', and not measured' : p.viable === false ? ', and ruled out' : ''
+    } &middot; ${esc(runsPhrase(p.seeds))}${
       p.weights ? ' &middot; ' + esc(rulesVersion(p.weights)) : ''}${info('weights')}</div>
     <div class="small u-mt-6">Checked by the site${esc(took)}. ${
       esc(words.why)}</div>${hereSpotHtml(check)}`;

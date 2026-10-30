@@ -269,6 +269,15 @@ def describe(result: IndexResult, spec: dict[str, Any] | None = None) -> str:
             "different kind of opponent. Read the observations above as being about "
             "what happened, not about what is possible."
         )
+        if result.measured:
+            # A blind run that still failed a test the players could read (plan-teacher
+            # §10.16): that test is a fact about the game, whatever the ladder did.
+            lines.append(
+                "It was still rejected on a test the programs could read, and that part "
+                "is about the design: something structural has to change."
+            )
+        else:
+            lines.append("So it is not measured: there is no verdict either way.")
     elif not result.viable:
         lines.append(
             "\nThis ruleset was rejected outright. It is not a near miss to be tuned; "
@@ -387,6 +396,10 @@ def describe_failures(entries: Sequence[Entry]) -> str:
             what = "did not satisfy the schema"
         elif entry.status == "rejected":
             what = "was thrown out before it could be played"
+        elif not entry.measured:
+            # *Not measured* (plan-teacher §10.16): no verdict, so not a disqualification.
+            what = ("was played, but the programs could not work out how to win it, so "
+                    "there is no verdict either way")
         else:
             what = "was played and disqualified"
         lines.append(f"- {entry.name}: {what} -- {headline}")

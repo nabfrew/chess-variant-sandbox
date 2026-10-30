@@ -272,7 +272,7 @@ impl PieceValues {
     pub fn check(override_values: &[f64], t: &Tables) -> Result<(), String> {
         if override_values.len() != t.n_types {
             return Err(format!(
-                "a piece-value override for this ruleset has {} entries, got {}; that                  table was written for a different game",
+                "a piece-value override for this ruleset has {} entries, got {}; that table was written for a different game",
                 t.n_types,
                 override_values.len()
             ));
@@ -280,14 +280,14 @@ impl PieceValues {
         for piece_type in &t.royal_types {
             if override_values[*piece_type] != 0.0 {
                 return Err(format!(
-                    "piece type {} is royal and its value is {}; losing a royal is                      terminal rather than material, so the evaluator has no term for it",
+                    "piece type {} is royal and its value is {}; losing a royal is terminal rather than material, so the evaluator has no term for it",
                     piece_type, override_values[*piece_type]
                 ));
             }
         }
         if mean_abs_non_royal(override_values, &t.royal_types) == 0.0 {
             return Err(
-                "every non-royal piece is worth nothing, which is not an opinion about                  the pieces but the absence of one"
+                "every non-royal piece is worth nothing, which is not an opinion about the pieces but the absence of one"
                     .to_string(),
             );
         }
@@ -321,9 +321,6 @@ pub struct Evaluator {
     /// Whether having *more* material is what this ruleset rewards. See `material`.
     material_sign: f64,
     n_types: usize,
-    /// How many board values one player owns, so this can tell whose piece a square
-    /// holds without a second statement of the encoding. `n_types` where nothing turns.
-    side_stride: usize,
     /// Schema 3's capture matrix, copied so `live_values` needs no tables in hand.
     capture_allowed: Vec<bool>,
     /// Which types can be won at all: the denominator of the prey share, and the pool
@@ -388,7 +385,6 @@ struct Immunity {
     /// The mean non-royal piece: immune material is counted in these units.
     mean: f64,
     n_types: usize,
-    side_stride: usize,
 }
 
 impl Immunity {
@@ -417,7 +413,6 @@ impl Immunity {
             counted,
             mean: 1.0,
             n_types,
-            side_stride: t.side_stride,
         })
     }
 }
@@ -481,8 +476,6 @@ fn capture_threats(t: &Tables) -> [[u32; MAX_PIECE_TYPES]; 2] {
 #[derive(Clone)]
 struct Seal {
     threat: [[u32; MAX_PIECE_TYPES]; 2],
-    n_types: usize,
-    side_stride: usize,
 }
 
 impl Seal {
@@ -503,8 +496,6 @@ impl Seal {
         }
         Some(Self {
             threat: capture_threats(t),
-            n_types: t.n_types,
-            side_stride: t.side_stride,
         })
     }
 }
@@ -552,7 +543,6 @@ impl Evaluator {
             race_weight,
             material_sign,
             n_types: t.n_types,
-            side_stride: t.side_stride,
             capture_allowed: t.capture_allowed.clone(),
             prey: prey_types(t),
             spy_mask: t.spy.as_ref().map_or([0, 0], |spy| spy.mask),
@@ -585,18 +575,18 @@ impl Evaluator {
             let mut exposed: Option<u32> = None;
             for (index, square) in rule.goals[side].iter().enumerate() {
                 let value = board[*square] as usize;
-                if value == 0 || (value - 1) / seal.side_stride != 1 - side {
+                if value == 0 || game.t.owner_of(value as u8) != 1 - side {
                     continue;
                 }
                 let exposed = *exposed.get_or_insert_with(|| {
                     let mut types = 0u32;
                     for held in game.occupied()[side].iter() {
-                        let piece_type = (board[held] as usize - 1) % seal.n_types;
+                        let piece_type = game.t.type_of(board[held]);
                         types |= seal.threat[side][piece_type];
                     }
                     types
                 });
-                if exposed & (1 << ((value - 1) % seal.n_types)) == 0 {
+                if exposed & (1 << game.t.type_of(value as u8)) == 0 {
                     *mask |= 1 << index;
                 }
             }
@@ -609,11 +599,10 @@ impl Evaluator {
     /// compiled union table; with some it is the per-goal table over the open goals.
     fn goal_distance_of(&self, game: &Game<'_>, side: usize, types: u32, sealed: u64) -> u8 {
         let t = game.t;
-        let n_types = self.n_types;
         let mut best = GOAL_UNREACHABLE;
         if sealed == 0 {
             for square in game.occupied()[side].iter() {
-                let piece_type = (game.board[square] as usize - 1) % n_types;
+                let piece_type = t.type_of(game.board[square]);
                 if types & (1 << piece_type) == 0 {
                     continue;
                 }
@@ -632,7 +621,7 @@ impl Evaluator {
             return best;
         }
         for square in game.occupied()[side].iter() {
-            let piece_type = (game.board[square] as usize - 1) % n_types;
+            let piece_type = t.type_of(game.board[square]);
             if types & (1 << piece_type) == 0 {
                 continue;
             }
@@ -684,11 +673,12 @@ impl Evaluator {
             return 0.0;
         };
         let n_types = imm.n_types;
+        let t = game.t;
         let board = &game.board;
         let mut present = [0u32; 2];
         for square in game.all_occupied().iter() {
-            let value = board[square] as usize - 1;
-            present[value / imm.side_stride] |= 1 << (value % n_types);
+            let value = board[square];
+            present[t.owner_of(value)] |= 1 << t.type_of(value);
         }
         if self.has_drops {
             for (side, hand) in game.hands.iter().enumerate() {
@@ -717,9 +707,9 @@ impl Evaluator {
         // Immune material, summed in board order on both sides of the boundary.
         let mut worth = [0.0f64; 2];
         for square in game.all_occupied().iter() {
-            let value = board[square] as usize - 1;
-            let owner = value / imm.side_stride;
-            let piece_type = value % n_types;
+            let value = board[square];
+            let owner = t.owner_of(value);
+            let piece_type = t.type_of(value);
             if safe[owner] & (1 << piece_type) != 0 {
                 worth[owner] += self.values[piece_type];
             }
@@ -838,13 +828,14 @@ impl Evaluator {
     /// would be subtracted from both players at once -- a legal, plausible, wrong
     /// number with nothing to point at. Hence the assertion.
     fn plain_material(&self, game: &Game<'_>, player: usize) -> f64 {
+        let t = game.t;
         let board = &game.board;
         let mut total = 0.0;
         for square in game.all_occupied().iter() {
-            let value = board[square] as usize;
-            let owner = (value - 1) / self.side_stride;
+            let value = board[square];
+            let owner = t.owner_of(value);
             debug_assert!(owner != WILD, "a wild piece reached plain_material");
-            let piece_type = (value - 1) % self.n_types;
+            let piece_type = t.type_of(value);
             if owner == player {
                 total += self.values[piece_type];
             } else {
@@ -865,12 +856,13 @@ impl Evaluator {
     /// a wrong number.
     fn relational_material(&self, game: &Game<'_>, player: usize) -> f64 {
         let scaled = self.live_values(game);
+        let t = game.t;
         let board = &game.board;
         let mut total = 0.0;
         for square in game.all_occupied().iter() {
-            let value = board[square] as usize;
-            let owner = (value - 1) / self.side_stride;
-            let piece_type = (value - 1) % self.n_types;
+            let value = board[square];
+            let owner = t.owner_of(value);
+            let piece_type = t.type_of(value);
             if owner == player {
                 total += scaled[owner][piece_type];
             } else {
@@ -902,11 +894,12 @@ impl Evaluator {
     /// and `features::prey_weight` says the same thing about the same quantity.
     fn live_values(&self, game: &Game<'_>) -> [[f64; MAX_PIECE_TYPES]; 2] {
         let n_types = self.n_types;
+        let t = game.t;
         let board = &game.board;
         let mut counts = [[0u32; MAX_PIECE_TYPES]; 2];
         for square in game.all_occupied().iter() {
-            let value = board[square] as usize;
-            counts[(value - 1) / self.side_stride][(value - 1) % n_types] += 1;
+            let value = board[square];
+            counts[t.owner_of(value)][t.type_of(value)] += 1;
         }
 
         let mut scaled = [[0.0f64; MAX_PIECE_TYPES]; 2];
@@ -1141,13 +1134,13 @@ impl Evaluator {
     /// army rather than against the threshold alone, so "half your pieces are gone" says
     /// the same thing in a game with forty of them and a game with four.
     fn shortfall(&self, game: &Game<'_>, player: usize, rule: &ExtinctionRule) -> f64 {
-        let n_types = self.n_types;
+        let t = game.t;
         let mine = &game.occupied()[player];
         let now = if rule.any_piece {
             mine.len()
         } else {
             mine.iter()
-                .filter(|&square| rule.counts((game.board[square] as usize - 1) % n_types))
+                .filter(|&square| rule.counts(t.type_of(game.board[square])))
                 .count()
         };
         let start = self.initial_counts[player];

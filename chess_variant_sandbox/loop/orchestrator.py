@@ -858,6 +858,7 @@ def measure(
             objective=result.total if scored else None,
 
             viable=result.viable,
+            measured=result.measured,
             weights_version=result.weights_version,
             cell=label(descriptor(spec)),
             notes=describe(result, spec),

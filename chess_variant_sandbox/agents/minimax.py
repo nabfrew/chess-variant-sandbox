@@ -43,7 +43,6 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_ROTATE,
     MOVE_SWEEP,
     decode_move,
-    move_from,
     move_to,
     move_type,
 )
@@ -706,11 +705,9 @@ class MinimaxAgent:
         victim = board[move_to(move)]
         gain = values[spec.type_of(victim)] if victim else 0.0
         # Schema 13: a sweep's path victims are summed onto the target's, in ray order, as
-        # `agents.rs::capture_gain` sums them.
-        if move_type(move) == MOVE_SWEEP:
-            for square in spec.sweep_path(board, move_from(move), move_to(move)):
-                if board[square]:
-                    gain += values[spec.type_of(board[square])]
+        # `agents.rs::capture_gain` sums them (`CompiledSpec.sweep_victims`).
+        for _, swept in spec.sweep_victims(board, move):
+            gain += values[spec.type_of(swept)]
         return gain
 
 

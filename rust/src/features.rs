@@ -88,7 +88,7 @@ impl FeatureContext {
         for square in 0..t.n_squares {
             let value = t.initial_board[square];
             if value != 0 && t.owner_of(value) != WILD {
-                let piece_type = (value as usize - 1) % t.n_types;
+                let piece_type = t.type_of(value);
                 counts[piece_type] += 1;
                 total += values[piece_type];
             }
@@ -309,10 +309,8 @@ impl FeatureEvaluator {
         let occupied = game.all_occupied();
         let mut live = [[0usize; MAX_PIECE_TYPES]; 2];
         for square in occupied.iter() {
-            let value = game.board[square] as usize;
-            let owner = (value - 1) / t.side_stride;
-            let piece_type = (value - 1) % n_types;
-            live[owner][piece_type] += 1;
+            let value = game.board[square];
+            live[t.owner_of(value)][t.type_of(value)] += 1;
         }
         let army = [
             live[0][..n_types]
@@ -351,9 +349,9 @@ impl FeatureEvaluator {
         let mut relational = 0.0;
         let mut static_value = 0.0;
         for square in occupied.iter() {
-            let value = game.board[square] as usize;
-            let owner = (value - 1) / t.side_stride;
-            let piece_type = (value - 1) % n_types;
+            let value = game.board[square];
+            let owner = t.owner_of(value);
+            let piece_type = t.type_of(value);
             // The override is what the live share scales, not the derived table: the
             // share is a correction *to a valuation*.
             let worth = self.objective.values[piece_type];
@@ -388,10 +386,10 @@ impl FeatureEvaluator {
         let mut total = 0.0;
         let mut count = 0usize;
         for square in game.all_occupied().iter() {
-            let value = game.board[square] as usize;
-            let owner = (value - 1) / t.side_stride;
+            let value = game.board[square];
+            let owner = t.owner_of(value);
             debug_assert!(owner != WILD, "a wild piece reached advance");
-            let piece_type = (value - 1) % t.n_types;
+            let piece_type = t.type_of(value);
             if t.is_royal(piece_type) {
                 continue;
             }
@@ -428,8 +426,7 @@ impl FeatureEvaluator {
         let mut total = 0.0;
         let mut count = 0usize;
         for square in game.all_occupied().iter() {
-            let value = game.board[square] as usize;
-            let owner = (value - 1) / t.side_stride;
+            let owner = t.owner_of(game.board[square]);
             debug_assert!(owner != WILD, "a wild piece reached centrality");
             let rank = (square / t.width) as f64;
             let file = (square % t.width) as f64;
@@ -517,8 +514,7 @@ impl FeatureEvaluator {
             let mut eligible = 0usize;
             let mut standing = 0usize;
             for square in occupied[side].iter() {
-                let value = game.board[square] as usize;
-                let piece_type = (value - 1) % t.n_types;
+                let piece_type = t.type_of(game.board[square]);
                 if !t.is_promoting(piece_type) {
                     continue;
                 }
@@ -553,8 +549,7 @@ impl FeatureEvaluator {
             }
             let mut best = t.goal_diameter;
             for square in occupied[side].iter() {
-                let value = game.board[square] as usize;
-                let piece_type = (value - 1) % t.n_types;
+                let piece_type = t.type_of(game.board[square]);
                 // `piece_type < 0` is "any piece", as in `eval.rs::nearest_to_goal` and
                 // the arrival check in `game.rs`. Until Q465 this cast the -1 to a
                 // `usize` no type equals, so the term read zero on every such ruleset.
@@ -608,9 +603,9 @@ impl FeatureEvaluator {
             // bounds panic rather than a piece quietly credited to the opponent.
             let material = rule.count == 0;
             for square in game.all_occupied().iter() {
-                let value = game.board[square] as usize;
-                let owner = (value - 1) / t.side_stride;
-                let piece_type = (value - 1) % t.n_types;
+                let value = game.board[square];
+                let owner = t.owner_of(value);
+                let piece_type = t.type_of(value);
                 counts[owner] += if material { t.piece_values[piece_type] } else { 1.0 };
             }
         }
@@ -625,8 +620,8 @@ impl FeatureEvaluator {
 /// only one that can price `piece.facing` at all -- see `docs/reference/schema-8.md`.
 ///
 /// Three things have to be decoded right and only one of them is checked by anything
-/// else. `(value - 1) / n_types` is the **frame**, not the owner: the owner is
-/// `frame / n_facings` and the facing is `frame % n_facings`, and swapping those two
+/// else. `frame_of_value` is the **frame**, not the owner: the owner is `owner_of` and the
+/// facing is `frame % n_facings`, and swapping the owner and the facing
 /// reads prices the wrong army -- silently, and only on a ruleset that faces, which is
 /// why `tests/test_backends.py`'s facing arms give the two players *different* facing
 /// distributions. A type with one orientation has no frame to read and is in neither the
@@ -645,10 +640,10 @@ fn facing_alignment(game: &Game<'_>, player: usize) -> f64 {
     let mut total = 0.0;
     let mut count = 0usize;
     for square in game.all_occupied().iter() {
-        let value = game.board[square] as usize;
-        let frame = (value - 1) / t.n_types;
-        let piece_type = (value - 1) % t.n_types;
-        let owner = frame / t.n_facings;
+        let value = game.board[square];
+        let frame = t.frame_of_value(value);
+        let piece_type = t.type_of(value);
+        let owner = t.owner_of(value);
         debug_assert!(owner != WILD, "a wild piece reached facing_alignment");
         // A facing no move turns (schema 25) is out with the types that have none.
         if t.turns_of(piece_type) < 2 {

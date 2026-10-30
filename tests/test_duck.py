@@ -264,6 +264,19 @@ class TestBesideWildPieces:
         assert len(phase) == 2 and {step.kind for step in phase} == {"step"}
         assert after.key == engine._compute_hash(after)
 
+    def test_the_fuzz_route_oracles_do_not_read_the_duck_as_a_wild_piece(self) -> None:
+        """Q1061 (fuzz seed 108): the duck stands in the third owner's block beside the wolves,
+        on no route and worth no bounty; the oracles once took it for a wolf off its route."""
+        from chess_variant_sandbox import fuzz
+
+        engine = Engine(_load(SHEPHERD))
+        state = engine.initial_state()
+        state = _play(engine, state, "Pe2-e3")
+        state = _play(engine, state, "the duck lands on c6")
+        assert engine.duck_square(state) == _sq(engine, "c6")
+        fuzz.every_npc_stands_on_its_own_route(engine, state)
+        fuzz.the_points_are_the_bounties_of_the_npcs_that_are_gone(engine, state)
+
     def test_a_wolf_waits_at_the_duck_and_the_duck_never_walks_a_route(self) -> None:
         engine = Engine(_load(SHEPHERD))
         state = engine.make_state(

@@ -69,6 +69,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     portal_stand_in_shape,
     reflect_square,
+    sweep_length,
     wrap_stated,
 )
 from chess_variant_sandbox.spec.spelling import current_spelling
@@ -685,7 +686,7 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
         if not isinstance(move, dict):
             continue
         kind = str(move.get("kind", "slide"))
-        attrs = (
+        attrs: tuple[Any, ...] = (
             kind,
             move.get("mode", "both"),
             move.get("range", DEFAULT_RANGE.get(kind, 1)),
@@ -697,6 +698,10 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
             # "straight", the off value, is the key's absence.
             move.get("path", "straight"),
         )
+        if sweep_length(move):
+            # Q1063: a sweep that clears only part of its line is another movement. Added
+            # only where it is one, so no stored reading of any other move's words moves.
+            attrs = (*attrs, ("sweep_range", sweep_length(move)))
         if isinstance(move.get("legs"), list):
             # SR1a: a jump blocked on stated legs is another movement than the same jump
             # on its computed leg, so each direction carries its legs.

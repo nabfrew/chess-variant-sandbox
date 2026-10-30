@@ -53,6 +53,7 @@ from chess_variant_sandbox.tournament.play import choose_move, eval_values
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
 from chess_variant_sandbox.viz.rules_payload import (
     effect_pairs,
+    gate_entry,
     rules_payload,
 )
 from chess_variant_sandbox.viz.wrapped import (
@@ -662,6 +663,11 @@ class Session:
             if move & MOVE_FOREIGN:
                 # A move of a piece the mover does not own (`~`): a commanded or held one.
                 entry["foreign"] = True
+            gate = gate_entry(engine, move)
+            if gate is not None:
+                # Q1059a: the piece in hand a gating move brings in; the plain move and each
+                # gate share a square pair, and the page asks which by the engine's text.
+                entry["gate"] = gate
             # Schema 22: a move through a fold, its way in and out and the group's colour
             # (`viz.wrapped.fold_transit`), for the dot where only a fold reaches (Q843d).
             entry.update(fold_transit(engine, state, move) or {})

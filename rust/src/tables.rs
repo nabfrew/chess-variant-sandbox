@@ -36,6 +36,14 @@ pub const MAX_PIECE_TYPES: usize = 24;
 /// how many of one player's pieces can rest at once (one enters a turn, none stays longer).
 /// `spec/schema.py::REST_MAX` is the validator's copy.
 pub const REST_MAX: usize = 4;
+/// Schema 21: the most portal ends a game has, across all its groups, and so how wide
+/// every by-end array is (`Game::fold_at`, `FoldTables::starts`, a transit's ends).
+/// `spec/schema.py::MAX_PORTAL_ENDS` is the validator's copy, pinned equal by a test.
+pub const MAX_PORTAL_ENDS: usize = 8;
+/// Schema 19: the directions a portal's exit table holds per square (the king's step,
+/// `compile.PORTAL_DIRECTIONS`), and so the width of each half of a momentum mask. Not
+/// `MAX_PORTAL_ENDS`: the two eights are equal by coincidence.
+pub const EXIT_DIRECTIONS: usize = 8;
 /// TC4 (`docs/plan-turncoat.md` §5.2): the most coins a purse holds; a bounty past it is lost.
 /// `spec/schema.py::PURSE_MAX` is the validator's copy, and it bounds the purse's keys.
 pub const PURSE_MAX: u16 = 99;
@@ -54,11 +62,12 @@ pub const MOVE_ROTATE: u32 = 5;
 pub const MOVE_SWEEP: u32 = 6;
 /// Schema 19: a transit. The piece moves onto a portal end and comes out one king's step
 /// beyond the other end of its pair: the target is that exit square, where the move
-/// ends, bits 25 to 31 hold the internal type of the end it went in by, and the
+/// ends, the tag field (bits 25 to 29, `with_portal`) holds the internal type of the end it
+/// went in by, and the
 /// promotion field holds the promoted type plus one (0 for none), because one kind field
 /// cannot say both "portal" and "promotion".
 pub const MOVE_PORTAL: u32 = 7;
-/// Schema 22: a fold's own move. Origin and target are the fold's squares, bits 25 to 31
+/// Schema 22: a fold's own move. Origin and target are the fold's squares, the tag field
 /// the end (its index among the portal ends), and nothing on the board byte changes: a
 /// fold stands on no square of it (`Game::fold_at`). An ordinary move that went through
 /// a fold -- landed on it and came out on the end it leads to, its target (schema 24) --
@@ -128,6 +137,113 @@ impl NeutralTables {
 pub const SWEEP_LANDS: u8 = 1;
 /// `AttackSource::sweep` bit 1: the ray has a landing square past the attacked one.
 pub const SWEEP_BEYOND: u8 = 2;
+/// Q1063: `AttackSource::sweep >> SWEEP_LENGTH_SHIFT` is the sweep's length, 0 for a sweep
+/// that clears its whole ray. From that index of the path on, the ray is a slide's.
+pub const SWEEP_LENGTH_SHIFT: u8 = 2;
+
+/// CS2 (R1, `docs/plan-smells-rust.md`): **the move word's field map.** A move is one `u32`;
+/// stored records hold the raw words (`tournament/record.py`), so a field's bits are frozen
+/// once written: a new field takes free bits, never moves one. `engine/moves.py` holds the
+/// same table, pinned to `MOVE_FIELDS` (exported by `lib.rs`) by `tests/test_move_word.py`.
+///
+/// | bits  | field     | set by                                                           |
+/// |-------|-----------|------------------------------------------------------------------|
+/// | 0-7   | origin    | every kind                                                       |
+/// | 8-15  | target    | every kind                                                       |
+/// | 16-19 | kind      | every kind (`MOVE_NORMAL` .. `MOVE_HIRE`, 0 to 11 of 16)         |
+/// | 20-24 | promotion | `MOVE_PROMOTION` (the type); `MOVE_PORTAL` (type + 1, 0 none);   |
+/// |       |           | `MOVE_DROP`, `MOVE_BUY` (the type); `MOVE_ROTATE` (the facing);  |
+/// |       |           | `MOVE_DUCK` (`DUCK_*`)                                           |
+/// | 25-29 | landing   | a strike's capture under `position: "choose"`: the landing's     |
+/// |       |           | index (`with_landing`, < 32, `MAX_LANDING_CANDIDATES`)           |
+/// | 25-29 | portal    | `MOVE_PORTAL`: the entered end's internal type (`with_portal`,   |
+/// |       |           | below `MAX_PIECE_TYPES`, 24)                                     |
+/// | 25-29 | fold      | `MOVE_FOLD`: the end; a go-through (`MOVE_NORMAL`/`PROMOTION`)   |
+/// |       |           | the end gone in by + 1, 0 a direct move (`with_fold`, <= 8)      |
+/// | 25-29 | gate      | Q1059a (`drops.gating`): the type a gating move places, plus one;|
+/// |       |           | 0 none (`with_gate`, below `MAX_PIECE_TYPES`, 24). On a          |
+/// |       |           | `MOVE_NORMAL`, `EN_PASSANT`, `PROMOTION` or `CASTLE` word        |
+/// | 30    | foreign   | a move of a piece the mover does not own (`with_foreign`)        |
+/// | 31    | gate_rook | Q1059a: a gating castle places on the rook's origin, not the     |
+/// |       |           | king's (`with_gate`); 0 on every other word                      |
+///
+/// **Gating's two fields (Q1059a).** The gate is a fourth reading of bits 25-29: the
+/// validator refuses `drops.gating` beside every rule that writes the tag (a strike, contacts,
+/// portals and so folds) or the foreign bit (a sight, a majority), so the extension holds
+/// the gate alone. A castle has two vacated squares, and bit 31 says which one the piece
+/// enters on; it is the word's last free bit.
+///
+/// **Bits 25 to 30, the extension, hold at most one field today.** Landing, portal and fold
+/// share bits 25-29 and are told apart by the rules (a strike is refused beside portals) and
+/// the kind; foreign has its own bit, but the validator refuses every rule pair that would set
+/// it beside a tag (a sight beside portals, a commanded capture beside a strike). So every
+/// encoder `debug_assert`s the whole extension is empty, which is what catches the first lifted
+/// refusal (SR5c's commanded fold transit sets foreign *and* fold): that task decides whether
+/// its word is legal, and narrows the assertion to the field it writes if so. Readers mask
+/// their own field only; `move_extended` asks whether anything rides there.
+///
+/// **What the schema plan's next fields would take.** SR6d (W6, a declared sweep ray): the
+/// ray's index among the slot's sweep entries rides on a `MOVE_SWEEP` word in bits 25-29 (a
+/// sweep is refused beside a strike and portals, so neither landing nor portal can be there;
+/// fewer than 32 rays, which SR6d must bound). SR8b (W7, a promoting sweep): the promoted type
+/// in bits 20-24, which a `MOVE_SWEEP` word leaves free, as `MOVE_PORTAL`'s promotion does
+/// (type + 1, 0 none). The two fit together, and beside foreign (SR6f's commanded sweep, bit
+/// 30). **What does not fit:** a declared ray *and* a fold end on one word (a sweep through a
+/// fold, SR6e, on a wrapped board): both want bits 25-29, and bit 31 alone is room for
+/// neither; that pair needs a refusal or a wider word.
+pub const MOVE_ORIGIN_SHIFT: u32 = 0;
+pub const MOVE_ORIGIN_BITS: u32 = 8;
+pub const MOVE_TARGET_SHIFT: u32 = 8;
+pub const MOVE_TARGET_BITS: u32 = 8;
+pub const MOVE_KIND_SHIFT: u32 = 16;
+pub const MOVE_KIND_BITS: u32 = 4;
+pub const MOVE_PROMOTION_SHIFT: u32 = 20;
+pub const MOVE_PROMOTION_BITS: u32 = 5;
+/// Bits 25-29: a strike's landing, a portal's entered end, or a fold end (one at a time).
+pub const MOVE_TAG_SHIFT: u32 = 25;
+pub const MOVE_TAG_BITS: u32 = 5;
+pub const MOVE_FOREIGN_SHIFT: u32 = 30;
+/// Q1059a: bit 31, a gating castle's piece entering on the rook's origin.
+pub const MOVE_GATE_ROOK_SHIFT: u32 = 31;
+pub const MOVE_GATE_ROOK: u32 = 1 << MOVE_GATE_ROOK_SHIFT;
+/// The tag field in place.
+pub const MOVE_TAG_MASK: u32 = ((1 << MOVE_TAG_BITS) - 1) << MOVE_TAG_SHIFT;
+/// Every bit past the promotion field: the tag, the foreign bit and the free bit 31.
+pub const MOVE_EXTENSION_MASK: u32 = !0 << MOVE_TAG_SHIFT;
+/// Origin, target, kind and promotion: the move as the board sees it, less how it got there
+/// (`dedup_fold_segment`'s key).
+pub const MOVE_BASE_MASK: u32 = !MOVE_EXTENSION_MASK;
+/// The field map as `(name, shift, width)`, for `lib.rs` to export and a test to pin
+/// `engine/moves.py`'s copy to. Landing, portal and fold are the one tag field's names.
+pub const MOVE_FIELDS: [(&str, u32, u32); 10] = [
+    ("origin", MOVE_ORIGIN_SHIFT, MOVE_ORIGIN_BITS),
+    ("target", MOVE_TARGET_SHIFT, MOVE_TARGET_BITS),
+    ("kind", MOVE_KIND_SHIFT, MOVE_KIND_BITS),
+    ("promotion", MOVE_PROMOTION_SHIFT, MOVE_PROMOTION_BITS),
+    ("landing", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
+    ("portal", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
+    ("fold", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
+    ("gate", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
+    ("foreign", MOVE_FOREIGN_SHIFT, 1),
+    ("gate_rook", MOVE_GATE_ROOK_SHIFT, 1),
+];
+
+/// Every move kind by name, for `lib.rs` to export and a test to pin `engine/moves.py`'s
+/// `MOVE_*` to.
+pub const MOVE_KINDS: [(&str, u32); 12] = [
+    ("MOVE_NORMAL", MOVE_NORMAL),
+    ("MOVE_EN_PASSANT", MOVE_EN_PASSANT),
+    ("MOVE_CASTLE", MOVE_CASTLE),
+    ("MOVE_PROMOTION", MOVE_PROMOTION),
+    ("MOVE_DROP", MOVE_DROP),
+    ("MOVE_ROTATE", MOVE_ROTATE),
+    ("MOVE_SWEEP", MOVE_SWEEP),
+    ("MOVE_PORTAL", MOVE_PORTAL),
+    ("MOVE_FOLD", MOVE_FOLD),
+    ("MOVE_DUCK", MOVE_DUCK),
+    ("MOVE_BUY", MOVE_BUY),
+    ("MOVE_HIRE", MOVE_HIRE),
+];
 
 #[inline(always)]
 pub fn encode_move(origin: usize, target: usize, kind: u32, promotion: u32) -> u32 {
@@ -162,17 +278,105 @@ pub fn move_promotion(m: u32) -> u32 {
     (m >> 20) & 0x1F
 }
 
-/// Schema 12: which entry of the strike's landing list a survivor is placed on, in bits
-/// 25 to 31. Zero on every move that places nothing.
+#[inline(always)]
+fn move_tag(m: u32) -> usize {
+    ((m & MOVE_TAG_MASK) >> MOVE_TAG_SHIFT) as usize
+}
+
+/// `m` with `value` in the tag field, which must fit; the extension must be empty (the field
+/// map: one field at a time, until a lifted refusal decides otherwise).
+#[inline(always)]
+fn with_tag(m: u32, value: usize, field: &str) -> u32 {
+    debug_assert!(value < 1 << MOVE_TAG_BITS, "a {field} of {value} past the move word's tag field");
+    debug_assert!(
+        m & MOVE_EXTENSION_MASK == 0,
+        "a {field} written onto a move word whose bits 25-31 are taken: {m:#010x}"
+    );
+    m | ((value as u32) << MOVE_TAG_SHIFT)
+}
+
+/// Schema 12: which entry of the strike's landing list a survivor is placed on, in the tag
+/// field (bits 25 to 29). Zero on every move that places nothing.
 #[inline(always)]
 pub fn move_landing(m: u32) -> usize {
-    ((m >> 25) & 0x7F) as usize
+    move_tag(m)
 }
 
 #[inline(always)]
 pub fn with_landing(m: u32, index: usize) -> u32 {
-    debug_assert!(index < 128, "a landing index past the move word's seven bits");
-    m | ((index as u32) << 25)
+    with_tag(m, index, "landing index")
+}
+
+/// Schema 19: a `MOVE_PORTAL` with the internal type of the end it went in by. The core never
+/// reads it back (the exit is the target); `engine/moves.py::move_portal` does.
+#[inline(always)]
+pub fn with_portal(m: u32, entry_type: usize) -> u32 {
+    with_tag(m, entry_type, "portal end")
+}
+
+/// Schema 22: a `MOVE_FOLD`'s end; on an ordinary move in a fold game, the end it went
+/// through plus one (schema 24), 0 for a direct move.
+#[inline(always)]
+pub fn move_fold(m: u32) -> usize {
+    move_tag(m)
+}
+
+#[inline(always)]
+pub fn with_fold(m: u32, value: usize) -> u32 {
+    with_tag(m, value, "fold end")
+}
+
+/// Q1059a (`drops.gating`): the type a gating move places on a vacated square, plus one; 0
+/// on a move that places nothing.
+#[inline(always)]
+pub fn move_gate(m: u32) -> usize {
+    move_tag(m)
+}
+
+/// Whether a gating castle places its piece on the rook's origin (bit 31) rather than the
+/// king's.
+#[inline(always)]
+pub fn move_gate_rook(m: u32) -> bool {
+    m & MOVE_GATE_ROOK != 0
+}
+
+/// Q1059a: `m` placing `piece_type` from the hand on a square it vacates: its origin, or a
+/// castle's rook origin where `at_rook`.
+#[inline(always)]
+pub fn with_gate(m: u32, piece_type: usize, at_rook: bool) -> u32 {
+    let gated = with_tag(m, piece_type + 1, "gate");
+    if at_rook {
+        gated | MOVE_GATE_ROOK
+    } else {
+        gated
+    }
+}
+
+/// `m` with its gate (both fields) taken off: the move as it would be without the piece.
+#[inline(always)]
+pub fn without_gate(m: u32) -> u32 {
+    m & !(MOVE_TAG_MASK | MOVE_GATE_ROOK)
+}
+
+/// Whether `m` is a foreign move (`MOVE_FOREIGN`).
+#[inline(always)]
+pub fn move_foreign(m: u32) -> bool {
+    m & MOVE_FOREIGN != 0
+}
+
+#[inline(always)]
+pub fn with_foreign(m: u32) -> u32 {
+    debug_assert!(
+        m & MOVE_EXTENSION_MASK == 0,
+        "the foreign bit written onto a move word whose bits 25-31 are taken: {m:#010x}"
+    );
+    m | MOVE_FOREIGN
+}
+
+/// Whether anything rides in bits 25 to 31: a landing, an end, a fold, the foreign bit.
+#[inline(always)]
+pub fn move_extended(m: u32) -> bool {
+    m & MOVE_EXTENSION_MASK != 0
 }
 
 /// A 256-bit mask over squares: the Rust counterpart of the arbitrary-width Python
@@ -309,13 +513,27 @@ pub struct EntryRef {
     pub start: u32,
     pub len: u32,
     pub requires_unmoved: bool,
-    /// Hops only: how far past its screen this entry may land, 0 for the rest of the
+    /// Hops: how far past its screen this entry may land, 0 for the rest of the
     /// ray. The xiangqi cannon is 0; a grasshopper is 1. Leaps and slides carry 0 and
-    /// never read it.
+    /// never read it. Sweeps (Q1063): the sweep length, read through `sweep_length`.
     pub screen_range: u16,
     /// Hops only: whose piece the screen must be. `SCREEN_ANY` is the cannon and every
     /// hop written before schema 3; `SCREEN_OWN` is a piece that vaults its own army.
     pub screen_owner: u8,
+}
+
+impl EntryRef {
+    /// Q1063: how many of a sweep entry's first squares it clears, or `usize::MAX` for
+    /// every square of its ray (the sweep with one length, stored as 0). Past it the ray
+    /// is a slide's: the first piece on it ends the ray, taken where it may be.
+    #[inline(always)]
+    pub fn sweep_length(&self) -> usize {
+        if self.screen_range == 0 {
+            usize::MAX
+        } else {
+            self.screen_range as usize
+        }
+    }
 }
 
 pub const SCREEN_ANY: u8 = 0;
@@ -420,7 +638,8 @@ pub struct AttackSource {
     pub screen_owner: u8,
     /// Schema 13: zero, or `SWEEP_LANDS | SWEEP_BEYOND` bits on a sweep source. A sweep
     /// source's path is the whole ray and `prefix_len` is the attacked square's index on
-    /// it. The byte sits in the struct's padding, which a `cargo test` pins.
+    /// it. The byte sits in the struct's padding, which a `cargo test` pins. Q1063: the
+    /// sweep's length above the two bits (`SWEEP_LENGTH_SHIFT`), 0 for the whole ray.
     pub sweep: u8,
     /// Schema 19: the directions this source captures in, one bit per
     /// `compile.PORTAL_DIRECTIONS` entry, for an attack through a portal. Zero in every
@@ -447,7 +666,7 @@ pub struct PortalTables {
     pub admits: [[u32; 2]; MAX_PIECE_TYPES],
     /// `movers[type]` -> a bit per player who may move this end.
     pub movers: [u8; MAX_PIECE_TYPES],
-    /// `[(player * n_squares + square) * 8 + direction]` -> the square one king's step away
+    /// `[(player * n_squares + square) * EXIT_DIRECTIONS + direction]` -> the square one king's step away
     /// under that player's wrap permission, or -1.
     pub exits: Vec<i16>,
     /// The momentum masks, parallel to each movement table's squares: bits 0-7 the
@@ -495,10 +714,17 @@ pub enum CheckmateResult {
 }
 
 /// Explosion rule: captures destroy the neighbourhood.
+///
+/// What a blast clears is said once, here (CS3, `docs/plan-smells-rust.md` R3): the
+/// squares it reaches are [`ExplosionRule::reach`] and whether the piece standing on one
+/// goes is [`ExplosionRule::clears`]. `make`, the legality filter and the round each ask
+/// the two, so a change to what a blast clears is one edit, and a filter can never
+/// disagree with `make` about which royal a capture loses. Both fields are private so no
+/// reader walks the table by hand.
 pub struct ExplosionRule {
-    pub immune_types: Vec<bool>,
+    immune_types: Vec<bool>,
     /// `blast[square]` -> list of squares destroyed.
-    pub blast: Vec<Vec<usize>>,
+    blast: Vec<Vec<usize>>,
     /// Schema 10 (Q18): which capturer types set a blast off, and which victim types
     /// have to be taken for one. `immune_types` is a third question about the same event
     /// -- what the blast *reaches* -- and none of the three can be said with the others.
@@ -524,6 +750,41 @@ impl ExplosionRule {
     pub fn fires(&self, capturer: usize, victim: usize) -> bool {
         (self.by_types.is_empty() || self.by_types[capturer])
             && (self.of_types.is_empty() || self.of_types[victim])
+    }
+
+    /// The squares a blast centred on `centre` reaches, the centre itself aside: the
+    /// capturer standing there always goes, and each caller clears it on its own terms.
+    #[inline]
+    pub fn reach(&self, centre: usize) -> &[usize] {
+        &self.blast[centre]
+    }
+
+    /// Whether a blast that reaches a square holding `value` clears it: something stands
+    /// there and its type is not immune.
+    #[inline]
+    pub fn clears(&self, t: &Tables, value: u8) -> bool {
+        value != 0 && !self.immune_types[t.type_of(value)]
+    }
+}
+
+/// The pieces one sweep clears, from `Tables::sweep_victims` (CS11, R4).
+pub struct SweepVictims<'t> {
+    path: std::slice::Iter<'t, u16>,
+}
+
+impl SweepVictims<'_> {
+    /// The next piece on the path, read off `board`, as `(square, value)`, or `None` past
+    /// the last: an occupied square is a victim, whatever stands there.
+    #[inline]
+    pub fn next_on(&mut self, board: &[u8]) -> Option<(usize, u8)> {
+        for &square in self.path.by_ref() {
+            let square = square as usize;
+            let value = board[square];
+            if value != 0 {
+                return Some((square, value));
+            }
+        }
+        None
     }
 }
 
@@ -657,6 +918,12 @@ pub struct DropRule {
     /// every spelling under which a hand could hold a paired face itself (a stocked face,
     /// a chain of `promoted_from`), so one face names one slot.
     pub slot_of: Vec<usize>,
+    /// Q1059a (`drops.gating`): `gates[player]`, the squares on which a piece of `player`'s
+    /// leaving its setup square for the first time may let one held piece in, as part of
+    /// the same move (Seirawan's gating). `None` for a hand that drops anywhere, which is
+    /// every game before it and the boundary's inert default; under `Some` a held piece
+    /// enters only so (`Game::push_gates`), never by a drop.
+    pub gates: Option<[SquareSet; 2]>,
 }
 
 impl DropRule {
@@ -1118,11 +1385,12 @@ pub const SIGHT_COMMAND: u8 = 8;
 pub const SIGHT_COMMAND_OWN: u8 = 16;
 /// TC1 (`docs/plan-turncoat.md` §3.3; Q1007c's `MOVE_COMMANDED`, renamed): bit 30 of a move
 /// word marks a **foreign** move -- the side to move moving a piece that is not its own (today
-/// a commanded one, the opponent's). Bits 25 to 31 are otherwise a strike's landing, a portal
-/// end or a fold, each refused beside a sight, so in a command game this bit is the only one
-/// set there. It also keeps a foreign move from opening an en passant window (`make` opens
-/// one only where those bits are zero). Every foreign move comes from `Game::push_foreign`.
-pub const MOVE_FOREIGN: u32 = 1 << 30;
+/// a commanded one, the opponent's). Bits 25 to 29 (the tag: a strike's landing, a portal
+/// end or a fold) are refused beside it, so in a command game this bit is the only one set
+/// past the promotion (the field map, beside `encode_move`). It also keeps a foreign move
+/// from opening an en passant window (`make` opens one only where `move_extended` is false).
+/// Every foreign move comes from `Game::push_foreign`, through `with_foreign`.
+pub const MOVE_FOREIGN: u32 = 1 << MOVE_FOREIGN_SHIFT;
 
 /// Schema 30: lines of sight, as the compiler resolved them (`compile.SightRule`). Boxed,
 /// as the rounds and the rest are, so a game without a sight pays one pointer, and `None` is
@@ -1214,10 +1482,11 @@ pub struct Tables {
     /// `[board value] -> owner`, `-> frame`, `-> piece type`.
     ///
     /// Tables rather than arithmetic, for the reason everything else here is one: the
-    /// encoding is built once, below, and the movement generator and these accessors read
-    /// it through the tables. Some evaluator and feature code (`eval.rs`, `features.rs`,
-    /// `agents.rs`) still decodes the byte by `% n_types` and `/ side_stride`; plan
-    /// `docs/plan-smells-rust.md` R9 (task CS5) moves them onto these tables. Index 0 is the empty square and every caller tests that first.
+    /// encoding is built once, below, and everything outside this file reads it through
+    /// `owner_of`, `frame_of_value` and `type_of` (CS5 moved the evaluator, the features
+    /// and the capture order onto them): no `% n_types` or `/ side_stride` on a board byte
+    /// anywhere else. `decode_owned`'s fast arm is the one restatement, and it is asserted
+    /// against these. Index 0 is the empty square and every caller tests that first.
     value_owner: [u8; 256],
     value_frame: [u8; 256],
     value_type: [u8; 256],
@@ -1759,7 +2028,8 @@ impl Tables {
     ///
     /// A scan of the slot's few sweep entries rather than a per-pair table. One ray
     /// reaches one target from one origin, because `wrap` is refused beside a sweep.
-    pub fn sweep_path(&self, moving: u8, origin: usize, target: usize) -> &[u16] {
+    /// Private: what a played sweep removes is `sweep_victims`' answer, not the path's.
+    fn sweep_path(&self, moving: u8, origin: usize, target: usize) -> &[u16] {
         if !self.has_sweep || moving == 0 {
             return &[];
         }
@@ -1771,6 +2041,25 @@ impl Tables {
             }
         }
         &[]
+    }
+
+    /// Schema 13 (R4): the pieces a sweep by `moving` from `origin` to `target` clears, as
+    /// `(square, value)` in ray order -- every occupied square of its path, read off
+    /// `board` as it stood before the move. The one answer to what a sweep removes:
+    /// `make`, the legality filter and move ordering (`agents.rs::capture_gain`) read it,
+    /// and `CompiledSpec.sweep_victims` mirrors it. `Game::sweep_attacks` keeps its own
+    /// walk over the attack path, because it asks whether a square is reached, not what a
+    /// played sweep takes. Nothing when no sweep of that piece reaches `target`.
+    ///
+    /// Q1063: past a sweep's length the path is a ride, and a legal sweep's ride before its
+    /// landing is empty, so the path's pieces are the cleared ones whatever its length.
+    ///
+    /// A cursor handed the board at each step (`SweepVictims::next_on`), so a caller may
+    /// clear each victim as it is named: the path's squares are distinct and hold neither
+    /// end of the move, so clearing one never changes the next answer.
+    #[inline]
+    pub fn sweep_victims(&self, moving: u8, origin: usize, target: usize) -> SweepVictims<'_> {
+        SweepVictims { path: self.sweep_path(moving, origin, target).iter() }
     }
 
     #[inline(always)]
@@ -2031,17 +2320,228 @@ impl Tables {
 }
 
 impl Tables {
+    /// The boundary: every table `bridge.build_tables` sent, read by one reader per rule
+    /// (below, in the order the dict has always been read, so a key that is missing or a
+    /// table that does not fit is refused as before), then the checks that span rules.
+    /// CS1 (R7): a rule's fields, its shape checks and its assembly live in its reader;
+    /// this function only calls them and puts the answers in their places.
     pub fn from_py(source: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let (width, height, n_squares, n_types) = Self::board_size(source)?;
+        let attack_sources = Self::attack_sources(source)?;
+        let ep_passes = Self::en_passant_passes(source)?;
+        let (facing_lines, facing_paths) = Self::royal_facing_lines(source)?;
+        let initial_board = Self::opening_board(source)?;
+        let (win, stalemate, checkmate_result) = Self::endings(source)?;
+        let (castling, castle_files) = Self::castling_rule(source)?;
+        let promotion = Self::promotion_rule(source, n_types, n_squares)?;
+        let bare_royal = Self::bare_royal_rule(source)?;
+        let explosion = Self::explosion_rule(source, n_squares)?;
+        let strike = Self::strike_rule(source, n_types, n_squares)?;
+        let mut drops = Self::drop_rule(source, n_types, n_squares)?;
+        let (goal_distance, goal_diameter, goal_distance_each) = Self::goal_distances(source)?;
+        let reach = Self::reach_rule(source, n_types, n_squares, &goal_distance_each)?;
+        let turn = Self::turn_rule(source)?;
+        let territory = Self::territory_rule(source)?;
+        let scoring = Self::scoring_rule(source, n_squares)?;
+        let extinction = Self::extinction_rule(source)?;
+        let (n_frames, facing_axes, facing_initial, facing_turns, coat_facing) = Self::facing_rule(source)?;
+        let n_facings = n_frames / 2;
+        let side_stride = n_facings * n_types;
+        let (has_npcs, has_portals, duck_field, neutral_control) = Self::third_owner(source)?;
+        let third = has_npcs || has_portals || !duck_field.is_empty() || !neutral_control.is_empty();
+        let n_owners = if third { 3 } else { 2 };
+        let (npc_next, npc_bounty, npc_squares) = Self::wild_routes(source, has_npcs, n_squares)?;
+        let entry_promotion = Self::entry_promotion_rule(source, n_types, n_squares)?;
+        let bytes = Self::board_byte(source, n_owners, n_types, n_facings, &neutral_control)?;
+        let ([value_owner, value_frame, value_type, value_kind], has_majority) = bytes;
+        let majority = Self::majority_rule(source, has_majority, n_types, n_squares)?;
+        let (royal_types, royal_flags, royal_at_start) =
+            Self::royal_rule(source, &initial_board[..n_squares], &value_owner, &value_type, drops.as_mut())?;
+
+        let mut tables = Self {
+            width,
+            height,
+            n_squares,
+            n_types,
+            n_owners,
+            n_frames,
+            n_facings,
+            side_stride,
+            has_facing: n_facings > 1,
+            facing_axes,
+            facing_initial,
+            facing_turns,
+            coat_facing,
+            value_owner,
+            value_frame,
+            value_type,
+            value_kind,
+            royal_flags,
+            royal_at_start,
+            royal_types,
+            all_squares: every_square(n_squares),
+            leaps: Self::entry_table(source, [keys::LEAP_INDEX, keys::LEAP_REFS, keys::LEAP_SQUARES, keys::LEAP_MODES])?,
+            slides: Self::entry_table(source, [keys::SLIDE_INDEX, keys::SLIDE_REFS, keys::SLIDE_SQUARES, keys::SLIDE_MODES])?,
+            hops: Self::entry_table(source, [keys::HOP_INDEX, keys::HOP_REFS, keys::HOP_SQUARES, keys::HOP_MODES])?,
+            sweeps: Self::entry_table(source, [keys::SWEEP_INDEX, keys::SWEEP_REFS, keys::SWEEP_SQUARES, keys::SWEEP_MODES])?,
+            has_sweep: field(source, keys::HAS_SWEEP)?,
+            attack_index: field(source, keys::ATTACK_INDEX)?,
+            attack_sources,
+            attack_paths: field(source, keys::ATTACK_PATHS)?,
+            attack_path_modes: field(source, keys::ATTACK_PATH_MODES)?,
+            dedup: flags(source, keys::DEDUP)?,
+            has_hop_attacks: field(source, keys::HAS_HOP_ATTACKS)?,
+            hop_lines: Vec::new(),
+            initial_board,
+            initial_unmoved: SquareSet::from_bytes(&field::<Vec<u8>>(source, keys::INITIAL_UNMOVED)?),
+            win,
+            stalemate,
+            checkmate_result,
+            max_plies: field(source, keys::MAX_PLIES)?,
+            repetition_draw: field(source, keys::REPETITION_DRAW)?,
+            no_progress_draw: field(source, keys::NO_PROGRESS_DRAW)?,
+            one_way: type_flags(&field::<Vec<usize>>(source, keys::ONE_WAY_TYPES)?),
+            ep_type: field(source, keys::EP_TYPE)?,
+            ep_passes,
+            facing_lines,
+            facing_paths,
+            promo_flags: type_flags(&promotion.piece_types),
+            promo_leaving_flags: type_flags(&promotion.on_leaving),
+            promo_only_lost_flags: type_flags(&promotion.only_lost),
+            promo_squares: promotion.squares,
+            promo_targets: promotion.targets,
+            promo_optional: promotion.optional,
+            promo_opening: promotion.opening,
+            promo_piece_types: promotion.piece_types,
+            castling,
+            castle_files,
+            multi_royal: field(source, keys::MULTI_ROYAL)?,
+            demotions: field(source, keys::DEMOTIONS)?,
+            explosion,
+            strike,
+            drops,
+            reach_leaves: reach.as_ref().is_some_and(|rule| rule.leaves),
+            reach,
+            goal_distance,
+            goal_diameter,
+            goal_distance_each,
+            extinction,
+            scoring,
+            territory,
+            turn,
+            has_npcs,
+            npc_next,
+            npc_bounty,
+            npc_squares,
+            npc_bounty_total: 0.0,
+            piece_bounty: Vec::new(),
+            pays: false,
+            purse: None,
+            npc_queues: false,
+            npc_shield: false,
+            portals: None,
+            simultaneous: None,
+            spy: None,
+            rest: None,
+            sight: None,
+            majority,
+            respawn: None,
+            npc_lines: None,
+            pounce: None,
+            duck: None,
+            entry_promotion,
+            piece_values: field(source, keys::PIECE_VALUES)?,
+            must_capture: field(source, keys::MUST_CAPTURE)?,
+            forbid_check: field(source, keys::FORBID_CHECK)?,
+            forbid_immobility: field(source, keys::FORBID_IMMOBILITY)?,
+            royal_facing_forbidden: field(source, keys::ROYAL_FACING_FORBIDDEN)?,
+            check_limit: field(source, keys::CHECK_LIMIT)?,
+            capture_allowed: flags(source, keys::CAPTURE_ALLOWED)?,
+            has_capture_matrix: field(source, keys::HAS_CAPTURE_MATRIX)?,
+            bare_royal,
+            immobile_squares: flags(source, keys::IMMOBILE_SQUARES)?,
+            zobrist_pieces: field(source, keys::ZOBRIST_PIECES)?,
+            zobrist_side: field(source, keys::ZOBRIST_SIDE)?,
+            zobrist_ep: field(source, keys::ZOBRIST_EP)?,
+            zobrist_colour: field(source, keys::ZOBRIST_COLOUR)?,
+            zobrist_turn: field(source, keys::ZOBRIST_TURN)?,
+        };
+
+        tables.check_movement_shapes()?;
+        tables.duck = Self::duck_rule(&tables, &duck_field)?;
+        tables.settle_wild_bounties();
+        Self::bounty_rule(&mut tables, source)?;
+        tables.purse = Self::purse_rule(&tables, source)?;
+        // Read before the respawning halves, which walk a line to its end.
+        tables.npc_lines = Self::turning_back_rule(&tables, source)?;
+        tables.respawn = Self::respawn_rule(&tables, source)?;
+        tables.pounce = Self::pounce_rule(&tables, source)?;
+        if has_portals {
+            tables.portals = Some(Box::new(Self::portal_tables(source, &tables)?));
+        }
+        tables.simultaneous = Self::simultaneous_rule(&tables, source)?;
+        tables.rest = Self::rest_rule(&tables, source)?;
+        tables.sight = Self::sight_rule(&tables, source)?;
+        tables.npc_shield = tables.has_npcs && tables.sight.as_ref().is_some_and(|sight| sight.has_shield);
+        tables.spy = Self::spy_rule(&tables, source)?;
+
+        // TC4: a round pays its bounties into the tally alone (`rounds.rs`), so a purse is
+        // never beside one; the purse's compiler refuses them together too.
+        if tables.purse.is_some() && tables.simultaneous.is_some() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a purse beside rounds; the compiler refuses them together",
+            ));
+        }
+        tables.hop_lines = tables.build_hop_lines();
+        Ok(tables)
+    }
+}
+
+/// What `promotion_rule` reads: the promotion fields of `Tables`, rebuilt from the flat
+/// arrays the boundary sends.
+struct PromotionTables {
+    squares: Vec<Vec<bool>>,
+    targets: Vec<Vec<Vec<u32>>>,
+    optional: Vec<bool>,
+    piece_types: Vec<usize>,
+    on_leaving: Vec<usize>,
+    only_lost: Vec<usize>,
+    opening: [[u32; MAX_PIECE_TYPES]; 2],
+}
+
+/// Every square of an `n_squares` board.
+fn every_square(n_squares: usize) -> SquareSet {
+    let mut all = SquareSet::EMPTY;
+    for square in 0..n_squares {
+        all.set(square);
+    }
+    all
+}
+
+/// A byte table read as flags, nonzero true.
+fn flags(source: &Bound<'_, PyDict>, key: keys::TableKey) -> PyResult<Vec<bool>> {
+    Ok(field::<Vec<u8>>(source, key)?.iter().map(|v| *v != 0).collect())
+}
+
+/// CS1 (R7): the readers `from_py` calls, one per rule, each reading its own keys and
+/// refusing a table of the wrong shape with the message it always gave.
+impl Tables {
+    /// The board's size, and the piece-type bound the byte and the masks are built for.
+    fn board_size(source: &Bound<'_, PyDict>) -> PyResult<(usize, usize, usize, usize)> {
         let width: usize = field(source, keys::WIDTH)?;
         let height: usize = field(source, keys::HEIGHT)?;
         let n_squares: usize = field(source, keys::N_SQUARES)?;
         let n_types: usize = field(source, keys::N_TYPES)?;
         if n_types > MAX_PIECE_TYPES {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "{n_types} piece types; the core is built for at most {MAX_PIECE_TYPES},                  which is what the validator enforces"
+                "{n_types} piece types; the core is built for at most {MAX_PIECE_TYPES}, which is what the validator enforces"
             )));
         }
+        Ok((width, height, n_squares, n_types))
+    }
 
+    /// The attack table's sources, eight words each, with their sweep and portal bytes.
+    fn attack_sources(source: &Bound<'_, PyDict>) -> PyResult<Vec<AttackSource>> {
         let packed_sources: Vec<u32> = field(source, keys::ATTACK_SRCS)?;
         // Schema 13: one byte per source, or empty when nothing sweeps.
         let attack_sweep: Vec<u8> = field(source, keys::ATTACK_SWEEP)?;
@@ -2075,10 +2575,14 @@ impl Tables {
                 attack_sweep.len(), attack_sources.len(),
             )));
         }
+        Ok(attack_sources)
+    }
 
+    /// En passant's passed squares, per (frame, origin) slot.
+    fn en_passant_passes(source: &Bound<'_, PyDict>) -> PyResult<Vec<Vec<(u16, u16)>>> {
         let ep_pass_flat: Vec<u32> = field(source, keys::EP_PASS_FLAT)?;
         let ep_pass_index: Vec<u32> = field(source, keys::EP_PASS_INDEX)?;
-        let ep_passes: Vec<Vec<(u16, u16)>> = (0..ep_pass_index.len() - 1)
+        Ok((0..ep_pass_index.len() - 1)
             .map(|slot| {
                 let start = ep_pass_index[slot] as usize;
                 let end = ep_pass_index[slot + 1] as usize;
@@ -2087,8 +2591,12 @@ impl Tables {
                     .map(|pair| (pair[0] as u16, pair[1] as u16))
                     .collect()
             })
-            .collect();
+            .collect())
+    }
 
+    /// `royals_face`'s lines, per square, and the paths they index.
+    #[allow(clippy::type_complexity)]
+    fn royal_facing_lines(source: &Bound<'_, PyDict>) -> PyResult<(Vec<Vec<(u16, u32, u32)>>, Vec<u16>)> {
         let facing_flat: Vec<u32> = field(source, keys::FACING_ENTRIES)?;
         let facing_index: Vec<u32> = field(source, keys::FACING_INDEX)?;
         let facing_paths: Vec<u16> = field::<Vec<u32>>(source, keys::FACING_PATHS)?
@@ -2105,11 +2613,19 @@ impl Tables {
                     .collect()
             })
             .collect();
+        Ok((facing_lines, facing_paths))
+    }
 
+    /// The compiled opening board, padded to the core's width.
+    fn opening_board(source: &Bound<'_, PyDict>) -> PyResult<[u8; MAX_SQUARES]> {
         let initial: Vec<u8> = field(source, keys::INITIAL_BOARD)?;
         let mut initial_board = [0u8; MAX_SQUARES];
         initial_board[..initial.len()].copy_from_slice(&initial);
+        Ok(initial_board)
+    }
 
+    /// The win condition, the stalemate rule and what a checkmate is.
+    fn endings(source: &Bound<'_, PyDict>) -> PyResult<(Win, Stalemate, CheckmateResult)> {
         let win = match field::<String>(source, keys::WIN)?.as_str() {
             "checkmate" => Win::Checkmate,
             "royal_capture" => Win::RoyalCapture,
@@ -2128,7 +2644,14 @@ impl Tables {
             "win" => CheckmateResult::Win,
             other => return Err(unknown("checkmate result", other)),
         };
+        Ok((win, stalemate, checkmate_result))
+    }
 
+    /// Castling: by king and rook type, and (schema 2) by file.
+    #[allow(clippy::type_complexity)]
+    fn castling_rule(
+        source: &Bound<'_, PyDict>,
+    ) -> PyResult<(Option<(usize, usize, i32)>, Option<(i32, i32, i32, i32)>)> {
         let castle_king: i32 = field(source, keys::CASTLE_KING)?;
         let castling = if castle_king < 0 {
             None
@@ -2149,19 +2672,23 @@ impl Tables {
             Some((castle_king_files[0], castle_king_files[1],
                   castle_rook_files[0], castle_rook_files[1]))
         };
+        Ok((castling, castle_files))
+    }
 
-        // Promotion tables (schema 2: per-piece, per-player, optional, zones)
+    /// Promotion (schema 2: per-piece, per-player, optional, zones; schema 15's leaving;
+    /// schema 18's only-lost and the opening counts it reads).
+    fn promotion_rule(source: &Bound<'_, PyDict>, n_types: usize, n_squares: usize) -> PyResult<PromotionTables> {
         let promo_squares_flat: Vec<u8> = field(source, keys::PROMO_SQUARES)?;
         let promo_targets_flat: Vec<i32> = field(source, keys::PROMO_TARGETS_FLAT)?;
         let promo_targets_index: Vec<u32> = field(source, keys::PROMO_TARGETS_INDEX)?;
         let promo_optional_raw: Vec<u8> = field(source, keys::PROMO_OPTIONAL)?;
-        let promo_piece_types: Vec<usize> = field(source, keys::PROMO_PIECE_TYPES)?;
-        let promo_on_leaving: Vec<usize> = field(source, keys::PROMO_ON_LEAVING)?;
-        let promo_only_lost: Vec<usize> = field(source, keys::PROMO_ONLY_LOST)?;
+        let piece_types: Vec<usize> = field(source, keys::PROMO_PIECE_TYPES)?;
+        let on_leaving: Vec<usize> = field(source, keys::PROMO_ON_LEAVING)?;
+        let only_lost: Vec<usize> = field(source, keys::PROMO_ONLY_LOST)?;
         let promo_opening_flat: Vec<u32> = field(source, keys::PROMO_OPENING)?;
-        let mut promo_opening = [[0u32; MAX_PIECE_TYPES]; 2];
+        let mut opening = [[0u32; MAX_PIECE_TYPES]; 2];
         if !promo_opening_flat.is_empty() {
-            for (player, row) in promo_opening.iter_mut().enumerate() {
+            for (player, row) in opening.iter_mut().enumerate() {
                 row[..n_types]
                     .copy_from_slice(&promo_opening_flat[player * n_types..(player + 1) * n_types]);
             }
@@ -2169,13 +2696,13 @@ impl Tables {
 
         // Rebuild promo_squares as Vec<Vec<bool>> [player][piece_type * n_squares + square]
         let player_stride = n_types * n_squares;
-        let promo_squares = vec![
+        let squares = vec![
             promo_squares_flat[..player_stride].iter().map(|v| *v != 0).collect(),
             promo_squares_flat[player_stride..].iter().map(|v| *v != 0).collect(),
         ];
 
         // Rebuild promo_targets as Vec<Vec<Vec<u32>>> [player][piece_type] -> Vec<u32>
-        let mut promo_targets: Vec<Vec<Vec<u32>>> = Vec::new();
+        let mut targets: Vec<Vec<Vec<u32>>> = Vec::new();
         for player in 0..2 {
             let mut per_type: Vec<Vec<u32>> = Vec::new();
             for pt in 0..n_types {
@@ -2184,312 +2711,369 @@ impl Tables {
                 let end = promo_targets_index[idx + 1] as usize;
                 per_type.push(promo_targets_flat[start..end].iter().map(|v| *v as u32).collect());
             }
-            promo_targets.push(per_type);
+            targets.push(per_type);
         }
 
-        let promo_optional: Vec<bool> = promo_optional_raw.iter().map(|v| *v != 0).collect();
+        let optional: Vec<bool> = promo_optional_raw.iter().map(|v| *v != 0).collect();
+        Ok(PromotionTables { squares, targets, optional, piece_types, on_leaving, only_lost, opening })
+    }
 
-        // Schema 2 runtime features
-        let multi_royal: bool = field(source, keys::MULTI_ROYAL)?;
-        let demotions: Vec<usize> = field(source, keys::DEMOTIONS)?;
-        let must_capture: bool = field(source, keys::MUST_CAPTURE)?;
-        let forbid_check: bool = field(source, keys::FORBID_CHECK)?;
-        let forbid_immobility: bool = field(source, keys::FORBID_IMMOBILITY)?;
-        let royal_facing_forbidden: bool = field(source, keys::ROYAL_FACING_FORBIDDEN)?;
-        let check_limit: u32 = field(source, keys::CHECK_LIMIT)?;
+    /// Bare royal (schema 2): the result when a side is down to its royals, if stated.
+    fn bare_royal_rule(source: &Bound<'_, PyDict>) -> PyResult<Option<i8>> {
         let has_bare_royal: bool = field(source, keys::HAS_BARE_ROYAL)?;
-        let capture_allowed_raw: Vec<u8> = field(source, keys::CAPTURE_ALLOWED)?;
-        let capture_allowed: Vec<bool> = capture_allowed_raw.iter().map(|v| *v != 0).collect();
-        let has_capture_matrix: bool = field(source, keys::HAS_CAPTURE_MATRIX)?;
-
-        let bare_royal: Option<i8> = if has_bare_royal {
+        Ok(if has_bare_royal {
             Some(field(source, keys::BARE_ROYAL)?)
         } else {
             None
-        };
+        })
+    }
 
-        let immobile_squares_raw: Vec<u8> = field(source, keys::IMMOBILE_SQUARES)?;
-        let immobile_squares: Vec<bool> = immobile_squares_raw.iter().map(|v| *v != 0).collect();
-
-        // Explosion
+    /// Explosion: who is immune, the blast per square, and whose captures fire it on whom.
+    fn explosion_rule(source: &Bound<'_, PyDict>, n_squares: usize) -> PyResult<Option<ExplosionRule>> {
         let has_explosion: bool = field(source, keys::HAS_EXPLOSION)?;
-        let explosion = if has_explosion {
-            let immune_raw: Vec<u8> = field(source, keys::EXPLOSION_IMMUNE)?;
-            let blast_flat: Vec<i32> = field(source, keys::EXPLOSION_BLAST)?;
-            let blast_index: Vec<u32> = field(source, keys::EXPLOSION_BLAST_INDEX)?;
-            let mut blast: Vec<Vec<usize>> = Vec::with_capacity(n_squares);
-            for sq in 0..n_squares {
-                let start = blast_index[sq] as usize;
-                let end = blast_index[sq + 1] as usize;
-                blast.push(blast_flat[start..end].iter().map(|v| *v as usize).collect());
-            }
-            let by_raw: Vec<u8> = field(source, keys::EXPLOSION_BY)?;
-            let of_raw: Vec<u8> = field(source, keys::EXPLOSION_OF)?;
-            Some(ExplosionRule {
-                immune_types: immune_raw.iter().map(|v| *v != 0).collect(),
-                blast,
-                by_types: by_raw.iter().map(|v| *v != 0).collect(),
-                of_types: of_raw.iter().map(|v| *v != 0).collect(),
-            })
-        } else {
-            None
-        };
+        if !has_explosion {
+            return Ok(None);
+        }
+        let immune_raw: Vec<u8> = field(source, keys::EXPLOSION_IMMUNE)?;
+        let blast_flat: Vec<i32> = field(source, keys::EXPLOSION_BLAST)?;
+        let blast_index: Vec<u32> = field(source, keys::EXPLOSION_BLAST_INDEX)?;
+        let mut blast: Vec<Vec<usize>> = Vec::with_capacity(n_squares);
+        for sq in 0..n_squares {
+            let start = blast_index[sq] as usize;
+            let end = blast_index[sq + 1] as usize;
+            blast.push(blast_flat[start..end].iter().map(|v| *v as usize).collect());
+        }
+        let by_raw: Vec<u8> = field(source, keys::EXPLOSION_BY)?;
+        let of_raw: Vec<u8> = field(source, keys::EXPLOSION_OF)?;
+        Ok(Some(ExplosionRule {
+            immune_types: immune_raw.iter().map(|v| *v != 0).collect(),
+            blast,
+            by_types: by_raw.iter().map(|v| *v != 0).collect(),
+            of_types: of_raw.iter().map(|v| *v != 0).collect(),
+        }))
+    }
 
-        // Strike
+    /// Strike and contacts, one rule: where the attacker ends and what each capture leaves.
+    fn strike_rule(source: &Bound<'_, PyDict>, n_types: usize, n_squares: usize) -> PyResult<Option<StrikeRule>> {
         let has_strike: bool = field(source, keys::HAS_STRIKE)?;
-        let strike = if has_strike {
-            let position = match field::<u8>(source, keys::STRIKE_POSITION)? {
-                0 => StrikePosition::Stay,
-                1 => StrikePosition::Advance,
-                2 => StrikePosition::Swap,
-                3 => StrikePosition::Choose,
-                4 => StrikePosition::Home,
-                other => return Err(unknown("strike position", &other.to_string())),
-            };
-            let landing_squares: Vec<u16> = field(source, keys::STRIKE_LANDING)?;
-            let landing_index: Vec<u32> = field(source, keys::STRIKE_LANDING_INDEX)?;
-            let expected = if position == StrikePosition::Choose { 2 * n_squares + 1 } else { 0 };
-            if landing_index.len() != expected {
-                return Err(unknown("strike landing index length", &landing_index.len().to_string()));
-            }
-            // Two encodings, one table. `contact_onto_to` is the general form and
-            // crosses only when the rule genuinely needs it; otherwise the schema-6
-            // array crosses and is widened here by giving every attacker the same row.
-            // Widening in the loader rather than in the bridge is what keeps the
-            // canonical tables of every ruleset written before schema 10 byte-identical
-            // while the core below carries exactly one rule.
-            let contact_onto: Vec<i32> = field(source, keys::CONTACT_ONTO_TO)?;
-            let (to, mover_to) = if contact_onto.is_empty() {
-                let compact: Vec<i32> = field(source, keys::STRIKE_TO)?;
-                let mut to = Vec::with_capacity(n_types * n_types);
-                for _ in 0..n_types {
-                    to.extend_from_slice(&compact);
-                }
-                (to, vec![-1; n_types * n_types])
-            } else {
-                (contact_onto, field(source, keys::CONTACT_MOVER_TO)?)
-            };
-            // Schema 17 (Q540): -2 removes the victim and leaves the attacker where it
-            // stood, which only `stay` can say.
-            if position != StrikePosition::Stay && to.contains(&REMOVED_IN_PLACE) {
-                return Err(unknown("strike entry", "removed in place outside stay"));
-            }
-            let rebirth: Vec<i32> = field(source, keys::STRIKE_REBIRTH)?;
-            let expected = if position == StrikePosition::Home { 2 * n_types * n_squares } else { 0 };
-            if rebirth.len() != expected {
-                return Err(unknown("strike rebirth length", &rebirth.len().to_string()));
-            }
-            let flips_raw: Vec<u8> = field(source, keys::CONTACT_MOVER_FLIPS)?;
-            if !flips_raw.is_empty() && flips_raw.len() != n_types * n_types {
-                return Err(unknown("contact mover flips length", &flips_raw.len().to_string()));
-            }
-            let mover_flips: Vec<bool> = flips_raw.iter().map(|v| *v != 0).collect();
-            let own_to: Vec<i32> = field(source, keys::CONTACT_OWN_ONTO_TO)?;
-            let own_mover_to: Vec<i32> = field(source, keys::CONTACT_OWN_MOVER_TO)?;
-            let own_link = own_to
-                .iter()
-                .zip(&own_mover_to)
-                .map(|(&onto, &mover)| onto >= 0 || mover >= 0)
-                .collect();
-            Some(StrikeRule {
-                to,
-                mover_to,
-                own_to,
-                own_mover_to,
-                own_link,
-                n_types,
-                position,
-                landing_index,
-                landing_squares,
-                landing_stride: n_squares,
-                rebirth,
-                mover_flips,
-            })
-        } else {
-            None
+        if !has_strike {
+            return Ok(None);
+        }
+        let position = match field::<u8>(source, keys::STRIKE_POSITION)? {
+            0 => StrikePosition::Stay,
+            1 => StrikePosition::Advance,
+            2 => StrikePosition::Swap,
+            3 => StrikePosition::Choose,
+            4 => StrikePosition::Home,
+            other => return Err(unknown("strike position", &other.to_string())),
         };
+        let landing_squares: Vec<u16> = field(source, keys::STRIKE_LANDING)?;
+        let landing_index: Vec<u32> = field(source, keys::STRIKE_LANDING_INDEX)?;
+        let expected = if position == StrikePosition::Choose { 2 * n_squares + 1 } else { 0 };
+        if landing_index.len() != expected {
+            return Err(unknown("strike landing index length", &landing_index.len().to_string()));
+        }
+        // CS2: a landing's index rides in the move word's tag field (`with_landing`);
+        // `bridge.rust_supports` refuses a wider list first (`MAX_LANDING_CANDIDATES`).
+        if let Some(widest) = landing_index.windows(2).map(|pair| pair[1] - pair[0]).max() {
+            if widest > 1 << MOVE_TAG_BITS {
+                return Err(unknown("strike landing list width", &widest.to_string()));
+            }
+        }
+        // Two encodings, one table. `contact_onto_to` is the general form and
+        // crosses only when the rule genuinely needs it; otherwise the schema-6
+        // array crosses and is widened here by giving every attacker the same row.
+        // Widening in the loader rather than in the bridge is what keeps the
+        // canonical tables of every ruleset written before schema 10 byte-identical
+        // while the core below carries exactly one rule.
+        let contact_onto: Vec<i32> = field(source, keys::CONTACT_ONTO_TO)?;
+        let (to, mover_to) = if contact_onto.is_empty() {
+            let compact: Vec<i32> = field(source, keys::STRIKE_TO)?;
+            let mut to = Vec::with_capacity(n_types * n_types);
+            for _ in 0..n_types {
+                to.extend_from_slice(&compact);
+            }
+            (to, vec![-1; n_types * n_types])
+        } else {
+            (contact_onto, field(source, keys::CONTACT_MOVER_TO)?)
+        };
+        // Schema 17 (Q540): -2 removes the victim and leaves the attacker where it
+        // stood, which only `stay` can say.
+        if position != StrikePosition::Stay && to.contains(&REMOVED_IN_PLACE) {
+            return Err(unknown("strike entry", "removed in place outside stay"));
+        }
+        let rebirth: Vec<i32> = field(source, keys::STRIKE_REBIRTH)?;
+        let expected = if position == StrikePosition::Home { 2 * n_types * n_squares } else { 0 };
+        if rebirth.len() != expected {
+            return Err(unknown("strike rebirth length", &rebirth.len().to_string()));
+        }
+        let flips_raw: Vec<u8> = field(source, keys::CONTACT_MOVER_FLIPS)?;
+        if !flips_raw.is_empty() && flips_raw.len() != n_types * n_types {
+            return Err(unknown("contact mover flips length", &flips_raw.len().to_string()));
+        }
+        let mover_flips: Vec<bool> = flips_raw.iter().map(|v| *v != 0).collect();
+        let own_to: Vec<i32> = field(source, keys::CONTACT_OWN_ONTO_TO)?;
+        let own_mover_to: Vec<i32> = field(source, keys::CONTACT_OWN_MOVER_TO)?;
+        let own_link = own_to
+            .iter()
+            .zip(&own_mover_to)
+            .map(|(&onto, &mover)| onto >= 0 || mover >= 0)
+            .collect();
+        Ok(Some(StrikeRule {
+            to,
+            mover_to,
+            own_to,
+            own_mover_to,
+            own_link,
+            n_types,
+            position,
+            landing_index,
+            landing_squares,
+            landing_stride: n_squares,
+            rebirth,
+            mover_flips,
+        }))
+    }
 
-        // Drops
+    /// Drops: the hand's regions, limits, stock, faces and (Q1059a) gates. Whether a royal
+    /// is stocked is settled by `royal_rule`, once the royal types have been read.
+    fn drop_rule(source: &Bound<'_, PyDict>, n_types: usize, n_squares: usize) -> PyResult<Option<DropRule>> {
         let has_drops: bool = field(source, keys::HAS_DROPS)?;
-        let mut drops = if has_drops {
-            let from_captures: bool = field(source, keys::DROPS_FROM_CAPTURES)?;
-            let regions_flat: Vec<i32> = field(source, keys::DROPS_REGIONS)?;
-            // regions_flat: [player][piece_type][square] flattened; -1 means "any"
-            // We represent as Vec<Vec<Option<Vec<bool>>>> [player][piece_type]
-            let mut regions: Vec<Vec<Option<Vec<bool>>>> = Vec::new();
-            for player in 0..2 {
-                let mut per_type: Vec<Option<Vec<bool>>> = Vec::new();
-                for pt in 0..n_types {
-                    let base = (player * n_types + pt) * n_squares;
-                    if regions_flat[base] < 0 {
-                        // -1 sentinel: any empty square
-                        per_type.push(None);
-                    } else {
-                        per_type.push(Some(
-                            regions_flat[base..base + n_squares].iter().map(|v| *v != 0).collect()
-                        ));
-                    }
-                }
-                regions.push(per_type);
-            }
-            let no_doubled_raw: Vec<u8> = field(source, keys::DROPS_NO_DOUBLED)?;
-            let no_mate_raw: Vec<u8> = field(source, keys::DROPS_NO_MATE)?;
-            let stock: Vec<u32> = field(source, keys::DROPS_STOCK)?;
-            let unlimited_raw: Vec<u8> = field(source, keys::DROPS_UNLIMITED)?;
-            let placement: bool = field(source, keys::DROPS_PLACEMENT)?;
-            let faces: Vec<i32> = field(source, keys::DROPS_FACES)?;
-            let mut slot_of: Vec<usize> = Vec::new();
-            if !faces.is_empty() {
-                if faces.len() != n_types {
-                    return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                        "drops_faces has {} entries for {} piece types",
-                        faces.len(),
-                        n_types
-                    )));
-                }
-                slot_of = (0..n_types).collect();
-                for (slot, &face) in faces.iter().enumerate() {
-                    if face >= 0 {
-                        let face = face as usize;
-                        if face >= n_types || slot_of[face] != face {
-                            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                                "drops_faces pairs piece type {face} with more than one hand slot"
-                            )));
-                        }
-                        slot_of[face] = slot;
-                    }
+        if !has_drops {
+            return Ok(None);
+        }
+        let from_captures: bool = field(source, keys::DROPS_FROM_CAPTURES)?;
+        let regions_flat: Vec<i32> = field(source, keys::DROPS_REGIONS)?;
+        // regions_flat: [player][piece_type][square] flattened; -1 means "any"
+        // We represent as Vec<Vec<Option<Vec<bool>>>> [player][piece_type]
+        let mut regions: Vec<Vec<Option<Vec<bool>>>> = Vec::new();
+        for player in 0..2 {
+            let mut per_type: Vec<Option<Vec<bool>>> = Vec::new();
+            for pt in 0..n_types {
+                let base = (player * n_types + pt) * n_squares;
+                if regions_flat[base] < 0 {
+                    // -1 sentinel: any empty square
+                    per_type.push(None);
+                } else {
+                    per_type.push(Some(
+                        regions_flat[base..base + n_squares].iter().map(|v| *v != 0).collect()
+                    ));
                 }
             }
-            Some(DropRule {
-                from_captures,
-                regions,
-                no_doubled: no_doubled_raw.iter().map(|v| *v != 0).collect(),
-                no_mate: no_mate_raw.iter().map(|v| *v != 0).collect(),
-                stock,
-                unlimited: unlimited_raw.iter().map(|v| *v != 0).collect(),
-                placement,
-                // Settled below, once `royal_types` has been read.
-                royal_stocked: false,
-                faces,
-                slot_of,
-            })
-        } else {
-            None
-        };
+            regions.push(per_type);
+        }
+        let no_doubled_raw: Vec<u8> = field(source, keys::DROPS_NO_DOUBLED)?;
+        let no_mate_raw: Vec<u8> = field(source, keys::DROPS_NO_MATE)?;
+        let stock: Vec<u32> = field(source, keys::DROPS_STOCK)?;
+        let unlimited_raw: Vec<u8> = field(source, keys::DROPS_UNLIMITED)?;
+        let placement: bool = field(source, keys::DROPS_PLACEMENT)?;
+        let faces: Vec<i32> = field(source, keys::DROPS_FACES)?;
+        let gates = Self::drop_gates(source, n_squares)?;
+        let slot_of = Self::drop_faces(&faces, n_types)?;
+        Ok(Some(DropRule {
+            from_captures,
+            regions,
+            no_doubled: no_doubled_raw.iter().map(|v| *v != 0).collect(),
+            no_mate: no_mate_raw.iter().map(|v| *v != 0).collect(),
+            stock,
+            unlimited: unlimited_raw.iter().map(|v| *v != 0).collect(),
+            placement,
+            // Settled by `royal_rule`, once `royal_types` has been read.
+            royal_stocked: false,
+            faces,
+            slot_of,
+            gates,
+        }))
+    }
 
-        // Reach
+    /// Gating (Q1059a): `[player][square]` flattened, or empty for a hand that drops anywhere.
+    fn drop_gates(source: &Bound<'_, PyDict>, n_squares: usize) -> PyResult<Option<[SquareSet; 2]>> {
+        let gates_flat: Vec<u8> = field(source, keys::DROPS_GATES)?;
+        if gates_flat.is_empty() {
+            return Ok(None);
+        }
+        if gates_flat.len() != 2 * n_squares {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "drops_gates has {} entries for {} squares",
+                gates_flat.len(),
+                n_squares
+            )));
+        }
+        let mut sets = [SquareSet::EMPTY; 2];
+        for (player, set) in sets.iter_mut().enumerate() {
+            for square in 0..n_squares {
+                if gates_flat[player * n_squares + square] != 0 {
+                    set.set(square);
+                }
+            }
+        }
+        Ok(Some(sets))
+    }
+
+    /// The hand's faces: which hand slot each piece type goes to, empty when every type is
+    /// its own slot.
+    fn drop_faces(faces: &[i32], n_types: usize) -> PyResult<Vec<usize>> {
+        let mut slot_of: Vec<usize> = Vec::new();
+        if !faces.is_empty() {
+            if faces.len() != n_types {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "drops_faces has {} entries for {} piece types",
+                    faces.len(),
+                    n_types
+                )));
+            }
+            slot_of = (0..n_types).collect();
+            for (slot, &face) in faces.iter().enumerate() {
+                if face >= 0 {
+                    let face = face as usize;
+                    if face >= n_types || slot_of[face] != face {
+                        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                            "drops_faces pairs piece type {face} with more than one hand slot"
+                        )));
+                    }
+                    slot_of[face] = slot;
+                }
+            }
+        }
+        Ok(slot_of)
+    }
+
+    /// The goal distances the evaluator reads: to the goal squares, their diameter, and
+    /// one table per goal square.
+    fn goal_distances(source: &Bound<'_, PyDict>) -> PyResult<(Vec<u8>, f64, Vec<u8>)> {
         let goal_distance: Vec<u8> = field(source, keys::GOAL_DISTANCE)?;
         let goal_diameter: f64 = field::<u32>(source, keys::GOAL_DIAMETER)? as f64;
         let goal_distance_each: Vec<u8> = field(source, keys::GOAL_DISTANCE_EACH)?;
-        let has_reach: bool = field(source, keys::HAS_REACH)?;
-        let reach = if has_reach {
-            let reach_piece: i32 = field(source, keys::REACH_PIECE_TYPE)?;
-            let reach_squares_raw: Vec<u8> = field(source, keys::REACH_SQUARES)?;
-            let reach_result: i8 = field(source, keys::REACH_RESULT)?;
-            let reach_safe: bool = field(source, keys::REACH_SAFE)?;
-            let reach_leaves: bool = field(source, keys::REACH_LEAVES)?;
-            let squares: [Vec<bool>; 2] = [
-                reach_squares_raw[..n_squares].iter().map(|v| *v != 0).collect(),
-                reach_squares_raw[n_squares..].iter().map(|v| *v != 0).collect(),
-            ];
-            let goals = [0, 1].map(|player| {
-                (0..n_squares)
-                    .filter(|square| squares[player][*square])
-                    .collect::<Vec<usize>>()
-            });
-            let per_goal = (goals[0].len() + goals[1].len()) * n_types * n_squares;
-            if !goal_distance_each.is_empty() && goal_distance_each.len() != per_goal {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    "goal_distance_each is not one table per goal square",
-                ));
-            }
-            Some(ReachRule {
-                piece_type: reach_piece,
-                squares,
-                goals,
-                result: reach_result,
-                safe: reach_safe,
-                leaves: reach_leaves,
-            })
-        } else {
-            None
-        };
+        Ok((goal_distance, goal_diameter, goal_distance_each))
+    }
 
-        // Extinction
+    /// Reach: a piece type reaching a goal square wins (or loses).
+    fn reach_rule(
+        source: &Bound<'_, PyDict>,
+        n_types: usize,
+        n_squares: usize,
+        goal_distance_each: &[u8],
+    ) -> PyResult<Option<ReachRule>> {
+        let has_reach: bool = field(source, keys::HAS_REACH)?;
+        if !has_reach {
+            return Ok(None);
+        }
+        let reach_piece: i32 = field(source, keys::REACH_PIECE_TYPE)?;
+        let reach_squares_raw: Vec<u8> = field(source, keys::REACH_SQUARES)?;
+        let reach_result: i8 = field(source, keys::REACH_RESULT)?;
+        let reach_safe: bool = field(source, keys::REACH_SAFE)?;
+        let reach_leaves: bool = field(source, keys::REACH_LEAVES)?;
+        let squares: [Vec<bool>; 2] = [
+            reach_squares_raw[..n_squares].iter().map(|v| *v != 0).collect(),
+            reach_squares_raw[n_squares..].iter().map(|v| *v != 0).collect(),
+        ];
+        let goals = [0, 1].map(|player| {
+            (0..n_squares)
+                .filter(|square| squares[player][*square])
+                .collect::<Vec<usize>>()
+        });
+        let per_goal = (goals[0].len() + goals[1].len()) * n_types * n_squares;
+        if !goal_distance_each.is_empty() && goal_distance_each.len() != per_goal {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "goal_distance_each is not one table per goal square",
+            ));
+        }
+        Ok(Some(ReachRule {
+            piece_type: reach_piece,
+            squares,
+            goals,
+            result: reach_result,
+            safe: reach_safe,
+            leaves: reach_leaves,
+        }))
+    }
+
+    /// A long turn (schema 4): moves per turn and the ramp.
+    fn turn_rule(source: &Bound<'_, PyDict>) -> PyResult<Option<TurnRule>> {
         let has_turn: bool = field(source, keys::HAS_TURN)?;
-        let turn = if has_turn {
+        Ok(if has_turn {
             Some(TurnRule {
                 moves: field(source, keys::TURN_MOVES)?,
                 ramp: field(source, keys::TURN_RAMP)?,
             })
         } else {
             None
-        };
+        })
+    }
 
+    /// Territory (schema 4): whether a square repaints, and the share that wins.
+    fn territory_rule(source: &Bound<'_, PyDict>) -> PyResult<Option<TerritoryRule>> {
         let has_territory: bool = field(source, keys::HAS_TERRITORY)?;
-        let territory = if has_territory {
+        Ok(if has_territory {
             Some(TerritoryRule {
                 repaints: field(source, keys::TERRITORY_REPAINTS)?,
                 win_at: field(source, keys::TERRITORY_WIN_AT)?,
             })
         } else {
             None
-        };
+        })
+    }
 
-        let piece_values: Vec<f64> = field(source, keys::PIECE_VALUES)?;
+    /// Scoring at the clocks: what is counted, and on which squares.
+    fn scoring_rule(source: &Bound<'_, PyDict>, n_squares: usize) -> PyResult<Option<ScoringRule>> {
         let has_scoring: bool = field(source, keys::HAS_SCORING)?;
-        let scoring = if has_scoring {
-            let count: u8 = field(source, keys::SCORING_COUNT)?;
-            let raw: Vec<u8> = field(source, keys::SCORING_SQUARES)?;
-            let squares = if raw.len() >= 2 * n_squares {
-                Some([
-                    raw[..n_squares].iter().map(|v| *v != 0).collect(),
-                    raw[n_squares..2 * n_squares].iter().map(|v| *v != 0).collect(),
-                ])
-            } else {
-                None
-            };
-            Some(ScoringRule { count, squares })
+        if !has_scoring {
+            return Ok(None);
+        }
+        let count: u8 = field(source, keys::SCORING_COUNT)?;
+        let raw: Vec<u8> = field(source, keys::SCORING_SQUARES)?;
+        let squares = if raw.len() >= 2 * n_squares {
+            Some([
+                raw[..n_squares].iter().map(|v| *v != 0).collect(),
+                raw[n_squares..2 * n_squares].iter().map(|v| *v != 0).collect(),
+            ])
         } else {
             None
         };
+        Ok(Some(ScoringRule { count, squares }))
+    }
 
+    /// Extinction: which types, counted how, and (schema 27) against which side.
+    fn extinction_rule(source: &Bound<'_, PyDict>) -> PyResult<Option<ExtinctionRule>> {
         let has_extinction: bool = field(source, keys::HAS_EXTINCTION)?;
-        let extinction = if has_extinction {
-            let ext_types: Vec<usize> = field(source, keys::EXTINCTION_TYPES)?;
-            let ext_any: bool = field(source, keys::EXTINCTION_ANY_PIECE)?;
-            let ext_min: usize = field(source, keys::EXTINCTION_MIN_COUNT)?;
-            let ext_result: i8 = field(source, keys::EXTINCTION_RESULT)?;
-            let ext_per_type: bool = field(source, keys::EXTINCTION_PER_TYPE)?;
-            let ext_side: Vec<Vec<usize>> = field(source, keys::EXTINCTION_SIDE_TYPES)?;
-            let ext_own = !ext_side.is_empty();
-            let side_types = match <[Vec<usize>; 2]>::try_from(ext_side) {
-                Ok(lists) => lists,
-                Err(empty) if empty.is_empty() => [ext_types.clone(), ext_types.clone()],
-                Err(other) => {
-                    return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                        "extinction_side_types has {} lists; it is empty or one per player",
-                        other.len()
-                    )))
-                }
-            };
-            Some(ExtinctionRule {
-                counted: type_flags(&ext_types),
-                piece_types: ext_types,
-                any_piece: ext_any,
-                min_count: ext_min,
-                result: ext_result,
-                per_type: ext_per_type,
-                side_types,
-                own: ext_own,
-            })
-        } else {
-            None
+        if !has_extinction {
+            return Ok(None);
+        }
+        let ext_types: Vec<usize> = field(source, keys::EXTINCTION_TYPES)?;
+        let ext_any: bool = field(source, keys::EXTINCTION_ANY_PIECE)?;
+        let ext_min: usize = field(source, keys::EXTINCTION_MIN_COUNT)?;
+        let ext_result: i8 = field(source, keys::EXTINCTION_RESULT)?;
+        let ext_per_type: bool = field(source, keys::EXTINCTION_PER_TYPE)?;
+        let ext_side: Vec<Vec<usize>> = field(source, keys::EXTINCTION_SIDE_TYPES)?;
+        let ext_own = !ext_side.is_empty();
+        let side_types = match <[Vec<usize>; 2]>::try_from(ext_side) {
+            Ok(lists) => lists,
+            Err(empty) if empty.is_empty() => [ext_types.clone(), ext_types.clone()],
+            Err(other) => {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "extinction_side_types has {} lists; it is empty or one per player",
+                    other.len()
+                )))
+            }
         };
+        Ok(Some(ExtinctionRule {
+            counted: type_flags(&ext_types),
+            piece_types: ext_types,
+            any_piece: ext_any,
+            min_count: ext_min,
+            result: ext_result,
+            per_type: ext_per_type,
+            side_types,
+            own: ext_own,
+        }))
+    }
 
+    /// Facing (schema 8): the frames, each type's axes, opening facing and whether it
+    /// turns, and (TC2) the heading a piece keeps when it changes sides.
+    #[allow(clippy::type_complexity)]
+    fn facing_rule(source: &Bound<'_, PyDict>) -> PyResult<(usize, Vec<usize>, Vec<usize>, Vec<bool>, Vec<u8>)> {
         let n_frames: usize = field(source, keys::N_FRAMES)?;
         let n_facings = n_frames / 2;
-        let side_stride = n_facings * n_types;
         let facing_axes: Vec<usize> = field(source, keys::FACING_AXES)?;
         let facing_initial: Vec<usize> = field(source, keys::FACING_INITIAL)?;
         let facing_turns: Vec<bool> = field::<Vec<usize>>(source, keys::FACING_TURNS)?
@@ -2506,28 +3090,29 @@ impl Tables {
                 coat_facing.len()
             )));
         }
+        Ok((n_frames, facing_axes, facing_initial, facing_turns, coat_facing))
+    }
 
-        // --- Wild pieces (schema 9) ---
+    /// The third owner's block: wild pieces (schema 9), portals (schema 19), the duck
+    /// (generation 42, `[type, by_moves, squares...]`, empty without one) and (TC3) neutral
+    /// pieces, one control kind per type. At most one of them holds the block.
+    fn third_owner(source: &Bound<'_, PyDict>) -> PyResult<(bool, bool, Vec<u32>, Vec<u8>)> {
         // Three owners share the one byte once anything is wild, which is what the bound
-        // below has to know about; `_check_facing_coherence` refuses the same thing on
-        // the Python side, with the same arithmetic and a better message.
+        // in `board_byte` has to know about; `_check_facing_coherence` refuses the same
+        // thing on the Python side, with the same arithmetic and a better message.
         let has_npcs: bool = field(source, keys::HAS_NPCS)?;
-        // Schema 19: portals are nobody's too, in the same third block.
         let has_portals: bool = field(source, keys::HAS_PORTALS)?;
         if has_npcs && has_portals {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "wild pieces and portals share the third owner's block; the validator                  refuses the two together",
+                "wild pieces and portals share the third owner's block; the validator refuses the two together",
             ));
         }
-        // Generation 42 (N4b): the duck stands in the third block too. `[type, by_moves,
-        // squares...]`, empty without a duck.
         let duck_field: Vec<u32> = field(source, keys::DUCK)?;
         if !duck_field.is_empty() && has_portals {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "the duck and portals share the third owner's block; the validator refuses the two together",
             ));
         }
-        // TC3: pieces nobody owns from the setup, one neutral kind per type, empty without.
         let neutral_control: Vec<u8> = field(source, keys::NEUTRAL_CONTROL)?;
         if !neutral_control.is_empty() && (has_npcs || has_portals || !duck_field.is_empty()) {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -2535,8 +3120,17 @@ impl Tables {
                  portals; the validator refuses them together",
             ));
         }
-        let third = has_npcs || has_portals || !duck_field.is_empty() || !neutral_control.is_empty();
-        let n_owners = if third { 3 } else { 2 };
+        Ok((has_npcs, has_portals, duck_field, neutral_control))
+    }
+
+    /// Wild pieces' routes (schema 9): the next square and the bounty per square, and the
+    /// squares on a route.
+    #[allow(clippy::type_complexity)]
+    fn wild_routes(
+        source: &Bound<'_, PyDict>,
+        has_npcs: bool,
+        n_squares: usize,
+    ) -> PyResult<(Vec<i16>, Vec<f64>, Vec<u16>)> {
         let npc_next: Vec<i16> = field::<Vec<i32>>(source, keys::NPC_NEXT)?
             .into_iter()
             .map(|square| square as i16)
@@ -2544,28 +3138,44 @@ impl Tables {
         let npc_bounty: Vec<f64> = field(source, keys::NPC_BOUNTY)?;
         if has_npcs && (npc_next.len() < n_squares || npc_bounty.len() < n_squares) {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "wild-piece tables hold {} and {} squares, not the {n_squares} this board                  has",
+                "wild-piece tables hold {} and {} squares, not the {n_squares} this board has",
                 npc_next.len(), npc_bounty.len(),
             )));
         }
-        // Schema 9's second key. Empty when the flag is off, which is what makes
-        // `arriving_value` `entering_value` for every ruleset before this one.
+        let npc_squares: Vec<u16> = (0..npc_next.len())
+            .filter(|square| npc_next[*square] >= 0)
+            .map(|square| square as u16)
+            .collect();
+        Ok((npc_next, npc_bounty, npc_squares))
+    }
+
+    /// Promotion on entry (schema 9's second key). Empty when the flag is off, which is
+    /// what makes `arriving_value` `entering_value` for every ruleset before it.
+    fn entry_promotion_rule(source: &Bound<'_, PyDict>, n_types: usize, n_squares: usize) -> PyResult<Vec<i16>> {
         let entry_promotion: Vec<i16> = field::<Vec<i32>>(source, keys::ENTRY_PROMOTION)?
             .into_iter()
             .map(|becomes| becomes as i16)
             .collect();
         if !entry_promotion.is_empty() && entry_promotion.len() != 2 * n_types * n_squares {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "the entry-promotion table holds {} slots, not the {} that 2 players x                  {n_types} types x {n_squares} squares needs",
+                "the entry-promotion table holds {} slots, not the {} that 2 players x {n_types} types x {n_squares} squares needs",
                 entry_promotion.len(), 2 * n_types * n_squares,
             )));
         }
+        Ok(entry_promotion)
+    }
 
-        let npc_squares: Vec<u16> = (0..npc_next.len())
-            .filter(|square| npc_next[*square] >= 0)
-            .map(|square| square as u16)
-            .collect();
-
+    /// The board byte (player-major), decoded per value into owner, frame, type and (TC1)
+    /// control kind, and whether any type is held by majority (TC3).
+    #[allow(clippy::type_complexity)]
+    fn board_byte(
+        source: &Bound<'_, PyDict>,
+        n_owners: usize,
+        n_types: usize,
+        n_facings: usize,
+        neutral_control: &[u8],
+    ) -> PyResult<([[u8; 256]; 4], bool)> {
+        let side_stride = n_facings * n_types;
         if n_owners * side_stride >= 256 {
             let who = if n_owners == 2 {
                 "two players"
@@ -2573,13 +3183,12 @@ impl Tables {
                 "two players and a wild third owner"
             };
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "{n_types} piece types at {n_facings} facings for {who} need {} board                  values, and a square is one byte",
+                "{n_types} piece types at {n_facings} facings for {who} need {} board values, and a square is one byte",
                 n_owners * side_stride + 1
             )));
         }
-        // The encoding is built here. The movement generator and the accessors read these
-        // three arrays; the evaluator and feature code still restate the layout by
-        // arithmetic in places (R9 / CS5 in `docs/plan-smells-rust.md`).
+        // The encoding is built here, once; every reader outside this file asks these three
+        // arrays through the accessors (`owner_of`, `frame_of_value`, `type_of`).
         let mut value_owner = [0u8; 256];
         let mut value_frame = [0u8; 256];
         let mut value_type = [0u8; 256];
@@ -2620,9 +3229,19 @@ impl Tables {
                 }
             }
         }
+        let has_majority = control_kind.contains(&CONTROL_MAJORITY);
+        Ok(([value_owner, value_frame, value_type, value_kind], has_majority))
+    }
+
+    /// Majority control (TC3): each majority type's neighbours, `None` without one.
+    fn majority_rule(
+        source: &Bound<'_, PyDict>,
+        has_majority: bool,
+        n_types: usize,
+        n_squares: usize,
+    ) -> PyResult<Option<Box<NeutralTables>>> {
         let neighbour_index: Vec<u32> = field(source, keys::NEIGHBOUR_INDEX)?;
         let neighbour_squares: Vec<u8> = field(source, keys::NEIGHBOUR_SQUARES)?;
-        let has_majority = control_kind.contains(&CONTROL_MAJORITY);
         let fits = neighbour_index.len() == n_types * n_squares + 1
             && neighbour_index.last().is_some_and(|&last| last as usize == neighbour_squares.len())
             && neighbour_squares.iter().all(|&square| (square as usize) < n_squares);
@@ -2631,20 +3250,25 @@ impl Tables {
                 "the neighbour tables do not fit this board's majority types",
             ));
         }
-        let majority = has_majority
-            .then(|| Box::new(NeutralTables { index: neighbour_index, squares: neighbour_squares }));
+        Ok(has_majority
+            .then(|| Box::new(NeutralTables { index: neighbour_index, squares: neighbour_squares })))
+    }
 
+    /// The royal types, as flags, and which players start with a royal (Q133), on the
+    /// board or (Q784) in the hand, which settles the drop rule's `royal_stocked`.
+    fn royal_rule(
+        source: &Bound<'_, PyDict>,
+        opening: &[u8],
+        value_owner: &[u8; 256],
+        value_type: &[u8; 256],
+        drops: Option<&mut DropRule>,
+    ) -> PyResult<(Vec<usize>, [bool; MAX_PIECE_TYPES], [bool; 2])> {
         let royal_types: Vec<usize> = field(source, keys::ROYAL_TYPES)?;
-        let mut all_squares = SquareSet::EMPTY;
-        for square in 0..n_squares {
-            all_squares.set(square);
-        }
-
-        // Which players start with a royal (Q133). One pass over the compiled setup,
-        // reading the same three tables `scan_occupied` walks.
+        // One pass over the compiled setup, reading the same three tables `scan_occupied`
+        // walks.
         let royal_flags = type_flags(&royal_types);
         let mut royal_at_start = [false; 2];
-        for value in initial_board[..n_squares].iter().copied().filter(|v| *v != 0) {
+        for value in opening.iter().copied().filter(|v| *v != 0) {
             // Owner 2 is `WILD`, which has no royalty to lose: a wild royal is refused by
             // the validator, because check is about a *player's* royal.
             let owner = value_owner[value as usize] as usize;
@@ -2656,7 +3280,7 @@ impl Tables {
         // side whose royal is in its stock had one to lose as surely as one whose royal
         // was placed. Both players get the same stock (`_validate_stock`), so it is both
         // sides or neither.
-        if let Some(rule) = drops.as_mut() {
+        if let Some(rule) = drops {
             rule.royal_stocked = royal_types
                 .iter()
                 .any(|piece_type| rule.stock.get(*piece_type).is_some_and(|held| *held > 0));
@@ -2664,174 +3288,54 @@ impl Tables {
                 royal_at_start = [true; 2];
             }
         }
+        Ok((royal_types, royal_flags, royal_at_start))
+    }
 
-        let mut tables = Self {
-            width,
-            height,
-            n_squares,
-            n_types,
-            n_owners,
-            n_frames,
-            n_facings,
-            side_stride,
-            has_facing: n_facings > 1,
-            facing_axes,
-            facing_initial,
-            facing_turns,
-            coat_facing,
-            value_owner,
-            value_frame,
-            value_type,
-            value_kind,
-            royal_flags,
-            royal_at_start,
-            royal_types,
-            all_squares,
-            leaps: EntryTable::build(
-                field(source, keys::LEAP_INDEX)?,
-                field(source, keys::LEAP_REFS)?,
-                field(source, keys::LEAP_SQUARES)?,
-                field(source, keys::LEAP_MODES)?,
-            ),
-            slides: EntryTable::build(
-                field(source, keys::SLIDE_INDEX)?,
-                field(source, keys::SLIDE_REFS)?,
-                field(source, keys::SLIDE_SQUARES)?,
-                field(source, keys::SLIDE_MODES)?,
-            ),
-            hops: EntryTable::build(
-                field(source, keys::HOP_INDEX)?,
-                field(source, keys::HOP_REFS)?,
-                field(source, keys::HOP_SQUARES)?,
-                field(source, keys::HOP_MODES)?,
-            ),
-            sweeps: EntryTable::build(
-                field(source, keys::SWEEP_INDEX)?,
-                field(source, keys::SWEEP_REFS)?,
-                field(source, keys::SWEEP_SQUARES)?,
-                field(source, keys::SWEEP_MODES)?,
-            ),
-            has_sweep: field(source, keys::HAS_SWEEP)?,
-            attack_index: field(source, keys::ATTACK_INDEX)?,
-            attack_sources,
-            attack_paths: field(source, keys::ATTACK_PATHS)?,
-            attack_path_modes: field(source, keys::ATTACK_PATH_MODES)?,
-            dedup: field::<Vec<u8>>(source, keys::DEDUP)?
-                .into_iter()
-                .map(|flag| flag != 0)
-                .collect(),
-            has_hop_attacks: field(source, keys::HAS_HOP_ATTACKS)?,
-            hop_lines: Vec::new(),
-            initial_board,
-            initial_unmoved: SquareSet::from_bytes(
-                &field::<Vec<u8>>(source, keys::INITIAL_UNMOVED)?,
-            ),
-            win,
-            stalemate,
-            checkmate_result,
-            max_plies: field(source, keys::MAX_PLIES)?,
-            repetition_draw: field(source, keys::REPETITION_DRAW)?,
-            no_progress_draw: field(source, keys::NO_PROGRESS_DRAW)?,
-            one_way: type_flags(&field::<Vec<usize>>(source, keys::ONE_WAY_TYPES)?),
-            ep_type: field(source, keys::EP_TYPE)?,
-            ep_passes,
-            facing_lines,
-            facing_paths,
-            promo_squares,
-            promo_targets,
-            promo_optional,
-            promo_flags: type_flags(&promo_piece_types),
-            promo_leaving_flags: type_flags(&promo_on_leaving),
-            promo_only_lost_flags: type_flags(&promo_only_lost),
-            promo_opening,
-            promo_piece_types,
-            castling,
-            castle_files,
-            multi_royal,
-            demotions,
-            explosion,
-            strike,
-            drops,
-            reach_leaves: reach.as_ref().is_some_and(|rule| rule.leaves),
-            reach,
-            goal_distance,
-            goal_diameter,
-            goal_distance_each,
-            extinction,
-            scoring,
-            territory,
-            turn,
-            has_npcs,
-            npc_next,
-            npc_bounty,
-            npc_squares,
-            npc_bounty_total: 0.0,
-            piece_bounty: Vec::new(),
-            pays: false,
-            purse: None,
-            npc_queues: false,
-            npc_shield: false,
-            portals: None,
-            simultaneous: None,
-            spy: None,
-            rest: None,
-            sight: None,
-            majority,
-            respawn: None,
-            npc_lines: None,
-            pounce: None,
-            duck: None,
-            entry_promotion,
-            piece_values,
-            must_capture,
-            forbid_check,
-            forbid_immobility,
-            royal_facing_forbidden,
-            check_limit,
-            capture_allowed,
-            has_capture_matrix,
-            bare_royal,
-            immobile_squares,
-            zobrist_pieces: field(source, keys::ZOBRIST_PIECES)?,
-            zobrist_side: field(source, keys::ZOBRIST_SIDE)?,
-            zobrist_ep: field(source, keys::ZOBRIST_EP)?,
-            zobrist_colour: field(source, keys::ZOBRIST_COLOUR)?,
-            zobrist_turn: field(source, keys::ZOBRIST_TURN)?,
-        };
+    /// One movement table (leaps, slides, hops or sweeps): index, refs, squares, modes.
+    fn entry_table(source: &Bound<'_, PyDict>, [index, refs, squares, modes]: [keys::TableKey; 4]) -> PyResult<EntryTable> {
+        Ok(EntryTable::build(
+            field(source, index)?,
+            field(source, refs)?,
+            field(source, squares)?,
+            field(source, modes)?,
+        ))
+    }
 
+    /// The movement tables' shapes, which span the frames, the types and the owners.
+    fn check_movement_shapes(&self) -> PyResult<()> {
         // The two sides have to agree about how many frames there are, and the way they
         // could disagree is silent: a short table read at a high slot is whatever bytes
         // follow it. `_flatten_entries` writes one index per (frame, type, square) plus
         // a terminator, so the length is the shape, and checking it here is the only
         // place either side can be told it was wrong.
-        let expected = tables.n_frames * tables.n_types * tables.n_squares + 1;
+        let expected = self.n_frames * self.n_types * self.n_squares + 1;
         for (name, table) in [
-            ("leaps", &tables.leaps),
-            ("slides", &tables.slides),
-            ("hops", &tables.hops),
+            ("leaps", &self.leaps),
+            ("slides", &self.slides),
+            ("hops", &self.hops),
         ] {
             if table.slots() != expected {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "compiled {name} table holds {} slots, not the {expected} that                      {} frames x {} types x {} squares needs",
-                    table.slots(), tables.n_frames, tables.n_types, tables.n_squares,
+                    "compiled {name} table holds {} slots, not the {expected} that {} frames x {} types x {} squares needs",
+                    table.slots(), self.n_frames, self.n_types, self.n_squares,
                 )));
             }
         }
         // Schema 13: the sweep table and the path modes are empty unless something sweeps.
-        let sweep_slots = if tables.has_sweep { expected } else { 0 };
-        let path_modes = if tables.has_sweep { tables.attack_paths.len() } else { 0 };
-        if tables.sweeps.slots() != sweep_slots || tables.attack_path_modes.len() != path_modes {
+        let sweep_slots = if self.has_sweep { expected } else { 0 };
+        let path_modes = if self.has_sweep { self.attack_paths.len() } else { 0 };
+        if self.sweeps.slots() != sweep_slots || self.attack_path_modes.len() != path_modes {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "compiled sweep tables hold {} slots and {} path modes, not the {sweep_slots} \
                  and {path_modes} this ruleset needs",
-                tables.sweeps.slots(), tables.attack_path_modes.len(),
+                self.sweeps.slots(), self.attack_path_modes.len(),
             )));
         }
-        if tables.dedup.len() != expected - 1 || tables.immobile_squares.len() != expected - 1 {
+        if self.dedup.len() != expected - 1 || self.immobile_squares.len() != expected - 1 {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "compiled dedup/immobile tables hold {} and {} entries, not the {} that                  {} frames x {} types x {} squares needs",
-                tables.dedup.len(), tables.immobile_squares.len(), expected - 1,
-                tables.n_frames, tables.n_types, tables.n_squares,
+                "compiled dedup/immobile tables hold {} and {} entries, not the {} that {} frames x {} types x {} squares needs",
+                self.dedup.len(), self.immobile_squares.len(), expected - 1,
+                self.n_frames, self.n_types, self.n_squares,
             )));
         }
 
@@ -2839,16 +3343,19 @@ impl Tables {
         // block per owner and the core indexes it by owner, so a two-block table read at
         // `WILD` would run off the end of `attack_index` -- loudly here rather than as
         // whatever bytes follow it.
-        let owners_expected = tables.n_owners * tables.n_squares + 1;
-        if tables.attack_index.len() != owners_expected {
+        let owners_expected = self.n_owners * self.n_squares + 1;
+        if self.attack_index.len() != owners_expected {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "the attack table holds {} slots, not the {owners_expected} that                  {} owners x {} squares needs",
-                tables.attack_index.len(), tables.n_owners, tables.n_squares,
+                "the attack table holds {} slots, not the {owners_expected} that {} owners x {} squares needs",
+                self.attack_index.len(), self.n_owners, self.n_squares,
             )));
         }
+        Ok(())
+    }
 
-        // Generation 42 (N4b): the duck.
-        if let [piece_type, by_moves, squares @ ..] = duck_field.as_slice() {
+    /// The duck (generation 42, N4b): its type, how it goes, and its squares.
+    fn duck_rule(tables: &Tables, duck_field: &[u32]) -> PyResult<Option<Box<DuckRule>>> {
+        if let [piece_type, by_moves, squares @ ..] = duck_field {
             let piece_type = *piece_type as usize;
             if piece_type >= tables.n_types || squares.iter().any(|&square| square as usize >= tables.n_squares) {
                 return Err(pyo3::exceptions::PyValueError::new_err("the duck's tables do not fit this board"));
@@ -2861,48 +3368,57 @@ impl Tables {
             if tables.kind_of(value) != CONTROL_DUCK {
                 return Err(pyo3::exceptions::PyValueError::new_err("the duck's type is not of the duck's control kind"));
             }
-            tables.duck = Some(Box::new(DuckRule { value, piece_type, by_moves: *by_moves != 0, squares: set }));
+            Ok(Some(Box::new(DuckRule { value, piece_type, by_moves: *by_moves != 0, squares: set })))
         } else if !duck_field.is_empty() {
-            return Err(pyo3::exceptions::PyValueError::new_err("a duck field too short to name its type"));
+            Err(pyo3::exceptions::PyValueError::new_err("a duck field too short to name its type"))
+        } else {
+            Ok(None)
         }
+    }
 
+    /// Wild pieces' bounties on the opening board, and whether two of them queue on a route.
+    fn settle_wild_bounties(&mut self) {
         // What the bounties on the board come to at ply zero. Read off the opening
         // position rather than off `npc_bounty`, because a bounty is stated per *route*
         // and a route is several squares.
-        if tables.has_npcs {
-            tables.npc_bounty_total = (0..tables.n_squares)
-                .filter(|square| {
-                    tables.is_wild_piece(tables.initial_board[*square])
-                })
-                .map(|square| tables.npc_bounty[square])
-                .sum();
-            // One key per route, its lowest square; two wild pieces meeting in a key queue.
-            let mut seen: Vec<usize> = Vec::new();
-            for square in 0..tables.n_squares {
-                let value = tables.initial_board[square];
-                if !tables.is_wild_piece(value) || tables.npc_next[square] < 0 {
-                    continue;
-                }
-                let mut lowest = square;
-                let mut cursor = tables.npc_next[square] as usize;
-                while cursor != square {
-                    lowest = lowest.min(cursor);
-                    let after = tables.npc_next[cursor] as usize;
-                    // Generation 38: a line's last square holds itself, and a line starts
-                    // where its piece does, so the walk to it has seen the whole line.
-                    if after == cursor {
-                        break;
-                    }
-                    cursor = after;
-                }
-                if seen.contains(&lowest) {
-                    tables.npc_queues = true;
-                }
-                seen.push(lowest);
-            }
+        if !self.has_npcs {
+            return;
         }
+        self.npc_bounty_total = (0..self.n_squares)
+            .filter(|square| {
+                self.is_wild_piece(self.initial_board[*square])
+            })
+            .map(|square| self.npc_bounty[square])
+            .sum();
+        // One key per route, its lowest square; two wild pieces meeting in a key queue.
+        let mut seen: Vec<usize> = Vec::new();
+        for square in 0..self.n_squares {
+            let value = self.initial_board[square];
+            if !self.is_wild_piece(value) || self.npc_next[square] < 0 {
+                continue;
+            }
+            let mut lowest = square;
+            let mut cursor = self.npc_next[square] as usize;
+            while cursor != square {
+                lowest = lowest.min(cursor);
+                let after = self.npc_next[cursor] as usize;
+                // Generation 38: a line's last square holds itself, and a line starts
+                // where its piece does, so the walk to it has seen the whole line.
+                if after == cursor {
+                    break;
+                }
+                cursor = after;
+            }
+            if seen.contains(&lowest) {
+                self.npc_queues = true;
+            }
+            seen.push(lowest);
+        }
+    }
 
-        // TC4 (`docs/plan-turncoat.md` §5.1, §5.2): each type's bounty, and the purse.
+    /// Bounties (TC4, `docs/plan-turncoat.md` §5.1): each type's, added to what the opening
+    /// board's bounties come to, and whether anything pays.
+    fn bounty_rule(tables: &mut Tables, source: &Bound<'_, PyDict>) -> PyResult<()> {
         let piece_bounty: Vec<f64> = field::<Vec<u32>>(source, keys::PIECE_BOUNTY)?
             .into_iter()
             .map(f64::from)
@@ -2925,261 +3441,278 @@ impl Tables {
         }
         tables.pays = tables.has_npcs || !piece_bounty.is_empty();
         tables.piece_bounty = piece_bounty;
+        Ok(())
+    }
+
+    /// The purse (TC4, §5.2), the market (TC5) and hiring and bribing (TC6).
+    fn purse_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<PurseTables>>> {
         let purse_start: i32 = field(source, keys::PURSE_START)?;
         let zobrist_purse: Vec<u64> = field(source, keys::ZOBRIST_PURSE)?;
-        if purse_start >= 0 {
-            if purse_start > PURSE_MAX as i32 || zobrist_purse.len() != 2 * (PURSE_MAX as usize + 1) {
-                return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "a purse starting at {purse_start} with {} keys",
-                    zobrist_purse.len(),
-                )));
+        if purse_start < 0 {
+            if !zobrist_purse.is_empty() {
+                return Err(pyo3::exceptions::PyValueError::new_err("purse keys without a purse"));
             }
-            // TC5: the market, its prices and its squares.
-            let market_types: Vec<u32> = field(source, keys::PURSE_MARKET)?;
-            let market_prices: Vec<u32> = field(source, keys::PURSE_PRICE)?;
-            let square_index: Vec<u32> = field(source, keys::PURSE_SQUARE_INDEX)?;
-            let squares: Vec<u8> = field(source, keys::PURSE_SQUARES)?;
-            let n_market = market_types.len();
-            if market_prices.len() != n_market
-                || square_index.len() != 2 * n_market + 1
-                || square_index.last().is_none_or(|end| *end as usize != squares.len())
-                || market_types.iter().any(|ty| *ty as usize >= tables.n_types)
-                || squares.iter().any(|sq| *sq as usize >= tables.n_squares)
-                || market_prices.iter().any(|price| *price == 0 || *price > PURSE_MAX as u32)
-            {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    "a market whose types, prices and squares do not agree",
-                ));
-            }
-            let mut price = vec![0u16; tables.n_types];
-            for (ty, cost) in market_types.iter().zip(&market_prices) {
-                price[*ty as usize] = *cost as u16;
-            }
-            // TC6: what a hire and a bribe cost per type, and what *next to* means for them.
-            let hire: Vec<u16> = field(source, keys::PURSE_HIRE)?;
-            let bribe: Vec<u16> = field(source, keys::PURSE_BRIBE)?;
-            let near_index: Vec<u32> = field(source, keys::PURSE_NEIGHBOUR_INDEX)?;
-            let near_squares: Vec<u8> = field(source, keys::PURSE_NEIGHBOUR_SQUARES)?;
-            let contested = !hire.is_empty() || !bribe.is_empty();
-            if (!hire.is_empty() && hire.len() != tables.n_types)
-                || (!bribe.is_empty() && bribe.len() != tables.n_types)
-                || hire.iter().chain(&bribe).any(|cost| *cost > PURSE_MAX)
-                || contested == near_index.is_empty()
-                || (contested && near_index.len() != tables.n_types * tables.n_squares + 1)
-                || near_index.last().is_some_and(|end| *end as usize != near_squares.len())
-                || near_squares.iter().any(|sq| *sq as usize >= tables.n_squares)
-            {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    "hire and bribe costs and their neighbours do not agree",
-                ));
-            }
-            tables.purse = Some(Box::new(PurseTables {
-                start: purse_start as u16,
-                zobrist: zobrist_purse,
-                market: market_types.iter().zip(&market_prices).map(|(ty, cost)| (*ty as u8, *cost as u16)).collect(),
-                price,
-                square_index,
-                squares,
-                hire,
-                bribe,
-                near_index,
-                near_squares,
-            }));
-        } else if !zobrist_purse.is_empty() {
-            return Err(pyo3::exceptions::PyValueError::new_err("purse keys without a purse"));
+            return Ok(None);
         }
+        if purse_start > PURSE_MAX as i32 || zobrist_purse.len() != 2 * (PURSE_MAX as usize + 1) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "a purse starting at {purse_start} with {} keys",
+                zobrist_purse.len(),
+            )));
+        }
+        // TC5: the market, its prices and its squares.
+        let market_types: Vec<u32> = field(source, keys::PURSE_MARKET)?;
+        let market_prices: Vec<u32> = field(source, keys::PURSE_PRICE)?;
+        let square_index: Vec<u32> = field(source, keys::PURSE_SQUARE_INDEX)?;
+        let squares: Vec<u8> = field(source, keys::PURSE_SQUARES)?;
+        let n_market = market_types.len();
+        if market_prices.len() != n_market
+            || square_index.len() != 2 * n_market + 1
+            || square_index.last().is_none_or(|end| *end as usize != squares.len())
+            || market_types.iter().any(|ty| *ty as usize >= tables.n_types)
+            || squares.iter().any(|sq| *sq as usize >= tables.n_squares)
+            || market_prices.iter().any(|price| *price == 0 || *price > PURSE_MAX as u32)
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a market whose types, prices and squares do not agree",
+            ));
+        }
+        let mut price = vec![0u16; tables.n_types];
+        for (ty, cost) in market_types.iter().zip(&market_prices) {
+            price[*ty as usize] = *cost as u16;
+        }
+        // TC6: what a hire and a bribe cost per type, and what *next to* means for them.
+        let hire: Vec<u16> = field(source, keys::PURSE_HIRE)?;
+        let bribe: Vec<u16> = field(source, keys::PURSE_BRIBE)?;
+        let near_index: Vec<u32> = field(source, keys::PURSE_NEIGHBOUR_INDEX)?;
+        let near_squares: Vec<u8> = field(source, keys::PURSE_NEIGHBOUR_SQUARES)?;
+        let contested = !hire.is_empty() || !bribe.is_empty();
+        if (!hire.is_empty() && hire.len() != tables.n_types)
+            || (!bribe.is_empty() && bribe.len() != tables.n_types)
+            || hire.iter().chain(&bribe).any(|cost| *cost > PURSE_MAX)
+            || contested == near_index.is_empty()
+            || (contested && near_index.len() != tables.n_types * tables.n_squares + 1)
+            || near_index.last().is_some_and(|end| *end as usize != near_squares.len())
+            || near_squares.iter().any(|sq| *sq as usize >= tables.n_squares)
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "hire and bribe costs and their neighbours do not agree",
+            ));
+        }
+        Ok(Some(Box::new(PurseTables {
+            start: purse_start as u16,
+            zobrist: zobrist_purse,
+            market: market_types.iter().zip(&market_prices).map(|(ty, cost)| (*ty as u8, *cost as u16)).collect(),
+            price,
+            square_index,
+            squares,
+            hire,
+            bribe,
+            near_index,
+            near_squares,
+        })))
+    }
 
-        // Generation 38 (N5): the lines' way back and the heading's keys, both empty unless
-        // an entry turns back. Read before the respawning halves, which walk a line to its end.
+    /// Wild pieces that turn back (generation 38, N5): the lines' way back and the
+    /// heading's keys, both empty unless an entry turns back.
+    fn turning_back_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<LineTables>>> {
         let npc_prev: Vec<i32> = field(source, keys::NPC_PREV)?;
         let zobrist_heading: Vec<u64> = field(source, keys::ZOBRIST_HEADING)?;
         if !npc_prev.is_empty() {
-            tables.npc_lines = Some(Box::new(Self::line_tables(&tables, &npc_prev, zobrist_heading)?));
+            Ok(Some(Box::new(Self::line_tables(tables, &npc_prev, zobrist_heading)?)))
         } else if !zobrist_heading.is_empty() {
-            return Err(pyo3::exceptions::PyValueError::new_err("heading keys without a line"));
+            Err(pyo3::exceptions::PyValueError::new_err("heading keys without a line"))
+        } else {
+            Ok(None)
         }
+    }
 
-        // Generation 36 (N1): respawning halves, `[every, n_starts, starts...]` each, and
-        // their clocks' keys. Both empty unless an entry says `respawn`.
+    /// Wild pieces that come back (generation 36, N1): respawning halves, `[every,
+    /// n_starts, starts...]` each, and their clocks' keys, both empty unless an entry says
+    /// `respawn`.
+    fn respawn_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<RespawnTables>>> {
         let npc_respawn: Vec<u32> = field(source, keys::NPC_RESPAWN)?;
         let zobrist_respawn: Vec<u64> = field(source, keys::ZOBRIST_RESPAWN)?;
         if !npc_respawn.is_empty() {
-            tables.respawn = Some(Box::new(Self::respawn_tables(&tables, &npc_respawn, zobrist_respawn)?));
+            Ok(Some(Box::new(Self::respawn_tables(tables, &npc_respawn, zobrist_respawn)?)))
         } else if !zobrist_respawn.is_empty() {
-            return Err(pyo3::exceptions::PyValueError::new_err("respawn keys without a respawn"));
+            Err(pyo3::exceptions::PyValueError::new_err("respawn keys without a respawn"))
+        } else {
+            Ok(None)
         }
+    }
 
-        // Generation 39 (N3b): the pounce tables, every one empty unless an entry pounces.
+    /// Wild pieces that pounce (generation 39, N3b): every table empty unless an entry
+    /// pounces.
+    fn pounce_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<PounceTables>>> {
         let pounce_kind: Vec<u8> = field::<Vec<u32>>(source, keys::POUNCE_KIND)?
             .into_iter()
             .map(|kind| kind as u8)
             .collect();
-        if !pounce_kind.is_empty() {
-            tables.pounce = Some(Box::new(Self::pounce_tables(&tables, source, pounce_kind)?));
+        if pounce_kind.is_empty() {
+            return Ok(None);
         }
+        Ok(Some(Box::new(Self::pounce_tables(tables, source, pounce_kind)?)))
+    }
 
-        if has_portals {
-            tables.portals = Some(Box::new(Self::portal_tables(source, &tables)?));
-        }
-
-
+    /// Simultaneous moves (schema 26), the chase switches (schema 27) and speed (schema 28).
+    fn simultaneous_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<SimTables>>> {
         let sim_rule: Vec<u32> = field(source, keys::SIM_RULE)?;
-        if !sim_rule.is_empty() {
-            let collision: Vec<u8> = field(source, keys::SIM_COLLISION)?;
-            let zobrist: Vec<u64> = field(source, keys::ZOBRIST_SIM)?;
-            let n = tables.n_squares;
-            let void_run = sim_rule[2] as usize;
-            if sim_rule.len() != 4
-                || collision.len() != tables.n_types * tables.n_types
-                || zobrist.len() != 1 + 2 * n + void_run
-            {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    "the simultaneous tables do not fit this ruleset's types and squares",
-                ));
-            }
-            // Schema 27 (Q942a): empty unless a chase switch is on. The first slot was the
-            // round's rest, which schema 29 moved to `piece_rest`; it is always 0.
-            let chase: Vec<u8> = field(source, keys::SIM_CHASE)?;
-            let switch = |index: usize| chase.get(index).is_some_and(|flag| *flag != 0);
-            if !(chase.is_empty() || chase.len() == 3) || switch(0) {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    "the chase switches do not fit this core (the round's rest is pieces[].rest)",
-                ));
-            }
-            // Schema 28 (Q943a): empty unless a piece declares a speed.
-            let speed: Vec<u8> = field(source, keys::SIM_SPEED)?;
-            if !(speed.is_empty() || speed.len() == tables.n_types) {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    "the speeds do not fit this ruleset's types",
-                ));
-            }
-            tables.simultaneous = Some(Box::new(SimTables {
-                speed,
-                swap_collides: switch(1),
-                both_score: switch(2),
-                tie: sim_rule[0] as u8,
-                initiative_start: sim_rule[1] as i8,
-                void_run: sim_rule[2] as u8,
-                collision_strikes: sim_rule[3] != 0,
-                collision_allowed: collision.iter().map(|flag| *flag != 0).collect(),
-                zobrist_initiative: zobrist[0],
-                zobrist_squares: zobrist[1..1 + 2 * n].to_vec(),
-                zobrist_states: zobrist[1 + 2 * n..].to_vec(),
-            }));
+        if sim_rule.is_empty() {
+            return Ok(None);
         }
-
-        // Schema 29 (Q983a): the rest, both empty unless a type rests.
-        let piece_rest: Vec<u8> = field(source, keys::PIECE_REST)?;
-        let zobrist_rest: Vec<u64> = field(source, keys::ZOBRIST_REST)?;
-        if !piece_rest.is_empty() {
-            let max = piece_rest.iter().copied().max().unwrap_or(0) as usize;
-            if piece_rest.len() != tables.n_types
-                || max == 0
-                || max > REST_MAX
-                || zobrist_rest.len() != max * 2 * tables.n_squares
-            {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    "the rest tables do not fit this ruleset's types and squares",
-                ));
-            }
-            tables.rest =
-                Some(Box::new(RestTables { turns: piece_rest, zobrist: zobrist_rest, slots: max }));
-        } else if !zobrist_rest.is_empty() {
+        let collision: Vec<u8> = field(source, keys::SIM_COLLISION)?;
+        let zobrist: Vec<u64> = field(source, keys::ZOBRIST_SIM)?;
+        let n = tables.n_squares;
+        let void_run = sim_rule[2] as usize;
+        if sim_rule.len() != 4
+            || collision.len() != tables.n_types * tables.n_types
+            || zobrist.len() != 1 + 2 * n + void_run
+        {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "rest keys without a rest",
+                "the simultaneous tables do not fit this ruleset's types and squares",
             ));
         }
+        // Schema 27 (Q942a): empty unless a chase switch is on. The first slot was the
+        // round's rest, which schema 29 moved to `piece_rest`; it is always 0.
+        let chase: Vec<u8> = field(source, keys::SIM_CHASE)?;
+        let switch = |index: usize| chase.get(index).is_some_and(|flag| *flag != 0);
+        if !(chase.is_empty() || chase.len() == 3) || switch(0) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "the chase switches do not fit this core (the round's rest is pieces[].rest)",
+            ));
+        }
+        // Schema 28 (Q943a): empty unless a piece declares a speed.
+        let speed: Vec<u8> = field(source, keys::SIM_SPEED)?;
+        if !(speed.is_empty() || speed.len() == tables.n_types) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "the speeds do not fit this ruleset's types",
+            ));
+        }
+        Ok(Some(Box::new(SimTables {
+            speed,
+            swap_collides: switch(1),
+            both_score: switch(2),
+            tie: sim_rule[0] as u8,
+            initiative_start: sim_rule[1] as i8,
+            void_run: sim_rule[2] as u8,
+            collision_strikes: sim_rule[3] != 0,
+            collision_allowed: collision.iter().map(|flag| *flag != 0).collect(),
+            zobrist_initiative: zobrist[0],
+            zobrist_squares: zobrist[1..1 + 2 * n].to_vec(),
+            zobrist_states: zobrist[1 + 2 * n..].to_vec(),
+        })))
+    }
 
-        // Schema 30 (Q999a): lines of sight, all four empty unless a type sees.
+    /// Rest (schema 29, Q983a): turns per type and the keys, both empty unless a type rests.
+    fn rest_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<RestTables>>> {
+        let piece_rest: Vec<u8> = field(source, keys::PIECE_REST)?;
+        let zobrist_rest: Vec<u64> = field(source, keys::ZOBRIST_REST)?;
+        if piece_rest.is_empty() {
+            if !zobrist_rest.is_empty() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "rest keys without a rest",
+                ));
+            }
+            return Ok(None);
+        }
+        let max = piece_rest.iter().copied().max().unwrap_or(0) as usize;
+        if piece_rest.len() != tables.n_types
+            || max == 0
+            || max > REST_MAX
+            || zobrist_rest.len() != max * 2 * tables.n_squares
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "the rest tables do not fit this ruleset's types and squares",
+            ));
+        }
+        Ok(Some(Box::new(RestTables { turns: piece_rest, zobrist: zobrist_rest, slots: max })))
+    }
+
+    /// Lines of sight (schema 30, Q999a; generation 31's command): all four tables empty
+    /// unless a type sees. Read after the portals, beside which a sight is refused.
+    fn sight_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<SightTables>>> {
         let sight_index: Vec<u32> = field(source, keys::SIGHT_INDEX)?;
         let sight_srcs: Vec<u32> = field(source, keys::SIGHT_SRCS)?;
         let sight_paths: Vec<u16> = field(source, keys::SIGHT_PATHS)?;
         let sight_flags: Vec<u8> = field(source, keys::SIGHT_FLAGS)?;
         let sight_command: bool = field(source, keys::SIGHT_COMMAND)?;
-        if !sight_flags.is_empty() {
-            let sources: Vec<SightSource> = sight_srcs
-                .chunks_exact(5)
-                .map(|chunk| SightSource {
-                    origin: chunk[0] as u16,
-                    piece_value: chunk[1] as u8,
-                    effect: chunk[2] as u8,
-                    path_start: chunk[3],
-                    path_len: chunk[4],
-                })
-                .collect();
-            let fits = sight_flags.len() == 3
-                && sight_srcs.len().is_multiple_of(5)
-                && sight_index.len() == 2 * tables.n_types * tables.n_squares + 1
-                && sight_index.last().copied() == Some(sources.len() as u32)
-                && sources.iter().all(|s| {
-                    (s.origin as usize) < tables.n_squares
-                        && (s.path_start + s.path_len) as usize <= sight_paths.len()
-                        && (matches!(s.effect, SIGHT_FREEZE | SIGHT_DISARM | SIGHT_SHIELD)
-                            || (sight_command
-                                && (s.effect == SIGHT_COMMAND
-                                    || s.effect == SIGHT_COMMAND | SIGHT_COMMAND_OWN)))
-                })
-                && sight_paths.iter().all(|square| (*square as usize) < tables.n_squares)
-                && tables.portals.is_none();
-            if !fits {
+        if sight_flags.is_empty() {
+            if !sight_index.is_empty() || !sight_srcs.is_empty() || !sight_paths.is_empty() || sight_command {
                 return Err(pyo3::exceptions::PyValueError::new_err(
-                    "the sight tables do not fit this ruleset's squares (or sit beside portals)",
+                    "sight sources without the sight's flags",
                 ));
             }
-            tables.sight = Some(Box::new(SightTables {
-                index: sight_index,
-                sources,
-                paths: sight_paths,
-                has_shield: sight_flags[0] != 0,
-                bears_on_check: sight_flags[1] != 0,
-                has_restraint: sight_flags[2] != 0,
-                has_command: sight_command,
-                block: tables.n_types * tables.n_squares,
-                n_squares: tables.n_squares,
-            }));
-            tables.npc_shield = tables.has_npcs && sight_flags[0] != 0;
-        } else if !sight_index.is_empty()
-            || !sight_srcs.is_empty()
-            || !sight_paths.is_empty()
-            || sight_command
-        {
+            return Ok(None);
+        }
+        let sources: Vec<SightSource> = sight_srcs
+            .chunks_exact(5)
+            .map(|chunk| SightSource {
+                origin: chunk[0] as u16,
+                piece_value: chunk[1] as u8,
+                effect: chunk[2] as u8,
+                path_start: chunk[3],
+                path_len: chunk[4],
+            })
+            .collect();
+        let fits = sight_flags.len() == 3
+            && sight_srcs.len().is_multiple_of(5)
+            && sight_index.len() == 2 * tables.n_types * tables.n_squares + 1
+            && sight_index.last().copied() == Some(sources.len() as u32)
+            && sources.iter().all(|s| {
+                (s.origin as usize) < tables.n_squares
+                    && (s.path_start + s.path_len) as usize <= sight_paths.len()
+                    && (matches!(s.effect, SIGHT_FREEZE | SIGHT_DISARM | SIGHT_SHIELD)
+                        || (sight_command
+                            && (s.effect == SIGHT_COMMAND
+                                || s.effect == SIGHT_COMMAND | SIGHT_COMMAND_OWN)))
+            })
+            && sight_paths.iter().all(|square| (*square as usize) < tables.n_squares)
+            && tables.portals.is_none();
+        if !fits {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "sight sources without the sight's flags",
+                "the sight tables do not fit this ruleset's squares (or sit beside portals)",
             ));
         }
+        Ok(Some(Box::new(SightTables {
+            index: sight_index,
+            sources,
+            paths: sight_paths,
+            has_shield: sight_flags[0] != 0,
+            bears_on_check: sight_flags[1] != 0,
+            has_restraint: sight_flags[2] != 0,
+            has_command: sight_command,
+            block: tables.n_types * tables.n_squares,
+            n_squares: tables.n_squares,
+        })))
+    }
 
-        // Schema 27 (Q935a): the spy, empty unless a piece is one.
+    /// The spy (schema 27, Q935a): two lists of types, empty unless a piece is one, and
+    /// only beside rounds.
+    fn spy_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<SpyTables>>> {
         let spy_types: Vec<Vec<usize>> = field(source, keys::SPY_TYPES)?;
         let spy_deal: bool = field(source, keys::SPY_DEAL)?;
-        if !spy_types.is_empty() {
-            let fits = spy_types.len() == 2
-                && tables.simultaneous.is_some()
-                && spy_types.iter().all(|types| types.iter().all(|&t| t < tables.n_types));
-            if !fits {
+        if spy_types.is_empty() {
+            if spy_deal {
                 return Err(pyo3::exceptions::PyValueError::new_err(
-                    "the spy tables are two lists of this ruleset's types, beside rules.simultaneous",
+                    "spy_deal without a spy",
                 ));
             }
-            let mask = |types: &[usize]| types.iter().fold(0u32, |mask, &t| mask | (1 << t));
-            tables.spy = Some(Box::new(SpyTables {
-                mask: [mask(&spy_types[0]), mask(&spy_types[1])],
-                deal: spy_deal,
-            }));
-        } else if spy_deal {
+            return Ok(None);
+        }
+        let fits = spy_types.len() == 2
+            && tables.simultaneous.is_some()
+            && spy_types.iter().all(|types| types.iter().all(|&t| t < tables.n_types));
+        if !fits {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "spy_deal without a spy",
+                "the spy tables are two lists of this ruleset's types, beside rules.simultaneous",
             ));
         }
-
-        // TC4: a round pays its bounties into the tally alone (`rounds.rs`), so a purse is
-        // never beside one; the purse's compiler refuses them together too.
-        if tables.purse.is_some() && tables.simultaneous.is_some() {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "a purse beside rounds; the compiler refuses them together",
-            ));
-        }
-        tables.hop_lines = tables.build_hop_lines();
-        Ok(tables)
+        let mask = |types: &[usize]| types.iter().fold(0u32, |mask, &t| mask | (1 << t));
+        Ok(Some(Box::new(SpyTables {
+            mask: [mask(&spy_types[0]), mask(&spy_types[1])],
+            deal: spy_deal,
+        })))
     }
 }
 
@@ -3377,7 +3910,7 @@ impl Tables {
         // The ends are the types with a group; every `dest` names another of them.
         let ends: Vec<usize> = (0..n_types).filter(|t| group_raw[*t] >= 0).collect();
         let first_type = ends.first().copied().unwrap_or(0);
-        if ends.len() < 2 || ends.len() > 8
+        if ends.len() < 2 || ends.len() > MAX_PORTAL_ENDS
             || ends.iter().enumerate().any(|(k, t)| *t != first_type + k)
         {
             return fail("portal ends are not two to eight contiguous types".to_string());
@@ -3394,7 +3927,7 @@ impl Tables {
             .into_iter()
             .map(|square| square as i16)
             .collect();
-        if exits.len() != 2 * tables.n_squares * 8 {
+        if exits.len() != 2 * tables.n_squares * EXIT_DIRECTIONS {
             return fail(format!("portal_exits holds {} entries", exits.len()));
         }
         let leap_dirs: Vec<u16> = field(source, keys::LEAP_DIRS)?;
@@ -3458,6 +3991,90 @@ fn unknown(what: &str, value: &str) -> PyErr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// CS2: the field map's fields tile the word without overlap, but for the tag's four
+    /// names, which share bits 25-29 by design. Q1059a's `gate_rook` took bit 31, the last
+    /// free one, so the fields now fill the word.
+    #[test]
+    fn the_move_word_fields_tile_the_word() {
+        let mut seen = 0u32;
+        for &(name, shift, width) in MOVE_FIELDS.iter() {
+            let mask = (((1u64 << width) - 1) as u32) << shift;
+            if name == "portal" || name == "fold" || name == "gate" {
+                assert_eq!(mask, MOVE_TAG_MASK, "{name}");
+                continue;
+            }
+            assert_eq!(seen & mask, 0, "{name} overlaps an earlier field");
+            seen |= mask;
+        }
+        assert_eq!(seen, !0, "every bit has a field");
+    }
+
+    /// Q1059a: a gate reads back as written, on either square, and comes off whole.
+    #[test]
+    fn a_gate_reads_back_and_comes_off() {
+        let base = encode_move(4, 6, MOVE_CASTLE, 7);
+        for (piece_type, at_rook) in [(0, false), (23, true)] {
+            let gated = with_gate(base, piece_type, at_rook);
+            assert_eq!(move_gate(gated), piece_type + 1);
+            assert_eq!(move_gate_rook(gated), at_rook);
+            assert!(!move_foreign(gated) && move_extended(gated));
+            assert_eq!(without_gate(gated), base);
+            assert_eq!(gated & MOVE_BASE_MASK, base);
+        }
+        assert_eq!(move_gate(base), 0);
+    }
+
+    /// CS2: each encoder writes its field and each accessor reads its own field only, so a
+    /// foreign bit is never read as part of a landing, a portal end or a fold end.
+    #[test]
+    fn each_accessor_reads_its_own_field() {
+        let base = encode_move(12, 200, MOVE_PROMOTION, 31);
+        assert_eq!(move_landing(with_landing(base, 31)), 31);
+        assert_eq!(move_tag(with_portal(base, 23)), 23);
+        assert_eq!(move_fold(with_fold(base, 8)), 8);
+        let foreign = with_foreign(base);
+        assert!(move_foreign(foreign) && move_extended(foreign));
+        assert_eq!((move_landing(foreign), move_fold(foreign)), (0, 0));
+        assert_eq!(foreign & MOVE_BASE_MASK, base);
+        for m in [with_landing(base, 1), with_fold(base, 1), with_portal(base, 1)] {
+            assert!(!move_foreign(m) && move_extended(m));
+            assert_eq!(m & MOVE_BASE_MASK, base);
+        }
+        assert!(!move_extended(base));
+        assert_eq!(
+            (move_from(base), move_to(base), move_kind(base), move_promotion(base)),
+            (12, 200, MOVE_PROMOTION, 31)
+        );
+    }
+
+    /// CS2's acceptance: a commanded move through a fold (SR5c's V1, refused today) sets the
+    /// foreign bit and a fold end on one word, and the encoder says so. Built by hand, since
+    /// no game generates it.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "bits 25-31 are taken")]
+    fn a_commanded_fold_transit_trips_the_field_map() {
+        let commanded = with_foreign(encode_move(3, 40, MOVE_NORMAL, 0));
+        let _ = with_fold(commanded, 2);
+    }
+
+    /// The same word the other way round: a fold go-through, then commanded.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "bits 25-31 are taken")]
+    fn a_fold_transit_commanded_trips_the_field_map() {
+        let through = with_fold(encode_move(3, 40, MOVE_NORMAL, 0), 2);
+        let _ = with_foreign(through);
+    }
+
+    /// A tag past its five bits would spill into the foreign bit.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "past the move word's tag field")]
+    fn a_landing_past_the_tag_field_trips_the_field_map() {
+        let _ = with_landing(encode_move(3, 40, MOVE_NORMAL, 0), 32);
+    }
 
     /// The contract move generation stands on: a set yields its squares lowest first,
     /// across word boundaries, which is the order a scan over every square found them.
@@ -3523,7 +4140,7 @@ mod tests {
 /// (`PortalTables::dest`), so the core needs no geometry of its own for a fold.
 pub struct FoldTables {
     /// Where each portal end starts if it is a fold, by end; -1 for a momentum end.
-    pub starts: [i16; 8],
+    pub starts: [i16; MAX_PORTAL_ENDS],
     /// `[end * n_squares + square]`: a fold standing on `square`, in the key.
     pub zobrist: Vec<u64>,
 }
@@ -3561,7 +4178,7 @@ impl PortalTables {
     /// The square one king's step from `square` in `direction`, for `player`, or -1.
     #[inline(always)]
     pub fn exit(&self, n_squares: usize, player: usize, square: usize, direction: usize) -> i16 {
-        self.exits[(player * n_squares + square) * 8 + direction]
+        self.exits[(player * n_squares + square) * EXIT_DIRECTIONS + direction]
     }
 }
 
@@ -3584,7 +4201,7 @@ impl Tables {
         if kind.len() != tables.n_types || starts_raw.len() != n_ends {
             return fail("portal_kind or fold_starts is not one row per type or end".to_string());
         }
-        let mut starts = [-1i16; 8];
+        let mut starts = [-1i16; MAX_PORTAL_ENDS];
         for (end, square) in starts_raw.iter().enumerate() {
             let fold = kind[first_type + end] != 0;
             if fold != (*square >= 0) || *square >= n_squares as i32 {
@@ -3662,6 +4279,7 @@ pub mod keys {
         DEMOTIONS => "demotions",
         DROPS_FACES => "drops_faces",
         DROPS_FROM_CAPTURES => "drops_from_captures",
+        DROPS_GATES => "drops_gates",
         DROPS_NO_DOUBLED => "drops_no_doubled",
         DROPS_NO_MATE => "drops_no_mate",
         DROPS_PLACEMENT => "drops_placement",

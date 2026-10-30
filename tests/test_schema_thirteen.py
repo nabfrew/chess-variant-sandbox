@@ -191,7 +191,7 @@ class TestTheCompiledTables:
         c1 = _square("c1")
         assert compiled.slides[0][bishop][c1] == ()
         rays = compiled.sweeps[0][bishop][c1]
-        assert sorted(tuple(_name(s) for s in ray) for ray, _, _ in rays) == [
+        assert sorted(tuple(_name(s) for s in ray) for ray, *_ in rays) == [
             ("b2", "a3"), ("d2", "e3", "f4", "g5", "h6"),
         ]
         assert rust_supports(compiled) is None
@@ -235,6 +235,44 @@ class TestTheCorePlaysIt:
         assert after.board[_square("c1")] == 0
         assert after.board[_square("f4")] == state.board[_square("c1")]
         assert after.key == engine._compute_hash(after)
+
+    @pytest.mark.parametrize(
+        "path", ["archive/chess-sweeping-bishops.json", "archive/short-sweeping-bishop-chess.json"]
+    )
+    def test_the_python_victims_are_what_the_core_removes(self, path: str) -> None:
+        """`CompiledSpec.sweep_victims` (CS11, PY6) against `Tables::sweep_victims`, read
+        off the core's own `apply`: on every legal move along random games of each sweep
+        ruleset, the squares the move emptied besides its origin are its victims, each with
+        the piece that stood there, and a move that is not a sweep has none."""
+        engine = Engine(json.loads((ROOT / path).read_text(encoding="utf-8")))
+        spec = engine.spec
+        rng = random.Random(13)
+        sweeps = 0
+        for _ in range(3):
+            state = engine.initial_state()
+            for _ in range(40):
+                moves = engine.legal_moves(state)
+                if not moves or engine.terminal(state) is not None:
+                    break
+                for move in moves:
+                    victims = spec.sweep_victims(state.board, move)
+                    if move_type(move) != MOVE_SWEEP:
+                        # Castling's rook and en passant's pawn leave squares too.
+                        assert victims == ()
+                        continue
+                    sweeps += 1
+                    after = engine.apply(state, move)
+                    emptied = {
+                        square: state.board[square]
+                        for square in range(len(state.board))
+                        if state.board[square] and not after.board[square]
+                        and square != move_from(move)
+                    }
+                    assert victims
+                    assert dict(victims) == emptied
+                    assert len(victims) == len(emptied)
+                state = engine.apply(state, rng.choice(moves))
+        assert sweeps > 0
 
     def test_an_empty_path_is_an_ordinary_move(self, sweeping: dict[str, Any]) -> None:
         engine = Engine(

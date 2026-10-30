@@ -217,6 +217,29 @@ RETIRED_PREVIEWS = {
     # registered before its first measured game retires a miss. Kept here because its V1
     # mechanism tests read it (`tests/test_showcase_menagerie.py`).
     "the-menagerie": "3ab2ce41d4c9",
+    # TC9 (2026-10-30, `docs/plan-turncoat.md` §8.2): the showcase of bounties, the purse and the
+    # market, chess whose captures pay coins that buy a pawn, knight or bishop onto the back
+    # rank, built, measured and retired before it ever joined: V2's snowball bar missed (the
+    # first capturer won 0.754 of decided graded games, the bar 0.70), and the call registered
+    # before its first measured game retires a miss. Kept here because its V1 mechanism tests
+    # read it (`tests/test_showcase_war_chest.py`).
+    "the-war-chest": "0495d0f9f2d2",
+    # TC10 (2026-10-30, `docs/plan-turncoat.md` §8.3): the showcase of hiring and bribing, chess
+    # with four mercenaries nobody owns hired for coins that captures pay and bribed away at
+    # twice the price, built, measured and retired before it ever joined: V2's bars missed (a
+    # hire in 0.323 of graded games, the bar 0.60; a bribe in 0.098, the bar 0.20; the
+    # mercenaries were mostly taken for their bounty), and the call registered before its first
+    # measured game retires a miss. Kept here because its V1 mechanism tests read it
+    # (`tests/test_showcase_condottieri.py`).
+    "the-condottieri": "80134a4bced2",
+    # TC9b (2026-10-30, `docs/plan-turncoat.md` §8.4): the war chest's successor, chess whose
+    # captures pay one coin each whatever they took, and coins buy a pawn, knight or rook at
+    # their value onto the back rank, built, measured and retired before it ever joined: V2's
+    # snowball bar at strength missed (the first capturer won 0.618 of decided top-three games,
+    # the bar chess's 0.492 + 0.10), and the call registered before its first measured game
+    # retires a miss. Kept here because its V1 mechanism tests read it
+    # (`tests/test_showcase_levy.py`).
+    "the-levy": "8693c6554669",
 }
 
 # Retired previews kept byte for byte though the validator now refuses them, so a test can hold

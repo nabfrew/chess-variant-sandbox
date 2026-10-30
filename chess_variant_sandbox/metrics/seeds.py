@@ -51,7 +51,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from chess_variant_sandbox.metrics.index import IndexResult
+from chess_variant_sandbox.metrics.index import (
+    NOT_MEASURED_MANY,
+    NOT_MEASURED_ONE,
+    IndexResult,
+    verdict_word,
+)
 from chess_variant_sandbox.metrics.seat import is_seat_violation, pooled_seat_reading, seat_details
 
 # What to do when a game's runs disagree. All three are implemented, so the answer to
@@ -68,7 +73,14 @@ VOTE_TIE_ADMITS = "vote-tie-admits"
 # and at one run this rule is `VOTE_TIE_REFUSES` exactly.
 VOTE_POOLED_SEAT = "vote-tie-refuses+pooled-seat"
 
-VOTE_RULES = (VOTE_TIE_REFUSES, VOTE_TIE_ADMITS, VOTE_POOLED_SEAT)
+# As `VOTE_POOLED_SEAT`, but a run the roster could not read and that failed no gate it
+# could read abstains rather than refusing (plan-teacher §10.16.4, rule (e), registered
+# 2026-10-29). A game is viable or not viable only when every way its abstaining runs
+# could have voted gives the same verdict, and *not measured* otherwise. With no
+# abstention it is `VOTE_POOLED_SEAT` exactly.
+VOTE_BLIND_ABSTAINS = "vote-tie-refuses+pooled-seat+blind-abstains"
+
+VOTE_RULES = (VOTE_TIE_REFUSES, VOTE_TIE_ADMITS, VOTE_POOLED_SEAT, VOTE_BLIND_ABSTAINS)
 
 # How many of a game's runs must carry a total before their mean is published. A number
 # needs what a verdict needs. Under `vote-tie-admits` a game can be viable on two runs of
@@ -121,6 +133,10 @@ class RunReading:
     # How this run's records came to be here: played, or adopted from a campaign and
     # re-derived. Recorded per run because it is the only claim that is not the game's.
     origin: str = "played"
+    # False for a blind run that failed no gate it could read: it abstains under
+    # `VOTE_BLIND_ABSTAINS` (`IndexResult.measured`). A stored run without the key reads
+    # as measured, which is how its vote was counted when it was stored.
+    measured: bool = True
 
     @classmethod
     def from_result(
@@ -149,6 +165,7 @@ class RunReading:
             games=games,
             origin=origin,
             seat=seat_details(result.diagnostics),
+            measured=bool(result.measured),
         )
 
     @classmethod
@@ -186,6 +203,7 @@ class RunReading:
             "viable": self.viable,
             "violations": list(self.violations),
             "unreadable": list(self.unreadable),
+            "measured": self.measured,
             "origin": self.origin,
         }
 
@@ -200,12 +218,23 @@ class Verdict:
     refuse: int
     # The split in one sentence, or `""` when the runs agreed or there is only one.
     split: str = ""
+    # Runs that neither accepted nor refused (`VOTE_BLIND_ABSTAINS`), and whether the
+    # vote reached a verdict at all. `measured` False is *not measured*: `viable` is
+    # False beside it because the game was not admitted, not because it was ruled out.
+    abstain: int = 0
+    measured: bool = True
+
+    @property
+    def word(self) -> str:
+        return verdict_word(self.viable, self.measured)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "rule": self.rule,
             "accept": self.accept,
             "refuse": self.refuse,
+            "abstain": self.abstain,
+            "measured": self.measured,
             "split": self.split,
         }
 
@@ -218,15 +247,28 @@ def pools_the_seat(rule: str, runs: int) -> bool:
     refuse even a clean sweep, so that measurement keeps the built per-run form and
     reads exactly as it did before (`docs/reference/seat-effect-size.md` §3).
     """
-    return rule == VOTE_POOLED_SEAT and runs > 1
+    return rule in (VOTE_POOLED_SEAT, VOTE_BLIND_ABSTAINS) and runs > 1
+
+
+def abstains(run: RunReading, rule: str) -> bool:
+    """Whether this run neither accepts nor refuses under this rule.
+
+    Only under `VOTE_BLIND_ABSTAINS`, and only a blind run that failed no gate it could
+    read (`IndexResult.measured`). Under every older rule it refuses, as it always did.
+    """
+    return rule == VOTE_BLIND_ABSTAINS and not run.measured
 
 
 def verdict(runs: Sequence[RunReading], rule: str = VOTE_TIE_REFUSES) -> Verdict:
     """Whether the game stays in, over the runs' own verdicts.
 
-    One function, because a verdict combined in two places is two rules. A run the roster
-    could not read votes to refuse, and so does a run with no total: a gate it could not
-    reach is not a gate it passed.
+    One function, because a verdict combined in two places is two rules. A run with no
+    total votes to refuse: a gate it could not reach is not a gate it passed. A run the
+    roster could not read refuses too under the older rules. Under `VOTE_BLIND_ABSTAINS`
+    it refuses only on a gate it could read, and otherwise abstains (plan-teacher
+    §10.16.4 point 2): with A accepts, R refusals and B abstentions, the game is viable iff
+    A > R + B, not viable iff A + B <= R (the tie refuses either way), and *not measured*
+    in between. At B = 0 that is the older vote exactly.
 
     Under `VOTE_POOLED_SEAT` a run's own seat refusal is not counted here, because the
     seat is decided once over the runs pooled and counting it twice would let four runs
@@ -238,15 +280,26 @@ def verdict(runs: Sequence[RunReading], rule: str = VOTE_TIE_REFUSES) -> Verdict
     if rule not in VOTE_RULES:
         raise ValueError(f"unknown verdict rule {rule!r}; it is one of {', '.join(VOTE_RULES)}")
     pooled = pools_the_seat(rule, len(runs))
-    accept = sum(1 for run in runs if (_viable_but_for_seat(run) if pooled else run.viable))
-    refuse = len(runs) - accept
-    viable = accept >= refuse if rule == VOTE_TIE_ADMITS else accept > refuse
+    abstain = sum(1 for run in runs if abstains(run, rule))
+    accept = sum(
+        1 for run in runs
+        if not abstains(run, rule) and (_viable_but_for_seat(run) if pooled else run.viable)
+    )
+    refuse = len(runs) - accept - abstain
+    if rule == VOTE_TIE_ADMITS:
+        viable = accept >= refuse
+        measured = True
+    else:
+        viable = accept > refuse + abstain
+        measured = viable or accept + abstain <= refuse
     return Verdict(
         rule=rule,
         viable=viable,
         accept=accept,
         refuse=refuse,
-        split=_split(accept, refuse, viable),
+        split=_split(accept, refuse, viable, abstain, measured),
+        abstain=abstain,
+        measured=measured,
     )
 
 
@@ -270,16 +323,32 @@ def _word(count: int) -> str:
     return _WORDS[count] if count < len(_WORDS) else str(count)
 
 
-def _split(accept: int, refuse: int, viable: bool) -> str:
+def _split(
+    accept: int, refuse: int, viable: bool, abstain: int = 0, measured: bool = True
+) -> str:
     """The disagreement in one sentence, or nothing to say.
 
     Nothing to say covers the two cases a reader does not need told: every run agreed, or
-    there was only one.
+    there was only one. A run that abstained is a disagreement worth a sentence.
     """
-    total = accept + refuse
-    if total < 2 or not accept or not refuse:
+    total = accept + refuse + abstain
+    if total < 2 or (not abstain and (not accept or not refuse)):
         return ""
-    ending = "it stays in" if viable else "it is ruled out"
+    if not measured:
+        ending = "it is not measured"
+    else:
+        ending = "it stays in" if viable else "it is ruled out"
+    if abstain:
+        parts = []
+        if accept:
+            parts.append(f"{_word(accept)} {'accepts' if accept == 1 else 'accept'} it")
+        if refuse:
+            parts.append(f"{_word(refuse)} {'refuses' if refuse == 1 else 'refuse'} it")
+        parts.append(f"{_word(abstain)} could not be read")
+        said = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+        if abstain == total:
+            said = "none could be read"
+        return f"Of its {_word(total)} runs, {said}, so {ending}."
     head = (
         f"{_word(accept).capitalize()} of its {_word(total)} runs "
         f"{'accepts' if accept == 1 else 'accept'} it and {_word(refuse)} "
@@ -318,6 +387,13 @@ class Combined:
     # The mean's own `index-<weights>.json`, in `IndexResult`'s keys so that every reader
     # joining on the measurement's directory opens it unchanged.
     detail: dict[str, Any]
+    # False for the third outcome, *not measured* (`Verdict.measured`); `viable` is False
+    # beside it. A pooled seat refusal is always measured: it reads games actually played.
+    measured: bool = True
+
+    @property
+    def word(self) -> str:
+        return verdict_word(self.viable, self.measured)
 
 
 def combine(
@@ -357,6 +433,9 @@ def combine(
 
     families = _means(run.families for run in reported)
     viable = decided.viable and not seat.get("refuses")
+    # A pooled seat refusal makes the game not viable whatever the abstentions were
+    # (§10.16.4 point 3), so it is a verdict, not *not measured*.
+    measured = decided.measured or bool(seat.get("refuses"))
     violations = _violations(ordered, decided, seat, pooled)
 
     detail = {
@@ -368,6 +447,7 @@ def combine(
         # third digit and only one of them is what the runs measured.
         "total": index,
         "viable": viable,
+        "measured": measured,
         "violations": list(violations),
         "scores": _means(run.scores for run in reported),
         "contributions": _means(run.contributions for run in reported),
@@ -399,6 +479,7 @@ def combine(
         games=sum(run.games for run in ordered),
         runs=[run.as_dict() for run in ordered],
         detail=detail,
+        measured=measured,
     )
 
 
@@ -418,12 +499,23 @@ def _violations(
     Under the pooled seat rule the seat speaks once, in the pooled reading's own words,
     and the per-run seat sentences are dropped: each of those describes 16 games and the
     refusal rests on all 64.
+
+    A game *not measured* is not ruled out, but its reader still asks why there is no
+    verdict: the sentences say so first (`NOT_MEASURED_MANY`, or `NOT_MEASURED_ONE` at
+    one run), then each run that did not accept, by seed, in its own words.
     """
     pooled_seat = tuple(str(line) for line in (seat.get("violations") or ())) if pooled else ()
     if decided.viable and not pooled_seat:
         return ()
 
     lines = [decided.split] if decided.split and not decided.viable else []
+    if not decided.measured and not seat.get("refuses"):
+        why = NOT_MEASURED_MANY if len(runs) > 1 else NOT_MEASURED_ONE
+        lines.insert(0, f"Not measured: {why}.")
+    elif not decided.measured and lines:
+        # The vote reached no verdict, and the pooled seat refused on top (§10.16.4
+        # point 3): the game is ruled out, so its split must not say *not measured*.
+        lines[0] = lines[0].replace("so it is not measured", "so the vote is undecided")
     for run in runs:
         vote = _viable_but_for_seat(run) if pooled else run.viable
         if vote or decided.viable:

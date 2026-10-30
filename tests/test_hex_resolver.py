@@ -283,6 +283,8 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "extinction_per_type", "promotes_only_lost",  # Q783
     "drops_placement",  # Q784
     "drops_either_face",  # Q785
+    "drops_gating",  # Q1059a
+    "short_sweep_share",  # Q1063
     "simultaneous", "simultaneous_initiative", "simultaneous_impossible", "beats_share",  # Q918a
     "wins_by_leaving",  # Q786
     "portal_pairs", "portals_move", "portals_one_way",  # Q771
@@ -348,6 +350,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/rps-v5": "b91364abfa8fc2c9",
     "archive/sardines": "de0716da8f51261b",
     "rulesets/shatranj": "291e3c37e50edd01",
+    "rulesets/seirawan": "596a2998eca0299f",  # Q1059b, generation 52
     "rulesets/shogi": "9399bd9c1e2cc449",
     "rulesets/threecheck": "d193b87292055a74",
     "archive/torus-less-extended": "1dcc63ed58bc931e",  # Q869: the rear pawn respelled as a fixed facing (was 0870ea5726ae3adf)
@@ -436,6 +439,8 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/the-shepherds-duck": "78dea89553770ad7",  # N6, generations 36 to 38 and 42
     "archive/the-hydra": "ebc692c2d1509cbb",  # N7, generations 39 to 41
     "archive/the-herd": "bc1e91a0f50ed3cb",  # N9, generations 37 and 42
+    "archive/the-crowd": "2f2261b72fe19494",  # TC8, generation 43
+    "archive/the-free-companies": "76f4d21dc566ca00",  # TC10b, generations 44 to 46
     "archive/short-sweeping-bishop-chess": "980b6362973afb82",  # LPD, schema 31
     "archive/chess-with-galloping-knights": "582fe0dfb371a0e8",  # Q1023, schema 31
     "archive/chess-with-preaching-bishops": "518e2cd85fcfa1ea",  # Q1024, schema 31

@@ -162,10 +162,10 @@ impl PyRandom {
 
     /// `random.random()`: 53 bits of precision, as CPython builds it.
     ///
-    /// No agent draws a float -- every choice goes through `randbelow` -- but the unit
-    /// test below pins it, because it is the shortest check that the twist and the
-    /// tempering are right independently of the rejection sampling on top.
-    #[allow(dead_code)]
+    /// The round players draw their mixed strategy's move with it (`matrix.rs::draw`);
+    /// every other choice goes through `randbelow`. The unit test below pins it, because it
+    /// is the shortest check that the twist and the tempering are right independently of
+    /// the rejection sampling on top.
     pub fn random(&mut self) -> f64 {
         let a = self.genrand_u32() >> 5;
         let b = self.genrand_u32() >> 6;

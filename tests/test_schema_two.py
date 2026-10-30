@@ -615,6 +615,12 @@ _EVERY_RULESET += sorted(Path(__file__).parent.glob("_purse_*.json"))
 # SR1b: no committed or archived game states a blast's shape until SR1s2's showcase lands, so
 # the two blast test specs (atomic with a cross; atomic along the file) join it.
 _EVERY_RULESET += sorted(Path(__file__).parent.glob("_blast_*.json"))
+# Q1059a: no committed or archived game gates until Q1059b's Seirawan lands, so the gating
+# test spec (Seirawan's rules) joins it.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_gating_*.json"))
+# Q1063: no committed or archived game has a sweep with two lengths until Q1064's twin lands,
+# so its test spec (a bishop that sweeps three and slides on) joins it.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_sweep_*.json"))
 
 
 def test_the_walk_below_reads_the_whole_corpus() -> None:

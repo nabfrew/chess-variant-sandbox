@@ -15,6 +15,7 @@ argument on the old ones" checkable rather than a claim in a docstring.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import json
 from pathlib import Path
 
@@ -456,7 +457,16 @@ LIBRARY = test_index_quality.RUNS
 # gained only `ladder_split.rung_depth` and `weaker_seat_depth`. The replaced measurements, with
 # the stamp this window held, are kept under each game's `runs/<hash>/previous/`
 # (`docs/reference/rescore-2026-10-29.md`).
-STALE_WINDOW: dict[str, str] = {}
+#
+# **Opened again 2026-10-29 by CS11** (`docs/plan-smells-rust.md` CS11, PY6): `engine.py`'s
+# `describe_move` names a sweep's victims through `CompiledSpec.sweep_victims`, the same squares
+# in the same order, which moves `metrics` and `analysis` with no number on a library game. The
+# window is the stamp Q1053 left the library; **the next library re-analysis empties it**.
+STALE_WINDOW: dict[str, str] = {
+    "weights_version": "v12",
+    "metrics": "92acf3baf7eb5664",
+    "analysis": "112588bc71efb82d",
+}
 
 
 @pytest.fixture(scope="module")
@@ -534,6 +544,31 @@ class TestTheCut:
         units = slices.playing_units(slices.TOURNAMENT, config, 3)
         sizes = sorted(len(unit.games) for unit in units)
         assert sizes[-1] - sizes[0] <= 1
+
+
+def test_a_sliced_measurement_plays_the_games_own_roster_by_default(
+    dull_spec, tmp_path, monkeypatch
+) -> None:
+    """Q1062: with no config, `measure_in_slices` plays `roster_for(spec)`, net ladder and all.
+
+    The default was the net-free `canonical_config()`, so a game with a rated net was
+    measured here on players `corpus.measure` and the page's gather do not seat. A rated net
+    is faked for the game, and the first phase is stopped before it plays anything.
+    """
+    from chess_variant_sandbox import corpus
+
+    monkeypatch.setattr(corpus, "rated_net", lambda _digest, _nets: "0123456789ab")
+    seen = []
+
+    def stop(units, spec, parse, config, records=None):
+        seen.append(config)
+        raise RuntimeError("stopped before playing")
+
+    monkeypatch.setattr(slices, "_run_phase", stop)
+    with pytest.raises(RuntimeError, match="stopped"):
+        slices.measure_in_slices(dull_spec, tmp_path)
+    assert seen[0] == slices.roster_for(dull_spec)
+    assert "minimax:net=0123456789ab,nodes=100" in seen[0].agents
 
 
 class TestAUnitAsText:
@@ -871,9 +906,14 @@ def test_a_sliced_measurement_writes_what_corpus_measure_writes(
     work, done = measured
     spec, whole = done[name]
 
+    # The game's own roster (its net ladder where a net is rated), as `corpus.measure`
+    # plays it: until Q1062 this passed the net-free `canonical_config`, so once L2c rated
+    # dobutsu's net the two sides played different players and differed at the first
+    # net-ladder game (seed 8), with nothing sliced differently.
     sliced = work / f"sliced-{name}-{count}"
     slices.measure_in_slices(
-        spec, sliced, slices=count, config=slices.canonical_config(workers=1)
+        spec, sliced, slices=count,
+        config=dataclasses.replace(slices.roster_for(spec), workers=1),
     )
 
     assert _without_duration(

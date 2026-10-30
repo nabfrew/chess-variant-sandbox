@@ -737,7 +737,9 @@ def verdict(score: dict[str, Any] | None, name: str) -> dict[str, Any]:
     sd = worded.get("sd")
     certified = worded.get("certified")
     viable = bool(worded.get("viable"))
-    said = "stays in" if viable else "ruled out"
+    # The third verdict (plan-teacher §10.16) is no verdict either way: never *ruled out*.
+    unmeasured = worded.get("measured") is False
+    said = "not measured" if unmeasured else "stays in" if viable else "ruled out"
     revision = str(worded.get("revision") or "")
     found = (revision[1:] if revision.startswith("v") and revision[1:].isdigit() else revision)
     basis = [f"{len(seeds)} run{'s' if len(seeds) != 1 else ''}",
@@ -752,6 +754,7 @@ def verdict(score: dict[str, Any] | None, name: str) -> dict[str, Any]:
         "hash": worded.get("ruleset_hash") or worded.get("hash"),
         "status": worded.get("status"),
         "viable": viable,
+        "measured": not unmeasured,
         "verdict": said,
         "index": index,
         "sd": sd,
@@ -881,7 +884,7 @@ def render_story(story: Story, app: Roots,
         for said, name in ((before, failed_name), (after, fixed_name)):
             if said["status"] != "current":
                 raise StoryError(f"{name}'s estimate is {said['status']}, not current")
-        if before["viable"]:
+        if before["viable"] or not before["measured"]:
             raise StoryError(f"{failed_name} is no longer ruled out")
         if not after["viable"]:
             raise StoryError(f"{fixed_name} no longer stays in")

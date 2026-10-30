@@ -444,12 +444,13 @@ class TestTheCompiledTables:
         )
         widened = dataclasses.replace(compiled, strike=dataclasses.replace(strike, landing=landing))
         refusal = rust_supports(widened)
-        assert refusal is not None and "rules.strike.landing" in refusal and "129" in refusal
+        assert refusal is not None and "rules.strike.landing" in refusal
+        assert str(MAX_LANDING_CANDIDATES + 1) in refusal
 
 
 class TestTheMoveWord:
     def test_the_landing_bits_leave_every_other_field_alone(self) -> None:
-        for landing in (0, 1, 64, 127):
+        for landing in (0, 1, 16, MAX_LANDING_CANDIDATES - 1):
             move = encode_move(200, 255, MOVE_PROMOTION, 31, landing)
             assert decode_move(move) == (200, 255, MOVE_PROMOTION, 31)
             assert move_promotion(move) == 31 and move_landing(move) == landing

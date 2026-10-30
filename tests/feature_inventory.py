@@ -47,12 +47,13 @@ from chess_variant_sandbox.spec.schema import (
     purse_bribes,
     purse_rule,
     strike_is_live,
+    sweep_range_stated_off,
     turn_is_long,
     uses_sweep,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 51
+LAST_BUMP = 53
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -1175,6 +1176,42 @@ def _schema_fifty_one_uses(spec: dict[str, Any]) -> set[str]:
     return found
 
 
+def _schema_fifty_two_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 52 added, by name (Q1059a, Seirawan's gating;
+    numbered by order of landing, bumping no version). One key:
+
+    * ``rules.drops.gating`` -- a held piece enters only on the square a piece of its side
+      vacates by leaving its setup square for the first time, as part of that move
+      (``_check_gating_coherence``).
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    drops = rules.get("drops")
+    if isinstance(drops, dict) and "gating" in drops:
+        return {"rules.drops.gating"}
+    return set()
+
+
+def _schema_fifty_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 53 added, by name (Q1063, a sweep with two
+    lengths; numbered by order of landing, bumping no version). One nested key:
+
+    * ``pieces.moves.sweep.sweep_range`` -- a sweep that clears only its first steps and
+      slides on past them, stopped by the first piece (a ``sweep_range`` short of the
+      move's ``range``; written equal to it, it is the key's absence).
+    """
+    for piece in spec.get("pieces") or []:
+        if not isinstance(piece, dict):
+            continue
+        for move in piece.get("moves") or []:
+            if (
+                isinstance(move, dict) and move.get("kind") == "sweep"
+                and "sweep_range" in move and not sweep_range_stated_off(move)
+            ):
+                return {"pieces.moves.sweep.sweep_range"}
+    return set()
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -1219,4 +1256,6 @@ _COLLECTORS = {
     49: _schema_forty_nine_uses,
     50: _schema_fifty_uses,
     51: _schema_fifty_one_uses,
+    52: _schema_fifty_two_uses,
+    53: _schema_fifty_three_uses,
 }

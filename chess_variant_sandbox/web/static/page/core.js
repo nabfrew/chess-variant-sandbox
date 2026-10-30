@@ -1180,6 +1180,23 @@ function runsShort(seeds) {
   return n ? n + ' run' + (n === 1 ? '' : 's') : '';
 }
 
+// The third verdict, *not measured* (plan-teacher §10.16): the computer players could not
+// tell a stronger search from a weaker one, so the measurement reached no verdict either
+// way. It is current -- never *provisional*, never *out of date* -- and it is not a
+// failure, so no reader draws it as *ruled out*. `measured` is false only for this; a
+// score or a run without the key was measured. The words are the server's
+// (`metrics/index.py`'s `NOT_MEASURED_MANY`).
+function isNotMeasured(holder) {
+  return !!holder && holder.measured === false;
+}
+
+function notMeasuredSentence(runs) {
+  return 'Not measured: its computer players could not tell a stronger search from a'
+    + ` weaker one on ${runs > 1 ? 'most of its runs' : 'this run'}, so it has no verdict`
+    + ' either way. This is not a failure and not out of date: it is the current'
+    + ' measurement.';
+}
+
 // How the runs split, when they did not agree: the split itself and then each refusing
 // run's own words, named by seed. Both sentences are the server's (`metrics/seeds.py`)
 // and neither is assembled here from the two counts. Empty when the runs agreed or there
@@ -1197,6 +1214,8 @@ function splitSentences(verdict, runs) {
   const said = [siteSaid(verdict, 'split') || verdict.split];
   const all = runs || [];
   all.forEach((run, at) => {
+    // A run that abstained (`measured` false) is named too, as one that could not be
+    // read rather than one that ruled the game out: its own sentence says which.
     if (run.viable === false) {
       const named = ACCOUNTS ? `run ${at + 1} of ${all.length}` : 'run ' + run.seed;
       for (const why of siteSaid(run, 'violations') || run.violations || []) {

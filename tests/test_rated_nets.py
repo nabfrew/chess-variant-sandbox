@@ -71,6 +71,14 @@ ROLLED_OUT = {
     "ffc7b604bea0": "84055e9929a5",  # reckoning
 }
 
+# The round games that play a net (RS, plan-teacher §10.14, 2026-10-29): RN's kept generation 0
+# of `ROUND_DEFAULT`, its keeping duels re-played on build ac47a8f423553db1. Its candidate is
+# `matrix:`, so it is kept apart from the alternating games above.
+ROUND_ROLLED_OUT = {
+    "417c19c2f6bd": "0f87b7f93850",  # the watering hole
+}
+ROUND_BUDGETS = (1600, 3200, 6400, 12800, 25600, 102400)
+
 
 def _store(
     root: Path,
@@ -171,7 +179,8 @@ class TestTheCommittedStores:
                 except Exception:  # noqa: BLE001 - not a spec (an archive's index)
                     continue
                 seen.add(digest)
-                assert rated_net(digest, ROOT / STORE_DIR) == ROLLED_OUT.get(digest, ""), path
+                expected = {**ROLLED_OUT, **ROUND_ROLLED_OUT}.get(digest, "")
+                assert rated_net(digest, ROOT / STORE_DIR) == expected, path
         assert set(ROLLED_OUT) <= seen
 
     def test_the_rated_net_is_the_sites_learned_player(self) -> None:
@@ -180,6 +189,58 @@ class TestTheCommittedStores:
         for digest, procedure in ROLLED_OUT.items():
             (offered,) = opponents.learned_for(digest, ROOT / STORE_DIR)
             assert offered.agent == f"minimax:net={procedure},nodes=6400", digest
+
+
+class TestTheRoundNet:
+    """RS (plan-teacher §10.14): a kept round net is seated as an alternating one is."""
+
+    @staticmethod
+    def _watering() -> dict[str, Any]:
+        return load_spec(ROOT / "archive" / "watering-hole.json")
+
+    def test_the_store_is_the_kept_round_net(self) -> None:
+        spec = self._watering()
+        digest = spec_hash(spec)
+        assert {digest: "0f87b7f93850"} == ROUND_ROLLED_OUT
+        data = json.loads((ROOT / STORE_DIR / f"{digest}-0f87b7f93850.json").read_text("utf-8"))
+        assert data["kept"] is True and data["verdict"] == ACCEPTED
+        assert data["acceptance"]["candidate"] == "matrix:net=0f87b7f93850,nodes=1600"
+        assert data["confirmation"]["seed"] == 2_000_000 and data["confirmation"]["accepted"]
+        assert rated_net(digest, ROOT / STORE_DIR) == "0f87b7f93850"
+
+    def test_every_matrix_rung_plays_it(self) -> None:
+        spec = self._watering()
+        digest = spec_hash(spec)
+        roster = corpus.canonical_agents(digest, spec=spec)
+        assert roster == ("random", "greedy") + tuple(
+            f"matrix:net=0f87b7f93850,nodes={budget}" for budget in ROUND_BUDGETS
+        )
+        # The shape a round score is compared in does not move.
+        assert [a.rpartition("nodes=")[2] for a in roster[2:]] == [
+            a.rpartition("nodes=")[2] for a in corpus.ROUND_AGENTS[2:]
+        ]
+        basis = corpus.current_basis(digest, spec=spec, seeds=corpus.ONE_SEED)
+        assert basis.agents == roster and basis.net.startswith("0f87b7f93850=net:")
+
+    def test_a_round_game_without_one_keeps_the_round_roster(self, tmp_path: Path) -> None:
+        spec = self._watering()
+        assert corpus.canonical_agents(spec_hash(spec), tmp_path, spec) == corpus.ROUND_AGENTS
+
+    def test_the_site_offers_it_rated_beside_the_round_rungs(self) -> None:
+        spec = self._watering()
+        digest = spec_hash(spec)
+        roster = opponents.for_game(digest, spec=spec, nets=ROOT / STORE_DIR)
+        learned = [entry for entry in roster if entry.store == "learned"]
+        (entry,) = learned
+        assert entry.agent == "matrix:net=0f87b7f93850,nodes=1600"
+        assert entry.agent == corpus.canonical_agents(digest, spec=spec)[2]
+        assert not entry.practice_only and entry.name == opponents.RATED_LEARNED_NAME
+        assert entry.about == "weighs 1,600 rounds before each move"
+        assert "1,600 rounds" in entry.plan and "positions" not in entry.plan
+        assert entry.agent in opponents.agents_of(roster)
+        assert not opponents.never_rated(entry.agent, digest, ROOT / STORE_DIR)
+        # Every other entry is the round ladder, unchanged.
+        assert [e for e in roster if e.store != "learned"] == opponents.ladder(rounds=True)
 
 
 # ------------------------------------------------------------------ the roster and its basis

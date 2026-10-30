@@ -25,6 +25,7 @@
 //! turn at an end is part of the walk and logs as a step.
 
 use super::*;
+use super::phase::PhaseSink;
 
 /// What one turning-back piece does in a phase: where it ends (`to`, its own square when it
 /// waits), which way it then faces, and whether it turned round because its way was blocked.
@@ -85,7 +86,7 @@ impl<'t> Game<'t> {
 
     /// Set or clear `square`'s heading bit, the working key following.
     #[inline]
-    fn set_heading(&mut self, square: usize, back: bool) {
+    pub(super) fn set_heading(&mut self, square: usize, back: bool) {
         if self.heading_back.get(square) == back {
             return;
         }
@@ -112,131 +113,62 @@ impl<'t> Game<'t> {
         }
     }
 
-    /// The phase, played for real, in a game with a line (generation 38): the steps (each
-    /// line piece by `turn_step`, every other by `npc_step_of`), then the returns. Every
-    /// square through `write`, every heading change into the working key. Its own function,
-    /// so the phase of every game without the rule is the one it was. Returns whether
-    /// anything was eaten.
-    #[cold]
-    #[inline(never)]
-    pub(super) fn npc_phase_lines(&mut self) -> bool {
+    /// Step 2 of the phase in a game with a line (generation 38), walked once (CS10b) into
+    /// `sink`: in `npc_step_order`, each line piece by `turn_step` (its heading read and moved
+    /// on by the sink), every other by `npc_step_of`, shielded, on the board as the earlier
+    /// steps of the same phase leave it. A step that turned round at a block is a
+    /// `PHASE_TURN`, and so is a turned wait (`PhaseSink::wait_turned`).
+    #[inline(always)]
+    pub(super) fn line_steps<S: PhaseSink>(&mut self, sink: &mut S, shields: &SquareSet) {
         let t = self.t;
-        let lines = t.npc_lines.as_deref().expect("npc_phase_lines without a line");
-        let shields = self.wild_shields();
-        self.heading_tidy();
-        let mut ate = false;
-        let order: Vec<usize> = self.npc_step_order().collect();
-        for square in order {
-            let value = self.board[square];
+        let lines = t.npc_lines.as_deref().expect("line_steps without a line");
+        for square in self.npc_step_order() {
             let (next, kind) = if lines.squares.get(square) {
-                let step = self.turn_step(square, self.heading_back.get(square), &shields);
-                self.set_heading(square, false);
-                self.set_heading(step.to, step.back);
-                let kind = if step.turned { PHASE_TURN } else { PHASE_STEP };
+                let step = self.turn_step(square, sink.heading(self, square), shields);
+                sink.turn(self, square, step);
                 if step.to == square {
                     if step.turned {
-                        self.npc_log.push((square, square, 0, PHASE_TURN));
+                        sink.wait_turned(self, square);
                     }
                     continue;
                 }
-                (step.to, kind)
-            } else {
-                match self.npc_step_of::<true>(square, &shields) {
-                    Some(next) => (next, PHASE_STEP),
-                    None => continue,
-                }
-            };
-            let eaten = self.board[next];
-            self.write(square, 0);
-            self.write(next, value);
-            self.unmoved.clear(square);
-            self.unmoved.clear(next);
-            ate |= eaten != 0;
-            self.close_ep_window_over(square, next);
-            self.npc_log.push((square, next, eaten, kind));
-        }
-        if t.respawn.is_some() {
-            self.respawn_phase(&shields) | ate
-        } else {
-            ate
-        }
-    }
-
-    /// The same phase on the raw board for a legality filter, every square written pushed to
-    /// `saved`. The headings are read, never written: each piece reads its own square's bit
-    /// before anything moves it, and the filter asks about one position.
-    #[cold]
-    #[inline(never)]
-    pub(super) fn npc_phase_for_filter_lines(&mut self, saved: &mut Saved) {
-        let t = self.t;
-        let lines = t.npc_lines.as_deref().expect("npc_phase_for_filter_lines without a line");
-        let shields = self.wild_shields();
-        let order: Vec<usize> = self.npc_step_order().collect();
-        for square in order {
-            let next = if lines.squares.get(square) {
-                let to = self.turn_step(square, self.heading_back.get(square), &shields).to;
-                if to == square {
-                    continue;
-                }
-                to
-            } else {
-                match self.npc_step_of::<true>(square, &shields) {
-                    Some(next) => next,
-                    None => continue,
-                }
-            };
-            let value = self.board[square];
-            saved.push((square, value));
-            saved.push((next, self.board[next]));
-            self.board[square] = 0;
-            self.board[next] = value;
-        }
-        if t.respawn.is_some() {
-            self.respawn_phase_for_filter(saved, &shields);
-        }
-    }
-
-    /// One phase's steps for `coming_phases` in a game with a line, on the raw board with the
-    /// headings in `heading`, which it moves on; each step (and each turned wait) pushed to
-    /// `steps`.
-    pub(super) fn npc_coming_lines(
-        &mut self,
-        heading: &mut SquareSet,
-        saved: &mut Saved,
-        steps: &mut Vec<(usize, usize, u8, u8)>,
-        shields: &SquareSet,
-    ) {
-        let lines = self.t.npc_lines.as_deref().expect("npc_coming_lines without a line");
-        let order: Vec<usize> = self.npc_step_order().collect();
-        for square in order {
-            let (next, kind) = if lines.squares.get(square) {
-                let step = self.turn_step(square, heading.get(square), shields);
-                heading.clear(square);
-                if step.back {
-                    heading.set(step.to);
-                }
-                let kind = if step.turned { PHASE_TURN } else { PHASE_STEP };
-                if step.to == square {
-                    if step.turned {
-                        steps.push((square, square, 0, PHASE_TURN));
-                    }
-                    continue;
-                }
-                (step.to, kind)
+                (step.to, if step.turned { PHASE_TURN } else { PHASE_STEP })
             } else {
                 match self.npc_step_of::<true>(square, shields) {
                     Some(next) => (next, PHASE_STEP),
                     None => continue,
                 }
             };
-            let value = self.board[square];
-            let eaten = self.board[next];
-            saved.push((square, value));
-            saved.push((next, eaten));
-            self.board[square] = 0;
-            self.board[next] = value;
-            steps.push((square, next, eaten, kind));
+            sink.step(self, square, next, kind);
         }
+    }
+
+    /// The whole phase of a game with a line: the shields read once, the steps, the returns.
+    #[inline(always)]
+    fn line_phase<S: PhaseSink>(&mut self, sink: &mut S) {
+        let shields = self.wild_shields();
+        self.line_steps(sink, &shields);
+        self.respawn_walk(sink, &shields);
+    }
+
+    /// The phase, played for real, in a game with a line: a taken piece's heading dropped
+    /// (`heading_tidy`), then `line_phase` into `Live`. Its own function, so the phase of
+    /// every game without the rule is the one it was. Returns whether anything was eaten.
+    #[cold]
+    #[inline(never)]
+    pub(super) fn npc_phase_lines(&mut self) -> bool {
+        self.heading_tidy();
+        let mut live = Live::new();
+        self.line_phase(&mut live);
+        live.ate
+    }
+
+    /// The same phase on the raw board for a legality filter, every square written pushed to
+    /// `saved`; the headings read, never written.
+    #[cold]
+    #[inline(never)]
+    pub(super) fn npc_phase_for_filter_lines(&mut self, saved: &mut Saved) {
+        self.line_phase(&mut Filter { saved });
     }
 
     /// The headings' part of the key; 0 in a game without the rule or with every piece

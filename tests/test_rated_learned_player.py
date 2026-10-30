@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 import site_words
-from test_rated_nets import ROLLED_OUT
+from test_rated_nets import ROLLED_OUT, ROUND_ROLLED_OUT
 
 from chess_variant_sandbox.agents.nets import (
     ACCEPTED,
@@ -111,8 +111,8 @@ class TestEveryOtherGame:
         (`learned_for`, the one way a net player enters a roster) is practice only, so the
         roster the ladder rates holds no net player."""
         for digest, (path, _spec) in _library().items():
-            if digest in ROLLED_OUT:
-                continue
+            if digest in ROLLED_OUT or digest in ROUND_ROLLED_OUT:
+                continue  # the round net is held by `test_rated_nets.TestTheRoundNet`
             offered = opponents.learned_for(digest, NETS)
             assert all(entry.practice_only for entry in offered), path
             assert opponents.agents_of(offered) == [], path

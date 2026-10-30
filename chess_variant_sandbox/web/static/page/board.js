@@ -3785,6 +3785,13 @@ function takeWays(ways) {
 function takeLanding(candidates) {
   if (candidates.length === 1) { send(candidates[0].move); return true; }
   if (candidates.length < 2) return false;
+  // Q1059a: a move that may bring a held piece in by gating (Seirawan) is the plain move and
+  // one move per piece it may bring, all on one square pair: a choice of the engine's texts
+  // (`Ng1-f3`, `Ng1-f3/E`), on the route card.
+  if (candidates.some(m => m.gate !== undefined)) {
+    chooseRoute(candidates);
+    return true;
+  }
   // Schema 19: one square reached more than one way -- directly and through a portal, or
   // through two -- is a choice of route (`docs/archive/plan-portals.md` §2.3), each the engine's
   // own move named by its text.

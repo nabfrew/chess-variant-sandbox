@@ -102,6 +102,28 @@ class TestTheClock:
         assert _at(engine, state, "a3") == ("W", 2)
         assert state.respawn == (0,)
 
+    def test_the_fuzz_tally_oracle_counts_a_paid_piece_that_came_back(self) -> None:
+        """Q1061: the oracle once read every taking off the board, and a returned wolf hid
+        its own (fuzz seed 38). Paid and back, the tally may exceed the missing by a
+        bounty, never by less than one or by something no bounties make."""
+        from types import SimpleNamespace
+
+        from chess_variant_sandbox import fuzz
+
+        spec = _spec(respawn=1)
+        spec["rules"]["npcs"][0]["bounty"] = 3
+        engine = Engine(spec)
+        state = engine.make_state({
+            "a1": ("K", 0), "f6": ("K", 1), "c1": ("R", 0), "c3": ("W", 2),
+        })
+        state, _ = _play(engine, state, "Rc1xc3")
+        assert _at(engine, state, "a3") == ("W", 2) and sum(state.points) == 3
+        fuzz.the_points_are_the_bounties_of_the_npcs_that_are_gone(engine, state)
+        for points in ((2.0, 0.0), (-3.0, 0.0), (4.0, 0.0)):
+            forged = SimpleNamespace(board=state.board, points=points, ply=state.ply)
+            with pytest.raises(fuzz.OracleFailure, match="respawning bounties"):
+                fuzz.the_points_are_the_bounties_of_the_npcs_that_are_gone(engine, forged)
+
     def test_one_phase_is_the_phase_of_the_capture(self) -> None:
         engine = _engine(respawn=1)
         state = engine.make_state({

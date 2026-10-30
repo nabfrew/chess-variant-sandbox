@@ -78,6 +78,10 @@ class Entry:
     # field disappeared.
     judge: float | None = None
     viable: bool = False
+    # False only for *not measured* (plan-teacher §10.16.4 point 4): a lone blind run that
+    # failed no gate it could read. It ranks nowhere, as a non-viable entry does, and its
+    # word is *not measured*. An archive written before it reads as measured.
+    measured: bool = True
     weights_version: str = ""
     notes: str = ""
     detail: dict[str, Any] = field(default_factory=dict)
@@ -98,6 +102,8 @@ class Entry:
         the mean of four runs*. An entry that records no runs shows no number at all,
         since a number that cannot say which claim it is makes none.
         """
+        if not self.measured:
+            return "not measured"
         if self.index is None or not self.runs:
             return "no score"
         spread = f" +/-{self.index_sd:.3f}" if self.index_sd else ""

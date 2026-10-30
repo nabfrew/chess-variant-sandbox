@@ -467,7 +467,7 @@ class TestWhoSeesIt:
         store.submit()
         mine = store.shown(store.designer)
         assert mine == {
-            "index": 0.6123, "viable": True, "state": LEGAL, "sample": None,
+            "index": 0.6123, "viable": True, "measured": True, "state": LEGAL, "sample": None,
             "yours": True, "seeds": [0], "weights": corpus.DEFAULT_WEIGHTS,
         }
         assert store.shown(store.other) is None
@@ -661,7 +661,8 @@ def _game(provisional_result: dict[str, Any] | None, **official: Any) -> dict[st
             **official}
 
 
-LEGAL_RESULT = {"index": 0.6123, "viable": True, "state": "legal", "sample": None,
+LEGAL_RESULT = {"index": 0.6123, "viable": True, "measured": True, "state": "legal",
+                "sample": None,
                 "yours": True, "seeds": [0], "weights": "v11"}
 CHECKED = {**LEGAL_RESULT, "state": "spot-checked", "sample": 32, "yours": False}
 

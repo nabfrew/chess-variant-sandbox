@@ -127,7 +127,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "leap or a range-1 slide. Its legs may be stated instead (legs). "
                     "sweep: jump to any square along the line, removing every piece "
                     "passed over, friendly included; a piece it may not capture blocks, "
-                    "and a sweep that could pass over the enemy royal is check."
+                    "and a sweep that could pass over the enemy royal is check. With a "
+                    "sweep_range shorter than its range it clears only that far, and rides "
+                    "on past it as a slide."
                 ),
             },
             "vectors": {"type": "array", "items": vector, "minItems": 1},
@@ -223,6 +225,21 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "For hops only, how far past its screen the piece may land. 0 allows "
                     "the whole rest of the line, which is the cannon, and 1 means the "
                     "piece must land immediately beyond, which is the grasshopper."
+                ),
+            },
+            "sweep_range": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": MAX_BOARD_DIM,
+                "description": (
+                    "For sweeps only, how far along its line the sweep clears; range is how "
+                    "far it moves. Over its first sweep_range steps it removes every piece "
+                    "it passes and may land on any of those squares, as a sweep does; past "
+                    "them it moves on as a slide up to range, stopped by any piece and "
+                    "taking an enemy piece only where it lands (so a sweep of 3 and range 0 "
+                    "clears three squares and then slides on without limit). Omitted, it "
+                    "equals range: the sweep clears every square it moves over. It may not "
+                    "exceed range (0 means unlimited, so only beside an unlimited range)."
                 ),
             },
             "screen": {
@@ -1824,6 +1841,31 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "enter none."
                         ),
                     },
+                    # Q1059a: what `compile.DropRule.gates` reads.
+                    "gating": _object(
+                        {
+                            "ranks": {
+                                "type": "array",
+                                "items": {"type": "integer", "minimum": 0},
+                                "minItems": 1,
+                                "description": "Rows, counted from each player's own side.",
+                            },
+                            "squares": _squares(
+                                "The first player's gate squares, reflected for the second."
+                            ),
+                        },
+                        required=[],
+                        strict=strict,
+                        description=(
+                            "Gating (Seirawan chess): a piece in hand enters only as part of "
+                            "a move, onto the square a piece of its side vacates by leaving "
+                            "its starting square for the first time, where that square is in "
+                            "these rows (ranks) or squares; a castle may gate on the king's "
+                            "or the rook's square. Never by a drop otherwise. Needs a stock "
+                            "and from_captures false; refused beside region, no_doubled, "
+                            "no_mate, placement and either_face."
+                        ),
+                    ),
                 },
                 required=[],
                 strict=strict,

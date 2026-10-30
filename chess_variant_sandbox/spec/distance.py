@@ -63,6 +63,7 @@ from chess_variant_sandbox.spec.schema import (
     spy_ids,
     strike_changes_anything,
     strikers,
+    sweep_length,
     wrap_stated,
 )
 from chess_variant_sandbox.spec.transform import keeps_a_survivor
@@ -85,6 +86,9 @@ _SCALES: dict[str, float] = {
     # Schema 13 (Q21). A line that removes what it crosses is a different piece from one
     # that stops at it, so a slide turned sweep must not measure zero from its parent.
     "sweep_share": 1.0,
+    # Q1063. A sweep that clears only its first steps and slides on past them; without this
+    # it and the sweep that clears its whole line read as one game.
+    "short_sweep_share": 1.0,
     # Q1007a (`docs/archive/plan-schema-31.md` §2.5). A lame move with a `range` other than 1 rides,
     # jump after jump; without this a lame rider and the single lame leap it was written from
     # read as one game (every other count is equal), and the loop would skip the tournament.
@@ -121,6 +125,9 @@ _SCALES: dict[str, float] = {
     # Schema 18e (Q785). Whether a held piece may come back as its other face: not costed
     # in `complexity` (as 18c's and 18d's flags are not), so it needs a feature.
     "drops_either_face": 1.0,
+    # Q1059a. Whether a held piece enters only by gating: the difference between a hand
+    # played anywhere and Seirawan's, not otherwise visible to the features above.
+    "drops_gating": 1.0,
     # The relaxation gets a feature too, because it is a feature of the *game* and not
     # only of the schema: a piece that never moves is a wall a player builds, and a spec
     # differing from another in nothing else is a different game.
@@ -464,6 +471,10 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         "leap_share": kinds["leap"] / total_moves,
         "hop_share": kinds["hop"] / total_moves,
         "sweep_share": kinds["sweep"] / total_moves,
+        "short_sweep_share": sum(
+            1 for piece in pieces for move in piece.get("moves", []) or []
+            if sweep_length(move)
+        ) / total_moves,
         "legs_share": sum(
             1 for piece in pieces for move in piece.get("moves", []) or []
             if isinstance(move, dict) and "legs" in move
@@ -1008,11 +1019,13 @@ def _stock_features(drops: Any) -> dict[str, float]:
     either = (
         1.0 if isinstance(drops, dict) and drops.get("either_face") is True else 0.0
     )
+    gating = 1.0 if isinstance(drops, dict) and isinstance(drops.get("gating"), dict) else 0.0
     absent = {
         "has_stock": 0.0,
         "stock_is_endless": 0.0,
         "drops_placement": placement,
         "drops_either_face": either,
+        "drops_gating": gating,
     }
     stock = drops.get("stock") if isinstance(drops, dict) else None
     if not isinstance(stock, dict) or not stock:
@@ -1024,6 +1037,7 @@ def _stock_features(drops: Any) -> dict[str, float]:
         ) else 0.0,
         "drops_placement": placement,
         "drops_either_face": either,
+        "drops_gating": gating,
     }
 
 

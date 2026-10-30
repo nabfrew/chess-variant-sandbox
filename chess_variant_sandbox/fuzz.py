@@ -387,6 +387,13 @@ def _route_key(npcs: Any, square: int) -> int:
     return lowest
 
 
+def _npc_types(npcs: Any) -> set[int]:
+    """The types `rules.npcs` starts. The third owner's block holds others too -- the duck
+    (generation 42), a neutral (TC3) -- which walk no route and pay no bounty (Q1061: fuzz
+    seed 108's duck read as a wild piece off its route)."""
+    return {piece_type for _, piece_type in npcs.starts}
+
+
 def every_npc_stands_on_its_own_route(engine: Engine, state: Any) -> None:
     """Every wild piece is on a route square, and no route holds more than it started with.
 
@@ -420,10 +427,13 @@ def every_npc_stands_on_its_own_route(engine: Engine, state: Any) -> None:
         allowed[key] = allowed.get(key, 0) + 1
     on_route: dict[int, list[int]] = {}
     standing: dict[int, int] = {}
+    wild_types = _npc_types(npcs)
     for square in range(spec.n_squares):
         value = state.board[square]
         if value == 0 or spec.owner_of(value) != WILD:
             continue
+        if spec.type_of(value) not in wild_types:
+            continue  # the duck, or a neutral: nobody's, and on no route
         if spec.type_of(value) in pouncing:
             standing[spec.type_of(value)] = standing.get(spec.type_of(value), 0) + 1
             continue
@@ -465,7 +475,9 @@ def the_points_are_the_bounties_of_the_npcs_that_are_gone(engine: Engine, state:
     every taking pays exactly its route's bounty to somebody. So the sum of the tallies is
     what the missing wild pieces were worth, route by route (a route holds as many as
     started on it, schema 23), whoever collected them. Which player collected which is not
-    recoverable from the board, and that is why the tally is state.
+    recoverable from the board, and that is why the tally is state. A respawning wild piece
+    (generation 36) is paid for and then stands again, so beside one the tallies may exceed
+    that sum by takings of respawning routes (Q1061: fuzz seed 38's patrol came back).
 
     **Fails loudly, not quietly, on a state with no tally.** Q9b lifts the core's refusal
     and lands `points` in the same change; a wild ruleset reaching this oracle on a state
@@ -482,15 +494,45 @@ def the_points_are_the_bounties_of_the_npcs_that_are_gone(engine: Engine, state:
     for start, _ in npcs.starts:
         key = _route_key(npcs, start)
         missing[key] = missing.get(key, 0) + 1
+    wild_types = _npc_types(npcs)
     for square in range(spec.n_squares):
         value = state.board[square]
-        if value and spec.owner_of(value) == WILD:
+        if value and spec.owner_of(value) == WILD and spec.type_of(value) in wild_types:
             missing[_route_key(npcs, square)] -= 1
     owed = sum(npcs.bounty[key] * count for key, count in missing.items())
-    if abs(sum(points) - owed) > 1e-9:
-        raise OracleFailure(
-            f"the tallies sum to {sum(points):g} and the missing wild pieces are worth {owed:g}"
-        )
+    # Generation 36 (N1): a respawning wild piece is paid for and then comes back, so the
+    # board no longer shows every taking. What the tallies hold beyond the missing ones is
+    # then some number of takings of respawning routes, each paying its route's bounty; it
+    # is never negative, and never a sum those bounties cannot make in the plies played.
+    paid_back = sorted(
+        {npcs.bounty[_route_key(npcs, starts[0])] for _, starts in npcs.respawn if starts}
+    )
+    excess = sum(points) - owed
+    if abs(excess) <= 1e-9 or (paid_back and _paid_by_takings(excess, paid_back, state.ply)):
+        return
+    raise OracleFailure(
+        f"the tallies sum to {sum(points):g} and the missing wild pieces are worth {owed:g}"
+        + (f", short of it or off a sum of respawning bounties {paid_back}" if paid_back else "")
+    )
+
+
+def _paid_by_takings(excess: float, bounties: list[float], plies: int) -> bool:
+    """Whether ``excess`` is what at most ``plies`` takings of these bounties pay: a sum of
+    them, repeats allowed."""
+    reached = {0.0}
+    for _ in range(plies):
+        grown = {
+            round(total + bounty, 9)
+            for total in reached
+            for bounty in bounties
+            if bounty > 0 and total + bounty <= excess + 1e-9
+        }
+        if any(abs(total - excess) <= 1e-9 for total in grown):
+            return True
+        if grown <= reached:
+            return False
+        reached |= grown
+    return False
 
 
 def a_piece_that_entered_its_promotion_zone_has_promoted(engine: Engine, state: Any) -> None:

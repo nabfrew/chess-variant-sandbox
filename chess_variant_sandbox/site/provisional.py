@@ -135,6 +135,9 @@ class Result:
     directory: str | None = None
     created: datetime | None = None
     stale_since: datetime | None = None
+    # False only for *not measured* (plan-teacher §10.16.4 point 4): a lone blind run
+    # that failed no gate it could read. `viable` is False beside it.
+    measured: bool = True
 
     @property
     def sample(self) -> int | None:
@@ -165,6 +168,7 @@ class Result:
         return {
             "index": self.headline,
             "viable": self.viable,
+            "measured": self.measured,
             "state": self.state,
             "sample": self.sample,
             "yours": viewer is not None and viewer == self.submitter,
@@ -233,6 +237,7 @@ def record(
     viable: bool | None,
     files: Mapping[str, str],
     job: int | None = None,
+    measured: bool = True,
 ) -> Result:
     """Store a result that has passed tier one, as `legal`, with its records.
 
@@ -276,9 +281,11 @@ def record(
     withdraw(connection, game)
     with connection.cursor() as cursor:
         cursor.execute(
-            "insert into provisional (game, submitter, basis, headline, viable, state, job)"
-            " values (%s, %s, %s::jsonb, %s, %s, %s, %s) returning id, created",
-            (game, submitter, json.dumps(stamp.as_dict()), headline, viable, LEGAL, job),
+            "insert into provisional"
+            " (game, submitter, basis, headline, viable, state, job, measured)"
+            " values (%s, %s, %s::jsonb, %s, %s, %s, %s, %s) returning id, created",
+            (game, submitter, json.dumps(stamp.as_dict()), headline, viable, LEGAL, job,
+             measured),
         )
         found = cursor.fetchone()
         number, created = int(found[0]), found[1]
@@ -305,6 +312,7 @@ def record(
         job=job,
         directory=where,
         created=created,
+        measured=measured,
     )
 
 
@@ -681,7 +689,7 @@ def sweep(connection: Any, runs_dir: Path) -> list[str]:
 
 _COLUMNS = (
     "id, game, submitter, basis, headline, viable, state, job, directory, created,"
-    " stale_since"
+    " stale_since, measured"
 )
 
 
@@ -712,4 +720,5 @@ def _read(found: Any) -> Result | None:
         directory=None if found[8] is None else str(found[8]),
         created=found[9],
         stale_since=found[10],
+        measured=found[11] is not False,
     )

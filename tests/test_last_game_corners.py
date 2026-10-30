@@ -9,7 +9,8 @@ rook landing off the board, a crossed square attacked under file castling, a kin
 the edge, a castling word with no rook); circe beside Andernach with the home taken; a capture
 into an unlimited hand slot; attacks through a portal whose far end is missing, and through a
 portal or a fold by a piece that may not take the victim or may not go in; a round's circe
-victim with no home; a resting entry on an empty square; and a sweep word no sweep makes.
+victim with no home; a resting entry on an empty square; and a sweep word no sweep makes
+(refused by `apply` since CS6, so `sweep_path`'s two empty answers are no longer reached).
 Where the core answers an attack, `tests/portal_oracle.py`, `tests/fold_oracle.py` or
 `tests/simultaneous_oracle.py` answers it too.
 
@@ -481,28 +482,28 @@ def test_a_resting_entry_the_rule_cannot_hold_is_dropped_at_the_boundary(entry: 
     assert "Ka1" in moved and not any(text.startswith("N") for text in moved)
 
 
-# -- a sweep word no sweep makes (tables.rs 1386, 1395) ------------------------------------
+# -- a sweep word no sweep makes (tables.rs `sweep_path`'s two empty answers) ---------------
+#
+# Until CS6 these walked `sweep_path`'s fallbacks by handing `apply` a forged sweep word. Since
+# CS6 (R12) `apply` refuses any word the position does not offer, so a forged word never
+# reaches `make` and those two lines are reachable from no caller; the tests hold the refusal.
 
 
-def test_a_sweep_word_in_a_game_without_sweeps_clears_nothing() -> None:
-    """`apply` checks no word but castling's. A sweep word handed to chess, which has no sweep
-    table, moves the pawn as the ordinary word does and clears no path."""
+def test_a_sweep_word_in_a_game_without_sweeps_is_refused() -> None:
+    """A sweep word handed to chess, which has no sweep table: refused, not played."""
     engine = Engine(_load("chess"))
     state = engine.initial_state()
     forged = encode_move(_sq(engine, "e2"), _sq(engine, "e4"), MOVE_SWEEP)
-    assert engine.apply(state, forged).board == engine.apply(
-        state, engine.find_move(state, "Pe2-e4"),
-    ).board
+    with pytest.raises(ValueError, match="not a move this position offers"):
+        engine.apply(state, forged)
 
 
-def test_a_sweep_word_to_a_square_no_sweep_reaches_clears_nothing() -> None:
+def test_a_sweep_word_to_a_square_no_sweep_reaches_is_refused() -> None:
     """In the sweeping bishops, a sweep word from the bishop on c1 to d3, a square none of its
-    rays reach: the path is empty, so the pawn on d2 stays; the real sweeps through d2 do take
-    it."""
+    rays reach: refused; the real sweeps through d2 are offered."""
     engine = Engine(_load("chess-sweeping-bishops", "archive"))
     state = engine.make_state({"e1": ("K", 0), "e8": ("K", 1), "c1": ("B", 0), "d2": ("P", 0)})
     forged = encode_move(_sq(engine, "c1"), _sq(engine, "d3"), MOVE_SWEEP)
-    assert _on(engine, engine.apply(state, forged)) == {
-        "e1": ("K", 0), "e8": ("K", 1), "d3": ("B", 0), "d2": ("P", 0),
-    }
+    with pytest.raises(ValueError, match="not a move this position offers"):
+        engine.apply(state, forged)
     assert "Bc1xe3 (sweeps d2)" in engine.move_texts(state)

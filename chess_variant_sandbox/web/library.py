@@ -338,6 +338,9 @@ class Game:
             # sample* beside a number its games were not all played for.
             "certified": None if score is None else score.get("certified"),
             "viable": None if score is None else score.get("viable"),
+            # False only for *not measured* (plan-teacher §10.16): the vote reached no
+            # verdict. `viable` is False beside it, so every reader asks this first.
+            "measured": None if score is None else score.get("measured") is not False,
             "weights": None if score is None else score.get("weights_version"),
             # How many runs the number rests on, and which. A mean of four runs and a
             # single run are not the same claim, so the count travels with every number

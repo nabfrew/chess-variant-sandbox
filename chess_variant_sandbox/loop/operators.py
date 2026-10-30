@@ -110,6 +110,7 @@ from chess_variant_sandbox.spec.schema import (
     strike_only_removes,
     strikers,
     sweep_conflicts,
+    sweep_length,
     turn_is_long,
     uses_sweep,
 )
@@ -1979,6 +1980,9 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None  # generation 42 (N4b): refused beside the duck (a blast)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
+    drops = (spec.get("rules") or {}).get("drops")
+    if isinstance(drops, dict) and "gating" in drops:
+        return None  # Q1059a: refused beside gating (a blast may clear the gated square)
     from chess_variant_sandbox.spec.transform import set_explosion
 
     rules = spec.setdefault("rules", {})
@@ -3161,6 +3165,51 @@ def _either_face(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+def _gate_the_hand(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Bring a held piece in by gating (Seirawan), or let a gating hand drop anywhere again.
+
+    Q1059a's ``drops.gating``, both halves. Off a game that gates, the key comes off and the
+    stock drops anywhere. A game with a stock-only hand gains the gate on its back rank. A
+    game with no hand at all gains one piece of a non-royal type it already has, one each,
+    which enters by gating on the back rank: the smallest Seirawan of the parent. The
+    validator decides whether the result is a game (a back rank to gate from, nothing
+    refused beside it); a refusal is a draw with nothing to do.
+    """
+    rules = spec.get("rules", {})
+    drops = rules.get("drops")
+    trial = copy.deepcopy(spec)
+    if isinstance(drops, dict) and "gating" in drops:
+        trial["rules"]["drops"].pop("gating")
+        said = "a held piece may be dropped anywhere, not only gated in"
+    elif isinstance(drops, dict) and drops:
+        trial["rules"]["drops"]["gating"] = {"ranks": [0]}
+        said = (
+            "a held piece enters only by gating: onto the square a back-rank piece leaves "
+            "on its first move, as part of that move"
+        )
+    else:
+        candidates = sorted(
+            str(piece["id"])
+            for piece in spec.get("pieces", [])
+            if isinstance(piece, dict) and not piece.get("royal") and piece.get("moves")
+        )
+        if not candidates:
+            return None
+        piece = rng.choice(candidates)
+        trial.setdefault("rules", {})["drops"] = {
+            "from_captures": False, "stock": {piece: 1}, "gating": {"ranks": [0]},
+        }
+        said = (
+            f"each player holds one more {piece}, which enters only by gating: onto the "
+            "square a back-rank piece leaves on its first move, as part of that move"
+        )
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 def _win_by_leaving(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Decide a game by leaving its goal square rather than by arriving there, or back.
 
@@ -3823,6 +3872,7 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     if sweeps:
         piece, move = rng.choice(sweeps)
         move["kind"] = "slide"
+        move.pop("sweep_range", None)  # Q1063: a slide clears nothing
         return (
             f"the {piece.get('name', piece['id'])} slides again and stops at the first "
             "piece in its way"
@@ -3845,6 +3895,35 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     return (
         f"the {piece.get('name', piece['id'])} sweeps: it jumps to any square on its lines "
         "and removes every piece it passes over, its own included"
+    )
+
+
+def _shorten_the_sweep(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make one sweep clear only its first few steps and slide on past them, or clear its
+    whole line again (Q1063's ``sweep_range``, which no other operator writes).
+
+    The length is drawn from the ones shorter than the move's own ``range`` (1 to 3 beside
+    an unlimited one), since a length that reaches as far as the move is the sweep without
+    the key. A sweep of one step has nothing shorter, and is never offered.
+    """
+    sweeps = _movers(spec, "sweep")
+    if not sweeps:
+        return None
+    piece, move = rng.choice(sweeps)
+    name = piece.get("name", piece["id"])
+    if sweep_length(move):
+        del move["sweep_range"]
+        return f"the {name} sweeps its whole line again"
+    move.pop("sweep_range", None)
+    reach = move.get("range", 0)
+    lengths = [n for n in (1, 2, 3) if not reach or n < reach]
+    if not lengths:
+        return None
+    move["sweep_range"] = rng.choice(lengths)
+    return (
+        f"the {name} sweeps only its first {move['sweep_range']} "
+        f"step{'s' if move['sweep_range'] > 1 else ''} and slides on past them, stopped by "
+        "the first piece"
     )
 
 
@@ -4663,6 +4742,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("promote-only-lost", _promote_only_lost),
     Operator("place-the-army", _place_the_army),
     Operator("either-face", _either_face),
+    Operator("gate-the-hand", _gate_the_hand),
     Operator("win-by-leaving", _win_by_leaving),
     Operator("open-a-portal", _open_a_portal),
     Operator("ring-the-portals", _ring_the_portals),
@@ -4703,6 +4783,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("set-a-collision", _set_a_collision),
     Operator("break-the-tie", _break_the_tie),
     Operator("sweep-a-slider", _sweep_a_slider),
+    Operator("shorten-the-sweep", _shorten_the_sweep),
     Operator("curb-the-chase", _curb_the_chase),
     Operator("plant-a-spy", _plant_a_spy),
     Operator("set-a-speed", _set_a_speed),

@@ -24,6 +24,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
+from chess_variant_sandbox.engine.moves import MOVE_SWEEP, move_from, move_to, move_type
 from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.legs import Legs, stated_legs
@@ -80,6 +81,7 @@ from chess_variant_sandbox.spec.schema import (
     simultaneous_switch,
     spy_ids,
     strike_is_live,
+    sweep_length,
     turning_order,
     turns_less_than_half,
     validate_or_raise,
@@ -195,6 +197,12 @@ Entry = tuple[tuple[int, ...], tuple[int, ...], bool]
 # the screen has to be: SCREEN_ANY, SCREEN_OWN or SCREEN_ENEMY.
 HopEntry = tuple[tuple[int, ...], tuple[int, ...], bool, int, int]
 
+# Q1063: a sweep also carries its sweep length, how many of the ray's first squares it
+# clears: 0 for the whole ray (the sweep with one length, which every sweep before Q1063
+# is). Past it the ray is a slide's: any piece ends it, taken where it may be. It crosses in
+# the slot a hop's screen range uses, which a sweep left at 0.
+SweepEntry = tuple[tuple[int, ...], tuple[int, ...], bool, int]
+
 SCREEN_ANY = 0
 SCREEN_OWN = 1
 SCREEN_ENEMY = 2
@@ -219,6 +227,10 @@ AttackSource = tuple[
 ]
 SWEEP_LANDS = 1
 SWEEP_BEYOND = 2
+# Q1063: a sweep source's sweep length rides above the two bits, 0 for a sweep that clears
+# its whole ray (so every source before Q1063 keeps its byte). Past that index the ray is
+# a slide's, and any piece on it ends the ray.
+SWEEP_LENGTH_SHIFT = 2
 
 
 @dataclass(frozen=True)
@@ -549,6 +561,14 @@ class DropRule:
     # ones it had. A drop's move word carries the face that stands; ``hand_slot`` says
     # which slot it spends.
     faces: tuple[int, ...] = ()
+    # Q1059a (``drops.gating``, Seirawan's gating): ``gates[player]`` is the set of squares on
+    # which a piece of that player's, leaving its setup square for the first time, may let
+    # one held piece in on the square it vacates, as part of the same move (a castle
+    # vacates two). ``None`` for a hand that drops anywhere; under a set a held piece never
+    # enters by a drop. The zone is ``schema.promotion_squares``' reading of the key
+    # (``ranks`` or ``squares``, from the first player's side, reflected for the second),
+    # less the walls.
+    gates: tuple[frozenset[int], frozenset[int]] | None = None
 
     def hand_slot(self, face: int) -> int:
         """The hand slot a drop that places ``face`` spends (itself, or its base)."""
@@ -1689,7 +1709,7 @@ class CompiledSpec:
     slides: tuple[tuple[tuple[tuple[Entry, ...], ...], ...], ...]
     hops: tuple[tuple[tuple[tuple[HopEntry, ...], ...], ...], ...]
     # Schema 13: sweep rays, shaped as `slides`. Every slot is empty unless a piece sweeps.
-    sweeps: tuple[tuple[tuple[tuple[Entry, ...], ...], ...], ...]
+    sweeps: tuple[tuple[tuple[tuple[SweepEntry, ...], ...], ...], ...]
 
     # [player][target square] -> every way that player could attack that square
     attack_sources: tuple[tuple[tuple[AttackSource, ...], ...], ...]
@@ -1973,10 +1993,27 @@ class CompiledSpec:
         value = board[origin]
         if not self.has_sweep or not value:
             return ()
-        for ray, _, _ in self.sweeps[self.frame_at(value)][self.type_of(value)][origin]:
+        for ray, *_ in self.sweeps[self.frame_at(value)][self.type_of(value)][origin]:
             if target in ray:
                 return ray[: ray.index(target)]
         return ()
+
+    def sweep_victims(self, board: bytes, move: int) -> tuple[tuple[int, int], ...]:
+        """The pieces ``move`` sweeps off ``board``, as ``(square, value)`` in ray order:
+        every occupied square of its path, read off the position it is played in.
+
+        The one answer the Python side gives to *what does a sweep remove*, mirroring
+        `Tables::sweep_victims` in the core; every reader that names or prices a sweep's
+        victims (`minimax._capture_gain`, `Engine.describe_move`, `viz.wrapped.sweep_transit`)
+        asks this. Empty for a move that is not a ``MOVE_SWEEP``.
+        """
+        if move_type(move) != MOVE_SWEEP:
+            return ()
+        return tuple(
+            (square, board[square])
+            for square in self.sweep_path(board, move_from(move), move_to(move))
+            if board[square]
+        )
 
     def square_index(self, file: int, rank: int) -> int:
         return rank * self.width + file
@@ -2186,7 +2223,7 @@ class _Frames:
     leaps: list[list[list[tuple[Entry, ...]]]]
     slides: list[list[list[tuple[Entry, ...]]]]
     hops: list[list[list[tuple[HopEntry, ...]]]]
-    sweeps: list[list[list[tuple[Entry, ...]]]]
+    sweeps: list[list[list[tuple[SweepEntry, ...]]]]
     dedup: list[list[frozenset[int]]]
     # Schema 19: the momentum masks, parallel to leaps, slides and hops. Built only where
     # there are portals; every other game compiles exactly as it did.
@@ -2242,14 +2279,14 @@ def _compile_frames(
         frame_leaps: list[list[tuple[Entry, ...]]] = []
         frame_slides: list[list[tuple[Entry, ...]]] = []
         frame_hops: list[list[tuple[HopEntry, ...]]] = []
-        frame_sweeps: list[list[tuple[Entry, ...]]] = []
+        frame_sweeps: list[list[tuple[SweepEntry, ...]]] = []
         frame_dedup: list[frozenset[int]] = []
         frame_dirs: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
         for piece_type, piece in enumerate(pieces):
             type_leaps: list[tuple[Entry, ...]] = []
             type_slides: list[tuple[Entry, ...]] = []
             type_hops: list[tuple[HopEntry, ...]] = []
-            type_sweeps: list[tuple[Entry, ...]] = []
+            type_sweeps: list[tuple[SweepEntry, ...]] = []
             type_dirs: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
             ambiguous: set[int] = set()
             for square in range(n_squares):
@@ -3002,7 +3039,7 @@ def _descriptor_legs(
     }
 
 
-_Built = tuple[tuple[Entry, ...], tuple[Entry, ...], tuple[HopEntry, ...], tuple[Entry, ...]]
+_Built = tuple[tuple[Entry, ...], tuple[Entry, ...], tuple[HopEntry, ...], tuple[SweepEntry, ...]]
 # Schema 19: the momentum masks of one square's leaps, slides and hops, one tuple of
 # masks per entry, parallel to the entry's landings (`momentum_bits`).
 _Momentum = tuple[tuple[int, ...], ...]
@@ -3251,12 +3288,16 @@ def _compile_square_full(
                     )
                 continue
 
+            # Q1063: a sweep's slot for the screen range holds its sweep length (0 for a
+            # sweep that clears its whole line), so two sweeps along one vector that clear
+            # different lengths are two rays, and every sweep of one length is one ray.
             key = (
                 kind,
                 step_x,
                 step_y,
                 requires_unmoved,
-                descriptor.get("screen_range", 0),
+                sweep_length(descriptor) if kind == "sweep"
+                else descriptor.get("screen_range", 0),
                 _SCREEN_BITS[str(descriptor.get("screen", "any"))],
             )
             modes = ray_groups.setdefault(key, {})
@@ -3314,7 +3355,7 @@ def _compile_square_full(
 
     slide_entries: list[Entry] = []
     hop_entries: list[HopEntry] = []
-    sweep_entries: list[Entry] = []
+    sweep_entries: list[SweepEntry] = []
     slide_signs: list[tuple[int, ...]] = []
     hop_signs: list[tuple[int, ...]] = []
     for key in sorted(ray_groups):
@@ -3338,7 +3379,11 @@ def _compile_square_full(
         elif kind == "sweep":
             # Schema 13: a ray the core walks through pieces. A region square keeps mode
             # 0 and stays on the ray, so a sweeper passes over it without stopping.
-            sweep_entries.append(entry)
+            # Q1063: with its sweep length, 0 where the ray is no longer than it (the edge
+            # cut it short), so a sweep that clears all it can reach has one table.
+            sweep_entries.append(
+                (*entry, screen_range if screen_range < length else 0)
+            )
         else:
             hop_entries.append((*entry, screen_range, screen_owner))
             hop_signs.append(ray_signs)
@@ -3361,8 +3406,8 @@ def _compile_square_full(
 
 
 def _resolve_overlaps(
-    leaps: list[Entry], slides: list[Entry], hops: list[HopEntry], sweeps: list[Entry]
-) -> tuple[tuple[Entry, ...], tuple[Entry, ...], tuple[HopEntry, ...], tuple[Entry, ...]]:
+    leaps: list[Entry], slides: list[Entry], hops: list[HopEntry], sweeps: list[SweepEntry]
+) -> tuple[tuple[Entry, ...], tuple[Entry, ...], tuple[HopEntry, ...], tuple[SweepEntry, ...]]:
     """Strip redundant reachability so two primitives cannot emit the same move twice.
 
     Merging by direction already handles same-kind overlap; what is left is a piece
@@ -3403,7 +3448,7 @@ def _needs_runtime_dedup(
     leaps: tuple[Entry, ...],
     slides: tuple[Entry, ...],
     hops: tuple[HopEntry, ...],
-    sweeps: tuple[Entry, ...] = (),
+    sweeps: tuple[SweepEntry, ...] = (),
 ) -> bool:
     """Whether any square is still reachable two ways after static resolution.
 
@@ -3421,7 +3466,7 @@ def _needs_runtime_dedup(
     ] + [
         (ray, modes) for ray, modes, _, _, _ in hops
     ] + [
-        (ray, modes) for ray, modes, _ in sweeps
+        (ray, modes) for ray, modes, *_ in sweeps
     ]
     for squares, modes in groups:
         local: dict[int, int] = {}
@@ -3447,7 +3492,7 @@ def _build_attack_sources(
     leaps: list[list[list[tuple[Entry, ...]]]],
     slides: list[list[list[tuple[Entry, ...]]]],
     hops: list[list[list[tuple[HopEntry, ...]]]],
-    sweeps: list[list[list[tuple[Entry, ...]]]],
+    sweeps: list[list[list[tuple[SweepEntry, ...]]]],
     n_squares: int,
     n_types: int,
     n_facings: int = 1,
@@ -3577,16 +3622,22 @@ def _build_attack_sources(
                 # when it is a capture landing, or when a landing past it would sweep it,
                 # so a sweep over the enemy royal is check. The core walks the rest of the
                 # ray with `modes` to find that landing.
-                for ray, modes, unmoved in sweeps[frame][piece_type][origin]:
+                #
+                # Q1063: past a sweep's length the ray is a slide's. A square there is
+                # attacked only as a capture landing over a clear ride, never by a landing
+                # beyond it (that would have to pass over the piece on it), and the core
+                # reads the length off the byte's high bits to know where the ride starts.
+                for ray, modes, unmoved, swept in sweeps[frame][piece_type][origin]:
                     for index, target in enumerate(ray):
+                        rides = 0 < swept <= index
                         bits = (SWEEP_LANDS if modes[index] & 2 else 0) | (
-                            SWEEP_BEYOND if any(modes[index + 1:]) else 0
+                            SWEEP_BEYOND if not rides and any(modes[index + 1:]) else 0
                         )
                         if bits:
                             add(
                                 player, target,
                                 (origin, piece_value, ray[:index], ray[index:], 0, unmoved,
-                                 SCREEN_ANY, bits, modes),
+                                 SCREEN_ANY, bits | (swept << SWEEP_LENGTH_SHIFT), modes),
                             )
 
     if dirs_out is not None and momentum is not None:
@@ -5488,7 +5539,24 @@ def _compile_drops(
         unlimited=tuple(unlimited) if any(unlimited) else (),
         placement=drops.get("placement") is True,
         faces=_drop_faces(drops, index_of, n_types, pieces),
+        gates=_gates(drops.get("gating"), width, height, orientation, obstacles),
     )
+
+
+def _gates(
+    gating: Any, width: int, height: int, orientation: str, obstacles: frozenset[int]
+) -> tuple[frozenset[int], frozenset[int]] | None:
+    """Q1059a: ``drops.gating``'s squares per player, or ``None`` without the key.
+
+    Stated as a promotion zone is (``ranks`` or ``squares``, the first player's side) and
+    read by the same function, so the validator's zone and the compiler's are one idea.
+    Whether a piece may gate is the core's question (its ``unmoved`` bit, which only a
+    setup square carries), so the table is the zone and nothing about who stands on it.
+    """
+    if not isinstance(gating, dict):
+        return None
+    first, second = promotion_squares(gating, width, height, orientation)
+    return first - obstacles, second - obstacles
 
 
 def _drop_faces(

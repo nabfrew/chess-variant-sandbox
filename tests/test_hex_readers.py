@@ -297,6 +297,8 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/the-shepherds-duck": "fcb8e3a5a79c519c",  # N6, generations 36 to 38 and 42
     "archive/the-hydra": "9f2e615018f91bc5",  # N7, generations 39 to 41
     "archive/the-herd": "53d4d557420812eb",  # N9, generations 37 and 42
+    "archive/the-crowd": "1cab715f899193d4",  # TC8, generation 43
+    "archive/the-free-companies": "f3e6fa7611474c57",  # TC10b, generations 44 to 46
     "archive/short-sweeping-bishop-chess": "23f5880775966d4a",  # LPD, schema 31
     "archive/chess-with-galloping-knights": "3d807ce97ef38810",  # Q1023, schema 31
     "archive/chess-with-preaching-bishops": "f9001b221be00a88",  # Q1024, schema 31
@@ -336,6 +338,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/rps-v5": "192b8a8a18be50d4",  # Q614 (W7): its description, for a player; Q962: its description, for a player (was 79d5d8b4b48ee0c3); 2026-10-18: its description, written as the game's idea (was 3f56a66baeef47d7)
     "archive/sardines": "e3cdf99cf0097bd6",  # Q614 (W7): its description, for a player; 2026-10-18: its description, written as the game's idea (was 63de85e559ca5e19)
     "rulesets/shatranj": "828ec1dae768fb98",  # Q614 (W7): its description, for a player
+    "rulesets/seirawan": "bb2049eae36cae3b",  # Q1059b, generation 52
     "rulesets/shogi": "1d9b14e68510b70a",
     "rulesets/threecheck": "b20a73916fc5ffa6",
     "rulesets/torus": "862c66721e158df7",  # Q868: its description, what its difference does in play (was b04e8dda82800fe1); Q870: its description names a renamed sibling (was d9c59025017f94c5); 2026-10-18: its description, written as the game's idea (was 4762590e8cff1d7e)

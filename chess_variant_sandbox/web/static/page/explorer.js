@@ -636,7 +636,8 @@ function explorerElements() {
     // The ruled-out ring, inside the dot's own radius. A second element because one node
     // carries one border, and the layout promises only one diameter between two dots, so
     // a ring drawn outside two neighbours would meet in the middle.
-    if (node.score && node.score.viable === false) {
+    // Not for *not measured* (plan-teacher §10.16): no verdict is not a refusal.
+    if (node.score && node.score.viable === false && !isNotMeasured(node.score)) {
       parts.push({
         group: 'nodes',
         data: {

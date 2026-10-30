@@ -311,7 +311,7 @@ impl<'t> Game<'t> {
             report.commanded = self
                 .legal_moves()
                 .iter()
-                .filter(|&&m| m & MOVE_FOREIGN != 0)
+                .filter(|&&m| move_foreign(m))
                 .count() as u32;
         }
         report

@@ -152,6 +152,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Both older measurements stay in `docs/reference/corpus-replay-2026-09-11.md`,
     # marked superseded.
     "archive/sardines.json": ("9f538ab85a77", "685dcd4a16589d0e"),
+    "rulesets/seirawan.json": ("3dafe910108f", "8160793ce6039e0f"),  # Q1059b, generation 52
     "rulesets/shatranj.json": ("67270a8805a0", "14a6ff87ac93cbe0"),
     # Q454 (B3 of `docs/reference/traditional-shogi.md`), 2026-09-25: re-frozen on purpose,
     # the user's decision to make it traditional shogi. Schema 15's `on_leaving` goes on
@@ -526,6 +527,16 @@ FROZEN: dict[str, tuple[str, str]] = {
     # 37 and 42 (`docs/archive/plan-npc.md` section 6.4; `tests/test_showcase_herd.py`), from
     # `4c1922ffae26`. New.
     "archive/the-herd.json": ("2135109e8191", "a8d032c3aafb1648"),
+    # TC8, 2026-10-30: the crowd, chess with four condottieri nobody owns on c4, f4, c5 and f5,
+    # knight's moves, moved by whichever side has more pieces on the king's step round one,
+    # generation 43 (`docs/plan-turncoat.md` section 8.1; `tests/test_showcase_crowd.py`), from
+    # `4c1922ffae26`. New.
+    "archive/the-crowd.json": ("961b230bc5eb", "0049eaa01331bda7"),
+    # TC10b, 2026-10-30: the free companies, chess with four mercenaries nobody owns on c4, f4,
+    # c5 and f5, hired for 2 coins by a player with a piece next to one and bribed for 4,
+    # generations 44 to 46 (`docs/plan-turncoat.md` section 8.5;
+    # `tests/test_showcase_free_companies.py`), from `4c1922ffae26`. New.
+    "archive/the-free-companies.json": ("f858b7a63dea", "1c12b1b92fd5fdfb"),
 }
 
 

@@ -173,7 +173,8 @@ def measured(game: Any) -> dict[str, Any]:
     score = current_only(game.score)
     if score is not None:
         return {"state": "current", "index": score.get("index"),
-                "viable": score.get("viable"), "weights": score.get("weights_version"),
+                "viable": score.get("viable"), "measured": score.get("measured") is not False,
+                "weights": score.get("weights_version"),
                 "seeds": list(score.get("seeds") or [])}
     staleness = game.staleness
     if staleness is not None:
@@ -386,6 +387,13 @@ def promotion(
             "command": command,
         }
     if whole.current:
+        if whole.stored.get("measured") is False:
+            # The third verdict (plan-teacher §10.16): no verdict, so nothing to promote
+            # on, and nothing ruled it out either.
+            return {"says": f"Its {_COUNT[four]} runs reached no verdict: its computer "
+                            "players could not tell a stronger search from a weaker one "
+                            "on most of them. So it is not measured, and is not promoted.",
+                    "command": ""}
         if not whole.stored.get("viable"):
             return {"says": f"Its {_COUNT[four]} runs rule it out as not viable, so it "
                             "is not promoted.", "command": ""}

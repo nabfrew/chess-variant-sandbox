@@ -1556,8 +1556,11 @@ class Basis:
     # Which rule turned the runs' own verdicts into the game's. Stamped by value, as the
     # roster is, because `corpus.py` is in no fingerprint set -- so changing the answer is
     # a one-line edit that stales every multi-run file by name. Compared only when the
-    # stored file names more than one seed: a vote of one is the run's own verdict under
-    # every rule.
+    # stored file names more than one seed. A vote of one is the run's own verdict, but
+    # not under every rule unchanged: since `blind-abstains` (plan-teacher §10.16) a lone
+    # blind run reads *not measured* where it read *not viable*. That change came with
+    # the run's own scorer (`index._unreadable_result`), so the `metrics` fingerprint
+    # stales every one-run score it could touch, and the rule's name need not.
     verdict_rule: str = ""
     # Who played the games, and how far the server has checked them. Both are `""` on
     # every measurement the server played itself, which is every measurement in `runs/`
@@ -1952,9 +1955,11 @@ class Basis:
             reasons.append("the metrics changed since it was scored")
             needs = needs or "rescore"
         if len(self.seeds) > 1 and self.verdict_rule != current.verdict_rule:
-            # Only where there was a vote. A game with one run has the run's own verdict
-            # under every rule, so comparing the rule there would stale a visitor's score
-            # for a decision that could not have touched it.
+            # Only where there was a vote. A game with one run has the run's own verdict,
+            # and what that verdict is moves with the run's scorer, which the `metrics`
+            # fingerprint covers (plan-teacher §10.16: a lone blind run moved from *not
+            # viable* to *not measured* in `index.py`, not here). Comparing the rule there
+            # would stale a visitor's score a second time for the same change.
             reasons.append(
                 f"its verdict was taken under {self.verdict_rule or 'no named rule'}, "
                 f"not {current.verdict_rule}"

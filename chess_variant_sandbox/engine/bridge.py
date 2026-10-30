@@ -173,7 +173,8 @@ def _flatten_entries(
                     # core cannot tell a grasshopper from a cannon, and without the
                     # second it cannot tell a piece that vaults its own army from one
                     # that jumps anything. Either difference is a different game rather
-                    # than a failing assertion.
+                    # than a failing assertion. A sweep (Q1063) carries its sweep length in
+                    # the fourth field's slot, 0 for a sweep that clears its whole ray.
                     targets, mode_masks, requires_unmoved = entry[0], entry[1], entry[2]
                     screen_range = entry[3] if len(entry) > 3 else 0
                     screen_owner = entry[4] if len(entry) > 4 else 0
@@ -654,6 +655,8 @@ _DROPS_INERT: dict[str, Any] = {
     "drops_placement": False,
     # Schema 18 (Q785). Empty unless the hand says `either_face`.
     "drops_faces": [],
+    # Q1059a. Empty unless the hand says `gating`.
+    "drops_gates": [],
 }
 
 
@@ -689,6 +692,13 @@ def _drops_fields(spec: CompiledSpec) -> dict[str, Any]:
         # Schema 18 (Q785): drop either face, each slot's other face or -1. Empty for
         # every game before it.
         "drops_faces": list(drops.faces) if drops else [],
+        # Q1059a: the gate squares, `[player][square]` flattened. Empty for a hand that
+        # drops anywhere, which is every game before it.
+        "drops_gates": (
+            [int(square in drops.gates[player]) for player in (0, 1) for square in range(n_squares)]
+            if drops is not None and drops.gates is not None
+            else []
+        ),
     }
 
 

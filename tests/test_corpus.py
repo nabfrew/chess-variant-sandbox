@@ -449,6 +449,8 @@ class _Scored:
     families: dict[str, float] = field(default_factory=dict)
     scored: bool = True
     unreadable: tuple[str, ...] = ()
+    # `IndexResult.measured`: False only for a blind run's abstention (plan-teacher §10.16).
+    measured: bool = True
     scores: dict[str, float] = field(default_factory=dict)
     raw: dict[str, float] = field(default_factory=dict)
     contributions: dict[str, float] = field(default_factory=dict)

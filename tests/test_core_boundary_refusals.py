@@ -39,6 +39,7 @@ from chess_variant_sandbox.engine.bridge import build_tables
 from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.engine import _pack
 from chess_variant_sandbox.engine.state import GameState
+from chess_variant_sandbox.spec.schema import MAX_PORTAL_ENDS
 
 ROOT = Path(__file__).resolve().parents[1]
 HERE = Path(__file__).parent
@@ -255,6 +256,14 @@ def test_a_portal_table_that_does_not_fit_is_refused_by_name(arm: str) -> None:
     `test_schema_twenty_four._gardner_folds`) with one key corrupted."""
     edit, words = FOLD_ARMS[arm]
     _refused("folds", edit, words)
+
+
+def test_the_core_holds_as_many_portal_ends_as_the_validator_allows() -> None:
+    """CS7 (R15): `tables.rs::MAX_PORTAL_ENDS` sizes every by-end array in the core (a fold's
+    squares, a transit's ends) and is the ceiling `portal_tables` refuses past; the validator
+    allows `spec/schema.py::MAX_PORTAL_ENDS`. Equal, or a spec the validator passes is one the
+    core refuses (or the core carries width nobody can use)."""
+    assert _core.MAX_PORTAL_ENDS == MAX_PORTAL_ENDS == 8
 
 
 # -- lib.rs: a call that does not fit the game ------------------------------------------------

@@ -106,6 +106,12 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "a square the path lands on ends it.",
     ),
     "pieces.moves.screen_range": ("how far past the piece it jumps", None),
+    "pieces.moves.sweep_range": (
+        "how far it clears",
+        "For a sweep only: how many steps along its line it removes what it passes. Past "
+        "them it moves on like a slide, as far as it may move, stopped by any piece. Left out, "
+        "it clears all the way.",
+    ),
     "pieces.moves.screen": (
         "whose piece it jumps",
         "For a hop only: whose piece it may jump over. 'any' is the xiangqi cannon, and the "
@@ -749,6 +755,14 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "when captured, so a captured dragon, held as a rook, may come back as either, as "
         "in Kyoto shogi. No, the usual choice, plays it back as itself.",
     ),
+    "rules.drops.gating": (
+        "enter by gating",
+        "A held piece comes in only as part of a move: onto the square a piece leaves on its "
+        "first move from where it started, on the rows or squares named here, as in "
+        "Seirawan chess. A castle may bring one in on the king's square or the rook's.",
+    ),
+    "rules.drops.gating.ranks": ("on rows", "The rows that gate, counted from each player's side."),
+    "rules.drops.gating.squares": ("on squares", "The squares that gate, the first player's."),
     "rules.drops.stock": (
         "held at the start",
         "For each piece, how many each player holds before anything is taken: a count of 1 "

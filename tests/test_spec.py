@@ -999,6 +999,7 @@ def _move_bounds(at: str) -> dict[str, dict[str, int]]:
         f"{move}/range": {"minimum": 0, "maximum": 16},
         f"{move}/min_range": {"minimum": 1, "maximum": 16},
         f"{move}/screen_range": {"minimum": 0, "maximum": 16},
+        f"{move}/sweep_range": {"minimum": 0, "maximum": 16},  # Q1063
         f"{move}/legs": _AT_LEAST_ONE,  # SR1a: one list per vector, at most four squares
         **_vector_bounds(f"{move}/legs/items", {"minItems": 1, "maxItems": 4}),
         f"{move}/condition{_P}/from_rank": {"minimum": 0},
@@ -1033,6 +1034,7 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_MOVE}/range": {"minimum": 0, "maximum": 16},
     f"{_MOVE}/min_range": {"minimum": 1, "maximum": 16},
     f"{_MOVE}/screen_range": {"minimum": 0, "maximum": 16},
+    f"{_MOVE}/sweep_range": {"minimum": 0, "maximum": 16},  # Q1063
     f"{_MOVE}/legs": _AT_LEAST_ONE,  # SR1a: one list per vector, at most four squares
     **_vector_bounds(f"{_MOVE}/legs/items", {"minItems": 1, "maxItems": 4}),
     f"{_MOVE}/condition{_P}/from_rank": {"minimum": 0},
@@ -1088,6 +1090,10 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_RULES}/extinction{_P}/min_count": {"minimum": 1, "maximum": 64},
     f"{_RULES}/drops{_P}/region/additionalProperties": _AT_LEAST_ONE,
     f"{_RULES}/drops{_P}/stock/additionalProperties/anyOf[0]": {"minimum": 1, "maximum": 32},
+    # Q1059a: a gate zone names at least one rank or square, and a rank is never negative.
+    f"{_RULES}/drops{_P}/gating{_P}/ranks": _AT_LEAST_ONE,
+    f"{_RULES}/drops{_P}/gating{_P}/ranks/items": {"minimum": 0},
+    f"{_RULES}/drops{_P}/gating{_P}/squares": _AT_LEAST_ONE,
     f"{_RULES}/explode_on_capture{_P}/radius": {"minimum": 0, "maximum": 3},
     f"{_RULES}/max_plies": {"minimum": 2, "maximum": 10000},
     f"{_RULES}/repetition_draw/anyOf[0]": {"minimum": 2, "maximum": 10},

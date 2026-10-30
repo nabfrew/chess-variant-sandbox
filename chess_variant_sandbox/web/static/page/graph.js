@@ -295,7 +295,8 @@ function mapScoreWords(node) {
   }
   const rested = runsPhrase(score.seeds);
   return `scores ${fmt(score.index)}${rested ? ', as the ' + rested : ''}${
-    score.viable === false ? ', and ruled out' : ''}`;
+    isNotMeasured(score) ? ', and not measured'
+      : score.viable === false ? ', and ruled out' : ''}`;
 }
 
 // How many rules apart one line's two games are, in the words the panels use.

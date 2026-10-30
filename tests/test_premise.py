@@ -26,7 +26,7 @@ from typing import Any
 
 import pytest
 from test_corpus import SPEC
-from test_rated_nets import ROLLED_OUT
+from test_rated_nets import ROLLED_OUT, ROUND_ROLLED_OUT
 from test_rated_nets import _store as rated_store
 
 from chess_variant_sandbox import cli, corpus, fairy, measurement, premise
@@ -125,7 +125,8 @@ class TestTheGamesOwnRoster:
 
     def test_on_the_library_the_stamp_moves_for_the_rated_net_games_alone(self) -> None:
         """Every committed and archived game: the basis moves exactly where a net is rated
-        (`test_rated_nets.ROLLED_OUT`, the five of Q502h), and only in who played.
+        (`test_rated_nets.ROLLED_OUT`, and the round games of `ROUND_ROLLED_OUT`, RS), and
+        only in who played.
 
         Taken without the spec (no tables, no Fairy-Stockfish half), which reads none of the
         roster: what is left to differ is what the roster decides (0.1 s, against 17 s with it)."""
@@ -148,7 +149,7 @@ class TestTheGamesOwnRoster:
                 differs = {key for key in now if now[key] != then[key]}
                 if differs:
                     moved[digest] = differs
-        assert set(moved) == set(ROLLED_OUT)
+        assert set(moved) == set(ROLLED_OUT) | set(ROUND_ROLLED_OUT)
         for digest, differs in moved.items():
             assert differs == {"player", "net"}, digest
 

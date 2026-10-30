@@ -11,7 +11,39 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-30
+
+### The free companies join the library
+
+A new game: chess with four mercenary companies standing in the middle of the board, belonging to nobody. Either side can
+pay to hire one, and once it is hired, the other side can pay more to bribe it away.
+Almost every game sees a hire, about one in five sees a bribe, and it plays evenly between the two sides.
+
+### The crowd joins the library
+
+A new game: chess with four neutral knights in the middle of the board, belonging to nobody. On your turn you may move one
+of them if more of your pieces stand next to it than your opponent's, so the centre goes to whoever gathers round it. Either
+side can capture a neutral knight. It scores well and plays evenly between the two sides.
+
+### A sweep can clear a short way and then slide on
+
+A sweeping piece can now clear pieces over only its first few steps and then carry on like an ordinary slider, stopped by the
+first piece in its way and capturing as usual. A sweep that clears its whole path is the case where the two lengths are equal,
+so every existing sweep plays as before.
+
 ## 2026-10-29
+
+### Seirawan chess joins the library
+
+Seirawan chess is now one of the library's games: ordinary chess plus a hawk (bishop and knight in one) and an elephant
+(rook and knight in one) for each side, held in reserve and brought in behind a home-rank piece's first move. The computer
+players rate it close to chess itself, and it has its own leaderboard.
+
+### Pieces that wait in reserve and step in behind a first move
+
+A game can now hold pieces in reserve that enter only by *gating*: when a piece on the home rank makes its first move, its
+owner may bring a reserve piece onto the square it just left, in the same move. On the play page such a move asks which
+piece, if any, comes in. This is the rule Seirawan chess is built on.
 
 ### A different story each time you open the front page
 

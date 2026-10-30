@@ -48,6 +48,9 @@ BASELINE_PERFT: dict[str, dict[int, int]] = {
     "berolina": {1: 30, 2: 900, 3: 28_328},
     "capablanca": {1: 28, 2: 784, 3: 25_228, 4: 805_128},
     "courier": {1: 26, 2: 678, 3: 18_406, 4: 500_337},
+    # Fairy-Stockfish's published `seirawan` (its tests/perft.sh); 5 = 27,639,803 is
+    # `tests/test_gating.py`'s, on the same mechanics hash (Q1059b).
+    "seirawan": {1: 28, 2: 784, 3: 24_830, 4: 782_599},
 }
 
 @cache

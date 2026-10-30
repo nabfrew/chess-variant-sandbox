@@ -1021,7 +1021,8 @@ function provisionalHtml(game) {
       <div class="u-fs-26 u-fw-600 u-lh-1_1">${
         scored ? fmt(p.index) : '<span class="muted">no score</span>'}</div>
       <div class="muted small">${esc(words.label)}${info('provisional')}${
-        p.viable === false ? ', and ruled out' : ''}${runs ? ' &middot; ' + esc(runs) : ''}${
+        isNotMeasured(p) ? ', and not measured' : p.viable === false ? ', and ruled out' : ''
+      }${runs ? ' &middot; ' + esc(runs) : ''}${
         p.weights ? ' &middot; ' + esc(rulesVersion(p.weights)) + info('weights') : ''}</div>
       <div class="small u-mt-6">${esc(words.why)}</div>
     </div>`;
@@ -2961,9 +2962,12 @@ function scoreHtml(score, guide, band, trust) {
   return `
     <div class="u-fs-26 u-fw-600 u-lh-1_1">${
       scored ? fmt(score.total) + interval : '<span class="muted">no score</span>'}</div>
-    <div class="muted small">${scored ? 'out of 1' : 'it could not be scored'}${
-      score.viable === false ? ', and ruled out' : ''
+    <div class="muted small">${scored ? 'out of 1'
+      : isNotMeasured(score) ? 'not measured' : 'it could not be scored'}${
+      score.viable === false && !isNotMeasured(score) ? ', and ruled out' : ''
     } &middot; ${esc(rulesVersion(score.weights_version))}${info('weights')}</div>
+    ${isNotMeasured(score) ? `<div class="small u-mt-6">${
+      esc(notMeasuredSentence(runCount(score.seeds)))}</div>` : ''}
     ${provisionalMarkHtml(score)}
     ${certifiedMarkHtml(score)}
     ${runsHtml(score)}

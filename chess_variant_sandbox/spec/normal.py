@@ -52,6 +52,7 @@ from chess_variant_sandbox.spec.schema import (
     portal_stand_in_shape,
     stated_off,
     strike_is_live,
+    sweep_range_stated_off,
     wrap_stated,
 )
 
@@ -192,7 +193,8 @@ def drop_off_values(spec: dict[str, Any]) -> None:
     false``, ``rules.simultaneous``'s ``tie: "both"``, ``swap: "chase"`` and ``both:
     "draw"``, a portal group's ``kind: "momentum"``, a contact link's ``own: false`` and a wild-piece
     entry's ``respawn: 0`` (N1) and ``turns_back: false`` (N5), and ``rules.duck``'s ``goes:
-    "anywhere"`` (N4b), and ``rules.purse``'s ``bribe: false`` (TC6). The validator accepts each and every reader takes it
+    "anywhere"`` (N4b), and ``rules.purse``'s ``bribe: false`` (TC6), and a sweep's ``sweep_range``
+    equal to its ``range`` (Q1063, `schema.sweep_range_stated_off`). The validator accepts each and every reader takes it
     as the key's absence. Shared by the normal form and `spelling.current_spelling`, so a
     spec that writes one is named as, and tidied to, the game without it.
     """
@@ -202,6 +204,9 @@ def drop_off_values(spec: dict[str, Any]) -> None:
         _drop_off(piece, PIECE_OFF_VALUES)
         for move in _dicts(piece.get("moves")):
             _drop_off(move, MOVE_OFF_VALUES)
+            # Q1063: a sweep's ``sweep_range`` at its default, the move's own range.
+            if sweep_range_stated_off(move):
+                del move["sweep_range"]
     rules = spec.get("rules")
     if not isinstance(rules, dict):
         return

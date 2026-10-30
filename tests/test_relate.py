@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from chess_variant_sandbox.spec import validate_spec
+from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.relate import (
     KINDS,
     RULE_KINDS,
@@ -623,40 +624,120 @@ class TestAMatchedPairIsNamedFromBothSides:
 # --------------------------------------------------------------- the library's own hub
 
 
+# The library as Q1062 read it (2026-10-29), by `spec_hash`: 110 games, chess among them.
+# The hub test reads only these, so a game added later cannot move its count; a member the
+# library retires drops out of both sides of the comparison. Re-pin it on purpose, by
+# re-running `relate` over the library and reading every new neighbour (tests.md: a slow
+# test pins a named snapshot, never a bare count the next game makes stale).
+HUB_LIBRARY = frozenset({
+    "03aa7c3f2f18", "0448722861a3", "0b96463ffba7", "0be72e61ef24", "0f126fe608ef", "1442513d38d7",
+    "14a126b38a1a", "1501615e08e2", "151582aed409", "15593fc47f6d", "1aa8c4705681", "1ba3d61e5961",
+    "1f85f50a23f6", "2135109e8191", "2261f8203948", "23f6613e9fa3", "26636602fae0", "29d5213b02b2",
+    "2cb9cb3c018c", "2eefcd835b3b", "313c913a5b3b", "328cab4db5cc", "3732e55621b1", "379efba235c5",
+    "393dfeada70d", "3c639d277808", "3dafe910108f", "3ec1560124c3", "417c19c2f6bd", "42bd7d06828d",
+    "482ddc556331", "4c1922ffae26", "50a3da8f75e7", "51d9b36b4e93", "54a0a193da0f", "54b38fb8cba8",
+    "54c731ca6e95", "57667d7861ad", "57c73975c905", "58afebca2286", "59a118c8ee38", "5abb0b804cf6",
+    "5f9c1bfcf85a", "61c4e247dc3c", "66b001f1b790", "67270a8805a0", "69f1e486af87", "6bd4d9c5769e",
+    "6cd3785c7246", "6eaaad41673b", "71912ea8ba7f", "771c1a22e182", "78130df01edd", "82a4788c02f0",
+    "8478a3301cfd", "85555467a4ca", "8d9fb1b4c0b4", "8fc3939243d5", "91c2c24305e5", "93b02b591c87",
+    "9574b0bf9095", "9598e603241d", "975dde173f01", "9c26a04f1ca5", "9c90463dc10f", "9f538ab85a77",
+    "a1805ac1adc1", "a2f0c65ceedf", "a7b6f22e6b73", "a9306688fe57", "ad0750e4ec47", "add543cc28c3",
+    "b02bbe8da72c", "b1f536573c22", "b2011455c4af", "b8687024cfc6", "bb5d97520084", "bdf2801ade24",
+    "c0e0c35f78b1", "c2925e027455", "c2b124298181", "c68b69c57219", "c6ff883e5919", "c7c6907901b3",
+    "ca1fdd0b00bb", "cc5e28e9ed0f", "ce406100becc", "ceb4916bdabc", "d2a722b461ff", "d32ef74e88c0",
+    "d50c552b49da", "d6cb641394dd", "d90706fec9c0", "dd17d71412a7", "df2fbba0ca76", "e7293070b5be",
+    "e7d2d7406586", "ea249ab8fbfc", "eaa48ed29ad7", "f1e40e35a6d9", "f3c624d2f297", "f7a789809758",
+    "f9e5dbf3ff1f", "fb8a67625131", "fcbb53d53ce4", "fe7c42772c71", "feaad3754a7e", "fee1ab560013",
+    "ffb9a99dbd01", "ffc7b604bea0",
+})
+
+# Chess's one-rule neighbours in `HUB_LIBRARY`, by hash, named for the reader.
+CHESS_NEIGHBOURS = {
+    "14a126b38a1a",  # berolina
+    "1aa8c4705681",  # chess-with-a-sheltering-king
+    "1ba3d61e5961",  # hierarchy-rise
+    "23f6613e9fa3",  # crooked-bishops
+    "313c913a5b3b",  # queen-bomb
+    "328cab4db5cc",  # queens-wake
+    "379efba235c5",  # circling-queen
+    "3c639d277808",  # hierarchy-fall
+    "42bd7d06828d",  # chess-sweeping-bishops
+    "482ddc556331",  # hierarchy-rise-stay
+    "51d9b36b4e93",  # quarry
+    "54a0a193da0f",  # circe
+    "69f1e486af87",  # chess-with-galloping-knights
+    "6bd4d9c5769e",  # atomic
+    "6cd3785c7246",  # kamikaze
+    "71912ea8ba7f",  # kingofthehill
+    "78130df01edd",  # hierarchy-rise-throw
+    "85555467a4ca",  # merger
+    "91c2c24305e5",  # chess-with-preaching-bishops
+    "9c26a04f1ca5",  # almost
+    "9c90463dc10f",  # horse-archers
+    "a9306688fe57",  # cylinder
+    "b02bbe8da72c",  # onewaycylinder
+    "b1f536573c22",  # threecheck
+    "bb5d97520084",  # crazyhouse
+    "c2b124298181",  # chess-with-daunting-knights
+    "c6ff883e5919",  # onewaytorus
+    "c7c6907901b3",  # short-sweeping-bishop-chess
+    "cc5e28e9ed0f",  # chess-with-nightriders
+    "d2a722b461ff",  # pitchfork
+    "d32ef74e88c0",  # circe-mortal-diagonals
+    "d50c552b49da",  # pawn-knockdown
+    "df2fbba0ca76",  # perpetual
+    "e7293070b5be",  # succession
+    "f3c624d2f297",  # sluice
+    "f7a789809758",  # rifle
+    "f9e5dbf3ff1f",  # andernach
+    "fee1ab560013",  # chess-with-a-weary-queen
+}
+
+
 @pytest.mark.slow
 def test_the_committed_corpus_has_one_hub() -> None:
     """`docs/archive/plan-game-graph.md`'s acceptance, named by game because the plan names it.
 
-    Chess is where the library's variants hang from, and 26 of the other 83 games differ
-    from it in exactly one rule. The probe measured 21 before the folds; the
-    twenty-second was `wolves-immune`, which was chess plus a wild piece and the one
-    pair the probe's operator sweep reached and its diff did not; since Q876 retired it,
-    `pitchfork` is chess plus wild pieces, one rule from it.
+    Chess is where the library's variants hang from, and 38 of the other 109 games of
+    `HUB_LIBRARY` differ from it in exactly one rule. The probe measured 21 before the
+    folds; the twenty-second was `wolves-immune`, which was chess plus a wild piece and the
+    one pair the probe's operator sweep reached and its diff did not; since Q876 retired
+    it, `pitchfork` is chess plus wild pieces, one rule from it.
 
-    The pin read 22 of 70 from Q326 (2026-09-18). It reads 26 of 83 at Q878 (2026-10-13),
-    re-derived by running today's `relate` over the library as of the old pin (which still
-    gives 22, so `relate` moved nothing): twenty of the twenty-two stayed, two left, six joined. Left (Q868, Q876): `hierarchy-fall-swap`, retired as a near copy, and
-    `wolves-immune`, retired for `pitchfork`, which is the one that took its place. Joined
-    (new games, each chess plus one rule, so each belongs): `rifle`, `circe`, `andernach` and
-    `kamikaze` (Q540's capture-rule showcases, 2026-10-09), `pawn-knockdown` (Q787,
-    2026-10-09) and `pitchfork` (Q876). No neighbour is there that should not be.
+    The pin read 22 of 70 from Q326 (2026-09-18) and 26 of 83 at Q878 (2026-10-13). Q1062
+    (2026-10-29) re-derived it the same way: today's `relate` over the library as of Q878's
+    commit still gives Q878's 26, so `relate` moved nothing; none left and twelve joined,
+    each a showcase registered as chess plus one rule, so each belongs: `sluice` (Q844b, a
+    portal pair), `circe-mortal-diagonals` (Q798, a strike), `chess-with-a-weary-queen`
+    (Q983d), `chess-with-a-sheltering-king` and `chess-with-daunting-knights` (Q999d),
+    `chess-with-nightriders` (Q1007e), `crooked-bishops` (T2), `circling-queen` (T3),
+    `horse-archers` (A2, a strike), `short-sweeping-bishop-chess` (LPD),
+    `chess-with-galloping-knights` (Q1023) and `chess-with-preaching-bishops` (Q1024).
+    Seirawan chess (Q1059b), the day's newest game, is not among them. No neighbour is
+    there that should not be. The count is now a snapshot's, so a later game moves nothing.
     """
     specs = corpus_specs()
-    forms = {stem: normal_form(spec) for stem, spec in specs}
+    hashes = {stem: spec_hash(spec) for stem, spec in specs}
+    forms = {stem: normal_form(spec) for stem, spec in specs if hashes[stem] in HUB_LIBRARY}
+    present = {hashes[stem] for stem in forms}
     mine = forms["chess"]
-    near = sorted(
-        stem for stem, form in forms.items()
+    near = {
+        hashes[stem] for stem, form in forms.items()
         if stem != "chess" and relate_forms(mine, form).units == 1
+    }
+    expected = set(CHESS_NEIGHBOURS) & present
+    assert near == expected, (
+        sorted(stem for stem in forms if hashes[stem] in near - expected),
+        sorted(CHESS_NEIGHBOURS[digest] for digest in expected - near),
     )
-    assert len(near) == 26, near
-    assert "pitchfork" in near
-    # Nothing else in the library comes close to that degree.
+    # Nothing else in the library, today's whole library, comes close to that degree.
+    every = {stem: normal_form(spec) for stem, spec in specs}
     others = max(
         sum(
-            1 for other, form in forms.items()
-            if other != stem and relate_forms(forms[stem], form).units == 1
+            1 for other, form in every.items()
+            if other != stem and relate_forms(every[stem], form).units == 1
         )
-        for stem in forms
+        for stem in every
         if stem != "chess"
     )
     assert others < 10

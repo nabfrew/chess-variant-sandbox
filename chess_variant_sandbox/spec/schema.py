@@ -615,9 +615,11 @@ CONTACT_POSITIONS = ("stay", "advance", "swap", "choose")
 _LANDING_KEYS = {"vectors", "symmetry"}
 
 # The most landing squares one target may resolve to, for either player. The move word's
-# seven free bits (25 to 31) hold the landing index, so the bound is the word's.
+# tag field (bits 25 to 29; CS2's field map, `engine/moves.py::encode_move`) holds the
+# landing index, so the bound is the word's: 32, not 128, since bit 30 is the foreign bit
+# and a wider index would read as a foreign move. No stored spec resolves to more than 8.
 # `engine.bridge.rust_supports` refuses it off the compiled table.
-MAX_LANDING_CANDIDATES = 128
+MAX_LANDING_CANDIDATES = 32
 
 # Schema 10 (Q19a): ``rules.contacts``, the general form of the strike.
 #
@@ -786,7 +788,7 @@ MAX_LEGS = 4
 
 _MOVE_KEYS = {
     "kind", "vectors", "symmetry", "range", "min_range", "mode", "condition",
-    "screen_range", "screen", "path", "legs",
+    "screen_range", "screen", "path", "legs", "sweep_range",
 }
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
@@ -1056,9 +1058,16 @@ _CASTLING_KEYS = {"king", "rook", "king_steps", "king_file", "rook_file"}
 # moves are drops, and a royal may start in the stock. See ``_check_placement_coherence``.
 # ``either_face`` is schema 18 (Q785): a held piece may be dropped as itself or as the
 # piece whose ``promoted_from`` it is. See ``_check_either_face_coherence``.
+# ``gating`` is Q1059a (Seirawan's gating, numbered generation 52): a held piece enters only
+# on a square a piece of its side vacates by leaving its setup square for the first time,
+# as part of that move. See ``_validate_gating`` and ``_check_gating_coherence``.
 _DROPS_KEYS = {
     "from_captures", "region", "no_doubled", "no_mate", "stock", "placement", "either_face",
+    "gating",
 }
+# Which squares gate, stated as a promotion zone is, from the first player's side and read
+# by ``promotion_squares``: whole ``ranks`` or named ``squares``, one of the two.
+_GATING_KEYS = {"ranks", "squares"}
 
 # What ``drops.stock`` may say instead of a number: a supply that never runs out.
 #
@@ -2715,6 +2724,122 @@ def drop_face_pairs(pieces: Any) -> dict[str, list[str]]:
     return pairs
 
 
+# Q1059a: the rules refused beside ``drops.gating``, each with why. Read as each rule means
+# it (an inert strike, an empty contact table refuse nothing).
+_GATING_EXCLUDES: tuple[tuple[str, str], ...] = (
+    ("strike", "a strike writes the move word's tag the gate rides in, and what a struck "
+     "piece leaves on a gate square would be a second rule"),
+    ("contacts", "as a strike: the tag, and what a contact leaves on a gate square"),
+    ("explode_on_capture", "a blast can clear the square the piece has just entered, and "
+     "the order of the two would be a second rule"),
+    ("portals", "a portal or fold writes the move word's tag the gate rides in"),
+    ("simultaneous", "a round reads two moves at once, and two gates on one square "
+     "would be a second rule"),
+    ("duck", "a duck's turn is two moves, and the duck may stand on a vacated square"),
+)
+
+
+def gating_conflicts(spec: Any) -> list[str]:
+    """The rules ``spec`` states beside ``drops.gating`` that the core cannot honour with
+    it, each as the message the validator gives; empty without gating."""
+    rules = spec.get("rules") if isinstance(spec, dict) else None
+    if not isinstance(rules, dict):
+        return []
+    drops = rules.get("drops")
+    if not isinstance(drops, dict) or "gating" not in drops:
+        return []
+    contacts = rules.get("contacts")
+    active = {
+        "strike": strike_is_live(rules.get("strike")),
+        "contacts": isinstance(contacts, dict) and bool(contacts.get("links")),
+        "explode_on_capture": bool(rules.get("explode_on_capture")),
+        "portals": bool(rules.get("portals")),
+        "simultaneous": bool(rules.get("simultaneous")),
+        "duck": duck_piece(rules) is not None,
+    }
+    found = [
+        f"rules.drops.gating beside rules.{key}: {why}; leave one out"
+        for key, why in _GATING_EXCLUDES
+        if active[key]
+    ]
+    if has_sights(spec):
+        found.append(
+            "rules.drops.gating beside a sight (pieces[].sight): a commanded move sets the "
+            "move word's foreign bit beside the gate, and a frozen or shielded piece leaving "
+            "a gate square would be a second rule; leave one out"
+        )
+    if majority_ids(spec):
+        found.append(
+            'rules.drops.gating beside pieces[].control: "majority": a held neutral moves '
+            "with the foreign bit beside the gate; leave one out"
+        )
+    return found
+
+
+def _check_gating_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """``drops.gating`` (Q1059a, Seirawan's gating) against the rest of the hand and the game.
+
+    Under gating a held piece enters only on a square its side vacates, so the keys that
+    say where a *drop* may go (``region``, ``no_doubled``, ``no_mate``) and the two that
+    change what a drop is (``placement``, ``either_face``) have nothing to read and are
+    refused. The hand fills from the stock alone: a capture hand beside it (S-house) is a
+    second rule nobody has asked for, refused until one does. A gate no piece of the first
+    player starts on can never open, and is refused as a rule that can never fire.
+    """
+    drops = rules.get("drops")
+    if not isinstance(drops, dict) or not isinstance(drops.get("gating"), dict):
+        return
+    if drops.get("from_captures", True) is not False:
+        errors.append(
+            "rules.drops.gating beside a hand that fills from captures (from_captures is "
+            "true, its default): a gating hand holds its stock alone; write "
+            '"from_captures": false'
+        )
+    if not drops.get("stock"):
+        errors.append(
+            "rules.drops.gating with nothing in rules.drops.stock: no piece could ever "
+            "enter; stock the hand or drop the rule"
+        )
+    for key in ("placement", "either_face"):
+        if drops.get(key) is True:
+            errors.append(
+                f"rules.drops.gating beside rules.drops.{key}: a gating hand enters only on "
+                "a vacated square, never by a drop; leave one out"
+            )
+    for key in ("region", "no_doubled", "no_mate"):
+        if drops.get(key):
+            errors.append(
+                f"rules.drops.gating beside rules.drops.{key}, which says where a drop may "
+                "go: a gating hand never drops; leave it out"
+            )
+    errors.extend(gating_conflicts(spec))
+    board = spec.get("board")
+    setup = spec.get("setup")
+    if not isinstance(board, dict) or not isinstance(setup, dict):
+        return
+    width, height = board.get("width"), board.get("height")
+    if not isinstance(width, int) or not isinstance(height, int):
+        return
+    orientation = setup.get("orientation", "mirror")
+    first, _ = promotion_squares(drops["gating"], width, height, orientation)
+    starts = {
+        rank * width + file
+        for piece in pieces
+        if isinstance(piece, dict)
+        for player, file, rank in _placed_squares(
+            setup, piece.get("id"), width, height, orientation
+        )
+        if player == 0
+    }
+    if first and not first & starts:
+        errors.append(
+            "rules.drops.gating names no square a piece of the first player starts on, so "
+            "no gate could ever open; name the rank or squares the army starts on"
+        )
+
+
 def _check_either_face_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
@@ -2946,6 +3071,41 @@ def contacts_only_remove(contacts: Any) -> bool:
     links = contacts.get("links") if isinstance(contacts, dict) else None
     return isinstance(links, list) and all(
         isinstance(link, dict) and "onto_to" not in link for link in links
+    )
+
+
+def sweep_length(move: Any) -> int:
+    """Q1063: how many steps of a sweep's line clear what they pass, or 0 for every step
+    it may move (the sweep with one length, n = m). The one reader of ``sweep_range``,
+    shared by the compiler, the normal form and every surface.
+
+    0 for anything that is not a sweep, for a ``sweep_range`` the validator refuses, and for
+    one that reaches as far as the move does (equal to a bounded ``range``, or 0 beside an
+    unlimited one), so that spelling is the game without the key.
+    """
+    if not isinstance(move, dict) or move.get("kind") != "sweep":
+        return 0
+    stated = move.get("sweep_range", 0)
+    reach = move.get("range", DEFAULT_RANGE["sweep"])
+    if (
+        isinstance(stated, bool) or not isinstance(stated, int) or stated <= 0
+        or isinstance(reach, bool) or not isinstance(reach, int) or reach < 0
+    ):
+        return 0
+    if reach and stated >= reach:
+        return 0
+    return stated
+
+
+def sweep_range_stated_off(move: Any) -> bool:
+    """Whether ``move`` writes ``sweep_range`` at its default, the move's own reach (Q1063):
+    equal to its ``range``, so the normal form and the current spelling drop it."""
+    if not isinstance(move, dict) or move.get("kind") != "sweep" or "sweep_range" not in move:
+        return False
+    stated = move["sweep_range"]
+    reach = move.get("range", DEFAULT_RANGE["sweep"])
+    return (
+        type(stated) is int and type(reach) is int and stated == reach
     )
 
 
@@ -3390,6 +3550,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_extinction_coherence(spec, rules, errors)
     _check_placement_coherence(spec, pieces, rules, errors)
     _check_either_face_coherence(spec, pieces, rules, errors)
+    _check_gating_coherence(spec, pieces, rules, errors)
     _check_portal_coherence(spec, pieces, rules, errors)
     _check_inert_rules(spec, pieces, rules, errors)
     # Three owners share the one byte once anything is wild, and the bound has to know.
@@ -6145,6 +6306,31 @@ def _validate_moves(
         if "screen_range" in move and kind != "hop":
             errors.append(f"{loc}.screen_range only applies to a hop, not to a {kind!r}")
 
+        # Q1063: how far a sweep clears, beside how far it moves (``range``). Over its first
+        # ``sweep_range`` steps it removes what it passes; past them it rides on as a slide,
+        # stopped by any piece. Leaving it out is the sweep that clears all the way (n = m),
+        # and so is writing it equal to ``range`` (the normal form drops it). A sweep clears
+        # no further than it moves, so a bounded range refuses 0 (unlimited) or more.
+        if "sweep_range" in move:
+            sweep_range = move["sweep_range"]
+            if (
+                isinstance(sweep_range, bool) or not isinstance(sweep_range, int)
+                or sweep_range < 0
+            ):
+                errors.append(f"{loc}.sweep_range must be a non-negative integer")
+            elif sweep_range > MAX_BOARD_DIM:
+                errors.append(f"{loc}.sweep_range may not exceed {MAX_BOARD_DIM}")
+            elif kind != "sweep":
+                errors.append(f"{loc}.sweep_range only applies to a sweep, not to a {kind!r}")
+            elif (
+                isinstance(rng, int) and not isinstance(rng, bool) and rng > 0
+                and (sweep_range == 0 or sweep_range > rng)
+            ):
+                errors.append(
+                    f"{loc}.sweep_range ({sweep_range or 'unlimited'}) may not exceed range "
+                    f"({rng}): a sweep clears no further than it moves"
+                )
+
         _validate_vectors(move.get("vectors"), loc, errors)
         _validate_condition(move.get("condition"), loc, width, height, errors)
         errors.extend(path_refusals(move, loc, hex_lattice))
@@ -6716,6 +6902,8 @@ def _validate_drops(
                 errors.append(f"rules.drops.{key} entry {piece!r} is not a declared piece")
 
     _validate_stock(drops.get("stock"), piece_ids, errors)
+    if "gating" in drops:
+        _validate_gating(drops["gating"], width, height, errors)
 
     region = drops.get("region")
     if region is None:
@@ -6727,6 +6915,43 @@ def _validate_drops(
         if piece not in piece_ids:
             errors.append(f"rules.drops.region key {piece!r} is not a declared piece")
         _validate_squares(squares, f"rules.drops.region[{piece!r}]", width, height, errors)
+
+
+def _validate_gating(gating: Any, width: int, height: int, errors: list[str]) -> None:
+    """``drops.gating``'s shape (Q1059a): which squares gate, as ``ranks`` or ``squares``.
+
+    The rank is counted from each player's own back rank (``0`` is Seirawan's), and named
+    squares are the first player's, reflected for the second under ``setup.orientation``,
+    as a promotion zone's are.
+    """
+    if not isinstance(gating, dict):
+        errors.append(
+            'rules.drops.gating must be an object: {"ranks": [0]} or {"squares": [...]}'
+        )
+        return
+    _check_keys(gating, _GATING_KEYS, "rules.drops.gating", errors)
+    if ("ranks" in gating) == ("squares" in gating):
+        errors.append("rules.drops.gating must state exactly one of ranks and squares")
+        return
+    if "ranks" in gating:
+        ranks = gating["ranks"]
+        if not isinstance(ranks, list) or not ranks:
+            errors.append("rules.drops.gating.ranks must be a non-empty array of ranks")
+            return
+        for rank in ranks:
+            if isinstance(rank, bool) or not isinstance(rank, int) or not 0 <= rank < height:
+                errors.append(
+                    f"rules.drops.gating.ranks entry {rank!r} is not a rank of this board "
+                    f"(0 to {height - 1}, counted from each player's own side)"
+                )
+        if len({repr(rank) for rank in ranks}) != len(ranks):
+            errors.append("rules.drops.gating.ranks names a rank twice")
+        return
+    squares = gating["squares"]
+    if not isinstance(squares, list) or not squares:
+        errors.append("rules.drops.gating.squares must be a non-empty array of squares")
+        return
+    _validate_squares(squares, "rules.drops.gating.squares", width, height, errors)
 
 
 def _validate_stock(stock: Any, piece_ids: list[str], errors: list[str]) -> None:

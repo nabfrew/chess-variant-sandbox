@@ -37,6 +37,7 @@
 //! the player who did not just move.
 
 use super::*;
+use super::phase::PhaseSink;
 
 /// The phase's effect snapshot (§3.1), read once at its start: the players' pieces under a
 /// shield, which no wild piece takes, and the mover's frozen or disarmed pieces, which attack
@@ -401,32 +402,30 @@ impl<'t> Game<'t> {
         t.may_capture(t.type_of(value), t.type_of(standing)).then_some(next)
     }
 
-    /// The phase, played for real, in a pounce game: the pounces, then the steps, every square
-    /// through `write`, each logged. The mover is the side that has just moved (`make` flips
-    /// the side after the phase). Returns whether anything was eaten.
-    #[cold]
-    #[inline(never)]
-    pub(super) fn pounce_phase(&mut self) -> bool {
-        let mover = self.side;
+    /// The phase of a pounce game, walked once (CS10b) into `sink`, `mover` being the side
+    /// that has just moved: the pounces (step 1, the pouncers in the mover's reading order,
+    /// each a split's copies and lunge or one pounce), then the steps (step 2, `NpcOrder` over
+    /// the standing less the pouncers that acted). `live` is the wild set the phase starts
+    /// from, moved on as it goes and returned: a split counts its room on it, so it follows a pounce only
+    /// where a type splits, and every move only where the sink `TRACKS` (`Coming`, whose next
+    /// phase starts from it). There is no step 3 beside a pounce.
+    #[inline(always)]
+    fn pounce_walk<S: PhaseSink>(&mut self, sink: &mut S, mover: usize, mut live: SquareSet) -> SquareSet {
         let effects = self.pounce_effects(mover);
-        let standing = self.wild_standing();
-        let mut steppers = standing;
-        let mut live = standing;
+        let mut steppers = live;
         let splits = !self.pounce_tables().split.is_empty();
-        let mut ate = false;
-        for &square in self.pouncers(standing, mover).as_slice() {
+        for &square in self.pouncers(live, mover).as_slice() {
             let square = square as usize;
             if let Some(split) = self.split_here_if(splits, &self.board, square, mover, &effects, live) {
-                if !split.acted() {
-                    continue;
+                if split.acted() {
+                    steppers.clear(square);
                 }
-                steppers.clear(square);
                 for copy in split.copy_squares() {
-                    ate |= self.wild_copies(square, copy);
+                    sink.copy(self, square, copy);
                     live.set(copy);
                 }
                 if let Some(victim) = split.lunge {
-                    ate |= self.wild_moves(square, victim, PHASE_POUNCE);
+                    sink.step(self, square, victim, PHASE_POUNCE);
                     live.clear(square);
                     live.set(victim);
                 }
@@ -436,47 +435,34 @@ impl<'t> Game<'t> {
                 continue;
             };
             steppers.clear(square);
-            ate |= self.wild_moves(square, victim, PHASE_POUNCE);
-            if splits {
+            sink.step(self, square, victim, PHASE_POUNCE);
+            if splits || S::TRACKS {
                 live.clear(square);
                 live.set(victim);
             }
         }
         for square in NpcOrder::new(self.t, steppers) {
             if let Some(next) = self.pounce_step_on(&self.board, square, &effects.shields) {
-                ate |= self.wild_moves(square, next, PHASE_STEP);
+                sink.step(self, square, next, PHASE_STEP);
+                if S::TRACKS {
+                    live.clear(square);
+                    live.set(next);
+                }
             }
         }
-        ate
+        live
     }
 
-    /// One wild piece moving from `square` onto `to` for real, eating what stands there:
-    /// through `write`, the `unmoved` bits and the en passant window as a step's, logged.
-    #[inline]
-    fn wild_moves(&mut self, square: usize, to: usize, kind: u8) -> bool {
-        let value = self.board[square];
-        let eaten = self.board[to];
-        self.write(square, 0);
-        self.write(to, value);
-        self.unmoved.clear(square);
-        self.unmoved.clear(to);
-        self.close_ep_window_over(square, to);
-        self.npc_log.push((square, to, eaten, kind));
-        eaten != 0
-    }
-
-    /// A copy of the splitting pouncer on `parent` growing on `to` for real, eating the
-    /// attacker there (§4.5): through `write`, its `unmoved` bit cleared and an en passant
-    /// window over it closed, as a step's, logged as `PHASE_COPY`.
-    #[inline]
-    fn wild_copies(&mut self, parent: usize, to: usize) -> bool {
-        let value = self.board[parent];
-        let eaten = self.board[to];
-        self.write(to, value);
-        self.unmoved.clear(to);
-        self.close_ep_window_over(to, to);
-        self.npc_log.push((parent, to, eaten, PHASE_COPY));
-        eaten != 0
+    /// The phase, played for real, in a pounce game: `pounce_walk` into `Live`, every square
+    /// through `write`, each logged. The mover is the side that has just moved (`make` flips
+    /// the side after the phase). Returns whether anything was eaten.
+    #[cold]
+    #[inline(never)]
+    pub(super) fn pounce_phase(&mut self) -> bool {
+        let mut live = Live::new();
+        let standing = self.wild_standing();
+        self.pounce_walk(&mut live, self.side, standing);
+        live.ate
     }
 
     /// `split_here` behind the walk's own `splits` flag (whether any type splits), read once
@@ -513,107 +499,22 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     pub(super) fn pounce_phase_for_filter(&mut self, saved: &mut Saved) {
-        let mover = self.side;
-        let effects = self.pounce_effects(mover);
         let standing = self.wild_standing();
-        let mut steppers = standing;
-        let mut live = standing;
-        let splits = !self.pounce_tables().split.is_empty();
-        for &square in self.pouncers(standing, mover).as_slice() {
-            let square = square as usize;
-            if let Some(split) = self.split_here_if(splits, &self.board, square, mover, &effects, live) {
-                if split.acted() {
-                    steppers.clear(square);
-                }
-                for copy in split.copy_squares() {
-                    Self::raw_copy(&mut self.board, saved, square, copy);
-                    live.set(copy);
-                }
-                if let Some(victim) = split.lunge {
-                    Self::raw_move(&mut self.board, saved, square, victim);
-                    live.clear(square);
-                    live.set(victim);
-                }
-                continue;
-            }
-            if let Some(victim) = self.pounce_on(&self.board, square, mover, &effects) {
-                steppers.clear(square);
-                Self::raw_move(&mut self.board, saved, square, victim);
-                if splits {
-                    live.clear(square);
-                    live.set(victim);
-                }
-            }
-        }
-        for square in NpcOrder::new(self.t, steppers) {
-            if let Some(next) = self.pounce_step_on(&self.board, square, &effects.shields) {
-                Self::raw_move(&mut self.board, saved, square, next);
-            }
-        }
+        self.pounce_walk(&mut Filter { saved }, self.side, standing);
     }
 
-    #[inline]
-    fn raw_move(board: &mut [u8; MAX_SQUARES], saved: &mut Saved, square: usize, to: usize) {
-        let value = board[square];
-        saved.push((square, value));
-        saved.push((to, board[to]));
-        board[square] = 0;
-        board[to] = value;
-    }
-
-    #[inline]
-    fn raw_copy(board: &mut [u8; MAX_SQUARES], saved: &mut Saved, parent: usize, to: usize) {
-        saved.push((to, board[to]));
-        board[to] = board[parent];
-    }
-
-    /// `coming_phases` in a pounce game: `count` phases on the raw board, each with the wild
-    /// set it starts from (a copy, moved with each square written) and its shields, the mover
-    /// alternating from the side to move.
+    /// `coming_phases` in a pounce game: `count` phases on the raw board, each starting from
+    /// the wild set the one before it left, the mover alternating from the side to move.
     pub(super) fn pounce_coming_phases(&mut self, count: usize) -> Vec<Vec<(usize, usize, u8, u8)>> {
         let mut phases = vec![Vec::new(); count];
         let mut saved = Saved::new();
         let mut standing = self.wild_standing();
         let mut mover = self.side;
-        let splits = !self.pounce_tables().split.is_empty();
+        // No clock and no heading beside a pounce (respawn and turns_back are refused).
+        let mut heading = SquareSet::EMPTY;
         for steps in phases.iter_mut() {
-            let effects = self.pounce_effects(mover);
-            let mut steppers = standing;
-            for &square in self.pouncers(standing, mover).as_slice() {
-                let square = square as usize;
-                if let Some(split) = self.split_here_if(splits, &self.board, square, mover, &effects, standing) {
-                    if split.acted() {
-                        steppers.clear(square);
-                    }
-                    for copy in split.copy_squares() {
-                        steps.push((square, copy, self.board[copy], PHASE_COPY));
-                        Self::raw_copy(&mut self.board, &mut saved, square, copy);
-                        standing.set(copy);
-                    }
-                    if let Some(victim) = split.lunge {
-                        steps.push((square, victim, self.board[victim], PHASE_POUNCE));
-                        Self::raw_move(&mut self.board, &mut saved, square, victim);
-                        standing.clear(square);
-                        standing.set(victim);
-                    }
-                    continue;
-                }
-                if let Some(victim) = self.pounce_on(&self.board, square, mover, &effects) {
-                    steps.push((square, victim, self.board[victim], PHASE_POUNCE));
-                    Self::raw_move(&mut self.board, &mut saved, square, victim);
-                    steppers.clear(square);
-                    standing.clear(square);
-                    standing.set(victim);
-                }
-            }
-            for square in NpcOrder::new(self.t, steppers) {
-                if let Some(next) = self.pounce_step_on(&self.board, square, &effects.shields) {
-                    steps.push((square, next, self.board[next], PHASE_STEP));
-                    Self::raw_move(&mut self.board, &mut saved, square, next);
-                    standing.clear(square);
-                    standing.set(next);
-                }
-            }
+            let mut sink = Coming { saved: &mut saved, steps, clocks: &mut [], heading: &mut heading };
+            standing = self.pounce_walk(&mut sink, mover, standing);
             mover = 1 - mover;
         }
         saved.restore(&mut self.board);

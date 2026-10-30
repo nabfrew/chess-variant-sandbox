@@ -130,6 +130,17 @@ struct Step {
     void: [bool; 2],
 }
 
+/// Who does what in one step, settled from the two choices before anything moves (§2.2,
+/// §2.4): the steps after it read it, none writes it.
+#[derive(Clone, Copy)]
+struct Roles {
+    arriving: [bool; 2],
+    standing: [bool; 2],
+    void: [bool; 2],
+    /// Schema 27's `swap: "collision"`: two moves each ending on the other's origin.
+    swapped: bool,
+}
+
 impl<'t> Game<'t> {
     fn sim(&self) -> &'t SimTables {
         self.t.simultaneous.as_deref().expect("a round in an alternating game")
@@ -541,14 +552,28 @@ impl<'t> Game<'t> {
 
     /// §2.2 to §4 step 7 for the players `active` names: both in an equal-speed round, one
     /// at a time in an ordered one (schema 28), where the other player's pieces all stand.
-    /// Writes the board and accumulates what the round's tail needs into `facts`.
+    /// Writes the board and accumulates what the round's tail needs into `facts`. One call
+    /// per step of `docs/reference/rounds.md` §4 (step 1, transit, is the plan's: each
+    /// destination as chosen), the voids first, from the two choices alone (§2.4).
     #[inline(always)]
     fn resolve_step(&mut self, plans: &[Plan; 2], active: [bool; 2], facts: &mut StepFacts) -> Step {
+        let roles = self.settle_voids(plans, active);
+        self.note_kinds(plans, roles, facts);
+        self.departures(plans, roles, facts);
+        let arrival = self.own_consequences(plans, active, roles, facts);
+        let takings = self.meetings(plans, roles, arrival, facts);
+        self.what_captures_cause(&takings, facts);
+        self.blasts(&takings, facts);
+        self.claims(plans, active, roles, facts);
+        Step { arriving: roles.arriving, standing: roles.standing, void: roles.void }
+    }
+
+    /// §2.2, §2.4 (§4 step 4's first clause, settled before anything moves): who moves, who
+    /// stands, which moves are void -- from the two choices, on the round's board.
+    #[inline(always)]
+    fn settle_voids(&mut self, plans: &[Plan; 2], active: [bool; 2]) -> Roles {
         let t = self.t;
         let sim = self.sim();
-        let touched = &mut facts.touched;
-
-        // §2.2, §2.4: who moves, who stands, which moves are void -- from the two choices.
         let raw = [
             active[0] && plans[0].origin != Some(plans[0].target),
             active[1] && plans[1].origin != Some(plans[1].target),
@@ -588,40 +613,61 @@ impl<'t> Game<'t> {
             }
         }
         let arriving = [moving[0] && !void[0], moving[1] && !void[1]];
+        Roles { arriving, standing, void, swapped }
+    }
 
-        for i in 0..2 {
-            let made = arriving[i] || standing[i];
+    /// What the moves made say to the tail's clocks and window, by their kinds alone.
+    #[inline(always)]
+    fn note_kinds(&self, plans: &[Plan; 2], roles: Roles, facts: &mut StepFacts) {
+        let t = self.t;
+        for (i, plan) in plans.iter().enumerate() {
+            let made = roles.arriving[i] || roles.standing[i];
             if made {
-                facts.one_way |= t.is_one_way(plans[i].piece_type);
-                let kind = plans[i].kind;
-                let plain_portal = kind == MOVE_PORTAL && move_promotion(plans[i].m) == 0;
+                facts.one_way |= t.is_one_way(plan.piece_type);
+                let kind = plan.kind;
+                let plain_portal = kind == MOVE_PORTAL && move_promotion(plan.m) == 0;
                 facts.irreversible_kind |= kind != MOVE_NORMAL && kind != MOVE_ROTATE && !plain_portal;
                 facts.promoted |= kind == MOVE_PROMOTION
-                    || (kind == MOVE_PORTAL && move_promotion(plans[i].m) != 0);
+                    || (kind == MOVE_PORTAL && move_promotion(plan.m) != 0);
             }
         }
+    }
 
-        // §4 step 2: departures.
-        for i in 0..2 {
-            if !arriving[i] {
+    /// §4 step 2: departures. Each moving piece leaves its origin; a drop leaves the hand.
+    #[inline(always)]
+    fn departures(&mut self, plans: &[Plan; 2], roles: Roles, facts: &mut StepFacts) {
+        let t = self.t;
+        for (i, plan) in plans.iter().enumerate() {
+            if !roles.arriving[i] {
                 continue;
             }
-            match plans[i].origin {
+            match plan.origin {
                 Some(origin) => {
                     self.write(origin, 0);
-                    touched.set(origin);
+                    facts.touched.set(origin);
                 }
                 None => {
                     let rule = t.drops.as_ref().expect("a drop without a drop rule");
-                    let slot = rule.slot_of(plans[i].piece_type);
+                    let slot = rule.slot_of(plan.piece_type);
                     if !rule.is_unlimited(slot) {
                         self.hands[i][slot] -= 1;
                     }
                 }
             }
         }
+    }
 
-        // §4 step 3: each move's own consequences, as if alone, up to the meeting.
+    /// §4 step 3: each move's own consequences, as if alone, up to the meeting. Returns
+    /// each arrival's value, the promoted or merged piece that meets (0 for none).
+    #[inline(always)]
+    fn own_consequences(
+        &mut self,
+        plans: &[Plan; 2],
+        active: [bool; 2],
+        roles: Roles,
+        facts: &mut StepFacts,
+    ) -> [u8; 2] {
+        let t = self.t;
         let mut arrival = [0u8; 2];
         for i in 0..2 {
             if !active[i] {
@@ -631,17 +677,17 @@ impl<'t> Game<'t> {
             if plan.kind == MOVE_ROTATE {
                 let origin = plan.origin.expect("a rotation has an origin");
                 self.write(origin, t.piece_value(i, move_promotion(plan.m) as usize, plan.piece_type));
-                touched.set(origin);
+                facts.touched.set(origin);
                 continue;
             }
-            if standing[i] {
+            if roles.standing[i] {
                 let there = self.board[plan.target];
                 if there != 0 && t.owner_of(there) == i {
-                    facts.material_changed |= self.contact_in_place(i, &plan, touched);
+                    facts.material_changed |= self.contact_in_place(i, &plan, &mut facts.touched);
                 }
                 continue;
             }
-            if !arriving[i] {
+            if !roles.arriving[i] {
                 continue;
             }
             let promotion = move_promotion(plan.m) as usize;
@@ -659,125 +705,187 @@ impl<'t> Game<'t> {
                     value = t.arriving_value(i, mover_becomes as usize, plan.target);
                 }
                 self.write(plan.target, 0);
-                touched.set(plan.target);
+                facts.touched.set(plan.target);
                 facts.material_changed = true;
             }
             arrival[i] = value;
         }
+        arrival
+    }
 
-        // §4 step 4: the meetings. A collision first, then each other arrival, then the
-        // contacts whose movers stood still.
+    /// §4 step 4: the meetings. A collision (or, under `swap: "collision"`, a swap) first,
+    /// else each arrival taking what stands there; then the contacts whose movers stood
+    /// still. Returns the captures, in the order they were decided.
+    #[inline(always)]
+    fn meetings(
+        &mut self,
+        plans: &[Plan; 2],
+        roles: Roles,
+        arrival: [u8; 2],
+        facts: &mut StepFacts,
+    ) -> Vec<Taking> {
         let mut takings: Vec<Taking> = Vec::new();
-        let collided = arriving[0] && arriving[1] && plans[0].target == plans[1].target;
+        let collided =
+            roles.arriving[0] && roles.arriving[1] && plans[0].target == plans[1].target;
         if collided {
-            let square = plans[0].target;
-            touched.set(square);
-            facts.material_changed = true;
-            let types = [t.type_of(arrival[0]), t.type_of(arrival[1])];
-            let beats = [
-                sim.beats(t.n_types, types[0], types[1]),
-                sim.beats(t.n_types, types[1], types[0]),
-            ];
-            let winner = match beats {
-                [true, false] => Some(0),
-                [false, true] => Some(1),
-                _ if sim.tie == 1 => {
-                    let holder = self.initiative as usize;
-                    self.initiative = (1 - holder) as i8;
-                    facts.initiative_passed = true;
-                    self.round_log.push((EVENT_INITIATIVE, square, holder as i8));
-                    Some(holder)
-                }
-                _ => None,
-            };
-            // A standing piece on the meeting square can only be a wild one: the winner
-            // takes it; with no winner it goes with the two.
-            let standing_there = self.board[square];
-            match winner {
-                Some(w) => {
-                    if standing_there != 0 {
-                        takings.push(self.taking(w, &plans[w], standing_there, square, true));
-                    }
-                    self.write(square, arrival[w]);
-                    let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
-                    taken.strikes = sim.collision_strikes;
-                    takings.push(taken);
-                }
-                None => {
-                    self.write(square, 0);
-                    if beats[0] && beats[1] {
-                        for w in 0..2 {
-                            let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
-                            taken.strikes = sim.collision_strikes;
-                            taken.captor_gone = true;
-                            takings.push(taken);
-                        }
-                    }
-                }
+            self.collision(plans, arrival, facts, &mut takings);
+        } else if roles.swapped {
+            self.swap_meeting(plans, arrival, facts, &mut takings);
+        } else {
+            self.arrivals_take(plans, roles, arrival, facts, &mut takings);
+        }
+        self.contacts_that_stood(plans, roles, facts);
+        takings
+    }
+
+    /// Step 4's collision: two arrivals on one square, decided by `beats` and the tie. A
+    /// standing piece on the meeting square can only be a wild one: the winner takes it;
+    /// with no winner it goes with the two.
+    #[inline(always)]
+    fn collision(
+        &mut self,
+        plans: &[Plan; 2],
+        arrival: [u8; 2],
+        facts: &mut StepFacts,
+        takings: &mut Vec<Taking>,
+    ) {
+        let t = self.t;
+        let sim = self.sim();
+        let square = plans[0].target;
+        facts.touched.set(square);
+        facts.material_changed = true;
+        let types = [t.type_of(arrival[0]), t.type_of(arrival[1])];
+        let beats = [
+            sim.beats(t.n_types, types[0], types[1]),
+            sim.beats(t.n_types, types[1], types[0]),
+        ];
+        let winner = match beats {
+            [true, false] => Some(0),
+            [false, true] => Some(1),
+            _ if sim.tie == 1 => {
+                let holder = self.initiative as usize;
+                self.initiative = (1 - holder) as i8;
+                facts.initiative_passed = true;
+                self.round_log.push((EVENT_INITIATIVE, square, holder as i8));
+                Some(holder)
             }
-            self.round_log.push((EVENT_COLLISION, square, winner.map_or(-1, |w| w as i8)));
-        } else if swapped {
-            // Both destinations were emptied by the departures; each piece is taken where it
-            // would have landed, on the other's origin.
-            facts.material_changed = true;
-            touched.set(plans[0].target);
-            touched.set(plans[1].target);
-            let types = [t.type_of(arrival[0]), t.type_of(arrival[1])];
-            let beats = [
-                sim.beats(t.n_types, types[0], types[1]),
-                sim.beats(t.n_types, types[1], types[0]),
-            ];
-            let winner = match beats {
-                [true, false] => Some(0),
-                [false, true] => Some(1),
-                _ if sim.tie == 1 => {
-                    let holder = self.initiative as usize;
-                    self.initiative = (1 - holder) as i8;
-                    facts.initiative_passed = true;
-                    self.round_log.push((EVENT_INITIATIVE, plans[holder].target, holder as i8));
-                    Some(holder)
+            _ => None,
+        };
+        let standing_there = self.board[square];
+        match winner {
+            Some(w) => {
+                if standing_there != 0 {
+                    takings.push(self.taking(w, &plans[w], standing_there, square, true));
                 }
-                _ => None,
-            };
-            match winner {
-                Some(w) => {
-                    let square = plans[w].target;
-                    self.write(square, arrival[w]);
-                    let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
-                    taken.strikes = sim.collision_strikes;
-                    takings.push(taken);
-                }
-                None if beats[0] && beats[1] => {
+                self.write(square, arrival[w]);
+                let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
+                taken.strikes = sim.collision_strikes;
+                takings.push(taken);
+            }
+            None => {
+                self.write(square, 0);
+                if beats[0] && beats[1] {
                     for w in 0..2 {
-                        let square = plans[w].target;
                         let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
                         taken.strikes = sim.collision_strikes;
                         taken.captor_gone = true;
                         takings.push(taken);
                     }
                 }
-                None => {}
-            }
-            self.round_log.push((EVENT_SWAP, plans[0].target, winner.map_or(-1, |w| w as i8)));
-        } else {
-            for i in 0..2 {
-                if !arriving[i] {
-                    continue;
-                }
-                let square = plans[i].target;
-                touched.set(square);
-                let occupant = self.board[square];
-                debug_assert!(occupant == 0 || t.owner_of(occupant) != i, "an arrival on its own piece");
-                if occupant != 0 {
-                    facts.material_changed = true;
-                    takings.push(self.taking(i, &plans[i], occupant, square, true));
-                }
-                self.write(square, arrival[i]);
             }
         }
+        self.round_log.push((EVENT_COLLISION, square, winner.map_or(-1, |w| w as i8)));
+    }
+
+    /// Step 4's swap under `swap: "collision"` (schema 27). Both destinations were emptied
+    /// by the departures; each piece is taken where it would have landed, on the other's
+    /// origin.
+    #[inline(always)]
+    fn swap_meeting(
+        &mut self,
+        plans: &[Plan; 2],
+        arrival: [u8; 2],
+        facts: &mut StepFacts,
+        takings: &mut Vec<Taking>,
+    ) {
+        let t = self.t;
+        let sim = self.sim();
+        facts.material_changed = true;
+        facts.touched.set(plans[0].target);
+        facts.touched.set(plans[1].target);
+        let types = [t.type_of(arrival[0]), t.type_of(arrival[1])];
+        let beats = [
+            sim.beats(t.n_types, types[0], types[1]),
+            sim.beats(t.n_types, types[1], types[0]),
+        ];
+        let winner = match beats {
+            [true, false] => Some(0),
+            [false, true] => Some(1),
+            _ if sim.tie == 1 => {
+                let holder = self.initiative as usize;
+                self.initiative = (1 - holder) as i8;
+                facts.initiative_passed = true;
+                self.round_log.push((EVENT_INITIATIVE, plans[holder].target, holder as i8));
+                Some(holder)
+            }
+            _ => None,
+        };
+        match winner {
+            Some(w) => {
+                let square = plans[w].target;
+                self.write(square, arrival[w]);
+                let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
+                taken.strikes = sim.collision_strikes;
+                takings.push(taken);
+            }
+            None if beats[0] && beats[1] => {
+                for w in 0..2 {
+                    let square = plans[w].target;
+                    let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
+                    taken.strikes = sim.collision_strikes;
+                    taken.captor_gone = true;
+                    takings.push(taken);
+                }
+            }
+            None => {}
+        }
+        self.round_log.push((EVENT_SWAP, plans[0].target, winner.map_or(-1, |w| w as i8)));
+    }
+
+    /// Step 4 without a collision: each arrival in seat order takes what stands there.
+    #[inline(always)]
+    fn arrivals_take(
+        &mut self,
+        plans: &[Plan; 2],
+        roles: Roles,
+        arrival: [u8; 2],
+        facts: &mut StepFacts,
+        takings: &mut Vec<Taking>,
+    ) {
+        let t = self.t;
         for i in 0..2 {
-            let plan = plans[i];
-            if !standing[i] || plan.kind == MOVE_ROTATE {
+            if !roles.arriving[i] {
+                continue;
+            }
+            let square = plans[i].target;
+            facts.touched.set(square);
+            let occupant = self.board[square];
+            debug_assert!(occupant == 0 || t.owner_of(occupant) != i, "an arrival on its own piece");
+            if occupant != 0 {
+                facts.material_changed = true;
+                takings.push(self.taking(i, &plans[i], occupant, square, true));
+            }
+            self.write(square, arrival[i]);
+        }
+    }
+
+    /// Step 4's last clause: the enemy contacts whose movers stood still, on the board the
+    /// arrivals left.
+    #[inline(always)]
+    fn contacts_that_stood(&mut self, plans: &[Plan; 2], roles: Roles, facts: &mut StepFacts) {
+        let t = self.t;
+        for (i, &plan) in plans.iter().enumerate() {
+            if !roles.standing[i] || plan.kind == MOVE_ROTATE {
                 continue;
             }
             let victim = self.board[plan.target];
@@ -785,11 +893,16 @@ impl<'t> Game<'t> {
             if victim == 0 || t.owner_of(victim) == i || self.board[origin] != plan.mover {
                 continue;
             }
-            facts.material_changed |= self.contact_in_place(i, &plan, touched);
+            facts.material_changed |= self.contact_in_place(i, &plan, &mut facts.touched);
         }
+    }
 
-        // §4 step 5: what the captures cause.
-        for taken in &takings {
+    /// §4 step 5: what the captures cause -- the hand, the bounties, the strike rule's
+    /// rebirth, swap, chain and side switch.
+    #[inline(always)]
+    fn what_captures_cause(&mut self, takings: &[Taking], facts: &mut StepFacts) {
+        let t = self.t;
+        for taken in takings {
             if let Some(rule) = t.drops.as_ref() {
                 if rule.from_captures && t.owner_of(taken.victim) != taken.captor {
                     let slot = t.demotions[t.type_of(taken.victim)];
@@ -807,69 +920,76 @@ impl<'t> Game<'t> {
                 self.points[taken.captor] += t.piece_bounty[t.type_of(taken.victim)];
             }
             if taken.strikes {
-                self.strike_after(taken, touched);
+                self.strike_after(taken, &mut facts.touched);
             }
         }
+    }
 
-        // §4 step 6: every explosion at once.
-        if let Some(explosion) = t.explosion.as_ref() {
-            let mut centres = SquareSet::EMPTY;
-            let mut blast = SquareSet::EMPTY;
-            for taken in &takings {
-                if explosion.fires(taken.captor_type, t.type_of(taken.victim)) {
-                    centres.set(taken.square);
-                    for &square in &explosion.blast[taken.square] {
-                        blast.set(square);
-                    }
-                }
-            }
-            for square in 0..t.n_squares {
-                let value = self.board[square];
-                if value == 0 {
-                    continue;
-                }
-                let hit = centres.get(square)
-                    || (blast.get(square) && !explosion.immune_types[t.type_of(value)]);
-                if hit {
-                    self.write(square, 0);
-                    touched.set(square);
-                    facts.material_changed = true;
+    /// §4 step 6: every blast at once, from every capture of step 4 that qualifies.
+    #[inline(always)]
+    fn blasts(&mut self, takings: &[Taking], facts: &mut StepFacts) {
+        let t = self.t;
+        let Some(explosion) = t.explosion.as_ref() else {
+            return;
+        };
+        let mut centres = SquareSet::EMPTY;
+        let mut blast = SquareSet::EMPTY;
+        for taken in takings {
+            if explosion.fires(taken.captor_type, t.type_of(taken.victim)) {
+                centres.set(taken.square);
+                for &square in explosion.reach(taken.square) {
+                    blast.set(square);
                 }
             }
         }
+        for square in 0..t.n_squares {
+            let value = self.board[square];
+            if value == 0 {
+                continue;
+            }
+            let hit = centres.get(square) || (blast.get(square) && explosion.clears(t, value));
+            if hit {
+                self.write(square, 0);
+                facts.touched.set(square);
+                facts.material_changed = true;
+            }
+        }
+    }
 
-        // §4 step 7: claims, by the pieces that ended a move on a square and stand there.
-        if let Some(rule) = t.territory.as_ref() {
-            for i in 0..2 {
-                let square = if active[i] && plans[i].kind == MOVE_ROTATE {
-                    plans[i].origin.expect("a rotation has an origin")
-                } else if arriving[i] {
-                    plans[i].target
+    /// §4 step 7: claims, by the pieces that ended a move on a square and stand there.
+    #[inline(always)]
+    fn claims(&mut self, plans: &[Plan; 2], active: [bool; 2], roles: Roles, facts: &mut StepFacts) {
+        let t = self.t;
+        let Some(rule) = t.territory.as_ref() else {
+            return;
+        };
+        for i in 0..2 {
+            let square = if active[i] && plans[i].kind == MOVE_ROTATE {
+                plans[i].origin.expect("a rotation has an origin")
+            } else if roles.arriving[i] {
+                plans[i].target
+            } else {
+                continue;
+            };
+            let value = self.board[square];
+            if value == 0 || t.owner_of(value) != i {
+                continue;
+            }
+            let want = (i + 1) as u8;
+            let before = self.colour[square];
+            if before != want && (rule.repaints || before == 0) {
+                self.colour[square] = want;
+                self.colour_counts[i] += 1;
+                if before != 0 {
+                    self.colour_counts[before as usize - 1] -= 1;
+                }
+                if rule.repaints {
+                    facts.key_extra ^= t.zobrist_colour(before, square) ^ t.zobrist_colour(want, square);
                 } else {
-                    continue;
-                };
-                let value = self.board[square];
-                if value == 0 || t.owner_of(value) != i {
-                    continue;
-                }
-                let want = (i + 1) as u8;
-                let before = self.colour[square];
-                if before != want && (rule.repaints || before == 0) {
-                    self.colour[square] = want;
-                    self.colour_counts[i] += 1;
-                    if before != 0 {
-                        self.colour_counts[before as usize - 1] -= 1;
-                    }
-                    if rule.repaints {
-                        facts.key_extra ^= t.zobrist_colour(before, square) ^ t.zobrist_colour(want, square);
-                    } else {
-                        facts.laid_permanent = true;
-                    }
+                    facts.laid_permanent = true;
                 }
             }
         }
-
-        Step { arriving, standing, void }
     }
 
     /// Take back the last `make_round`.

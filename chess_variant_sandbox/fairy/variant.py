@@ -142,6 +142,8 @@ class Variant:
     drops: bool
     check_counting: bool
     castling: bool
+    # Q1059a: whether the castling field also carries the gate files (`seirawanGating`).
+    gating: bool = False
     # Which of the three royalty models this ruleset uses: "king", "pseudo", "extinct"
     # or "none". See `_royal_mode`.
     royalty: str = "none"
@@ -229,6 +231,7 @@ def translate(spec: dict[str, Any] | CompiledSpec) -> Variant:
         drops=compiled.drops is not None,
         check_counting=bool(compiled.check_limit),
         castling=compiled.castling is not None,
+        gating=_gating(compiled),
         royalty=royalty,
         promotion_suffix=_promotion_suffix(compiled),
         notes=tuple(notes),
@@ -353,8 +356,13 @@ _RULE_OBJECT_KEYS: dict[str, frozenset[str]] = {
     # refused (`_check_unsupported_rules`). `placement` is schema 18 (Q784) and is written
     # as `mustDrop` by `_drop_lines`; `either_face` is schema 18 (Q785), `dropPromoted`
     # (`_drop_face_lines`).
+    # `gating` is Q1059a: `gating` and `seirawanGating`, with the gate files in the FEN's
+    # castling field (`_drop_lines`, `position._castling_field`).
     "drops": frozenset(
-        {"from_captures", "no_doubled", "no_mate", "region", "stock", "placement", "either_face"}
+        {
+            "from_captures", "no_doubled", "no_mate", "region", "stock", "placement",
+            "either_face", "gating",
+        }
     ),
     # `by` and `of` are schema 10 and are listed here so the catch-all stops applying to
     # them -- which, as this table's own comment says, is what stops the silence rather
@@ -902,6 +910,11 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
         "mode": (_TRANSLATED, "the m and c modifiers"),
         "condition": (_TRANSLATED, "its keys are listed below"),
         "screen_range": (_TRANSLATED, "0 is p and 1 is g; any other is refused by name"),
+        "sweep_range": (
+            _REFUSED,
+            "Q1063: only on a sweep, which `_descriptor_term` refuses by name whatever its "
+            "lengths (Betza has no piece that captures what it passes over)",
+        ),
         "path": (
             _REFUSED,
             "T1: a circle or a zigzag, by name in `_descriptor_term`, since pyffish reads "
@@ -1857,6 +1870,7 @@ def start_fen(compiled: CompiledSpec, chars: list[str], king: int | None) -> str
         drops=compiled.drops is not None,
         check_limit=compiled.check_limit,
         castling=compiled.castling is not None,
+        gating=_gating(compiled),
     )
 
 
@@ -2016,7 +2030,11 @@ def _progress_lines(
         lines.append(f"nMoveRuleTypes = {written or '-'}")
 
     ids = compiled.piece_ids
-    dropped = sorted(repr(ids[piece]) for piece in _types_in_hand(compiled) - one_way)
+    # Q1059a: a gate is not a drop, and resets neither clock (probed on `pyffish` 0.0.90).
+    gating = compiled.drops is not None and compiled.drops.gates is not None
+    dropped = [] if gating else sorted(
+        repr(ids[piece]) for piece in _types_in_hand(compiled) - one_way
+    )
     if dropped:
         listed = dropped[-1]
         if len(dropped) > 1:
@@ -2641,6 +2659,8 @@ def _drop_lines(
     rule = compiled.drops
     if rule is None:
         return ["pieceDrops = false"]
+    if rule.gates is not None:
+        return _gating_lines(compiled, rule, reasons)
     lines = [
         "pieceDrops = true",
         f"capturesToHand = {'true' if rule.from_captures else 'false'}",
@@ -2710,6 +2730,53 @@ def _drop_lines(
         # `doubleStepRankMin` is beside `doubleStepRegion*` (Q783).
         lines.append(f"{label.lower()}DropRegion = {squares if squares else '-'}")
     return lines
+
+
+def _gating(compiled: CompiledSpec) -> bool:
+    """Q1059a: whether the hand enters by gating (``drops.gating``), read off the compiled rule."""
+    return compiled.drops is not None and compiled.drops.gates is not None
+
+
+def _gating_lines(compiled: CompiledSpec, rule: Any, reasons: list[str]) -> list[str]:
+    """``drops.gating`` (Q1059a) is ``gating`` with ``seirawanGating``, where it says ours.
+
+    Over there the gates are squares of each side's castling rank, named by file in the
+    FEN's castling field (``position._castling_field``), and a ``K`` or ``Q`` there gates
+    the king's square and that rook's as well. So a gate off a side's first rank cannot be
+    said, and under castling a gate set that leaves out the castling king's or a castling
+    rook's opening square would be widened by the ``K`` and ``Q``; both are refused. The
+    rest of the hand (no capture hand, no drop) is the validator's already.
+    """
+    width, height = compiled.width, compiled.height
+    for player, rank in ((0, 0), (1, height - 1)):
+        off = sorted(square for square in rule.gates[player] if square // width != rank)
+        if off:
+            reasons.append(
+                "rules.drops.gating names a square off a side's first rank "
+                f"({', '.join(format_square(sq % width, sq // width) for sq in off)}); "
+                "Fairy-Stockfish gates only on the castling rank"
+            )
+            return []
+    castling = compiled.castling
+    if castling is not None:
+        for square, value in enumerate(compiled.initial_board):
+            if not value or not compiled.initial_unmoved >> square & 1:
+                continue
+            player = compiled.owner_of(value)
+            if player in (0, 1) and compiled.type_of(value) in (
+                castling.king_type, castling.rook_type,
+            ) and square not in rule.gates[player]:
+                reasons.append(
+                    "rules.drops.gating leaves out a castling piece's opening square, which "
+                    "Fairy-Stockfish's K and Q gate whatever the field says"
+                )
+                return []
+    return [
+        "pieceDrops = false",
+        "capturesToHand = false",
+        "gating = true",
+        "seirawanGating = true",
+    ]
 
 
 def _drop_face_lines(compiled: CompiledSpec, rule: Any, reasons: list[str]) -> list[str]:

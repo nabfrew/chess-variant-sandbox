@@ -42,6 +42,7 @@ RULESETS = (
     "archive/breather.json",  # rest
     "tests/_purse_market.json",  # purse
     "tests/_sight_speed.json",  # speed
+    "tests/_gating_seirawan.json",  # gating (Q1059a)
 )
 
 
