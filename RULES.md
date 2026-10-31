@@ -549,15 +549,19 @@ Its keys:
 
 ## Keys that do not change the game
 
-Two more top-level objects are accepted. Neither changes how the game plays, so a file
-written from this reference needs neither.
+Three more top-level keys are accepted. None changes how the game plays, so a file
+written from this reference needs none of them.
 
+- **`summary`**: the game's short description, a list of a few plain lines (at most
+  8) that a game's page shows first, above the full rules. Lead with
+  what makes this game itself, written to a player.
 - **`appearance`**: how the pieces are drawn (`icons`),
   mapping a piece id to the name of a drawing, or to a pair of names, one per player.
   Without it every piece is drawn from its name, or as its letter.
 - **`provenance`**: where the game came from, as free text
-  (`added`, `author`, `exhibit`, `history`, `origin`, `parents`, `preview`, `source`, `theme`, `year`). `added` is a day written
-  `YYYY-MM-DD` and `parents` a list of game identifiers.
+  (`added`, `author`, `exhibit`, `history`, `note`, `origin`, `parents`, `preview`, `source`, `theme`, `year`). `added` is a day written
+  `YYYY-MM-DD` and `parents` a list of game identifiers. `note` is the one short line the
+  page prints under the summary, and only when where the game came from is of interest.
 
 ## How a wrong file is refused
 

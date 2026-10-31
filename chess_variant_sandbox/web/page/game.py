@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from html import escape
 from typing import Any
 
+from chess_variant_sandbox.spec.schema import provenance_note, summary_lines
 from chess_variant_sandbox.web.page import front, game_picture, page
 from chess_variant_sandbox.web.page import picture as site_picture
 
@@ -176,9 +177,10 @@ _ROOM = 40
 
 def meta_description(drawn: Drawn) -> str:
     """The search result's line: *Play ‹game› free online in your browser*, then the
-    description's first sentence, cut to fit `DESCRIPTION_LIMIT`, or one said for it."""
+    description's first sentence, cut to fit `DESCRIPTION_LIMIT`, or one said for it. The
+    short description's first line comes first where the spec has one (Q1085a)."""
     lead = play_free(drawn.name) + "."
-    said = paragraphs(drawn.description)
+    said = summary_lines(dict(drawn.spec)) or paragraphs(drawn.description)
     room = DESCRIPTION_LIMIT - len(lead) - 1
     if said and room >= _ROOM:
         return f"{lead} {first_sentence(said[0], room)}"
@@ -279,12 +281,31 @@ def head(drawn: Drawn) -> str:
                             image_alt=picture_alt(drawn))
 
 
+def lead(drawn: Drawn) -> str:
+    """What the game is, first (Q1085a, `detail.js` `leadHtml` draws the same): the spec's
+    short description a line at a time, the line on where it came from, and the longer
+    description folded shut under *Full rules*; a game with no summary leads with its
+    description's paragraphs, as it always did."""
+    longer = "".join(
+        f'<p class="gameAbout">{escape(block)}</p>' for block in paragraphs(drawn.description)
+    )
+    lines = summary_lines(dict(drawn.spec))
+    if not lines:
+        return longer
+    note = provenance_note(dict(drawn.spec))
+    return (
+        '<ul class="gameLead">' + "".join(f"<li>{escape(line)}</li>" for line in lines)
+        + "</ul>\n"
+        + (f'<p class="gameNote muted small">{escape(note)}</p>\n' if note else "")
+        + (f'<details class="sect fullRules"><summary><h3>Full rules</h3></summary>'
+           f"{longer}</details>\n" if longer else "")
+    )
+
+
 def view(drawn: Drawn) -> str:
     """The game's page as a reader without script reads it; the router draws over it."""
     name = escape(drawn.name or "An unnamed game")
-    about = "".join(
-        f'<p class="gameAbout">{escape(block)}</p>' for block in paragraphs(drawn.description)
-    )
+    about = lead(drawn)
     board = board_words(drawn.spec)
     near = drawn.near[:NEAR_SHOWN]
     near_html = (

@@ -14,6 +14,15 @@ any other address keeps its brackets.
 
 ## 2026-10-31
 
+### A game's page starts with what makes the game itself
+
+A game's page now opens with a few short lines saying what makes that game different, written to a player, and a
+line on where it comes from when that is worth knowing. The full rules, with the longer description, sit just under
+them, folded shut until you open them; they used to be far down the page. Five games read this way so far:
+[the free companies](/game/f858b7a63dea), [duck chess](/game/7acb867a99aa),
+[rock paper shove](/game/e926b98681ab), [Seirawan chess](/game/3dafe910108f) and
+[crazyhouse](/game/bb5d97520084). The rest keep their longer description at the top until theirs are written.
+
 ### More games have proven positions that show what makes them different
 
 After proven positions had to show something their own game has and chess lacks, 21 games were left with none.

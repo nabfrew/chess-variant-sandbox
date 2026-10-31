@@ -788,6 +788,7 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "name": (_IRRELEVANT, "outside the mechanics hash"),
         "description": (_IRRELEVANT, "outside the mechanics hash"),
+        "summary": (_IRRELEVANT, "outside the mechanics hash: the short description"),
         "appearance": (_IRRELEVANT, "outside the mechanics hash: how a piece is drawn"),
         "provenance": (_IRRELEVANT, "outside the mechanics hash: where the rules came from"),
         "board": (_TRANSLATED, "its keys are listed below"),

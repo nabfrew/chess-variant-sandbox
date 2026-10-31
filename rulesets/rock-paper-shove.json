@@ -2,6 +2,13 @@
   "schema_version": 31,
   "name": "rock paper shove",
   "description": "Three kinds of piece, each able to shove exactly one other kind, round a circle as in the hand game: rock shoves scissors, scissors shove paper, paper shoves rock. Nothing is ever captured. A piece that steps onto one it may shove pushes it a square further on, together with every piece standing behind it in that line up to the first gap, but only if the shover may shove every piece in the line; whatever is pushed off the edge of the board is out. Each side has three of each kind, every piece stepping one square in any direction, and a side loses the moment it has none left of any one kind. So every piece hunts one kind and is hunted by another, and the question on every move is how to stand. A line of one kind is a target for whatever shoves that kind, but a mixed line cannot be shoved along its length by anyone, since no piece may shove two kinds: a rock with a paper at its back is safe from the front. Every mixed line is a wall, and every wall has to be broken from the side. A piece may shove its own side's pieces of the kind it hunts as well, to pull one out of danger or close a gap, at the risk of pushing it out of the board itself. A game that stalls or runs long goes to the side with more pieces left.",
+  "summary": [
+    "Rock shoves scissors, scissors shove paper, paper shoves rock.",
+    "Nothing is captured: step onto a piece you may shove and it moves a square on, with every piece right behind it in that line.",
+    "A line moves only if you may shove every piece in it; a piece pushed off the board is out.",
+    "Every piece steps one square in any direction.",
+    "Lose every piece of one kind and you lose."
+  ],
   "board": {"width": 7, "height": 7},
   "pieces": [
     {

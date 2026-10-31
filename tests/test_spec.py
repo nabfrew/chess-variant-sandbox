@@ -922,14 +922,17 @@ class TestTheModelContractMatchesTheValidator:
         wrap = rule_spec_schema()["properties"]["rules"]["properties"]["wrap"]
         assert set(wrap["properties"]) == set(schema_module._WRAP_KEYS)
 
-    def test_only_appearance_and_provenance_are_withheld(self) -> None:
-        """The two blocks outside the mechanics hash, withheld for stated reasons.
+    def test_only_appearance_provenance_and_summary_are_withheld(self) -> None:
+        """The keys outside the mechanics hash, withheld for stated reasons.
 
-        Written as an equality rather than a subset so that a third top-level block
-        forces the question of whether a model should be writing it.
+        Written as an equality rather than a subset so that another top-level key
+        forces the question of whether a model should be writing it. `summary` (Q1085a)
+        is the short description a game's page leads with, written when a game is filed
+        and checked against its rules by hand; a proposal writes its `description`, which
+        the page shows where there is no summary.
         """
         top = set(rule_spec_schema()["properties"])
-        assert set(schema_module._SPEC_KEYS) - top == {"appearance", "provenance"}
+        assert set(schema_module._SPEC_KEYS) - top == {"appearance", "provenance", "summary"}
         assert not top - set(schema_module._SPEC_KEYS)
 
     def test_a_longer_turn_survives_the_round_trip(self) -> None:
@@ -1166,9 +1169,10 @@ def _schema_errors(instance: object, schema: dict, path: str = "$") -> list[str]
 
 
 def _as_proposed(spec: dict) -> dict:
-    """A spec as the model writes it: no `appearance` or `provenance`, the current version."""
+    """A spec as the model writes it: no `appearance`, `provenance` or `summary`, the current
+    version."""
     proposed = copy.deepcopy(spec)
-    for withheld in ("appearance", "provenance"):
+    for withheld in ("appearance", "provenance", "summary"):
         proposed.pop(withheld, None)
     proposed["schema_version"] = SCHEMA_VERSION
     return proposed

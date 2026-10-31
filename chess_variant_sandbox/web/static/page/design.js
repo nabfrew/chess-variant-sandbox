@@ -3157,6 +3157,8 @@ function forkOf(source, from) {
   const draft = JSON.parse(JSON.stringify(source.spec));
   draft.name = freshName((source.name || draft.name || 'a game') + ' variant');
   draft.description = '';
+  // The parent's short description says what the parent is (Q1085a); a copy starts without.
+  delete draft.summary;
   draft.provenance = { parents: [from] };
   return draft;
 }

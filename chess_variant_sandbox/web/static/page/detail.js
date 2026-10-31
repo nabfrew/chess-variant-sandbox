@@ -47,7 +47,8 @@ async function showGame(hash) {
       ${ACCOUNTS ? '' : `<span>&middot;</span>
       <span title="its content hash, which names this exact set of rules" class="u-ff-mono">${esc(game.hash)}</span>`}
     </div>
-    <p class="gameAbout">${esc(game.description)}</p>
+    ${leadHtml(game)}
+    ${fullRulesHtml(game)}
     <div class="gameTop">
       <div class="gamePlay">
         ${carryOnHtml(game)}
@@ -117,15 +118,6 @@ async function showGame(hash) {
       <div>
         ${sectionHtml('pieces', 'The pieces',
           `<div class="panel pieces">${pieceBoardsHtml(game)}</div>`)}
-        ${sectionHtml('rules', 'The rules', `<div class="panel">
-          <ul class="rules">${(game.ruleLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-          <details class="u-mt-10">
-            <summary class="muted small">where the pieces start</summary>
-            <ul class="rules muted small u-mt-6">${
-              (game.setupLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-          </details>
-          ${reportHtml(game)}
-        </div>`)}
         ${sectionHtml('kind', `What kind of game it is${info('kind')}`, `<div class="panel">
           <div class="axes">${(game.axes || []).map(a => `
             <div class="axis">
@@ -311,6 +303,42 @@ function sectionHtml(key, title, body, openOnPhone) {
   const open = openOnPhone || !narrow;
   return `<details class="sect" data-sect="${key}"${open ? ' open' : ''}>
     <summary><h3>${title}</h3></summary>${body}</details>`;
+}
+
+// ------------------------------------------------- what the game is, then its rules
+//
+// Q1085a (the user, 2026-11-01: *"The descriptions are generally too wordy"*): the page
+// leads with the game's short description, a few plain lines saying what makes it itself
+// (`summaryLines`, the spec's `summary`), then one line on where it came from where that
+// is of interest (`provenanceNote`), then the full rules folded shut. A game with no
+// summary yet leads with its description, as it always did.
+function leadHtml(game) {
+  const lines = game.summaryLines || [];
+  if (!lines.length) {
+    return game.description ? `<p class="gameAbout">${esc(game.description)}</p>` : '';
+  }
+  return `<ul class="gameLead">${lines.map(line => `<li>${esc(line)}</li>`).join('')}</ul>${
+    game.provenanceNote
+      ? `<p class="gameNote muted small">${esc(game.provenanceNote)}</p>` : ''}`;
+}
+
+// The full rules, folded shut on every screen until the reader opens them: the longer
+// description where a summary leads the page, every rule in words, where the pieces
+// start, and the report link. They were *The rules*, a section far down the page.
+function fullRulesHtml(game) {
+  const longer = (game.summaryLines || []).length && game.description
+    ? `<p class="gameAbout u-mt-0">${esc(game.description)}</p>` : '';
+  return `<details class="sect fullRules" data-sect="rules">
+    <summary><h3>Full rules</h3></summary><div class="panel">
+      ${longer}
+      <ul class="rules">${(game.ruleLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+      <details class="u-mt-10">
+        <summary class="muted small">where the pieces start</summary>
+        <ul class="rules muted small u-mt-6">${
+          (game.setupLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+      </details>
+      ${reportHtml(game)}
+    </div></details>`;
 }
 
 // ----------------------------------------------------------- the scores it replaced

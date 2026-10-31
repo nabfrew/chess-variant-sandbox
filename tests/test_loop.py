@@ -1300,9 +1300,10 @@ def test_the_proposer_can_state_the_games_this_project_already_has() -> None:
     unreachable = {}
     for path in sorted((Path(__file__).resolve().parents[1] / "rulesets").glob("*.json")):
         spec = json.loads(path.read_text(encoding="utf-8"))
-        # Two blocks a proposal is deliberately not asked for, and a version every
-        # proposal states by construction -- neither says anything about expressiveness.
-        spec = {k: v for k, v in spec.items() if k not in ("appearance", "provenance")}
+        # Three keys a proposal is deliberately not asked for (`summary`, Q1085a, is written
+        # when a game is filed), and a version every proposal states by construction --
+        # neither says anything about expressiveness.
+        spec = {k: v for k, v in spec.items() if k not in ("appearance", "provenance", "summary")}
         spec["schema_version"] = SCHEMA_VERSION
         problems = _violations(spec, schema)
         if problems:

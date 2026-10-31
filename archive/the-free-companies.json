@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "the free companies",
   "description": "Chess with four mercenaries standing between the armies, each loyal to whoever paid it last. A mercenary moves like a king or a knight, belongs to neither side at the start and does nothing until someone hires it: a player with a piece next to one may spend a whole move paying two coins, and it becomes theirs where it stands. Each player starts with two coins, enough for one hire, and earns more only by capturing (one coin for a pawn, two for any other piece), but taking a mercenary pays nothing, so removing one only denies it to the other side. Loyalty is for sale a second time: an enemy mercenary standing next to one of your pieces can be bribed away for four coins. So the opening is a race to stand beside a mercenary first, and every one hired is a liability as well as a piece, since each enemy piece that comes next to it threatens to buy it out from under you once its owner's captures have filled the purse. The mercenaries stand on c4, f4, c5 and f5, where neither side's bishops or queen can reach them after a single pawn move, and they block the c- and f-pawns' double steps.",
+  "summary": [
+    "Hire the mercenaries in the middle.",
+    "To hire, you need a piece next to the mercenary.",
+    "Start with enough coins for one hire; get more by capturing (non-mercenary) opponent pieces.",
+    "Bribe mercenaries hired by the opponent to turn to your side, at twice the cost, from a piece next to them too."
+  ],
   "board": {
     "width": 8,
     "height": 8

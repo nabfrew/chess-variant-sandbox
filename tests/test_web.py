@@ -12196,7 +12196,7 @@ class TestTheGamePageOfARetiredGame:
     def test_everything_else_on_the_page_is_still_drawn(self) -> None:
         """The point of keeping the page. The rules and the record are what it was for."""
         html = self._drawn(retired=True)["html"]
-        for panel in ("The rules", "The pieces", "How it scored", "Where it came from"):
+        for panel in ("Full rules", "The pieces", "How it scored", "Where it came from"):
             assert panel in html, panel
 
     def test_a_game_that_is_still_in_the_corpus_keeps_its_play_panel(self) -> None:

@@ -54,7 +54,7 @@ both over the library and its re-spellings):
 converted game is named by its new spelling; no game in the library or the store carries it.
 * ``strike`` against ``contacts``, and a portal pair against a two-end ``ends`` group: they are
   not one meaning (`normal`'s docstring), so each stays as written.
-* ``name``, ``description``, ``appearance`` and ``provenance``.
+* ``name``, ``description``, ``summary``, ``appearance`` and ``provenance``.
 
 `respell_text` rewrites a file's text by splicing: only the values that changed are written
 again, in the file's own layout, so a hand-laid-out file keeps its layout.

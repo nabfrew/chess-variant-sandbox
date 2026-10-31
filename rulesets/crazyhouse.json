@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "crazyhouse",
   "description": "Chess in which captured pieces change sides and may be dropped back onto any empty square. Attacks are never really beaten off, only postponed, and a material advantage is an attacking resource rather than an endgame plan.",
+  "summary": [
+    "A piece you capture changes sides and goes into your hand.",
+    "On your turn, instead of moving, you may drop a piece from your hand onto any empty square.",
+    "Pawns cannot be dropped on the first or last rank.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

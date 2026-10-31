@@ -49,7 +49,7 @@ from chess_variant_sandbox.spec import edits, load_spec, spec_hash
 from chess_variant_sandbox.spec.canonical import HASH_LENGTH
 from chess_variant_sandbox.spec.complexity import measure_complexity
 from chess_variant_sandbox.spec.describe import describe_rules, describe_setup, describe_spec
-from chess_variant_sandbox.spec.schema import is_spy_game
+from chess_variant_sandbox.spec.schema import is_spy_game, provenance_note, summary_lines
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
 from chess_variant_sandbox.web import card_rules, sitescore
 
@@ -992,6 +992,11 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
         # same word the card carries (Q503b).
         **stages.shown(stages.local(game.source)),
         "rules": describe_spec(game.spec),
+        # Q1085a: the short description the page leads with, a line at a time, and the one
+        # line on where the game came from under it; both empty where the spec has none, and
+        # the page leads with `description` instead.
+        "summaryLines": summary_lines(game.spec),
+        "provenanceNote": provenance_note(game.spec),
         "setupLines": describe_setup(game.spec),
         "ruleLines": describe_rules(game.spec),
         "spec": game.spec,

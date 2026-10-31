@@ -32,6 +32,7 @@ from chess_variant_sandbox.spec.schema import (
     _PROVENANCE_KEYS,
     DEFAULT_RANGE,
     SCHEMA_VERSION,
+    SUMMARY_MAX_LINES,
     SUPPORTED_SCHEMA_VERSIONS,
     validate_spec,
 )
@@ -517,15 +518,19 @@ example.
 _OTHER_KEYS = f"""\
 ## Keys that do not change the game
 
-Two more top-level objects are accepted. Neither changes how the game plays, so a file
-written from this reference needs neither.
+Three more top-level keys are accepted. None changes how the game plays, so a file
+written from this reference needs none of them.
 
+- **`summary`**: the game's short description, a list of a few plain lines (at most
+  {SUMMARY_MAX_LINES}) that a game's page shows first, above the full rules. Lead with
+  what makes this game itself, written to a player.
 - **`appearance`**: how the pieces are drawn ({", ".join(f"`{key}`" for key in sorted(_APPEARANCE_KEYS))}),
   mapping a piece id to the name of a drawing, or to a pair of names, one per player.
   Without it every piece is drawn from its name, or as its letter.
 - **`provenance`**: where the game came from, as free text
   ({", ".join(f"`{key}`" for key in sorted(_PROVENANCE_KEYS))}). `added` is a day written
-  `YYYY-MM-DD` and `parents` a list of game identifiers.
+  `YYYY-MM-DD` and `parents` a list of game identifiers. `note` is the one short line the
+  page prints under the summary, and only when where the game came from is of interest.
 """
 
 _MINICHESS: dict[str, Any] = {

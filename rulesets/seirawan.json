@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "seirawan",
   "description": "Seirawan chess, devised by the grandmaster Yasser Seirawan and Bruce Harper in 2007, keeps the whole of chess and adds two pieces each side holds in reserve: a hawk, which moves as a bishop or a knight, and an elephant, which moves as a rook or a knight. Neither can simply be dropped in. A reserve piece enters only through a door on its own back rank: when a piece leaves its starting square there for the first time, its owner may place the hawk or the elephant on the vacated square as part of the same move, and when the king castles it may come in on either the king's or the rook's square. Gating costs no extra move, so the question it poses is timing rather than time. Every developing move in the opening asks whether to bring a reserve piece with it; a piece gated early stands on its home square before the position shows where it is needed, and can get in the way of castling, while every back-rank piece that moves without one closes a door for good, and a player who waits too long can find the last door shut and the strongest piece they own stranded in reserve.",
+  "summary": [
+    "Each side holds two extra pieces in reserve: a hawk (bishop or knight moves) and an elephant (rook or knight moves).",
+    "A reserve piece comes in only on a back-rank square a piece leaves for the first time, as part of that move.",
+    "When you castle, it may come in on the king's or the rook's square.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8
@@ -308,6 +314,7 @@
     "origin": "human",
     "author": "Yasser Seirawan and Bruce Harper",
     "year": "2007",
+    "note": "Devised by the grandmaster Yasser Seirawan and Bruce Harper in 2007.",
     "source": "a published chess variant, also called S-chess",
     "history": "The user asked for it (Q1059). The rule language could not express gating, so Q1059a built `rules.drops.gating` for it; this is gating's showcase, and it reaches Fairy-Stockfish's published seirawan perft."
   }

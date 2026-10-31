@@ -573,6 +573,12 @@ RULES = """
      phone it is one column in that order. Spacing inside a column is the column's gap,
      whatever margins a panel was drawn with. */
   .gameAbout { margin: 8px 0 0; max-width: 72ch; }
+  /* Q1085a: the short description, a few plain lines, then where the game came from,
+     then the full rules folded shut. */
+  .gameLead { margin: 10px 0 0; padding-left: 20px; max-width: 72ch; }
+  .gameLead li { margin-bottom: 4px; }
+  .gameNote { margin: 6px 0 0; max-width: 72ch; }
+  .fullRules { max-width: 72ch; }
   .gameTop, .gameRest { display: grid; gap: 20px; align-items: start; margin-top: 16px;
                         grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
   .gameRest { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin-top: 8px; }

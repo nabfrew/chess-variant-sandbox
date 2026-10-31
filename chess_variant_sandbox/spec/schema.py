@@ -808,10 +808,14 @@ _PIECE_KEYS = {
 # ``pieces`` rehashes every spec that uses it and orphans the calibration runs -- and
 # neither of these changes a game. Appearance says how to draw a piece; provenance says
 # where the ruleset came from. Both are optional, and nothing in ``engine/`` reads them.
+# ``summary`` (Q1085a) is the game's short description: a few plain lines, written to a
+# player, that a game's page leads with before its full rules. Text like ``description``,
+# outside the mechanics, so writing or rewriting it moves no hash (`tests/test_summary.py`).
 _SPEC_KEYS = {
     "schema_version",
     "name",
     "description",
+    "summary",
     "board",
     "pieces",
     "setup",
@@ -832,10 +836,17 @@ _APPEARANCE_KEYS = {"icons"}
 # game, still being tested, playable and kept off every scored surface (Q931,
 # `web/library.preview`). Outside the mechanics, so marking or unmarking a game moves no
 # hash and no measurement.
+# ``note`` (Q1085a) is the one short line a game's page prints under its ``summary`` about
+# where the game came from, written only when that is of interest to a player (*devised by
+# Tim Paulden in 2016*); ``history`` is the maintainer's longer record, which no page draws.
 _PROVENANCE_KEYS = {
     "origin", "author", "year", "source", "history", "theme", "parents", "exhibit", "added",
-    "preview",
+    "preview", "note",
 }
+# A summary is a few short lines: more than this many, or a line longer than this, is a
+# description again.
+SUMMARY_MAX_LINES = 8
+SUMMARY_MAX_LINE = 200
 _SETUP_KEYS = {"mirror", "placements", "orientation"}
 _PLACEMENT_KEYS = {"piece", "player", "squares", "facing"}
 _RULES_KEYS = {
@@ -1156,6 +1167,7 @@ def validate_spec(spec: Any) -> list[str]:
 
     if not isinstance(spec.get("name"), str) or not spec.get("name", "").strip():
         errors.append("name must be a non-empty string")
+    _validate_summary(spec.get("summary"), errors)
 
     width, height, lattice = _validate_board(spec.get("board"), errors)
     hex_lattice = lattice == "hex"
@@ -3439,7 +3451,7 @@ def _validate_provenance(provenance: Any, errors: list[str]) -> None:
         return
     _check_keys(provenance, _PROVENANCE_KEYS, "provenance", errors)
 
-    for key in ("origin", "author", "source", "history", "theme", "exhibit", "preview"):
+    for key in ("origin", "author", "source", "history", "theme", "exhibit", "preview", "note"):
         value = provenance.get(key)
         if value is not None and not isinstance(value, str):
             errors.append(f"provenance.{key} must be a string")
@@ -3463,6 +3475,42 @@ def _validate_provenance(provenance: Any, errors: list[str]) -> None:
         not isinstance(parents, list) or not all(isinstance(p, str) for p in parents)
     ):
         errors.append("provenance.parents must be a list of ruleset hashes")
+
+
+def _validate_summary(summary: Any, errors: list[str]) -> None:
+    """``summary``: absent, or a list of a few short, non-empty lines of text (Q1085a)."""
+    if summary is None:
+        return
+    if not isinstance(summary, list) or not summary:
+        errors.append("summary must be a list of short lines of text")
+        return
+    if len(summary) > SUMMARY_MAX_LINES:
+        errors.append(f"summary must be at most {SUMMARY_MAX_LINES} lines")
+    for line in summary:
+        if not isinstance(line, str) or not line.strip():
+            errors.append("summary's lines must be non-empty strings")
+            return
+        if len(line) > SUMMARY_MAX_LINE:
+            errors.append(
+                f"summary's lines must be at most {SUMMARY_MAX_LINE} characters each, and "
+                f"one is {len(line)}"
+            )
+            return
+
+
+def summary_lines(spec: dict[str, Any]) -> list[str]:
+    """The spec's short description as its lines, empty where it has none (Q1085a)."""
+    found = spec.get("summary")
+    if not isinstance(found, list):
+        return []
+    return [" ".join(line.split()) for line in found if isinstance(line, str) and line.strip()]
+
+
+def provenance_note(spec: dict[str, Any]) -> str:
+    """The one line about where the game came from that its page prints, or empty."""
+    found = spec.get("provenance")
+    note = found.get("note") if isinstance(found, dict) else None
+    return " ".join(note.split()) if isinstance(note, str) else ""
 
 
 def turn_is_long(rules: dict[str, Any] | None) -> bool:

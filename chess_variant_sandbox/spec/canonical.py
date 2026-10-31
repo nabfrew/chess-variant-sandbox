@@ -5,7 +5,7 @@ from the fixed legacy table, or else the hash of its normal form (`normal.normal
 two spellings of one game are one game, and no game that had a name has changed it.
 
 The name covers *mechanics only* -- ``board``, ``pieces``, ``setup`` and ``rules`` -- and
-deliberately excludes ``name`` and ``description``. Two proposals that differ only in flavour
+deliberately excludes ``name``, ``description`` and ``summary``. Two proposals that differ only in flavour
 text therefore collide, which is what the design loop wants: re-proposing an
 already-evaluated game under a new name is the single most common way a generation wastes a
 tournament budget, and a colliding hash catches it before anything is simulated.

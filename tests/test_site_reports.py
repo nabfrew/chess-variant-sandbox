@@ -592,7 +592,7 @@ class TestThePages:
         page = page_text.PAGE
         assert "Report this game (spam, offensive, a copy)" in page
         assert "'/api/game/' + game.hash + '/report'" in page
-        # Inside the rules' section (V6 folds the game page into sections), after where the
-        # pieces start and before the next section.
+        # Inside the full rules' fold (Q1085a moved it up under the short description), after
+        # where the pieces start and before the fold closes.
         rules = page.index("(game.setupLines || [])")
-        assert rules < page.index("${reportHtml(game)}") < page.index("sectionHtml('kind'")
+        assert rules < page.index("${reportHtml(game)}") < page.index("</div></details>`", rules)
