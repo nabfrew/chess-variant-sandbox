@@ -1269,6 +1269,30 @@ class TestThePromotionZoneCrossesAsCompiledSquares:
         assert goal_payload(engine.spec.reach) == [[9, 10, 11], [0, 1, 2]]
 
 
+class TestTheWildTrailAndTheDuckRingAreNamed:
+    """Q1076: the squares a wild piece walked (an amber outline) and the duck's square
+    while its move is owed (an olive ring) were drawn with no legend entry. Each is now a
+    `MARK_KINDS` row, drawn with its `data-mark`, and the play board names it when drawn."""
+
+    def test_the_trail_carries_its_kind_and_its_key_is_the_trail(self) -> None:
+        seen = _wrapped("""
+          ({ left: trailShape(0, 0, 10, null, false), arrived: trailShape(0, 0, 10, null, true),
+             key: markKey('trail'), ring: markKey('duckTurn') })
+        """)
+        assert 'data-mark="trail"' in seen["left"] and "stroke-dasharray" in seen["left"]
+        assert 'data-mark="trail"' in seen["arrived"] and "stroke-dasharray" not in seen["arrived"]
+        assert 'stroke="var(--p2)"' in seen["key"] and "stroke-dasharray" in seen["key"]
+        assert 'stroke="var(--duck)"' in seen["ring"] and 'data-mark="duckTurn"' in seen["ring"]
+
+    def test_the_play_board_names_them_where_it_draws_them(self) -> None:
+        from page_text import PAGE
+
+        assert "...(walked.size ? ['trail'] : [])" in PAGE
+        assert "['duckTurn']" in PAGE
+        assert 'data-mark="duckTurn"' in PAGE
+        assert "trailShape(x, y, cell, FRAME" in PAGE
+
+
 class TestThePromotionZoneIsAMarkBehindAToggle:
     """The module in node with no DOM: which squares the band marks, how it shares a
     square with a goal ring, and what the reader's toggle takes off the board.

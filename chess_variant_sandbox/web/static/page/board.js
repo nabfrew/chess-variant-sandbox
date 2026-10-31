@@ -1805,7 +1805,7 @@ function drawBoard(previous) {
     // *different* kind of event, not a slightly different colour. It stays on the
     // board after the motion has finished, which is what a reader who looked away
     // for a second needs in order to see what took the piece that is now missing.
-    if (walked.has(square)) out += trail(x, y, cell, walked.get(square) === 'to');
+    if (walked.has(square)) out += trailShape(x, y, cell, FRAME, walked.get(square) === 'to');
     if (square === SELECTED) out += mark(x, y, cell, 'var(--hl-sel)', 0.55);
     const piece = pieceAt(square);
     if (piece) {
@@ -1849,7 +1849,8 @@ function drawBoard(previous) {
       out += cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--held-halo)"
                stroke-width="${cell * 0.12}" opacity="0.9" pointer-events="none"`, 0.06)
         + cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--duck)"
-               stroke-width="${cell * 0.065}" pointer-events="none" data-duck-ring="1"`, 0.06);
+               stroke-width="${cell * 0.065}" pointer-events="none" data-duck-ring="1"
+               data-mark="duckTurn"`, 0.06);
     }
     if (entries.has(square)) {
       out += `<circle cx="${x + cell / 2}" cy="${y + cell / 2}" r="${cell * 0.47}" fill="none"
@@ -2001,6 +2002,8 @@ function drawBoard(previous) {
     ...(ordered.length ? ['order'] : []),
     ...(announced ? ['announced'] : []),
     ...(flight ? ['duckFlight'] : []),
+    ...(duckRing !== null && duckRing !== undefined ? ['duckTurn'] : []),
+    ...(walked.size ? ['trail'] : []),
     ...(coins.size ? ['hire'] : []),
   ]);
   drawCoords(cell, outside);
@@ -3456,15 +3459,6 @@ function groundHtml() {
 function mark(x, y, cell, colour, opacity) {
   return cellShape(x, y, cell, FRAME,
     `fill="${colour}" opacity="${opacity}" pointer-events="none"`);
-}
-
-// Where a wild piece walked this ply: dashed on the square it left, solid on the one it
-// stepped onto, both in the third owner's colour. Two weights rather than two colours,
-// so the pair reads as a direction on a board already using amber for the last move.
-function trail(x, y, cell, arrived) {
-  const dash = arrived ? '' : ` stroke-dasharray="${cell * 0.13} ${cell * 0.09}"`;
-  return cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--p2)" stroke-width="${cell * 0.07}"
-           opacity="${arrived ? 0.95 : 0.7}"${dash} pointer-events="none"`, 0.06);
 }
 
 function movesFrom(square) {

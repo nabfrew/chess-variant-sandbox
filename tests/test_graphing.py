@@ -1267,11 +1267,11 @@ def test_the_map_modules_name_no_piece_and_no_game() -> None:
 #: 14a126b38a1a -> d06cfc337d9c, `chess-oriented-pawns` 57c73975c905 -> 7cddf4ba316b,
 #: `perpetual` df2fbba0ca76 -> a5e2a7e05c9a, `sardines` 9f538ab85a77 -> accd659f2c76,
 #: `weathervane-half-turn` 8fc3939243d5 -> 6784c35550d8, `weathervane` 1442513d38d7 ->
-#: 241fcd286e26. Every pinned number re-derived on the same 60 holds except one, left red on
-#: purpose: `lineage` reads 5, not 9, because the children's `provenance.parents` still name
-#: chess's old hash, which is no longer on the map, so `graphing._lineage` drops their arrows.
-#: That is a lost fact (those games were made from chess), not a new reading of the corpus, so
-#: the 9 stands until the arrows resolve again (Q1069b's report).
+#: 241fcd286e26. Every pinned number re-derived on the same 60 holds. `lineage` read 5, not 9,
+#: from Q1069b until Q1075 (2026-10-31): the children's `provenance.parents` still name chess's
+#: old hash, which is no longer on the map. Q1075 resolves an edited hash through the edit's own
+#: record (`spec.edits.EDITED`), so the four arrows are back and the 9 holds again;
+#: `tests/test_edits.py` fails the next edit that would orphan a child.
 PLAN_CORPUS = frozenset({
     "03aa7c3f2f18", "0b96463ffba7", "0be72e61ef24", "241fcd286e26", "d06cfc337d9c", "151582aed409",
     "15593fc47f6d", "1ba3d61e5961", "2261f8203948", "279f92a97530", "29d5213b02b2", "2eefcd835b3b",

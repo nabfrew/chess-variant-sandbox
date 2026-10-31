@@ -312,7 +312,9 @@ class TestContrast:
         table = table[:table.index("\n};\n")]
         rows = dict(re.findall(r"^  (\w+): \{ colour: 'var\((--[\w-]+)\)'", table, re.M))
         assert {"voidRun", "barred", "check", "goal", "coming"} <= rows.keys()
-        shared = {"coming", "comingThen", "seen"}
+        # Q1076: the duck's olive is one meaning, the duck: its flight and its ringed square
+        # while its move is owed (the look check reads those two by `data-mark`).
+        shared = {"coming", "comingThen", "seen", "duckFlight", "duckTurn"}
         seen: dict[str, str] = {}
         for kind, token in rows.items():
             assert token not in ("--held", "--held-halo"), kind

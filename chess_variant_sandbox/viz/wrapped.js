@@ -523,6 +523,16 @@ function cellShape(x, y, cell, view, attrs, inset) {
   return `<rect x="${x + k}" y="${y + k}" width="${side}" height="${side}" ${attrs}/>`;
 }
 
+// Where a wild piece walked (`MARK_KINDS.trail`): dashed on the square it left, solid on the
+// one it stepped onto, both in the third owner's colour. Two weights rather than two colours,
+// so the pair reads as a direction on a board already using amber for the last move. The
+// play board's cell loop draws it on the ply's squares, the legend's key one dashed square.
+function trailShape(x, y, cell, view, arrived) {
+  const dash = arrived ? '' : ` stroke-dasharray="${cell * 0.13} ${cell * 0.09}"`;
+  return cellShape(x, y, cell, view, `fill="none" stroke="var(--p2)" stroke-width="${cell * 0.07}"
+           opacity="${arrived ? 0.95 : 0.7}"${dash} pointer-events="none" data-mark="trail"`, 0.06);
+}
+
 // A wall's hatch: corner to corner of a square, vertex to vertex of a hexagon.
 function wallCross(x, y, cell, view) {
   if (!view || !view.hex) {
@@ -960,6 +970,19 @@ const MARK_KINDS = {
   // A placement from off the board and the pass draw none.
   duckFlight: { colour: 'var(--duck)', shape: 'announce', name: 'olive arrow', ink: 'var(--ink)',
                 label: 'where the duck was moved from, and to, on the last move' },
+  // Q1076: the duck's own square, ringed in the same olive while the player to move owes the
+  // duck's move (`duckMode`), every square it may go to lit beside it. The duck's olive is
+  // one meaning, *the duck*, so this row shares the flight's token; the look check reads the
+  // two by their `data-mark`, never by the colour.
+  duckTurn: { colour: 'var(--duck)', inset: 0.06, corner: 'top', name: 'olive ring',
+              ink: 'var(--ink)', label: 'the duck, yours to move now: tap a lit square' },
+  // Where a wild piece walked on the ply on screen (Q1076; the board drew it with no words
+  // since the play board's first wild piece): the square it left outlined dashed, the one it
+  // stepped onto solid, in the third owner's amber (`trailShape`), so "the wolf did this"
+  // reads apart from the last move's tint. On a square, but drawn by the board's cell loop
+  // from the ply's own steps, never `squareMarks`; the row is the legend's.
+  trail: { colour: 'var(--p2)', shape: 'trail', name: 'amber outline', ink: 'var(--ink)',
+           label: 'where a wild piece walked on the last move: dashed on the square it left, solid on the one it stepped onto' },
   // Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.6): a piece under a line of sight's effect,
   // off the core's effect bits on the position on screen (`Engine.effects`): a small badge
   // on the square's left corners, clear of the rested piece's sign and the order disc. A
@@ -1541,6 +1564,12 @@ function squareBadge(x, y, cell, marks, view, tag) {
     if (kind.shape === 'announce') {
       out += announceLine(x + cell * 0.15, y + cell * 0.85, x + cell * 0.88, y + cell * 0.12, cell,
                           mark.kind, kind.colour);
+      continue;
+    }
+    // A wild piece's trail (Q1076): the key is the square it left, dashed, as the board
+    // draws it.
+    if (kind.shape === 'trail') {
+      out += trailShape(x, y, cell, view, false);
       continue;
     }
     if (kind.shape === 'rest') {

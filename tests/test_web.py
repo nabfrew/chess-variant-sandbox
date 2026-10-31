@@ -4477,7 +4477,9 @@ class TestThePageIsStillJavaScript:
         # wears its type's drawing only by the first seat's entry (`wild ? 0 : player`),
         # never the owner's (PI3; the duck alone since generation 42). What each draws is
         # `TestAWildPieceWearsItsDrawing`'s.
-        assert PAGE.count("'var(--p2)'") == 2
+        # The third is `MARK_KINDS.trail`'s colour (Q1076): the wild piece's walked squares.
+        assert PAGE.count("'var(--p2)'") == 3
+        assert "trail: { colour: 'var(--p2)'" in PAGE
         assert PAGE.count("player > 1") == 2
         assert PAGE.count("[wild ? 0 : player]") == 1 and PAGE.count("pair[wild ? 0 :") == 1
 

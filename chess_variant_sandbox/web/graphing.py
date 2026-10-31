@@ -60,7 +60,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from chess_variant_sandbox.spec import relate
+from chess_variant_sandbox.spec import edits, relate
 from chess_variant_sandbox.spec.likeness import LIKENESS_VERSION, Likeness, likeness_of_forms
 from chess_variant_sandbox.web import families, mapping
 
@@ -1123,6 +1123,10 @@ def _lineage(
     a defining mechanic lands in that mechanic's community, far from its parent, and
     *this game was made from that one* is a fact no comparison can find.
 
+    A parent recorded under a hash its file held before a mechanics edit in place is drawn
+    from the file as it is now (`spec.edits.current`): the record is true of the day the
+    child was made, and the game it names is on the map under its new hash (Q1075).
+
     A parent that is not on the map is dropped rather than invented, and a parent that
     merged into its child's node -- an edit that changed no table -- is dropped too.
     """
@@ -1137,7 +1141,7 @@ def _lineage(
             else first if isinstance(first, str)
             else None
         ) or parents.get(game.hash)
-        child, parent = by_hash.get(game.hash), by_hash.get(str(digest))
+        child, parent = by_hash.get(game.hash), by_hash.get(edits.current(str(digest)))
         if child is None or parent is None or child == parent:
             continue
         if (parent, child) in seen:

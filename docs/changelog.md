@@ -13,6 +13,16 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-31
 
+### Games made from chess are back in its family
+
+On the map of games, the arrows from chess to the games made from it are back, and those games list chess as their parent
+again. They had gone missing when chess's own rules gained the draw on too little material.
+
+### The board's key explains the wild pieces' trails
+
+In games with wild pieces, the amber outlines on the squares they just walked (dashed where they left, solid where they
+stepped) now have a line in the board's key, and so does the olive ring round the duck when it's your turn to move it.
+
 ### Shoves animate everywhere
 
 Replays and the stories on the front page now show a shove the way the board you play on does: the line slides, and the piece

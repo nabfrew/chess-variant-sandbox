@@ -45,7 +45,7 @@ from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.metrics.glossary import explain
 from chess_variant_sandbox.metrics.index import IndexResult
 from chess_variant_sandbox.metrics.scoring import WeightsError
-from chess_variant_sandbox.spec import load_spec, spec_hash
+from chess_variant_sandbox.spec import edits, load_spec, spec_hash
 from chess_variant_sandbox.spec.canonical import HASH_LENGTH
 from chess_variant_sandbox.spec.complexity import measure_complexity
 from chess_variant_sandbox.spec.describe import describe_rules, describe_setup, describe_spec
@@ -442,8 +442,11 @@ class Game:
         # it has the whole run in hand; a spec's `provenance.parents` is a list of bare
         # hashes, because that is all the schema allows and all a promoted file can
         # honestly carry. Names for the second come from the library, which has them.
+        # A bare hash its file held before a mechanics edit names that file as it is now
+        # (`spec.edits.current`, Q1075), so chess's children stay in chess's family.
         parents = [
-            entry if isinstance(entry, dict) else {"hash": str(entry), "name": ""}
+            entry if isinstance(entry, dict)
+            else {"hash": edits.current(str(entry)), "name": ""}
             for entry in (self.lineage.get("parents") or declared.get("parents") or [])
         ]
         first = parents[0] if parents else None
