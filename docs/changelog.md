@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-31
 
+### Two more games draw when nobody can mate
+
+*Short sweeping bishop chess* and *chess with sweeping bishops* now end in a draw as soon as neither side has enough left
+to mate, the rule chess gained on 30 October. Their scores barely moved (short sweeping bishop chess 0.941), and the front
+page's sweep story plays the same games as before.
+
 ### Games made from chess are back in its family
 
 On the map of games, the arrows from chess to the games made from it are back, and those games list chess as their parent

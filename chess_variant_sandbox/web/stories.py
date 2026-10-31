@@ -339,7 +339,7 @@ STORIES: tuple[Story, ...] = (
                  "checkmate, {winner} wins."),
             source=("a recorded game between the hardest computer player and itself, {turns} "
                     "turn{turns_s} (seed {seed}, game {game} of {of})"),
-            game=Played(hash="42bd7d06828d", seed=0, line=252, ending=(0, "checkmate"),
+            game=Played(hash="01cdfe2e679b", seed=0, line=252, ending=(0, "checkmate"),
                         keys="events", pace=600, moment=1)),
         right=Beat(
             say=("Three squares is a door that closes: the sweep stays, but a sweeping check "
@@ -349,7 +349,7 @@ STORIES: tuple[Story, ...] = (
                  "{moment_to}. Turn {turns}: checkmate, {winner} wins."),
             source=("a recorded game between the hardest computer player and itself, {turns} "
                     "turn{turns_s} (seed {seed}, game {game} of {of})"),
-            game=Played(hash="c7c6907901b3", seed=3000, line=255, ending=(0, "checkmate"),
+            game=Played(hash="ceec60c5fbbc", seed=3000, line=255, ending=(0, "checkmate"),
                         keys="events", pace=360, moment=24)),
         quote="a shield worth keeping, or a door worth burning",
     ),

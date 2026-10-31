@@ -634,7 +634,7 @@ HUB_LIBRARY = frozenset({
     "d06cfc337d9c", "1501615e08e2", "151582aed409", "15593fc47f6d", "1aa8c4705681", "1ba3d61e5961",
     "1f85f50a23f6", "2135109e8191", "2261f8203948", "7e57cab1fd7e", "26636602fae0", "29d5213b02b2",
     "2cb9cb3c018c", "2eefcd835b3b", "313c913a5b3b", "328cab4db5cc", "3732e55621b1", "4bf09661fdd9",
-    "393dfeada70d", "3c639d277808", "3dafe910108f", "3ec1560124c3", "417c19c2f6bd", "42bd7d06828d",
+    "393dfeada70d", "3c639d277808", "3dafe910108f", "3ec1560124c3", "417c19c2f6bd", "01cdfe2e679b",
     "482ddc556331", "831c77e75650", "50a3da8f75e7", "51d9b36b4e93", "54a0a193da0f", "54b38fb8cba8",
     "54c731ca6e95", "57667d7861ad", "7cddf4ba316b", "58afebca2286", "38ba9c25e715", "5abb0b804cf6",
     "5f9c1bfcf85a", "61c4e247dc3c", "66b001f1b790", "67270a8805a0", "e1bb4740516e", "6bd4d9c5769e",
@@ -643,7 +643,7 @@ HUB_LIBRARY = frozenset({
     "9574b0bf9095", "9598e603241d", "975dde173f01", "1605b8619844", "9c90463dc10f", "accd659f2c76",
     "a1805ac1adc1", "a2f0c65ceedf", "a7b6f22e6b73", "a9306688fe57", "ad0750e4ec47", "add543cc28c3",
     "b02bbe8da72c", "b1f536573c22", "b2011455c4af", "b8687024cfc6", "bb5d97520084", "bdf2801ade24",
-    "c0e0c35f78b1", "c2925e027455", "3fdad4d69d87", "c68b69c57219", "c6ff883e5919", "c7c6907901b3",
+    "c0e0c35f78b1", "c2925e027455", "3fdad4d69d87", "c68b69c57219", "c6ff883e5919", "ceec60c5fbbc",
     "ca1fdd0b00bb", "ce17f9cdcd55", "ce406100becc", "ceb4916bdabc", "d2a722b461ff", "d32ef74e88c0",
     "d50c552b49da", "d6cb641394dd", "d90706fec9c0", "dd17d71412a7", "a5e2a7e05c9a", "e7293070b5be",
     "e7d2d7406586", "ea249ab8fbfc", "eaa48ed29ad7", "f1e40e35a6d9", "f3c624d2f297", "f7a789809758",
@@ -655,9 +655,13 @@ HUB_LIBRARY = frozenset({
 # (2026-10-30) re-pinned it on purpose: chess and the sixteen games that are chess underneath
 # draw on dead material, under new hashes; `chess-sweeping-bishops` (42bd7d06828d) and
 # `short-sweeping-bishop-chess` (c7c6907901b3) are chess underneath but were left without it
-# (the landing's sweep story replays their recorded games by name), so each is two rules
-# from chess now, its sweep and that draw.
+# (the landing's sweep story replays their recorded games by name), so each was two rules
+# from chess, its sweep and that draw. Q1073 (2026-10-31) switched it on for both, so they
+# are here under their new hashes (42bd7d06828d -> 01cdfe2e679b, c7c6907901b3 ->
+# ceec60c5fbbc) and one rule from chess again, its sweep.
 CHESS_NEIGHBOURS = {
+    "01cdfe2e679b",  # chess-sweeping-bishops
+    "ceec60c5fbbc",  # short-sweeping-bishop-chess
     "d06cfc337d9c",  # berolina
     "1aa8c4705681",  # chess-with-a-sheltering-king
     "1ba3d61e5961",  # hierarchy-rise
@@ -701,7 +705,7 @@ CHESS_NEIGHBOURS = {
 def test_the_committed_corpus_has_one_hub() -> None:
     """`docs/archive/plan-game-graph.md`'s acceptance, named by game because the plan names it.
 
-    Chess is where the library's variants hang from, and 36 (38 before Q1069a) of the other 109 games of
+    Chess is where the library's variants hang from, and 38 (36 from Q1069a until Q1073) of the other 109 games of
     `HUB_LIBRARY` differ from it in exactly one rule. The probe measured 21 before the
     folds; the twenty-second was `wolves-immune`, which was chess plus a wild piece and the
     one pair the probe's operator sweep reached and its diff did not; since Q876 retired

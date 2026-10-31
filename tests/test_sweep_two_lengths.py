@@ -35,10 +35,11 @@ from chess_variant_sandbox.spec.spelling import current_spelling
 
 ROOT = Path(__file__).resolve().parent.parent
 TWO_LENGTHS = Path(__file__).parent / "_sweep_three_slide_on.json"
-# The two stored sweep games, by the names they had before Q1063.
+# The two stored sweep games, by the names they had before Q1063 -- until Q1073 (2026-10-31)
+# switched on the draw on dead material, a mechanics edit (was 42bd7d06828d, c7c6907901b3).
 STORED = {
-    "archive/chess-sweeping-bishops.json": "42bd7d06828d",
-    "archive/short-sweeping-bishop-chess.json": "c7c6907901b3",
+    "archive/chess-sweeping-bishops.json": "01cdfe2e679b",
+    "archive/short-sweeping-bishop-chess.json": "ceec60c5fbbc",
 }
 
 KING = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}

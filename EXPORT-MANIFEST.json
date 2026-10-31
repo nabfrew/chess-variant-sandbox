@@ -1,5 +1,5 @@
 {
- "source_commit": "39bde789ca382aa4df521f6be5060d6cad2dbf84",
+ "source_commit": "5d913b205ade9c498a3a235f411fe3fa7c58443e",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -116,8 +116,8 @@
   },
   {
    "path": "archive/chess-sweeping-bishops.json",
-   "bytes": 3347,
-   "sha256": "0ae25f059be0f91038dcf466398776fa241add19b43eb9424f9453c6dcd6ff75"
+   "bytes": 3382,
+   "sha256": "a5406bff39b3db00b8bd29817fa5e3ef9c10494f9551b74f7f8bd9a278c7b92d"
   },
   {
    "path": "archive/chess-with-a-sheltering-king.json",
@@ -401,8 +401,8 @@
   },
   {
    "path": "archive/short-sweeping-bishop-chess.json",
-   "bytes": 5323,
-   "sha256": "8448df6fcfcb01f96ddf4ec4fe31e01358ae0d9dd439dc9fe17f17ec0ba152a2"
+   "bytes": 5358,
+   "sha256": "1f91994ee368d75eb3685b780fda71e329842a7241aed695dabbed5678b0d538"
   },
   {
    "path": "archive/shut-wormhole.json",
@@ -2796,8 +2796,8 @@
   },
   {
    "path": "chess_variant_sandbox/spec/edits.py",
-   "bytes": 3444,
-   "sha256": "0c4e48b50f82c7333772e1b07b4d30f77c601615d053725ae04b88178846fd30"
+   "bytes": 3694,
+   "sha256": "6fd40bb77502c0a527c4fca1fff1eead74059f3f480ef903d69ec550e7322867"
   },
   {
    "path": "chess_variant_sandbox/spec/jsonschema.py",
@@ -3422,7 +3422,7 @@
   {
    "path": "chess_variant_sandbox/web/stories.py",
    "bytes": 51337,
-   "sha256": "15bf21b42addc8028b0f63b297a5bd6e3053a82cc1cb1884b23ee911e8710f15"
+   "sha256": "b1aca4388f07ed2fb50cb259973d7d1ff431ba83282eb6ef925d2c442feb207e"
   },
   {
    "path": "chess_variant_sandbox/web/stories/copy_records.py",
@@ -3452,7 +3452,7 @@
   {
    "path": "chess_variant_sandbox/web/stories/recorded.json",
    "bytes": 5802,
-   "sha256": "abfe2aa47ab63a3d4ee090eae2036820eb207f2fba827372855e9f4fdd000224"
+   "sha256": "441fc0b9fdb7fe1176a0f276cff953c8b22377d267bb238c61d7f721e48c36ba"
   },
   {
    "path": "chess_variant_sandbox/winprob.py",
@@ -3461,8 +3461,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 164481,
-   "sha256": "ec8bbf5d91d3829cf965c948b4e6f7be5b8c5a3f56b571e663b60c4b1b57e1a0"
+   "bytes": 164824,
+   "sha256": "04cc80ff25e47eae928ca0a9ba08a981ccec377100cae67056aa515ae61cb3e1"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -5916,8 +5916,8 @@
   },
   {
    "path": "tests/test_graphing.py",
-   "bytes": 63751,
-   "sha256": "234d90de6bb68b3a70bcfe6c7196388e27ad4493b1c8062c40d5030f8d3078b4"
+   "bytes": 63849,
+   "sha256": "45ff17dd666a71ecbd7c16cda12d71b862d18ced9e7769352b3bd7ccfdc2e316"
   },
   {
    "path": "tests/test_green_stamp.py",
@@ -5991,8 +5991,8 @@
   },
   {
    "path": "tests/test_index_quality.py",
-   "bytes": 54643,
-   "sha256": "da69eb7a4525720819d0d6db47d93ae8c160353fb57e37b4989655878ecb2db6"
+   "bytes": 54695,
+   "sha256": "8ac2fb6293f3d3d06617274d95c1ef4feeb5e19c627ffc3f5c7ba0bc05ec606a"
   },
   {
    "path": "tests/test_inert_rule_readers.py",
@@ -6501,8 +6501,8 @@
   },
   {
    "path": "tests/test_relate.py",
-   "bytes": 74292,
-   "sha256": "1ccb29b7faf60333eef2a889568049d3f220c592b96d3ce440c19e4d266eae5a"
+   "bytes": 74587,
+   "sha256": "6e1caf29ea5bd209343f9b5479d3817013c1016997cc9a28f4bb03d974c4a145"
   },
   {
    "path": "tests/test_removing_strike_hand.py",
@@ -6646,8 +6646,8 @@
   },
   {
    "path": "tests/test_schema_nine.py",
-   "bytes": 87021,
-   "sha256": "45f3336043d449e2c87238ecf0c1bdf0545fe80f960260c0e33001c31e9992bb"
+   "bytes": 87341,
+   "sha256": "84148fc946e7352a64fc8a6812c8bdeefc1bc51c5cb7b45e3663a4bfb8f5eea4"
   },
   {
    "path": "tests/test_schema_nine_core.py",
@@ -7346,8 +7346,8 @@
   },
   {
    "path": "tests/test_sweep_two_lengths.py",
-   "bytes": 11332,
-   "sha256": "3f25e426f6c27f3b26db34cd9cf17507b6f6966402f8d1cd4823cef539dd9b4b"
+   "bytes": 11451,
+   "sha256": "ec75438fd6b92e4b12ace1fb4d648f476e29577d2ad48a47e9ac8fafbacdbadd"
   },
   {
    "path": "tests/test_tables_cache.py",

@@ -45,6 +45,9 @@ EDITED: dict[str, str] = {
     "379efba235c5": "4bf09661fdd9",  # archive/circling-queen.json
     # Q1074bd, 2026-10-31: dohyo becomes the corner ring.
     "242c02248dd2": "559e947e585a",  # rulesets/dohyo.json
+    # Q1073, 2026-10-31: `rules.insufficient_material` switched on for the sweep story's pair.
+    "42bd7d06828d": "01cdfe2e679b",  # archive/chess-sweeping-bishops.json
+    "c7c6907901b3": "ceec60c5fbbc",  # archive/short-sweeping-bishop-chess.json
 }
 
 

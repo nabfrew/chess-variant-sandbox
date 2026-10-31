@@ -847,7 +847,7 @@ class TestADistinctSeatCannotRefuseAForcedLine:
     main checkout's library runs, and skipped where they are absent.
     """
 
-    HASH = "42bd7d06828d"
+    HASH = "01cdfe2e679b"  # 42bd7d06828d until Q1073's draw on dead material
 
     def test_sweeping_bishop_chess_stays_refused_by_its_other_gates(self) -> None:
         from chess_variant_sandbox.metrics.components import _seat_readings, compute_components

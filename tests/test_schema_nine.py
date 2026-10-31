@@ -225,10 +225,12 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q21, 2026-09-14: schema 13's showcase, chess with sweeping bishops. The only spec in
     # the tree that compiles a sweep table, so this row pins that path.
     # Q1069a left it off: the landing's sweep story replays its recorded games by this name.
-    "archive/chess-sweeping-bishops.json": ("42bd7d06828d", "de55d69b00587dc2"),
+    # Q1073, 2026-10-31: `rules.insufficient_material` switched on, a mechanics edit; its runs stay, the story re-recorded. was 42bd7d06828d / de55d69b00587dc2
+    "archive/chess-sweeping-bishops.json": ("01cdfe2e679b", "fbc3a913fa88ef48"),
     # LPD, 2026-10-26: its one-change fix, the sweep given range 3 (the landing's fourth pair).
     # Q1069a left it off, as its pair above.
-    "archive/short-sweeping-bishop-chess.json": ("c7c6907901b3", "f47ff465aa55f168"),
+    # Q1073, 2026-10-31: `rules.insufficient_material` switched on, a mechanics edit; its runs stay, the story re-recorded. was c7c6907901b3 / f47ff465aa55f168
+    "archive/short-sweeping-bishop-chess.json": ("ceec60c5fbbc", "8155b937c3059a03"),
     # Q1023, 2026-10-26: L1, chess with galloping knights, schema 31's lame rider (`range`,
     # `min_range`; `docs/archive/plan-schema-31.md` §6.4; `tests/test_showcase_galloping_knights.py`),
     # from `4c1922ffae26`. New.

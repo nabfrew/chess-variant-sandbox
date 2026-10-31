@@ -1271,11 +1271,12 @@ def test_the_map_modules_name_no_piece_and_no_game() -> None:
 #: from Q1069b until Q1075 (2026-10-31): the children's `provenance.parents` still name chess's
 #: old hash, which is no longer on the map. Q1075 resolves an edited hash through the edit's own
 #: record (`spec.edits.EDITED`), so the four arrows are back and the 9 holds again;
-#: `tests/test_edits.py` fails the next edit that would orphan a child.
+#: `tests/test_edits.py` fails the next edit that would orphan a child. Q1073 (2026-10-31)
+#: edited `chess-sweeping-bishops` the same way: 42bd7d06828d -> 01cdfe2e679b.
 PLAN_CORPUS = frozenset({
     "03aa7c3f2f18", "0b96463ffba7", "0be72e61ef24", "241fcd286e26", "d06cfc337d9c", "151582aed409",
     "15593fc47f6d", "1ba3d61e5961", "2261f8203948", "279f92a97530", "29d5213b02b2", "2eefcd835b3b",
-    "313c913a5b3b", "328cab4db5cc", "3c639d277808", "3ec1560124c3", "42bd7d06828d", "482ddc556331",
+    "313c913a5b3b", "328cab4db5cc", "3c639d277808", "3ec1560124c3", "01cdfe2e679b", "482ddc556331",
     "831c77e75650", "50a3da8f75e7", "51d9b36b4e93", "54b38fb8cba8", "54c731ca6e95", "57667d7861ad",
     "7cddf4ba316b", "5f9c1bfcf85a", "66b001f1b790", "67270a8805a0", "6bd4d9c5769e", "71912ea8ba7f",
     "78130df01edd", "82a4788c02f0", "85555467a4ca", "8d9fb1b4c0b4", "6784c35550d8", "93b02b591c87",
