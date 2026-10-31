@@ -5689,9 +5689,9 @@ class TestTheOpponentMenuIsTrimmed:
                                    "always practice")
 
     def test_on_the_site_choosing_the_learned_player_starts_a_practice_game(self) -> None:
-        """Q683. With *rated* chosen, picking the learned player sets the menu to practice
+        """Q683. With *rated* chosen, picking the learned player turns the switch off
         and holds it there, the line under it says why, and the start sends practice;
-        picking another player gives the menu back."""
+        picking another player gives the switch back."""
         from chess_variant_sandbox.web import opponents
 
         learned = "minimax:net=aaaaaaaaaaaa,nodes=6400"
@@ -5700,15 +5700,15 @@ class TestTheOpponentMenuIsTrimmed:
             agent=learned, label="x", group="that taught itself", name=opponents.LEARNED_NAME,
             store="learned", practice_only=True).as_dict()]
         press = f"""
-          const mode = document.getElementById('mode'), seat = document.getElementById('seat1');
+          const rated = document.getElementById('rated'), seat = document.getElementById('seat1');
           document.getElementById('seat0').value = 'human';
-          mode.value = 'leaderboard'; mode.onchange();
+          rated.checked = true; rated.onchange();
           seat.value = {json.dumps(learned)}; seat.onchange();
-          window.__held = [mode.value, mode.disabled, document.getElementById('modeSays')
+          window.__held = [rated.checked, rated.disabled, document.getElementById('modeSays')
             .textContent, document.getElementById('start').textContent];
           document.getElementById('start').onclick();
           seat.value = 'minimax:nodes=6400'; seat.onchange();
-          window.__freed = [mode.disabled];
+          window.__freed = [rated.disabled];
           document.getElementById('view')._html += '<i id="held">'
             + JSON.stringify([window.__held, window.__freed]) + '</i>';
         """
@@ -5716,7 +5716,7 @@ class TestTheOpponentMenuIsTrimmed:
         import re
 
         held, freed = json.loads(re.search(r'<i id="held">(.*?)</i>', report["html"]).group(1))
-        assert held[0] == "sandbox" and held[1] is True
+        assert held[0] is False and held[1] is True
         assert held[2].startswith("A game against the learned player (experimental) is always")
         assert held[3] == "start a practice game against the learned player (experimental)"
         assert freed == [False]
@@ -5776,10 +5776,11 @@ class TestTheOpponentMenuIsTrimmed:
         return [" ".join(text.split()) for text in re.findall(r">([^<]*)</option>", html)]
 
     def test_on_the_site_an_option_carries_the_one_scale_people_are_rated_on(self) -> None:
-        """§2.3, P6: *hard · rated 1946 here*, never the tournament's signed number."""
+        """§2.3, P6: *hard · rated 1946*, never the tournament's signed number; no *here*
+        after it (Q1086)."""
         game = {"standing": {"siteRatings": {"minimax:nodes=6400": 1946.4}}}
         shown = self._options("ACCOUNTS = true;", game)
-        assert shown == ["you", "hard · rated 1946 here"]
+        assert shown == ["you", "hard · rated 1946"]
 
     def test_signed_in_an_option_says_how_far_it_sits_from_you(self) -> None:
         """The server's distance (`yourGaps`), worded: never *(-785)*."""
@@ -7971,23 +7972,24 @@ class TestTheBoardKnowsItsMode:
 
     def test_a_watch_is_started_without_one(self) -> None:
         """Nobody plays a watch, so there is nothing to rate and the store refuses a
-        rated one. The seats are what say so, on both controls that start one."""
+        rated one. The seats are what say so: on the board's control, and on the game
+        page, where two computer players hold the rated switch off (`unrateable`)."""
         from page_text import PAGE
 
         start = PAGE.index("const restart = (seats, follows = true) =>")
         body = PAGE[start:PAGE.index("document.getElementById('back').onclick", start)]
         assert "seats.includes('human')" in body, "the mode goes with the seats"
-        page_start = PAGE.index("document.getElementById('watchIt').onclick")
-        watch = PAGE[page_start:PAGE.index("fail(error, 'watchIt')", page_start)]
-        assert "seats: [WATCH_AGENT, WATCH_AGENT]" in watch
-        assert "mode" not in watch
+        assert _in_page("", "unrateable({}, ['minimax:nodes=400', 'minimax:nodes=400'])")
 
-    def test_the_game_page_has_the_watch_button_its_menus_could_already_reach(self) -> None:
-        """Two computer players was reachable by setting both seat menus and pressing
-        start, which is a thing you have to know rather than a thing you can see."""
+    def test_the_game_page_watches_through_its_seats_alone(self) -> None:
+        """Q1086, the user: computer against computer already is *watch it play itself*,
+        so the game page has no second button for it, and *start* says *watch*."""
         from page_text import PAGE
 
-        assert '<button id="watchIt" title="${esc(watchTitle())}">' in PAGE
+        assert 'id="watchIt"' not in PAGE and 'id="watchFirst"' not in PAGE
+        said = _in_page("ROSTER = [{ agent: 'minimax:nodes=400', name: 'easy' }];",
+                        "startWords(['minimax:nodes=400', 'minimax:nodes=400'], 'sandbox')")
+        assert said == "watch easy against easy"
 
     def test_a_watch_says_who_is_playing_wherever_it_is_started(self) -> None:
         """Q265's sentence was the designer's alone, because only the draft route
@@ -8389,46 +8391,42 @@ class TestTheStartButtonSaysWhatItStarts:
         # The local application has no modes, so it names the opponent alone.
         assert said(human_first[::-1], "") == "start a game against medium"
         assert said(["human", "human"], "") == "start a game for two at this board"
-        assert said(["minimax:nodes=1600"] * 2, "") == (
-            "start a game: medium against medium"
-        )
+        # Q1086: two computer players is a watch, and the button says so.
+        assert said(["minimax:nodes=1600"] * 2, "") == "watch medium against medium"
 
-    def test_the_menu_is_two_short_options_and_a_line_that_wraps(self) -> None:
+    def test_the_mode_is_one_switch_and_a_line_that_wraps(self) -> None:
+        """Q1086: *does this one count* and its menu became a switch, off for practice."""
         payload = _game_payload("abc123def456", site=True)
         drawn = _in_page("", f"modePicker({json.dumps(payload)})")
-        options = re.findall(r"<option[^>]*>([^<]*)</option>", drawn)
-        assert options == ["no &mdash; practice", "yes &mdash; rated"]
-        assert 'class="u-maxw-100p"' in drawn
-        # The sentence is under the menu, where it can wrap; sandbox until chosen.
+        assert re.search(r'<input type="checkbox" id="rated"\s+role="switch">', drawn)
+        assert "<select" not in drawn and "does this one count" not in drawn
+        # The sentence is under the switch, where it can wrap; practice until chosen.
         assert 'id="modeSays"' in drawn
-        assert "This is a practice game" in drawn
-        assert '<option value="sandbox" selected>' in drawn
+        assert "Practice: undo and restart are on" in drawn
 
     def test_the_last_choice_is_remembered(self) -> None:
         payload = _game_payload("abc123def456", site=True)
         kept = ("window.localStorage = { getItem: key => key === 'cvs-play-mode'"
                 " ? 'leaderboard' : null, setItem: () => {} };")
         drawn = _in_page(kept, f"modePicker({json.dumps(payload)})")
-        assert '<option value="leaderboard" selected>' in drawn
-        assert "This one is rated, no undo" in drawn
+        assert re.search(r'role="switch" checked>', drawn)
+        assert "Rated, with no undo" in drawn
         # Anything else stored, or storage refused, is the default.
         odd = "window.localStorage = { getItem: () => 'nonsense', setItem: () => {} };"
-        assert '<option value="sandbox" selected>' in _in_page(
-            odd, f"modePicker({json.dumps(payload)})")
+        assert "checked" not in _in_page(odd, f"modePicker({json.dumps(payload)})")
         refused = "Object.defineProperty(window, 'localStorage', { get() { throw 1; } });"
-        assert '<option value="sandbox" selected>' in _in_page(
-            refused, f"modePicker({json.dumps(payload)})")
+        assert "checked" not in _in_page(refused, f"modePicker({json.dumps(payload)})")
 
     def test_pressing_start_sends_the_mode_names_it_and_keeps_it(self) -> None:
         digest = "abc123def456"
         press = """
           window.localStorage = { kept: {}, getItem(k) { return this.kept[k] || null; },
                                   setItem(k, v) { this.kept[k] = v; } };
-          const mode = document.getElementById('mode');
-          mode.value = 'leaderboard';
+          const rated = document.getElementById('rated');
           document.getElementById('seat0').value = 'human';
           document.getElementById('seat1').value = 'minimax:nodes=1600';
-          mode.onchange();
+          rated.onchange();
+          rated.checked = true; rated.onchange();
           VIEW._html += '<i id="said">' + document.getElementById('start').textContent
             + '|' + document.getElementById('modeSays').textContent + '</i>';
           document.getElementById('start').onclick();
@@ -8438,10 +8436,89 @@ class TestTheStartButtonSaysWhatItStarts:
                           press=press)
         said = re.search(r'<i id="said">([^<]*)</i>', report["html"]).group(1)
         assert said.startswith("start a rated game against ")
-        assert "This one is rated, no undo" in said
+        assert "Rated, with no undo" in said
         sent = [body for path, body in report["sent"] if path == "/api/session"]
         assert sent and sent[0]["mode"] == "leaderboard"
         assert '<i id="kept">leaderboard</i>' in report["html"]
+
+
+class TestTheRatedSwitchFollowsTheSeats:
+    """Q1086, the user: *"make practice/rated a toggle that updates by itself and disables
+    for combinations that can't be rated (you vs. you, computer vs. computer)"*. The rules
+    are `matches.start`'s, unchanged; the switch says them before the press."""
+
+    DIGEST = "abc123def456"
+
+    def _states(self, pairs: list[list[str]], before: str) -> list[list]:
+        """Each pairing set through the seats' own change, from `before` against you with
+        *rated* switched on."""
+        press = f"""
+          const rated = document.getElementById('rated');
+          const a = document.getElementById('seat0'), b = document.getElementById('seat1');
+          const seen = [];
+          for (const [x, y] of {json.dumps(pairs)}) {{
+            a.value = 'human'; b.value = {json.dumps(before)}; a.onchange();
+            rated.checked = true; rated.onchange();
+            a.value = x; b.value = y; a.onchange();
+            seen.push([rated.checked, !!rated.disabled,
+                       document.getElementById('modeSays').textContent,
+                       document.getElementById('start').textContent]);
+          }}
+          VIEW._html += '<i id="seen">' + JSON.stringify(seen) + '</i>';
+        """
+        report = _page_on(True, f"#/game/{self.DIGEST}",
+                          _game_payload(self.DIGEST, site=True), press=press)
+        return json.loads(re.search(r'<i id="seen">(.*?)</i>', report["html"]).group(1))
+
+    def test_unrateable_pairings_hold_the_switch_off(self) -> None:
+        from chess_variant_sandbox.web import opponents
+
+        ladder = [entry.agent for entry in opponents.ladder()]
+        # ladder[0] is you; the payload seeds no rating for the weakest computer player.
+        weakest, rated = ladder[1], ladder[3]
+        you_you, cpu_cpu, unseeded, fine = self._states([
+            ["human", "human"], [rated, rated], ["human", weakest], [rated, "human"],
+        ], before=rated)
+        assert you_you[:2] == [False, True] and "nothing is rated" in you_you[2]
+        assert cpu_cpu[:2] == [False, True] and "you watch" in cpu_cpu[2]
+        assert cpu_cpu[3].startswith("watch ")
+        assert unseeded[:2] == [False, True] and "has no rating on this game" in unseeded[2]
+        # A rateable pairing keeps the switch as it was set.
+        assert fine[:2] == [True, False]
+        assert fine[3].startswith("start a rated game against ")
+
+    def test_a_rateable_pairing_keeps_rated(self) -> None:
+        from chess_variant_sandbox.web import opponents
+
+        rated = [entry.agent for entry in opponents.ladder()][2]
+        press = f"""
+          const rated = document.getElementById('rated');
+          document.getElementById('seat0').value = 'human';
+          document.getElementById('seat1').value = {json.dumps(rated)};
+          rated.onchange();
+          rated.checked = true; rated.onchange();
+          VIEW._html += '<i id="seen">' + JSON.stringify([rated.checked, !!rated.disabled,
+            document.getElementById('start').textContent]) + '</i>';
+        """
+        report = _page_on(True, f"#/game/{self.DIGEST}",
+                          _game_payload(self.DIGEST, site=True), press=press)
+        seen = json.loads(re.search(r'<i id="seen">(.*?)</i>', report["html"]).group(1))
+        assert seen[:2] == [True, False] and seen[2].startswith("start a rated game against")
+
+    def test_the_removed_words_are_gone(self) -> None:
+        """Items 1, 2, 5 and 6: no far-from-chess line, no *watch two computer players
+        first*, no *does this one count*, no second *watch it play itself*; *vs.* sits
+        between the two seats."""
+        payload = _game_payload(self.DIGEST, site=True)
+        payload["firstGame"] = {
+            "gentle": {"agent": "minimax:nodes=400", "name": "easy"}, "harder": None,
+            "basis": "ladder", "far": ["it has no royal piece to trap"]}
+        html = _page_on(True, f"#/game/{self.DIGEST}", payload)["html"]
+        for gone in ("far from chess", "no royal piece", "watch two computer players first",
+                     "does this one count", "watch it play itself"):
+            assert gone not in html, gone
+        sides = html[html.index('<div class="sides">'):]
+        assert sides.index('id="seat0"') < sides.index(">vs.<") < sides.index('id="seat1"')
 
 
 class TestAVisitorIsToldTheGameIsNotKept:
@@ -12189,7 +12266,7 @@ class TestTheGamePageOfARetiredGame:
     def test_a_retired_game_offers_no_way_to_start_one(self) -> None:
         html = self._drawn(retired=True)["html"]
         assert ">Retired<" in html
-        for control in ('id="start"', 'id="swap"', 'id="watchIt"', 'id="mode"'):
+        for control in ('id="start"', 'id="swap"', 'id="rated"'):
             assert control not in html, control
         assert "no new game can be started here" in html
 

@@ -207,7 +207,7 @@ def _said(table: rating.Table, user: int) -> str:
     found = table.get(rating.person(user))
     if found is None or found.matches == 0:
         return "hasn't played this one yet"
-    return f"rated {round(found.rating)} here"
+    return f"rated {round(found.rating)}"
 
 
 # --------------------------------------------------------- the maker takes challengers

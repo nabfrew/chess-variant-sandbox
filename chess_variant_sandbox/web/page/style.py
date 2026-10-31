@@ -1120,7 +1120,15 @@ RULES = """
   /* One row each, apart by a rule rather than a box inside the play panel (§3.4). */
   .sides { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); }
   .side { padding: 10px 0; min-width: 0; }
-  .side + .side { border-top: 1px solid var(--line); }
+  /* Q1086: *vs.* in the middle of the rule between the two seats. */
+  .sides .vs { display: flex; align-items: center; gap: 12px; color: var(--muted);
+               font-size: 15px; font-weight: 600; margin: 2px 0; }
+  .sides .vs::before, .sides .vs::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+  /* The rated switch: a checkbox in the browser's drawing, its word beside it. */
+  .ratedSwitch { display: inline-flex; align-items: center; gap: 8px; min-height: var(--ctl-h);
+                 cursor: pointer; font-weight: 500; }
+  .ratedSwitch input { margin: 0; }
+  .ratedSwitch:has(input:disabled) { opacity: .45; cursor: default; }
   .side select { width: 100%; margin-top: 5px; }
   /* Who takes the seat, as cards (F7's look, §3.5): the word, its strength under it, the
      chosen one bordered in the action colour. A busy player's line is muted, never red. */

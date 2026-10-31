@@ -99,7 +99,8 @@ class TestOpenToAGame:
         ch.set_open(store.connection, ada, SHORT_HASH, True)
         _play_out(store, c.start(store.connection, SHORT_HASH, [ada, bo]).id)
         said = ch.people(store.connection, SHORT_HASH, cy)["open"][0]["said"]
-        assert re.fullmatch(r"rated \d+ here", said), said
+        # Q1086: no *here* after the number.
+        assert re.fullmatch(r"rated \d+", said), said
 
     def test_unticking_and_the_suggestions(self, store: Scratch) -> None:
         ada, bo, cy = _three(store)
@@ -695,7 +696,11 @@ class TestTheGamePageDraws:
         assert 'data-challenge="ana"' in panel
         assert '<option value="lee">' in panel and "make a challenge link" in panel
         assert 'id="openTo"' in panel and " checked" not in panel
-        assert "Off unless you tick it" in panel and "nothing is" in panel
+        assert "Only members see the list." in panel
+        # Q1086, the user: *"More concise, less LLMisms"*.
+        for gone in ("By correspondence", "Or anyone here", "either list",
+                     "however you like", "isn't a member yet"):
+            assert gone not in panel, gone
         # *Start a game* stays the one primary button on the page.
         assert "primary" not in panel
 
@@ -705,7 +710,7 @@ class TestTheGamePageDraws:
         empty = html.unescape(
             _in_page(_PEOPLE + "GAMEX.standing.people.open = [];", "playPersonHtml(GAMEX)")
         )
-        assert "Nobody has said they're open to a game of Short yet." in empty
+        assert "Nobody yet." in empty
         assert _in_page(_PEOPLE + "GAMEX.standing = {};", "playPersonHtml(GAMEX)") == ""
         paused = _in_page(
             _PEOPLE + "Object.assign(GAMEX.standing.people, { paused: true, mine: true,"
@@ -724,10 +729,11 @@ class TestTheGamePageDraws:
         assert "Challenge ana to Short" in sheet
         assert "north, moving first" in sheet and "south, moving second" in sheet
         assert "either, drawn when it starts" in sheet
-        assert "<li>There is no clock.</li>" in sheet and "rated on Short" in sheet
+        assert "<li>There is no clock.</li>" in sheet
+        assert "moves both your ratings on Short" in sheet
         link = _in_page(_PEOPLE + "GAMEX.standing.people.rated = false;",
                         "challengeSheetHtml(GAMEX, null)")
-        assert "A challenge link to Short" in link and "practice game" in link
+        assert "A challenge link to Short" in link and "Practice only" in link
         sent = _in_page(_PEOPLE, "challengeSentHtml({ link: '/c/t1' }, 'https://x')")
         assert 'value="https://x/c/t1"' in sent and "works once" in sent
         named = _in_page(_PEOPLE, "challengeSentHtml({ to: 'ana', link: null }, '')")
@@ -742,14 +748,14 @@ class TestTheGamePageDraws:
         given = (_PEOPLE + "GAMEX.standing.people.invites = { left: 2, sent: 0,"
                  " said: 'You can invite 2 more people.', under: 'They get an email.' };")
         panel = html.unescape(_in_page(given, "playPersonHtml(GAMEX)"))
-        assert "A friend who isn't a member yet" in panel
+        assert "Invite a friend" in panel
         assert "You can invite 2 more people." in panel and "They get an email." in panel
         assert 'id="inviteForm"' in panel and 'type="email"' in panel
         assert "send the invitation" in panel and "primary" not in panel
         none = (_PEOPLE + "GAMEX.standing.people.invites = { left: 0, sent: 0,"
                 f" said: {inviting.NONE_GIVEN!r}, under: null }};")
         panel = html.unescape(_in_page(none, "playPersonHtml(GAMEX)"))
-        assert "A friend who isn't a member yet" in panel and inviting.NONE_GIVEN in panel
+        assert "Invite a friend" in panel and inviting.NONE_GIVEN in panel
         assert 'id="inviteForm"' not in panel and "send the invitation" not in panel
         # The same route as your own page, so the same allowance and refusals.
         assert "api('/api/invite', { email:" in _people_source()

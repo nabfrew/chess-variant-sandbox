@@ -242,7 +242,7 @@ class TestTheFirstGameOnThePage:
         assert seat == second == "greedy"
         assert "gentlest computer player on this game, as practice" in " ".join(line.split())
         assert "<b>greedy</b>" in line and "a harder one: easy" in line
-        assert '<option value="sandbox" selected>' in mode
+        assert 'id="rated"' in mode and "checked" not in mode
 
     def test_after_a_game_here_the_usual_opponent_comes_back(self) -> None:
         said = _run(f"(() => {{ {_ROSTER} {_STORE} const g = {json.dumps(_FIRST)};"
@@ -259,11 +259,14 @@ class TestTheFirstGameOnThePage:
         assert drawn.count('class="gentlest">gentlest</span>') == 1
         assert "greedy \u00b7 gentlest" in drawn or "greedy · gentlest" in drawn
 
-    def test_a_far_game_offers_a_watch_first(self) -> None:
+    def test_a_far_game_no_longer_offers_a_watch_first(self) -> None:
+        """Q1086, the user: the summary says how the game differs, and computer against
+        computer is the watch, so the page draws neither the reasons nor the button."""
         far = {**_FIRST, "firstGame": {**_FIRST["firstGame"], "far": ["it has no royal piece to trap"]}}
         line = _run(f"(() => {{ {_ROSTER} return firstGameHtml({json.dumps(far)}); }})()")
-        assert "watch two computer players first" in line
-        assert "it has no royal piece to trap" in line
+        assert "watch two computer players first" not in line
+        assert "it has no royal piece to trap" not in line
+        assert "<b>greedy</b>" in line
 
     def test_a_first_game_opens_on_the_rules(self) -> None:
         from page_text import BOARD, DETAIL

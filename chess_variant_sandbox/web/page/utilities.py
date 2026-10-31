@@ -92,7 +92,6 @@ UTILITIES: dict[str, str] = {
     "u-m-8-0-10": "margin: 8px 0 10px",
     "u-m-8-0-4": "margin: 8px 0 4px",
     "u-m-n6-0-10": "margin: -6px 0 10px",
-    "u-maxw-100p": "max-width: 100%",
     "u-maxw-190": "max-width: 190px",
     "u-maxw-34rem": "max-width: 34rem",
     "u-maxw-70ch": "max-width: 70ch",

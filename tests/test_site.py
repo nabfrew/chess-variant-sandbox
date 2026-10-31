@@ -599,7 +599,7 @@ class TestTheApp:
         ]
         assert "standing.signedIn === false" in picker
         assert "Sign in to play a game" in picker
-        assert picker.index("signedIn") < picker.index('<select id="mode"')
+        assert picker.index("signedIn") < picker.index('id="rated"')
 
     def test_the_page_is_the_local_apps_page(self, app: SiteApp) -> None:
         """One page, served by one handler. The site is a route table, not a fork."""
@@ -6009,8 +6009,7 @@ class TestTheModeMenuSaysWhatHappens:
 
         assert "leaving resigns" not in DETAIL
         assert (
-            "rated, no undo; an unfinished game is resigned after thirty idle days or "
-            "when you start another"
+            "An unfinished game is resigned after thirty idle days or when you start another"
         ) in DETAIL
 
     def test_thirty_is_the_limit_the_sweep_actually_runs_on(self) -> None:
@@ -6019,13 +6018,14 @@ class TestTheModeMenuSaysWhatHappens:
         assert quota.IDLE_LIMIT.days == 30, "the page says thirty in words"
         assert "thirty idle days" in DETAIL
 
-    def test_the_menu_is_clamped_to_the_column_it_sits_in(self) -> None:
-        """A select is as wide as its widest option, and the rated one is now a
-        sentence. Measured at 375px: the menu took 714px and the whole page scrolled
-        sideways, which is what C7 got rid of."""
+    def test_the_mode_is_a_switch_not_a_menu(self) -> None:
+        """A select is as wide as its widest option: at 375px the old menu took 714px
+        and the page scrolled sideways (C7). Q1086 made it one switch, which has no
+        widest option, and its sentence wraps under it."""
         from page_text import DETAIL
 
-        assert '<select id="mode" class="u-maxw-100p">' in DETAIL
+        assert 'id="rated"' in DETAIL and 'role="switch"' in DETAIL
+        assert '<select id="mode"' not in DETAIL
 
 
 class TestWhatTheTwoPayloadsSayAboutAnOpenGame:

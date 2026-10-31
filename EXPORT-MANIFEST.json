@@ -1,5 +1,5 @@
 {
- "source_commit": "4f0c0b0c5ca4145b5a883c6a661411f2176c57e8",
+ "source_commit": "26a6c9c67d3a2e01f3c13c43368c249070abd261",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -2221,8 +2221,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/challenges.py",
-   "bytes": 28541,
-   "sha256": "83937c4a9145da78dd7eb971368783eb2309255e0408b1fa38106bb46c28e91a"
+   "bytes": 28536,
+   "sha256": "806f3274a968843839ba8941ad8f58377f85e55ad9ce503c7e1ecf85b15557b8"
   },
   {
    "path": "chess_variant_sandbox/site/correspondence.py",
@@ -2291,8 +2291,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/inviting.py",
-   "bytes": 7047,
-   "sha256": "5894e483b41cb91ffd9396d030564b9e1a9430ad693dd832c5f0d6ce59daadf6"
+   "bytes": 6980,
+   "sha256": "a5638290271ddc5f545937b081639973c91c63afc7801ef5d35d80be48f9f1a2"
   },
   {
    "path": "chess_variant_sandbox/site/kept.py",
@@ -3161,8 +3161,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/style.py",
-   "bytes": 139941,
-   "sha256": "cb961e863a267417244ed270f12e970d17f58eed6a010f56afdda9a8bdfda131"
+   "bytes": 140546,
+   "sha256": "3488e7841a3424cb8b36a46728f211fdcbc1c91f01566cab4c39de1caf7b2346"
   },
   {
    "path": "chess_variant_sandbox/web/page/tokens.py",
@@ -3171,8 +3171,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/utilities.py",
-   "bytes": 7099,
-   "sha256": "daf0e586c4e1c631781d0f37bcc8bb51efd4e20bf25d9938adc2b3a1f4c909b6"
+   "bytes": 7061,
+   "sha256": "82373e1a054346acd9ddc4b9e21f0ca2afbb3450c0778da1b7f5a648a3a1c74a"
   },
   {
    "path": "chess_variant_sandbox/web/piece_library.py",
@@ -3271,8 +3271,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/detail.js",
-   "bytes": 163092,
-   "sha256": "55c610aeeeab311cb9e713664d14816b757e13925c026e71f963bb93fe2854ca"
+   "bytes": 162923,
+   "sha256": "99f568d5b97fcd568247ee03639a0eab720b14811ffb1e9ded44825b0d5c8d45"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/explorer.js",
@@ -3461,8 +3461,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 168824,
-   "sha256": "34eff821b72f51f4f2aa90e7693b2263aee3137a455d0c9266a028e8bcb66d66"
+   "bytes": 169468,
+   "sha256": "00ce7bf6ddfb24e59d68e3c5ca068daa83c3983087af953bd4b44ee4ad947d86"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -6081,8 +6081,8 @@
   },
   {
    "path": "tests/test_learning.py",
-   "bytes": 13866,
-   "sha256": "17383fa53ec5276e961b68e07279ff78e13b5c01b2747daafc0238089b654b76"
+   "bytes": 14102,
+   "sha256": "6a513baeb226b4595d29f83ffd9c7d365f833260cd4497cfbac2dfd6c829cb15"
   },
   {
    "path": "tests/test_likeness.py",
@@ -6981,8 +6981,8 @@
   },
   {
    "path": "tests/test_site.py",
-   "bytes": 302161,
-   "sha256": "39a378b4670f81b16c16997ea41cd0e07e417c1c0503a9afdc3afabab1737d25"
+   "bytes": 302175,
+   "sha256": "dcf95c84580a8270484f316e68914cdc94031205abcb46eb2e9e3ea29d214a76"
   },
   {
    "path": "tests/test_site_admin.py",
@@ -6996,8 +6996,8 @@
   },
   {
    "path": "tests/test_site_challenges.py",
-   "bytes": 38463,
-   "sha256": "79a36d5d7b5bdc922fdbe3aa93073a7e1612d0bbb78111bd07b1c975ec6699f5"
+   "bytes": 38678,
+   "sha256": "21c938bbbe21154356232e9aa020bdbe960b67e2b774712c9b479644798fbeba"
   },
   {
    "path": "tests/test_site_correspondence.py",
@@ -7451,8 +7451,8 @@
   },
   {
    "path": "tests/test_web.py",
-   "bytes": 779187,
-   "sha256": "8faed4ffca384303b0753b420704cf56139dab029b8bb2a77740680a35dac497"
+   "bytes": 783647,
+   "sha256": "827e952e1d8d8cbac7939c0e87c8f55f3ac396d0d7d9aa70e17fc8cc90524e5c"
   },
   {
    "path": "tests/test_web_board_fit.py",

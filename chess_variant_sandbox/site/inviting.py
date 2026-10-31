@@ -130,8 +130,8 @@ def box(connection: Any, user: int) -> dict[str, Any] | None:
 
 
 NONE_GIVEN = (
-    "Only members can play here, and joining is by invitation. You have no invitations "
-    "to send. Ask the person who runs the site if you would like to invite a friend."
+    "Joining is by invitation, and you have none to send. Ask the person who runs the site "
+    "for one."
 )
 """What a game's page says, where a friend would be invited, to somebody never given any."""
 

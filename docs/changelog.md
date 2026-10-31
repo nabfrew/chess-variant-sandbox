@@ -14,6 +14,15 @@ any other address keeps its brackets.
 
 ## 2026-10-31
 
+### Choosing who plays is simpler
+
+On a game's page the two seats now read as one line, white *vs.* black, and whether a game is rated is a single
+switch under them. The switch follows the seats as you pick: a game between two computer players, or with you on both
+sides, can't be rated, so it turns off and stays off until you pick a pairing that can. To watch the computer play
+itself, put a computer player in each seat and press *watch*; the separate watch buttons are gone, and so is the
+line about how far a game is from chess, which the short description at the top now says better. *Play a person*
+says the same things in fewer words.
+
 ### A game's page starts with what makes the game itself
 
 A game's page now opens with a few short lines saying what makes that game different, written to a player, and a

@@ -63,7 +63,6 @@ async function showGame(hash) {
           <div class="row u-mt-10">
             <button class="primary" id="start">start a game</button>
             <button id="swap" title="take the other side">swap sides</button>
-            <button id="watchIt" title="${esc(watchTitle())}">watch it play itself</button>
             ${offered('POST', '/api/opponent')
               ? `<button id="buildBot" title="an opponent that plays for what you tell it to"
                   >build an opponent</button>` : ''}
@@ -141,30 +140,32 @@ async function showGame(hash) {
   if (!retired) {
     const start = document.getElementById('start');
     const first = document.getElementById('seat0'), second = document.getElementById('seat1');
-    // The mode control exists only where the store does, and a game that counts is
+    // The rated switch exists only where the store does, and a game that counts is
     // something a player chooses rather than something they get by leaving a field out.
-    const mode = document.getElementById('mode');
+    const rated = document.getElementById('rated');
     const modeSays = document.getElementById('modeSays');
-    // The button and the line under the menu follow every change to the three menus.
-    // A player no game against is rated (the learned player, Q683) sets the game to
-    // practice and holds the menu there while it is chosen; choosing another gives the
-    // menu back at the mode this browser last started a game in.
+    const modeOf = () => (rated ? (rated.checked ? 'leaderboard' : 'sandbox') : '');
+    // The button and the line under the switch follow every change to the two seats and
+    // the switch (Q1086). A pairing the server would never rate (`unrateable`) turns the
+    // switch off and holds it there while it is chosen; choosing a rateable one gives the
+    // switch back as the reader last set it.
+    let wanted = !!(rated && rated.checked);
     const nameStart = () => {
-      const only = practiceOnlyIn([first.value, second.value]);
-      if (mode && only) {
-        mode.value = 'sandbox';
-        mode.disabled = true;
-      } else if (mode && mode.disabled) {
-        mode.disabled = false;
-        mode.value = lastMode();
+      const why = unrateable(game, [first.value, second.value]);
+      if (rated && why) {
+        rated.checked = false;
+        rated.disabled = true;
+      } else if (rated && rated.disabled) {
+        rated.disabled = false;
+        rated.checked = wanted;
+      } else if (rated) {
+        wanted = rated.checked;
       }
-      start.textContent = startWords([first.value, second.value], mode ? mode.value : '');
-      if (mode && modeSays) {
-        modeSays.textContent = only ? practiceOnlySays(only) : MODE_SAYS[mode.value] || '';
-      }
+      start.textContent = startWords([first.value, second.value], modeOf());
+      if (rated && modeSays) modeSays.textContent = why || MODE_SAYS[modeOf()] || '';
     };
     first.onchange = second.onchange = nameStart;
-    if (mode) mode.onchange = nameStart;
+    if (rated) rated.onchange = nameStart;
     wireSeatCards();
     nameStart();
     start.onclick = () => {
@@ -174,9 +175,9 @@ async function showGame(hash) {
       // browser now has played here.
       if (firstSeat(game) && seats.includes('human')) OPEN_TAB = 'rules';
       notePlayed(hash);
-      if (mode) {
-        body.mode = mode.value;
-        if (!mode.disabled) keepMode(mode.value);
+      if (rated) {
+        body.mode = modeOf();
+        if (!rated.disabled) keepMode(body.mode);
       }
       pending('Starting the game…');
       // Under the play panel's own button row. A game page is long and this button is
@@ -188,16 +189,9 @@ async function showGame(hash) {
       first.dispatchEvent(new Event('change'));
       second.dispatchEvent(new Event('change'));
     };
-    // Both seats to the same searching player, at the budget every watch on this page
-    // uses (`WATCH_AGENT`). It was reachable already -- set both menus to a computer and
-    // press start -- which is a thing you have to know rather than a thing you can see.
-    // No mode goes with it: nobody plays a watch, so there is nothing to rate.
-    wireFirstGame(game, hash);
-    document.getElementById('watchIt').onclick = () => {
-      pending('Starting the game…');
-      api('/api/session', { hash, seats: [WATCH_AGENT, WATCH_AGENT] })
-        .then(open_).catch(error => fail(error, 'watchIt'));
-    };
+    // A watch is a computer player in each seat and *start* (Q1086): the button says
+    // *watch ...* then, and the rated switch is off and held off, since nobody plays it.
+    wireFirstGame(game);
     // LP9: `?seat=<side>` (a landing story's play door, followed as a link) seats you on that
     // side and brings *start a game* into view, one press from a board.
     const asked = askedSeat(game);
@@ -449,16 +443,15 @@ function playPersonHtml(game) {
         <b><a href="/players/${esc(person.handle)}">${markHtml(person.mark, 20)}${
           esc(person.handle)}</a></b><span class="muted small">${esc(person.said)}</span>
         <button data-challenge="${esc(person.handle)}">challenge</button></div>`).join('')
-    : `<div class="muted small">Nobody has said they're open to a game of ${name} yet.
-        Challenge any member by handle, or make a link and send it to them however you
-        like.</div>`;
+    : `<div class="muted small">Nobody yet.</div>`;
+  // Q1086, the user: *"More concise, less LLMisms"*.
   return `${head}
-    <div class="muted small">By correspondence: you move whenever you like, there is no
-      clock, and the game waits for you. ${countsWords(people.rated, game.name)}</div>
+    <div class="muted small">No clock: each of you moves when you like.
+      ${countsWords(people.rated, game.name)}</div>
     ${makerHtml(people.maker)}
     <h4 class="u-m-10-0-4">Open to a game of ${name}</h4>
     ${listed}
-    <h4 class="u-m-12-0-4">Or anyone here</h4>
+    <h4 class="u-m-12-0-4">Challenge a member</h4>
     <div class="row">
       <input id="challengeWho" list="challengeMembers" placeholder="a member's handle"
         autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -468,7 +461,7 @@ function playPersonHtml(game) {
     </div>
     <div class="row u-mt-6">
       <button id="challengeLink">make a challenge link</button>
-      <span class="muted small">for a member who isn't in either list; it works once</span>
+      <span class="muted small">to send yourself; it works once</span>
     </div>
     <div id="challengeSheet"></div>
     <div id="inviteFriend">${inviteFriendHtml(people.invites)}</div>
@@ -483,11 +476,11 @@ function playPersonHtml(game) {
 // ask. The words are the server's; nothing here counts.
 function inviteFriendHtml(box) {
   if (!box) return '';
-  const head = `<h4 class="u-m-12-0-4">A friend who isn't a member yet</h4>`;
+  const head = `<h4 class="u-m-12-0-4">Invite a friend</h4>`;
   if (!(box.left > 0)) return `${head}<div class="small" id="inviteSaid">${esc(box.said)}</div>`;
   return `${head}
-    <div class="small" id="inviteSaid">${esc(box.said)} Invite your friend by email, and
-      once they have joined, challenge them here by their name.</div>
+    <div class="small" id="inviteSaid">${esc(box.said)} Once they join, challenge them
+      here.</div>
     <form class="row u-mt-6 u-ai-flex-end" id="inviteForm">
       <label class="small u-flex-1-1-16rem">their email address<br>
         <input id="inviteEmail" type="email" required autocomplete="off"
@@ -533,18 +526,15 @@ function makerHtml(maker) {
 
 function countsWords(rated, name) {
   return rated
-    ? `It is rated on ${esc(name)}, like a rated game against the computer: the result
-       moves both of your ratings here.`
-    : `It is a practice game here, kept and rated nowhere, because ${esc(name)} has no
-       rated computer players yet.`;
+    ? `The result moves both your ratings on ${esc(name)}.`
+    : `Practice only: ${esc(name)} has no rated computer players yet.`;
 }
 
 function openToHtml(game, people) {
   return `<label class="small u-d-block u-mt-12">
     <input type="checkbox" id="openTo"${people.mine ? ' checked' : ''}>
     List me as open to a game of ${esc(game.name)}.
-    <span class="muted">Off unless you tick it. Members see your name here; nothing is
-      sent to anyone.</span></label>`;
+    <span class="muted">Only members see the list.</span></label>`;
 }
 
 // The sheet, for a named member (`who`) or for a link (`who` null). The seat is named by
@@ -583,14 +573,13 @@ function challengeSentHtml(sent, origin) {
       <div class="row u-mt-6">
         <input id="challengeAddress" readonly value="${esc(origin + sent.link)}">
         <button id="challengeCopy">copy</button></div>
-      <div class="muted small u-mt-6">It works once, for one member, and
-        it waits on your page under <i>Challenges you sent</i> until it is used or you
-        withdraw it. Send it however you like; the site sends nothing.</div>
+      <div class="muted small u-mt-6">Send it yourself; it works once. It
+        stays under <i>Challenges you sent</i> on your page until used or withdrawn.</div>
     </div>`;
   }
-  return `<div class="ok u-mt-10"><b>Challenge sent.</b> It waits on your
-    page, under <i>Challenges you sent</i>, until ${esc(sent.to)} accepts or declines it,
-    for as long as that takes. <a href="/profile">your page</a></div>`;
+  return `<div class="ok u-mt-10"><b>Challenge sent.</b> It stays under
+    <i>Challenges you sent</i> on <a href="/profile">your page</a>
+    until ${esc(sent.to)} accepts or declines.</div>`;
 }
 
 function wirePlayPerson(game, hash) {
@@ -1772,9 +1761,9 @@ const UNKEPT = `A game played without an account isn't kept: it won't be on the 
 // The mode's value stays `sandbox`, which is what the server and the record call it; a
 // person reads *practice* (`docs/reference/plain-words.md` §2; the audit's G5).
 const MODE_SAYS = {
-  sandbox: 'This is a practice game: undo and restart are on, and it counts for nothing.',
+  sandbox: 'Practice: undo and restart are on, and it counts for nothing.',
   leaderboard:
-    'This one is rated, no undo; an unfinished game is resigned after thirty idle days or when you start another.',
+    'Rated, with no undo. An unfinished game is resigned after thirty idle days or when you start another.',
 };
 
 const MODE_KEY = 'cvs-play-mode';
@@ -1785,10 +1774,33 @@ function practiceOnlyIn(seats) {
   return ROSTER.find(o => o.practiceOnly && seats.includes(o.agent)) || null;
 }
 
-// What the line under the mode menu says while such a player is chosen.
+// What the line under the rated switch says while such a player is chosen.
 function practiceOnlySays(entry) {
   return `A game against ${entry.name} is always practice: it is not rated, so undo and
     restart are on and it counts for nothing.`.replace(/\s+/g, ' ');
+}
+
+// Why the two seats as they stand can't be a rated game, or null (Q1086). Each case is one
+// `matches.start` refuses in leaderboard mode, read off what the page already holds, so
+// the switch is never on for a pairing the server would refuse: a game nobody plays (two
+// computer players), one with you on both sides (the site seats one person), a player no
+// game is rated against (Q683's `practiceOnly`), and a computer player with no rating on
+// this game (`siteRatings` is every computer row of its table). What makes a game rated
+// is unchanged; this only says it before the press rather than after.
+function unrateable(game, seats) {
+  const people = seats.filter(seat => seat === 'human').length;
+  if (people === 0) return 'Two computer players: you watch, and nothing is rated.';
+  if (people === 2) return 'You against yourself is practice: nothing is rated.';
+  const only = practiceOnlyIn(seats);
+  if (only) return practiceOnlySays(only);
+  const ratings = game && game.standing && game.standing.siteRatings;
+  const agent = seats.find(seat => seat !== 'human');
+  if (ratings && typeof ratings === 'object' && !(agent in ratings)) {
+    const who = shortName(agent);
+    return `${who.charAt(0).toUpperCase() + who.slice(1)} has no rating on this game yet, so a
+      game against it is practice.`.replace(/\s+/g, ' ');
+  }
+  return null;
 }
 
 function lastMode() {
@@ -1826,17 +1838,12 @@ function modePicker(game) {
       game${info('practice')}: undo and restart are on, and it counts for nothing.
       Sign in to play a game that counts towards the ratings and Unbeaten.${visitor}</div>`;
   }
-  // The clamp stays: a select is as wide as its widest option, and without it the menu
-  // once set the column's width and the page scrolled sideways at 375px. A first game
-  // here is practice (K3), whatever this browser last chose.
+  // One switch, off for practice (Q1086, the user: *"make practice/rated a toggle"*). It
+  // follows the seats by itself (`unrateable`, wired in `showGame`). A first game here is
+  // practice (K3), whatever this browser last chose.
   const chosen = firstSeat(game) ? 'sandbox' : lastMode();
-  const option = (value, words) => `<option value="${value}"${
-    value === chosen ? ' selected' : ''}>${words}</option>`;
-  return `<label class="pick u-mt-8">does this one count
-    <select id="mode" class="u-maxw-100p">
-      ${option('sandbox', 'no &mdash; practice')}
-      ${option('leaderboard', 'yes &mdash; rated')}
-    </select></label>
+  return `<label class="ratedSwitch u-mt-8"><input type="checkbox" id="rated"
+      role="switch"${chosen === 'leaderboard' ? ' checked' : ''}> rated</label>
     <div class="muted small u-mt-4" id="modeSays">${MODE_SAYS[chosen]}</div>`;
 }
 
@@ -1846,8 +1853,7 @@ function modePicker(game) {
 // game seats the gentlest computer player on its ladder above random, which the server
 // read off the game's rating table as the front page's first step does (`firstGame`,
 // `web/launch.py`); it is practice, and the board opens with the *rules* tab beside it.
-// *A harder one* is one tap away. On a game far from chess (the server's reasons) the
-// page offers *watch two computer players first*. *First* is this browser's: a game
+// *A harder one* is one tap away. *First* is this browser's: a game
 // started here is noted (`PLAYED_KEY`), and nothing reaches the server.
 const PLAYED_KEY = 'cvs-played';
 
@@ -1883,38 +1889,28 @@ function firstSeat(game) {
   return ROSTER.some(o => o.agent === gentle) ? gentle : null;
 }
 
+// The server still says why a game is far from chess (`firstGame.far`); the page no longer
+// draws it (Q1086): the short description above the page says how the game plays, and a
+// watch is two computer players and *start*.
 function firstGameHtml(game) {
   const first = game && game.firstGame;
-  if (!first || !first.gentle) return '';
-  const far = first.far || [];
-  const watch = far.length ? `<div class="muted small u-mt-6">This game is far
-      from chess: ${esc(far.join('; '))}.</div>
-    <div class="row u-mt-6"><button id="watchFirst"
-      title="${esc(watchTitle())}">watch two computer players first</button></div>` : '';
-  if (!firstSeat(game)) return watch ? `<div class="firstGame">${watch}</div>` : '';
+  if (!first || !first.gentle || !firstSeat(game)) return '';
   return `<div class="firstGame">
     <div class="small">Your first game here is against <b>${esc(first.gentle.name)}</b>, the
       gentlest computer player on this game, as practice, with the rules open beside the
       board.</div>
     ${first.harder ? `<div class="row u-mt-6"><button id="firstHarder"
       >a harder one: ${esc(first.harder.name)}</button></div>` : ''}
-    ${watch}
   </div>`;
 }
 
-function wireFirstGame(game, hash) {
+function wireFirstGame(game) {
   const first = game.firstGame;
   const harder = document.getElementById('firstHarder');
   const second = document.getElementById('seat1');
   if (harder && second && first && first.harder) harder.onclick = () => {
     second.value = first.harder.agent;
     second.dispatchEvent(new Event('change'));
-  };
-  const watch = document.getElementById('watchFirst');
-  if (watch) watch.onclick = () => {
-    pending('Starting the game…');
-    api('/api/session', { hash, seats: [WATCH_AGENT, WATCH_AGENT] })
-      .then(open_).catch(error => fail(error, 'watchFirst'));
   };
 }
 
@@ -1929,7 +1925,7 @@ function startWords(seats, mode) {
     return `start a ${kind}game against ${shortName(seats.find(seat => seat !== 'human'))}`;
   }
   if (people === 2) return `start a ${kind}game for two at this board`;
-  return `start a game: ${shortName(seats[0])} against ${shortName(seats[1])}`;
+  return `watch ${shortName(seats[0])} against ${shortName(seats[1])}`;
 }
 
 // The tag, the target under it, and what you have done here. The target is named whether
@@ -2444,7 +2440,9 @@ function sidePicker(game, options, table) {
       <div class="muted small plan" id="plan${player}"></div>
       ${same ? '' : `<div class="muted small army">${armyHtml(armies[player])}</div>`}
     </div>`;
-  return `<div class="sides">${side(0)}${side(1)}</div>` + (same ? '' :
+  // *vs.* sits on the line between the two seats (Q1086).
+  return `<div class="sides">${side(0)}<div class="vs" aria-hidden="true">vs.</div>${
+    side(1)}</div>` + (same ? '' :
     `<div class="muted small u-mt-8">The two sides do not start with the
       same army, so which one you take is part of the game.</div>`);
 }
@@ -2608,8 +2606,8 @@ function optionStrength(agent, table, game) {
       return points > 0 ? ` \u00b7 about ${points} above you`
         : points < 0 ? ` \u00b7 about ${-points} below you` : ' \u00b7 about equal to you';
     }
-    const here = (standing.siteRatings || {})[agent];
-    return typeof here === 'number' ? ` \u00b7 rated ${Math.round(here)} here` : '';
+    const rating = (standing.siteRatings || {})[agent];
+    return typeof rating === 'number' ? ` \u00b7 rated ${Math.round(rating)}` : '';
   }
   const elo = eloOf(table, agent);
   return elo === null ? '' : `  (${elo > 0 ? '+' : ''}${Math.round(elo)})`;
