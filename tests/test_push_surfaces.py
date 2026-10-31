@@ -79,6 +79,33 @@ def test_the_chain_and_a_strength_apart_are_charged_on_top() -> None:
     assert _special(_sumo(edge="blocks")) == pytest.approx(chess + 1.0)
 
 
+def test_no_push_back_is_half_a_rule_and_a_crushing_wall_a_clause() -> None:
+    """Q1074bo: b6's bar is charged half a rule (Q1074b5's +0.5); b7's crush says what a
+    wall does to a push, as `edge` says what the edge does, so it costs nothing on top."""
+    chess = _special(_chess())
+    assert _special(_sumo(no_push_back=True)) == pytest.approx(chess + 1.5)
+    walled = _sumo()
+    walled["rules"]["obstacles"] = {"squares": ["d4", "e5"]}
+    crushing = _sumo(walls="crush")
+    crushing["rules"]["obstacles"] = {"squares": ["d4", "e5"]}
+    assert _special(crushing) == pytest.approx(_special(walled))
+
+
+def test_no_push_back_and_a_crushing_wall_are_features_of_their_own() -> None:
+    """Q1074bo: a game and its twin apart in either key are not at distance zero."""
+    plain, barred = _valid(_sumo()), _valid(_sumo(no_push_back=True))
+    assert features(plain)["push_no_back"] == 0.0
+    assert features(barred)["push_no_back"] == 1.0
+    assert distance(plain, barred) > 0
+    walled = _sumo()
+    walled["rules"]["obstacles"] = {"squares": ["d4", "e5"]}
+    crushing = copy.deepcopy(walled)
+    crushing["rules"]["push"] = {"walls": "crush"}
+    assert features(_valid(walled))["push_walls_crush"] == 0.0
+    assert features(_valid(crushing))["push_walls_crush"] == 1.0
+    assert distance(walled, crushing) > 0
+
+
 def test_a_pusher_s_list_is_a_line_of_the_rules_table_in_either_spelling() -> None:
     listed = _sumo(pieces="R")
     for piece in listed["pieces"]:

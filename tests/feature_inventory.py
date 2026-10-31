@@ -1241,7 +1241,7 @@ def _schema_fifty_five_uses(spec: dict[str, Any]) -> set[str]:
 def _schema_fifty_six_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that generation 56 added, by name (Q1074b1 to Q1074b4s, the
     push, `docs/plan-push.md`; numbered by order of landing, bumping no version; its
-    surfaces closed by Q1074b5). Nine names, each at a value other than its off value:
+    surfaces closed by Q1074b5). Eleven names, each at a value other than its off value:
 
     * ``pieces.moves.push`` -- a move that, landing on a piece it may push, shoves it one
       square on along the move (or off the board) instead of taking it;
@@ -1256,7 +1256,13 @@ def _schema_fifty_six_uses(spec: dict[str, Any]) -> set[str]:
     * ``pieces.strength`` -- under ``"weight"``, a pusher's strength stated apart from its
       weight (written equal it is the off value, Q1074b4s);
     * ``rules.push.chain`` -- ``"row"`` or ``"weight"``: a whole line moves;
-    * ``rules.push.edge`` -- ``"blocks"``: nothing is pushed off the board.
+    * ``rules.push.edge`` -- ``"blocks"``: nothing is pushed off the board;
+    * ``rules.push.walls`` -- ``"crush"``: a piece pushed against a wall is crushed, removed
+      as taken (Q1074b7; ``"block"``, the default, names nothing);
+    * ``rules.push.no_push_back`` -- ``true``: a piece just pushed may not push straight
+      back on its owner's next move (Q1074b6; ``false`` names nothing).
+
+    The last two landed after the bump's nine and were named here by Q1074bo.
 
     Read only in a game where some move pushes (`schema.push_rule`), as the validator refuses
     every one of them elsewhere.
@@ -1291,6 +1297,10 @@ def _schema_fifty_six_uses(spec: dict[str, Any]) -> set[str]:
         used.add("rules.push.chain")
     if rule["edge"] != "removes":
         used.add("rules.push.edge")
+    if rule["walls"] != "block":
+        used.add("rules.push.walls")
+    if rule["no_push_back"] is True:
+        used.add("rules.push.no_push_back")
     return used
 
 

@@ -424,6 +424,9 @@ _SCALES: dict[str, float] = {
     "push_reach": 1.0,
     "push_chain": 1.0,
     "push_edge_blocks": 1.0,
+    # Q1074bo: b6's bar on pushing straight back and b7's crushing walls, a flag each.
+    "push_no_back": 1.0,
+    "push_walls_crush": 1.0,
     "push_weight": 9.0,
     "push_strength": 9.0,
 }
@@ -639,6 +642,8 @@ def _push_features(spec: dict[str, Any], total_moves: int) -> dict[str, float]:
         "push_reach": sum(reach) / len(reach) if reach else 0.0,
         "push_chain": _PUSH_CHAIN.get(rule["chain"], 0.0),
         "push_edge_blocks": 1.0 if rule["edge"] == "blocks" else 0.0,
+        "push_no_back": 1.0 if rule["no_push_back"] is True else 0.0,
+        "push_walls_crush": 1.0 if rule["walls"] == "crush" else 0.0,
         "push_weight": sum(weights.values()) / len(weights) if weights else 0.0,
         "push_strength": (
             sum(pusher_strengths) / len(pusher_strengths) if pusher_strengths else 0.0
@@ -648,7 +653,8 @@ def _push_features(spec: dict[str, Any], total_moves: int) -> dict[str, float]:
 
 _PUSH_FEATURES = (
     "push_share", "push_whose", "push_captures", "push_along", "push_lists", "push_reach",
-    "push_chain", "push_edge_blocks", "push_weight", "push_strength",
+    "push_chain", "push_edge_blocks", "push_no_back", "push_walls_crush", "push_weight",
+    "push_strength",
 )
 
 

@@ -1569,6 +1569,8 @@ RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
     "npcs": ("wild", "neutral", "monster", "non-player"),
     "duck": ("duck chess", "duck", "neutral blocker", "wall"),
     "purse": ("coins", "money", "buy", "market", "shop", "gold", "currency"),
+    # "sumo" stays (Q1074bo): it is the name a player brings from sumo chess, the published
+    # game the push comes from, and this tuple is what *find a rule* matches a typed word to.
     "push": ("sumo", "push", "shove"),
     "turn": ("double move", "marseillais", "progressive", "several moves", "two moves"),
     "castling": ("castle",),

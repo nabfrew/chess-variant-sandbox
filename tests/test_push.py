@@ -678,3 +678,8 @@ def test_the_keys_are_offered_to_a_model_since_q1074b2() -> None:
     assert "push" in piece["moves"]["items"]["properties"]
     assert "pieces[].moves[].push" in SCHEMA_PREAMBLE and "pieces[].pushes" in SCHEMA_PREAMBLE
     assert "rules.push.no_push_back" in SCHEMA_PREAMBLE
+    # Q1074bo: the preamble says the push as it now is: walls that crush (b7), rows on a
+    # wrapped board (H4, lifted by b7), and no published game's name for the rule.
+    assert '"walls": "crush"' in SCHEMA_PREAMBLE
+    assert "Rows are allowed on a wrapped board" in SCHEMA_PREAMBLE
+    assert "sumo" not in SCHEMA_PREAMBLE.lower()

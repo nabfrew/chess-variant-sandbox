@@ -1524,6 +1524,30 @@ class TestTheReplayStepsThroughTheWildPiecesTurn:
             assert seen["marks"] == sorted([move["from"], move["to"]])
             assert seen["board"] == data["boards"][seen["at"]]
 
+    def test_a_push_marks_its_line_and_the_piece_it_removed(self, tmp_path: Path) -> None:
+        """Q1074bo: a push's frame carries the engine's line (`viz.wrapped.push_transit`),
+        the replay marks where the line went and where a removed piece stood, and slides,
+        drops or crushes them in `showPush` (motion the node stub turns off)."""
+        spec = load_spec(RULESETS.parent / "archive" / "los-alamos-with-crushing-pillars.json")
+        data, _ = _replayed(spec, tmp_path, [])
+        crushed = [i for i, move in enumerate(data["moves"]) if move.get("pushCrush")]
+        shoved = [i for i, move in enumerate(data["moves"])
+                  if move.get("pushed") and not move.get("pushCrush")]
+        assert crushed and shoved, "a random game of crushing pillars crushes and shoves"
+        steps = [crushed[0] + 1, shoved[0] + 1]
+        _, page = _replayed(spec, tmp_path, steps)
+        for seen in page["seen"]:
+            move = data["moves"][seen["at"] - 1]
+            line = {square if onto is None else onto for square, onto in move["pushed"]}
+            assert seen["marks"] == sorted({move["from"], move["to"]} | line)
+        crush = data["moves"][crushed[0]]
+        (square, onto) = crush["pushed"][-1]
+        # Crushed where it stood, which the pusher (or the line) now holds.
+        assert onto is None and data["boards"][crushed[0] + 1][square] != 0
+        script = (Path(__file__).parents[1] / "chess_variant_sandbox" / "viz" / "replay.js")
+        text = script.read_text(encoding="utf-8")
+        assert "function showPush(" in text and "move.pushCrush" in text
+
     def test_the_split_and_the_words_are_one_copy(self, tmp_path: Path) -> None:
         """Both surfaces carry `plyBeats` and `phaseWords` through the shared module and
         neither holds a copy of its own."""

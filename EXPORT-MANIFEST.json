@@ -1,5 +1,5 @@
 {
- "source_commit": "c722e355e5ccd814e820ca225f694fa7bb6e4881",
+ "source_commit": "012c1c916ca66a473032beb20d90671561dc497f",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -2006,8 +2006,8 @@
   },
   {
    "path": "chess_variant_sandbox/llm/propose.py",
-   "bytes": 73572,
-   "sha256": "bc7950071bfbd0bde9e359fb687c4768f4e34ed18c5121b2d579ea3d52789845"
+   "bytes": 74139,
+   "sha256": "fe979432fdd40407aa8b201d600274e3c25d0a87260c38cc735da8766ae3fa5a"
   },
   {
    "path": "chess_variant_sandbox/loop/__init__.py",
@@ -2031,8 +2031,8 @@
   },
   {
    "path": "chess_variant_sandbox/loop/operators.py",
-   "bytes": 247454,
-   "sha256": "549eea597ff9065237251415cea038521c84790c762af4451b1e5bfd0f3e8796"
+   "bytes": 251284,
+   "sha256": "e5dd6fe296bb420792e683f496385d9ce841c73ee38c3be9c1bd5e59cb4d017c"
   },
   {
    "path": "chess_variant_sandbox/loop/orchestrator.py",
@@ -2781,18 +2781,18 @@
   },
   {
    "path": "chess_variant_sandbox/spec/complexity.py",
-   "bytes": 45224,
-   "sha256": "8bc8e1acef556a87a47cdce73184ed5ca4e3b88d3cbe1535446927ef886f0b04"
+   "bytes": 45377,
+   "sha256": "0f0c0fb4fa481807c4bf7269bbbc2cfe5dcaee08bbbfaa626c49db6a9e353b63"
   },
   {
    "path": "chess_variant_sandbox/spec/describe.py",
-   "bytes": 160888,
-   "sha256": "da8739f1646295507f50330f44c41cf7367438058a431526bf7a05dd3c2fea50"
+   "bytes": 161074,
+   "sha256": "fc4db662fbc03d8f121281fa3bfd30ef7054417a2a5966ae070c99a1f6a84be7"
   },
   {
    "path": "chess_variant_sandbox/spec/distance.py",
-   "bytes": 58893,
-   "sha256": "14b1a8f6486f290392244e0b2ae864b7e8fc3a51c0215e3d86f64f77ce395da1"
+   "bytes": 59214,
+   "sha256": "5e3e9cb2878d86109466b7c965f3cb28c31d49e337f1f02a8a512824507ccd28"
   },
   {
    "path": "chess_variant_sandbox/spec/jsonschema.py",
@@ -2821,8 +2821,8 @@
   },
   {
    "path": "chess_variant_sandbox/spec/plain.py",
-   "bytes": 71507,
-   "sha256": "ee0d14fdb06021843fe7ea9266c5a1b0dfb2d7cc3abfaaa460fc8bbb89414374"
+   "bytes": 71516,
+   "sha256": "0d696061c23532318097557cefe51819649b0414609477e474a521d8a995c352"
   },
   {
    "path": "chess_variant_sandbox/spec/reachability.py",
@@ -2941,8 +2941,8 @@
   },
   {
    "path": "chess_variant_sandbox/viz/html.py",
-   "bytes": 14898,
-   "sha256": "c40a7135eee36474026f27d9216a7ba97d6b86a950eb898fbc02402b2874e9d2"
+   "bytes": 15697,
+   "sha256": "26421410c1403feb5e1ab86790ca08b9ede7dc83ae7ee6c553995ff48aaba128"
   },
   {
    "path": "chess_variant_sandbox/viz/pieces.py",
@@ -2951,8 +2951,8 @@
   },
   {
    "path": "chess_variant_sandbox/viz/replay.js",
-   "bytes": 20561,
-   "sha256": "098bd8e10a9d086fa489ac4b4abb23b71e4b6632aedc79d14a508a265a9c64e8"
+   "bytes": 24209,
+   "sha256": "f78d484649b3125e38a1dbd42653ac471f2e6d38b8c8dc6ca5ee2a4a135f1e27"
   },
   {
    "path": "chess_variant_sandbox/viz/rules_payload.py",
@@ -2971,8 +2971,8 @@
   },
   {
    "path": "chess_variant_sandbox/viz/wrapped.py",
-   "bytes": 16438,
-   "sha256": "1215c045d03cf18c986897bf75f6ceb8ddd46230a4afcace689bde5e475b1f56"
+   "bytes": 16863,
+   "sha256": "e755128ae9491c7723083b93bdf3ab8f5db36fbd342326db5092e24e42564aec"
   },
   {
    "path": "chess_variant_sandbox/web/__init__.py",
@@ -3236,8 +3236,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/board.js",
-   "bytes": 284157,
-   "sha256": "6fa4e4c883d1e4f65d12bc0b2a51ec1e511621e51bd79ef72d3334dc5b47a231"
+   "bytes": 284308,
+   "sha256": "f93b633a4c49c176befec7cb5c768773781bba17d8932c840a599f93773193a5"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/boot.js",
@@ -3281,8 +3281,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/landing.js",
-   "bytes": 48151,
-   "sha256": "a0c8e195ff4b49fc1a8e36dfab7e0608b4ce1b719a708407b07095c0974e4836"
+   "bytes": 49547,
+   "sha256": "2782ad992063ac9ec6f60b3a4b652c78a5340abdd8fa7be21317ddbffd626492"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/measure.js",
@@ -3291,8 +3291,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/motion.js",
-   "bytes": 38501,
-   "sha256": "3567b0475e42a1b929c7a792979ac4b1ecdf4c8a4c3e1859d93b47774edcafa1"
+   "bytes": 39933,
+   "sha256": "a49ee431156dfdee07f8516a07808427841c0e5ff4a7f574a0c849ccfcd0f336"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/portals.js",
@@ -3416,8 +3416,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/stories.py",
-   "bytes": 50605,
-   "sha256": "1406dd3c9d29bf1b2d9a088c58a19bffadea1eb5d4a3b98bd10ac531e38f34a7"
+   "bytes": 51337,
+   "sha256": "15bf21b42addc8028b0f63b297a5bd6e3053a82cc1cb1884b23ee911e8710f15"
   },
   {
    "path": "chess_variant_sandbox/web/stories/copy_records.py",
@@ -3456,8 +3456,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 163586,
-   "sha256": "5c4f77ad242cf22b6f5e5f680f8b4d5ff3270dec644f1209db05c14606b73336"
+   "bytes": 163922,
+   "sha256": "494ec3c8898e4a58605daf9cf0b349e2f0cc91d8232f20313ebf9317f808feaf"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -5286,8 +5286,8 @@
   },
   {
    "path": "tests/feature_inventory.py",
-   "bytes": 60714,
-   "sha256": "a36e369134801105bec35b7189a96ce26955c3b90eb5e6f10d84b3f7474eb886"
+   "bytes": 61267,
+   "sha256": "a2ddaba4cf03c7e98544b7ba983aefb81792c823daffecf224fac279a984ecc5"
   },
   {
    "path": "tests/fold_oracle.py",
@@ -5946,8 +5946,8 @@
   },
   {
    "path": "tests/test_hex_resolver.py",
-   "bytes": 24580,
-   "sha256": "345f550d07bc939929e408749c11252545610075bb91d812cf6b81dc5cb2a792"
+   "bytes": 24631,
+   "sha256": "7bd3665abfa03d584488e6d61258e2d60f8ba405c11f909ec4873cf39989c13e"
   },
   {
    "path": "tests/test_hex_turning_path.py",
@@ -6196,8 +6196,8 @@
   },
   {
    "path": "tests/test_operators.py",
-   "bytes": 254253,
-   "sha256": "badd8ae6e3962cb19ba99ff3edf76a104f0e53afed3fbd64c051b8e8c471bc05"
+   "bytes": 255756,
+   "sha256": "9e1ed87dfa7bfc33d3124a0e10ef726669e13c8b255d2e10edfd988a3e1fdd27"
   },
   {
    "path": "tests/test_page_files.py",
@@ -6376,8 +6376,8 @@
   },
   {
    "path": "tests/test_push.py",
-   "bytes": 28370,
-   "sha256": "f6a1068e14cd877d9c1939cad08ace1025d07d4afbd9c4eab89cdc71cc04cfbd"
+   "bytes": 28708,
+   "sha256": "1d38a8fe8b14df79aadb31a588c709c3dbb0cad66c99d9bb82b9837a3acca9af"
   },
   {
    "path": "tests/test_push_back.py",
@@ -6396,13 +6396,18 @@
   },
   {
    "path": "tests/test_push_look.py",
-   "bytes": 4409,
-   "sha256": "28185cf86095c832b6048f491f79dc3afeab5517d9eceed4cec9b431e896a144"
+   "bytes": 7307,
+   "sha256": "de56032b9b32a82745f8751c6db7604bfd311b0f03ddced0eed5500eefe3eccc"
   },
   {
    "path": "tests/test_push_moves.py",
    "bytes": 15299,
    "sha256": "ac78c5eab564d62e03fc3f45930b98e1e42a7c9204653de8e172a58ff19cc3f9"
+  },
+  {
+   "path": "tests/test_push_operators.py",
+   "bytes": 3786,
+   "sha256": "c299e7c027569fba352eb0cb6357a00dbd937823753a746ab1a5d4b6bb54ec1e"
   },
   {
    "path": "tests/test_push_round_two.py",
@@ -6416,8 +6421,8 @@
   },
   {
    "path": "tests/test_push_surfaces.py",
-   "bytes": 7941,
-   "sha256": "13e38324b5269695d899ed8a335982bdb7e1aebcf85ef9ca1bd924add8e2889a"
+   "bytes": 9269,
+   "sha256": "be06a1eee9c3247cac986d9a46c713c17345701b7113d862516306c62ad43601"
   },
   {
    "path": "tests/test_puzzles.py",
@@ -7391,8 +7396,8 @@
   },
   {
    "path": "tests/test_viz.py",
-   "bytes": 99466,
-   "sha256": "1ecf9502ac3b4af86ab0cef8cc9f3ac227f202010c6d55a19f5881f264fece22"
+   "bytes": 101076,
+   "sha256": "7fde96951941e5e4e0e6f92bca5e286af7a24c9989bd5df8c59dba2148560174"
   },
   {
    "path": "tests/test_volatility.py",

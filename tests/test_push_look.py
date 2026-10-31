@@ -95,6 +95,67 @@ class TestTheLook:
 
     def test_a_piece_thrown_off_falls_rather_than_being_knocked_off(self) -> None:
         assert "function pushFall(" in PAGE
-        assert PAGE.count("pushFall(svg, piece, x, y, cell, step, pushAt)") == 1
+        # Q1074bo: the board picks the fall or the crush by the engine's `pushCrush`.
+        assert PAGE.count("const away = last.pushCrush ? pushCrush : pushFall;") == 1
+        assert PAGE.count("away(svg, piece, x, y, cell, step, pushAt)") == 1
         assert "'data-journey', 'push-fall'" in PAGE
         assert "pushFall:" in PAGE  # its pace, beside the others in `PACE`
+
+    def test_a_piece_crushed_on_a_wall_is_crushed_in_place(self) -> None:
+        """Q1074bo: one crushed on a wall is pressed flat where it stood, not dropped over an
+        edge that is not there."""
+        assert "function pushCrush(" in PAGE
+        assert "'data-journey', 'push-crush'" in PAGE
+        assert "pushCrush:" in PAGE
+
+
+def _crushing() -> dict[str, Any]:
+    """Chess whose rooks push, a wall on d5 that crushes (Q1074b7)."""
+    spec = _spec("one")
+    spec["name"] = "chess with a crushing wall"
+    spec["rules"]["push"] = {"walls": "crush"}
+    spec["rules"]["obstacles"] = {"squares": ["d5"]}
+    return spec
+
+
+_CRUSH_PLACEMENT = {"a1": ("K", 0), "d3": ("R", 0), "d4": ("P", 1), "h8": ("K", 1)}
+
+
+class TestTheCrush:
+    """Q1074bo: the engine's account of a push says when its last piece was crushed on a
+    wall, so the play board, the replay and the landing's stories crush it in place."""
+
+    def test_a_piece_crushed_on_a_wall_is_named_as_crushed(self) -> None:
+        session = _session(_crushing(), _CRUSH_PLACEMENT)
+        last = _play(session, "Rd3>>d4")
+        assert last["pushed"] == [[_square("d4"), None]]
+        assert last["pushCrush"] is True
+        assert last["pushStep"] == [0, 1]
+
+    def test_a_piece_thrown_off_is_not_named_as_crushed(self) -> None:
+        session = _session(_spec())
+        assert "pushCrush" not in _play(session, "Ke1>>d1")
+
+    def test_a_story_frame_carries_the_push_and_keys_a_removal(self) -> None:
+        from chess_variant_sandbox.web.stories import Played, _did, _key
+
+        engine = engine_for(_crushing())
+        state = engine.make_state(_CRUSH_PLACEMENT)
+        (move,) = [m for m in engine.legal_moves(state)
+                   if engine.describe_move(state, m) == "Rd3>>d4"]
+        item = _did(engine, state, engine.apply(state, move), move)
+        assert item["push"]["pushed"] == [[_square("d4"), None]]
+        assert item["push"]["pushCrush"] is True
+        assert _key(Played(hash="x", ending=(None, "draw")), 3, 9, item)
+        # A push that only shoves is a plain turn of the story.
+        shove = engine.make_state({"h1": ("K", 0), "a3": ("R", 0), "a4": ("P", 1),
+                                   "h8": ("K", 1)})
+        (move,) = [m for m in engine.legal_moves(shove)
+                   if engine.describe_move(shove, m) == "Ra3>a4"]
+        assert not _key(Played(hash="x", ending=(None, "draw")), 3, 9,
+                        _did(engine, shove, engine.apply(shove, move), move))
+
+    def test_the_story_slides_the_line_and_draws_no_capture(self) -> None:
+        assert "item.push" in PAGE
+        assert "(push.pushCrush ? pushCrush : pushFall)(" in PAGE
+        assert "if (before[item.to] && !push) {" in PAGE

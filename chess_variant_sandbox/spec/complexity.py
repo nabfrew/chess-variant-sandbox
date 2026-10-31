@@ -500,9 +500,11 @@ def _legs_extras(spec: dict[str, Any], pieces: Any) -> float:
 # `"row"`) is half a rule more; one weighed against the pusher (`"weight"`) half a rule on top
 # of that (the row, and the sum); a pusher's strength stated apart from its weight (Q1074b4s)
 # a quarter, the user's second number; the bar on pushing straight back half a rule (round 2,
-# K5, refused until Q1074b6 lifts it). The weights themselves are numbers on the pieces, as
-# bounties are, and `whose`, `captures`, `along` and `edge` are clauses of the push's own
-# sentence, costed at nothing, as a hop's `screen` is. A pusher's type list (`pushes`, or the
+# K5, lifted by Q1074b6). The weights themselves are numbers on the pieces, as
+# bounties are, and `whose`, `captures`, `along`, `edge` and `walls` are clauses of the push's
+# own sentence, costed at nothing, as a hop's `screen` is (Q1074bo: b7's `walls: "crush"`
+# says what a wall does to a push as `edge` says what the edge does; the walls themselves are
+# `obstacles`', charged there). A pusher's type list (`pushes`, or the
 # weight shorthand that stands for one under `"one"` and `"row"`) is a line of the rules
 # table, counted in `capture_restrictions` beside `captures`. Read off the spelling, as the
 # sights are (`schema.py` is not in `measurement.METRICS_SOURCES`).

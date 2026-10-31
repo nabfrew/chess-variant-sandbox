@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.engine.compile import (
+    PUSH_CRUSH,
     WILD,
     CompiledSpec,
     HexCopy,
@@ -317,21 +318,27 @@ def push_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
 
     ``pushed`` is each piece of the line as ``[square, to]``, in order from the target, ``to``
     ``None`` for the piece thrown off the board; ``pushStep`` the push's step in the board's
-    own coordinates (``[files, ranks]``), which way a piece thrown off falls. Two positions
+    own coordinates (``[files, ranks]``), which way a piece thrown off falls; and, where the
+    line's last piece is crushed on a wall rather than thrown off (``walls: "crush"``,
+    Q1074b7), ``pushCrush`` ``true``, so a page shows it crushed where it stood rather than
+    falling over an edge that is not there (Q1074bo). Two positions
     cannot say which pieces a push moved -- a row of like pieces shifted one square reads as
-    one piece jumping the whole row -- so the page's animation (`board.js`) reads these and
-    works out nothing: the line is the compiler's (`CompiledSpec.push_line`), as the move's
-    text is.
+    one piece jumping the whole row -- so the pages' animations (`board.js`, the replay's
+    `replay.js`, the landing's `landing.js`) read these and work out nothing: the line is the
+    compiler's (`CompiledSpec.push_line`), as the move's text is.
     """
     spec = engine.spec
     line = spec.push_line(state.board, move)
     if not line or spec.push is None:
         return None
     _, dx, dy = spec.push.directions[move_push(move)]
-    return {
+    transit: dict[str, Any] = {
         "pushed": [[square, to if to >= 0 else None] for square, to in line],
         "pushStep": [dx, dy],
     }
+    if line[-1][1] == PUSH_CRUSH:
+        transit["pushCrush"] = True
+    return transit
 
 
 # The JavaScript half, a plain file beside this one: the application serves it as one of

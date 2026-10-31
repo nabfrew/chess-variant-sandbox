@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-31
 
+### Shoves animate everywhere
+
+Replays and the stories on the front page now show a shove the way the board you play on does: the line slides, and the piece
+at its end falls over the edge. A piece shoved against a wall, such as Dohyo's missing corners, is pressed flat where it
+stands instead of falling over an edge that isn't there.
+
 ### Dohyo's ring loses its corners
 
 Dohyo's four corner squares are gone: a piece shoved into a corner is out of the ring, just as one shoved off an edge is.

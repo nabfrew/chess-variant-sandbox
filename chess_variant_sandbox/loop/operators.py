@@ -52,6 +52,7 @@ from chess_variant_sandbox.spec.schema import (
     PRICE_MAX,
     PURSE_MAX,
     PUSH_ENTRY_DEFAULTS,
+    PUSH_OFF_VALUES,
     REPETITION_NEVER,
     REST_MAX,
     SIGHT_EFFECTS,
@@ -4835,6 +4836,8 @@ def _pay_the_loser(spec: dict[str, Any], rng: random.Random) -> str | None:
 # of the push's features, so a design run can cross every one in either direction. Each makes
 # its edit and asks the validator, declining where it refuses (the push is refused beside a
 # handful of rules, §3.14, and an operator that copied those clauses would drift from them).
+# Q1074bo added two for the keys that landed after them: `bar-the-push-back` (b6's
+# `no_push_back`) and `crush-on-the-walls` (b7's `walls`, on a board that has walls).
 
 
 def _push_candidates(spec: dict[str, Any]) -> list[str]:
@@ -4877,7 +4880,8 @@ def _push_instead(spec: dict[str, Any], rng: random.Random) -> str | None:
     In a game where nothing pushes, one type's every move that may carry a push shoves what it
     lands on one square on instead of taking it, and, each at a draw of its own, that push is
     given one of its knobs (whose pieces, a capture beside it, the way it shoves), a list of
-    whom it may push, a whole row moved (`chain` ``"row"``) or an edge that blocks: one edit
+    whom it may push, a whole row moved (`chain` ``"row"``), an edge that blocks, no push back
+    or (on a board with walls) walls that crush: one edit
     that can reach every name of the push from a game without one. In a game that pushes, one
     of two, at random: another type pushes too, or one pushing type stops, and what the push's
     keys then read nothing of goes with it. The validator decides the rest.
@@ -4908,7 +4912,12 @@ def _push_instead(spec: dict[str, Any], rng: random.Random) -> str | None:
         if push:
             said += f" ({', '.join(f'{key} {value}' for key, value in push.items())})"
         if not pushers:
-            extra = rng.choice(("none", "none", "pushes", "row", "edge"))
+            # Q1074bo: walls that crush are a draw only on a board with walls (a crush with
+            # none is refused as never firing), so a walled game reaches the name in one edit.
+            extras = ["none", "none", "pushes", "row", "edge", "no back"]
+            if _has_walls(trial):
+                extras.append("crush")
+            extra = rng.choice(extras)
             if extra == "pushes":
                 named = sorted(
                     p for p in _push_candidates(trial) if not _is_royal(trial, p)
@@ -4922,6 +4931,12 @@ def _push_instead(spec: dict[str, Any], rng: random.Random) -> str | None:
             elif extra == "edge":
                 trial.setdefault("rules", {})["push"] = {"edge": "blocks"}
                 said += ", never off the board"
+            elif extra == "no back":
+                trial.setdefault("rules", {})["push"] = {"no_push_back": True}
+                said += ", never straight back at once"
+            elif extra == "crush":
+                trial.setdefault("rules", {})["push"] = {"walls": "crush"}
+                said += ", crushing a piece against a wall"
     else:
         return None
     if validate_spec(trial):
@@ -5111,6 +5126,76 @@ def _weigh_the_push(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+def _has_walls(spec: dict[str, Any]) -> bool:
+    """Whether the board has a wall (`rules.obstacles`), the only thing a crush reads."""
+    board = spec.get("board") or {}
+    return bool(obstacle_squares(
+        spec.get("rules") or {}, int(board.get("width", 8)), int(board.get("height", 8)),
+        (spec.get("setup") or {}).get("orientation", "mirror"),
+    ))
+
+
+def _state_push_key(rules: dict[str, Any], key: str, value: Any) -> None:
+    """Write ``rules.push[key]`` as ``value``, dropping it (and an empty `rules.push`) at its
+    default, so a toggle back hands the parent's own spelling."""
+    stated = dict(rules.get("push") or {})
+    if value == PUSH_OFF_VALUES[key]:
+        stated.pop(key, None)
+    else:
+        stated[key] = value
+    if stated:
+        rules["push"] = stated
+    else:
+        rules.pop("push", None)
+
+
+def _bar_the_push_back(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Bar pushing straight back, or lift the bar (`rules.push.no_push_back`, Q1074b6,
+    `docs/plan-push.md` §3.12): a piece just pushed may not, on its owner's very next move,
+    push from where it now stands onto the square it was pushed from. Nothing to do where
+    nothing pushes; the validator refuses a bar nothing can meet (no push of an enemy and no
+    long turn), and this declines there."""
+    trial = copy.deepcopy(spec)
+    rule = push_rule(trial)
+    if rule is None:
+        return None
+    on = rule["no_push_back"] is not True
+    _state_push_key(trial.setdefault("rules", {}), "no_push_back", on)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return (
+        "a piece just pushed may not push straight back on its next move" if on
+        else "a pushed piece may push straight back at once"
+    )
+
+
+def _crush_on_the_walls(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Let the walls crush, or make them block again (`rules.push.walls`, Q1074b7,
+    `docs/plan-push.md` §3.6): under ``"crush"`` a piece pushed against a wall is removed as
+    if taken (never the pusher's own royal); under ``"block"`` the wall stops the push.
+    Nothing to do where nothing pushes or the board has no wall (the validator refuses a
+    crush with no wall as never firing); the validator decides the rest."""
+    trial = copy.deepcopy(spec)
+    rule = push_rule(trial)
+    if rule is None:
+        return None
+    rules = trial.setdefault("rules", {})
+    if not _has_walls(trial):
+        return None
+    crush = rule["walls"] != "crush"
+    _state_push_key(rules, "walls", "crush" if crush else "block")
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return (
+        "a piece pushed against a wall is crushed" if crush
+        else "a wall stops a push and crushes nothing"
+    )
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -5194,6 +5279,8 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("shape-the-push", _shape_the_push),
     Operator("name-the-pushed", _name_the_pushed),
     Operator("weigh-the-push", _weigh_the_push),
+    Operator("bar-the-push-back", _bar_the_push_back),
+    Operator("crush-on-the-walls", _crush_on_the_walls),
 )
 
 

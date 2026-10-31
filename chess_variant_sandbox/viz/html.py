@@ -23,6 +23,11 @@ one step stands between the move and the phase, the marks are the squares that b
 changed, and the move list gives the phase a row worded by ``phaseWords``, the same
 words the play board's list uses. A game without wild pieces has one beat per ply and
 replays exactly as it did.
+
+Two moves are drawn moving because their marks cannot explain them: a crossing of a seam
+(`showCrossing`), and since Q1074bo a push (`showPush`), whose line the frame carries from
+the engine (`viz.wrapped.push_transit`): the line slides one step on, and the piece it threw
+off falls over the edge, or the piece it crushed on a wall is pressed flat where it stood.
 """
 
 from __future__ import annotations
@@ -49,6 +54,7 @@ from chess_variant_sandbox.viz.wrapped import (
     fold_payload,
     fold_transit,
     portal_transit,
+    push_transit,
 )
 
 
@@ -100,6 +106,11 @@ def render_game(
                 **(portal_transit(engine, state, move) or {}),
                 # Schema 22 (Q843d): a move through a fold, its way in and out, marked too.
                 **(fold_transit(engine, state, move) or {}),
+                # Q1074bo: a push's line, the play board's own (`viz.wrapped.push_transit`):
+                # each piece it shoved and where to, the step, and whether the last piece
+                # was crushed on a wall rather than thrown off, so the replay slides the
+                # line and drops or crushes the last piece as the play board does.
+                **(push_transit(engine, state, move) or {}),
                 "material": record.material[index] if index < len(record.material) else None,
                 "branching": record.branching[index] if index < len(record.branching) else None,
             }

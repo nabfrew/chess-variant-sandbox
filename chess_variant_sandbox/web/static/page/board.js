@@ -2399,15 +2399,17 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
   };
 
   // Q1074b5: the piece a push threw off the board falls away over the edge as the pusher
-  // lands, along the push's own step (`lastMove.pushStep`), and is no capture's victim.
+  // lands, along the push's own step (`lastMove.pushStep`), and is no capture's victim. One
+  // crushed on a wall (`lastMove.pushCrush`, Q1074bo) is pressed flat where it stood instead.
   if (thrown.length && last && Array.isArray(last.pushStep)) {
     const pushAt = (blows.get(last.to) || { at: lastBlow }).at;
     const step = stepXY({ files: last.pushStep[0], ranks: last.pushStep[1] }, cell, view);
+    const away = last.pushCrush ? pushCrush : pushFall;
     for (const sq of thrown) {
       const piece = pieceOf(before[sq]);
       if (!piece) continue;
       const [x, y] = at(sq);
-      busy = Math.max(busy, pushFall(svg, piece, x, y, cell, step, pushAt));
+      busy = Math.max(busy, away(svg, piece, x, y, cell, step, pushAt));
       cut.add(sq);
     }
   }

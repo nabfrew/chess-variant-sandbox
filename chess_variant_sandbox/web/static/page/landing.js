@@ -638,8 +638,12 @@ function drawStoryFrame(mount, game, frame, prev, art, still) {
   }
   // The marks a still frame keeps, under the pieces: the move's two squares lit, a portal's
   // two ends, a blast's whole area, the squares a sweep cleared.
+  // A push lights the squares its line moved onto and where the piece it removed stood.
+  const shovedTo = item && item.push
+    ? item.push.pushed.map(([square, onto]) => (onto === null ? square : onto)) : [];
   const lit = !item ? [] : item.blast ? item.blast.area
-    : [item.from, item.to].concat(item.portal || [], item.sweep || []).filter(sq => sq !== undefined);
+    : [item.from, item.to].concat(item.portal || [], item.sweep || [], shovedTo)
+      .filter(sq => sq !== undefined);
   const burnt = new Set(item ? (item.blast ? item.blast.area : item.sweep || []) : []);
   for (const square of lit) {
     const cellGroup = svg.querySelector(`[data-square="${square}"]`);
@@ -723,19 +727,41 @@ function drawStoryFrame(mount, game, frame, prev, art, still) {
     .map(square => [before[square], ...at(square)]);
   const swept = victims.length
     ? sweepCut(svg, moving, [fx, fy], [tx, ty], victims, cell, flight) : 0;
+  // Q1074bo: a push, from the server's account of it (`item.push`, the play board's
+  // `viz.wrapped.push_transit`), never from the two positions. Each piece of the line slides
+  // one step on as the pusher strikes it, and the last, where it left the board, falls away
+  // over the edge (`pushFall`), or, crushed on a wall, is pressed flat where it stood
+  // (`pushCrush`). The piece landed on is shoved, not taken, so no capture is drawn.
+  let shoving = 0;
+  const push = item.push;
+  if (push) {
+    const strikeAt = flight * PACE.impact;
+    const step = stepXY({ files: push.pushStep[0], ranks: push.pushStep[1] }, cell, view);
+    for (const [square, onto] of push.pushed) {
+      if (onto !== null) {
+        const shoved = node(onto);
+        if (shoved) shoving = Math.max(shoving, strikeAt + travel(shoved, -step[0], -step[1], false, strikeAt, most));
+      } else if (before[square]) {
+        const [x, y] = at(square);
+        shoving = Math.max(shoving, (push.pushCrush ? pushCrush : pushFall)(
+          svg, before[square], x, y, cell, step, strikeAt));
+      }
+    }
+    svg.appendChild(moving);
+  }
   // A square the move claimed is painted as the piece lands on it.
   let painting = 0;
   for (const [square, owner] of item.claims || []) {
     const paint = owner && fresh.get(square);
     if (paint) painting = Math.max(painting, claimPaint(paint[0], paint[1], paint[2], cell, flight * PACE.impact, most));
   }
-  if (before[item.to]) {
+  if (before[item.to] && !push) {
     const ghost = before[item.to];
     const done = capture(svg, ghost, tx, ty, cell, { at: flight * PACE.impact, dx: tx - fx, dy: ty - fy });
     svg.appendChild(moving);
     return Math.max(flight, done, painting, swept);
   }
-  return Math.max(flight, painting, swept);
+  return Math.max(flight, painting, swept, shoving);
 }
 
 // What the rule keeps count of, under a board: the pieces in hand, or the ground each side holds.
@@ -866,7 +892,8 @@ class StoryPlayer {
       const frame = this.frames[this.at];
       // The turn the rule acts (a portal, a blast) gets the time its motion needs and a
       // breath after it; any other turn takes the story's pace.
-      const acts = frame.item && (frame.item.portal || frame.item.blast || frame.item.sweep);
+      const acts = frame.item && (frame.item.portal || frame.item.blast || frame.item.sweep
+        || frame.item.push);
       const wait = Math.max(this.game.pace, acts ? motion + 350 : motion)
         + (frame.item && frame.item.cut ? 600 : 0);
       if (this.at < this.frames.length - 1) {

@@ -59,7 +59,12 @@ from chess_variant_sandbox.engine.compile import WILD
 from chess_variant_sandbox.engine.engine import Engine
 from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_PROMOTION, decode_move
 from chess_variant_sandbox.spec.canonical import MECHANIC_KEYS, load_spec, spec_hash
-from chess_variant_sandbox.viz.wrapped import portal_transit, square_name, sweep_transit
+from chess_variant_sandbox.viz.wrapped import (
+    portal_transit,
+    push_transit,
+    square_name,
+    sweep_transit,
+)
 from chess_variant_sandbox.web.landing import BLOCKS
 
 HERE = Path(__file__).resolve().parent / "stories"
@@ -519,6 +524,12 @@ def _did(engine: Engine, state: Any, after: Any, move: int) -> dict[str, Any]:
     cleared = sweep_transit(engine, state, move)
     if cleared:
         item["sweep"] = cleared["swept"]
+    # Q1074bo: a push's line, the play board's own (`viz.wrapped.push_transit`), so the story
+    # slides the line, and drops the piece thrown off or crushes the one pressed on a wall,
+    # rather than drawing the piece landed on as taken.
+    shoved = push_transit(engine, state, move)
+    if shoved:
+        item["push"] = shoved
     explosion = c.explosion
     if (explosion is not None and kind != MOVE_DROP and state.board[target]
             and not after.board[target]):
@@ -531,12 +542,20 @@ def _did(engine: Engine, state: Any, after: Any, move: int) -> dict[str, Any]:
     return item
 
 
+def _push_removes(item: dict[str, Any]) -> bool:
+    """Whether the move pushed a piece off the board or crushed it on a wall (Q1074bo): the
+    push's event, as a sweep's is; a push that only shoves is a plain turn."""
+    push = item.get("push")
+    return bool(push) and push["pushed"][-1][1] is None
+
+
 def _key(played: Played, n: int, last: int, item: dict[str, Any]) -> bool:
     keys = played.keys
     return bool(
         n == last
         or n == (played.moment or last)
-        or (keys == "events" and ("portal" in item or "blast" in item or "sweep" in item))
+        or (keys == "events" and ("portal" in item or "blast" in item or "sweep" in item
+                                  or _push_removes(item)))
         or (keys == "drops" and "drop" in item)
         or (isinstance(keys, int) and n % keys == 0))
 

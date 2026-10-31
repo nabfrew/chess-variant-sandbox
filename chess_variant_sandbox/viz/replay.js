@@ -170,6 +170,11 @@ function draw() {
     marked.add(move.foldIn);
     marked.add(move.foldOut);
   }
+  // Q1074bo: a push marks every square its line moved onto, and the square of the piece it
+  // threw off or crushed, since that piece is gone and nothing else says where it stood.
+  if (beat.kind !== 'phase' && move && Array.isArray(move.pushed)) {
+    for (const [square, onto] of move.pushed) marked.add(onto === null ? square : onto);
+  }
   FOLDS_SHOWN = DATA.folds ? DATA.folds[beat.ply] || [] : [];
   FRAME = boardView(W, H, AXES, SHIFT, false, DATA.lattice, CUT);
   svg.setAttribute('viewBox', viewBox(FRAME, CELL));
@@ -328,6 +333,65 @@ function showCrossing(origin, target, before, after) {
   fade.onfinish = () => away.remove();
 }
 
+// A push (Q1074bo, the play board's since Q1074b5): two positions cannot say which pieces a
+// push moved, so this reads the engine's line (`move.pushed`, `viz.wrapped.push_transit`) and
+// works out nothing. The pusher travels onto the square it pushed from, each piece of the line
+// slides one step on (`move.pushStep`, which is the right way round a seam too), and the
+// last, where it left the board, falls away over the edge along the step, or, crushed on a
+// wall (`move.pushCrush`), is pressed flat against that side of its square and fades. The
+// motion is the play board's `pushFall` and `pushCrush`, in the replay's own few lines,
+// since the replay inlines `wrapped.js` and not the page's `motion.js`.
+function pushGhost(piece, square) {
+  const place = squareXY(square, CELL, FRAME);
+  const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  ghost.innerHTML = drawPiece(piece, place[0], place[1]);
+  ghost.style.transformOrigin = `${place[0] + CELL / 2}px ${place[1] + CELL / 2}px`;
+  svg.appendChild(ghost);
+  return ghost;
+}
+
+function showPush(move, before) {
+  if (STILL.matches || !Array.isArray(move.pushed) || !Array.isArray(move.pushStep)) return;
+  const d = stepXY({ files: move.pushStep[0], ranks: move.pushStep[1] }, CELL, FRAME);
+  const step = wrapStep(move.from, move.to, W, H,
+    wrapAllow(DATA.wrap, (pieceAt(before, move.from) || {}).player));
+  const pusher = svg.querySelector(`[data-piece="${move.to}"]`);
+  if (pusher && !step.wrapped) {
+    const from = squareXY(move.from, CELL, FRAME), to = squareXY(move.to, CELL, FRAME);
+    svg.appendChild(pusher);
+    crossTravel(pusher, from[0] - to[0], from[1] - to[1]);
+  }
+  for (const [square, onto] of move.pushed) {
+    if (onto !== null) {
+      const node = svg.querySelector(`[data-piece="${onto}"]`);
+      if (node) crossTravel(node, -d[0], -d[1]);
+      continue;
+    }
+    const piece = pieceAt(before, square);
+    if (!piece) continue;
+    const ghost = pushGhost(piece, square);
+    ghost.setAttribute('data-journey', move.pushCrush ? 'push-crush' : 'push-fall');
+    const reach = Math.hypot(d[0], d[1]) || 1;
+    const nx = d[0] / reach * CELL * 0.34, ny = d[1] / reach * CELL * 0.34;
+    const flat = Math.abs(d[0]) >= Math.abs(d[1]) ? 'scale(0.18, 1.12)' : 'scale(1.12, 0.18)';
+    const frames = move.pushCrush ? [
+      { opacity: 1, transform: 'translate(0px, 0px) scale(1, 1)' },
+      { opacity: 1, transform: `translate(${nx * 0.5}px, ${ny * 0.5}px) scale(1, 1)`, offset: 0.3 },
+      { opacity: 0.85, transform: `translate(${nx}px, ${ny}px) ${flat}`, offset: 0.62 },
+      { opacity: 0, transform: `translate(${nx}px, ${ny}px) ${flat}` },
+    ] : [
+      { opacity: 1, transform: 'translate(0px, 0px) scale(1)' },
+      { opacity: 0.9, transform: `translate(${d[0] * 0.7}px, ${d[1] * 0.7}px) scale(0.92)`, offset: 0.45 },
+      { opacity: 0, transform: `translate(${d[0] * 1.1}px, ${d[1] * 1.1 + CELL * 0.35}px) scale(0.35)` },
+    ];
+    const away = ghost.animate(frames, { duration: PUSH_MS, easing: 'ease-in', fill: 'both' });
+    away.onfinish = () => ghost.remove();
+  }
+}
+
+// How long a piece thrown off or crushed takes to go: the play board's `PACE.pushFall`.
+const PUSH_MS = 520;
+
 function goto(target) {
   const was = at;
   at = Math.max(0, Math.min(BEATS.length - 1, target));
@@ -339,6 +403,7 @@ function goto(target) {
   const beat = BEATS[at];
   const moved = beat.kind === 'phase' ? beat.steps : [DATA.moves[beat.ply - 1]];
   for (const m of moved) showCrossing(m.from, m.to, BEATS[was].board, beat.board);
+  if (beat.kind !== 'phase') showPush(DATA.moves[beat.ply - 1], BEATS[was].board);
 }
 
 function togglePlay() {

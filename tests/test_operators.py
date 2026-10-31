@@ -400,6 +400,8 @@ class TestMutation:
         # Q1074b5's `shape-the-push` and `name-the-pushed` turn a push a game already has, and
         # no stored game pushes: sumo chess stands in.
         parents.append(_parent_push())
+        # Q1074bo's `crush-on-the-walls` needs walls beside a push: sumo chess with walls.
+        parents.append(_parent_push_crush())
 
         def fires(operator) -> bool:
             return any(
@@ -2747,6 +2749,18 @@ def _parent_push_edge() -> dict:
     return _sumo(edge="blocks")
 
 
+def _parent_push_no_back() -> dict:
+    """Sumo chess that bars pushing straight back (Q1074b6)."""
+    return _sumo(no_push_back=True)
+
+
+def _parent_push_crush() -> dict:
+    """Sumo chess with walls on d4 and e5 that crush a piece pushed against them (Q1074b7)."""
+    spec = _sumo(walls="crush")
+    spec["rules"]["obstacles"] = {"squares": ["d4", "e5"]}
+    return spec
+
+
 def _parent_paid_to_loser() -> dict:
     """The levy (TC9b's retired showcase) with its bounties paid to the loser (TC9c)."""
     levy = load_spec(Path(__file__).parent / "_retired_the_levy.json")
@@ -2958,6 +2972,14 @@ def _eight_wide(spec: dict) -> bool:
     return (spec.get("board") or {}).get("width") == 8
 
 
+def _pushes(spec: dict) -> bool:
+    return schema.push_rule(spec) is not None
+
+
+def _walled(spec: dict) -> bool:
+    return bool(((spec.get("rules") or {}).get("obstacles") or {}).get("squares"))
+
+
 # Generation 56 (Q1074b1 to Q1074b4s, the push; surfaces closed by Q1074b5): nine names, one
 # row each. No stored game pushes, so each is entered from a game without a push in one draw:
 # `push-instead` gives a type its push and, at a draw each, one knob of it, a list, a row or
@@ -3005,6 +3027,17 @@ _FEATURES: dict[str, _Feature] = {
     "Q1074 an edge that blocks": _Feature(
         None, frozenset({"rules.push.edge"}), True,
         "sumo chess with an edge that blocks", _parent_push_edge, likely=_eight_wide,
+    ),
+    # Q1074bo: b6's and b7's keys, named when the loop learned them. Each is entered and left
+    # by its own operator (`bar-the-push-back`, `crush-on-the-walls`).
+    "Q1074b6 no push back": _Feature(
+        None, frozenset({"rules.push.no_push_back"}), True,
+        "sumo chess with no push back", _parent_push_no_back, likely=_pushes,
+    ),
+    "Q1074b7 walls that crush": _Feature(
+        None, frozenset({"rules.push.walls"}), True,
+        "sumo chess with crushing walls on d4 and e5", _parent_push_crush,
+        likely=_walled,
     ),
 }
 
@@ -3193,7 +3226,7 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     56: frozenset({
         "pieces.moves.push", "pieces.moves.push.whose", "pieces.moves.push.captures",
         "pieces.moves.push.along", "pieces.pushes", "pieces.weight", "pieces.strength",
-        "rules.push.chain", "rules.push.edge",
+        "rules.push.chain", "rules.push.edge", "rules.push.walls", "rules.push.no_push_back",
     }),
 }
 
@@ -4529,6 +4562,8 @@ _PINNED_SCALES: dict[str, float] = {
     "push_share": 1.0, "push_whose": 1.0, "push_captures": 1.0, "push_along": 1.0,
     "push_lists": 1.0, "push_reach": 1.0, "push_chain": 1.0, "push_edge_blocks": 1.0,
     "push_weight": 9.0, "push_strength": 9.0,
+    # Q1074bo: b6's no push back and b7's crushing walls, a flag each.
+    "push_no_back": 1.0, "push_walls_crush": 1.0,
 }
 
 
@@ -4602,14 +4637,15 @@ class TestDistanceIsPinnedToTheNumber:
         `bounty_to_loser`, is 0.009866, which rounds to 0.0099; 126 since Q1069a's
         `draws_insufficient_material`, read with chess's draw on dead material taken off, since
         a bare-royal rule leaves that draw inert and would be a second difference: 0.0098;
-        136 since Q1074b5's ten push features: 0.0091."""
+        136 since Q1074b5's ten push features: 0.0091; 138 since Q1074bo's `push_no_back` and
+        `push_walls_crush`: 0.0089."""
         chess = _chess()
         chess["rules"].pop("insufficient_material")
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0091
+        assert distance(chess, twin) == 0.0089
 
 
 def _one_leap_beside_a_stone() -> dict:

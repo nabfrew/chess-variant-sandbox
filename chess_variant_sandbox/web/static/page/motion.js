@@ -51,6 +51,8 @@ const PACE = {
   // lands, in a travel's time; one shoved over the edge falls away in this long, tipping
   // out past the edge and shrinking as it goes.
   pushFall: 520,
+  // One crushed on a wall (Q1074bo, `pushCrush`) is pressed flat on its own square and fades.
+  pushCrush: 560,
   // A void move in a round (schema 26, Q918c): the piece steps toward the square it went
   // for and back, in this long, reaching this share of the way.
   voidStep: 460,
@@ -313,6 +315,28 @@ function pushFall(svg, piece, x, y, cell, step, at) {
   ], { duration: PACE.pushFall, delay: at, easing: 'ease-in', fill: 'both' });
   fall.onfinish = () => ghost.remove();
   return at + PACE.pushFall;
+}
+
+// A push that crushes a piece on a wall (`walls: "crush"`, Q1074b7; drawn by Q1074bo): the
+// piece goes nowhere, since the wall it is shoved against stands one square on, so it is
+// pressed flat against that side of its own square and fades there, rather than falling
+// over an edge that is not there. `step` is the push's step on the drawing, as `pushFall`'s;
+// the squash is along its longer axis. Returns when it is gone.
+function pushCrush(svg, piece, x, y, cell, step, at) {
+  const ghost = ghostAt(svg, piece, x, y, cell);
+  ghost.setAttribute('data-journey', 'push-crush');
+  const [sx, sy] = step;
+  const reach = Math.hypot(sx, sy) || 1;
+  const nx = sx / reach * cell * 0.34, ny = sy / reach * cell * 0.34;
+  const flat = Math.abs(sx) >= Math.abs(sy) ? 'scale(0.18, 1.12)' : 'scale(1.12, 0.18)';
+  const crush = ghost.animate([
+    { opacity: 1, transform: 'translate(0px, 0px) scale(1, 1)' },
+    { opacity: 1, transform: `translate(${nx * 0.5}px, ${ny * 0.5}px) scale(1, 1)`, offset: 0.3 },
+    { opacity: 0.85, transform: `translate(${nx}px, ${ny}px) ${flat}`, offset: 0.62 },
+    { opacity: 0, transform: `translate(${nx}px, ${ny}px) ${flat}` },
+  ], { duration: PACE.pushCrush, delay: at, easing: 'ease-in', fill: 'both' });
+  crush.onfinish = () => ghost.remove();
+  return at + PACE.pushCrush;
 }
 
 // A sweep (schema 13): not a blow on one square but an edge drawn down a line. A blade

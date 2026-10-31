@@ -602,7 +602,7 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "owns standing next to one of yours, or (twice it) to bribe an enemy one. Leave it "
         "empty and it is not for sale.",
     ),
-    # Q1074b2 (`docs/plan-push.md`): pushing, sumo chess's capture.
+    # Q1074b2 (`docs/plan-push.md`): pushing, a shove in place of a capture.
     "pieces.moves.push": (
         "pushes",
         "Landing on a piece it may push, this way of moving shoves it one step further on, "

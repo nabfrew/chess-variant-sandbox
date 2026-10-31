@@ -312,6 +312,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "npcs_split",  # N3d
     "push_share", "push_whose", "push_captures", "push_along", "push_lists",  # Q1074b5
     "push_reach", "push_chain", "push_edge_blocks", "push_weight", "push_strength",  # Q1074b5
+    "push_no_back", "push_walls_crush",  # Q1074bo
     "has_duck",  # N4b
     "duck_by_moves",  # N4b
     "nobody_share", "majority_share", "majority_geometry",  # TC3
