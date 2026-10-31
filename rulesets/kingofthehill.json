@@ -2,6 +2,10 @@
   "schema_version": 31,
   "name": "king of the hill",
   "description": "Ordinary chess with one extra way to win: walk your king to one of the four central squares. The king stops being a liability to be hidden and becomes a piece with somewhere to go.",
+  "summary": [
+    "Walk your king onto one of the four centre squares, d4, e4, d5 or e5, and you win.",
+    "Checkmate also wins; otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8
@@ -244,6 +248,7 @@
   "provenance": {
     "added": "2026-08-20",
     "origin": "human",
+    "note": "A variant widely played online.",
     "source": "a widely played chess variant"
   }
 }

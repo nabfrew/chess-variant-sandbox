@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "the circling queen",
   "description": "Chess, except that the queen no longer runs in straight lines. The circling queen starts as a queen does, one square in any of the eight directions, but every further square turns her an eighth of a turn the same way, clockwise or anticlockwise as she chooses: north, then north-east, then east, then south-east, and so on, a path that curls round in a small circle of up to seven squares and never comes back to where it began. She may stop anywhere along it, and like a queen she is stopped by the first piece on a square she lands on, taking it if it is an enemy's. Next to her, she moves as a queen does; two or three squares away she reaches squares no queen could, a knight's square among them, and she has lost the long straight lines a queen pins and skewers along. What that changes is where the strongest piece belongs. A queen in the corner of the board still commands a diagonal; this one, far from the action, commands almost nothing, so she has to be brought close, where her curling paths cover a cluster of squares round her and a single piece in the way bends her elsewhere. The decision the game keeps forcing is how near to bring a queen without lines, and how to keep her out of reach of the pieces she is drawn among. Everything else is chess.",
+  "summary": [
+    "The queen circles instead of running straight: every square after the first turns her an eighth of a turn, always the same way.",
+    "She may stop anywhere along the curl, and the first piece she lands on stops her; she may take it if it is an enemy's.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

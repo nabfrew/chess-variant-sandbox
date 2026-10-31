@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "sluice",
   "description": "Chess in which each side has a sluice into the enemy's half, and the enemy steers where it comes out. A White piece that ends its move on one of White's doors, a3 or h3, comes out one step beyond White's gate, which starts on e5, in the direction it was travelling, capturing there as usual: a2-a3 puts the pawn on e6. Black's doors, a6 and h6, lead the same way to Black's gate on e4, and only the owner may use a door. The doors never move, but each gate is moved by the side it threatens: Black may spend a turn moving White's gate a step, and White moves Black's. So the attacker picks the door and the moment, the defender where the raid lands. Placing a gate cuts both ways: it is a block nobody passes or takes, so wherever it is parked it closes a line or shields a king, and every raider arrives beside it.",
+  "summary": [
+    "Each side has two doors that only it may use: a3 and h3 for White, a6 and h6 for Black.",
+    "A piece that ends its move on one of your doors comes out one step beyond your gate in the enemy half, still going the same way, and may capture there.",
+    "White's gate starts on e5 and Black's on e4, and the enemy steers each: instead of moving a piece, you may move the other side's gate one step.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

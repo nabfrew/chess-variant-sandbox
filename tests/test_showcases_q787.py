@@ -94,7 +94,7 @@ class TestShogiDropPromoted:
         theirs = load_spec(ROOT / "rulesets/shogi.json")
         assert mine["rules"].pop("promote_on_entry") is True
         for spec in (mine, theirs):
-            for key in ("name", "description", "provenance"):
+            for key in ("name", "description", "summary", "provenance"):
                 spec.pop(key)
         assert mine == theirs
 

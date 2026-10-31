@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "perpetual",
   "description": "Chess with no draw by repetition. A position may be reached as often as the players please and the game goes on; the fifty-move rule and the move limit are the only clocks left, so a side with nothing better than a perpetual has to find something better or run out of moves.",
+  "summary": [
+    "Repeating a position is never a draw.",
+    "The game is drawn only after 100 turns without a capture or pawn move, or 400 turns in all.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "the horse archers",
   "description": "Chess, except that the knights are horse archers. A knight moves as in chess, but when it captures it shoots: the piece it takes is removed and the knight stays where it stood. Every other piece captures as in chess, by moving onto the square it takes. In chess a guarded piece is safe, because whoever takes it lands where it can be taken back. A knight here never lands, and its jump cannot be blocked, so a guard protects nothing against it: a piece a knight's jump away is lost unless it steps off that square or the knight itself is driven off or taken. A shot cannot block a check, since the knight stays on its own square, though it can answer one by shooting the checking piece; and a pinned knight, which in chess cannot move at all, may still shoot, since shooting never takes it off the line. The question the game keeps asking is how close to let an enemy knight come, because a knight in the middle of the board threatens eight squares at once and none of the pieces on them can be defended the usual way, and when to give up a piece of your own to be rid of a knight that cannot simply be chased away. Everything else, checkmate included, is chess.",
+  "summary": [
+    "A knight captures by shooting: the piece it takes is removed and the knight stays where it stood.",
+    "Every other piece captures as usual, by moving onto the square.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

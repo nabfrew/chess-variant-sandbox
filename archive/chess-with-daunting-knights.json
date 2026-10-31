@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "chess with daunting knights",
   "description": "Chess, except that a knight takes the fight out of the enemy pieces it eyes. Any enemy piece standing a knight's jump from a knight cannot capture: while the knight stays, that piece may still move, block and be taken, but it takes nothing, threatens nothing and gives no check. A knight's jump is not a line, so nothing can be put in the way; the effect ends only when one of the two moves off or is taken. The king is no exception. A king a knight's jump from an enemy knight cannot take anything, so a knight's check also stops the king capturing a piece beside it, and a knight and a queen can mate a king that could have taken the queen in ordinary chess. Two knights a jump apart disarm each other, so a knight never takes a knight. The trade-off the rule forces is about defenders. A disarmed piece guards nothing, so a knight placed a jump from a defender quietly unguards everything that defender was holding, without ever capturing; the knights become the pieces that take a defence apart, and every move a defender makes to step out of a knight's eye is a move it is not defending.",
+  "summary": [
+    "An enemy piece a knight's jump from your knight cannot capture: it may still move, but it threatens nothing and gives no check.",
+    "That includes the king, so a check can be answered by putting a knight a jump from the checking piece.",
+    "Otherwise it is chess."
+  ],
   "board": {"width": 8, "height": 8},
   "pieces": [
     {"id": "P", "name": "pawn", "value": 1,

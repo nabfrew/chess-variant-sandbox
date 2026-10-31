@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "los alamos",
   "description": "The 6x6 board the MANIAC I computer played in 1956, the first game of chess-like complexity a machine ever won against a human. Bishops are dropped for want of room, pawns never double-step, there is no castling and no en passant, and a pawn may not promote to a piece that does not exist.",
+  "summary": [
+    "Chess on a 6 by 6 board, with no bishops.",
+    "Pawns step one square at a time, and promote to a queen, rook or knight.",
+    "There is no castling and no capturing in passing; otherwise it is chess."
+  ],
   "board": {"width": 6, "height": 6},
   "pieces": [
     {
@@ -61,6 +66,7 @@
     "added": "2026-08-19",
     "origin": "human",
     "year": 1956,
+    "note": "The chess the MANIAC I computer played at Los Alamos in 1956: the first chess-like game a machine won against a human.",
     "source": "the MANIAC I computer at Los Alamos; the first game of chess-like complexity a machine won against a human"
   }
 }

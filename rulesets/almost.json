@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "almost chess",
   "description": "Ralph Betza's minimal edit to chess: the queen is replaced by a chancellor, which slides like a rook and leaps like a knight. Everything else -- board, army, castling, double step, en passant -- is untouched. It exists to ask how much of chess survives changing exactly one piece.",
+  "summary": [
+    "The queen is replaced by a chancellor, which moves as a rook or a knight.",
+    "A pawn promotes to a chancellor, rook, bishop or knight.",
+    "Otherwise it is chess."
+  ],
   "board": {"width": 8, "height": 8},
   "pieces": [
     {
@@ -82,6 +87,7 @@
     "added": "2026-08-19",
     "origin": "human",
     "author": "Ralph Betza",
+    "note": "Ralph Betza's smallest possible change to chess.",
     "source": "a chess variant"
   }
 }

@@ -2,6 +2,13 @@
   "schema_version": 31,
   "name": "los alamos with crushing pillars",
   "description": "Chess on a six-by-six board without bishops, with four pillars standing in it, on b3, b4, e3 and e4, that no piece may stand on, and in which only the king can take. Every other piece shoves instead of capturing: moving onto an enemy piece pushes it one step further the way the mover was going (a knight's step being its whole jump). A piece shoved off the edge of the board is out, and so is a piece shoved into a pillar, crushed against it. So the pillars are dangers in the middle of the board, not only obstacles: a piece standing beside one can be destroyed by a shove from the far side, well away from any edge, and a king's defenders want to stand clear of them. Sliding pieces stop at a pillar and knights jump over it. Checkmate wins, and a piece just shoved may not be shoved straight back on the next move, whoever shoves.",
+  "summary": [
+    "Only the king can take. Every other piece shoves instead: moving onto an enemy piece pushes it one step further the way the mover was going.",
+    "Four pillars stand on b3, b4, e3 and e4; a piece shoved off the edge or into a pillar is out.",
+    "A knight's shove sends a piece a whole knight's jump on.",
+    "A piece just pushed may not be pushed straight back on the next move.",
+    "Played on a 6 by 6 board with no bishops and no castling; a pawn steps one square at a time."
+  ],
   "board": {
     "width": 6,
     "height": 6

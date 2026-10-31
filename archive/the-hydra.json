@@ -2,6 +2,13 @@
   "schema_version": 31,
   "name": "the hydra",
   "description": "Chess with a monster in the middle of the board. A hydra stands on d4 and another on d5, and neither ever walks; instead, any piece that ends its owner's move attacking a hydra, pawns included, is eaten at once by a new head that grows onto its square. A head is a hydra in every way, so the monster spreads along the lines its attackers came from, and a head grown on your piece's square can be taken at once by an enemy piece that was guarding that square: feeding the hydra is an exchange, and a sacrifice that opens a line can be one too. No more than six heads may stand at once; past that, a head lunges onto the piece that attacks it instead, and leaves its post. A hydra cannot harm a king, so the king is the one piece that may walk up to a head and take it, and the king becomes the hydra-slayer. Four hounds walk short three-square loops on the wings, and after every move a hound takes a piece of the player who has just moved that stands next to it, then waits where it landed until it can pounce again or finds itself back on a loop; the hounds by Black's camp walk one move behind those by White's, so each army meets the hounds at its door after its own second move. So the centre is a minefield in which a careless knight or a long-range piece feeds the monster, and the question all game is when to open lines through the middle, and when to send the king to clear it. Checkmate wins; a game that reaches its move limit, or fifty moves a side without a capture or a promotion, goes to the side with more material.",
+  "summary": [
+    "Two hydras stand on d4 and d5 and never walk.",
+    "Any piece but a king that ends its owner's move attacking a hydra is eaten, and a new hydra grows on its square, up to six in all.",
+    "Your king may not stand where it would attack a hydra.",
+    "Four hounds walk small loops on the wings, eating what is in their way and pouncing on any piece they attack after its owner moves.",
+    "If nobody is mated by turn 400, more material wins."
+  ],
   "board": {
     "width": 8,
     "height": 8

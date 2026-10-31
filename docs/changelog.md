@@ -14,6 +14,10 @@ any other address keeps its brackets.
 
 ## 2026-10-31
 
+### Every game now opens with its short description
+
+All 120 games, the previews included, now start their page with a few plain lines saying what makes each one itself.
+
 ### Choosing who plays is simpler
 
 On a game's page the two seats now read as one line, white *vs.* black, and whether a game is rated is a single

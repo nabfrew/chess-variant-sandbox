@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "anchors",
   "description": "Anchors are pieces that never move. Each side begins with two of them on its third rank, in front of its knights' pawns, and only a pawn may take one: no knight, bishop, rook, queen or king can capture an anchor, and no line passes through it. So an anchor is a wall in front of its owner's camp that the enemy's long-range pieces can neither clear nor shoot past, and the one way through is to march a pawn up to it and dig it out. It is also a wall in its owner's way: the pawn behind it cannot advance until the enemy removes the anchor, and can leave its file only by capturing. So every pawn move is a question of whose anchor it is aimed at and which lines it opens, and a closed position can be opened only where someone chooses to dig. Otherwise this is chess, with check, checkmate, castling and promotion as usual.",
+  "summary": [
+    "Each side has two anchors on its third rank, and they never move.",
+    "Only a pawn can take an anchor; nothing else can take it or pass through it.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "chess with a weary queen",
   "description": "Chess exactly as it is played, except that the queen tires: after the queen moves, it must rest for its side's next turn. It still stands where it landed, attacking, defending, blocking and giving check, and its check must be answered, but it cannot move again until a turn of its side has passed. The rule takes one glance to read and changes the queen's whole character. It can no longer chase: a queen that gives check cannot follow it up on the next move, and a queen that grabs a pawn cannot step back out of danger at once, so every queen move has to be good for two turns rather than one. An early queen raid is riskier, since a resting queen that is attacked can be defended but not moved away, and the other pieces carry more of the game. A pawn promoted to a queen rests too, as the new queen. When the queen's moves are the only legal moves a side has, as when only the queen can answer a check, the rest is lifted for that turn.",
+  "summary": [
+    "After your queen moves, it must rest through your next turn.",
+    "A resting queen still attacks, blocks and gives check.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

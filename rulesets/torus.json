@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "torus chess",
   "description": "Chess on a board with no edges at all: both pairs of opposite edges are joined, so a piece leaving the a-file reappears on the h-file and one leaving the top rank reappears at the bottom. With no corners and no sides, the familiar mating patterns that drive a king into a corner or against the edge of the board are gone, and the game asks whether checkmate still works in open space; it was built on the prediction that mate would be rare. The board is eight files by twelve ranks, with two empty ranks behind each army, because on an eight by eight torus the two kings start next to each other through the join and White is checkmated before moving. Those empty ranks leave each army's back rank open to the other's through the join, so the opening is a scramble of captures, and the game swings little once it settles. With no far edge to reach, a pawn promotes on the enemy's starting back rank.",
+  "summary": [
+    "The board has no edges: left joins right and top joins bottom.",
+    "It is 8 wide and 12 deep, and the armies start on their third and fourth ranks.",
+    "Castling stays on its rank; otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 12

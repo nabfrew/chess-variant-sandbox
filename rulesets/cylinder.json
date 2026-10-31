@@ -2,6 +2,10 @@
   "schema_version": 31,
   "name": "cylinder chess",
   "description": "Chess on a cylinder: the a-file and the h-file are joined, so a rook on a1 already sees h1 and a bishop's diagonal runs off one side and back on the other. Nothing else changes -- same board, same army, same castling, same en passant: the seam is the whole difference.",
+  "summary": [
+    "The a-file and the h-file are joined, so a piece leaving one side comes in on the other.",
+    "Castling stays on the back rank; otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

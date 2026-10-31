@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "los alamos with shove or take",
   "description": "Chess on a six-by-six board without bishops, in which the knights, rooks and queens have two ways to use a capture. Landing on an enemy piece, one may take it as usual, or instead shove it one step further the way it was moving (a knight shoves a piece a whole knight's jump on), provided the square there is empty or off the board; a piece shoved off the edge is out, as if taken. A shove leaves the enemy piece alive but elsewhere, so it is the move to make when the piece is worth more where you send it than gone: tipped over the edge while the shover stands, pushed in front of a pawn, or out of its king's defence, or when a shove gives check that a capture would not. Pawns and the king only take.",
+  "summary": [
+    "A knight, rook or queen landing on an enemy piece may take it, or shove it one step further the way it was going.",
+    "A shove needs an empty square beyond, or the edge: a piece shoved off the board is out.",
+    "A knight's shove sends a piece a whole knight's jump on.",
+    "Played on a 6 by 6 board with no bishops and no castling; a pawn steps one square at a time."
+  ],
   "board": {
     "width": 6,
     "height": 6

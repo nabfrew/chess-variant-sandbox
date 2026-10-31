@@ -31,7 +31,7 @@ from chess_variant_sandbox.web.page import game as drawing
 from tests.page_text import PAGE
 
 ROOT = Path(__file__).resolve().parent.parent
-# The pattern games Q1085a wrote, one of each kind of rule (Q1085b writes the rest).
+# The pattern games Q1085a wrote, one of each kind of rule (Q1085b wrote the rest).
 PATTERN = (
     "archive/the-free-companies.json", "rulesets/duck-chess.json",
     "rulesets/rock-paper-shove.json", "rulesets/seirawan.json", "rulesets/crazyhouse.json",
@@ -80,6 +80,13 @@ class TestTheTextMovesNothing:
             if "summary" in spec or provenance_note(spec):
                 assert validate_spec(spec) == [], path.name
 
+    def test_every_library_game_carries_one_and_it_moves_no_hash(self) -> None:
+        """Q1085b: every game under rulesets/ and archive/ leads with a summary."""
+        for path in _every_spec():
+            spec = json.loads(path.read_text(encoding="utf-8"))
+            assert summary_lines(spec), path.name
+            assert spec_hash(spec) == spec_hash(_without_text(spec)), path.name
+
     @pytest.mark.parametrize("relative", ("rulesets/crazyhouse.json", "rulesets/duck-chess.json"))
     def test_the_fairy_translation_ignores_it(self, relative: str) -> None:
         spec = _load(relative)
@@ -122,7 +129,8 @@ class TestThePageLeadsWithIt:
         assert said["provenanceNote"] == spec["provenance"]["note"]
 
     def test_a_game_without_one_carries_empty_text(self) -> None:
-        spec = _load("rulesets/chess.json")
+        # Every library game has one since Q1085b, so chess stands in with its text taken out.
+        spec = _without_text(_load("rulesets/chess.json"))
         assert summary_lines(spec) == [] and provenance_note(spec) == ""
 
     def test_the_page_draws_lead_then_full_rules_then_play(self) -> None:
@@ -158,7 +166,7 @@ class TestThePageLeadsWithIt:
         assert "Hire the mercenaries in the middle." in drawing.meta_description(drawn)
 
     def test_the_server_drawn_page_without_one_is_as_it_was(self) -> None:
-        spec = _load("rulesets/chess.json")
+        spec = _without_text(_load("rulesets/chess.json"))
         drawn = drawing.Drawn(hash="831c77e75650", name=spec["name"],
                               description=spec["description"], spec=spec, score=None,
                               stale=False, near=(), indexable=True)

@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "intransitive",
   "description": "Rock, paper, scissors made into a board game. On a nine by nine board every piece moves alike, one square in any of the eight directions like a chess king, and the pieces differ only in what they may take: a rock takes scissors, a paper takes a rock, scissors take a paper, and nothing takes its own kind or the kind that beats it. So every piece is both hunter and prey, and whether a piece is safe depends entirely on what stands next to it. The goal is a race: the first player to get any one piece into the corner opposite their own wins, as does taking every enemy piece, and a player with no legal move loses. A defender can wall its own corner with a piece the attacker cannot take, or chase the attacker with the one kind that can, and either way it must stay ahead of the attacker on the road to that corner. There is no draw by repetition; a game is drawn when 200 turns in all (100 by each player) go by without a capture. The game is webgoatguy's, the end of the design process he published on YouTube as 'Turning Rock Paper Scissors into a strategy game', with the rules he states in a video about the finished game. Each side's three rocks, four papers and three scissors are his counts; their arrangement near each side's own corner is read from the video's pictures, and the 300-turn cap is this library's, not his.",
+  "summary": [
+    "Every piece steps one square in any direction, like a king.",
+    "Rock takes scissors, scissors take paper, paper takes rock; nothing takes its own kind.",
+    "Get any piece into the corner opposite your own to win; taking every enemy piece also wins.",
+    "A player left with no legal move loses, and repeating a position is never a draw."
+  ],
   "board": {
     "width": 9,
     "height": 9
@@ -189,6 +195,7 @@
   "provenance": {
     "added": "2026-09-03",
     "origin": "human",
+    "note": "Designed by webgoatguy, who published the design process on YouTube.",
     "source": "webgoatguy https://www.youtube.com/watch?v=LO_zcGNJriA&t=7s",
     "history": "Transcribed from the video, and corrected twice since against what the designer actually says. The user removed a phantom rules.territory on 2026-09-06 (c947850, hash 15e3eb35bfbc -> 09861015bb3a). Q120 added rules.repetition_draw: \"never\" on 2026-09-07 (09861015bb3a -> d93e28d09a33): the key was absent, which the schema reads as the default 3, and the video is explicit that there is no draw by repetition. Schema 10 is what makes that sayable. Q696 changed rules.no_progress_draw from 100 to 200 on 2026-10-04 (d93e28d09a33 -> 29d5213b02b2), the user's decision of 2026-10-03: the official site's program (hushhush) counts 200 plies, and the designer is in touch with it, so its reading is trusted. The starting position is still the transcriber's reading of images the transcript does not describe; the piece counts are the designer's and the geometry is not verified. runs/15e3eb35bfbc-0, runs/09861015bb3a-0 and the four runs/d93e28d09a33-<seed> are kept as records of the three specs that no longer exist."
   }

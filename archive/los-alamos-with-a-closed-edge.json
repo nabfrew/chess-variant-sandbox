@@ -2,6 +2,13 @@
   "schema_version": 31,
   "name": "los alamos with a closed edge",
   "description": "Chess on a six-by-six board without bishops, in which only the king can take. Every other piece, pawns included, moves as usual but shoves instead of capturing: moving onto an enemy piece pushes it one step further the way the mover was going (a knight's step being its whole jump, so a knight's shove sends a piece a knight's jump on), and only if the square there is empty. The edge of the board is closed: a shove that would push a piece off it is not allowed, so nothing is ever lost to a shove, and a piece leaves the board only when the enemy king takes it. Shoving is how you put the other side's pieces where you want them: away from the squares round their king, into a corner, into each other's way, or next to your own king to be eaten. Even a king can be shoved, and a shove threatened on a king is check. So the game is played for position, and won by checkmate, while the one piece that can take has to leave shelter to do it. A piece just shoved may not be shoved straight back on the next move, whoever shoves.",
+  "summary": [
+    "Only the king can take. Every other piece shoves instead: moving onto an enemy piece pushes it one step further the way the mover was going.",
+    "The square it is pushed to must be empty, and no piece may be pushed off the board.",
+    "A knight's shove sends a piece a whole knight's jump on.",
+    "A piece just pushed may not be pushed straight back on the next move.",
+    "Played on a 6 by 6 board with no bishops and no castling; a pawn steps one square at a time."
+  ],
   "board": {
     "width": 6,
     "height": 6

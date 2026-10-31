@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "makruk",
   "description": "Thai chess, still played competitively today. Pawns start on the third rank and promote on the sixth, so the armies meet almost immediately. The met steps one square diagonally and the khon moves one square diagonally or one straight forward. There is no double step, no en passant and no castling, and the two kings stand on opposite files rather than facing each other.",
+  "summary": [
+    "Pawns start on the third rank and promote on the sixth, always to a met.",
+    "The met steps one square diagonally; the khon one square diagonally or straight forward.",
+    "The kings stand on opposite files, not facing each other.",
+    "There is no double step, no castling and no capturing in passing; otherwise it is chess."
+  ],
   "board": {"width": 8, "height": 8},
   "pieces": [
     {
@@ -76,6 +82,7 @@
   "provenance": {
     "added": "2026-08-19",
     "origin": "human",
+    "note": "Thai chess, still played competitively in Thailand.",
     "source": "Thailand, where it is still played competitively"
   }
 }

@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "steady ferry",
   "description": "Doors that either player may move, and one ban that stops them becoming a way to stall. Two pairs of portals cross the middle of a six-by-six board, b3 joined to e4 and e3 to b4: a piece that ends its move on one end comes out one step beyond the other end of its pair, in the direction it was travelling, capturing there as usual, and either player may instead move any portal a step. The ban: a portal just moved may not go straight back on the very next move, which is always the opponent's, so you can never simply undo your opponent's door move but must answer it some other way. Without the ban about two games in five were drawn by the players undoing each other's portal moves; with it fewer than one in ten end in repetition, portals move more, and most games are won. The armies are Los Alamos chess's: six-by-six chess without bishops, castling or a pawn's double step.",
+  "summary": [
+    "Two pairs of portals join b3 with e4 and e3 with b4.",
+    "A piece that ends its move on a portal comes out one step beyond the other of its pair, still going the same way, and may capture there.",
+    "Instead of moving a piece, either player may move any portal one step, but a portal just moved may not go straight back on the next move.",
+    "Played on a 6 by 6 board with no bishops and no castling; a pawn steps one square at a time."
+  ],
   "board": {
     "width": 6,
     "height": 6

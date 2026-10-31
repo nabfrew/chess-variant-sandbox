@@ -1,5 +1,5 @@
 {
- "source_commit": "26a6c9c67d3a2e01f3c13c43368c249070abd261",
+ "source_commit": "c568fde8ce40282cc5bc99c22e1dcf096d52576e",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -86,353 +86,353 @@
   },
   {
    "path": "archive/anchors.json",
-   "bytes": 6270,
-   "sha256": "bba29f466431646939f463b37ae26cc9c06ce5bb24d3cf7f88f4d8af19a2c26f"
+   "bytes": 6476,
+   "sha256": "2645748bbe529d42e0b4ca72a77da21c438943b0944490ae2bb2ffd37ead956c"
   },
   {
    "path": "archive/andernach.json",
-   "bytes": 5074,
-   "sha256": "4754a29960479a43e30fa7f0a42676cdc61c99406e38bf7191fa483bb29ab952"
+   "bytes": 5376,
+   "sha256": "972f45d27afebc8fa2660a3c3f2fd1e7485c58ec2fb9d0ce8b035844185d7922"
   },
   {
    "path": "archive/breather.json",
-   "bytes": 5831,
-   "sha256": "85efe65e32c400b5281a41c5ee337ae35c546ed7af692a8863670c629a0b076d"
+   "bytes": 6319,
+   "sha256": "ed20fa56a1edab9eecd37916656d741efec0079342aeae8f95bca91c034c7a22"
   },
   {
    "path": "archive/cannonade.json",
-   "bytes": 4182,
-   "sha256": "569ef98e39e31e3e825c8625594ed5bd1046433e6283b953dcc363538cdde4db"
+   "bytes": 4608,
+   "sha256": "c3a6142d0f3e15e3dcd66de2e24c295ebdd46a944085a4b59ad72c451ce24537"
   },
   {
    "path": "archive/carousel.json",
-   "bytes": 4520,
-   "sha256": "47ff9c444c4014954338b993d61f1e287bd3196417601c3f0086ce7bf8d90744"
+   "bytes": 4973,
+   "sha256": "16d216f3015280c3fe5c8f42782d14d86237ef539679de34e7c8b0bb2d1f2085"
   },
   {
    "path": "archive/chess-oriented-pawns.json",
-   "bytes": 3332,
-   "sha256": "b8bd8d0752a9f3bf4b1a8e7eb17407aa6f0368c219a5a57bc3611f4c97afd625"
+   "bytes": 3586,
+   "sha256": "3683a9b9759ded608f190bd0e7b51e643ef5e0b65e8203be5ecbee8459211168"
   },
   {
    "path": "archive/chess-sweeping-bishops.json",
-   "bytes": 3382,
-   "sha256": "a5406bff39b3db00b8bd29817fa5e3ef9c10494f9551b74f7f8bd9a278c7b92d"
+   "bytes": 3633,
+   "sha256": "5fab9322f9f901b5e431d17183ff3430f8547135443cc2163019a6fc0be62d9c"
   },
   {
    "path": "archive/chess-with-a-sheltering-king.json",
-   "bytes": 4489,
-   "sha256": "68363db8ec223189bf0586f1debbc4c0b25b39d0ab3a861bb99081ee54ce98f3"
+   "bytes": 4744,
+   "sha256": "d462d97f6431ab7122d111f73583fdacfd6a17050a1784e96a5fd753940d597e"
   },
   {
    "path": "archive/chess-with-a-weary-queen.json",
-   "bytes": 5606,
-   "sha256": "ce5bc2c91dbe8919e7931073fd23f6d6c52e8c0e01c36e1db2c7ca052ccd1411"
+   "bytes": 5785,
+   "sha256": "0f171e90c87dab5a20d34e2130390a6afb224b2ecf9b6fd012195db3b8fd0210"
   },
   {
    "path": "archive/chess-with-daunting-knights.json",
-   "bytes": 4330,
-   "sha256": "4f4484cc0fbdc1bbe560a845bd780610dd3ac7bea88e613481c7f7c005ac7b92"
+   "bytes": 4624,
+   "sha256": "69e3a93401be824f6aa48775768f6c8542015ddf191735a8aa9833a1889cba69"
   },
   {
    "path": "archive/chess-with-galloping-knights.json",
-   "bytes": 4494,
-   "sha256": "adfc3180f865f7a86e4b2b43896f76ec5e17106610be6e7315fd9bbb852b1565"
+   "bytes": 4822,
+   "sha256": "ed43f7bcf023a749c801f6a53116f99a8f0ed4062d60f684fe8208228dd17ce2"
   },
   {
    "path": "archive/chess-with-nightriders.json",
-   "bytes": 3781,
-   "sha256": "10f5353fa3bba7c06a7ff3942926bac432db129402917e67084f5e12fd745d28"
+   "bytes": 4062,
+   "sha256": "7582a0e7d88012539f2d06adcc57e0dcfeae8f404b68e9bb0b2ce30637ae2ff5"
   },
   {
    "path": "archive/chess-with-preaching-bishops.json",
-   "bytes": 4629,
-   "sha256": "a4a3749969c863ef2910605e78f6fd121d95270b3ab8d8220cd929bf4bf036de"
+   "bytes": 5050,
+   "sha256": "a247f552af97706319b4e74848850e927ec3f2aa4136cbbb73e918d753e02c9c"
   },
   {
    "path": "archive/circe-mortal-diagonals.json",
-   "bytes": 5658,
-   "sha256": "bf8fbcdc2b2f303cc5c53f75554f1de6dceb367aac60c451e47437e65772b558"
+   "bytes": 6053,
+   "sha256": "d4f801540cfa062b804e893bac462af688a9a391d6e27d406addff0b167f857c"
   },
   {
    "path": "archive/circe.json",
-   "bytes": 5087,
-   "sha256": "da00c52cd7523324693b8bd37bb55abb75643f8c9e5976989c44d8b291a9fa00"
+   "bytes": 5462,
+   "sha256": "db3fd182584de60d9a1b526212eb987918efef40fbb8f3eeb97c97f66d9e623b"
   },
   {
    "path": "archive/circling-queen.json",
-   "bytes": 6078,
-   "sha256": "5866a31a0a8a42fb5f582d63cb5c1b51067d9ee8fdf0f9f07417005ba6b0a099"
+   "bytes": 6388,
+   "sha256": "271d30c028856d72926ccf72a4ca25573b9d24d420f0c06b93fabdedc805b34f"
   },
   {
    "path": "archive/crazyhouse-torus.json",
-   "bytes": 6472,
-   "sha256": "e806747ddb3a342c331a375a3c6ad3e7cf3c26de2724ffa18f31f1d1f220d2a0"
+   "bytes": 6909,
+   "sha256": "5a7d17c30b637395eea81099549781859e6d766a63fdb6c2d70008fe44d7b14b"
   },
   {
    "path": "archive/crease.json",
-   "bytes": 7598,
-   "sha256": "60268f5bdf41b9437a660c5f37855ca942f93318fe3ab4b493054a08de17e055"
+   "bytes": 8085,
+   "sha256": "057af8e67fabb39cdec9763186ae7d01fb78fc3dea715ab60452b443a5b31d74"
   },
   {
    "path": "archive/crooked-bishops.json",
-   "bytes": 5770,
-   "sha256": "7b107853eb61f14ed43f1b450454488d8fbb313e8098795eebb7a300e09bdc1e"
+   "bytes": 6062,
+   "sha256": "80243a0bacf2b008f342e5a2ea96327fecddf5f26bdd08f9f8f19528915a0750"
   },
   {
    "path": "archive/cylinder-wormhole.json",
-   "bytes": 5032,
-   "sha256": "14e61c6ebeb1efb1e0dcdd75cc0d92a02d5823d0f0d7f10dd6f7d67ff73e8680"
+   "bytes": 5376,
+   "sha256": "423c5683e21a1f3f6cf798c9154292e2aa44ae148a9d966b13be19d9322c2087"
   },
   {
    "path": "archive/divide.json",
-   "bytes": 7150,
-   "sha256": "c8a37d9504b0a66521ad6119b246e5e83dd2874e608654df1765e366fc933e27"
+   "bytes": 7652,
+   "sha256": "fb28002039b33b7fdf3f8669a8a12a86b42fbaccd59bd1147bb22e2dd4f59376"
   },
   {
    "path": "archive/einstein.json",
-   "bytes": 8035,
-   "sha256": "de9332a20aaf49a0bd40a9d56ffae19b1aef1424fb8b61213102d1bc0f010291"
+   "bytes": 8412,
+   "sha256": "9f2218110a879a8d37129f77be8741ea7ec6bbaf4c26e30519dbf33d581840a7"
   },
   {
    "path": "archive/extinction-chess.json",
-   "bytes": 4799,
-   "sha256": "cc2b1b5c41f372e28692ab46945beff58345cede847a26789566cf45f72e86a3"
+   "bytes": 5209,
+   "sha256": "7b75fd358f49b89800a455da74551f6029d327e5a7e012c848c2deed3cf2a472"
   },
   {
    "path": "archive/ferry-no-straight-back.json",
-   "bytes": 5363,
-   "sha256": "628f68f0a7ddd495ba75223d492cf64d21d6bd95838dbb018cc856fd647ada5f"
+   "bytes": 5831,
+   "sha256": "986f07de9976ea5c3044a6fc19bf8844e62d0df3b8d52abe111ac2e3fa081da1"
   },
   {
    "path": "archive/ferry.json",
-   "bytes": 5186,
-   "sha256": "53c0e48a36fcad466c985292e142f578a7873eb39bfcff5aaf5a058285b827a1"
+   "bytes": 5587,
+   "sha256": "40e494a0b4980c79a9b7e9046932adfb8910db1c452a986f937afd1896a6eb29"
   },
   {
    "path": "archive/gardner-with-bishops-that-shove-straight.json",
-   "bytes": 4326,
-   "sha256": "62d574f9ae836773938faab1481aa4e2f57b869b95100bc68db6450b68508330"
+   "bytes": 4710,
+   "sha256": "f51b85cc480e8e48c2e87d68d25667a7c200b9ee7c4f524a828ede62081879e0"
   },
   {
    "path": "archive/grand.json",
-   "bytes": 5874,
-   "sha256": "75d3618c38581b505f5c305bb1a8062e17c6c1339b8d0d11186861f0d1d4e576"
+   "bytes": 6328,
+   "sha256": "5451e34ffc64567fce998d8f3375fb59d5f812a8bb834745bec73ea19b6fda9b"
   },
   {
    "path": "archive/hex-glinski-hexagon.json",
-   "bytes": 3621,
-   "sha256": "ab53a90477b35ff8b39680a115ee835adfc22e74f1e1a41a2fbb20d9ab86ae9a"
+   "bytes": 4141,
+   "sha256": "66242b6a3b17f3d8a27449f92e64415ec7581c99b6b5502a12e26024a4dc8cc7"
   },
   {
    "path": "archive/hierarchy-extended.json",
-   "bytes": 5967,
-   "sha256": "150dd949d50a4a6e46eb7d8e3b0e8762ae3028750a012a52e554435d045912c7"
+   "bytes": 6337,
+   "sha256": "3273d2ba02ea8e3570662a5105a16c196b2e6ca2ba8b2cdbb0e3b43fbc0215c7"
   },
   {
    "path": "archive/hierarchy-fall.json",
-   "bytes": 5405,
-   "sha256": "70b8c506110681c89c148c2cee91344b5b77f85d9de6b943cba2c3219c47140d"
+   "bytes": 5666,
+   "sha256": "a243b69244d6bd7948fb2605251e58d173f34e739f8ce68c35311f46feda5b43"
   },
   {
    "path": "archive/hierarchy-rise-stay.json",
-   "bytes": 5382,
-   "sha256": "e05ac572fa9710046da11dc713e4522595e58552815274ee42148934e16f8e5d"
+   "bytes": 5645,
+   "sha256": "f7696d988e0bbf11f881cc54c523efff37099b3c1939f8ccda510df0ebe32c02"
   },
   {
    "path": "archive/hierarchy-rise-throw.json",
-   "bytes": 5571,
-   "sha256": "904276727de34482b0b4e91d3c6f01c92486b9e14a5ade8e1f2dfa5e1842ca61"
+   "bytes": 5929,
+   "sha256": "4656452c1fde63618f5ffbad2863e0b631fa970e8a789ed447b8c2bc20f3f072"
   },
   {
    "path": "archive/hierarchy-rise.json",
-   "bytes": 5390,
-   "sha256": "9993b5c94b98449b9d92854afeb21c9d9cf4af7b7e165518e3a72bc6ab9aeabe"
+   "bytes": 5721,
+   "sha256": "4753c68dd342594f27a37e50a8d8cc9ceea561a56d60d1764a7a7c532cdba145"
   },
   {
    "path": "archive/horse-archers.json",
-   "bytes": 6067,
-   "sha256": "1dbc471b9616cfe518611935aff40c813fcb3a2e55efe7ce354399c2d346d3a1"
+   "bytes": 6292,
+   "sha256": "f637d71658da6214afa60b13cd266b309e257886d2d2e75ba00050e1fcc59c5b"
   },
   {
    "path": "archive/jeson-mor.json",
-   "bytes": 2390,
-   "sha256": "85314145a3cfe4e5be78e2a248fb99803982c2c5b02606935e3fed2fcad9ec81"
+   "bytes": 2732,
+   "sha256": "7c7b0bbb3da564835e134e9f03ac3c869577de146ca633decd15aceb13856b6d"
   },
   {
    "path": "archive/kamikaze.json",
-   "bytes": 4938,
-   "sha256": "b4db82d26c553949ed0e55bf7996fdb4228080afb97916fe9cbb881dc5bb7ee6"
+   "bytes": 5062,
+   "sha256": "c9442ef15733f0ca8ce1667a8d4a75e5a28594c45112599238d01a29faba476a"
   },
   {
    "path": "archive/kraken-ford.json",
-   "bytes": 7403,
-   "sha256": "49eb6fd562c202de0efcfc87dff9f3cb1e97891e271bbbf8523057fe02eaf7bd"
+   "bytes": 7941,
+   "sha256": "1c2970d6a44e0bbbed2cf4cfb5c798fea35ff4b17b7e05b6a13f5ac813487584"
   },
   {
    "path": "archive/kyoto.json",
-   "bytes": 7408,
-   "sha256": "e864e0b3d9ad4c9ee773942e37a4353c1ace9b2da17c9692c0e860619af9b028"
+   "bytes": 7894,
+   "sha256": "52bf7d780617057fe9ed47b6e42e5e327942cd26079bd892d4ad95d59246af24"
   },
   {
    "path": "archive/los-alamos-with-a-closed-edge.json",
-   "bytes": 4537,
-   "sha256": "32cf362b183d6860801b10a0ae329c1ae3229e845dc677def5b3d28177780a6a"
+   "bytes": 5036,
+   "sha256": "a28813da76b92416e10683dbe991e3f370e8041207167e96b3db79a21aca3d39"
   },
   {
    "path": "archive/los-alamos-with-crushing-pillars.json",
-   "bytes": 4466,
-   "sha256": "8a79b87dcf2692313dfee74784fa20b37044a9eaf45ac781c8eb8a5f969ec17d"
+   "bytes": 4975,
+   "sha256": "77bb5b265af097b58ac6f158abaa0a3a23569df2c0c914124670cd3130ecf988"
   },
   {
    "path": "archive/los-alamos-with-shove-or-take.json",
-   "bytes": 4215,
-   "sha256": "bf9bf5a1ab19fbb776ef341dbc6ccbe501a6e9689ac197af4e5ab75b7cbaeb39"
+   "bytes": 4614,
+   "sha256": "d236590f8b0a289a196014279190b21b3ea96fac1364b44537b26df7a2df09da"
   },
   {
    "path": "archive/madrasi.json",
-   "bytes": 5293,
-   "sha256": "0aab3b3d28bda16683a80579f2671af03b4f6a03340f7f211697f6936b9e91ae"
+   "bytes": 5698,
+   "sha256": "94e47bb7db8303dc15c791bbf25bdf0b052ece5a041152362fe11aa731cf79f0"
   },
   {
    "path": "archive/marchfield.json",
-   "bytes": 3582,
-   "sha256": "017ab48b49e66a4a341d33578cacea217afc4c59575346197cebf8a4818e1b5c"
+   "bytes": 3999,
+   "sha256": "a2da3900599cdd1d2010dc9f466e83afc7d9dafe04f04a402b18a08327540661"
   },
   {
    "path": "archive/merger.json",
-   "bytes": 3131,
-   "sha256": "d2395487dd267f77d9c00202d6eb5b8ac9b543e922cc1bcb4235dfe1a25f44c9"
+   "bytes": 3279,
+   "sha256": "3965a167b09f13a6cc2acf96d1f01248a8fe56a3171f35daaf0d760c2e1e67b5"
   },
   {
    "path": "archive/omega.json",
-   "bytes": 7168,
-   "sha256": "26a50c339de5b7a6d0fa3805cd2f3b1ada69603909ee2bf8e6078ae0f8976219"
+   "bytes": 7605,
+   "sha256": "65fef9d58827369bed2f318d986816e95e63907527c526b7007ef4f1730063b4"
   },
   {
    "path": "archive/onewaycylinder.json",
-   "bytes": 5003,
-   "sha256": "e5bd3d3bb2be9b91de196c0cae75c13d3e93711cf705dfc51abc9d64f5506871"
+   "bytes": 5254,
+   "sha256": "8a58a79501b9dcc19fed805c8b2bb54d8d15889e8ea2669f751f99917f7011ae"
   },
   {
    "path": "archive/onewaytorus.json",
-   "bytes": 5298,
-   "sha256": "9c3b85296aaad7102dd3ad9f8d86422efe89f5428587d24e4d4d0e78bd3e07ac"
+   "bytes": 5583,
+   "sha256": "b81163ced0cad5a266705995b94390713af6a5fd2ae3cd37f45eef337e490b44"
   },
   {
    "path": "archive/opposite-colours.json",
-   "bytes": 5126,
-   "sha256": "b1b516aa6e911b7d3d6283f43eef58ccaebea323cb350c7de0ba43254294ea74"
+   "bytes": 5820,
+   "sha256": "86a9730441ff502135ca4ad657b69262472b5e2c0157727b8f7eafe75ad9ae42"
   },
   {
    "path": "archive/pawn-knockdown.json",
-   "bytes": 5694,
-   "sha256": "6c2d65fc68515470e6f55443acca016393ce83793f94a310b86253eab0bf9685"
+   "bytes": 6106,
+   "sha256": "d5af85a7d97fb6f189966cb593ced749f429980347c859a2c4dc0856f6ae25ad"
   },
   {
    "path": "archive/pawnproof-wormhole.json",
-   "bytes": 5257,
-   "sha256": "b27c07d47a6d777a4d50fe9e9525b388638d2d13641d2f20b4547871542cf72c"
+   "bytes": 5664,
+   "sha256": "e3361134d657fa0f6bb62c3d591f2781c3fe3c68f0a0d0191ae0e945dbcc2b84"
   },
   {
    "path": "archive/perpetual.json",
-   "bytes": 4455,
-   "sha256": "542d3f12201aabec5cd13d702d316f5ad2f96ef52642766c43afe837b8a38d18"
+   "bytes": 4648,
+   "sha256": "845406be4b3328488de0a32d7e3fb87eeb8d4f91ea0f24b45bee70343be4d0e0"
   },
   {
    "path": "archive/pinwheel.json",
-   "bytes": 4052,
-   "sha256": "177a02850bacea513f3617af71d3aed55e9086bcaee98ab90d4ec5f23e797c2c"
+   "bytes": 4625,
+   "sha256": "e3c7a9b8af1d38799730ef6baf96ee105365860a6eed73a669e8c05dbe62e558"
   },
   {
    "path": "archive/pitchfork.json",
-   "bytes": 4258,
-   "sha256": "d0ed4de0caad94363029c258a957cee5bfbf369715137f5cbb83ae2cc660b9be"
+   "bytes": 4614,
+   "sha256": "95ca5371b4fe746a25d50dbd92aa7ccd2879826df502677391ec8419d1f1009c"
   },
   {
    "path": "archive/placement-chess.json",
-   "bytes": 5280,
-   "sha256": "098604797727f2c7ad05f00c7a48a3acaabb378dfc85c050eb63b4b272ad3529"
+   "bytes": 5598,
+   "sha256": "70b19da8b0b090147c82d9b4902cf0f1b7fc6b9edb0c7bb0b7fe73cb5e5d059b"
   },
   {
    "path": "archive/quarry.json",
-   "bytes": 5253,
-   "sha256": "5b78fb6e35b55b41804aa8ff6005cbe3fcf4600b33ff7101ff893ae79aea2fc6"
+   "bytes": 5458,
+   "sha256": "0f37799881567b9e661cc9cd19258950b8200e183fc233cc29b681a3ef0afe5c"
   },
   {
    "path": "archive/queen-bomb.json",
-   "bytes": 5083,
-   "sha256": "fb435c4273387d0bb2d73a7d39c0f1e6f9a005c8cc2479563c9b88c362b69287"
+   "bytes": 5415,
+   "sha256": "47ed0ac50339eabb975c3cf4d18de4a57d889b2392034214f55c065fff45d372"
   },
   {
    "path": "archive/queens-wake.json",
-   "bytes": 5149,
-   "sha256": "699f305d03376e1c3c87cb0119f89c59d99d76e4ed45203a6c3fb8e9f99689d4"
+   "bytes": 5456,
+   "sha256": "7baf7fe602635e0ad552ad3e64561c40dd67216e08da7c088d6621645d958517"
   },
   {
    "path": "archive/reckoning.json",
-   "bytes": 3863,
-   "sha256": "4a69aa410b0d97e8e322b251a87310611d09387b7c69b381ad8d999c72e68229"
+   "bytes": 4231,
+   "sha256": "af934f346e1a05402ddbc94ee62c40e21526bf4602abb9e0d933a4504140e6b7"
   },
   {
    "path": "archive/riders-and-leapers.json",
-   "bytes": 5102,
-   "sha256": "2512f9b34dbf5af3be8ddd0cb453b0ea4053759d3956f4f4f1b8f257f8900f2c"
+   "bytes": 5600,
+   "sha256": "c6d9cf8f4d6e59495d80acebc93d8a8affe067f76f466440842f8dced1368c4d"
   },
   {
    "path": "archive/rifle.json",
-   "bytes": 5001,
-   "sha256": "44d6cbecab2350038ea4dac420214e0c192aa72a76ada00d18b77d71aa1e564f"
+   "bytes": 5193,
+   "sha256": "2d126296a7b624f9b8555d20d9b14d7cfbae52b82375703c94e1db360c25798d"
   },
   {
    "path": "archive/sardines.json",
-   "bytes": 6711,
-   "sha256": "425ef2f208509d1ceee2a21d1a6f641edf42e453de8ab42697bf86cca951693f"
+   "bytes": 6960,
+   "sha256": "3ee1e1596e654b1e87c07d3c1f79c905c1137358b0b82063c60fb05de390eb20"
   },
   {
    "path": "archive/shogi-backward-drops.json",
-   "bytes": 10788,
-   "sha256": "25311a1e82a78e649d7cf6612c4a26ea2e7233fc024b3c3146a0d3647e28806a"
+   "bytes": 11313,
+   "sha256": "f384894caa0ae74eeaf2bdee8cc7bcc7be4595a414d17edd35f1e07124fa60bc"
   },
   {
    "path": "archive/shogi-drop-promoted.json",
-   "bytes": 10480,
-   "sha256": "dd9a972662af8bff0b212a61aa09882099f5c109327b3cacba9b21552086d40a"
+   "bytes": 10974,
+   "sha256": "5bd85e5cd0b7d8ad3e7739fb527f60b28c12d6c21a5aa882c978e8ba16a46005"
   },
   {
    "path": "archive/short-sweeping-bishop-chess.json",
-   "bytes": 5358,
-   "sha256": "1f91994ee368d75eb3685b780fda71e329842a7241aed695dabbed5678b0d538"
+   "bytes": 5628,
+   "sha256": "3cb71f98e6afde2521832d9d27189b36d673a613b6f52f0ce9a4ffa033bd5fc6"
   },
   {
    "path": "archive/shut-wormhole.json",
-   "bytes": 4986,
-   "sha256": "eb096326c45fa1cb61d2e35530f18ea289d87f8ab13fc6fe31b4a1a7fcd57cfb"
+   "bytes": 5421,
+   "sha256": "6699d4afa2756922c2f1657158526533b6f94b1e8c879df67e064cdd753de0cb"
   },
   {
    "path": "archive/sittuyin.json",
-   "bytes": 6900,
-   "sha256": "3aae0f81681ae035e28dbea0d40f85fea90a92fa30a43622004507ea96700ef8"
+   "bytes": 7479,
+   "sha256": "417ceb08dfeaaf73c5aa24a1fef12e61d8436e48ece49e2b33b54944bae43985"
   },
   {
    "path": "archive/sluice.json",
-   "bytes": 6501,
-   "sha256": "080e5719315be32f53df076f13e7885c89b73e91e7dacaf49b5255f4c23bc5d6"
+   "bytes": 6955,
+   "sha256": "c6ef4fe927c680dd57bb948712f4629cd56dc2cafb0502c07e0df554aab2f14b"
   },
   {
    "path": "archive/stones.json",
-   "bytes": 6453,
-   "sha256": "13eafade466d79ad27ef0d752cc8481bdffa29b7ccf66ab180d18bd22244c5d0"
+   "bytes": 6731,
+   "sha256": "1730d212dccedf5bb4bb2baac6fcef8f4a551c8e81bf6f20bf0dfcd365c967d7"
   },
   {
    "path": "archive/succession.json",
-   "bytes": 5351,
-   "sha256": "7588c71b0f441be54533d6092b02c998e56da39914c6b8b6627b2dd0b6d8fb5c"
+   "bytes": 5618,
+   "sha256": "91bba12f5bb1247f566e55db9025a729186637c790213507b116a81a385e1561"
   },
   {
    "path": "archive/the-crowd.json",
-   "bytes": 5651,
-   "sha256": "6c6fd3ac93eb3d0162dade1113b12557f9e2253a8ca28ff9593086fb91c1f369"
+   "bytes": 6008,
+   "sha256": "d055b97948fd27df3a3dc2c4b18558f3b54d104589f0163bd4b0809fc65e037d"
   },
   {
    "path": "archive/the-free-companies.json",
@@ -441,68 +441,68 @@
   },
   {
    "path": "archive/the-golem-well.json",
-   "bytes": 6674,
-   "sha256": "f8fc9f1dd53bfcbda5b402f5e2374ef838ebb46e134c529be764d1f0b3786450"
+   "bytes": 7205,
+   "sha256": "b4c6ab7a5f6c49c40afb68fd51f720483cd0846e383501cf0fbc04aec7d94891"
   },
   {
    "path": "archive/the-herd.json",
-   "bytes": 9131,
-   "sha256": "cf465123614bb78816b0e06fb14b3765cfca10ca83552c61c3f4faa4c23c132a"
+   "bytes": 9707,
+   "sha256": "3b9e504c1b341872e4cc9de8414e36fc94c2aa6c34d2f4864919042976e7191f"
   },
   {
    "path": "archive/the-hydra.json",
-   "bytes": 7787,
-   "sha256": "d3b4585d441cf9d0a574e559e8a913f58755034c4dbe44a1cda9eda189809abf"
+   "bytes": 8257,
+   "sha256": "30154302a55cb67e5274762dec952915fed91168af8a0d37e7d9d1c06cb8b469"
   },
   {
    "path": "archive/the-shepherds-duck.json",
-   "bytes": 7023,
-   "sha256": "17e4f5ed2b1889ff6a724e8d85953ced50b9cd8d860f23170381ba5a2703b5c6"
+   "bytes": 7454,
+   "sha256": "7ad31a305ba288e386d08fe5f505a8a494ebc0238110fbefe6c092027b7f6199"
   },
   {
    "path": "archive/three-stones.json",
-   "bytes": 6060,
-   "sha256": "b32c8906448029ecd1907b23e03d87f72858743f8f8db04c5b91fa5e9495caa4"
+   "bytes": 6320,
+   "sha256": "578e7cfecd038182890fea19b22219491b0831d16672fdfeabebb92ac41f6967"
   },
   {
    "path": "archive/torus-less-extended.json",
-   "bytes": 5796,
-   "sha256": "73889ec7851ca66f31e62ef024bf292a1cca481c81be002275db76ad8019a895"
+   "bytes": 6083,
+   "sha256": "688f82b67d638f0fb18e0c970b873e3792d5ff3bdef0168e8de7e6fd01aa251d"
   },
   {
    "path": "archive/watering-hole.json",
-   "bytes": 5740,
-   "sha256": "5c66bf20dc907c18cb632741df0eb4628cb4aaf19dd074d79e3ca4f961533d4e"
+   "bytes": 6300,
+   "sha256": "0e5769d89be1e28e3f05e9d2304e76476db77abbe271c84d8cfa29642f69b19a"
   },
   {
    "path": "archive/weathervane-half-turn.json",
-   "bytes": 7111,
-   "sha256": "3b329de55ba14e02e180d5fc47ab2542cbac79a99ca8334c1f85559781daebfd"
+   "bytes": 7524,
+   "sha256": "823a8d816684e6c4ee1519be3ef6c429a40c626ce627123d7a9f7fee1345b84a"
   },
   {
    "path": "archive/weathervane.json",
-   "bytes": 7620,
-   "sha256": "9fdcfa9c2456f9b69e74e4ed16d59559c95e06acc39348728f6c4478cd48d544"
+   "bytes": 7999,
+   "sha256": "283c1267cb5a46851fe94bc5615fc723ece24d770bbd086c04141a99d9508fe9"
   },
   {
    "path": "archive/wolves-bounty.json",
-   "bytes": 3202,
-   "sha256": "ec2d77f0710cdf8fcd1cdfe24d12f2e42b20e3f77e7da2fddfacf5c43b2034b2"
+   "bytes": 3542,
+   "sha256": "583b766c58435b41fb1718300951325f65a3ae54b47f386b3b3ea034dab31de4"
   },
   {
    "path": "archive/wolves-patrol.json",
-   "bytes": 6394,
-   "sha256": "e738d8ccc88a29a007c5be1ba016b618e807281de5f74dfef01fbfd42b8252d8"
+   "bytes": 6731,
+   "sha256": "8bbe6251f263f8889f38e033feaf64abfc97ca1fdcff1fadb4a1af9b66f6b50d"
   },
   {
    "path": "archive/wolves.json",
-   "bytes": 3168,
-   "sha256": "a6025599dcfd6b206c418abdcf0fd635ba94f44ad849eda6b846e1379b588966"
+   "bytes": 3415,
+   "sha256": "7eab2309ad93c0c1a3764f5d21ff173c1fd0c3add9f496834d2ba2c4e5501b09"
   },
   {
    "path": "archive/wormhole.json",
-   "bytes": 4895,
-   "sha256": "89fc41d2de0b2b36a9047056750e005a193ec03c72176f0ecc853b01f2f66304"
+   "bytes": 5239,
+   "sha256": "ab2041e0995c513850c336321e0a00cde4a38b344813a9e3aafcff4168ed4a79"
   },
   {
    "path": "assets/pieces/.gitattributes",
@@ -3461,8 +3461,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 169468,
-   "sha256": "00ce7bf6ddfb24e59d68e3c5ca068daa83c3983087af953bd4b44ee4ad947d86"
+   "bytes": 169639,
+   "sha256": "7cf0ed9d9847b5455adfc34843d96fc52e143aac7b4afe70928691bde74cadf9"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -4316,48 +4316,48 @@
   },
   {
    "path": "rulesets/almost.json",
-   "bytes": 2673,
-   "sha256": "c2ec4b8610c642ae81beb6e99da27a414689b196cdd4ffabb47a0528129bc9dd"
+   "bytes": 2931,
+   "sha256": "36f448ce04ddb8636328afa714f3d14e6b5b6423433a305aade4e8f397edee6d"
   },
   {
    "path": "rulesets/antichess.json",
-   "bytes": 4080,
-   "sha256": "45271c9f88b987604cc8ce52e50f741224136fe6cd31a0e25beb9dadbe0fd13a"
+   "bytes": 4476,
+   "sha256": "f8ddb081022ccd58b138fb46bcd6afc952aab6424eef41adc42d049682a2763b"
   },
   {
    "path": "rulesets/atomic.json",
-   "bytes": 4169,
-   "sha256": "504cec4f29ce1ecd89c9e83c8f47e72ef274ee9c6756b4e78546d2981cc02d3f"
+   "bytes": 4543,
+   "sha256": "28d655437b4ff988b54228223f9f7dd719e1e8fd42855ed15a36ee7870177e2c"
   },
   {
    "path": "rulesets/bastion.json",
-   "bytes": 2479,
-   "sha256": "deca87553821a21c312848f86128d13b216a66b2d414deb8a0ca8e81dabc75d8"
+   "bytes": 2907,
+   "sha256": "b4f3e2b478049792e81c9300776902c08a9037934ca5e164ff542f389ace9ed1"
   },
   {
    "path": "rulesets/berolina.json",
-   "bytes": 3135,
-   "sha256": "2dc21eff0071a799a48c9fc6551f73b58c9f7ea45a1b0f55d2e10cfbb986e8e0"
+   "bytes": 3448,
+   "sha256": "d3716c7c6dd22960ee8e37d963e2e356d0ef74dc2170d1cf979c498d709294a7"
   },
   {
    "path": "rulesets/brink.json",
-   "bytes": 3996,
-   "sha256": "a094de8451f10000d73fb35eb380c858c23a2510975d4c3e2a7ad8ad2a595fdf"
+   "bytes": 4449,
+   "sha256": "09048a60a764a30e5c31c2da9aab8c3b556f5d4edb4867525684df05f57d2c3b"
   },
   {
    "path": "rulesets/capablanca.json",
-   "bytes": 3691,
-   "sha256": "996b34c838d3ef8085b19e8b390f9556611cd922f0b23b0833466262e226dbc6"
+   "bytes": 4012,
+   "sha256": "552a067a4a337efc9bad0cf5f1bbdafcf9a85c04f90cd7fb40bffb89837c50ba"
   },
   {
    "path": "rulesets/chess.json",
-   "bytes": 2616,
-   "sha256": "a4c836696cb0e0af5bd07c0f960e166901532f4d5d7c53e3ef297fddb025a690"
+   "bytes": 2725,
+   "sha256": "89d39231e2da8adf46a0850a23cd3ba12e2401018cb400ba1f36b8a1c3a47d13"
   },
   {
    "path": "rulesets/courier.json",
-   "bytes": 3381,
-   "sha256": "501dece8d9a4b29bb50693ee947148dca98eadc89e33a23e4fe798f1d58a0e41"
+   "bytes": 3930,
+   "sha256": "c3c43b9e50c1b13e3c4ef2d0af532600a688da2e64af51f93141bc46e2976ea0"
   },
   {
    "path": "rulesets/crazyhouse.json",
@@ -4366,18 +4366,18 @@
   },
   {
    "path": "rulesets/cylinder.json",
-   "bytes": 4369,
-   "sha256": "9988b0516bf6ad6540ae4846cd489e0415403cdbd2164e754ccf2702bb81bdfd"
+   "bytes": 4547,
+   "sha256": "9b07f8cd6b6317a720701cefdab6ce47201a59f78847868c0c74b39f6842f6eb"
   },
   {
    "path": "rulesets/dobutsu.json",
-   "bytes": 3431,
-   "sha256": "27d4685e66ff90a23c485a528ee85754b65a6cbc7fd5bc19cd1b96af14853163"
+   "bytes": 4041,
+   "sha256": "4ef9b0c1b071afc6834102710a0e886fa203a8cec1903e11ed37710a5ec0b723"
   },
   {
    "path": "rulesets/dohyo.json",
-   "bytes": 4025,
-   "sha256": "c3b1dd375d69961befed4b7de3ffe2822efd598afbd0d382f9d6f81280eaccab"
+   "bytes": 4584,
+   "sha256": "cec2825a1b335f62879fac525ac872fd0100d53b120be464bce165556d183e42"
   },
   {
    "path": "rulesets/duck-chess.json",
@@ -4386,48 +4386,48 @@
   },
   {
    "path": "rulesets/dull.json",
-   "bytes": 1351,
-   "sha256": "2e224297c248745703430f80f7ec4bd38649a34a2ffc8eb1b58baa603a0c1f46"
+   "bytes": 1570,
+   "sha256": "6ee3fc2e2aa6f7be9145e90630f64cbeed51fe7da15a8eb5ab03125a5a7199ec"
   },
   {
    "path": "rulesets/gardner.json",
-   "bytes": 2341,
-   "sha256": "1b14d1510e3a4a67dfefb87afc3f0f07e6615a8cc3e0936f3ea08db97fa4684c"
+   "bytes": 2699,
+   "sha256": "fdb6e02a939bc6b7d9d13ff8a1343982fff4bb168bed3a244ec6053a796b335a"
   },
   {
    "path": "rulesets/horde.json",
-   "bytes": 5800,
-   "sha256": "a089372ee20c7540ee253373cfaaedb9f4810ba95cad83c5d0eafc15274fafd4"
+   "bytes": 6197,
+   "sha256": "d92474c3bc2cb19af722992596a13dac5208a3a1fb6c6d744c2d3d66455265ba"
   },
   {
    "path": "rulesets/intransitive.json",
-   "bytes": 5570,
-   "sha256": "93a698ed536b75f3f004620a64a0e36890df6c12cb7da9e22e28644f2447d62a"
+   "bytes": 6023,
+   "sha256": "e863fb0c906a0b0b0f81551611ef8072fff4842c66914c275c3ad493020b7279"
   },
   {
    "path": "rulesets/kingofthehill.json",
-   "bytes": 4197,
-   "sha256": "afbcbbaa103f6bb2fbd8552b7749aa871df6c77251ab27a73291c5e0f11d45a8"
+   "bytes": 4404,
+   "sha256": "e46ffe4b83dcf9735316f85ba690c140e8e3792608c03beb0fd8c44511e19177"
   },
   {
    "path": "rulesets/knightmate.json",
-   "bytes": 2559,
-   "sha256": "128507db1b5f7cdd340c11d899d303c4a520268e957dd8e19d05df22f7d5b612"
+   "bytes": 2937,
+   "sha256": "ede652024100f9dde01fe7d1a9f7b1e276150fa9ab7e84ac9d519b81c63927ff"
   },
   {
    "path": "rulesets/losalamos.json",
-   "bytes": 2115,
-   "sha256": "f080f1cf1df7879aa559417d535260cddcf81c87ac679155bc83a1d71524a273"
+   "bytes": 2477,
+   "sha256": "121bb76742697a4f42d8bbc1c4ccac18932e48dd9694977cb1592957c849b2f0"
   },
   {
    "path": "rulesets/makruk.json",
-   "bytes": 2858,
-   "sha256": "713318ec69872d5ac261f79f32b3e96d07eac3bd4a9aa84bdd83b920601d2af5"
+   "bytes": 3281,
+   "sha256": "54e7b7d86ce296603555c6619ec479f92341a9f39b93112c52cd595701e0d470"
   },
   {
    "path": "rulesets/racingkings.json",
-   "bytes": 3715,
-   "sha256": "603d5cb7ab012543161e2c9527b1b2985278be21a5579d74c970e2040af073d7"
+   "bytes": 3948,
+   "sha256": "86460cece1d9615972e6fb58c94ed55c4bdfd6a1b91a784212d7b0d4d49e4112"
   },
   {
    "path": "rulesets/rock-paper-shove.json",
@@ -4436,33 +4436,33 @@
   },
   {
    "path": "rulesets/rps-hierarchy-chess.json",
-   "bytes": 4248,
-   "sha256": "ac40427df4215663f161d0f671b6233e776e13af9ef175dc284d0ce55137c9cf"
+   "bytes": 4494,
+   "sha256": "056ce9e56a31af40820642b023211601e3b07db7dede816742fed0afa6188d05"
   },
   {
    "path": "rulesets/rps-v1.json",
-   "bytes": 3163,
-   "sha256": "afa46a6be36c98a3e869b1f0ba1a5a12e32719d29709212c14834d8c942ad51b"
+   "bytes": 3508,
+   "sha256": "c01e10caebfd4278ac757fe25b08a19beac986580f4af1b297ddf555c6452986"
   },
   {
    "path": "rulesets/rps-v2.json",
-   "bytes": 3460,
-   "sha256": "ad34af4cc80eab70215f8c3cc8b05ee286f9597cf3bdbc3ce9f45a31b94f04a3"
+   "bytes": 3806,
+   "sha256": "d987d810f10604ff5e29b1df262ba85cece42192f259b242082e1f6950af49b9"
   },
   {
    "path": "rulesets/rps-v3.json",
-   "bytes": 3731,
-   "sha256": "74ee54889ffd56b5da5be88840ad3349472992d0f9d9e9768802ff9d88cfe362"
+   "bytes": 4033,
+   "sha256": "7eed1242d6ec6a223366ca57671645f957fba7ceb3984f15ce075c7e44330f65"
   },
   {
    "path": "rulesets/rps-v4.json",
-   "bytes": 3562,
-   "sha256": "f6b754345424dfcb0460fe631c89f2e1be76787342e1ad9671e2c60657e5db52"
+   "bytes": 3942,
+   "sha256": "9db1c3d18bc71ab001ded958c32761ea4b86fc3d7d51972818bfa54da7fda350"
   },
   {
    "path": "rulesets/rps-v5.json",
-   "bytes": 3490,
-   "sha256": "2f16e55537d3ec2ac40d772d7f7c5de941e1594ac0fe3af4df5ddd4ad2b94010"
+   "bytes": 3868,
+   "sha256": "49f8afc12d92c72928329bef41bd4c5a071dc4542b4737b9a5e0dde48c945271"
   },
   {
    "path": "rulesets/seirawan.json",
@@ -4471,28 +4471,28 @@
   },
   {
    "path": "rulesets/shatranj.json",
-   "bytes": 2410,
-   "sha256": "caba29663da1bec980eab69f580ec74fff521faae2c1235ba61e3fe6cb58c9f1"
+   "bytes": 2838,
+   "sha256": "fd02d15964fa0cf57f1db333573c63585ab33fca2241f01f39a26d8f2556b4f3"
   },
   {
    "path": "rulesets/shogi.json",
-   "bytes": 9740,
-   "sha256": "9f4acd56aba935fe07fc21e7d5ad2e9ab590f17991ce37bfea7e586eb8c6e8d5"
+   "bytes": 10179,
+   "sha256": "f9d3d2cded1149bee81a09fbdbf5917fee86f61f4e3c0a177adf44ca268c2fa9"
   },
   {
    "path": "rulesets/threecheck.json",
-   "bytes": 4037,
-   "sha256": "1cc87198ebf0bb612dec61c8497a367584d88f9c685324586b0354b4d67b1273"
+   "bytes": 4197,
+   "sha256": "f23ee22d346a57b1290a2f6dd8f9fa1dc6913d8dfdb4ca916d9958c17c5b68ed"
   },
   {
    "path": "rulesets/torus.json",
-   "bytes": 5129,
-   "sha256": "ff25f3c3791c8eb5cf70493202aca0974a7d43eb304e44e46e5fae3bc79e5740"
+   "bytes": 5363,
+   "sha256": "523c04b7dab17b11bf63245555ecbbc11bfbabd0b2776c6d262bbff775ef175e"
   },
   {
    "path": "rulesets/xiangqi.json",
-   "bytes": 6417,
-   "sha256": "c6aae4c666992375a3e82d8724268a6ab3c4bbb980d4cf702bb70f917f20eadb"
+   "bytes": 7082,
+   "sha256": "cacff72a2ca8e2859ff851078eebb30a685405c10620b239d7da2c9f23e15646"
   },
   {
    "path": "rust/Cargo.lock",
@@ -6651,8 +6651,8 @@
   },
   {
    "path": "tests/test_schema_eighteen.py",
-   "bytes": 73742,
-   "sha256": "dd521d6a82aff4550186ff1b8608354e165391dd557f42d5e7a020252983ce54"
+   "bytes": 73753,
+   "sha256": "accdac87cd3ef7f3eeabdc712a4be528a61b3f26c9d539bd4a14dadfe42c2434"
   },
   {
    "path": "tests/test_schema_eleven.py",
@@ -6706,8 +6706,8 @@
   },
   {
    "path": "tests/test_schema_sixteen.py",
-   "bytes": 38994,
-   "sha256": "b2c76934dda55bbe47ccbe37075c5d4266612257b8ef91e342d22fde383f33c4"
+   "bytes": 39005,
+   "sha256": "46a251047f45e28e8343bd0153781358bf13913a316d054e9d05118c0542a60a"
   },
   {
    "path": "tests/test_schema_ten.py",
@@ -6916,13 +6916,13 @@
   },
   {
    "path": "tests/test_showcases_q787.py",
-   "bytes": 15221,
-   "sha256": "e3c47d2e4e2d3d87ecc00a83c9ddd1e314f0dd5f13e1da793d1398c25ab352e7"
+   "bytes": 15232,
+   "sha256": "9273d424b13f247d71f3ceb2c936084eace6f006c38c35dbbec1156a0101a7d9"
   },
   {
    "path": "tests/test_showcases_q798.py",
-   "bytes": 6504,
-   "sha256": "d18638f3ee9bb689c8455495ec6de7b735d8211d3a607c96f4e3381024ae77c3"
+   "bytes": 6515,
+   "sha256": "7845be493895f7ee5920cd9d4b73909060ad7247362f440f342fda449b4b928e"
   },
   {
    "path": "tests/test_showcases_q918e.py",
@@ -7361,8 +7361,8 @@
   },
   {
    "path": "tests/test_summary.py",
-   "bytes": 7390,
-   "sha256": "0d8d9fac281248cb6075a7f3d903860380885876a4d71c1a6fe840da136c17c7"
+   "bytes": 7908,
+   "sha256": "b808a3d30c0c7039dee110d40a13c880221c93df1408603c765e93678df7e36f"
   },
   {
    "path": "tests/test_sweep_blockers.py",

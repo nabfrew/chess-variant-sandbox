@@ -447,7 +447,7 @@ class TestTheTwin:
         rebuilt = copy.deepcopy(parent)
         rebuilt["board"]["shape"] = "hexagon"
         del rebuilt["rules"]["obstacles"]
-        for key in ("schema_version", "name", "description", "provenance"):
+        for key in ("schema_version", "name", "description", "summary", "provenance"):
             rebuilt.pop(key, None)
             twin.pop(key, None)
         assert rebuilt == twin

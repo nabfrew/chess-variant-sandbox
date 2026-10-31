@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "dobutsu",
   "description": "Let's Catch the Lion: shogi on a three by four board with four pieces a side, designed for children and solved as a win for the second player. The chick promotes to a hen, captured pieces change sides, and getting your lion to the far rank wins -- provided it survives there.",
+  "summary": [
+    "On a 3 by 4 board, each side has a lion (its king), a giraffe, an elephant and a chick.",
+    "The giraffe steps one square straight, the elephant one square diagonally, and the chick one square forward; a chick reaching the far rank becomes a hen.",
+    "A piece you capture changes sides and goes into your hand; instead of moving, you may drop it on an empty square.",
+    "Win by taking the lion, or by getting your own lion to the far rank and surviving there."
+  ],
   "board": {
     "width": 3,
     "height": 4
@@ -176,6 +182,7 @@
   "provenance": {
     "added": "2026-08-20",
     "origin": "human",
+    "note": "A Japanese game for children, Let's Catch the Lion; it has been solved as a win for the second player.",
     "source": "Japan; designed for children and since solved as a second-player win"
   },
   "appearance": {

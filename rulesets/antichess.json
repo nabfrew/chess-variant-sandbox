@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "antichess",
   "description": "The object is to lose everything. Captures are compulsory, so handing the opponent a capture takes their choice away, and running out of pieces or of legal moves wins. Nothing on the board is royal.",
+  "summary": [
+    "The aim is to lose everything: run out of pieces, or of legal moves, and you win.",
+    "If you can capture, you must.",
+    "There is no check: the king is an ordinary piece that can be taken, and a pawn may also promote to a king.",
+    "There is no castling; otherwise the pieces move as in chess."
+  ],
   "board": {
     "width": 8,
     "height": 8
@@ -235,6 +241,7 @@
   "provenance": {
     "added": "2026-08-20",
     "origin": "human",
+    "note": "Widely played online, and also known as losing chess.",
     "source": "a widely played chess variant"
   }
 }

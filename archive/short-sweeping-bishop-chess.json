@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "short sweeping bishop chess",
   "description": "Chess in which the bishop sweeps, but only a short way. Instead of stopping at the first piece on its diagonal, it may land on any square up to three steps along it, and every piece it passes over is removed, its own included. A bishop that clears its own lines at the cost of whatever of its army stands in the way makes every pawn in front of it a question: a shield worth keeping, or a door worth burning. Because pieces in between do not stop it, a bishop within three squares of the enemy king through other pieces is giving check, and that check cannot be blocked, only escaped or answered by taking the bishop. With no limit the idea breaks chess on the first move: the f1 bishop sweeps its own pawn on e2 to land on b5 and mates the king behind the pawn on d7, four squares away. Three squares is the limit that keeps the bishop's clearing move and closes that door, so a sweeping check has to be set up, and can be seen coming.",
+  "summary": [
+    "A bishop sweeps a short way: it moves up to three squares along a diagonal, and every piece it passes over is removed, your own included.",
+    "Pieces in its way no longer stop it, so its check cannot be blocked.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

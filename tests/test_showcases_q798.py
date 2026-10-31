@@ -88,7 +88,7 @@ def test_1_it_is_circe_plus_two_immune_entries() -> None:
     assert mine["rules"]["strike"].pop("immune") == ["K", "Q", "B"]
     assert theirs["rules"]["strike"].pop("immune") == ["K"]
     for spec in (mine, theirs):
-        for key in ("name", "description", "provenance"):
+        for key in ("name", "description", "summary", "provenance"):
             spec.pop(key)
     assert mine == theirs
 

@@ -4,6 +4,11 @@
     "width": 6
   },
   "description": "Two point-symmetric armies of deliberately short-ranged pieces meet on thirty-six squares, and if neither king is trapped before the clock runs out the side with more material still standing simply wins \u2014 so a single soldier is a whole war's worth of advantage. Nothing crosses the board in one stroke: the rook reaches three squares, the soldier steps one square forward or sideways and never back, and the soldier captures straight ahead, so walls of infantry grind each other down instead of locking. The recurring decision is whether to spend material for position on a board where only material is counted, and, once ahead, whether to force the trades that freeze the lead or keep pieces on to avoid being mated by a desperate opponent.",
+  "summary": [
+    "On a 6 by 6 board, each side has a king, two knights, a bishop, two short rooks that go up to three squares, and four soldiers that step forward, left or right, never back.",
+    "If no king is mated by turn 180, whoever has more material left wins.",
+    "Forty turns without a capture is a draw, and a player left with no legal move loses."
+  ],
   "name": "reckoning",
   "pieces": [
     {

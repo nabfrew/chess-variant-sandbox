@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "courier",
   "description": "The medieval German enlargement of shatranj on a 12x8 board, attested from 1202 and still played in Stroebeck into the nineteenth century. It is the first game known to give a piece the unlimited diagonal slide that later became the bishop. Beside it stand the older weak pieces: an alfil that jumps two diagonally, a fers that steps one, a wazir that steps one orthogonally, and a non-royal man that moves like a king. No castling, no double step, and pawns promote only to fers.",
+  "summary": [
+    "On a 12 by 8 board, with medieval pieces: the courier slides any distance diagonally, like a bishop.",
+    "The alfil jumps two squares diagonally, the fers steps one square diagonally, the schleich one square straight, and the man moves like a king.",
+    "There is no queen, no castling and no double step; a pawn promotes only to a fers.",
+    "Win by checkmate; a player left with no legal move loses."
+  ],
   "board": {"width": 12, "height": 8},
   "pieces": [
     {
@@ -91,6 +97,7 @@
     "added": "2026-08-19",
     "origin": "human",
     "year": "attested from 1202",
+    "note": "A medieval German game, recorded from 1202 and still played in Ströbeck into the nineteenth century.",
     "source": "Germany; still played in Stroebeck into the nineteenth century"
   },
   "appearance": {

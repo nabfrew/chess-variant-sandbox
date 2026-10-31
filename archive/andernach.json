@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "andernach",
   "description": "Andernach chess turns every capture into a defection: a piece other than the king that takes changes sides on the square where it took, so a white rook that captures becomes a black rook standing there. It comes from chess problem composers and is named after the German town where it was introduced in 1993. Each capture now costs the capturer, and the arithmetic of exchanges turns over: taking a queen with a pawn still wins heavily, but taking a pawn with your queen hands your opponent a queen. So the question at every capture is what you are giving away and where it will stand, because the defector is now an enemy piece inside your position, and if it captures in turn it changes sides again. A capture is not allowed if the defector would then be checking your own king. Only the king takes without changing sides.",
+  "summary": [
+    "A piece that captures changes sides: it becomes your opponent's piece on the square where it took.",
+    "A king that captures stays yours.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8
@@ -241,6 +246,7 @@
   "provenance": {
     "added": "2026-10-09",
     "origin": "human",
+    "note": "From chess problem composers, named after the German town where it was introduced in 1993.",
     "source": "Andernach chess (1993)",
     "history": "Schema 17's showcase for a capturer changing sides (strike.switches_sides) (Q540, 2026-10-09): chess with that one rule added and nothing else changed. Pre-registered in docs/reference/schema-showcase-coverage.md.",
     "parents": [

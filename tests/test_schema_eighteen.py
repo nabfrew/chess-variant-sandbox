@@ -1455,7 +1455,7 @@ class TestHexSymmetries:
     ) -> None:
         """Written out, the showcase is `hex-glinski-promoting` move for move."""
         mine, theirs = _written_out(games[name]), _written_out(_load(LONG_FORM))
-        for key in ("schema_version", "name", "description", "provenance"):
+        for key in ("schema_version", "name", "description", "summary", "provenance"):
             mine.pop(key, None)
             theirs.pop(key, None)
         assert mine == theirs

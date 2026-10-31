@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "crooked bishops",
   "description": "Chess, except that the bishops no longer run in straight lines. A crooked bishop (Ralph Betza's fairy piece of that name) steps one square diagonally, then one square on the neighbouring diagonal, then back again, and so on: north-east, south-east, north-east, south-east, a zigzag that travels along a rank or a file instead of across the board. It may start on any of the four diagonals and turn either way, it stops wherever it likes along the way, and like a bishop it is stopped by the first piece on a square it lands on, taking it if it is an enemy's. It still never leaves its colour. What that changes is which positions bury a bishop. A closed centre that locks a chess bishop behind its own pawns barely troubles this one, which walks round the side of a pawn chain as if it were a fence; but a single piece on the first square of a zigzag shuts that whole path, so the squares it reaches are crooked lines the eye does not scan, and each needs guarding in its own way. The decision the game keeps forcing is how to cover, and how to block, a long-range piece whose lines bend: which pawn to push to close a lane, and when to trade a piece that can no longer be shut out. Everything else is chess.",
+  "summary": [
+    "A bishop zigzags: one square diagonally, then one on a neighbouring diagonal, then back again, as far as it likes.",
+    "So it travels along a rank or file, and the first piece it lands on stops it; it may take it if it is an enemy's.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

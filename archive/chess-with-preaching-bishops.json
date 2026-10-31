@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "chess with preaching bishops",
   "description": "Chess in which a bishop can turn the enemy's pawns against their own side. Every enemy pawn that stands in line with one of your bishops, along a rank, a file or a diagonal, at any distance and whatever stands between, can be moved by you, as your move for the turn, the way its owner would move it: a step forward, two from its starting square, or a diagonal capture. The only thing such a pawn can capture is a piece of its own army, never yours and never its king. It stays its owner's pawn, and a move you make with it never promotes it. So every enemy pawn in a bishop's lines is a traitor in waiting. A pawn chain, where each pawn guards the next, is a strength in chess; here the guard can be made to take the pawn it guards, and a knight or bishop standing just in front of its own pawn can be taken by it. The other use is the push: an enemy pawn marched forward leaves weak squares behind it, pulls the cover away from its king, or walks into your pieces' reach, but every step also brings it nearer to promoting, so a push can be a gift. Each side's bishops already look down the opposing c- and f-pawns from the first move. The question all game is how to keep your own pawns out of the enemy bishops' lines while putting yours where they hear the enemy's. Everything else is chess.",
+  "summary": [
+    "As your move, you may move any enemy pawn that is in line with one of your bishops, along a rank, file or diagonal, at any distance and through anything in between.",
+    "You move it as its owner would: a step forward, two from its starting square, or a diagonal capture.",
+    "A pawn you move can only take a piece of its own side, never yours and never a king.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "racing kings",
   "description": "Both kings start on the same two ranks and race for the eighth. No move may give check at all, so the whole game is a traffic problem rather than a fight.",
+  "summary": [
+    "There are no pawns; both armies start side by side on the first two ranks.",
+    "Get your king to the eighth rank first to win.",
+    "No move may give check."
+  ],
   "board": {
     "width": 8,
     "height": 8
@@ -219,6 +224,7 @@
   "provenance": {
     "added": "2026-08-20",
     "origin": "human",
+    "note": "A variant widely played online.",
     "source": "a widely played chess variant"
   }
 }

@@ -2,6 +2,13 @@
   "schema_version": 31,
   "name": "omega",
   "description": "Omega chess is a published variant that enlarges chess to ten by ten and adds one cell outside each corner, the wizard cells, where the two new pieces called wizards begin. The other newcomer is the champion. Both are jumpers rather than sliders: the champion steps one square straight or jumps exactly two squares in any of the eight directions, and the wizard steps one square diagonally or leaps three and one, a stretched knight's move that, like its diagonal step, never takes it off its own colour. On a board this size the rooks, bishops and queen cross the distance in a move while the champions and wizards cannot be blocked and do their work at close quarters, so a player keeps choosing between opening lines for the sliders and keeping the position crowded for the jumpers. Pawns may advance one, two or three squares on their first move, which brings the armies into contact sooner, and the king castles as in chess.",
+  "summary": [
+    "On a 10 by 10 board with one extra cell outside each corner, where a wizard starts.",
+    "A champion steps one square straight, or jumps two squares in any direction.",
+    "A wizard steps one square diagonally, or leaps three and one; it never leaves its colour.",
+    "A pawn may move up to three squares on its first move.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 12,
     "height": 12
@@ -356,6 +363,7 @@
   "provenance": {
     "added": "2026-10-09",
     "origin": "human",
+    "note": "Published by Daniel MacDonald in 1992.",
     "source": "Omega chess (Daniel MacDonald, 1992)",
     "history": "Schema 18's showcase for castling on a walled rank (rules.castling(walled rank)) (Q781, 2026-10-09): Q533's audit spec (variant-expressibility-2026-09 row 13, b7298cafc13a) with chess's castling put back, which the audit had to leave out because the walls at a2 and l2 stand on the castling rank. Pre-registered in docs/reference/schema-showcase-coverage.md.",
     "parents": [

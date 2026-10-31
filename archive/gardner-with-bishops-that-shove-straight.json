@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "gardner with bishops that shove straight",
   "description": "Chess on a five-by-five board in which the bishops never take. A bishop moves diagonally as usual, but landing on an enemy piece it shoves it one square straight up or down its file, onward in the direction the bishop was heading, provided that square is empty; a piece shoved off the top or bottom edge is out. Coming in on the diagonal and pushing straight makes the bishop a piece that rearranges rather than removes: it drives a pawn back down its file, pushes a defender out of the way, or tips a piece on the back rank over the edge. Everything else is chess on the small board.",
+  "summary": [
+    "A bishop never takes: landing on an enemy piece, it shoves it one square along its file, onward the way the bishop was heading.",
+    "The square it is shoved to must be empty; a piece shoved off the top or bottom edge is out.",
+    "Played on a 5 by 5 board, each side a rook, knight, bishop, queen and king behind five pawns.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 5,
     "height": 5

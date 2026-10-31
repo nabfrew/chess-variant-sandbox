@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "chess with nightriders",
   "description": "The knight here is a nightrider, a classic piece of fairy chess introduced by T. R. Dawson in 1925: it makes a knight's jump and may then keep jumping the same way, jump after jump in a straight line, stopped only by a piece on a square it would land on, which it takes if it is an enemy's. The squares it jumps over never block it. That turns chess's short-range piece into a long-range one whose lines run at angles no other piece uses: a nightrider can fork two pieces from across the board, pin a piece against its king along a line the eye does not scan, and give check from a distance. The knight's quiet manoeuvres become threats at range, so a player has to watch the odd lines as well as the files and diagonals, and a knight-shaped gap in a pawn wall is an open line. Everything else is chess.",
+  "summary": [
+    "A knight may keep jumping the same way, jump after jump in a straight slanting line.",
+    "Squares it jumps over never block it; it stops at the first piece on a square it would land on, and may take it if it is an enemy's.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8

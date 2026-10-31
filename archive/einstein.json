@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "einstein",
   "description": "Einstein chess, a published variant attributed to Hans Kluever, ties every piece's rank to what it has just done. A capture promotes the capturer one step up the ladder pawn, knight, bishop, rook, queen, and any other move demotes it one step down: a rook that takes becomes a queen, a queen that merely moves becomes a rook. A queen that captures stays a queen, a pawn that steps stays a pawn, pawns step only one square, and the king never changes. That turns the chess opening inside out. Developing a knight turns it into a pawn, so pieces want to stay where they are until they have something to take, and the moves that cost nothing are pawn steps and king steps. Every quiet move is paid for in rank, every capture is rewarded twice, with material and with promotion, and the strong piece is the one that keeps finding things to take.",
+  "summary": [
+    "A piece that captures moves one step up the ladder pawn, knight, bishop, rook, queen; a queen stays a queen.",
+    "A piece that moves without capturing steps one down; a pawn stays a pawn.",
+    "Pawns step one square at a time, and the king never changes.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8
@@ -406,6 +412,7 @@
   "provenance": {
     "added": "2026-10-09",
     "origin": "human",
+    "note": "A published variant attributed to Hans Kluever.",
     "source": "Einstein chess (Hans Kluever)",
     "history": "Schema 18's showcase for a contact link that keeps its mover (rules.contacts.mover_to=mover(promotion)) (Q781, 2026-10-09): Q533's audit spec (variant-expressibility-2026-09 row 18, 2fa977d3efb3) with the queen's five keeping links added, which is the rule the audit found inexpressible. Pre-registered in docs/reference/schema-showcase-coverage.md.",
     "parents": [

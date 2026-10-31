@@ -2,6 +2,13 @@
   "schema_version": 31,
   "name": "the shepherds duck",
   "description": "Chess in which every turn ends with a second, smaller move: the player who has just moved picks up the duck, a neutral piece that nobody owns and nobody can take, and puts it down on any empty square. The duck shields the pieces on the eight squares round it, whoever owns them: nothing may capture them while it stands there. Two wolves, one on the fourth rank and one on the fifth, walk their rank from end to end after every turn and eat whatever they step onto, kings included, for this game is won by taking the king, not by mate. A wolf that meets something it may not eat (the duck, the other wolf or a shielded piece) turns round and walks back the way it came, so the duck is also a shepherd's crook, for turning a wolf away from your own camp and toward the other. A wolf taken by a player is worth a point to the taker and comes back to its corner of the a-file eight turns later, and if the game runs out of moves the points decide it. So every turn asks two questions: what to move, and what the duck should do about the reply, whether to wall off a line, shield a piece the opponent threatens for one move, or send a wolf back. No threat is ever quite final, because the opponent's duck can shield it away for a move, and the middle of the board is crossed on the wolves' clock.",
+  "summary": [
+    "After every move, put the duck on a different empty square; nobody can take it.",
+    "No piece next to the duck, of either side, can be captured.",
+    "Two wolves that belong to nobody pace the fourth and fifth ranks end to end, eating any piece in their way, kings included.",
+    "There is no check: win by taking the king.",
+    "If the game runs its full length, whoever has taken more wolves wins."
+  ],
   "board": {
     "width": 8,
     "height": 8

@@ -2,6 +2,13 @@
   "schema_version": 31,
   "name": "bastion",
   "description": "A siege game on a small board. Cannons move freely along ranks and files but can only capture by leaping a screening piece, so every piece you develop is a weapon your opponent can fire over. The tension is that a crowded board is dangerous and an empty one is toothless.",
+  "summary": [
+    "On a 7 by 7 board, each side has a warden (its king), two cannons, two archers and five footmen.",
+    "A cannon moves like a rook, but captures only by jumping over exactly one piece of either side, landing anywhere beyond it.",
+    "An archer goes up to two squares diagonally.",
+    "A footman moves like a pawn, one square at a time, and promotes to an archer or a cannon.",
+    "Win by checkmate."
+  ],
   "board": {
     "width": 7,
     "height": 7

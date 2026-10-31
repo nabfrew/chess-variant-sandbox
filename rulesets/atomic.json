@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "atomic",
   "description": "A capture destroys the capturing piece and everything standing beside it, pawns excepted. Kings cannot capture without destroying themselves, so they may stand next to each other, and the game is usually won by blowing up the enemy king rather than by mating it.",
+  "summary": [
+    "A capture explodes: the piece taken, the capturer and every piece but a pawn on the eight squares around are removed.",
+    "Blow up the enemy king, or checkmate it, to win.",
+    "A king cannot capture without blowing itself up, so the two kings may stand side by side.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8
@@ -238,6 +244,7 @@
   "provenance": {
     "added": "2026-08-20",
     "origin": "human",
+    "note": "A widely played online variant.",
     "source": "a widely played chess variant"
   }
 }

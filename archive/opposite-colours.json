@@ -2,6 +2,13 @@
   "schema_version": 31,
   "name": "opposite colours",
   "description": "In chess the two kings start on opposite colours, White's on a dark square and Black's on a light one. Here every piece is bound to its colour, as a bishop is, and that splits each army in two: the pieces on your king's colour can only ever fight the enemy pieces that come for it, and the pieces on the other colour can only ever fight the enemy king and its defenders. No capture crosses between the colours. Sight does. The rook and the queen are the colour-bound cousins of chess's: the rook rides along files and ranks in jumps of two squares, as many as the line allows, leaping the square between each landing and stopped only by a piece on a square it would land on, and the queen adds that ride to a bishop's diagonals. To keep these long-range pieces behind their pawns at the start, as in chess, the pawns stand a rank further forward, and the board is two ranks longer, so the armies still begin with four empty ranks between them. A pawn, which moves and captures one step diagonally forward, freezes the enemy piece straight ahead of it; the camel, jumping three and one, disarms enemy pieces a knight's jump away; the rook makes its own pieces on the four squares beside it impossible to take, other rooks and the king excepted; and the queen freezes enemy pieces beside it. A frozen piece cannot move, a disarmed one cannot capture, and neither gives check. So most mates need the colour the king does not stand on, and every move weighs the attack on one colour against the defence on the other, now with open files and ranks to fight over on both.",
+  "summary": [
+    "Every piece stays on the colour it starts on, so no capture crosses between the colours.",
+    "Pieces reach across by what they see: a pawn freezes the enemy piece straight in front of it, and a queen the enemy pieces beside her in a straight line.",
+    "A camel (leaps three and one) stops enemy pieces a knight's jump away from capturing; a rook guards your pawns, camels, bishops and queen beside it in a straight line from capture.",
+    "Rooks, and queens along straight lines, move in jumps of two squares; the king steps diagonally or jumps two squares straight; a pawn steps diagonally forward.",
+    "Played on a board 8 wide and 10 deep; win by checkmate."
+  ],
   "board": {"width": 8, "height": 10},
   "pieces": [
     {"id": "P", "name": "pawn", "value": 1,

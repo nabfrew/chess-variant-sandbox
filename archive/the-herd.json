@@ -2,6 +2,13 @@
   "schema_version": 31,
   "name": "the herd",
   "description": "Chess on a board one rank taller, with a small herd of creatures in the open ground between the armies, each casting a spell on the four squares beside it: in front, behind and to either side, never the diagonals. A gorgon on one wing of the middle rank freezes its neighbours, kings among them. A frozen piece cannot move and threatens nothing. A siren on the other wing disarms them, so they may still move but cannot capture or threaten. Two dryads, one on the fourth rank from each side, shield theirs, and nothing may take a shielded piece. The creatures take nothing themselves. After every turn each walks one step along its own short stretch of rank, turns at the end and walks back, and turns round early when anything stands in its way; a player may take one, and it comes back to the start of its walk eight turns later. The duck is the sheepdog. Nobody owns it and nothing can take it; it starts on the very centre of the board, and every turn ends with the player who has just moved walking it one king's step onto an empty square, so that, put in a creature's path, it turns it back. Each turn asks two questions: what to move, and where to drive the herd, whether the gorgon onto the other side's defenders or its king, the siren onto a piece about to strike, or a dryad beside a piece of your own under threat, knowing the opponent will drive it back. The game is won by taking the king, not by mate, and a player left with no move at all, for instance with every piece frozen, has lost.",
+  "summary": [
+    "After every move, you also move the duck, a piece nobody owns, one step onto an empty square; it starts on e5.",
+    "A gorgon, a siren and two dryads pace the middle of the board, each acting on the four squares beside it: in front, behind and to either side.",
+    "Next to a gorgon a piece is frozen; next to a siren it cannot capture; next to a dryad it cannot be captured. That goes for either side.",
+    "There is no check: win by taking the king. A player left with no legal move loses.",
+    "Played on a board one rank deeper than chess's."
+  ],
   "board": {
     "width": 8,
     "height": 9

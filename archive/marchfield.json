@@ -4,6 +4,12 @@
     "width": 6
   },
   "description": "Nine short-ranged pieces a side stand four ranks apart on a tall field, and if no king has been trapped when the clock runs out the game goes to whoever has more pieces still standing in the far half of the board. Material is therefore a means and not the object: a piece kept safe at home is worth nothing at the reckoning, while a piece pushed across the middle is both a point and a target, and the soldiers that lead the advance can never come back. The recurring decision is how much of your army to commit forward, and whether to answer an invasion by killing it or by out-invading it on the other wing.",
+  "summary": [
+    "Each side has a king, two knights, two short rooks that go up to three squares, and four soldiers that step forward, left or right, never back.",
+    "If no king is mated by turn 120, whoever has more pieces on the three ranks nearest the opponent wins.",
+    "Thirty turns without a capture is a draw, and a player left with no legal move loses.",
+    "Played on a board 6 wide and 7 deep."
+  ],
   "name": "marchfield",
   "pieces": [
     {

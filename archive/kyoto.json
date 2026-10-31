@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "kyoto",
   "description": "Kyoto shogi is a modern Japanese miniature of shogi, Japanese chess, with five pieces a side on a five-by-five board, and its idea is that nothing stays what it is. Every piece but the king turns over after each move it makes, like a two-sided tile: a pawn that moves becomes a rook and a rook that moves becomes a pawn again, and likewise silver and bishop, knight and gold, lance and tokin. A move is chosen for the piece it leaves behind as much as for where it goes: using the strong face spends it, and a weak face's move earns it back. As in shogi, a captured piece changes sides: it goes to the captor's hand as its plain face (a pawn, silver, knight or lance), and instead of moving a player may drop it onto any empty square as their own, here as either face. Checkmate wins, and a player with no legal move loses.",
+  "summary": [
+    "Every piece but the king turns over after each move it makes: pawn and rook, silver and bishop, gold and knight, tokin and lance.",
+    "A piece you capture changes sides and goes into your hand; instead of moving, you may drop it on the board, either side up.",
+    "Five pieces a side on a 5 by 5 board.",
+    "Win by checkmate; a player left with no legal move loses."
+  ],
   "board": {
     "width": 5,
     "height": 5
@@ -381,6 +387,7 @@
   "provenance": {
     "added": "2026-10-09",
     "origin": "human",
+    "note": "A miniature of Japanese chess (shogi), devised by Tamiya Katsuya in 1976.",
     "source": "Kyoto shogi (Fairy-Stockfish's `kyotoshogi`)",
     "history": "Schema 18e's showcase for dropping either face (rules.drops.either_face) (Q785, 2026-10-09): Q533's audit spec (variant-expressibility-2026-09 row 16, ef312a2e4736) with each turned face's promoted_from and the flag added, which is the rule the audit found inexpressible. Pre-registered in docs/reference/schema-showcase-coverage.md."
   }

@@ -2,6 +2,11 @@
   "schema_version": 31,
   "name": "chess with a sheltering king",
   "description": "Chess, except that the king protects the pieces around it. None of its own pieces standing one or two squares from the king, along any of the eight lines out from it (straight or diagonal), can be captured, not even in passing, and the shelter reaches past whatever stands in between: the pawn two squares in front of the king is covered even with another pawn in the way. The squares a knight's jump from the king are not on those lines and are not covered. The king shelters only its own side's pieces and never itself, so it is checked and mated exactly as in chess. A sheltered piece can still be attacked; it simply cannot be taken while it stands there, and it may move and capture freely. The rule turns the old instinct of keeping pieces near the king into a real trade-off. A castled king's pawn wall and the pieces beside it cannot be broken by captures, only by checks and by going around them, so the king is safest when its guards stand close. But every piece kept in the shelter is a piece not attacking, and a king crowded by its own pieces has no squares to flee to when a check does arrive. Late in the game the king becomes a fighter of a new kind: walked up beside a passed pawn, it makes the pawn impossible to take.",
+  "summary": [
+    "Your pieces one or two squares from your king, along a straight or diagonal line, cannot be captured.",
+    "The shelter reaches past a piece in between, but not to the squares a knight's jump away.",
+    "Otherwise it is chess."
+  ],
   "board": {"width": 8, "height": 8},
   "pieces": [
     {"id": "P", "name": "pawn", "value": 1,

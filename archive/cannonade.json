@@ -4,6 +4,12 @@
     "width": 6
   },
   "description": "A 6x6 army with one straight-line slider, two knights, and two diagonal cannons that can only capture by leaping a piece \u2014 friend or enemy \u2014 standing in their line. Captures are permanent and the material count decides the game when the clock runs out, so a single pawn is worth a whole attack: you must grab something and then survive, while the pieces you push forward become the very screens your opponent's cannons need. The recurring decision is whether to crowd the board, where cannons rule and one loose piece is fatal, or to strip it bare, where the cannons fall silent and whoever is a point ahead simply wins.",
+  "summary": [
+    "On a 6 by 6 board, each side has a rook, two knights, two cannons, a king and four pawns.",
+    "A cannon moves like a bishop, but captures only by jumping over exactly one piece of either side on a diagonal, landing anywhere beyond it.",
+    "A pawn reaching the far rank becomes a knight.",
+    "If nobody is mated by turn 200, whoever has more material wins; 30 turns without a capture is a draw."
+  ],
   "name": "cannonade",
   "pieces": [
     {

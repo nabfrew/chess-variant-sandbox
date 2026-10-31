@@ -2,6 +2,12 @@
   "schema_version": 31,
   "name": "chess with galloping knights",
   "description": "A knight that keeps going when the ground is open. Each knight still makes chess's jump, over anything in its way, but it may also gallop on: jump after jump in the same direction, in a straight slanting line. A gallop has to be clear all the way. Every jump in it passes one square, the square one step along the jump's longer side, as a horse in Chinese chess is blocked, and a piece of either colour on that square stops the gallop there; so does any piece on a square the gallop lands on along the way, and an enemy piece on its last square is taken. So the knight is two pieces at once. Behind a closed pawn chain it is the familiar short-range jumper, but when the board opens up it reaches across it on angles no other piece uses, forking, pinning and giving check from far away. Shutting a gallop down takes only one piece on one square of its line, which makes every pawn move a question: open the position for your own knights, or keep it closed against your opponent's. A knight that could ride with nothing able to block it in between would take a pawn on the first move of the game; this one has to wait for the board to open. Everything else is chess.",
+  "summary": [
+    "A knight may gallop: jump after jump in the same direction, in a straight slanting line.",
+    "One jump is chess's, over anything in the way.",
+    "A longer gallop must be clear: a piece on a square it lands on, or one step along any jump's longer side, stops it there.",
+    "Otherwise it is chess."
+  ],
   "board": {
     "width": 8,
     "height": 8
