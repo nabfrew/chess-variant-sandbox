@@ -42,6 +42,11 @@ record T3's stored answer that nothing the defender does changes the win (`none`
 a winning move (`found`). It reads the record's numbers and decides nothing; the basis line
 says how many and why, and a game left with none offered says that in a sentence (`NONE_LEFT`).
 
+**Its own game** (Q1084). A record sifted by `puzzles.refilter` or `puzzles.make` holds
+only positions whose proven line shows something its game has and chess lacks; the rest are
+kept in the record's `set_aside` and never offered. The basis line counts them, and a game
+left with none says so (`NONE_SHOWN`).
+
 **The seven tests** (`docs/reference/no-dark-patterns.md`). No timer and no streak; a
 person's marks (`proven_marks`) are read on their own page alone and no count across
 people is read anywhere; nothing expires; a failed try writes nothing and is a game the
@@ -143,6 +148,9 @@ class Record:
     dropped: int
     too_easy: int = 0
     """Positions that replay but the triviality test leaves out (T1 to T5)."""
+    set_aside: int = 0
+    """Proved positions the sift set aside (Q1084): their line showed nothing the game has
+    and chess lacks. Kept in the record, never offered."""
     defence: bool = False
     """Whether the record carries T3's answers (`FORMAT` 2 or 3 with `defence_nodes`)."""
     hasten: bool = False
@@ -222,10 +230,11 @@ def offered(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> i
 def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | None:
     if data.get("format") not in FORMATS or data.get("ruleset_hash") != digest:
         return None
-    if not data.get("positions"):
+    if not data.get("positions") and not data.get("set_aside"):
         # The empty record (Q993d): the upkeep asked, and the game's runs held no small
         # ending it could prove. It is there so the game is asked once; to a reader it is
-        # no record, and the game has no section, as before it was asked.
+        # no record, and the game has no section, as before it was asked. One whose every
+        # proof was set aside (Q1084) is a record, which says why it offers none.
         return None
     engine = engine_for(spec)
     kept: list[tuple[int, int, str, dict[str, Any]]] = []
@@ -266,6 +275,7 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
         positions=positions,
         dropped=dropped,
         too_easy=too_easy,
+        set_aside=len(data.get("set_aside") or []),
         defence=data.get("format") != 1 and bool((data.get("basis") or {}).get("defence_nodes")),
         hasten=data.get("format") not in (1, 2)
         and bool((data.get("basis") or {}).get("hasten_nodes")),
@@ -346,6 +356,13 @@ def basis_said(record: Record) -> str:
     if record.too_easy:
         said += (f" Of the {_thousands(won)} it proved, " if won else " ") + (
             f"{_thousands(record.too_easy)} {TOO_EASY[record.tests]}")
+    if record.set_aside:
+        one = record.set_aside == 1
+        said += (
+            f" {_thousands(record.set_aside)} more {'was' if one else 'were'} set aside: "
+            f"nothing in {'it' if one else 'them'}, from the pieces on the board to the moves "
+            "of the win, is anything this game has that chess does not."
+        )
     if record.dropped:
         said += (
             f" {record.dropped} more no longer replay under these rules, so they are "
@@ -388,6 +405,20 @@ NONE_LEFT = (
 )
 """What the game's page says where a record is there but offers no position (Q993g): the
 reason in a sentence, never an empty list."""
+
+NONE_SHOWN = (
+    "None to solve on this game. The computer proved some positions won here, and each was "
+    "either too easy to set as a challenge or showed nothing this game has that chess does "
+    "not; how they were proved, and why each was left out, is below."
+)
+"""`NONE_LEFT` where the sift set some aside (Q1084): a game's positions must show what
+makes it its own game, and this says that is why none is left."""
+
+
+def none_said(record: Record) -> str:
+    """Why a record offers no position: `NONE_SHOWN` where the sift set some aside, else
+    `NONE_LEFT`."""
+    return NONE_SHOWN if record.set_aside else NONE_LEFT
 
 
 def _turns(count: int) -> str:
@@ -625,7 +656,7 @@ def page(
         "signedIn": signed_in,
         "signInToConvert": "" if signed_in else SIGN_IN_TO_CONVERT,
         "keep": "" if signed_in else PAGE_WORDS["keep"],
-        "none": "" if rows else NONE_LEFT,
+        "none": "" if rows else none_said(record),
         "words": PAGE_WORDS,
     }
 
@@ -634,7 +665,7 @@ def summary(record: Record, marks: dict[str, set[str]] | None) -> dict[str, Any]
     """*Proven positions* on the game's page since Q993b: the count, the reader's progress
     where there is any, and the way to the positions' own page. The list is that page's
     (`page`), so a game page no longer ships a row a position. A record that offers nothing
-    keeps its sentence and its basis (`NONE_LEFT`)."""
+    keeps its sentence and its basis (`none_said`)."""
     count = len(record.positions)
     solved = solved_ids(record, marks)
     said = (
@@ -648,7 +679,7 @@ def summary(record: Record, marks: dict[str, set[str]] | None) -> dict[str, Any]
         "singles": record.singles,
         "said": said,
         "yours": progress_said(record, marks) if marks is not None and solved else "",
-        "none": "" if count else NONE_LEFT,
+        "none": "" if count else none_said(record),
         "basis": "" if count else basis_said(record),
         "open": PAGE_WORDS["open"],
     }
@@ -983,7 +1014,7 @@ def positions_description(name: str, record: Record) -> str:
     """The list's line for a search result and a preview."""
     count = len(record.positions)
     if not count:
-        return game_drawing.first_sentence(NONE_LEFT)
+        return game_drawing.first_sentence(none_said(record))
     what = ("find the winning move, or play the win out against the computer"
             if record.singles else "play each win out against the computer")
     # Q1068: *free online in your browser* ahead of what to do, so a long name cuts the

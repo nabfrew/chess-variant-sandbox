@@ -1899,6 +1899,21 @@ def reference_of(others: Iterable[Game] | None) -> Game | None:
     return None
 
 
+def rules_beyond(spec: dict[str, Any], reference: dict[str, Any]) -> frozenset[str]:
+    """The rules this game has and the reference game has not (Q1080, Q1084): the words
+    `relate.rules_involved` names a game's rules by, less the reference's. Read off the two
+    specs alone; nothing where either does not read (a page must survive one unloadable
+    spec). `previews_sharing` joins games by it, and `puzzles.distinction` reads from it
+    which of a game's rules a proven position may show."""
+    from chess_variant_sandbox.spec import relate
+
+    try:
+        return (relate.rules_involved(relate.normal_form(spec))
+                - relate.rules_involved(relate.normal_form(reference)))
+    except Exception:  # noqa: BLE001 - a page must survive one unloadable spec
+        return frozenset()
+
+
 def previews_sharing(game: Game, others: Iterable[Game] | None) -> list[dict[str, str]]:
     """The previews that have a rule of this game's that the reference game does not (Q1080).
 
@@ -1914,19 +1929,13 @@ def previews_sharing(game: Game, others: Iterable[Game] | None) -> list[dict[str
     `[{hash, name}]`, by name; the game itself is never in it, and nothing where the
     reference is absent (a library without it has no *beyond* to read).
     """
-    from chess_variant_sandbox.spec import relate
-
     games = list(others or ())
     reference = reference_of(games)
     if reference is None:
         return []
-    usual = relate.rules_involved(relate.normal_form(reference.spec))
 
     def beyond(one: Game) -> frozenset[str]:
-        try:
-            return relate.rules_involved(relate.normal_form(one.spec)) - usual
-        except Exception:  # noqa: BLE001 - a page must survive one unloadable spec
-            return frozenset()
+        return rules_beyond(one.spec, reference.spec)
 
     mine = beyond(game)
     if not mine:

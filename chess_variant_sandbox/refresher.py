@@ -123,8 +123,9 @@ LADDER_ORDER = ("ladder", "top-up", "re-rate")
 LEASE_FOR.update({needs: "heavy" for needs in LADDER_ORDER})
 # Point 9: a game's proven positions, after every ladder (Q993d). A game with no record is
 # proved; one whose record no longer holds is proved again (`puzzles.NEEDS`). Each is up to
-# a few core-hours of the core's probe, under `heavy`.
-PROOF_ORDER = ("prove", "re-prove")
+# a few core-hours of the core's probe, under `heavy`. One that holds but was never sifted
+# for what its game has and chess lacks is re-filtered (Q1084): minutes, nothing proved.
+PROOF_ORDER = ("prove", "re-prove", "re-filter")
 LEASE_FOR.update({needs: "heavy" for needs in PROOF_ORDER})
 # The whole queue's first key: every score repair before any ladder, every ladder before
 # any proof.
@@ -884,9 +885,19 @@ def prove_game(
             return done("")
         needs = before.needs
         note(f"{name} [{digest}]: {needs} ({before.reason})")
-        made = puzzles.make(spec, runs, workers=workers or puzzles.WORKERS, say=note)
-        took = ", ".join(f"{stage} {seconds:.0f} s" for stage, seconds in made["seconds"].items())
-        note(f"{name}: {made['proved']} proved, {made['offered']} offered; {took}")
+        reference = puzzles.reference_spec(root)
+        if needs == puzzles.FILTER:
+            # Q1084: the record holds; only the sift is owed, which proves nothing again.
+            sift = puzzles.refilter(spec, runs, workers=workers or puzzles.WORKERS, say=note,
+                                    reference=reference)
+            note(f"{name}: {sift['offered']} offered, {sift['set_aside']} set aside; "
+                 f"{sift['seconds']:.0f} s")
+        else:
+            made = puzzles.make(spec, runs, workers=workers or puzzles.WORKERS, say=note,
+                                reference=reference)
+            took = ", ".join(f"{stage} {seconds:.0f} s"
+                             for stage, seconds in made["seconds"].items())
+            note(f"{name}: {made['proved']} proved, {made['offered']} offered; {took}")
         after = puzzles.standing(digest, name, spec, runs)
     except Exception as error:  # noqa: BLE001 - every failure is a logged refusal
         return done(needs, ERROR, f"{type(error).__name__}: {error}")

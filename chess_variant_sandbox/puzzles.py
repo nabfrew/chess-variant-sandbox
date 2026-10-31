@@ -43,16 +43,27 @@ ending gets a record with none, so it is asked once. The refresher's proofs tier
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import hashlib
 import json
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, WIN_SCORE
 from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.engine.moves import (
+    MOVE_CASTLE,
+    MOVE_EN_PASSANT,
+    MOVE_FOREIGN,
+    MOVE_NORMAL,
+    MOVE_PROMOTION,
+    MOVE_TYPE_NAMES,
+    move_type,
+)
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.tournament.play import choose_move, eval_values
 from chess_variant_sandbox.tournament.record import GameRecord
@@ -110,7 +121,7 @@ SHALLOW_SEEDS = tuple(range(8))
 FOUND, MISSED = "found", "missed"
 SHALLOWS = (FOUND, MISSED)
 # The record fields a later test adds to a row; what was asked before it never reads them.
-ANSWERS = ("defence", "hasten", "shallow", "shallow_moves")
+ANSWERS = ("defence", "hasten", "shallow", "shallow_moves", "shows")
 
 
 @dataclass(frozen=True)
@@ -710,6 +721,309 @@ def shallow(
     return answer, played
 
 
+# --------------------------------------------- what its game has and chess lacks (Q1084)
+
+REFERENCE = Path("rulesets") / "chess.json"
+"""The game every other is compared with (`library.REFERENCE_FILE`, the calibration
+baseline), read as data: nothing here names one of its pieces."""
+SHOWS_VERSION = 1
+"""The sift's own version: a change to what a position must show bumps it, and every record
+sifted before is owed a re-filter (`FILTER`), which asks no proof again."""
+NOTHING: list[str] = []
+"""A sifted row's `shows` where its line showed nothing its game has and chess lacks."""
+CHESS_KINDS = frozenset({MOVE_NORMAL, MOVE_EN_PASSANT, MOVE_CASTLE, MOVE_PROMOTION})
+"""The move words chess plays. Any other (a drop, a shove, a hire, the duck's half, a step
+through a portal) is a rule chess lacks, played."""
+PIECE_RULES = ("captures", "beats", "spy", "speed", "rest", "bounty", "price", "control",
+               "takes_royal", "sight", "pushes", "weight", "strength", "facing", "region")
+"""Keys of a piece that are rules of the piece (`relate`'s piece identity and key): whom it
+takes, its speed, rest, bounty, price, control, line of sight, push, facing, confinement.
+Chess's pieces state none, so a piece stating one is its game's own."""
+_OFF = (None, False, 0, "stands", "straight")
+WIN_REASONS = {"checkmate": "checkmate", "royal_capture": "royal_captured",
+               "annihilation": "annihilated"}
+"""The ending's reason (`Outcome.reason`, the core's word) for each `rules.win`: how the
+reference game ends a game won, which a line won otherwise shows is not its."""
+BOARD_RULES = {"board.walls": "obstacles", "board.wrap": "wrap"}
+"""The board's rules `library.rules_beyond` names, by the rule key a twin takes out."""
+
+
+@dataclass(frozen=True, eq=False)
+class Distinction:
+    """What a game has and the reference game lacks, as a position can show it (Q1084).
+
+    `same`: the game is the reference in mechanics (one normal form), so every position
+    shows it. `pieces`: the compiled types (by index) chess lacks, each with why: one whose
+    move map on an empty board is no chess piece's (`library.maps_against`, the engine's
+    answer the game page shows), one that shares a chess piece's name or letter and moves
+    otherwise, one royal where the chess piece it moves like is not (or not royal where it
+    is), or one stating a rule of the piece (`PIECE_RULES`, a shove, a sweep, a turning
+    path). `twins`: for each rule the game states otherwise than chess (its rules beyond
+    chess's, `library.rules_beyond`, and every rule key whose value differs), the game
+    compiled with that rule put back to chess's (or taken out where chess has none), where
+    it compiles to the same position encoding; the line is read against each. `unread`
+    names the rules that did not, which only the move words and the pieces can show.
+    `wins` is how chess ends a game won (its `rules.win`)."""
+
+    same: bool
+    pieces: dict[int, str]
+    twins: tuple[tuple[str, Engine], ...]
+    unread: tuple[str, ...]
+    wins: str
+
+
+def reference_spec(root: Path | str = ".") -> dict[str, Any]:
+    """The reference game's spec under ``root``, or this checkout's where ``root`` has none
+    (a test's library laid out in a temporary directory)."""
+    from chess_variant_sandbox.spec.canonical import load_spec
+
+    where = Path(root) / REFERENCE
+    if not where.is_file():
+        where = Path(__file__).resolve().parents[1] / REFERENCE
+    spec = load_spec(where)
+    if not isinstance(spec, dict):
+        raise ValueError(f"{REFERENCE} is not a ruleset")
+    return spec
+
+
+def distinction(spec: dict[str, Any], reference: dict[str, Any]) -> Distinction:
+    """`Distinction` of ``spec`` against ``reference``, memoised on the two specs."""
+    return _distinction(json.dumps(spec, sort_keys=True), json.dumps(reference, sort_keys=True))
+
+
+@lru_cache(maxsize=64)
+def _distinction(blob: str, reference_blob: str) -> Distinction:
+    from chess_variant_sandbox.spec import relate
+    from chess_variant_sandbox.spec.spelling import current_spelling
+    from chess_variant_sandbox.web.library import rules_beyond
+
+    spec, reference = json.loads(blob), json.loads(reference_blob)
+    win = str((reference.get("rules") or {}).get("win", "checkmate"))
+    wins = WIN_REASONS.get(win, win)
+    form, theirs = relate.normal_form(spec), relate.normal_form(reference)
+    if form.key == theirs.key:
+        return Distinction(True, {}, (), (), wins)
+    engine = Engine(spec)
+
+    # The rules: the keys `rules_beyond` names, every rule written otherwise than chess
+    # writes it (a clock aside: no won line runs into one), the board's own, and the rules
+    # a piece states (`piece.captures`, `piece.sight`, ...), each read by a twin.
+    beyond = rules_beyond(spec, reference)
+    keys = {key for key in beyond if not key.startswith(("piece.", "board."))}
+    keys |= {key for key, value in form.rules.items()
+             if key not in relate._CLOCK_KEYS and theirs.rules.get(key) != value}
+    keys |= {BOARD_RULES[key] for key in beyond if key in BOARD_RULES}
+    keys |= {key for key in beyond if key.startswith("piece.") and key[6:] in PIECE_RULES}
+    written, chess_written = current_spelling(spec), current_spelling(reference)
+    twins: list[tuple[str, Engine]] = []
+    unread: list[str] = []
+    for key in sorted(keys):
+        twin = json.loads(json.dumps(written))
+        if key.startswith("piece."):
+            for piece in twin.get("pieces") or []:
+                piece.pop(key[6:], None)
+        else:
+            rules = twin.setdefault("rules", {})
+            if key in (chess_written.get("rules") or {}):
+                rules[key] = json.loads(json.dumps(chess_written["rules"][key]))
+            else:
+                rules.pop(key, None)
+        try:
+            other = Engine(twin)
+        except Exception:  # noqa: BLE001 - a twin that does not compile is a rule unread
+            unread.append(key)
+            continue
+        if _same_encoding(engine, other):
+            twins.append((key, other))
+        else:
+            unread.append(key)
+    read = {key[6:] for key, _twin in twins if key.startswith("piece.")}
+
+    # The pieces: by how each moves once out (`piece_out`), against chess's of its name or
+    # letter, then against every chess piece; and a rule of the piece no twin reads.
+    compiled = engine.spec
+    usual = {piece_out(theirs, pid) for pid in theirs.pieces}
+    namesakes = {str(word).lower(): pid for pid, piece in theirs.pieces.items()
+                 for word in (pid, piece.get("name", pid))}
+    pieces: dict[int, str] = {}
+    for index, pid in enumerate(compiled.piece_ids):
+        piece = form.pieces.get(pid)
+        if piece is None:
+            continue  # an internal type (a portal end): nobody's, read off the board
+        mine = piece_out(form, pid)
+        namesake = namesakes.get(str(pid).lower()) or namesakes.get(
+            str(piece.get("name", pid)).lower())
+        own = [key for key in PIECE_RULES if key not in read
+               and (piece.get(key) is not None if key == "captures"
+                    else piece.get(key) not in _OFF)]
+        if namesake is not None and piece_out(theirs, namesake) != mine:
+            pieces[index] = (
+                f"moves unlike chess's {theirs.pieces[namesake].get('name', namesake)}")
+        elif mine not in usual:
+            pieces[index] = "moves like no piece of chess"
+        elif own:
+            pieces[index] = f"has its own {own[0]}"
+    return Distinction(False, pieces, tuple(twins), tuple(unread), wins)
+
+
+def piece_out(form: Any, pid: str) -> tuple[Any, ...]:
+    """What a piece is once out of where it starts (Q1084): `relate.piece_identity` with
+    the moves a starting square conditions left out (a pawn's first double step), and a
+    shove left to the push rule's own reading (the move word, `CHESS_KINDS`). Two pieces
+    alike in it move alike on the board of a proven ending, wherever they started: the
+    first step is the opening's, and a small board without it is its setup's."""
+    from chess_variant_sandbox.spec import relate
+
+    unconditioned = relate._frozen({})
+    movement, *rest = relate.piece_identity(form, pid)
+    merged: dict[Any, frozenset[Any]] = {}
+    for attrs, dirs in movement:
+        if attrs[4] != unconditioned:
+            continue
+        plain = tuple(part for part in attrs
+                      if not (isinstance(part, tuple) and part and part[0] == "push"))
+        merged[plain] = merged.get(plain, frozenset()) | dirs
+    return (frozenset(merged.items()), *rest)
+
+def _same_encoding(engine: Engine, other: Engine) -> bool:
+    """Whether a position of `engine` is a position of `other`: the same squares, types,
+    facings and owners, and an opening state of the same shape field by field."""
+    one, two = engine.spec, other.spec
+    if (one.n_squares, one.n_types, one.n_facings, tuple(one.piece_ids)) != (
+            two.n_squares, two.n_types, two.n_facings, tuple(two.piece_ids)):
+        return False
+    first, second = engine.initial_state(), other.initial_state()
+    for field_ in dataclasses.fields(first):
+        a, b = getattr(first, field_.name), getattr(second, field_.name)
+        if isinstance(a, (bytes, tuple)) and isinstance(b, (bytes, tuple)):
+            if len(a) != len(b):
+                return False
+        elif type(a) is not type(b):
+            return False
+    return first.board == second.board
+
+
+def _what(state: GameState) -> tuple[Any, ...]:
+    """What a move leaves that a rule acting on it can change: the board, the hands, the
+    purses and the points (a blast, a shot, a demotion, a bounty paid)."""
+    return (state.board, state.hands, state.purse, state.points)
+
+
+def _asked(call: Any, *args: Any) -> Any:
+    """A twin's answer, or None where the core refuses a position of the other game."""
+    try:
+        return call(*args)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:  # noqa: BLE001 - a core panic is a twin that cannot answer
+        return None
+
+
+def asks_shows(row: dict[str, Any]) -> bool:
+    """Whether the sift is put to this position: a proved win T1 to T5 keep, read with
+    their stored answers. A row left out as too easy is never offered, so it is not asked."""
+    return row.get("result") == WON and not trivial(row)
+
+
+def shows(
+    engine: Engine,
+    row: dict[str, Any],
+    seen: Distinction,
+    nodes: int = DEFENCE_NODES,
+    max_depth: int = MAX_DEPTH,
+    goal: float = GOAL_PIECES,
+    immune: float = IMMUNE_PIECES,
+    state: GameState | None = None,
+) -> list[str]:
+    """What the position and its proven line show that the game has and chess lacks (Q1084).
+
+    Empty (`NOTHING`) where nothing. The line starts with the key move (`key_move`) and goes
+    on, each ply, by the side to move's best move as the core scores it at `nodes` (the
+    attacker's quickest proved win, the defender's longest proved loss), until the game ends,
+    the proof no longer holds, or `ends_in` plies are played. At each position on it: a piece
+    chess lacks (`Distinction.pieces`), a piece nobody owns (a neutral, a wild piece, the
+    duck, a portal's end) or a piece in hand. At each move: a word chess has no kind for
+    (`CHESS_KINDS`, or a move of the opponent's piece), and for each twin, a move it does not
+    allow (the rule gave it), a move it allows that the game does not (the rule took it, as a
+    wall or a ban on check does), another board after the move (the rule acted on it: a blast,
+    a shot), or another ending (a goal reached, a stalemate won). And a line won otherwise
+    than chess wins. The first thing found is the answer. Rule 3: every move, board, ending
+    and score is the core's, or a twin's; this compares them.
+    """
+    if seen.same:
+        return ["the game is chess"]
+    if row.get("result") != WON:
+        return []
+    key = key_move(row)
+    if key is None:
+        return []
+    compiled = engine.spec
+    if state is None:
+        state = engine.play(engine.initial_state(), [int(move) for move in row["moves"]])
+    attacker = int(row["side"])
+    values = eval_values(compiled)
+
+    def standing(position: GameState) -> list[str]:
+        for value in position.board:
+            if not value:
+                continue
+            owner, kind = compiled.owner_of(value), compiled.type_of(value)
+            if owner > 1:
+                return [f"{compiled.piece_names[kind]}, nobody's piece"]
+            if kind in seen.pieces:
+                return [f"{compiled.piece_names[kind]}, which {seen.pieces[kind]}"]
+        if any(sum(hand) for hand in position.hands):
+            return ["a piece in hand"]
+        return []
+
+    position, move = state, int(key["move"])
+    found = standing(position)
+    for _ply in range(max(1, int(row.get("ends_in") or 1))):
+        if found:
+            return found
+        legal = engine.legal_moves(position)
+        kind = move_type(move)
+        if move & MOVE_FOREIGN:
+            return ["a move of a piece the mover does not own"]
+        if kind not in CHESS_KINDS:
+            return [f"a {MOVE_TYPE_NAMES.get(kind, 'new')} move"]
+        after = engine.apply(position, move)
+        ended = engine.terminal(after)
+        for rule, twin in seen.twins:
+            allowed = _asked(twin.legal_moves, position)
+            if allowed is None:
+                continue
+            if move not in allowed:
+                return [f"the rule {rule}, played"]
+            if set(allowed) - set(legal):
+                return [f"the rule {rule}, which barred a move"]
+            there = _asked(twin.apply, position, move)
+            if there is not None and _what(there) != _what(after):
+                return [f"the rule {rule}, acting on the move"]
+            their_end = _asked(twin.terminal, after)
+            if (None if ended is None else (ended.winner, ended.reason)) != (
+                    None if their_end is None else (their_end.winner, their_end.reason)):
+                return [f"the rule {rule}, ending the game"]
+        if ended is not None:
+            if ended.winner is not None and ended.reason != seen.wins:
+                return [f"a win by {ended.reason}"]
+            return standing(after)
+        found = standing(after)
+        if found:
+            return found
+        replies = engine.legal_moves(after)
+        if len(replies) == 1:
+            # A forced move: the probe scores none, and the line plays it.
+            position, move = after, replies[0]
+            continue
+        scores = engine.root_scores(after, values, nodes, max_depth, goal, immune)
+        best = max(range(len(scores)), key=lambda at: (scores[at], -at))
+        if proof_of(scores[best]) != (WON if after.side_to_move == attacker else LOST):
+            return []
+        position, move = after, replies[best]
+    return found
+
+
 def record(
     engine: Engine,
     name: str,
@@ -734,6 +1048,9 @@ def record(
     shallow_agents: tuple[str, ...] = SHALLOW_AGENTS,
     shallow_seeds: tuple[int, ...] = SHALLOW_SEEDS,
     near_min: int | None = None,
+    shows_nodes: int | None = None,
+    shows_built: str | None = None,
+    shows_made: datetime.date | None = None,
 ) -> dict[str, Any]:
     """The record the site loads: the basis, the tally, and the proved positions only.
 
@@ -750,6 +1067,10 @@ def record(
     the record; the reader leaves them out (`trivial`), so the record holds every proof.
     The basis names the probe's version (`PROOF_VERSION`) and, where the sample skipped the
     last plies of each game (`NEAR_MIN`), `near_min`.
+
+    Where the sift was asked (`shows_nodes`, Q1084), a won row whose line showed nothing its
+    game has and chess lacks (`shows` empty) is set aside (`sifted`): out of `positions`,
+    kept whole in `set_aside`, and the basis names the sift's version, budget, core and day.
     """
     ordered = sorted(rows, key=lambda row: (row["seed"], row["game"], row["ply"]))
     basis: dict[str, Any] = {
@@ -783,7 +1104,7 @@ def record(
         basis["shallow_nodes"] = shallow_nodes
         basis["shallow_built"] = shallow_built
         basis["shallow_made"] = (shallow_made or datetime.date.today()).isoformat()
-    return {
+    data = {
         "format": FORMAT,
         "ruleset_hash": engine.spec.hash,
         "name": name,
@@ -794,6 +1115,37 @@ def record(
                          shallow=shallow_nodes is not None),
         "positions": [row for row in ordered if row["result"] in (WON, LOST)],
     }
+    if shows_nodes is not None:
+        sifted(data, shows_nodes, shows_built or built, shows_made)
+    return data
+
+
+def sifted(
+    data: dict[str, Any], nodes: int, built: str, made: datetime.date | None = None,
+) -> dict[str, Any]:
+    """The record with every row the sift found showing nothing set aside (Q1084), in place.
+
+    A row of `positions` whose `shows` is empty moves to `set_aside`, and one there whose
+    `shows` is no longer empty comes back, each list in the record's order;
+    `counts["set_aside"]` is how many are aside, and the basis is stamped with the sift's
+    version and how it was asked. Moves rows; deletes none and asks nothing."""
+    rows = [*(data.get("positions") or []), *(data.get("set_aside") or [])]
+    rows.sort(key=lambda row: (row.get("seed", 0), row.get("game", 0), row.get("ply", 0)))
+    data["positions"] = [row for row in rows if row.get("shows") != NOTHING]
+    data["set_aside"] = [row for row in rows if row.get("shows") == NOTHING]
+    data.setdefault("counts", {})["set_aside"] = len(data["set_aside"])
+    data.setdefault("basis", {}).update({
+        "shows_version": SHOWS_VERSION, "shows_nodes": nodes, "shows_built": built,
+        "shows_made": (made or datetime.date.today()).isoformat(),
+    })
+    return data
+
+
+def is_sifted(data: Any) -> bool:
+    """Whether a record was sifted by this code's sift (`SHOWS_VERSION`) or a later one."""
+    basis = data.get("basis") if isinstance(data, dict) else None
+    version = basis.get("shows_version") if isinstance(basis, dict) else None
+    return isinstance(version, int) and version >= SHOWS_VERSION
 
 
 def write(path: Path, data: dict[str, Any]) -> None:
@@ -808,9 +1160,11 @@ def write(path: Path, data: dict[str, Any]) -> None:
 
 DIRECTORY = "puzzles"
 """Where the records sit under `runs/`, and their work under `work/<hash>/`."""
-PROVE, REPROVE = "prove", "re-prove"
-NEEDS = (PROVE, REPROVE)
-"""What a game is owed: a record it has never had, then one it has that no longer holds."""
+PROVE, REPROVE, FILTER = "prove", "re-prove", "re-filter"
+NEEDS = (PROVE, REPROVE, FILTER)
+"""What a game is owed: a record it has never had, then one it has that no longer holds,
+then one that holds but was never sifted for what its game has and chess lacks (Q1084),
+which `refilter` mends without proving anything again."""
 STORED = "proofs:"
 """A game's record file, hashed under this prefix: what a refusal of its proofs is keyed
 on, never to be mistaken for its `canonical.json` digest or its ladder's."""
@@ -819,8 +1173,9 @@ TEST_BATCH = 8
 """Positions a unit file holds: what a killed run loses at most, per stage."""
 WORKERS = 8
 """Threads a game is proved on: a `heavy` lease's slots, less two (the slow tier's eight)."""
-TESTS = ("defence", "hasten", "shallow")
-"""The engine-asked tests in the order they are asked: T3, T4, then T5 read with both."""
+TESTS = ("defence", "hasten", "shallow", "shows")
+"""The engine-asked tests in the order they are asked: T3, T4, then T5 read with both, then
+the sift (Q1084) of what T1 to T5 keep."""
 
 
 def record_path(runs_dir: Path | str, digest: str) -> Path:
@@ -948,11 +1303,19 @@ def standing(
             data = None
         made = str(data.get("made") or "") if isinstance(data, dict) else ""
         why = owes(engine, data)
+        if why is None and not is_sifted(data):
+            # Q1084: a record that holds but was never sifted is mended by `refilter`,
+            # which proves nothing again, so it needs no runs on disk.
+            return stands(FILTER, "its positions were never sifted for what the game has "
+                                  "and chess lacks", made)
         if why is None:
             rows = [row for row in data.get("positions") or []
                     if isinstance(row, dict) and row.get("result") == WON]
             offered = sum(1 for row in rows if not trivial(row))
-            return stands("", f"current: {len(rows)} proved, {offered} offered" if rows
+            aside = len(data.get("set_aside") or [])
+            kept = f"current: {len(rows)} proved, {offered} offered" + (
+                f", {aside} set aside as showing nothing of the game's own" if aside else "")
+            return stands("", kept if rows or aside
                           else "current: its runs held no small ending to prove", made)
         needs, reason = REPROVE, why
     else:
@@ -1098,8 +1461,10 @@ def make(
     nodes: int = NODES,
     defence_nodes: int = DEFENCE_NODES,
     today: datetime.date | None = None,
+    reference: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Write one game's record whole (§5.2): count, sample, prove, T3, T4, T5, record.
+    """Write one game's record whole (§5.2): count, sample, prove, T3, T4, T5, the sift,
+    record.
 
     The work is R9a's driver's, moved into the package: the candidates of the game's four
     library runs (`candidates`, at most `MAX_PIECES` in play, `NEAR_MIN` to `NEAR` plies
@@ -1224,8 +1589,16 @@ def make(
 
     # T3, T4, then T5, each read with the answers before it.
     asked: dict[str, Any] = {}
-    asks = {"defence": asks_defence, "hasten": asks_defence, "shallow": asks_shallow}
-    questions = {"defence": defence, "hasten": hasten, "shallow": shallow}
+    asks = {"defence": asks_defence, "hasten": asks_defence, "shallow": asks_shallow,
+            "shows": asks_shows}
+    # The sift (Q1084) reads the game against the reference, `rulesets/chess.json` here
+    # unless the caller hands one.
+    seen = distinction(spec, reference if reference is not None else reference_spec())
+
+    def sift(engine: Engine, row: dict[str, Any], nodes: int) -> list[str]:
+        return shows(engine, row, seen, nodes=nodes)
+
+    questions = {"defence": defence, "hasten": hasten, "shallow": shallow, "shows": sift}
     for test in TESTS:
         began = time.monotonic()
         wanted = [row for row in rows if asks[test](row)]
@@ -1279,4 +1652,66 @@ def make(
     note(f"{game}: recorded {len(data['positions'])} proved, {offered} offered")
     return {"hash": digest, "name": game, "counts": data["counts"],
             "proved": len(data["positions"]), "offered": offered, "seconds": seconds,
-            "built": built}
+            "built": built, "set_aside": len(data.get("set_aside") or [])}
+
+
+def refilter(
+    spec: dict[str, Any],
+    runs_dir: Path | str,
+    workers: int = WORKERS,
+    say: Any = None,
+    nodes: int = DEFENCE_NODES,
+    today: datetime.date | None = None,
+    reference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Sift one game's delivered record (Q1084): ask `shows` of every row T1 to T5 keep and
+    set aside each that shows nothing its game has and chess lacks (`sifted`). Proves
+    nothing again: a record that holds keeps every proof, and the record it replaces is kept
+    beside the work as `record-<day>.json`, as `make` keeps one, never written over.
+
+    Rows already answered under this `SHOWS_VERSION` are not asked again. Returns what it
+    did: how many rows it asked, how many stay offered and how many are set aside, and the
+    seconds it took.
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    began = time.monotonic()
+    today = today or datetime.date.today()
+    engine = Engine(spec)
+    digest = engine.spec.hash
+    game = str(spec.get("name") or digest)
+    path = record_path(runs_dir, digest)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("ruleset_hash") != digest:
+        raise ValueError(f"{game}: its record cannot be read as this game's")
+    fresh = not is_sifted(data)
+    seen = distinction(spec, reference if reference is not None else reference_spec())
+    rows = [*(data.get("positions") or []), *(data.get("set_aside") or [])]
+    wanted = [row for row in rows if asks_shows(row) and (fresh or "shows" not in row)]
+    with ThreadPoolExecutor(max(1, workers)) as pool:
+        answers = list(pool.map(lambda row: shows(engine, row, seen, nodes=nodes), wanted))
+    for row, answer in zip(wanted, answers, strict=True):
+        row["shows"] = answer
+    if fresh:
+        # A row a sift of another version answered, and this one did not ask (a row T1 to
+        # T5 leave out), keeps no answer: it is not offered either way.
+        asked = {id(row) for row in wanted}
+        for row in rows:
+            if id(row) not in asked:
+                row.pop("shows", None)
+    old = json.loads(path.read_text(encoding="utf-8"))
+    sifted(data, nodes, work_basis(spec)["built"], today)
+    work = work_dir(runs_dir, digest)
+    work.mkdir(parents=True, exist_ok=True)
+    kept_as = work / f"record-{today.isoformat()}.json"
+    kept_as = _aside(kept_as, today) if kept_as.exists() else kept_as
+    write(kept_as, old)
+    write(path, data)
+    offered = sum(1 for row in data["positions"] if row.get("result") == WON and not trivial(row))
+    aside = len(data["set_aside"])
+    if say is not None:
+        say(f"{game}: sifted {len(wanted)}, {offered} offered, {aside} set aside "
+            f"(the record before kept as {kept_as.name})")
+    return {"hash": digest, "name": game, "asked": len(wanted), "offered": offered,
+            "set_aside": aside, "seconds": round(time.monotonic() - began, 1)}

@@ -1010,5 +1010,9 @@ def test_the_fixture_is_the_delivered_records() -> None:
         assert game["positions"] == [
             [row["ends_in"], len(row["scores"]), puzzles.winning_moves(row),
              row.get("defence"), row.get("hasten"), row.get("shallow")]
-            for row in data["positions"] if row["result"] == puzzles.WON
+            # The sift (Q1084) moves rows to `set_aside` and deletes none: the record's
+            # proofs are its positions and what is set aside, in the record's order.
+            for row in sorted([*data["positions"], *(data.get("set_aside") or [])],
+                              key=lambda row: (row["seed"], row["game"], row["ply"]))
+            if row["result"] == puzzles.WON
         ]

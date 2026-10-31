@@ -306,13 +306,16 @@ class TestTheLoader:
     )
     def test_every_delivered_record_is_offered_whole(self, path: Path | None) -> None:
         """The site's loader drops nothing from a record R9a delivered: under today's rules
-        every prefix replays to its position, and every won position is either offered or
-        left out as too easy, never lost. Skips where no record is on disk."""
+        every prefix replays to its position, and every won position is either offered,
+        left out as too easy, or set aside as showing nothing of its game's own (Q1084),
+        never lost. A set-aside position is never offered, and a game left with none says
+        why. Skips where no record is on disk."""
         if path is None:
             pytest.skip("no runs/puzzles/ record here")
         data = json.loads(path.read_text(encoding="utf-8"))
         record = proven.load(path.parent.parent, path.stem, find(path.stem).spec)
-        if not data["positions"]:
+        aside = data.get("set_aside") or []
+        if not data["positions"] and not aside:
             # The upkeep's empty record (Q993d): asked once, and no record to a reader.
             assert record is None
             return
@@ -323,7 +326,16 @@ class TestTheLoader:
         engine = engine_for(find(path.stem).spec)
         names = dict(puzzles.renames(engine, data))
         assert {found.id for found in record.positions} == {names[row["id"]] for row in kept}
-        assert len(record.positions) + record.too_easy == data["counts"]["won"]
+        assert all(row["result"] == "won" for row in aside)
+        assert record.set_aside == len(aside) == data["counts"].get("set_aside", 0)
+        hidden = dict(puzzles.renames(engine, {"positions": aside}))
+        assert len(hidden) == len(aside), "a set-aside prefix no longer replays"
+        assert all(record.find(called) is None for called in hidden.values())
+        assert (len(record.positions) + record.too_easy + record.set_aside
+                == data["counts"]["won"])
+        if not record.positions:
+            # Every proof too easy or set aside: the section stays and says why.
+            assert proven.summary(record, None)["none"] == proven.none_said(record)
         assert record.singles == sum(1 for row in kept if row["single"])
         if data["format"] >= 2:
             assert record.defence and record.too_easy == data["counts"]["trivial"]

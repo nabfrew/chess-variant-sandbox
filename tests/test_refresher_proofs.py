@@ -118,7 +118,7 @@ class TestWhatIsOwed:
     def test_the_refreshers_kinds_are_the_upkeeps(self) -> None:
         assert refresher.PROOF_ORDER == puzzles.NEEDS
         assert all(refresher.LEASE_FOR[needs] == "heavy" for needs in puzzles.NEEDS)
-        assert refresher.QUEUE_ORDER[-2:] == puzzles.NEEDS
+        assert refresher.QUEUE_ORDER[-len(puzzles.NEEDS):] == puzzles.NEEDS
 
     def test_a_game_with_runs_and_no_record_is_owed_a_proof(
         self, tmp_path: Path, played: Any
@@ -458,7 +458,7 @@ class TestTheLoop:
         assert [(line["hash"], line["needs"]) for line in log if line["event"] == "repaired"] == [
             ("s", "rescore"), ("l", "ladder"), ("p", "prove"), ("q", "re-prove")]
         status = refresher.read_status(tmp_path)
-        assert status is not None and status["proof_counts"] == {"prove": 0, "re-prove": 0}
+        assert status is not None and status["proof_counts"] == {"prove": 0, "re-prove": 0, "re-filter": 0}
 
     def test_the_proofs_are_not_read_while_a_score_or_ladder_is_owed(
         self, tmp_path: Path

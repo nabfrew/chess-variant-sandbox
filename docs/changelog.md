@@ -14,6 +14,16 @@ any other address keeps its brackets.
 
 ## 2026-10-31
 
+### Proven positions now show what makes their game different
+
+A game's proven positions used to include endings that could have come from ordinary chess: a king and rook against
+a king, say, in a game whose whole point is a piece chess doesn't have. Now a position is offered only if it shows
+something its own game has and chess lacks: one of its own pieces on the board, a piece that belongs to nobody (a
+duck, a wolf, a neutral), a piece waiting in hand, or a winning line that uses the game's own rule, such as a shove,
+a hire, a step onto the goal square, a wall in the way or a blast. Chess itself keeps all of its positions. About
+a hundred positions across the library were set aside this way, and 21 games have none left to solve for now; their
+pages say why.
+
 ### A new game: duck chess
 
 The library now has duck chess as it is played online: ordinary chess, except that after every move the player must

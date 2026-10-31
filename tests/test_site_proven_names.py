@@ -77,8 +77,11 @@ def test_the_table_is_the_replay_of_the_delivered_records(game: str) -> None:
     if "near_min" in (data.get("basis") or {}):
         # Proved again by the upkeep (`puzzles.make`, Q993d): not the record 0040 moved.
         pytest.skip(f"{game}: its record was proved again since the migration")
-    pairs = puzzles.renames(engine_for(find(game).spec), data)
-    assert len(pairs) == len(data["positions"]), f"{game}: a prefix no longer replays"
+    # A position the sift set aside (Q1084) is still the record's, and still the table's:
+    # it moved out of `positions`, never out of the record.
+    rows = [*data["positions"], *(data.get("set_aside") or [])]
+    pairs = puzzles.renames(engine_for(find(game).spec), {"positions": rows})
+    assert len(pairs) == len(rows), f"{game}: a prefix no longer replays"
     assert dict(pairs) == {old: new for (held, old), new in TABLE.items() if held == game}
 
 

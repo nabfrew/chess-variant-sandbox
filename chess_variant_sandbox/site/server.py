@@ -2460,12 +2460,12 @@ class SiteApp(App):
     def _proven_section(self, connection: Any, digest: str) -> dict[str, Any] | None:
         """*Proven positions* on the game's page, with the reader's own marks, or None.
 
-        A record that offers nothing because every position was too easy still has its
-        section, which says so (`proven.NONE_LEFT`); one whose positions no longer replay has
-        none."""
+        A record that offers nothing because every position was too easy, or set aside as
+        showing nothing of the game's own (Q1084), still has its section, which says so
+        (`proven.none_said`); one whose positions no longer replay has none."""
         game = self.known().get(digest)
         record = proven.load(self.runs_dir, digest, None if game is None else game.spec)
-        if record is None or not (record.positions or record.too_easy):
+        if record is None or not (record.positions or record.too_easy or record.set_aside):
             return None
         marks = (
             None if self.viewer is None else proven.marks_on(connection, self.viewer, digest)
