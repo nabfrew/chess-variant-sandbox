@@ -314,6 +314,11 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/berolina": "733c98e8156d9fb6",  # Q614 (W7): its description, for a player; 2026-10-18: its description, written as the game's idea (was 32995edcf561f5e3)
     "rulesets/brink": "2307e963db78b4b2",  # Q1074bg1, 2026-10-30
     "rulesets/dohyo": "ee04f5c4ac063dae",  # Q1074bg2, 2026-10-30
+    "rulesets/rock-paper-shove": "cc56261d19467597",  # Q1074bs, 2026-10-31
+    "archive/los-alamos-with-a-closed-edge": "2c67ec37c9123078",  # Q1074bs, 2026-10-31
+    "archive/los-alamos-with-shove-or-take": "2702b1dee85bfe5c",  # Q1074bs, 2026-10-31
+    "archive/los-alamos-with-crushing-pillars": "3d0f861a806b065d",  # Q1074bs, 2026-10-31
+    "archive/gardner-with-bishops-that-shove-straight": "29f6140f8de04d35",  # Q1074bs, 2026-10-31
     "rulesets/capablanca": "536dd74dd518d9da",  # 2026-10-18: its description, written as the game's idea (was d828fec94fd054ae)
     "rulesets/chess": "9d9595bc228f1a31",  # Q614 (W7): its description, for a player
     "archive/chess-oriented-pawns": "853eb17527f25798",  # Q868: its description, what its difference does in play (was e6142ab640c179da); Q870: its name (was e47286e8484e42c2); 2026-10-18: its description, written as the game's idea (was e5f76b8db6fdd732)

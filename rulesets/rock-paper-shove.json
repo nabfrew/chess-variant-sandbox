@@ -1,0 +1,58 @@
+{
+  "schema_version": 31,
+  "name": "rock paper shove",
+  "description": "Three kinds of piece, each able to shove exactly one other kind, round a circle as in the hand game: rock shoves scissors, scissors shove paper, paper shoves rock. Nothing is ever captured. A piece that steps onto one it may shove pushes it a square further on, together with every piece standing behind it in that line up to the first gap, but only if the shover may shove every piece in the line; whatever is pushed off the edge of the board is out. Each side has three of each kind, every piece stepping one square in any direction, and a side loses the moment it has none left of any one kind. So every piece hunts one kind and is hunted by another, and the question on every move is how to stand. A line of one kind is a target for whatever shoves that kind, but a mixed line cannot be shoved along its length by anyone, since no piece may shove two kinds: a rock with a paper at its back is safe from the front. Every mixed line is a wall, and every wall has to be broken from the side. A piece may shove its own side's pieces of the kind it hunts as well, to pull one out of danger or close a gap, at the risk of pushing it out of the board itself. A game that stalls or runs long goes to the side with more pieces left.",
+  "board": {"width": 7, "height": 7},
+  "pieces": [
+    {
+      "id": "R",
+      "name": "rock",
+      "value": 3,
+      "pushes": ["S"],
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move", "push": {"whose": "any"}}
+      ]
+    },
+    {
+      "id": "P",
+      "name": "paper",
+      "value": 3,
+      "pushes": ["R"],
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move", "push": {"whose": "any"}}
+      ]
+    },
+    {
+      "id": "S",
+      "name": "scissors",
+      "value": 3,
+      "pushes": ["P"],
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move", "push": {"whose": "any"}}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "R", "squares": ["a2", "d2", "g2"]},
+      {"piece": "P", "squares": ["b2", "e2", "c1"]},
+      {"piece": "S", "squares": ["c2", "f2", "e1"]}
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "draw",
+    "push": {"chain": "row"},
+    "extinction": {"pieces": ["R", "P", "S"], "per_type": true},
+    "scoring": {"count": "material"},
+    "max_plies": 200,
+    "repetition_draw": 3,
+    "no_progress_draw": 60
+  },
+  "provenance": {
+    "added": "2026-10-31",
+    "origin": "human",
+    "history": "Q1074bs: designed for the library as the showcase of a circular push hierarchy, three kinds each pushing only the next under chain 'row' (docs/plan-push.md section 6.3; the design log is docs/reference/rock-paper-shove.md)."
+  }
+}

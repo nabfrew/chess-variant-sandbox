@@ -10138,32 +10138,34 @@ def push_rule(spec: Any) -> dict[str, Any] | None:
 
 # Q1074b5: the `rules` keys a push is refused beside, any spelling of them that states a
 # rule (§3.14; `_check_push_coherence` refuses each by its id: portals W4, a strike and
-# contacts X2, a blast X3, rounds S1, reach G1, territory G2, the purse M1), and `wrap`
-# beside a row (H4). `push_bars` is the question an operator asks before adding one.
+# contacts X2, a blast X3, rounds S1); Q1074b7 lifted `wrap` beside a row (H4), and Q1074b8
+# reach (G1), territory (G2) and the purse (M1). `push_bars` is the question an operator
+# asks before adding one.
 PUSH_BARRED_RULES = frozenset({
-    "portals", "strike", "contacts", "explode_on_capture", "simultaneous", "reach",
-    "territory", "purse",
+    "portals", "strike", "contacts", "explode_on_capture", "simultaneous",
 })
 
 
 def push_bars(spec: Any, key: str) -> bool:
     """Whether the push in ``spec`` refuses ``rules.<key>`` beside it: one of
-    `PUSH_BARRED_RULES` in a game where a move pushes, or ``wrap`` where a row moves
-    (``chain`` ``"row"`` or ``"weight"``). ``False`` in a game without a push."""
+    `PUSH_BARRED_RULES` in a game where a move pushes (``wrap`` is none since Q1074b7 read
+    rows on a seam, H4). ``False`` in a game without a push."""
     rule = push_rule(spec)
     if rule is None:
         return False
-    if key == "wrap":
-        return rule["chain"] != "one"
     if key == "en_passant":
         # E2 (Q1074bg1 made it a question an operator asks): only where a piece en passant
-        # is defined against has a pushing move that may land on a piece.
+        # is defined against has a pushing move that may capture and whose push replaces its
+        # capture (enemies pushed, `captures` false: §1.3 clears its capture bit). Q1074b8
+        # lifted the rest: where the entry keeps its capture, en passant stays a capture
+        # onto the empty window square and the push applies to occupied landings only.
         by_id = {
             piece["id"]: piece for piece in _listed(spec.get("pieces"))
             if isinstance(piece, dict) and isinstance(piece.get("id"), str)
         }
         return any(
-            move_push(move) is not None and move.get("mode", "both") != "move"
+            (stated := move_push(move)) is not None and move.get("mode", "both") != "move"
+            and stated["whose"] != "own" and not stated["captures"]
             for pid in en_passant_pieces(spec) if pid in by_id
             for move in _listed(by_id[pid].get("moves"))
         )
@@ -10335,8 +10337,8 @@ def _push_entry_refusals(move: dict[str, Any], loc: str, hex_lattice: bool) -> l
 
 
 def _validate_push_rule(push: Any, errors: list[str]) -> None:
-    """``rules.push``'s shape (§1.2), and the values only round 2 plays (``walls: "crush"``
-    until Q1074b7; Q1074b6 lifted ``no_push_back``)."""
+    """``rules.push``'s shape (§1.2). Round 2's values are lifted: ``no_push_back`` by
+    Q1074b6, ``walls: "crush"`` by Q1074b7."""
     if push is None:
         return
     if not isinstance(push, dict):
@@ -10348,11 +10350,6 @@ def _validate_push_rule(push: Any, errors: list[str]) -> None:
             errors.append(f"rules.push.{key} must be one of {allowed}, got {push[key]!r}")
     if "no_push_back" in push and not isinstance(push["no_push_back"], bool):
         errors.append("rules.push.no_push_back must be a boolean")
-    if push.get("walls") == "crush":
-        errors.append(
-            "rules.push.walls 'crush' (W1) is refused until the push rule's round 2: a piece "
-            "pressed against a wall blocks the line"
-        )
 
 
 def _validate_push_piece(
@@ -10388,8 +10385,10 @@ def _check_push_coherence(
     * **nothing pushes**: ``rules.push`` stating anything, a ``pushes`` list or a weight, in a
       game no move of which pushes (each can never fire);
     * **the refused pairs** (`refusals.PUSH_REFUSALS`): portals, a live strike, contacts, a
-      blast, rounds; and round 1's en passant, sights, rest, reach, territory, the purse and
-      rows on a wrapped board;
+      blast, rounds; en passant beside a pushing capture entry whose push replaces its
+      capture (E2), and a command that ``captures_own`` (N4). Q1074b7 lifted rows on a
+      wrapped board (H4); Q1074b8 the rest of round 1's: en passant beside a pushing entry
+      that keeps its capture, every other sight, rest, reach, territory and the purse;
     * **a list**: ``pushes: []`` beside a push (inert), ``pushes`` on a type that never pushes,
       a list naming a wild type or the duck (N1, N2: they block, and are never pushed); a wild
       type or the duck that pushes;
@@ -10402,7 +10401,10 @@ def _check_push_coherence(
       component, D3 and D8);
     * **a bar no move can meet** (K5, Q1074b6): ``no_push_back`` where no move pushes an
       enemy piece and no turn is long, so a pushed piece's owner never moves next and the bar
-      is never set (the portals' Q879 reading).
+      is never set (the portals' Q879 reading);
+    * **a crush with no wall** (W1, Q1074b7): ``walls: "crush"`` on a board without a wall
+      (``rules.obstacles``; a hexagon's missing corners are holes, W2, not walls), which
+      nothing can ever be pressed against.
     """
     pushers = pushing_ids(pieces)
     stated = rules.get("push")
@@ -10443,6 +10445,18 @@ def _check_push_coherence(
             "rules.push.no_push_back (K5) and no move pushes an enemy piece: a pushed piece is "
             "the pusher's own, whose owner does not move next, so the bar can never bind"
         )
+    if rule["walls"] == "crush":
+        board, setup = spec.get("board"), spec.get("setup")
+        board = board if isinstance(board, dict) else {}
+        setup = setup if isinstance(setup, dict) else {}
+        width, height = board.get("width"), board.get("height")
+        if isinstance(width, int) and isinstance(height, int) and not obstacle_squares(
+            rules, width, height, setup.get("orientation", "mirror")
+        ):
+            errors.append(
+                "rules.push.walls 'crush' (W1) on a board with no wall (rules.obstacles): "
+                "nothing is ever pressed against one, so it can never fire"
+            )
     if portal_groups(rules):
         errors.append(refusal("push.W4"))
     if strike_is_live(rules.get("strike")):
@@ -10453,24 +10467,12 @@ def _check_push_coherence(
         errors.append(refusal("push.X3"))
     if is_simultaneous(rules):
         errors.append(refusal("push.S1"))
-    if has_sights(pieces):
+    if any(
+        sight.captures_own for sights in piece_sights(pieces).values() for sight in sights
+    ):
         errors.append(refusal("push.N4"))
-    if has_rests(pieces):
-        errors.append(refusal("push.N5"))
-    if rules.get("reach"):
-        errors.append(refusal("push.G1"))
-    if rules.get("territory"):
-        errors.append(refusal("push.G2"))
-    if purse_rule(rules) is not None:
-        errors.append(refusal("push.M1"))
     if rules.get("en_passant") and push_bars(spec, "en_passant"):
         errors.append(refusal("push.E2"))
-    if rule["chain"] != "one" and any(
-        edge != "none"
-        for pair in wrap_stated(rules.get("wrap"), board_shape(spec)).values()
-        for edge in pair
-    ):
-        errors.append(refusal("push.H4"))
 
     wild = {
         npc["piece"] for npc in _listed(rules.get("npcs"))

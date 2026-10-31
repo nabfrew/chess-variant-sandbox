@@ -1,0 +1,200 @@
+{
+  "schema_version": 31,
+  "name": "los alamos with crushing pillars",
+  "description": "Chess on a six-by-six board without bishops, with four pillars standing in it, on b3, b4, e3 and e4, that no piece may stand on, and in which only the king can take. Every other piece shoves instead of capturing: moving onto an enemy piece pushes it one step further the way the mover was going (a knight's step being its whole jump). A piece shoved off the edge of the board is out, and so is a piece shoved into a pillar, crushed against it. So the pillars are dangers in the middle of the board, not only obstacles: a piece standing beside one can be destroyed by a shove from the far side, well away from any edge, and a king's defenders want to stand clear of them. Sliding pieces stop at a pillar and knights jump over it. Checkmate wins, and a piece just shoved may not shove straight back on its owner's next move.",
+  "board": {
+    "width": 6,
+    "height": 6
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture",
+          "push": true
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both",
+          "push": true
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both",
+          "push": true
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both",
+          "push": true
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "e1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "d1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "N"
+      ]
+    },
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "obstacles": {
+      "squares": [
+        "b3",
+        "e3"
+      ],
+      "mirror": true
+    },
+    "push": {
+      "walls": "crush",
+      "no_push_back": true
+    }
+  },
+  "provenance": {
+    "added": "2026-10-31",
+    "origin": "human",
+    "history": "Q1074bs: the showcase of rules.push.walls 'crush' (docs/plan-push.md section 6.3): Los Alamos chess with four walls, every piece but the king pushing instead of capturing, no push back.",
+    "preview": "A preview: a new game showing one rule of pushing pieces, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and any score it has is a first reading, not yet trusted."
+  }
+}

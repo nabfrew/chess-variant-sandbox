@@ -3024,9 +3024,11 @@ _SHOWCASE_OWED: dict[str, str] = {
     # along the rank) in the library. "whose a push moves", "a weight", "a strength" and "a row"
     # (`chain: "weight"` is a row weighed) went the same day, when Q1074bg2 put `rulesets/dohyo.json` (a bouncer that shoves its own
     # side, every piece weighed, three of four with a strength above their weight) in it.
-    "Q1074 a push beside a capture": "Q1074bs",
-    "Q1074 whom a pusher pushes": "Q1074bs, the circle",
-    "Q1074 an edge that blocks": "Q1074bs",
+    # The last three went on 2026-10-31 (Q1074bs, `docs/plan-push.md` §6.3): "whom a pusher
+    # pushes" when `rulesets/rock-paper-shove.json` (three kinds each pushing only the next)
+    # joined the library, "a push beside a capture" and "an edge that blocks" when
+    # `archive/los-alamos-with-shove-or-take.json` and `archive/los-alamos-with-a-closed-edge.json`
+    # were archived as previews. Generation 56 owes none.
     # Generation 55 (Q1069a) owes none: `rulesets/chess.json` states the rule and reaches it.
     # Generation 54's name (TC9c) went to `_NO_SHOWCASE_ON_PURPOSE` when Q1069a retired its
     # `_FEATURES` row, still owed.

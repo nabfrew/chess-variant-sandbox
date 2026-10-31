@@ -189,11 +189,17 @@ impl<'t> Game<'t> {
             if source.requires_unmoved && !self.unmoved.get(source.origin as usize) {
                 continue;
             }
-            if t.has_capture_matrix
-                && victim != usize::MAX
-                && !t.may_capture(t.type_of(source.piece_value), victim)
-            {
-                continue;
+            if t.has_capture_matrix && victim != usize::MAX {
+                // Q1074b8 (N4, R1): in a push game a source attacks by capture, by push or
+                // both, each under its own list, as `attacks_square_as` reads it.
+                let attacker = t.type_of(source.piece_value);
+                let reaches = match t.push.as_deref() {
+                    None => t.may_capture(attacker, victim),
+                    Some(push) => self.push_game_attacks(push, source.dirs, attacker, victim),
+                };
+                if !reaches {
+                    continue;
+                }
             }
             let reaches = if source.sweep != 0 {
                 self.sweep_attacks(player, source)
@@ -435,6 +441,34 @@ impl<'a> SightBarring<'a> {
         if self.sight.has_shield && self.shielded(game, victim) {
             return BARRED_SHIELD;
         }
+        // Q1074b8 (N4, `docs/plan-push.md` §3.9): a shielded piece may not be pushed, so under
+        // a row it blocks the line wherever it stands in it, not only where it is landed on.
+        if kind == MOVE_PUSH && self.sight.has_shield && self.shields_line(game, m) {
+            return BARRED_SHIELD;
+        }
         0
+    }
+
+    /// Whether a piece behind the target of the push `m` (the line it moves, read off the
+    /// board before it, up to its first empty square or the pusher's origin) is shielded.
+    /// The target itself is the caller's. Under `chain: "one"` the square behind is empty.
+    #[cold]
+    #[inline(never)]
+    fn shields_line(&mut self, game: &Game<'_>, m: u32) -> bool {
+        let (origin, target) = (move_from(m), move_to(m));
+        let mut square = target;
+        for _ in 0..game.t.n_squares {
+            let Some(behind) = game.push_next(m, square) else {
+                return false;
+            };
+            if behind == origin || behind == target || game.board[behind] == 0 {
+                return false;
+            }
+            if self.shielded(game, behind) {
+                return true;
+            }
+            square = behind;
+        }
+        false
     }
 }

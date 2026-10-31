@@ -122,6 +122,9 @@ MODE_PUSH = MODE_PUSH_ENEMY | MODE_PUSH_OWN
 # may enter (a wall, §3.6 W1's block).
 PUSH_OFF = -1
 PUSH_STOP = -2
+# Q1074b7 (W1): a wall under `rules.push.walls: "crush"`, against which a pushed piece is
+# removed, counted as one pushed off the board (C1). `Tables::PUSH_CRUSH`'s twin.
+PUSH_CRUSH = -3
 # `PushRule.leap_dirs` (and slides', hops'): a landing that pushes nothing.
 PUSH_NO_DIRECTION = -1
 PUSH_CHAIN = {"one": 0, "row": 1, "weight": 2}
@@ -1796,8 +1799,9 @@ class PushRule:
     * ``directions``: each push direction as ``(player, dx, dy)``, the step a pushed piece
       takes in the board's own coordinates, keyed by the mover (whose wrap it reads, D1);
     * ``next[dir][square]``: where a piece on ``square`` goes, `PUSH_OFF` off the board (the
-      edge, or a hexagon's absent cell, W2) or `PUSH_STOP` (a wall); `_land` decides it, as
-      it decides every step, so the core never computes a square;
+      edge, or a hexagon's absent cell, W2), `PUSH_STOP` (a wall) or, under ``walls``
+      ``"crush"`` (Q1074b7), `PUSH_CRUSH` (a wall that removes the piece pressed on it);
+      `_land` decides it, as it decides every step, so the core never computes a square;
     * ``leap_dirs``/``slide_dirs``/``hop_dirs`` ``[frame][type][square]``: per entry, per
       landing, the direction id of the push there, `PUSH_NO_DIRECTION` where it pushes nothing
       (parallel to the movement tables' landings, as portal momentum masks are);
@@ -2212,14 +2216,15 @@ class CompiledSpec:
         position the move is played in; the move was offered, so its line may move.
         `Tables::push_taken` walks the same line in the core."""
         line = self.push_line(board, move)
-        if line and line[-1][1] == PUSH_OFF:
+        if line and line[-1][1] in (PUSH_OFF, PUSH_CRUSH):
             return board[line[-1][0]]
         return 0
 
     def push_line(self, board: bytes, move: int) -> list[tuple[int, int]]:
         """Q1074b5: what ``move`` pushes, read off the position it is played in, as
         ``(square, to)`` for each piece of its line in order from the target, ``to`` the square
-        it is pushed onto or `PUSH_OFF` for the one thrown off the board. Empty for any word
+        it is pushed onto or `PUSH_OFF` for the one thrown off the board (`PUSH_CRUSH` for one
+        crushed on a wall, Q1074b7). Empty for any word
         that is not a ``MOVE_PUSH``. The walk `push_removed` reads its removal from, and the
         page its animation (`viz.wrapped.push_transit`); the move was offered, so its line may
         move."""
@@ -3770,11 +3775,12 @@ def _push_landing(steps: dict[int, tuple[int, int]], at: int, step: tuple[int, i
 
 def _push_next(
     player: int, step: tuple[int, int], width: int, height: int, wrap: WrapRule | None,
-    radius: int, obstacles: frozenset[int], absent: frozenset[int],
+    radius: int, obstacles: frozenset[int], absent: frozenset[int], crush: bool = False,
 ) -> tuple[int, ...]:
     """Where a piece on each square goes when ``player``'s push moves it by ``step``: through
     `_land` with the mover's wrap (D1, H3), `PUSH_OFF` off the board or onto a hexagon's
-    absent cell (W2), `PUSH_STOP` onto a wall (W1) or back onto itself."""
+    absent cell (W2), `PUSH_STOP` onto a wall (W1) or back onto itself; under ``crush``
+    (``walls: "crush"``, Q1074b7) a wall is `PUSH_CRUSH`, which removes the piece."""
     low_file, high_file = wrap.files[player] if wrap else (False, False)
     low_rank, high_rank = wrap.ranks[player] if wrap else (False, False)
     permitted = (lambda side: wrap.may_leave(side, player)) if (radius and wrap) else None
@@ -3786,7 +3792,9 @@ def _push_next(
         )
         if target is None or target in absent:
             row.append(PUSH_OFF)
-        elif target in obstacles or target == square:
+        elif target in obstacles:
+            row.append(PUSH_CRUSH if crush else PUSH_STOP)
+        elif target == square:
             row.append(PUSH_STOP)
         else:
             row.append(target)
@@ -3884,7 +3892,10 @@ def _compile_push(
         edge_removes=rule["edge"] == "removes",
         directions=tuple(keys),
         next=tuple(
-            _push_next(player, (dx, dy), width, height, wrap, radius, obstacles, absent)
+            _push_next(
+                player, (dx, dy), width, height, wrap, radius, obstacles, absent,
+                rule["walls"] == "crush",
+            )
             for player, dx, dy in keys
         ),
         leap_dirs=parallel(0),

@@ -189,10 +189,10 @@ def test_rules_push_values() -> None:
     assert _errors_with(_game(push=[]), "rules.push must be an object")
 
 
-def test_round_two_values_are_refused_until_lifted() -> None:
-    """W1's crush is round 2's (§3.14), refused until Q1074b7; K5's no push back was lifted
-    by Q1074b6 (`tests/test_push_back.py`)."""
-    assert _errors_with(_game(push={"walls": "crush"}), "walls 'crush' (W1)")
+def test_round_two_values_are_lifted() -> None:
+    """W1's crush was lifted by Q1074b7 (`tests/test_push_crush.py`), refused only on a
+    board with no wall; K5's no push back by Q1074b6 (`tests/test_push_back.py`)."""
+    assert _errors_with(_game(push={"walls": "crush"}), "walls 'crush' (W1) on a board with no wall")
     assert validate_spec(_game(push={"walls": "block"})) == []
     assert validate_spec(_game(push={"no_push_back": True})) == []
     assert validate_spec(_game(push={"no_push_back": False})) == []
@@ -309,17 +309,30 @@ PAIRS = [
     ("push.X3", "rulesets/atomic.json", None),
     ("push.S1", "tests/_simultaneous_gardner.json", None),
     ("push.E2", "rulesets/chess.json", None),
-    ("push.N4", "archive/madrasi.json", None),
-    ("push.N5", "tests/_rest_checkmate.json", None),
-    ("push.G1", "rulesets/kingofthehill.json", None),
-    ("push.G2", "rulesets/rps-v2.json", None),
-    ("push.M1", "tests/_purse_market.json", None),
-    ("push.H4", "rulesets/torus.json", {"chain": "row"}),
+    ("push.N4", "archive/chess-with-preaching-bishops.json", None),
+]
+
+# Q1074b8 (`tests/test_push_round_two.py`): round 1's pairs that round 2 lifted, whole or in
+# part; each case is the refused pair's own, now admitted.
+LIFTED = [
+    ("push.N4", "archive/madrasi.json"),
+    ("push.N5", "tests/_rest_checkmate.json"),
+    ("push.G1", "rulesets/kingofthehill.json"),
+    ("push.G2", "rulesets/rps-v2.json"),
+    ("push.M1", "tests/_purse_market.json"),
 ]
 
 
 def test_every_refused_pair_has_a_case() -> None:
     assert {row.id for row in PUSH_REFUSALS} == {rid for rid, _, _ in PAIRS}
+
+
+@pytest.mark.parametrize(("rid", "path"), LIFTED, ids=[f"{r}-{p}" for r, p in LIFTED])
+def test_a_lifted_pair_is_admitted(rid: str, path: str) -> None:
+    pushing = _pushing(_load(path))
+    pushing["rules"].pop("en_passant", None)  # E2's, not this pair's
+    assert validate_spec(pushing) == [], validate_spec(pushing)
+    assert rust_supports(compile_spec(pushing)) is None
 
 
 @pytest.mark.parametrize(("rid", "path", "rule"), PAIRS, ids=[f"{r}-{p}" for r, p, _ in PAIRS])
@@ -332,10 +345,13 @@ def test_a_refused_pair_either_side(rid: str, path: str, rule: Any) -> None:
     assert rid in refused_ids(validate_spec(pushing)), validate_spec(pushing)
 
 
-def test_rows_on_a_wrapped_board_refuse_only_rows() -> None:
-    """H4 is rows'; one push at a time on a seam is round 1's (H3)."""
+def test_rows_on_a_wrapped_board_are_allowed() -> None:
+    """H3 was round 1's; Q1074b7 read rows on a seam (H4), so neither is refused."""
     torus = _pushing(_load("rulesets/torus.json"))
-    assert "push.H4" not in refused_ids(validate_spec(torus))
+    del torus["rules"]["en_passant"]  # E2's, not a seam's
+    assert validate_spec(torus) == []
+    torus["rules"]["push"] = {"chain": "row"}
+    assert validate_spec(torus) == []
 
 
 def test_en_passant_beside_a_pawn_that_only_pushes_ahead_is_allowed() -> None:
@@ -649,12 +665,13 @@ def test_fairy_stockfish_refuses_a_push_by_name() -> None:
 def test_the_keys_are_offered_to_a_model_since_q1074b2() -> None:
     """Q1074b2 folded the keys into the proposable sets: the schema offers them (the chain
     as `"one"`, and since Q1074b4 `"row"` and `"weight"`; since Q1074b6 `no_push_back`, and
-    `walls`, round 2's last, not at all) and the preamble explains them."""
+    since Q1074b7 `walls`) and the preamble explains them."""
     from chess_variant_sandbox.llm.propose import SCHEMA_PREAMBLE
 
     schema = rule_spec_schema()
     push = schema["properties"]["rules"]["properties"]["push"]
-    assert set(push["properties"]) == {"chain", "edge", "no_push_back"}
+    assert set(push["properties"]) == {"chain", "edge", "walls", "no_push_back"}
+    assert push["properties"]["walls"]["enum"] == ["block", "crush"]
     assert push["properties"]["chain"]["enum"] == ["one", "row", "weight"]
     piece = schema["properties"]["pieces"]["items"]["properties"]
     assert {"pushes", "weight"} <= set(piece)

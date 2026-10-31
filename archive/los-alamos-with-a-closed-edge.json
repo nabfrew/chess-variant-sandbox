@@ -1,0 +1,193 @@
+{
+  "schema_version": 31,
+  "name": "los alamos with a closed edge",
+  "description": "Chess on a six-by-six board without bishops, in which only the king can take. Every other piece, pawns included, moves as usual but shoves instead of capturing: moving onto an enemy piece pushes it one step further the way the mover was going (a knight's step being its whole jump, so a knight's shove sends a piece a knight's jump on), and only if the square there is empty. The edge of the board is closed: a shove that would push a piece off it is not allowed, so nothing is ever lost to a shove, and a piece leaves the board only when the enemy king takes it. Shoving is how you put the other side's pieces where you want them: away from the squares round their king, into a corner, into each other's way, or next to your own king to be eaten. Even a king can be shoved, and a shove threatened on a king is check. So the game is played for position, and won by checkmate, while the one piece that can take has to leave shelter to do it. A piece just shoved may not shove straight back on its owner's next move.",
+  "board": {
+    "width": 6,
+    "height": 6
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture",
+          "push": true
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both",
+          "push": true
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both",
+          "push": true
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both",
+          "push": true
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "e1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "d1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "N"
+      ]
+    },
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "push": {
+      "edge": "blocks",
+      "no_push_back": true
+    }
+  },
+  "provenance": {
+    "added": "2026-10-31",
+    "origin": "human",
+    "history": "Q1074bs: the showcase of rules.push.edge 'blocks' (docs/plan-push.md section 6.3): Los Alamos chess, every piece but the king pushing instead of capturing, no push back.",
+    "preview": "A preview: a new game showing one rule of pushing pieces, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and any score it has is a first reading, not yet trusted."
+  }
+}

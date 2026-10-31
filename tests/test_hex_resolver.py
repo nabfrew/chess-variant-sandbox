@@ -329,6 +329,11 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/berolina": "488735d94bc4a1ee",
     "rulesets/brink": "acbee9311ba0b12b",  # Q1074bg1, 2026-10-30
     "rulesets/dohyo": "046edcf48e185db7",  # Q1074bg2, 2026-10-30
+    "rulesets/rock-paper-shove": "43142f6be2e63c9b",  # Q1074bs, 2026-10-31
+    "archive/los-alamos-with-a-closed-edge": "019f4704a5c0d78c",  # Q1074bs, 2026-10-31
+    "archive/los-alamos-with-shove-or-take": "3510f2fd444cf5f9",  # Q1074bs, 2026-10-31
+    "archive/los-alamos-with-crushing-pillars": "94b792ffb6998eaa",  # Q1074bs, 2026-10-31
+    "archive/gardner-with-bishops-that-shove-straight": "6cd814eb527d1ff6",  # Q1074bs, 2026-10-31
     "rulesets/capablanca": "8cfb5815c674f10c",
     "archive/chess-oriented-pawns": "f1530cae8408d901",
     "rulesets/chess": "c638843d0cbb3fe4",

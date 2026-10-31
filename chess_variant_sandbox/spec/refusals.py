@@ -406,8 +406,6 @@ def _push(rid: str, second: str, why: str) -> Refusal:
     )
 
 
-_ROUND_TWO = "refused until the push rule's round 2 reads the pair (docs/plan-push.md)"
-
 PUSH_REFUSALS: tuple[Refusal, ...] = (
     # Refused for now, each with its reason (§3.1 D6 and D7 are a move's own shape and stay
     # inline in `schema._push_entry_refusals`).
@@ -433,17 +431,17 @@ PUSH_REFUSALS: tuple[Refusal, ...] = (
         "two pushes in one round can move each other's pushers, and a round has no order "
         "for a moved bystander",
     ),
-    # Round 1's refusals that round 2 lifts (§3.14).
-    _push("E2", "rules.en_passant", f"what an en passant push would push is unstated; {_ROUND_TWO}"),
-    _push("N4", "pieces[].sight", f"whether a frozen, disarmed or shielded piece pushes or is pushed; {_ROUND_TWO}"),
-    _push("N5", "pieces[].rest", f"whether a pushed piece still rests; {_ROUND_TWO}"),
-    _push("G1", "rules.reach", f"whether a piece pushed onto a goal decides the game; {_ROUND_TWO}"),
-    _push("G2", "rules.territory", f"whether a pushed piece claims its new square; {_ROUND_TWO}"),
-    _push("M1", "rules.purse", f"a bought piece's market region beside a push; {_ROUND_TWO}"),
+    # Round 1's refusals that round 2 lifted (§3.14; Q1074b8), each kept where its reading
+    # stops: rest, reach, territory and the purse were lifted whole.
     _push(
-        "H4", "rules.wrap",
-        "a row (rules.push.chain \"row\" or \"weight\") on a board with a seam has a ring "
-        f"to read; {_ROUND_TWO}",
+        "E2", "rules.en_passant",
+        "the en passant piece has a pushing capture entry whose push replaces its capture, so "
+        "what its en passant would push is unstated (give that push 'captures': true)",
+    ),
+    _push(
+        "N4", "pieces[].sight",
+        "a command that captures_own moves a commanded piece onto its owner's own piece, and "
+        "whether that landing pushes is unstated",
     ),
 )
 

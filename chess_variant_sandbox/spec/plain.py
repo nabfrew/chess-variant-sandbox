@@ -652,6 +652,13 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "that would leave the board is not allowed. A player's own royal piece is never "
         "shoved off.",
     ),
+    # Q1074b7 (W1, `docs/plan-push.md` §3.6): what a wall does to a shoved piece.
+    "rules.push.walls": (
+        "walls",
+        "A wall stops a shove: a piece cannot be shoved into one (the usual way); or a piece "
+        "shoved against a wall is crushed, gone and counted as taken. A player's own royal "
+        "piece is never crushed.",
+    ),
     # Q1074b6 (K5, `docs/plan-push.md` §3.12): the bar on shoving straight back.
     "rules.push.no_push_back": (
         "no shoving straight back",

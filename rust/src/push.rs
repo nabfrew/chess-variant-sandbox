@@ -103,9 +103,13 @@ impl<'t> Game<'t> {
     /// fall off is the mover's own royal (R4). Under `chain: "one"` the line is one piece;
     /// under `"weight"` the pusher's strength must be at least the line's summed weight (the
     /// user, 2026-10-30: greater or equal; strength and weight are two numbers, Q1074b4s).
-    /// A line that cannot move is no push: it never
-    /// stops part-way. Only a wrapped board could close a line on itself, where rows are
-    /// refused (H4, Q1074b7); a line of every square is refused all the same.
+    /// A line that cannot move is no push: it never stops part-way.
+    ///
+    /// Q1074b7: under `walls: "crush"` a wall behind the line (`PUSH_CRUSH`) removes the
+    /// piece pressed against it, as the edge removes one (C1), never the mover's own royal
+    /// (R4). On a wrapped board (H4) the walk stops at a square it already walked: a line
+    /// that comes back round to its target is a full ring, with no sink, and cannot move; one
+    /// that reaches the pusher's origin ends there, the origin being empty.
     #[allow(clippy::too_many_arguments)]
     fn push_line_moves(
         &self, push: &PushTables, origin: usize, target: usize, direction: usize,
@@ -135,13 +139,18 @@ impl<'t> Game<'t> {
             if behind == PUSH_STOP {
                 return false;
             }
-            if behind == PUSH_OFF {
-                if !push.edge_removes || (owner == player && t.is_royal(victim)) {
+            if behind == PUSH_OFF || behind == PUSH_CRUSH {
+                if (behind == PUSH_OFF && !push.edge_removes)
+                    || (owner == player && t.is_royal(victim))
+                {
                     return false;
                 }
                 return push_bears(push, piece_type, load);
             }
             let behind = behind as usize;
+            if behind == target {
+                return false;
+            }
             if !push.may_stand(t.n_types, t.n_squares, owner, victim, behind) {
                 return false;
             }
@@ -206,8 +215,9 @@ impl<'t> Game<'t> {
         [standing as i16, target as i16]
     }
 
-    /// The square after `square` on the line of the push `m`, `None` off the board. Asked
-    /// only of a line the push was offered for, so never of a wall.
+    /// The square after `square` on the line of the push `m`, `None` off the board or
+    /// against a crushing wall (Q1074b7). Asked only of a line the push was offered for, so
+    /// never of a wall that blocks.
     #[inline]
     pub(super) fn push_next(&self, m: u32, square: usize) -> Option<usize> {
         let t = self.t;
@@ -220,7 +230,7 @@ impl<'t> Game<'t> {
     /// Q1074b4 (§2, K2): shift the line the `MOVE_PUSH` `m` landed on one step, the pusher
     /// already on the target (so its origin is empty) and `first` the piece that stood there.
     /// Walks forward carrying each piece onto the next square until that square was empty
-    /// (the line's sink) or the line meets the edge, and returns `(captured,
+    /// (the line's sink) or the line meets the edge or a crushing wall, and returns `(captured,
     /// captured_square)`: the piece that fell off and the square it fell from, or 0 and the
     /// sink. Under `chain: "one"` the line is one piece, so this is one write. `put(game,
     /// square, value)` writes a square: `make` keys it and clears its `unmoved` bit (E1, E3),

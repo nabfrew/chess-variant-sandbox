@@ -2180,8 +2180,8 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
 
 def _describe_push(spec: dict[str, Any]) -> list[str]:
     """Q1074b4 (`docs/plan-push.md` §2): what a push moves (`rules.push.chain`) and what the
-    edge does to it, in a game some move of which pushes; and (Q1074b6, K5) the bar on
-    pushing straight back."""
+    edge and a wall do to it (Q1074b7: a crushing wall), in a game some move of which pushes;
+    and (Q1074b6, K5) the bar on pushing straight back."""
     rule = push_rule(spec)
     if rule is None:
         return []
@@ -2201,7 +2201,11 @@ def _describe_push(spec: dict[str, Any]) -> list[str]:
         "pusher may push every piece in the line and its strength is at least the line's "
         "weights added together, and the last falls off at the edge.",
     }[rule["chain"]]
-    lines = [f"{chain} A wall blocks a push, and {edge}."]
+    wall = (
+        "A piece pushed against a wall is crushed, removed as if taken by the pusher (never "
+        "the pusher's own royal)" if rule["walls"] == "crush" else "A wall blocks a push"
+    )
+    lines = [f"{chain} {wall}, and {edge}."]
     if rule["no_push_back"] is True:
         lines.append(
             "No push back: a piece just pushed to a new square, and not removed, may not on "

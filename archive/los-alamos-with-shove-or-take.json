@@ -1,0 +1,194 @@
+{
+  "schema_version": 31,
+  "name": "los alamos with shove or take",
+  "description": "Chess on a six-by-six board without bishops, in which the knights, rooks and queens have two ways to use a capture. Landing on an enemy piece, one may take it as usual, or instead shove it one step further the way it was moving (a knight shoves a piece a whole knight's jump on), provided the square there is empty or off the board; a piece shoved off the edge is out, as if taken. A shove leaves the enemy piece alive but elsewhere, so it is the move to make when the piece is worth more where you send it than gone: tipped over the edge while the shover stands, pushed in front of a pawn, or out of its king's defence, or when a shove gives check that a capture would not. Pawns and the king only take.",
+  "board": {
+    "width": 6,
+    "height": 6
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both",
+          "push": {
+            "captures": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both",
+          "push": {
+            "captures": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both",
+          "push": {
+            "captures": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "e1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "d1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "N"
+      ]
+    },
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-31",
+    "origin": "human",
+    "history": "Q1074bs: the showcase of a move's push.captures true (docs/plan-push.md section 6.3): Los Alamos chess whose knights, rooks and queen may take or push.",
+    "preview": "A preview: a new game showing one rule of pushing pieces, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and any score it has is a first reading, not yet trusted."
+  }
+}

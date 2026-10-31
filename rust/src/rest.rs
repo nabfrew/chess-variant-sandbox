@@ -124,6 +124,40 @@ impl<'t> Game<'t> {
         delta ^ rest.key(n, player, square, turns)
     }
 
+    /// Q1074b8 (N5, `docs/plan-push.md` §3.9): a push moves every piece of its line, and a
+    /// pushed piece rests no more. Drop every entry (either player's) standing on a square
+    /// the line covered, the target to the square its last piece reached or fell from
+    /// (`captured_square`), before `rest_after_turn` enters the pusher. The code test alone
+    /// would miss one: under a row, a piece of the same code pushed onto a resting piece's
+    /// square would inherit its rest. Returns the change to the key.
+    #[cold]
+    #[inline(never)]
+    pub(super) fn rest_unrest_line(&mut self, m: u32, end: usize) -> u64 {
+        let t = self.t;
+        let rest = t.rest.as_deref().expect("a rest update without a rest");
+        let n = t.n_squares;
+        let mut delta = 0u64;
+        let mut square = move_to(m);
+        for _ in 0..n {
+            for owner in 0..2 {
+                for entry in self.resting[owner][..rest.slots].iter_mut() {
+                    if entry.live() && entry.square as usize == square {
+                        delta ^= rest.key(n, owner, square, entry.left);
+                        *entry = Resting::NONE;
+                    }
+                }
+            }
+            if square == end {
+                break;
+            }
+            match self.push_next(m, square) {
+                Some(behind) => square = behind,
+                None => break,
+            }
+        }
+        delta
+    }
+
     /// The part of the key the resting pieces contribute (`compute_hash`).
     pub(super) fn rest_key(&self) -> u64 {
         let Some(rest) = self.t.rest.as_deref() else {

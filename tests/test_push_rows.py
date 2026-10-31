@@ -13,7 +13,6 @@ games, both seats, with the incremental key checked every ply; `make`/`unmake` a
 
 from __future__ import annotations
 
-import dataclasses
 import random
 from typing import Any
 
@@ -342,14 +341,10 @@ def test_a_row_whose_last_piece_is_the_pusher_s_own_takes_nothing() -> None:
     assert engine.describe_move(state, pseudo[0]) == "Ra4>>f4"
 
 
-def test_the_bridge_admits_rows_and_weights_and_holds_rows_on_a_wrap() -> None:
+def test_the_bridge_admits_rows_and_weights() -> None:
+    """Rows on a wrapped board are admitted too since Q1074b7 (`tests/test_push_crush.py`)."""
     assert rust_supports(compile_spec(_army(False))) is None
     assert rust_supports(compile_spec(_army(True))) is None
-    # The validator refuses a row on a wrapped board (push.H4); one that reached the compiler
-    # some other way is held too, until Q1074b7 reads the ring.
-    held = rust_supports(dataclasses.replace(compile_spec(_army(False)), wrap=object()))
-    assert held is not None and "push.H4" in held
-    assert "Q1074b4" not in held
 
 
 def test_the_schema_offers_every_chain() -> None:

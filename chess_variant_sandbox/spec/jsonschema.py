@@ -48,6 +48,7 @@ from chess_variant_sandbox.spec.schema import (
     PUSH_ALONG,
     PUSH_CHAINS,
     PUSH_EDGES,
+    PUSH_WALLS,
     PUSH_WHOSE,
     REACH_ON,
     REPETITION_NEVER,
@@ -1696,8 +1697,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 ),
             ),
             # Q1074b2 (`docs/plan-push.md` §1.2, §2): the core plays the single push, and
-            # since Q1074b4 rows and weights, since Q1074b6 no push back (K5); `walls` is
-            # not offered until Q1074b7 plays the crush.
+            # since Q1074b4 rows and weights, since Q1074b6 no push back (K5), since Q1074b7
+            # the crush (W1) and rows on a wrapped board (H4).
             "push": _object(
                 {
                     "chain": {
@@ -1714,7 +1715,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "else its weight) is at least the sum of the weights in the "
                             "line; every piece that may be pushed then needs a weight, every "
                             "pusher a strength or a weight, and a pushes list still applies. "
-                            "Not on a wrapped board beside 'row' or 'weight'."
+                            "On a wrapped board a line that comes round to the piece landed "
+                            "on fills its ring and cannot move, and one that comes round to "
+                            "the pusher's own square ends there."
                         ),
                     },
                     "edge": {
@@ -1724,7 +1727,19 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "'removes' (the default): a piece pushed off the board (or into "
                             "a hexagon's missing corner) is removed, counted as taken by the "
                             "pusher; never the mover's own royal. 'blocks': a push that "
-                            "would leave the board is not offered. A wall always blocks."
+                            "would leave the board is not offered. A wall blocks unless "
+                            "walls is 'crush'."
+                        ),
+                    },
+                    "walls": {
+                        "type": "string",
+                        "enum": list(PUSH_WALLS),
+                        "description": (
+                            "'block' (the default): a push that would press a piece into a "
+                            "wall (rules.obstacles) is not offered. 'crush': the piece "
+                            "pressed against the wall is removed instead, counted as taken by "
+                            "the pusher as one pushed off the board is; never the mover's "
+                            "own royal. Needs a wall on the board."
                         ),
                     },
                     "no_push_back": {

@@ -13,6 +13,16 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-31
 
+### Rock paper shove, and four small push games to try
+
+New in the library: rock paper shove, on a 7 x 7 board where nothing is ever captured. There are three kinds of piece, and
+each can shove only the next kind round a circle: rock shoves scissors, scissors shove paper, paper shoves rock. A line of
+mixed kinds can't be pushed by anyone, and a side with no piece left of one kind loses.
+
+Four smaller games show the rest of what shoving can do, each one idea on a familiar small board: an edge that stops a shove
+instead of throwing the piece off, a choice between shoving and taking, pillars that crush a piece shoved against them, and
+bishops that move on the diagonal but shove straight ahead. You can play each against the computer.
+
 ### Dohyo: a wrestling ring where weight decides
 
 New in the library: Dohyo, a 7 x 7 ring where nothing is ever captured. Pieces shove, and a piece is lost only when it is

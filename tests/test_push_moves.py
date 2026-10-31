@@ -344,13 +344,11 @@ def test_the_bridge_admits_the_single_push_and_holds_the_rest() -> None:
         ("strike", object(), "push.X2"),
         ("explosion", object(), "push.X3"),
         ("simultaneous", object(), "push.S1"),
-        ("sight", object(), "push.N4"),
-        ("rest", (1,) * sumo.n_types, "push.N5"),
-        ("reach", object(), "push.G1"),
-        ("territory", object(), "push.G2"),
-        ("purse", object(), "push.M1"),
     ]:
         held = rust_supports(dataclasses.replace(sumo, **{field: value}))
         assert held is not None and words in held, field
+    # Q1074b8 lifted sights (all but a turncoat command), rest, reach, territory and the
+    # purse (`tests/test_push_round_two.py`, which holds the command's hold).
+    assert rust_supports(dataclasses.replace(sumo, rest=(1,) * sumo.n_types)) is None
     # Q1074b3 lifted `must_capture` (and the capture hand, `tests/test_push_captures.py`).
     assert rust_supports(dataclasses.replace(sumo, must_capture=True)) is None

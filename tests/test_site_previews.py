@@ -41,12 +41,17 @@ from chess_variant_sandbox.web.server import App
 ARCHIVE = Path(__file__).resolve().parent.parent / "archive"
 RULESETS = Path(__file__).resolve().parent.parent / "rulesets"
 
-ARCHIVED_PREVIEWS: dict[str, str] = {}
-"""The previews in `archive/`: none since Q1005 (2026-10-23,
-`docs/reference/preview-call-2026-10.md`), which made a call on each of the eleven the user
-asked about. Five joined the library (`JOINED_TURNS`, four since Q1007e retired one) and six left for `tests/_retired_*.json`,
-as Q962b's six and Q962c's one had (`docs/reference/previews-2026-10-18.md`). The next
-showcase archived as a preview is listed here."""
+ARCHIVED_PREVIEWS: dict[str, str] = {
+    "los-alamos-with-a-closed-edge.json": "daa6917bd359",
+    "los-alamos-with-shove-or-take.json": "1fced818630e",
+    "los-alamos-with-crushing-pillars.json": "e72a8715217c",
+    "gardner-with-bishops-that-shove-straight.json": "e271933cd127",
+}
+"""The previews in `archive/`: Q1074bs's four push showcases (2026-10-31, `docs/plan-push.md`
+§6.3). None from Q1005 (2026-10-23, `docs/reference/preview-call-2026-10.md`), which made a
+call on each of the eleven the user asked about, until then. Five joined the library
+(`JOINED_TURNS`, four since Q1007e retired one) and six left for `tests/_retired_*.json`, as
+Q962b's six and Q962c's one had (`docs/reference/previews-2026-10-18.md`)."""
 
 RETIRED_PREVIEW_FILES = {
     # Q935f's SP2 (`plan-spy.md` §5): a spy game starts by turns and ends in rounds once a
@@ -104,9 +109,10 @@ SPY_PREVIEWS = frozenset({"gardner-with-spies-resting.json"})
 """The preview that starts by turns (`library` `rounds` is false for a spy game, Q935c) and
 offer the spy ladder, which has no round player (`opponents.SPY_RUNGS`)."""
 
-TURN_PREVIEWS = frozenset({"gardner-with-weary-heavies.json"})
-"""The preview played by turns from the first move to the last (Q983d's U1, schema 29's rest in
-alternating play): offered the alternating ladder (`opponents.RUNGS`), as any game by turns is."""
+TURN_PREVIEWS = frozenset({"gardner-with-weary-heavies.json", *ARCHIVED_PREVIEWS})
+"""The previews played by turns from the first move to the last (Q983d's U1, schema 29's rest in
+alternating play, and Q1074bs's push previews): offered the alternating ladder (`opponents.RUNGS`), as any
+game by turns is."""
 
 PLAIN = "kyoto.json"
 """An archived game that is no preview, for the library's side of every comparison."""

@@ -80,6 +80,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/berolina.json": ("d06cfc337d9c", "4945059532fe19a2"),
     "rulesets/brink.json": ("07484b9a09a5", "b041b3f25ccbe796"),  # Q1074bg1, 2026-10-30: the push showcase on chess
     "rulesets/dohyo.json": ("242c02248dd2", "c6f2bc89e805c2be"),  # Q1074bg2, 2026-10-30: pushing a line by weight and strength
+    "rulesets/rock-paper-shove.json": ("e926b98681ab", "787007e4001fe4d8"),  # Q1074bs, 2026-10-31: a circle of pushes
     "rulesets/capablanca.json": ("2eefcd835b3b", "304b04afb9d2d47b"),
     # Re-frozen 2026-09-07 by Q98, on the same footing as `intransitive` below: the
     # phantom `"en_passant": true` came off the spec when `_check_inert_rules` learned
@@ -559,6 +560,13 @@ FROZEN: dict[str, tuple[str, str]] = {
     # generations 44 to 46 (`docs/plan-turncoat.md` section 8.5;
     # `tests/test_showcase_free_companies.py`), from `4c1922ffae26`. New.
     "archive/the-free-companies.json": ("f858b7a63dea", "1c12b1b92fd5fdfb"),
+    # Q1074bs, 2026-10-31: the push showcases (`docs/plan-push.md` section 6.3), previews, each
+    # one push knob on a small chess: a closed edge, push or take, walls that crush, a push
+    # along the file. New.
+    "archive/los-alamos-with-a-closed-edge.json": ("daa6917bd359", "d582b198ce058357"),
+    "archive/los-alamos-with-shove-or-take.json": ("1fced818630e", "eeaf13ab0f86e086"),
+    "archive/los-alamos-with-crushing-pillars.json": ("e72a8715217c", "5c8cedae6167969c"),
+    "archive/gardner-with-bishops-that-shove-straight.json": ("e271933cd127", "82ac0eef158609ca"),
 }
 
 

@@ -23,7 +23,11 @@ its own means, what the compiler must have put in its tables:
 * **the bar on pushing straight back** (Q1074b6, K5, ``bar_after``, and ``push_moves``'
   ``bar``): after a push that moved the piece landed on from ``x`` to ``y`` and did not throw
   it off, where that piece is the next mover's, no push from ``y`` onto ``x`` on the next
-  move; every other move leaves no bar.
+  move; every other move leaves no bar;
+* **crushing walls and rings** (Q1074b7, W1, H4): under ``rules.push.walls: "crush"`` a piece
+  pushed against a wall is removed, as one pushed off the board (never the pusher's own
+  royal); on a wrapped board a line that comes back round to its target is a full ring and
+  cannot move, and one that reaches the pusher's origin ends there.
 
 Squares are worked out by file and rank here, never through a compiled table or
 `compile._land`, and a hexagon's cells by their own distance test. It covers what the tests ask
@@ -39,6 +43,7 @@ from typing import Any
 
 PUSH_OFF = -1
 PUSH_STOP = -2
+PUSH_CRUSH = -3
 ENEMY = 4
 OWN = 8
 CAPTURE = 2
@@ -183,12 +188,16 @@ def landings(
 
 
 def next_square(spec: dict[str, Any], square: int, step: Step) -> int:
-    """Where a piece on ``square`` goes when pushed by ``step``."""
+    """Where a piece on ``square`` goes when pushed by ``step``: a wall crushes it under
+    ``walls: "crush"`` (Q1074b7) and stops it otherwise."""
     board = Board(spec)
     target = board.step(square, *step)
     if target is None:
         return PUSH_OFF
-    if target in board.walls or target == square:
+    if target in board.walls:
+        crush = (spec.get("rules", {}).get("push") or {}).get("walls") == "crush"
+        return PUSH_CRUSH if crush else PUSH_STOP
+    if target == square:
         return PUSH_STOP
     return target
 
@@ -301,11 +310,13 @@ def push_moves(
                     behind = next_square(spec, square, pushed)
                     if behind == PUSH_STOP:
                         break
-                    if behind == PUSH_OFF:
-                        moves = edge_removes and not (
+                    if behind in (PUSH_OFF, PUSH_CRUSH):
+                        moves = (behind == PUSH_CRUSH or edge_removes) and not (
                             whose == "own" and pieces[victim].get("royal")
                         )
                         break
+                    if behind == target:
+                        break  # a full ring (H4): no square of it is empty
                     if behind == origin or not board[behind]:
                         moves = True
                         break
@@ -358,15 +369,30 @@ def bar_after(
     _origin, target, step, _promoted = push
     standing = next_square(spec, target, step)
     assert standing != PUSH_STOP, push
-    if standing == PUSH_OFF or decode(before[target])[0] != 1 - player:
+    if standing in (PUSH_OFF, PUSH_CRUSH) or decode(before[target])[0] != 1 - player:
         return (-1, -1)
     return (standing, target)
+
+
+def line_squares(spec: dict[str, Any], board: bytes, push: PushMove) -> list[int]:
+    """Q1074b8: the squares of the line ``push`` moves, on ``board`` before it: the target and
+    every occupied square behind it along the pushed step, up to the first empty square (the
+    pusher's origin counts as empty), the edge or a wall. Squares by file and rank."""
+    origin, target, step, _promoted = push
+    line, square = [target], target
+    while True:
+        behind = next_square(spec, square, step)
+        if behind < 0 or behind in (origin, target) or not board[behind]:
+            return line
+        line.append(behind)
+        square = behind
 
 
 def after_push(spec: dict[str, Any], board: bytes, push: PushMove) -> bytes:
     """The board after ``push`` (``push_moves``' shape) with no promotion: the pusher on the
     target, every piece of the line one step on along the pushed step, and the line's last
-    piece gone where the step from it leaves the board. Squares by file and rank."""
+    piece gone where the step from it leaves the board or meets a crushing wall. Squares by
+    file and rank."""
     origin, target, step, promoted = push
     assert promoted == 0, push
     out = bytearray(board)
@@ -376,7 +402,7 @@ def after_push(spec: dict[str, Any], board: bytes, push: PushMove) -> bytes:
     while True:
         behind = next_square(spec, square, step)
         assert behind != PUSH_STOP, push
-        if behind == PUSH_OFF:
+        if behind in (PUSH_OFF, PUSH_CRUSH):
             break
         there = out[behind]
         out[behind] = carry

@@ -1176,8 +1176,8 @@ pub struct PushTables {
     /// under `"blocks"` such a push is not offered.
     pub edge_removes: bool,
     /// `[direction * n_squares + square]`: where a piece on `square` goes when pushed in that
-    /// direction, `PUSH_OFF` off the board, `PUSH_STOP` a wall. `_land`'s answer; the core
-    /// computes no square.
+    /// direction, `PUSH_OFF` off the board, `PUSH_STOP` a wall, `PUSH_CRUSH` a wall that
+    /// crushes (Q1074b7). `_land`'s answer; the core computes no square.
     pub next: Vec<i16>,
     /// Parallel to each movement table's landings: the push direction at that landing, -1
     /// where it pushes nothing.
@@ -1218,6 +1218,10 @@ pub const PUSH_CHAIN_WEIGHT: u8 = 2;
 pub const PUSH_OFF: i16 = -1;
 /// `PushTables::next`: a wall, which nothing may be pushed onto.
 pub const PUSH_STOP: i16 = -2;
+/// `PushTables::next` (Q1074b7, W1): a wall under `rules.push.walls: "crush"`, against which
+/// a pushed piece is removed, counted as a piece pushed off the board (C1). Compiled only
+/// under that rule, so every other game's `next` holds none.
+pub const PUSH_CRUSH: i16 = -3;
 /// `AttackSource::dirs` in a push game (`compile.ATTACK_BY_CAPTURE`, `ATTACK_BY_PUSH`).
 pub const ATTACK_BY_CAPTURE: u8 = 1;
 pub const ATTACK_BY_PUSH: u8 = 2;
@@ -2412,8 +2416,9 @@ impl Tables {
     /// `chain: "one"` the removed piece is the target's; under `"row"` and `"weight"` it is
     /// the last of the line (the target's piece and every piece behind it up to the first
     /// empty square, the pusher's origin counting as empty), which falls off where the
-    /// line meets the edge. Read off `board` before the move; the word was offered, so the
-    /// line is one that may move. `CompiledSpec.push_taken` is the Python side's copy.
+    /// line meets the edge, or is crushed where it meets a crushing wall (Q1074b7). Read
+    /// off `board` before the move; the word was offered, so the line is one that may move.
+    ///`CompiledSpec.push_taken` is the Python side's copy.
     #[cold]
     #[inline(never)]
     pub fn push_taken(&self, board: &[u8], m: u32) -> u8 {
@@ -2424,7 +2429,7 @@ impl Tables {
         let mut square = move_to(m);
         for _ in 0..self.n_squares {
             let behind = push.next_of(self.n_squares, direction, square);
-            if behind == PUSH_OFF {
+            if behind == PUSH_OFF || behind == PUSH_CRUSH {
                 let removed = board[square];
                 return if self.owner_of(removed) != self.owner_of(board[origin]) {
                     removed
@@ -3903,7 +3908,7 @@ impl Tables {
             return fail(format!("push_next holds {} squares", next.len()));
         }
         let n_directions = next.len() / n_squares;
-        let off_board = |square: &i16| *square < PUSH_STOP || *square as i32 >= n_squares as i32;
+        let off_board = |square: &i16| *square < PUSH_CRUSH || *square as i32 >= n_squares as i32;
         if n_directions > 1 << MOVE_TAG_BITS || next.iter().any(off_board) {
             return fail("push_next does not fit this board and the move word".to_string());
         }

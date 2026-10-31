@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from chess_variant_sandbox.engine.compile import CompiledSpec
+from chess_variant_sandbox.engine.compile import SIGHT_COMMAND_OWN, CompiledSpec
 
 # A stated ending result, as the integer the core carries: a loss for the side the rule
 # describes, a draw, or a win for them. ``ENDING_RESULTS`` promises all three, so all
@@ -1674,7 +1674,8 @@ def _push_holds(spec: CompiledSpec) -> list[str]:
     this one, then what the move word and the attack sources cannot carry. Q1074b3 lifted
     the capture hand and `must_capture`: a removing push counts as a capture at every site
     that counts one (`Tables::push_takes`). Q1074b4 lifted rows and weights (`chain`
-    ``"row"``, ``"weight"``), off a wrapped board (H4 is Q1074b7's)."""
+    ``"row"``, ``"weight"``), Q1074b7 rows on a wrapped board (H4) and the crush (W1), and
+    Q1074b8 the round-2 rows (E2 in part, N4 in part, N5, G1, G2, M1)."""
     push = spec.push
     assert push is not None
     held: list[str] = []
@@ -1684,12 +1685,13 @@ def _push_holds(spec: CompiledSpec) -> list[str]:
         (spec.strike is not None, "rules.strike or rules.contacts (push.X2)"),
         (spec.explosion is not None, "rules.explode_on_capture (push.X3)"),
         (spec.simultaneous is not None, "rules.simultaneous (push.S1)"),
-        (spec.sight is not None, "pieces[].sight (push.N4)"),
-        (any(spec.rest), "pieces[].rest (push.N5)"),
-        (spec.reach is not None, "rules.reach (push.G1)"),
-        (spec.territory is not None, "rules.territory (push.G2)"),
-        (spec.purse is not None, "rules.purse (push.M1)"),
-        (spec.wrap is not None and push.chain != 0, "a row on a wrapped board (push.H4)"),
+        # Q1074b8 lifted the rest of round 1's rows (sights, rest, reach, territory, the
+        # purse, en passant where the pushing entry keeps its capture); a turncoat command
+        # stays. (E2's remainder was never held here: the compiled landing does not say
+        # whether a push replaced a capture, and the core then offers no en passant there.)
+        (spec.sight is not None and any(
+            entry.effect & SIGHT_COMMAND_OWN for row in spec.sight.entries for entry in row
+        ), "pieces[].sight with captures_own (push.N4)"),
         # Not in the plan's rows, held until a stage reads them (`plan-push.md`, Q1074b2's notes).
         (spec.drops is not None and spec.drops.gates is not None,
          "rules.drops.gating: a push by an unmoved piece gating (E5)"),

@@ -1238,6 +1238,29 @@ bounty's snowball (the first capturer won 0.647 of decided graded games, under c
 Its weakest families were depth, pacing and variety (0.91 each). `tests/test_showcase_free_companies.py`
 holds the mechanism, and `tests/free_companies_study.py` reads the runs.
 
+## The push previews — generation 56, one knob of the push each (Q1074bs)
+
+2026-10-31, four **previews** (`provenance.preview`: on the site as practice, unscored), the
+one-feature showcases of `docs/plan-push.md` §6.3, each a small chess with one push knob. Their
+library sibling is `rulesets/rock-paper-shove.json` (the circle). Each was read off one design
+tournament (96 games) by `docs/reference/push-showcases.py` against a twin with the knob undone;
+none is measured yet.
+
+- **`los-alamos-with-a-closed-edge`** (`daa6917bd359`): `rules.push.edge: "blocks"`. Los Alamos,
+  every piece but the king pushing instead of capturing, no push back; nothing is ever pushed off,
+  so only the king removes pieces. The edge refused 0.725 of the pushes the open-edge twin offers;
+  a push at 0.153 of plies; decisive 0.927, all by checkmate. Knights alone pushing were tried
+  first and pushed too rarely to show anything (`plan-push.md` §6.3).
+- **`los-alamos-with-shove-or-take`** (`1fced818630e`): `push.captures: true`. Knights, rooks and
+  queen may take or push; both were offered on one square at 0.342 of plies, the push chosen 160
+  times and the capture 298; decisive 0.885.
+- **`los-alamos-with-crushing-pillars`** (`e72a8715217c`): `rules.push.walls: "crush"`. Walls on
+  b3, e3, b4 and e4, every piece but the king pushing instead of capturing, no push back; 87 pieces
+  crushed against the walls beside 565 pushed off the edge; decisive 0.750.
+- **`gardner-with-bishops-that-shove-straight`** (`e271933cd127`): `push.along: "file"`. Gardner's
+  bishops push along the file instead of capturing; 329 of 345 bishop pushes went another way than
+  the move's own step; decisive 0.885.
+
 ## `the-herd.json` — generations 37 and 42, wild pieces that see and the duck that walks (N9)
 
 2026-10-26, **in the library** (`2135109e8191`). The showcase of `docs/archive/plan-npc.md` §6.4, the
@@ -1501,4 +1524,4 @@ retired its six, the files moved unchanged to `tests/_retired_<stem>.json` and n
 `gardner-in-rounds-with-a-swift-king`, `gardner-in-rounds-with-swift-knights`,
 `watering-hole-by-speed` and `gardner-with-spies-resting`. No hash moved, no file was deleted, their
 runs stay in `runs/`, and on the site each is *retired* at the next deploy, its page, matches and
-ratings kept. `archive/` holds no preview now.
+ratings kept. `archive/` held no preview from then until Q1074bs's four push previews (2026-10-31, above).

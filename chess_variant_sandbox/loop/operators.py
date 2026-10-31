@@ -1176,8 +1176,6 @@ def _win_by_arrival(spec: dict[str, Any], rng: random.Random) -> str | None:
     not settle the stamp, so twelve schema-1 parents lost every child to `rules uses
     reach, added in schema 2`. 72 of 282 in the sweep.
     """
-    if push_bars(spec, "reach"):
-        return None  # Q1074b5: `rules.reach` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
     if majority_ids(spec):
         return None
@@ -1377,8 +1375,6 @@ def _claim_the_ground(spec: dict[str, Any], rng: random.Random) -> str | None:
     with nothing to count is a spec the validator rejects by name -- and an operator
     that produced one would spend a draw on a candidate that could never be played.
     """
-    if push_bars(spec, "territory"):
-        return None  # Q1074b5: `rules.territory` is refused beside a push (§3.14)
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
     if majority_ids(spec):
         return None
@@ -1450,8 +1446,6 @@ def _join_the_edges(spec: dict[str, Any], rng: random.Random) -> str | None:
     `ne_sw` gives 21 moves across it, and `nw_se`, the empty flanks, none. It declines
     when no pair is clear, and so does any vector the joined board would refuse.
     """
-    if push_bars(spec, "wrap"):
-        return None  # Q1074b5: a row is refused on a joined board (push.H4)
     rules = spec.setdefault("rules", {})
     if rules.get("wrap"):
         strip_rule(spec, "wrap")
@@ -4840,7 +4834,7 @@ def _pay_the_loser(spec: dict[str, Any], rng: random.Random) -> str | None:
 # Q1074b5 (`docs/plan-push.md` §4, generation 56): four operators that add and take away each
 # of the push's features, so a design run can cross every one in either direction. Each makes
 # its edit and asks the validator, declining where it refuses (the push is refused beside a
-# dozen rules, §3.14, and an operator that copied those clauses would drift from them).
+# handful of rules, §3.14, and an operator that copied those clauses would drift from them).
 
 
 def _push_candidates(spec: dict[str, Any]) -> list[str]:

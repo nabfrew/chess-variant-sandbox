@@ -2330,7 +2330,7 @@ impl<'t> Game<'t> {
         self.write_goal_left(&played);
         self.write_portal_bar(&played, &mut key);
         self.write_push_bar(m, &played, &mut key);
-        self.write_rest(&played, &mut key);
+        self.write_rest(m, &played, &mut key);
 
         self.undo.push(Undo {
             origin: played.origin,
@@ -2909,10 +2909,14 @@ impl<'t> Game<'t> {
     /// move ended: its origin for a turn in place or a strike that stays, else the
     /// target; one blown up or eaten in the phase stands nowhere, which the board says.
     #[inline(always)]
-    fn write_rest(&mut self, played: &Played, key: &mut u64) {
+    fn write_rest(&mut self, m: u32, played: &Played, key: &mut u64) {
         if self.t.rest.is_some() {
             self.rest_log.push(self.resting);
             let kind = played.kind;
+            // Q1074b8 (N5): every piece the push moved rests no more.
+            if kind == MOVE_PUSH {
+                *key ^= self.rest_unrest_line(m, played.captured_square);
+            }
             let end = if kind == MOVE_ROTATE || played.stayed { played.origin } else { played.target };
             // TC6: a hire or a bribe moves no piece, so nothing enters a rest; a bribed piece's
             // own rest ends because its square no longer holds the code that rested there.

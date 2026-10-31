@@ -704,8 +704,23 @@ def settle_push(spec: dict[str, Any]) -> bool:
     rules = spec.get("rules")
     if not isinstance(listed, list) or not isinstance(rules, dict):
         return False
-    pushers = set(pushing_ids(listed))
     changed = False
+    # Q1074bs: a list emptied by an edit (``drop_piece`` took the one type a circle's pusher
+    # pushed) is a pusher that pushes nothing, which the validator refuses; its moves lose
+    # the push, as that refusal asks, and the list goes with them.
+    for piece in listed:
+        if isinstance(piece, dict) and piece.get("pushes") == []:
+            for move in piece.get("moves") or ():
+                if isinstance(move, dict) and "push" in move:
+                    del move["push"]
+            del piece["pushes"]
+            changed = True
+    pushers = set(pushing_ids(listed))
+    push_rule = rules.get("push")
+    # Q1074bs: a crush with its walls taken away (``wall-off-a-square``) can never fire.
+    if isinstance(push_rule, dict) and push_rule.get("walls") == "crush" and not rules.get("obstacles"):
+        del push_rule["walls"]
+        changed = True
     for piece in listed:
         if not isinstance(piece, dict) or piece.get("id") in pushers:
             continue
