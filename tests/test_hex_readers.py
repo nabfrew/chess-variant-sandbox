@@ -313,7 +313,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/bastion": "74c12b0fe52b876b",
     "rulesets/berolina": "733c98e8156d9fb6",  # Q614 (W7): its description, for a player; 2026-10-18: its description, written as the game's idea (was 32995edcf561f5e3)
     "rulesets/brink": "2307e963db78b4b2",  # Q1074bg1, 2026-10-30
-    "rulesets/dohyo": "ee04f5c4ac063dae",  # Q1074bg2, 2026-10-30
+    "rulesets/dohyo": "540f1a7a8d2039d7",  # Q1074bd, 2026-10-31: the corner ring (was ee04f5c4ac063dae, Q1074bg2)
     "rulesets/rock-paper-shove": "cc56261d19467597",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "2c67ec37c9123078",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "2702b1dee85bfe5c",  # Q1074bs, 2026-10-31

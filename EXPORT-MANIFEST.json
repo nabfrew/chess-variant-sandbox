@@ -1,5 +1,5 @@
 {
- "source_commit": "9be67be43f4ff56bb77be9a4e576b2dccaf372ce",
+ "source_commit": "c722e355e5ccd814e820ca225f694fa7bb6e4881",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -2176,13 +2176,13 @@
   },
   {
    "path": "chess_variant_sandbox/puzzles.py",
-   "bytes": 57642,
-   "sha256": "e524dc015a88b7a8ff2aa56f415fdb9bb05334adc3226755811b12ef5bf4f9c4"
+   "bytes": 58989,
+   "sha256": "76556e19dbcd162bf0e8e24c176698a19385d900d3d5be761f24c1c638f1b290"
   },
   {
    "path": "chess_variant_sandbox/refresher.py",
-   "bytes": 75241,
-   "sha256": "6721b1e5ca4705050a5c0bf2bba6967acd89af6f388bfc2020a38395b9d3489c"
+   "bytes": 75623,
+   "sha256": "0bd53eb599f0cc372c358ef13d77703dacba6868ba97395441bb8cbcfb1fe453"
   },
   {
    "path": "chess_variant_sandbox/site/__init__.py",
@@ -3456,8 +3456,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 163297,
-   "sha256": "cd5c20706698d8e8ced0144ad9ea49108c4667ff7c83b902ac8d51292075bc03"
+   "bytes": 163586,
+   "sha256": "5c4f77ad242cf22b6f5e5f680f8b4d5ff3270dec644f1209db05c14606b73336"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -4371,8 +4371,8 @@
   },
   {
    "path": "rulesets/dohyo.json",
-   "bytes": 3663,
-   "sha256": "716ae11558ff26775d1983f120c19492df7fe8db19a499526246c33c1f3e08fd"
+   "bytes": 3986,
+   "sha256": "fe13ad3d1ddf2e7f4cdd73a3ab075a66b4645a03154a7688a5da7154ff7611be"
   },
   {
    "path": "rulesets/dull.json",
@@ -5941,13 +5941,13 @@
   },
   {
    "path": "tests/test_hex_readers.py",
-   "bytes": 34254,
-   "sha256": "54a65a7ae13e9580a1e7e6c6b3549b1359eb47dc35b0b7164df1de3eaa2cf66c"
+   "bytes": 34303,
+   "sha256": "2f901613eb9a323381448ffd1390e3a8b23f2cea3bdd9e5c69217b78a07e545d"
   },
   {
    "path": "tests/test_hex_resolver.py",
-   "bytes": 24531,
-   "sha256": "ec8c6895ae25547704756ec1f794456428333419d2b19968409dede1d03ab5d5"
+   "bytes": 24580,
+   "sha256": "345f550d07bc939929e408749c11252545610075bb91d812cf6b81dc5cb2a792"
   },
   {
    "path": "tests/test_hex_turning_path.py",
@@ -6421,8 +6421,8 @@
   },
   {
    "path": "tests/test_puzzles.py",
-   "bytes": 47500,
-   "sha256": "d5ac73d5652e9df79dd9dc4ebf62eae8caf7a40815962b6459ba7307f2cc6ad9"
+   "bytes": 48884,
+   "sha256": "73627b59afa69980335708ec11c9964ba9655a39f98e52afaf61dc7eef39d730"
   },
   {
    "path": "tests/test_rated_learned_player.py",
@@ -6631,8 +6631,8 @@
   },
   {
    "path": "tests/test_schema_nine.py",
-   "bytes": 87000,
-   "sha256": "fcb040e2f2391aebf6e154dd3be91234414401efcbdbdba8945aa944155c156c"
+   "bytes": 87021,
+   "sha256": "45f3336043d449e2c87238ecf0c1bdf0545fe80f960260c0e33001c31e9992bb"
   },
   {
    "path": "tests/test_schema_nine_core.py",

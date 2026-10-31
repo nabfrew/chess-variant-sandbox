@@ -869,6 +869,11 @@ def prove_game(
     needs = ""
     try:
         root = Path(root) if root is not None else Path.cwd()
+        # A record of a game no longer in the library (an in-place edit re-hashed it) is
+        # moved beside its work first: the new hash is proved here, the old one is kept.
+        for gone in puzzles.retire(runs, root):
+            note(f"retired {gone.parent.name}'s record, a game no longer in the library: "
+                 f"kept as {gone.relative_to(runs).as_posix()}")
         games = [game for game in puzzles.library(root) if game[0] == digest]
         if not games:
             return done("", ERROR, f"no library game has the hash {digest}")

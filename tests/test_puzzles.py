@@ -398,6 +398,31 @@ def test_every_delivered_record_is_a_game_of_the_library() -> None:
     assert {path.stem for path in paths} <= set(LIBRARY)
 
 
+def test_a_record_of_a_game_that_left_the_library_is_retired_and_kept(
+    tmp_path: Path,
+) -> None:
+    """An in-place edit re-hashes a game (Q1074bdf): its old record leaves what is offered
+    for its work directory, and is kept there, never over a file already there."""
+    (tmp_path / "rulesets").mkdir()
+    spec = json.loads(Path("rulesets/dull.json").read_text(encoding="utf-8"))
+    (tmp_path / "rulesets" / "dull.json").write_text(json.dumps(spec), encoding="utf-8")
+    [(kept, _name, _spec)] = puzzles.library(tmp_path)
+    runs = tmp_path / "runs"
+    gone = "aaaaaaaaaaaa"
+    puzzles.write(puzzles.record_path(runs, kept), {"ruleset_hash": kept})
+    day = datetime.date(2026, 10, 31)
+    for n in (1, 2):
+        puzzles.write(puzzles.record_path(runs, gone), {"ruleset_hash": gone, "n": n})
+        [moved] = puzzles.retire(runs, tmp_path, today=day)
+        assert moved.parent == puzzles.work_dir(runs, gone)
+        assert json.loads(moved.read_text(encoding="utf-8"))["n"] == n
+    assert sorted(path.name for path in puzzles.work_dir(runs, gone).iterdir()) == [
+        "record-2026-10-31-retired.before-2026-10-31.json", "record-2026-10-31-retired.json"]
+    assert [path.stem for path in (runs / "puzzles").glob("*.json")] == [kept]
+    assert puzzles.retire(runs, tmp_path, today=day) == []
+    assert puzzles.retire(tmp_path / "nowhere", tmp_path) == []
+
+
 # ------------------------------------------------------------------ too easy (Q993a)
 #
 # `docs/archive/plan-proven.md` §3.1, pre-registered: T1 and T2 read the record's proofs, T3 asks

@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-31
 
+### Dohyo's ring loses its corners
+
+Dohyo's four corner squares are gone: a piece shoved into a corner is out of the ring, just as one shoved off an edge is.
+The heavy pieces start beside those corners, so the flanks of the back rank are now dangerous ground. The game has a fresh
+score.
+
 ### Rock paper shove, and four small push games to try
 
 New in the library: rock paper shove, on a 7 x 7 board where nothing is ever captured. There are three kinds of piece, and

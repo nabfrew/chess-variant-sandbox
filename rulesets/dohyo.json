@@ -1,7 +1,7 @@
 {
   "schema_version": 31,
   "name": "dohyo",
-  "description": "A wrestling match on a small square board, named after the ring sumo is fought in. Nothing is ever captured where it stands: a piece that moves onto an enemy shoves it one square onward, and whatever is shoved over the edge of the board is out. Throw the enemy champion out and you win. Every piece has a weight and a strength, and a shove moves the whole line in front of the shover, up to the first gap, only if the shover's strength is at least the line's total weight. So the game turns on bracing: a heavy piece standing behind your champion makes the line too heavy to shove, but a piece spent bracing is not shoving anyone, and every attack is a sum of whether the line ahead weighs less than the piece you send. The champion weighs least of all and is strong for its size, able to throw a lone heavyweight out by itself, yet easily thrown when it stands alone, so it fights best with a wall at its back. The heavyweights move up to two squares straight, shoving the first piece they meet, and only walk on the diagonals; the bouncers step one square and shove anyone, a friend included, to close a brace or clear a line, at the risk of shoving their own piece out (never their own champion); the apprentices shove only straight ahead. A piece just shoved may not shove straight back on its next move, so a shoving match has to go somewhere, and a game that stalls or runs long goes to the side whose pieces left in the ring are worth more.",
+  "description": "A wrestling match on a small ring, named after the one sumo is fought in: a seven by seven square with its four corners cut away. Nothing is ever captured where it stands: a piece that moves onto an enemy shoves it one square onward, and whatever is shoved over the edge of the ring, or into one of its missing corners, is out. Throw the enemy champion out and you win. Every piece has a weight and a strength, and a shove moves the whole line in front of the shover, up to the first gap, only if the shover's strength is at least the line's total weight. So the game turns on bracing: a heavy piece standing behind your champion makes the line too heavy to shove, but a piece spent bracing is not shoving anyone, and every attack is a sum of whether the line ahead weighs less than the piece you send. The champion weighs least of all and is strong for its size, able to throw a lone heavyweight out by itself, yet easily thrown when it stands alone, so it fights best with a wall at its back. The heavyweights move up to two squares straight, shoving the first piece they meet, and only walk on the diagonals; the bouncers step one square and shove anyone, a friend included, to close a brace or clear a line, at the risk of shoving their own piece out (never their own champion); the apprentices shove only straight ahead. A piece just shoved may not shove straight back on its next move, so a shoving match has to go somewhere, and a game that stalls or runs long goes to the side whose pieces left in the ring are worth more.",
   "board": {
     "width": 7,
     "height": 7
@@ -61,7 +61,8 @@
   },
   "rules": {
     "win": "royal_capture",
-    "push": {"chain": "weight", "no_push_back": true},
+    "obstacles": {"squares": ["a1", "g1", "a7", "g7"]},
+    "push": {"chain": "weight", "no_push_back": true, "walls": "crush"},
     "scoring": {"count": "material"},
     "max_plies": 200,
     "repetition_draw": 3,
@@ -73,6 +74,6 @@
   "provenance": {
     "added": "2026-10-30",
     "origin": "human",
-    "history": "Q1074bg2: designed for the library as the showcase of pushing a line by weight and strength, of a piece that pushes its own side, and of a piece that shoves on some lines and only walks on others (docs/plan-push.md section 6.2; the design log is docs/reference/dohyo.md)."
+    "history": "Q1074bg2: designed for the library as the showcase of pushing a line by weight and strength, of a piece that pushes its own side, and of a piece that shoves on some lines and only walks on others (docs/plan-push.md section 6.2; the design log is docs/reference/dohyo.md). Q1074bd: the four corners walled, with walls that crush, so a piece shoved into a corner is out (the ring section 6.2 drew first; the whole square was 242c02248dd2)."
   }
 }

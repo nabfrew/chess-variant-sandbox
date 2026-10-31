@@ -974,6 +974,36 @@ def survey(
             for digest, game, spec in library(root)]
 
 
+def retire(
+    runs_dir: Path | str, root: Path | str = ".", today: datetime.date | None = None,
+) -> list[Path]:
+    """Move every delivered record of a game that is not in ``root``'s library out of what
+    is offered, and return where each went. Moves; proves and deletes nothing.
+
+    A game leaves the library when it is edited in place (its mechanics re-hashed, as
+    Dohyo's walled corners re-hashed it in Q1074bd) or taken out of it. Its old runs are
+    kept, and so is its record: beside its work as `work/<hash>/record-<day>-retired.json`,
+    as a record a format replaced is kept, never over a file already there. The site reads
+    only a library game's record, and `runs/puzzles/` holds only those (`tests/test_puzzles.py`).
+    """
+    today = today or datetime.date.today()
+    folder = Path(runs_dir) / DIRECTORY
+    if not folder.is_dir():
+        return []
+    games = {digest for digest, _name, _spec in library(root)}
+    moved: list[Path] = []
+    for path in sorted(folder.glob("*.json")):
+        if path.stem in games:
+            continue
+        work = work_dir(runs_dir, path.stem)
+        work.mkdir(parents=True, exist_ok=True)
+        to = work / f"record-{today.isoformat()}-retired.json"
+        to = _aside(to, today) if to.exists() else to
+        path.replace(to)
+        moved.append(to)
+    return moved
+
+
 def _file_digest(path: Path) -> str:
     """The first 16 hex digits of a file's SHA-256, read in chunks."""
     digest = hashlib.sha256()
