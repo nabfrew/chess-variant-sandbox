@@ -14,6 +14,16 @@ any other address keeps its brackets.
 
 ## 2026-10-31
 
+### More games have proven positions that show what makes them different
+
+After proven positions had to show something their own game has and chess lacks, 21 games were left with none.
+The computer now looks for its candidates where that difference is in play, a game's own piece on the board or its
+own rule about to matter, and proved those games again. Nine of them have positions to solve once more, 32 in all:
+galloping knights and quarry have eight each, anchors five, the free companies three, nightriders, madrasi chess
+and kraken ford two each, and queen bomb and cannonade one each. The rest still have none, either because the
+endings their games reach never show what makes them different, or because a game like Gardner's minichess differs
+from chess only in its board or its opening.
+
 ### Proven positions now show what makes their game different
 
 A game's proven positions used to include endings that could have come from ordinary chess: a king and rook against

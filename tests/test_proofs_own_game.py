@@ -192,3 +192,106 @@ def test_a_game_left_with_none_says_why_and_counts_what_was_set_aside() -> None:
     plain = proven.Record(game="g", made="", basis={}, counts={}, positions=(), dropped=0,
                           too_easy=1)
     assert proven.summary(plain, None)["none"] == proven.NONE_LEFT
+
+
+# ------------------------------------------------------------ the aim (Q1088)
+
+
+def test_the_aim_keeps_a_position_with_the_games_own_piece() -> None:
+    spec = _with_piece()
+    engine = Engine(spec)
+    seen = puzzles.distinction(spec, SPEC)
+    plain = engine.make_state(TAKEN, side_to_move=0)
+    held = engine.make_state({**TAKEN, "e1": ("X", 0)}, side_to_move=0)
+    assert puzzles.aims(seen)
+    assert puzzles.aim(engine, seen, plain) == []
+    said = puzzles.aim(engine, seen, held)
+    assert said and "crosser" in said[0]
+
+
+def test_the_aim_reads_a_rule_within_two_plies_and_not_beyond() -> None:
+    spec = _with_goal()
+    engine = Engine(spec)
+    seen = puzzles.distinction(spec, SPEC)
+    near = engine.make_state({"b3": ("K", 0), "e5": ("K", 1), "a5": ("T", 1)}, side_to_move=0)
+    said = puzzles.aim(engine, seen, near)
+    assert said and "reach" in said[0]
+    # Each royal four steps from the hill: two plies reach neither side's win there.
+    far = engine.make_state({"a1": ("K", 0), "e5": ("K", 1), "a5": ("T", 1)}, side_to_move=0)
+    assert puzzles.aim(engine, seen, far) == []
+    assert puzzles.aim(engine, seen, far, plies=8)
+
+
+def test_the_reference_is_aimed_at_everything_and_needs_no_aim() -> None:
+    engine = Engine(SPEC)
+    seen = puzzles.distinction(SPEC, SPEC)
+    assert puzzles.aim(engine, seen, engine.make_state(TAKEN, side_to_move=0))
+    assert not puzzles.aims(seen)
+
+
+def test_a_game_with_nothing_to_aim_at_is_one_without_pieces_or_twins() -> None:
+    """A wider board is all this probe has over the probe: nothing a position can hold, so
+    nothing to aim at."""
+    spec = copy.deepcopy(SPEC)
+    spec["name"] = "wide probe"
+    spec["board"] = {"width": 6, "height": 5}
+    seen = puzzles.distinction(spec, SPEC)
+    assert not seen.same and not seen.pieces and not seen.twins
+    assert not puzzles.aims(seen)
+
+
+def test_candidates_keep_only_what_the_aim_keeps() -> None:
+    from tests.test_puzzles import _game
+
+    spec = _with_goal()
+    engine = Engine(spec)
+    seen = puzzles.distinction(spec, SPEC)
+    games = [_game(engine, 0, ("minimax:nodes=400", "random"))]
+    every = list(puzzles.candidates(engine, [(0, games)]))
+
+    def kept(keep: Any) -> list[puzzles.Candidate]:
+        return list(puzzles.candidates(engine, [(0, games)], keep=keep))
+
+    def state_of(candidate: puzzles.Candidate) -> Any:
+        return engine.play(engine.initial_state(), candidate.moves)
+
+    aimed = kept(lambda state: puzzles.aim(engine, seen, state))
+    assert aimed == [c for c in every if puzzles.aim(engine, seen, state_of(c))]
+    even = kept(lambda state: state.ply % 2 == 0)
+    assert even and even == [c for c in every if c.ply % 2 == 0] and len(even) < len(every)
+    assert kept(lambda _state: False) == []
+
+
+def _bare(spec: dict[str, Any], basis: dict[str, Any], aside: int) -> tuple[str, dict[str, Any]]:
+    """A sifted record of ``spec`` that offers nothing, with ``aside`` rows set aside."""
+    digest = Engine(spec).spec.hash
+    return digest, {"format": puzzles.FORMAT, "ruleset_hash": digest, "name": spec["name"],
+                    "basis": {"proof_version": puzzles.PROOF_VERSION,
+                              "shows_version": puzzles.SHOWS_VERSION, **basis},
+                    "counts": {}, "positions": [],
+                    "set_aside": [_row(str(n), n) for n in range(aside)]}
+
+
+@pytest.mark.parametrize(("basis", "aside", "owed"), [
+    ({}, 2, True),  # sifted bare before any aim: owed
+    ({}, 0, False),  # nothing set aside: the runs held nothing, aim or not
+    ({"aim": 1}, 0, True),  # an older aim left it with none: owed again
+    ({"aim": puzzles.AIM_VERSION}, 2, False),  # aimed as the code aims: current
+])
+def test_a_record_the_sift_left_bare_is_owed_an_aimed_proof(
+    tmp_path: Path, basis: dict[str, Any], aside: int, owed: bool,
+) -> None:
+    spec = _with_piece()
+    digest, data = _bare(spec, basis, aside)
+    runs = tmp_path / "runs"
+    puzzles.write(puzzles.record_path(runs, digest), data)
+    found = puzzles.standing(digest, spec["name"], spec, runs, seeds=(), reference=SPEC)
+    assert found.owed == owed, found.reason
+    assert found.needs == (puzzles.REPROVE if owed else "")
+
+
+def test_a_game_with_nothing_to_aim_at_is_not_owed_for_it(tmp_path: Path) -> None:
+    digest, data = _bare(SPEC, {}, 2)
+    runs = tmp_path / "runs"
+    puzzles.write(puzzles.record_path(runs, digest), data)
+    assert not puzzles.standing(digest, "probe", SPEC, runs, seeds=(), reference=SPEC).owed

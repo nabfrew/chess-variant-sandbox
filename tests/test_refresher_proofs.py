@@ -216,7 +216,11 @@ class TestMake:
         data = json.loads(puzzles.record_path(root / "runs", digest).read_text("utf-8"))
         assert data["format"] == puzzles.FORMAT and data["ruleset_hash"] == digest
         basis = data["basis"]
-        assert basis["near"] == puzzles.NEAR and basis["near_min"] == puzzles.NEAR_MIN
+        # The probe is not the reference, so its sample was aimed (Q1088), from the aim's
+        # wider bounds.
+        assert basis["aim"] == puzzles.AIM_VERSION and basis["aimed"] >= len(data["positions"])
+        assert basis["near"] == puzzles.AIM_NEAR and basis["near_min"] == puzzles.NEAR_MIN
+        assert basis["max_pieces"] == puzzles.AIM_MAX_PIECES
         assert basis["proof_version"] == puzzles.PROOF_VERSION
         assert basis["runs"] == [f"{digest}-{seed}" for seed in LIBRARY_SEEDS]
         for test in puzzles.TESTS:

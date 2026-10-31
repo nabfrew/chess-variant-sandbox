@@ -1,5 +1,5 @@
 {
- "source_commit": "2df2faaed37013a227ca98f39aeba019c253f4c5",
+ "source_commit": "77ce8626fb81bbb426bcb7e9343e4793ec77812f",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -2176,13 +2176,13 @@
   },
   {
    "path": "chess_variant_sandbox/puzzles.py",
-   "bytes": 81708,
-   "sha256": "dac74057ae783d7a2b7899bcddeafe746707c4ae59ce5e1b575485fb6e4c2552"
+   "bytes": 90555,
+   "sha256": "776ec571f1fe31fd2e41524b01b3b7c591d6ed2f4e8cebea1878b1d11da9288a"
   },
   {
    "path": "chess_variant_sandbox/refresher.py",
-   "bytes": 76327,
-   "sha256": "57cab382aa4ce65d214018cac1f39b0d25751c2ec69596221fa23c0583b5262b"
+   "bytes": 76369,
+   "sha256": "fd203bd28ccb395d2c4fb16703966b1863dc24b35fee75766abc47695568339c"
   },
   {
    "path": "chess_variant_sandbox/site/__init__.py",
@@ -3461,8 +3461,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 167363,
-   "sha256": "1a357057cee4f68e1169f9f6582902cd2e243239c49816234bcb32d961b33912"
+   "bytes": 168162,
+   "sha256": "0f940eac76e2b6837e0bc94d5c77155ae4f5d409c9036ec86734a95c2d7d8e97"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -6386,8 +6386,8 @@
   },
   {
    "path": "tests/test_proofs_own_game.py",
-   "bytes": 8531,
-   "sha256": "dd7dc8d089481ed006d47e52c1bc4ac966b3434328be35ba23bf8521bb1bc316"
+   "bytes": 13032,
+   "sha256": "418373a4195ff6a6d65c207e228ad34803f161bec68382623f66979386c49772"
   },
   {
    "path": "tests/test_provisional_estimate.py",
@@ -6506,8 +6506,8 @@
   },
   {
    "path": "tests/test_refresher_proofs.py",
-   "bytes": 35437,
-   "sha256": "d2e88e734c03e94076cd812635184409fb7a050ae028900450712169b54f5235"
+   "bytes": 35712,
+   "sha256": "ce817ef1c181d0e56463ef67cdd8ecd69e75c5cc50a12ce33e0d4c9509f0807b"
   },
   {
    "path": "tests/test_refresher_slow_tier.py",

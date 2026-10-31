@@ -39,6 +39,12 @@ whole, every stage resumable by its unit file under `runs/puzzles/work/<hash>/`:
 the sample (`NEAR_MIN`, §3.5), the proofs, T3, T4 and T5. A game whose runs hold no small
 ending gets a record with none, so it is asked once. The refresher's proofs tier calls both
 (`refresher.py` point 9), and `chess-variant-sandbox proofs [--check]` is the same by hand.
+
+**What its game has** (Q1084, Q1088). A position is offered only where its proven line shows
+something its game has and chess lacks (`distinction`, `shows`, the sift after T5). The
+sample aims at it (`aim`): in any game but the reference, only positions that hold it within
+two plies are proved, from wider bounds (`AIM_MAX_PIECES`, `AIM_NEAR`). A record the sift
+left bare before the aim is owed a re-proof (`unaimed`).
 """
 
 from __future__ import annotations
@@ -286,6 +292,7 @@ def candidates(
     max_pieces: int = MAX_PIECES,
     near: int | None = None,
     near_min: int = 1,
+    keep: Any = None,
 ) -> Iterator[Candidate]:
     """Every distinct non-terminal position with at most `max_pieces` in play.
 
@@ -299,6 +306,11 @@ def candidates(
     result is read, not judged; whether the position is won is still the probe's answer.
     `near_min` (with `near`) also skips those fewer than `near_min` plies before the end
     (`NEAR_MIN`, §3.5); the default, 1, skips nothing, since no position is 0 plies before.
+
+    `keep` (Q1088), where given, is asked of each position that passes the rest, its state
+    in hand, and only one it answers truthily is yielded (`aim`: a position that holds what
+    its game has and chess lacks). A position it refuses is still seen, so a later
+    reaching of it is not asked again.
     """
     if engine.simultaneous or engine.spy:
         raise ValueError("a game of rounds has no position to prove move by move")
@@ -318,7 +330,9 @@ def candidates(
                     if (pieces <= max_pieces and same not in seen
                             and engine.terminal(state) is None):
                         seen.add(same)
-                        yield Candidate(seed, number, ply, pieces, tuple(record.moves[:ply]))
+                        if keep is None or keep(state):
+                            yield Candidate(seed, number, ply, pieces,
+                                            tuple(record.moves[:ply]))
                 if move is None:
                     break
                 state = engine.apply(state, move)
@@ -919,6 +933,124 @@ def _asked(call: Any, *args: Any) -> Any:
         return None
 
 
+def _standing(compiled: Any, seen: Distinction, position: GameState) -> list[str]:
+    """What a position holds of its game's own, standing still: a piece nobody owns, a
+    piece chess lacks (`Distinction.pieces`), or a piece in hand. Empty where nothing."""
+    for value in position.board:
+        if not value:
+            continue
+        owner, kind = compiled.owner_of(value), compiled.type_of(value)
+        if owner > 1:
+            return [f"{compiled.piece_names[kind]}, nobody's piece"]
+        if kind in seen.pieces:
+            return [f"{compiled.piece_names[kind]}, which {seen.pieces[kind]}"]
+    if any(sum(hand) for hand in position.hands):
+        return ["a piece in hand"]
+    return []
+
+
+def _move_shows(
+    engine: Engine, seen: Distinction, position: GameState, legal: Any, move: int,
+) -> tuple[list[str], GameState | None, Any]:
+    """What one move shows of its game's own (`shows`' test of a ply), with the position
+    it leaves and the core's ending there: a word chess has no kind for, a move of the
+    opponent's piece, or a twin disagreeing (the rule gave the move, barred another, acted
+    on the move, or ended the game otherwise). `legal` is the game's moves at `position`."""
+    kind = move_type(move)
+    if move & MOVE_FOREIGN:
+        return ["a move of a piece the mover does not own"], None, None
+    if kind not in CHESS_KINDS:
+        return [f"a {MOVE_TYPE_NAMES.get(kind, 'new')} move"], None, None
+    after = engine.apply(position, move)
+    ended = engine.terminal(after)
+    for rule, twin in seen.twins:
+        allowed = _asked(twin.legal_moves, position)
+        if allowed is None:
+            continue
+        if move not in allowed:
+            return [f"the rule {rule}, played"], after, ended
+        if set(allowed) - set(legal):
+            return [f"the rule {rule}, which barred a move"], after, ended
+        there = _asked(twin.apply, position, move)
+        if there is not None and _what(there) != _what(after):
+            return [f"the rule {rule}, acting on the move"], after, ended
+        their_end = _asked(twin.terminal, after)
+        if (None if ended is None else (ended.winner, ended.reason)) != (
+                None if their_end is None else (their_end.winner, their_end.reason)):
+            return [f"the rule {rule}, ending the game"], after, ended
+    return [], after, ended
+
+
+AIM_VERSION = 3
+"""The aim's own version (Q1088): a change to which positions the sample keeps (`aim`) or
+to its bounds bumps it. A record sampled before any aim (no `aim` in its basis) that the
+sift left with nothing to offer, or one an older aim left offering none, is owed a re-proof
+(`unaimed`), where its game has something to aim at (`aims`). Versions 1 (six pieces, twelve
+plies) and 2 (eight, twenty) proved some games on 2026-10-31 and left each offering none; 3
+widens the bounds to ten pieces."""
+
+
+def aims(seen: Distinction) -> bool:
+    """Whether a game has anything a sample can aim at (Q1088): a piece chess lacks or a
+    rule a twin reads. A game the reference itself, or one whose only differences are the
+    board or rules no twin can read (a smaller board, a setup, a placement phase, a clock),
+    has none: no small ending can hold what makes it its own."""
+    return not seen.same and bool(seen.pieces or seen.twins)
+
+
+AIM_MAX_PIECES = 10
+AIM_NEAR = 20
+"""The aimed sample's bounds (Q1088), wider than `MAX_PIECES` and `NEAR`: a game's own
+piece is often traded off before six are left, and the aim keeps few positions, so it looks
+at up to ten in play and twenty plies before a won end (Q1088 found seven and eight piece
+positions proved about as often as six). Like them they decide where the
+proofs point, never what a position is worth; a position the probe cannot settle at that
+distance is counted open and never offered."""
+AIM_PLIES = 2
+"""How deep `aim` looks: the mover's move and the reply, the first two plies of any line a
+proof could play (the attacker's key move, then the defence)."""
+
+
+def aim(
+    engine: Engine, seen: Distinction, state: GameState, plies: int = AIM_PLIES,
+) -> list[str]:
+    """What a position holds of its game's own, before anything is proved (Q1088): what a
+    proof's line could show from it, read `plies` deep. The reference itself holds it
+    always. Otherwise a piece chess lacks, nobody's or in hand on the position
+    (`_standing`), or, at any ply within reach, a legal move that `shows` would read as the
+    game's own (`_move_shows`: a new kind of move, a move of the other side's piece, a twin
+    disagreeing), a win otherwise than chess wins, or such a piece left standing (a
+    promotion to one). Empty where nothing does: the sample passes the position over, since
+    the sift (`shows`) would set its proof aside unless the line found the game's own
+    deeper still. Rule 3: every move, board and ending is the core's, or a twin's; this
+    compares them."""
+    if seen.same:
+        return ["the game is chess"]
+    found = _standing(engine.spec, seen, state)
+    return found or _aim_below(engine, seen, state, plies)
+
+
+def _aim_below(engine: Engine, seen: Distinction, state: GameState, plies: int) -> list[str]:
+    """`aim`'s look at every move from `state` and, while `plies` lasts, below it."""
+    if plies < 1:
+        return []
+    legal = engine.legal_moves(state)
+    for move in legal:
+        said, after, ended = _move_shows(engine, seen, state, legal, move)
+        if said:
+            return said
+        assert after is not None
+        if ended is not None:
+            if ended.winner is not None and ended.reason != seen.wins:
+                return [f"a win by {ended.reason}"]
+            continue
+        found = _standing(engine.spec, seen, after) or _aim_below(engine, seen, after,
+                                                                  plies - 1)
+        if found:
+            return found
+    return []
+
+
 def asks_shows(row: dict[str, Any]) -> bool:
     """Whether the sift is put to this position: a proved win T1 to T5 keep, read with
     their stored answers. A row left out as too easy is never offered, so it is not asked."""
@@ -964,17 +1096,7 @@ def shows(
     values = eval_values(compiled)
 
     def standing(position: GameState) -> list[str]:
-        for value in position.board:
-            if not value:
-                continue
-            owner, kind = compiled.owner_of(value), compiled.type_of(value)
-            if owner > 1:
-                return [f"{compiled.piece_names[kind]}, nobody's piece"]
-            if kind in seen.pieces:
-                return [f"{compiled.piece_names[kind]}, which {seen.pieces[kind]}"]
-        if any(sum(hand) for hand in position.hands):
-            return ["a piece in hand"]
-        return []
+        return _standing(compiled, seen, position)
 
     position, move = state, int(key["move"])
     found = standing(position)
@@ -982,28 +1104,10 @@ def shows(
         if found:
             return found
         legal = engine.legal_moves(position)
-        kind = move_type(move)
-        if move & MOVE_FOREIGN:
-            return ["a move of a piece the mover does not own"]
-        if kind not in CHESS_KINDS:
-            return [f"a {MOVE_TYPE_NAMES.get(kind, 'new')} move"]
-        after = engine.apply(position, move)
-        ended = engine.terminal(after)
-        for rule, twin in seen.twins:
-            allowed = _asked(twin.legal_moves, position)
-            if allowed is None:
-                continue
-            if move not in allowed:
-                return [f"the rule {rule}, played"]
-            if set(allowed) - set(legal):
-                return [f"the rule {rule}, which barred a move"]
-            there = _asked(twin.apply, position, move)
-            if there is not None and _what(there) != _what(after):
-                return [f"the rule {rule}, acting on the move"]
-            their_end = _asked(twin.terminal, after)
-            if (None if ended is None else (ended.winner, ended.reason)) != (
-                    None if their_end is None else (their_end.winner, their_end.reason)):
-                return [f"the rule {rule}, ending the game"]
+        said, after, ended = _move_shows(engine, seen, position, legal, move)
+        if said:
+            return said
+        assert after is not None
         if ended is not None:
             if ended.winner is not None and ended.reason != seen.wins:
                 return [f"a win by {ended.reason}"]
@@ -1051,6 +1155,7 @@ def record(
     shows_nodes: int | None = None,
     shows_built: str | None = None,
     shows_made: datetime.date | None = None,
+    aimed: int | None = None,
 ) -> dict[str, Any]:
     """The record the site loads: the basis, the tally, and the proved positions only.
 
@@ -1071,6 +1176,9 @@ def record(
     Where the sift was asked (`shows_nodes`, Q1084), a won row whose line showed nothing its
     game has and chess lacks (`shows` empty) is set aside (`sifted`): out of `positions`,
     kept whole in `set_aside`, and the basis names the sift's version, budget, core and day.
+    Where the sample was aimed (`aimed`, Q1088), the basis names the aim's version and how
+    many positions within its bounds (`max_pieces`, `near`) the aim kept before `sample`
+    took `cap`.
     """
     ordered = sorted(rows, key=lambda row: (row["seed"], row["game"], row["ply"]))
     basis: dict[str, Any] = {
@@ -1090,6 +1198,9 @@ def record(
     }
     if near_min is not None:
         basis["near_min"] = near_min
+    if aimed is not None:
+        basis["aim"] = AIM_VERSION
+        basis["aimed"] = aimed
     if defence_nodes is not None:
         basis["defence_nodes"] = defence_nodes
         basis["defence_built"] = defence_built
@@ -1236,6 +1347,31 @@ def library(root: Path | str = ".") -> list[tuple[str, str, dict[str, Any]]]:
     return list(found.values())
 
 
+def unaimed(data: Any, seen: Distinction) -> str | None:
+    """Why a sifted record that holds is owed a re-proof by an aimed sample (Q1088), or
+    None: it offers none, its game has something to aim at (`aims`), and either its sample
+    was taken before any aim and the sift set aside one or more positions, or an older aim
+    (`AIM_VERSION`) took it. Re-proving it with the same sample would draw the same plain
+    endings (Q1084); an aimed one asks only positions that hold the game's own."""
+    if not isinstance(data, dict) or not aims(seen):
+        return None
+    basis = data.get("basis")
+    version = basis.get("aim") if isinstance(basis, dict) else None
+    version = version if isinstance(version, int) and not isinstance(version, bool) else 0
+    if version >= AIM_VERSION:
+        return None
+    rows = [row for row in data.get("positions") or [] if isinstance(row, dict)]
+    if any(row.get("result") == WON and not trivial(row) for row in rows):
+        return None
+    if version:
+        return (f"it offers none, and its sample was aimed by aim version {version}; the "
+                f"code's is {AIM_VERSION}")
+    if not data.get("set_aside"):
+        return None
+    return ("the sift set aside every position it offered, and its sample was not aimed at "
+            "what the game has and chess lacks")
+
+
 def owes(engine: Engine, data: Any) -> str | None:
     """Why a game's record is owed a re-proof, or None where it holds (§5.2 (ii), (iii)).
 
@@ -1275,11 +1411,14 @@ def runs_missing(runs_dir: Path | str, digest: str, seeds: Iterable[int]) -> lis
 def standing(
     digest: str, game: str, spec: dict[str, Any], runs_dir: Path | str,
     seeds: Iterable[int] | None = None,
+    reference: dict[str, Any] | None = None,
 ) -> Standing:
     """One game's `Standing`: what it is owed, if anything, and why. Reads; proves nothing.
 
     Owed (§5.2) where the game alternates and its library runs are on disk, and it has
-    (i) no record (`PROVE`) or (ii, iii) one `owes` finds wanting (`REPROVE`). A game of
+    (i) no record (`PROVE`) or (ii, iii) one `owes` finds wanting, or one sifted bare
+    before the sample was aimed (`unaimed`, Q1088, against ``reference``, by default
+    `reference_spec`) (`REPROVE`). A game of
     rounds is never owed (a round has no position to prove move by move), nor one whose
     runs are not all there yet: `measure` writes them, and then it is.
     """
@@ -1308,6 +1447,10 @@ def standing(
             # which proves nothing again, so it needs no runs on disk.
             return stands(FILTER, "its positions were never sifted for what the game has "
                                   "and chess lacks", made)
+        if why is None and (data.get("set_aside") or (data.get("basis") or {}).get("aim")):
+            # Only a record the sift left bare is read against the reference (Q1088).
+            why = unaimed(data, distinction(
+                spec, reference if reference is not None else reference_spec()))
         if why is None:
             rows = [row for row in data.get("positions") or []
                     if isinstance(row, dict) and row.get("result") == WON]
@@ -1315,8 +1458,11 @@ def standing(
             aside = len(data.get("set_aside") or [])
             kept = f"current: {len(rows)} proved, {offered} offered" + (
                 f", {aside} set aside as showing nothing of the game's own" if aside else "")
-            return stands("", kept if rows or aside
-                          else "current: its runs held no small ending to prove", made)
+            basis = data.get("basis") if isinstance(data.get("basis"), dict) else {}
+            bare = ("current: none of its small endings near a won end holds what the game "
+                    "has and chess lacks" if basis.get("aim") and basis.get("distinct")
+                    else "current: its runs held no small ending to prove")
+            return stands("", kept if rows or aside else bare, made)
         needs, reason = REPROVE, why
     else:
         made = ""
@@ -1333,7 +1479,8 @@ def survey(
     runs_dir: Path | str, root: Path | str = ".", seeds: Iterable[int] | None = None,
 ) -> list[Standing]:
     """Every Library and Baseline game's `Standing`, in the library's order. Reads only."""
-    return [standing(digest, game, spec, runs_dir, seeds)
+    reference = reference_spec(root)
+    return [standing(digest, game, spec, runs_dir, seeds, reference)
             for digest, game, spec in library(root)]
 
 
@@ -1513,8 +1660,12 @@ def make(
     # sample and re-proved the record it was meant to replace. And by what answers every
     # question asked of them (Q1082): Q1078 moved the push rule's legal moves under work
     # keyed on the sampling alone, and the old core's proofs were written again as new.
+    # The sift (Q1084) reads the game against the reference, `rulesets/chess.json` here
+    # unless the caller hands one; the sample aims at what it finds (Q1088).
+    seen = distinction(spec, reference if reference is not None else reference_spec())
     sampling = {"runs": [f"{digest}-{seed}" for seed in seeds], "max_pieces": MAX_PIECES,
-                "near": NEAR, "near_min": NEAR_MIN, "cap": CAP,
+                "near": NEAR, "near_min": NEAR_MIN, "cap": CAP, "aim": AIM_VERSION,
+                "aim_max_pieces": AIM_MAX_PIECES, "aim_near": AIM_NEAR,
                 "games": [_file_digest(runs_dir / f"{digest}-{seed}" / "games.jsonl")
                           for seed in seeds], **basis}
     listed_path = work / "candidates.json"
@@ -1548,18 +1699,29 @@ def make(
                 yield one
 
         distinct = sum(1 for _ in candidates(engine, ((seed, records(seed)) for seed in seeds)))
-        near = list(candidates(
-            engine, ((seed, read_records(runs_dir / f"{digest}-{seed}" / "games.jsonl"))
-                     for seed in seeds), near=NEAR, near_min=NEAR_MIN))
-        taken = sample(near)
+        def near_won(pieces: int, plies: int, keep: Any = None) -> list[Candidate]:
+            return list(candidates(
+                engine, ((seed, read_records(runs_dir / f"{digest}-{seed}" / "games.jsonl"))
+                         for seed in seeds), max_pieces=pieces, near=plies,
+                near_min=NEAR_MIN, keep=keep))
+
+        near = near_won(MAX_PIECES, NEAR)
+        # The aim (Q1088): only the positions that hold what the game has and chess lacks,
+        # two plies deep (`aim`), so the proofs are spent where the sift can keep them, from
+        # the wider pool the aim's bounds allow (`AIM_MAX_PIECES`, `AIM_NEAR`).
+        aimed = near if seen.same else near_won(
+            AIM_MAX_PIECES, AIM_NEAR, lambda state: aim(engine, seen, state))
+        taken = sample(aimed)
         listed = {"ruleset_hash": digest, "sampling": sampling, "games": games,
                   "distinct": distinct, "near_count": len(near),
                   "near_games": len({(c.seed, c.game) for c in near}),
+                  "aimed": len(aimed), "aimed_games": len({(c.seed, c.game) for c in aimed}),
                   "candidates": [c.as_dict() for c in taken]}
         write(listed_path, listed)
         seconds["count"] = round(time.monotonic() - began, 1)
         note(f"{game}: {games} games, {distinct} small positions, {len(near)} near a won "
-             f"end, {len(taken)} taken ({seconds['count']:.0f} s)")
+             f"end, {len(aimed)} holding the game's own, {len(taken)} taken "
+             f"({seconds['count']:.0f} s)")
     taken_rows = list(listed["candidates"])
 
     # The proofs.
@@ -1591,9 +1753,6 @@ def make(
     asked: dict[str, Any] = {}
     asks = {"defence": asks_defence, "hasten": asks_defence, "shallow": asks_shallow,
             "shows": asks_shows}
-    # The sift (Q1084) reads the game against the reference, `rulesets/chess.json` here
-    # unless the caller hands one.
-    seen = distinction(spec, reference if reference is not None else reference_spec())
 
     def sift(engine: Engine, row: dict[str, Any], nodes: int) -> list[str]:
         return shows(engine, row, seen, nodes=nodes)
@@ -1640,7 +1799,10 @@ def make(
         note(f"{game}: {test} asked of {len(wanted)} ({seconds[test]:.0f} s)")
 
     data = record(engine, game, seeds, rows, proved_on, nodes=nodes, made=made,
-                  distinct=int(listed["distinct"]), near_min=NEAR_MIN, **asked)
+                  distinct=int(listed["distinct"]), near_min=NEAR_MIN,
+                  aimed=None if seen.same else int(listed["aimed"]),
+                  max_pieces=MAX_PIECES if seen.same else AIM_MAX_PIECES,
+                  near=NEAR if seen.same else AIM_NEAR, **asked)
     out = record_path(runs_dir, digest)
     if out.exists():
         work.mkdir(parents=True, exist_ok=True)

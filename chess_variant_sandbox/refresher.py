@@ -879,13 +879,13 @@ def prove_game(
         if not games:
             return done("", ERROR, f"no library game has the hash {digest}")
         _digest, name, spec = games[0]
-        before = puzzles.standing(digest, name, spec, runs)
+        reference = puzzles.reference_spec(root)
+        before = puzzles.standing(digest, name, spec, runs, reference=reference)
         if not before.owed:
             note(f"{name}: its proven positions owe nothing ({before.reason})")
             return done("")
         needs = before.needs
         note(f"{name} [{digest}]: {needs} ({before.reason})")
-        reference = puzzles.reference_spec(root)
         if needs == puzzles.FILTER:
             # Q1084: the record holds; only the sift is owed, which proves nothing again.
             sift = puzzles.refilter(spec, runs, workers=workers or puzzles.WORKERS, say=note,
@@ -898,7 +898,7 @@ def prove_game(
             took = ", ".join(f"{stage} {seconds:.0f} s"
                              for stage, seconds in made["seconds"].items())
             note(f"{name}: {made['proved']} proved, {made['offered']} offered; {took}")
-        after = puzzles.standing(digest, name, spec, runs)
+        after = puzzles.standing(digest, name, spec, runs, reference=reference)
     except Exception as error:  # noqa: BLE001 - every failure is a logged refusal
         return done(needs, ERROR, f"{type(error).__name__}: {error}")
     if after.owed:
