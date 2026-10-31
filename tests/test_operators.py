@@ -95,7 +95,7 @@ _NUMBER_WORDS = {
     43: "forty_three", 44: "forty_four", 45: "forty_five", 46: "forty_six",
     47: "forty_seven", 48: "forty_eight", 49: "forty_nine", 50: "fifty", 51: "fifty_one",
     52: "fifty_two", 53: "fifty_three", 54: "fifty_four", 55: "fifty_five",
-    56: "fifty_six",
+    56: "fifty_six", 57: "fifty_seven", 58: "fifty_eight",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -2051,7 +2051,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 56
+_FEATURES_ARE_FOR_SCHEMA = 58
 
 
 @dataclass(frozen=True)
@@ -2980,64 +2980,42 @@ def _walled(spec: dict) -> bool:
     return bool(((spec.get("rules") or {}).get("obstacles") or {}).get("squares"))
 
 
-# Generation 56 (Q1074b1 to Q1074b4s, the push; surfaces closed by Q1074b5): nine names, one
-# row each. No stored game pushes, so each is entered from a game without a push in one draw:
-# `push-instead` gives a type its push and, at a draw each, one knob of it, a list, a row or
-# a blocking edge; `weigh-the-push` gives the weights, the chain "weight" and a strength. Each
-# is left by the operator that sets it (`push-instead` the push, `shape-the-push` the knobs,
-# the row and the edge, `name-the-pushed` the list and the shorthand's weight, `weigh-the-push`
-# the weighed chain and the strength). A push may be stated on the moves alone, so no row has
-# a host rule; none names or adds a type, so the army is kept. Generation 55's row (Q1069a)
-# retired with the generation; `draw-on-dead-material` still crosses it.
+def _parent_runners() -> dict:
+    """King of the hill whose knights win by arriving too, beside the king (SR3a,
+    `docs/plan-schema-next.md` §1 rank 4)."""
+    spec = load_spec(RULESETS / "kingofthehill.json")
+    spec["rules"]["reach"]["piece"] = ["K", "N"]
+    return spec
+
+
+def _one_runner(spec: dict) -> bool:
+    return len(schema.reach_pieces((spec.get("rules") or {}).get("reach"))) == 1
+
+
+def _parent_crowd_that_checks() -> dict:
+    """The chess-with-condottieri above, a held one attacking the other king (Q1077,
+    `docs/plan-turncoat.md` §4.7)."""
+    crowd = _parent_crowd()
+    crowd["pieces"][-1]["takes_royal"] = True
+    return crowd
+
+
+def _held_without_check(spec: dict) -> bool:
+    return bool(schema.majority_ids(spec)) and not schema.takes_royal_ids(spec)
+
+
+# Generation 58 (Q1077, `docs/plan-turncoat.md` §4.7): one name, a held neutral that takes the
+# other royal, and so gives check. It rides on majority control, a piece key, so it has no
+# `rules` host. `gather-a-crowd` enters it (`takes_royal` switched on a majority type, or a new
+# crowd placed that checks) and leaves it (switched off). The one committed game with a majority
+# type, the crowd, already carries it, so from the corpus it is entered only by placing a new
+# type: like TC3's rows, it does not keep the army. Generation 57's row (SR3a's runners) retired
+# with the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `add-a-runner`
+# still crosses it.
 _FEATURES: dict[str, _Feature] = {
-    "Q1074 a push": _Feature(
-        None, frozenset({"pieces.moves.push"}), True,
-        "sumo chess (chess, every piece but king and pawn pushing)", _parent_push,
-        likely=_eight_wide,
-    ),
-    "Q1074 whose a push moves": _Feature(
-        None, frozenset({"pieces.moves.push.whose"}), True,
-        "chess whose knights push any piece", _parent_push_whose, likely=_eight_wide,
-    ),
-    "Q1074 a push beside a capture": _Feature(
-        None, frozenset({"pieces.moves.push.captures"}), True,
-        "chess whose rooks push or take", _parent_push_captures, likely=_eight_wide,
-    ),
-    "Q1074 a push along a rank": _Feature(
-        None, frozenset({"pieces.moves.push.along"}), True,
-        "chess whose knights push along the rank", _parent_push_along, likely=_eight_wide,
-    ),
-    "Q1074 whom a pusher pushes": _Feature(
-        None, frozenset({"pieces.pushes"}), True,
-        "chess whose rooks push pawns and knights", _parent_pushes, likely=_eight_wide,
-    ),
-    "Q1074 a weight": _Feature(
-        None, frozenset({"pieces.weight"}), True,
-        "chess whose rooks push rows by weight", _parent_push_weight, likely=_eight_wide,
-    ),
-    "Q1074b4s a strength": _Feature(
-        None, frozenset({"pieces.strength"}), True,
-        "chess whose rook pushes stronger than it weighs", _parent_push_strength,
-        likely=_eight_wide,
-    ),
-    "Q1074 a row": _Feature(
-        None, frozenset({"rules.push.chain"}), True,
-        "sumo chess pushing rows", _parent_push_row, likely=_eight_wide,
-    ),
-    "Q1074 an edge that blocks": _Feature(
-        None, frozenset({"rules.push.edge"}), True,
-        "sumo chess with an edge that blocks", _parent_push_edge, likely=_eight_wide,
-    ),
-    # Q1074bo: b6's and b7's keys, named when the loop learned them. Each is entered and left
-    # by its own operator (`bar-the-push-back`, `crush-on-the-walls`).
-    "Q1074b6 no push back": _Feature(
-        None, frozenset({"rules.push.no_push_back"}), True,
-        "sumo chess with no push back", _parent_push_no_back, likely=_pushes,
-    ),
-    "Q1074b7 walls that crush": _Feature(
-        None, frozenset({"rules.push.walls"}), True,
-        "sumo chess with crushing walls on d4 and e5", _parent_push_crush,
-        likely=_walled,
+    "Q1077 a held neutral checks": _Feature(
+        None, frozenset({"pieces.takes_royal"}), False,
+        "chess+crowd that checks", _parent_crowd_that_checks, likely=_held_without_check,
     ),
 }
 
@@ -3050,6 +3028,10 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
 _SHOWCASE_OWED: dict[str, str] = {
+    # Generation 58 (Q1077) owes none: `archive/the-crowd.json` states it and reaches it (its
+    # condottieri give check from the opening's scrum on).
+    # Generation 57's name (SR3a) went to `_NO_SHOWCASE_ON_PURPOSE` when Q1077 retired its
+    # `_FEATURES` row, still owed by SR3s1.
     # Generation 56 (the push): no game pushes until batch P's replay; sumo chess (Q1074bg1),
     # Dohyo (Q1074bg2) and the other push showcases (Q1074bs) are owed, `docs/plan-push.md` §6.
     # "Q1074 a push" and "Q1074 a push along a rank" went on 2026-10-30, when Q1074bg1 put
@@ -3228,6 +3210,8 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
         "pieces.moves.push.along", "pieces.pushes", "pieces.weight", "pieces.strength",
         "rules.push.chain", "rules.push.edge", "rules.push.walls", "rules.push.no_push_back",
     }),
+    57: frozenset({"rules.reach.piece.list"}),
+    58: frozenset({"pieces.takes_royal"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -3236,6 +3220,12 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 57's name (SR3a), owed in `_SHOWCASE_OWED` until generation 58 (Q1077)
+    # retired its `_FEATURES` row. Still owed by SR3s1 (`docs/plan-schema-next.md` §3.2), a race
+    # any listed runner wins, usable after SR3r; the entry goes the day it lands.
+    "schema 57: rules.reach.piece.list": (
+        "owed by SR3s1, a goal for a list of pieces (docs/plan-schema-next.md §3.2)"
+    ),
     # Generation 54's name (TC9c), owed in `_SHOWCASE_OWED` until generation 55 (Q1069a)
     # retired its `_FEATURES` row: *the indemnity* (§8.6) and *the quartermaster* (§8.7, TC9d)
     # both retired, so a successor is still owed.
@@ -3953,8 +3943,10 @@ class TestTheOwnLinkIsReachable:
             if parent["rules"].get("must_capture") or any(
                 parent["rules"].get(key)
                 for key in ("strike", "explode_on_capture", "drops", "npcs")
-            ) or push_bars(parent, "contacts"):
-                continue  # where the operator declines before asking `merge_links`
+            ) or push_bars(parent, "contacts") or schema.duck_piece(parent["rules"]):
+                # Where the operator declines before asking `merge_links`; the duck since
+                # Q1079 put `rulesets/duck-chess.json` in the corpus (contacts are refused beside it).
+                continue
             for link in merge_links(parent):
                 child = set_own_link(copy.deepcopy(parent), link)
                 assert validate_spec(child) == [], f"{name} + {link}: {validate_spec(child)}"
@@ -4534,7 +4526,7 @@ _PINNED_SCALES: dict[str, float] = {
     "npcs_pay": 1.0, "npcs_are_hard_to_kill": 1.0, "promotes_on_entry": 1.0,
     "no_repetition_draw": 1.0, "hex_lattice": 1.0, "promotion_zone_share": 1.0,
     "promotes_on_leaving": 1.0, "extinction_per_type": 1.0, "promotes_only_lost": 1.0,
-    "wins_by_leaving": 1.0, "portal_pairs": 1.0, "portals_move": 1.0, "portals_one_way": 1.0,
+    "wins_by_leaving": 1.0, "reach_runners": 1.0, "portal_pairs": 1.0, "portals_move": 1.0, "portals_one_way": 1.0,
     "portals_no_back": 1.0, "portals_ring": 1.0, "portals_funnel": 1.0,
     "portals_other_map": 1.0, "portals_filtered": 1.0, "portals_fold": 1.0,
     "npcs_share_a_walk": 1.0, "lame_rider_share": 1.0, "turning_share": 1.0,
@@ -4546,6 +4538,7 @@ _PINNED_SCALES: dict[str, float] = {
     "has_duck": 1.0,
     "duck_by_moves": 1.0,
     "nobody_share": 1.0, "majority_share": 1.0, "majority_geometry": 1.0,
+    "majority_takes_royal": 1.0,
     "bounty_share": 1.0,
     "has_purse": 1.0, "purse_start": 1.0, "purse_region": 1.0, "price_share": 1.0,
     "has_hire": 1.0, "has_bribe": 1.0, "bounty_to_loser": 1.0,
@@ -4638,14 +4631,14 @@ class TestDistanceIsPinnedToTheNumber:
         `draws_insufficient_material`, read with chess's draw on dead material taken off, since
         a bare-royal rule leaves that draw inert and would be a second difference: 0.0098;
         136 since Q1074b5's ten push features: 0.0091; 138 since Q1074bo's `push_no_back` and
-        `push_walls_crush`: 0.0089."""
+        `push_walls_crush`: 0.0089; 139 since Q1077's `majority_takes_royal`: 0.0088."""
         chess = _chess()
         chess["rules"].pop("insufficient_material")
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0089
+        assert distance(chess, twin) == 0.0088
 
 
 def _one_leap_beside_a_stone() -> dict:

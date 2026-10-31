@@ -298,7 +298,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/the-shepherds-duck": "fcb8e3a5a79c519c",  # N6, generations 36 to 38 and 42
     "archive/the-hydra": "9f2e615018f91bc5",  # N7, generations 39 to 41
     "archive/the-herd": "53d4d557420812eb",  # N9, generations 37 and 42
-    "archive/the-crowd": "1cab715f899193d4",  # TC8, generation 43
+    "archive/the-crowd": "f5076162e983dafd",  # TC8, generation 43; Q1077 its condottiere takes royals (was 1cab715f899193d4)
     "archive/the-free-companies": "f3e6fa7611474c57",  # TC10b, generations 44 to 46
     "archive/short-sweeping-bishop-chess": "23f5880775966d4a",  # LPD, schema 31
     "archive/chess-with-galloping-knights": "3d807ce97ef38810",  # Q1023, schema 31
@@ -314,6 +314,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/berolina": "733c98e8156d9fb6",  # Q614 (W7): its description, for a player; 2026-10-18: its description, written as the game's idea (was 32995edcf561f5e3)
     "rulesets/brink": "2307e963db78b4b2",  # Q1074bg1, 2026-10-30
     "rulesets/dohyo": "540f1a7a8d2039d7",  # Q1074bd, 2026-10-31: the corner ring (was ee04f5c4ac063dae, Q1074bg2)
+    "rulesets/duck-chess": "7cc8b4708407e4df",  # Q1079, 2026-10-31
     "rulesets/rock-paper-shove": "cc56261d19467597",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "2c67ec37c9123078",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "2702b1dee85bfe5c",  # Q1074bs, 2026-10-31
@@ -359,6 +360,33 @@ _WORDED_SINCE: tuple[tuple[str, str], ...] = (
     (" turns without a capture or other lasting change,", " plies without progress,"),
     (" turns in all.", " plies total."),
     ("a royal piece taken or a whole army gone", "a royal captured or an army annihilated"),
+    # Q1078 widened the bar on pushing back (`docs/plan-push.md` K5w), and its sentence says so.
+    (
+        "may not be carried back onto the square it was pushed from by a push on the very next "
+        "move, neither by pushing back itself nor in a row another piece pushes; the bar lasts "
+        "that one move.",
+        "may not on its owner's very next move push from there onto the square it was pushed "
+        "from; the bar lasts that one move.",
+    ),
+    # ... and the four games that state it reworded their descriptions to match.
+    (
+        "a piece just shoved may not be shoved straight back on the next move, by itself or by "
+        "any other piece",
+        "a piece just shoved may not shove straight back on its next move",
+    ),
+    (
+        "A piece just shoved may not be shoved straight back on the next move, by itself or by "
+        "a piece behind it",
+        "A piece just shoved may not shove straight back on its next move",
+    ),
+    (
+        "A piece just shoved may not be shoved straight back on the next move, whoever shoves",
+        "A piece just shoved may not shove straight back on its owner's next move",
+    ),
+    (
+        "a piece just shoved may not be shoved straight back on the next move, whoever shoves",
+        "a piece just shoved may not shove straight back on its owner's next move",
+    ),
 )
 
 

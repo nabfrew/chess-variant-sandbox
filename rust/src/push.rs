@@ -64,8 +64,9 @@ impl<'t> Game<'t> {
             return;
         }
         let direction = direction as usize;
-        // K5 (Q1074b6): the piece pushed onto `origin` from `target` by the last move may not
-        // push straight back onto it. `push_bar` is `NO_BAR` without the rule, so this never
+        // K5 (Q1074b6, Q1078): the piece pushed onto `push_bar[0]` from `push_bar[1]` by the
+        // last move may not be carried straight back onto it: not as the mover (here), nor in
+        // the line (`push_line_moves`). `push_bar` is `NO_BAR` without the rule, so this never
         // matches there.
         if self.push_bar[0] == origin as i16 && self.push_bar[1] == target as i16 {
             return;
@@ -147,6 +148,11 @@ impl<'t> Game<'t> {
                 }
                 return push_bears(push, piece_type, load);
             }
+            // K5 (Q1078): a line that carries the piece just pushed onto `push_bar[0]` back
+            // onto `push_bar[1]` is barred, whoever pushes it and however long it is.
+            if self.push_bar[0] == square as i16 && self.push_bar[1] == behind {
+                return false;
+            }
             let behind = behind as usize;
             if behind == target {
                 return false;
@@ -167,10 +173,10 @@ impl<'t> Game<'t> {
 
     /// Q1074b6 (K5, `rules.push.no_push_back`): `make`'s bar after the move `played` (the
     /// word `m`), keyed into `key`. A push that moved its target's piece from `x` (the
-    /// target) to `y` and did not remove it bars that piece from pushing from `y` onto `x`
-    /// on the next piece move, where its owner makes that move (`push_bar_after`); every
-    /// other move of `make`'s clears the bar. Every game without the rule skips this on one
-    /// test.
+    /// target) to `y` and did not remove it bars, on the next piece move, every push that
+    /// carries that piece from `y` back onto `x` (Q1078: by whoever pushes, as the mover or
+    /// anywhere in the line; `push_bar_after`); every other move of `make`'s clears the bar.
+    /// Every game without the rule skips this on one test.
     #[inline(always)]
     pub(super) fn write_push_bar(&mut self, m: u32, played: &Played, key: &mut u64) {
         let t = self.t;
@@ -187,32 +193,21 @@ impl<'t> Game<'t> {
     }
 
     /// The bar a push leaves (K5): `[y, x]`, or `NO_BAR` where the target's piece fell off
-    /// (it is no longer on the board to push back), or where the piece now on `y` is not
-    /// the next piece mover's (a bar only that player could meet, Q883's reading for the
-    /// portals' bar: a bar nobody can meet is never set or keyed). The next piece mover is
-    /// the same player while a long turn has moves left, and the opponent otherwise, a duck
-    /// half between (the duck's move is no piece move, and leaves the bar standing).
+    /// (it is no longer on the board to push back). Q1078: set whoever owns the piece on `y`,
+    /// since any push may carry it back (the opponent's line from the far end, or the
+    /// pusher's own under a long turn); a duck half between is no piece move, and leaves the
+    /// bar standing.
     #[cold]
     #[inline(never)]
     fn push_bar_after(&self, m: u32, played: &Played) -> [i16; 2] {
-        let t = self.t;
         let target = played.target;
         if played.captured != 0 && played.captured_square == target {
             return NO_BAR;
         }
-        let Some(standing) = self.push_next(m, target) else {
-            return NO_BAR;
-        };
-        let player = played.player;
-        let next = if t.duck.is_none() && t.turn.is_some() && self.remaining > 1 {
-            player
-        } else {
-            1 - player
-        };
-        if t.owner_of(self.board[standing]) != next {
-            return NO_BAR;
+        match self.push_next(m, target) {
+            Some(standing) => [standing as i16, target as i16],
+            None => NO_BAR,
         }
-        [standing as i16, target as i16]
     }
 
     /// The square after `square` on the line of the push `m`, `None` off the board or

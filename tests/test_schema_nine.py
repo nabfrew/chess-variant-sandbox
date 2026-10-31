@@ -106,6 +106,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/crazyhouse.json": ("bb5d97520084", "97ab14ffca01037a"),
     "rulesets/cylinder.json": ("a9306688fe57", "6a56433c2492eaf3"),
     "rulesets/dobutsu.json": ("a2f0c65ceedf", "d158e949aa940a34"),
+    "rulesets/duck-chess.json": ("7acb867a99aa", "06ae7548db734adb"),  # Q1079, 2026-10-31: standard duck chess
     "rulesets/dull.json": ("fe7c42772c71", "0909393f145e303c"),
     "rulesets/gardner.json": ("975dde173f01", "c70b9b68c5e7108a"),
     "rulesets/horde.json": ("15593fc47f6d", "abcf4aed8c6ec0b9"),
@@ -556,7 +557,9 @@ FROZEN: dict[str, tuple[str, str]] = {
     # knight's moves, moved by whichever side has more pieces on the king's step round one,
     # generation 43 (`docs/plan-turncoat.md` section 8.1; `tests/test_showcase_crowd.py`), from
     # `4c1922ffae26`. New.
-    "archive/the-crowd.json": ("961b230bc5eb", "0049eaa01331bda7"),
+    # Q1077, 2026-10-31: `takes_royal` on the condottiere (a held one attacks the other king, so
+    # gives check and mates), a mechanics edit; its runs stay. was 961b230bc5eb / 0049eaa01331bda7
+    "archive/the-crowd.json": ("ea7aa465cbfb", "f967d14e362885f7"),
     # TC10b, 2026-10-30: the free companies, chess with four mercenaries nobody owns on c4, f4,
     # c5 and f5, hired for 2 coins by a player with a piece next to one and bribed for 4,
     # generations 44 to 46 (`docs/plan-turncoat.md` section 8.5;

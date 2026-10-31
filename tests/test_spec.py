@@ -1089,6 +1089,7 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_RULES}/scoring{_P}/region": _AT_LEAST_ONE,
     f"{_RULES}/reach{_P}/squares": _AT_LEAST_ONE,
     f"{_RULES}/extinction{_P}/pieces/anyOf[1]": _AT_LEAST_ONE,
+    f"{_RULES}/reach{_P}/piece/anyOf[1]": _AT_LEAST_ONE,  # SR3a: a list of runners
     f"{_RULES}/extinction{_P}/min_count": {"minimum": 1, "maximum": 64},
     f"{_RULES}/drops{_P}/region/additionalProperties": _AT_LEAST_ONE,
     f"{_RULES}/drops{_P}/stock/additionalProperties/anyOf[0]": {"minimum": 1, "maximum": 32},

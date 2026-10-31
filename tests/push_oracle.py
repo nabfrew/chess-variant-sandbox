@@ -22,8 +22,8 @@ its own means, what the compiler must have put in its tables:
   line one step on, its last piece gone where the line meets the edge;
 * **the bar on pushing straight back** (Q1074b6, K5, ``bar_after``, and ``push_moves``'
   ``bar``): after a push that moved the piece landed on from ``x`` to ``y`` and did not throw
-  it off, where that piece is the next mover's, no push from ``y`` onto ``x`` on the next
-  move; every other move leaves no bar;
+  it off, no push on the next move carries that piece from ``y`` back onto ``x``, whoever
+  pushes and wherever in the line it stands (Q1078); every other move leaves no bar;
 * **crushing walls and rings** (Q1074b7, W1, H4): under ``rules.push.walls: "crush"`` a piece
   pushed against a wall is removed, as one pushed off the board (never the pusher's own
   royal); on a wrapped board a line that comes back round to its target is a full ring and
@@ -270,7 +270,8 @@ def push_moves(
     move may push, and under ``"weight"`` their weights summed no more than the pusher's. ``decode(value)`` answers ``(owner, piece id)`` for a board byte (the compiled
     spec's owner-major byte, read only to name the piece). Leaps and straight slides with no
     condition, the mirrored setup, no region; the pseudo-legal list, before any check filter.
-    ``bar`` is ``bar_after``'s ``(y, x)``: no push from ``y`` onto ``x`` (K5)."""
+    ``bar`` is ``bar_after``'s ``(y, x)``: no push from ``y`` onto ``x``, and none whose line
+    carries the piece on ``y`` onto ``x`` (K5, Q1078)."""
     geometry = Board(spec)
     orientation = spec.get("setup", {}).get("orientation", "mirror")
     pieces = {piece["id"]: piece for piece in spec["pieces"]}
@@ -315,6 +316,8 @@ def push_moves(
                             whose == "own" and pieces[victim].get("royal")
                         )
                         break
+                    if (square, behind) == bar:
+                        break  # carries the piece just pushed straight back (K5, Q1078)
                     if behind == target:
                         break  # a full ring (H4): no square of it is empty
                     if behind == origin or not board[behind]:
@@ -359,9 +362,9 @@ def bar_after(
 ) -> tuple[int, int]:
     """K5 (Q1074b6): the bar ``(y, x)`` the move ``push`` by ``player`` leaves on ``before``
     (``None`` for a move that is not a push), or ``(-1, -1)``. Only under
-    ``rules.push.no_push_back``; alternating turns only (the next mover is the opponent). The
-    piece landed on, at ``x``, goes one ``step`` on to ``y``; off the board it leaves no bar,
-    and neither does a piece that is not the opponent's (an own piece pushed)."""
+    ``rules.push.no_push_back``; alternating turns only. The piece landed on, at ``x``, goes
+    one ``step`` on to ``y``; off the board it leaves no bar. Whose it is does not matter
+    (Q1078): any push may carry it back."""
     rule = spec.get("rules", {}).get("push") or {}
     assert "turn" not in spec.get("rules", {}) and "duck" not in spec.get("rules", {})
     if push is None or not rule.get("no_push_back"):
@@ -369,7 +372,7 @@ def bar_after(
     _origin, target, step, _promoted = push
     standing = next_square(spec, target, step)
     assert standing != PUSH_STOP, push
-    if standing in (PUSH_OFF, PUSH_CRUSH) or decode(before[target])[0] != 1 - player:
+    if standing in (PUSH_OFF, PUSH_CRUSH):
         return (-1, -1)
     return (standing, target)
 

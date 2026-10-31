@@ -92,6 +92,7 @@ from chess_variant_sandbox.spec.schema import (
     purse_squares,
     push_lists,
     push_rule,
+    reach_pieces,
     reach_reflection,
     reflect_square,
     sight_affected_ids,
@@ -99,6 +100,7 @@ from chess_variant_sandbox.spec.schema import (
     spy_ids,
     strike_is_live,
     sweep_length,
+    takes_royal_ids,
     turning_order,
     turns_less_than_half,
     validate_or_raise,
@@ -619,12 +621,15 @@ class DropRule:
 class ReachRule:
     """A win by arrival: king of the hill, racing kings, breakthrough.
 
-    ``piece_type`` of ``-1`` means any piece, which is what breakthrough wants.
+    ``piece_types`` empty means any piece, which is what breakthrough wants; otherwise
+    the types whose arrival decides, ascending. SR3a (`docs/plan-schema-next.md` §1 rank
+    4): ``reach.piece`` takes a list, so a side may choose its runner; one id is a tuple
+    of one, and crosses the boundary exactly as the single type always did.
     Squares are stored per player because most such games aim each side at the other's
     end of the board, but racing kings sends both to the same rank.
     """
 
-    piece_type: int
+    piece_types: tuple[int, ...]
     squares: tuple[frozenset[int], frozenset[int]]
     result: str
     safe: bool = False  # the arriving piece must not be capturable where it lands
@@ -633,6 +638,18 @@ class ReachRule:
     # origin in ``make`` (``Game::goal_left_by``), and a piece standing on a goal decides
     # nothing. False is the arrival every game before it reads.
     leaves: bool = False
+
+    def admits(self, piece_type: int) -> bool:
+        """Whether a piece of ``piece_type`` is one this goal is about."""
+        return not self.piece_types or piece_type in self.piece_types
+
+    @property
+    def mask(self) -> int:
+        """The types it admits as a bit mask over declared types, ``-1`` for any piece."""
+        mask = 0
+        for piece_type in self.piece_types:
+            mask |= 1 << piece_type
+        return mask if self.piece_types else -1
 
 
 @dataclass(frozen=True)
@@ -878,10 +895,16 @@ class NeutralRule:
     on ``square`` (its control's geometry, or the king's step, through `_compile_square`, so
     walls, absent cells and wrap are resolved here), empty for every other type. The core
     counts each player's pieces over that list and computes no square (rule 4).
+
+    ``takes_royal`` (Q1077, `docs/plan-turncoat.md` §4.7) is the majority types whose held
+    pieces may take the royal of the player they are held against, and so attack it: their
+    frame-0 attack sources fill the third owner's block (`_build_attack_sources`), asked only
+    for the holder. Empty in every game without the key, which is the game TC3 built.
     """
 
     kind: tuple[int, ...]
     neighbours: tuple[tuple[tuple[int, ...], ...], ...]
+    takes_royal: tuple[int, ...] = ()
 
     @property
     def has_majority(self) -> bool:
@@ -911,7 +934,13 @@ def _compile_neutrals(
         neighbours[piece_type] = _next_to(
             piece, hex_lattice, width, height, orientation, wrap, obstacles, radius,
         )
-    return NeutralRule(kind=tuple(kind), neighbours=tuple(neighbours))
+    royal_takers = takes_royal_ids(spec)
+    return NeutralRule(
+        kind=tuple(kind), neighbours=tuple(neighbours),
+        takes_royal=tuple(
+            piece_type for piece_type, piece in enumerate(pieces) if piece["id"] in royal_takers
+        ),
+    )
 
 
 def _next_to(
@@ -2746,6 +2775,7 @@ def _compile(
         dirs_out=attack_dirs,
         facing_axes=facing_axes,
         kinds_out=attack_kinds,
+        held_takers=neutrals.takes_royal if neutrals is not None else (),
     )
     one_way_types = _one_way_types(
         leaps,
@@ -4028,6 +4058,7 @@ def _build_attack_sources(
     dirs_out: list[list[list[int]]] | None = None,
     facing_axes: tuple[int, ...] = (),
     kinds_out: list[list[list[int]]] | None = None,
+    held_takers: tuple[int, ...] = (),
 ) -> tuple[tuple[tuple[AttackSource, ...], ...], ...]:
     """Invert the move tables into "who could attack this square?".
 
@@ -4095,90 +4126,100 @@ def _build_attack_sources(
         dirs.append([[0] * len(sources) for sources in wild])
         kinds.append([[ATTACK_BY_CAPTURE] * len(sources) for sources in wild])
 
-    for frame in range(len(leaps)):
-        player, facing = divmod(frame, n_facings)
-        for piece_type in range(len(leaps[frame])):
-            if facing and piece_type < len(facing_axes) and facing % (
-                n_facings // facing_axes[piece_type]
+    def readings() -> Any:
+        for frame in range(len(leaps)):
+            player, facing = divmod(frame, n_facings)
+            for piece_type in range(len(leaps[frame])):
+                if facing and piece_type < len(facing_axes) and facing % (
+                    n_facings // facing_axes[piece_type]
+                ):
+                    continue  # a facing this type can never be in
+                yield player, frame, piece_type, (
+                    (player * n_facings + facing) * n_types + piece_type + 1
+                )
+        # Q1077 (`docs/plan-turncoat.md` §4.7): a held neutral that may take a royal attacks
+        # as its holder would move it, in frame 0, filed under the third owner's block with
+        # its nobody's byte. The core asks these only for the player who holds the piece.
+        for piece_type in held_takers:
+            yield WILD, 0, piece_type, (WILD * n_facings) * n_types + piece_type + 1
+
+    for player, frame, piece_type, piece_value in readings():
+        for origin in range(n_squares):
+            for number, (targets, modes, unmoved) in enumerate(
+                leaps[frame][piece_type][origin]
             ):
-                continue  # a facing this type can never be in
-            piece_value = (player * n_facings + facing) * n_types + piece_type + 1
-            for origin in range(n_squares):
-                for number, (targets, modes, unmoved) in enumerate(
-                    leaps[frame][piece_type][origin]
-                ):
-                    for index, target in enumerate(targets):
-                        if modes[index] & _ATTACKS:
-                            add(
-                                player, target,
-                                (origin, piece_value, (), (), 0, unmoved, SCREEN_ANY, 0, ()),
-                                leap_dirs[frame][piece_type][origin][number][index]
-                                if leap_dirs else 0,
-                                modes[index],
-                            )
-
-                for number, (ray, modes, unmoved) in enumerate(
-                    slides[frame][piece_type][origin]
-                ):
-                    for index, target in enumerate(ray):
-                        if modes[index] & _ATTACKS:
-                            add(
-                                player, target,
-                                (origin, piece_value, ray[:index], (), 0, unmoved, SCREEN_ANY,
-                                 0, ()),
-                                slide_dirs[frame][piece_type][origin][number][index]
-                                if slide_dirs else 0,
-                                modes[index],
-                            )
-
-                for number, entry in enumerate(hops[frame][piece_type][origin]):
-                    ray, modes, unmoved, screen_range, screen_owner = entry
-                    for index, target in enumerate(ray):
-                        if not modes[index] & _ATTACKS:
-                            continue
-                        path = ray[:index]
-                        sign = (
-                            hop_dirs[frame][piece_type][origin][number][index] if hop_dirs else 0
+                for index, target in enumerate(targets):
+                    if modes[index] & _ATTACKS:
+                        add(
+                            player, target,
+                            (origin, piece_value, (), (), 0, unmoved, SCREEN_ANY, 0, ()),
+                            leap_dirs[frame][piece_type][origin][number][index]
+                            if leap_dirs else 0,
+                            modes[index],
                         )
-                        if screen_range and index >= screen_range:
-                            # Only the last ``screen_range`` squares may hold the screen,
-                            # so everything before them has to be empty.
-                            split = index - screen_range
-                            add(
-                                player, target,
-                                (origin, piece_value, path[:split], path[split:], 1,
-                                 unmoved, screen_owner, 0, ()),
-                                sign, modes[index],
-                            )
-                        else:
-                            add(
-                                player, target,
-                                (origin, piece_value, (), path, 1, unmoved, screen_owner,
-                                 0, ()),
-                                sign, modes[index],
-                            )
 
-                # Schema 13, decision A: one source per ray square. The square is attacked
-                # when it is a capture landing, or when a landing past it would sweep it,
-                # so a sweep over the enemy royal is check. The core walks the rest of the
-                # ray with `modes` to find that landing.
-                #
-                # Q1063: past a sweep's length the ray is a slide's. A square there is
-                # attacked only as a capture landing over a clear ride, never by a landing
-                # beyond it (that would have to pass over the piece on it), and the core
-                # reads the length off the byte's high bits to know where the ride starts.
-                for ray, modes, unmoved, swept in sweeps[frame][piece_type][origin]:
-                    for index, target in enumerate(ray):
-                        rides = 0 < swept <= index
-                        bits = (SWEEP_LANDS if modes[index] & 2 else 0) | (
-                            SWEEP_BEYOND if not rides and any(modes[index + 1:]) else 0
+            for number, (ray, modes, unmoved) in enumerate(
+                slides[frame][piece_type][origin]
+            ):
+                for index, target in enumerate(ray):
+                    if modes[index] & _ATTACKS:
+                        add(
+                            player, target,
+                            (origin, piece_value, ray[:index], (), 0, unmoved, SCREEN_ANY,
+                             0, ()),
+                            slide_dirs[frame][piece_type][origin][number][index]
+                            if slide_dirs else 0,
+                            modes[index],
                         )
-                        if bits:
-                            add(
-                                player, target,
-                                (origin, piece_value, ray[:index], ray[index:], 0, unmoved,
-                                 SCREEN_ANY, bits | (swept << SWEEP_LENGTH_SHIFT), modes),
-                            )
+
+            for number, entry in enumerate(hops[frame][piece_type][origin]):
+                ray, modes, unmoved, screen_range, screen_owner = entry
+                for index, target in enumerate(ray):
+                    if not modes[index] & _ATTACKS:
+                        continue
+                    path = ray[:index]
+                    sign = (
+                        hop_dirs[frame][piece_type][origin][number][index] if hop_dirs else 0
+                    )
+                    if screen_range and index >= screen_range:
+                        # Only the last ``screen_range`` squares may hold the screen,
+                        # so everything before them has to be empty.
+                        split = index - screen_range
+                        add(
+                            player, target,
+                            (origin, piece_value, path[:split], path[split:], 1,
+                             unmoved, screen_owner, 0, ()),
+                            sign, modes[index],
+                        )
+                    else:
+                        add(
+                            player, target,
+                            (origin, piece_value, (), path, 1, unmoved, screen_owner,
+                             0, ()),
+                            sign, modes[index],
+                        )
+
+            # Schema 13, decision A: one source per ray square. The square is attacked
+            # when it is a capture landing, or when a landing past it would sweep it,
+            # so a sweep over the enemy royal is check. The core walks the rest of the
+            # ray with `modes` to find that landing.
+            #
+            # Q1063: past a sweep's length the ray is a slide's. A square there is
+            # attacked only as a capture landing over a clear ride, never by a landing
+            # beyond it (that would have to pass over the piece on it), and the core
+            # reads the length off the byte's high bits to know where the ride starts.
+            for ray, modes, unmoved, swept in sweeps[frame][piece_type][origin]:
+                for index, target in enumerate(ray):
+                    rides = 0 < swept <= index
+                    bits = (SWEEP_LANDS if modes[index] & 2 else 0) | (
+                        SWEEP_BEYOND if not rides and any(modes[index + 1:]) else 0
+                    )
+                    if bits:
+                        add(
+                            player, target,
+                            (origin, piece_value, ray[:index], ray[index:], 0, unmoved,
+                             SCREEN_ANY, bits | (swept << SWEEP_LENGTH_SHIFT), modes),
+                        )
 
     if dirs_out is not None and momentum is not None:
         dirs_out.extend(dirs)
@@ -4961,9 +5002,8 @@ def _compile_reach(
             file, rank = reflect_square(file, rank, width, height, reflection)
         second.add(rank * width + file)
 
-    piece = reach.get("piece")
     return ReachRule(
-        piece_type=index_of[piece] if piece is not None else -1,
+        piece_types=tuple(sorted({index_of[piece] for piece in reach_pieces(reach)})),
         squares=(frozenset(squares), frozenset(second)),
         result=reach.get("result", "win"),
         safe=bool(reach.get("safe", False)),
@@ -5033,7 +5073,9 @@ def _goal_distances(
     # none, and the union table above already answers both, so nothing is sent.
     goals = [sorted(square for square in reach.squares[player] if square < n_squares)
              for player in (0, 1)]
-    priced = not reach.safe and (reach.piece_type < 0 or reach.piece_type not in royal_types)
+    priced = not reach.safe and (
+        not reach.piece_types or not any(t in royal_types for t in reach.piece_types)
+    )
     each_wanted = priced and max(len(goals[0]), len(goals[1])) > 1
     each: list[tuple[tuple[tuple[int, ...], ...], ...]] = []
 

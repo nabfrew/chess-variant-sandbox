@@ -368,6 +368,33 @@ class TestTheSiteListing:
         listing = previews_site.browser().get("/api/library").payload
         assert ROUND_PREVIEW not in {card["hash"] for card in listing["previews"]}
 
+    def test_a_preview_taken_off_the_site_is_not_linked_from_a_game_page(
+        self, tmp_path: Path
+    ) -> None:
+        """Q1081: a game page's `previewsSharing` (Q1080) goes through the listing's door."""
+        root = _root(tmp_path)
+        shutil.copy(RULESETS / "chess.json", root / "rulesets" / "chess.json")
+        page, gone, kept = "daa6917bd359", "1fced818630e", "e72a8715217c"
+        with _running_site(root) as site:
+            report = loader.load(site.store, root)
+            site.store.commit()
+            assert not report.skipped, report.skipped
+
+            def named() -> set[str]:
+                game = site.browser().get(f"/api/game/{page}").payload
+                return {one["hash"] for one in game["previewsSharing"]}
+
+            assert {gone, kept} <= named()
+            with site.store.cursor() as cursor:
+                cursor.execute(f"update games set revoked = now() where hash = '{gone}'")
+            site.store.commit()
+            assert kept in named() and gone not in named()
+            # A preview with no row at all is not linked either.
+            with site.store.cursor() as cursor:
+                cursor.execute(f"delete from games where hash = '{kept}'")
+            site.store.commit()
+            assert kept not in named()
+
     def test_the_game_page_has_no_leaderboard_and_no_links(
         self, previews_site: Site
     ) -> None:

@@ -796,6 +796,8 @@ _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
     "id", "name", "royal", "value", "moves", "region", "promoted_from", "captures",
     "facing", "beats", "spy", "speed", "rest", "sight", "control", "bounty", "price",
+    # Q1077 (`docs/plan-turncoat.md` §4.7): a held neutral may take a royal, so gives check.
+    "takes_royal",
     # Q1074b2 (`docs/plan-push.md` §1.2): who a pusher may push, and its weight.
     "pushes", "weight",
     # Q1074b4s (§2's correction): a pusher's strength under chain "weight", apart from its weight.
@@ -891,7 +893,7 @@ _RULES_KEYS = {
 # string-typed field of `jsonschema.py`, so a rule that names a piece cannot land
 # without a row.
 
-PIECE_ID = "<id>"  # the value is one piece id
+PIECE_ID = "<id>"  # the value is one piece id (SR3a: or, at `rules.reach.piece`, a list)
 PIECE_IDS = "<ids>"  # a list of piece ids
 PIECE_KEYED = "<keyed>"  # a map whose *keys* are piece ids
 ANY_KEY = "*"  # in a `Fields`, every key not named, whatever it is called
@@ -1196,6 +1198,8 @@ PIECE_OFF_VALUES: dict[str, Any] = {
     "bounty": 0,
     # TC5 (`docs/plan-turncoat.md` §5.4): a type that is not for sale.
     "price": 0,
+    # Q1077 (`docs/plan-turncoat.md` §4.7): a held neutral never takes a royal nor gives check.
+    "takes_royal": False,
 }
 SIGHT_OFF_VALUES: dict[str, Any] = {"through": False, "captures_own": False}
 SIMULTANEOUS_OFF_VALUES: dict[str, Any] = {"tie": "both", "swap": "chase", "both": "draw"}
@@ -1430,9 +1434,10 @@ def _check_moveless_coherence(
                 )
 
     # 4. A goal for a piece that never arrives (or leaves, which is always by a move).
-    reach = rules.get("reach")
-    if isinstance(reach, dict) and _in(reach.get("piece"), still):
-        pid = reach["piece"]
+    reach: Any = rules.get("reach")
+    for pid in reach_pieces(reach):
+        if not _in(pid, still):
+            continue
         if reach.get("on") == "leave":
             errors.append(
                 f"rules.reach.piece {pid!r} has no moves and never leaves a goal square; "
@@ -5178,7 +5183,7 @@ def _duck_named_elsewhere(
         ):
             found.append(f"rules.npcs[{index}]")
     reach = rules.get("reach")
-    if isinstance(reach, dict) and reach.get("piece") == pid:
+    if pid in reach_pieces(reach):
         found.append("rules.reach")
     extinction = rules.get("extinction")
     if isinstance(extinction, dict) and pid in _listed(extinction.get("pieces")):
@@ -5742,12 +5747,10 @@ def _check_inert_rules(
         if _routes_are_readable(spec, pieces, rules)
         else declared
     )
-    reach = rules.get("reach")
-    if isinstance(reach, dict):
-        piece_id = reach.get("piece")
-        if _in(piece_id, declared) and piece_id not in standing:
+    for runner in reach_pieces(rules.get("reach")):
+        if _in(runner, declared) and runner not in standing:
             errors.append(
-                f"rules.reach is about {piece_id!r}, which can never stand on the "
+                f"rules.reach is about {runner!r}, which can never stand on the "
                 f"board: {_NEVER_ON_THE_BOARD}"
             )
     promotion = rules.get("promotion")
@@ -7201,7 +7204,19 @@ def _validate_reach(
     _check_keys(reach, _REACH_KEYS, "rules.reach", errors, required={"squares"})
 
     piece = reach.get("piece")
-    if piece is not None and piece not in piece_ids:
+    if isinstance(piece, list):
+        # SR3a: a list of ids, any of which wins by arriving. Empty would read as "any
+        # piece", which leaving the key out already says.
+        if not piece:
+            errors.append(
+                "rules.reach.piece must not be an empty list; leave it out for any piece"
+            )
+        for entry in piece:
+            if not isinstance(entry, str) or entry not in piece_ids:
+                errors.append(f"rules.reach.piece entry {entry!r} is not a declared piece")
+        if len(set(map(str, piece))) != len(piece):
+            errors.append("rules.reach.piece lists a piece twice")
+    elif piece is not None and piece not in piece_ids:
         errors.append(f"rules.reach.piece {piece!r} is not a declared piece")
 
     mirror = reach.get("mirror")
@@ -7359,6 +7374,24 @@ def reflect_square(
     if orientation == "rotate":
         return width - 1 - file, height - 1 - rank
     return file, height - 1 - rank
+
+
+def reach_pieces(reach: Any) -> tuple[str, ...]:
+    """The piece ids a ``reach`` goal is about, as written; empty for any piece.
+
+    SR3a (`docs/plan-schema-next.md` §1 rank 4): ``reach.piece`` is one id or a list of
+    them, and a goal for a list is won by any listed piece arriving (or leaving). The one
+    reader of the spelling, shared by the validator, the compiler and every surface. A
+    value that is neither reads as no id, for the validator to name.
+    """
+    if not isinstance(reach, dict):
+        return ()
+    piece = reach.get("piece")
+    if isinstance(piece, str):
+        return (piece,)
+    if isinstance(piece, list):
+        return tuple(pid for pid in piece if isinstance(pid, str))
+    return ()
 
 
 def reach_reflection(reach: Any) -> str | None:
@@ -8489,6 +8522,17 @@ def majority_ids(spec: Any) -> set[str]:
     } & neutral_ids(spec)
 
 
+def takes_royal_ids(spec: Any) -> set[str]:
+    """Q1077 (`docs/plan-turncoat.md` §4.7): the majority types whose held pieces may take a
+    royal, and so attack one: ``takes_royal: true`` on a type `majority_ids` names."""
+    pieces = spec.get("pieces") if isinstance(spec, dict) else None
+    return {
+        piece["id"] for piece in _listed(pieces)
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+        and piece.get("takes_royal") is True
+    } & majority_ids(spec)
+
+
 def _validate_control(piece: dict[str, Any], where: str, errors: list[str]) -> None:
     """The shape of ``pieces[].control``: a word, or ``{"majority": {vectors, symmetry}}``."""
     control = piece["control"]
@@ -8550,6 +8594,7 @@ def _check_neutral_coherence(
     for index, piece in enumerate(pieces):
         if isinstance(piece, dict) and "control" in piece:
             _validate_control(piece, f"pieces[{index}]", errors)
+    _check_takes_royal(spec, pieces, errors)
     neutrals = neutral_ids(spec)
     wild = {
         npc["piece"] for npc in _listed(rules.get("npcs"))
@@ -8615,6 +8660,34 @@ def _check_neutral_coherence(
     # off the board at the start of each move, which movegen does per move anyway.
     for pid in sorted(majority):
         _check_majority_type(pid, by_id[pid], rules, orientation, hex_lattice, errors)
+
+
+def _check_takes_royal(spec: dict[str, Any], pieces: list[Any], errors: list[str]) -> None:
+    """Q1077 (`docs/plan-turncoat.md` §4.7): ``pieces[].takes_royal`` is a boolean, and
+    ``true`` only where it can fire: on a majority type some placement puts in nobody's block,
+    in a game with a royal to take."""
+    held = majority_ids(spec)
+    has_royal = any(isinstance(piece, dict) and piece.get("royal") is True for piece in pieces)
+    for index, piece in enumerate(pieces):
+        if not isinstance(piece, dict) or "takes_royal" not in piece:
+            continue
+        loc = f"pieces[{index}].takes_royal"
+        value = piece["takes_royal"]
+        if not isinstance(value, bool):
+            errors.append(f"{loc} must be true or false, got {value!r}")
+        elif value and piece.get("id") not in held:
+            errors.append(
+                f"{loc} on {piece.get('id')!r}, which is not a piece nobody owns that the "
+                'majority moves (control "majority", placed for nobody): nobody would hold it, '
+                "so it would never take or threaten a royal"
+            )
+        elif value and not has_royal:
+            errors.append(f"{loc} in a game with no royal piece: there is no royal to take")
+        elif value and any(_stated_on(other, "sight") for other in pieces):
+            errors.append(
+                f"{loc} beside a line of sight: what a shield or a freeze does to a held "
+                "neutral's attack on a royal is a second rule"
+            )
 
 
 def _check_majority_type(
@@ -10443,7 +10516,7 @@ def _check_push_coherence(
     ):
         errors.append(
             "rules.push.no_push_back (K5) and no move pushes an enemy piece: a pushed piece is "
-            "the pusher's own, whose owner does not move next, so the bar can never bind"
+            "the pusher's own, which the next mover can never push, so the bar can never bind"
         )
     if rule["walls"] == "crush":
         board, setup = spec.get("board"), spec.get("setup")

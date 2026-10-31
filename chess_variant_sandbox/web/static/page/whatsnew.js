@@ -84,9 +84,21 @@ function newsEntry(entry) {
   return article;
 }
 
-// One piece of a paragraph. `em` and `code` are the two the file uses; anything else is
-// its own text, which is what makes an unknown kind a sentence a reader can still read.
+// One piece of a paragraph. `em`, `code` and `link` are the kinds the file uses; anything
+// else is its own text, which is what makes an unknown kind a sentence a reader can still
+// read. A link is drawn only to a path on this site (Q1080), which is all the parser makes:
+// its address is set as an attribute and its words as text, so neither can become markup.
 function newsRun(run) {
+  if (run.t === 'link') {
+    const words = run.em ? document.createElement('em') : document.createTextNode(run.s);
+    if (run.em) words.textContent = run.s;
+    const href = String(run.href || '');
+    if (!href.startsWith('/') || href.startsWith('//') || href.includes('\\')) return words;
+    const link = document.createElement('a');
+    link.setAttribute('href', href);
+    link.append(words);
+    return link;
+  }
   if (run.t === 'code' || run.t === 'em') {
     const element = document.createElement(run.t === 'code' ? 'code' : 'em');
     element.textContent = run.s;

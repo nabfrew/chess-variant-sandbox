@@ -112,6 +112,7 @@ from chess_variant_sandbox.spec.schema import (
     push_rule,
     pushable_ids,
     pushing_ids,
+    reach_pieces,
     reach_reflection,
     reads_alike_for_both,
     reflect_square,
@@ -4379,10 +4380,11 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
     a random empty square in the half between the armies (mirrored, under a mirrored setup;
     stated twice, square and image, otherwise), and half the time the player with more pieces
     next to it may move it (``control: "majority"``; a quarter of those count only the four
-    orthogonal neighbours). In a game with some, one of three, at random: they go (their
+    orthogonal neighbours, and, Q1077, half of them attack the other king, ``takes_royal``). In a game with some, one of four, at random: they go (their
     placements, and a type nothing else places); majority control is given to one standing
-    type or taken from every type; or a majority type's neighbours swap between the king's
-    step and the orthogonal four. The validator decides the rest (rounds, wild pieces, the
+    type or taken from every type; a majority type's neighbours swap between the king's
+    step and the orthogonal four; or (Q1077) a majority type's ``takes_royal`` is switched,
+    so its held pieces give check or no longer. The validator decides the rest (rounds, wild pieces, the
     duck, portals, a strike, contacts, and beside majority a territory, a goal, a blast).
     """
     trial = copy.deepcopy(spec)
@@ -4408,6 +4410,10 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
                 ", moved by whichever player has more pieces "
                 + ("orthogonally next to it" if isinstance(added["control"], dict) else "next to it")
             )
+            # Q1077: half of those attack the king of the player who does not hold them.
+            if rng.random() < 0.5:
+                added["takes_royal"] = True
+                said += ", and attacking the other player's king"
         trial["pieces"].append(added)
         mirrored = setup.get("mirror", True) is not False
         orientation = str(setup.get("orientation", "mirror"))
@@ -4436,14 +4442,30 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
     else:
         by_id = {piece.get("id"): piece for piece in pieces(trial)}
         held = sorted(pid for pid in placed if by_id.get(pid, {}).get("control", "stands") != "stands")
-        choice = rng.randrange(3)
-        if choice == 0:
+        choice = rng.randrange(4)
+        if choice == 3:
+            # Q1077 (`docs/plan-turncoat.md` §4.7): a held type's pieces take the other royal,
+            # so check by one, or no longer.
+            if not held:
+                return None
+            pid = rng.choice(held)
+            if by_id[pid].get("takes_royal") is True:
+                by_id[pid].pop("takes_royal")
+                said = f"a {pid} nobody owns no longer attacks a king, whoever holds it"
+            else:
+                by_id[pid]["takes_royal"] = True
+                said = (
+                    f"a {pid} nobody owns attacks the king of the player who does not hold it, "
+                    "so it gives check"
+                )
+        elif choice == 0:
             setup["placements"] = [
                 row for row in setup.get("placements") or [] if not is_nobodys(row)
             ]
             still = {row.get("piece") for row in setup["placements"] if isinstance(row, dict)}
             for pid in sorted(placed):
                 by_id[pid].pop("control", None)
+                by_id[pid].pop("takes_royal", None)
             trial["pieces"] = [
                 piece for piece in trial["pieces"]
                 if piece.get("id") not in placed or piece.get("id") in still
@@ -4454,6 +4476,7 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
             if held:
                 for pid in held:
                     by_id[pid].pop("control", None)
+                    by_id[pid].pop("takes_royal", None)
                 said = "nobody may move the pieces nobody owns any more: they only stand"
             else:
                 pid = rng.choice(sorted(placed))
@@ -5196,6 +5219,46 @@ def _crush_on_the_walls(spec: dict[str, Any], rng: random.Random) -> str | None:
     )
 
 
+# --------------------------------------------------------------------------- the runners
+#
+# SR3a (`docs/plan-schema-next.md` §1 rank 4, generation 57): `reach.piece` as a list. One
+# operator adds a second runner to a goal for one piece and takes a list back to its first.
+
+
+def _add_a_runner(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Give a goal for one piece a second runner, or take a list of runners back to one
+    (`rules.reach.piece` as a list, SR3a): any listed piece arriving decides the game, so a
+    side chooses which to send. The runner is drawn from the declared types that can stand
+    on the board, never one already listed; a goal for any piece has nobody to add, and the
+    validator decides the rest (a runner that never moves, a goal beside majority control)."""
+    reach = (spec.get("rules") or {}).get("reach")
+    runners = reach_pieces(reach)
+    if not runners:
+        return None
+    trial = copy.deepcopy(spec)
+    goal = trial["rules"]["reach"]
+    if len(runners) > 1:
+        goal["piece"] = runners[0]
+        said = f"only the {runners[0]} wins by arriving now"
+    else:
+        standing = pieces_that_can_stand(trial)
+        candidates = [
+            str(piece["id"]) for piece in pieces(trial)
+            if piece.get("id") in standing and piece.get("id") not in runners
+            and piece.get("moves")
+        ]
+        if not candidates:
+            return None
+        runner = rng.choice(candidates)
+        goal["piece"] = [runners[0], runner]
+        said = f"the {runner} wins by arriving too, beside the {runners[0]}"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -5281,6 +5344,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("weigh-the-push", _weigh_the_push),
     Operator("bar-the-push-back", _bar_the_push_back),
     Operator("crush-on-the-walls", _crush_on_the_walls),
+    Operator("add-a-runner", _add_a_runner),
 )
 
 

@@ -108,7 +108,8 @@ def normal_form(spec: dict[str, Any]) -> dict[str, Any]:
     3. A rule that states nothing is dropped: one of `_ABSENT_WHEN_EMPTY` at ``false``,
        ``0``, ``{}`` or ``[]``; a ``turn`` of one move; a ``wrap`` where every edge is
        ``"none"``; a ``strike`` that `schema.strike_is_live` says is plain capture.
-    4. One spelling where there are two: ``promotion`` is always a list; a promotion zone by
+    4. One spelling where there are two: ``promotion`` is always a list; ``reach.piece``
+       written as a list is ascending, and a list of one is its id (SR3a); a promotion zone by
        rank is always ``ranks``, ascending, with ``"last"`` and the default resolved against
        the board's height; ``to_by_player`` naming one list for both players is ``to``; a
        ``wrap`` is written key by key from `schema.wrap_stated`, ``X_by_player`` only where
@@ -336,6 +337,16 @@ def _normal_rules(rules: dict[str, Any], height: Any, shape: Any) -> None:
         del rules["turn"]
     if isinstance(rules.get("strike"), dict) and not strike_is_live(rules["strike"]):
         del rules["strike"]
+    reach = rules.get("reach")
+    if isinstance(reach, dict) and isinstance(reach.get("piece"), list):
+        runners = reach["piece"]
+        if (
+            runners and all(isinstance(pid, str) for pid in runners)
+            and len(set(runners)) == len(runners)
+        ):
+            # SR3a: a goal's runners are a set, and a list of one is the one id.
+            ordered = sorted(runners)
+            reach["piece"] = ordered[0] if len(ordered) == 1 else ordered
     _drop_defaults(rules, _RULE_DEFAULTS)
     for key in [key for key in rules if key in _ABSENT_WHEN_EMPTY]:
         if any(_same(rules[key], empty) for empty in _EMPTY):

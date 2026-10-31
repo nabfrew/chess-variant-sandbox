@@ -1,7 +1,7 @@
 {
   "schema_version": 31,
   "name": "the crowd",
-  "description": "Chess with four knights in the middle of the board that belong to neither side. A neutral knight goes with the crowd: whichever player has more pieces on the eight squares around it may move it, as their whole move, and it may take an enemy piece (never a king), but it never becomes theirs. Lose the count and the opponent is moving it next turn; tie it and nobody can. So a piece near the centre is worth what it attacks and also what it weighs: one more pawn beside a neutral can hand you a knight, and one capture beside it can hand that knight to the other side. Every move in the middle asks whether to crowd a neutral, to break the opponent's count, or to take the knight off the board and end the argument. A neutral attacks nothing and gives no check while it stands, so any check it brings is one it uncovers by stepping away.",
+  "description": "Chess with four knights in the middle of the board that belong to neither side. A neutral knight goes with the crowd: whichever player has more pieces on the eight squares around it may move it, as their whole move, and it may take any enemy piece, but it never becomes theirs. Lose the count and the opponent is moving it next turn; tie it and nobody can. So a piece near the centre is worth what it attacks and also what it weighs: one more pawn beside a neutral can hand you a knight, and one capture beside it can hand that knight to the other side. Every move in the middle asks whether to crowd a neutral, to break the opponent's count, or to take the knight off the board and end the argument. The fight reaches the kings too: a neutral attacks the king of the side that does not hold it, so it gives check and can deliver mate, and a king may not stand where a knight the opponent holds could take it. That check can be answered as no other can, by stepping a piece next to the knight and tying the count, which takes it out of the opponent's hands.",
   "board": {
     "width": 8,
     "height": 8
@@ -155,6 +155,7 @@
       "name": "condottiere",
       "value": 3,
       "control": "majority",
+      "takes_royal": true,
       "moves": [
         {
           "kind": "leap",

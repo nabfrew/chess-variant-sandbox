@@ -719,10 +719,7 @@ impl Evaluator {
         if let Some(rule) = t.reach.as_ref().filter(|rule| t.reach_is_priceable(rule)) {
             let sealed = self.sealed_goals(game);
             for (side, slot) in race.iter_mut().enumerate() {
-                let mut eligible = safe[side];
-                if rule.piece_type >= 0 {
-                    eligible &= 1 << rule.piece_type;
-                }
+                let eligible = safe[side] & rule.types;
                 if eligible == 0 {
                     continue;
                 }
@@ -1097,9 +1094,9 @@ impl Evaluator {
         match t.reach.as_ref().filter(|rule| t.reach_is_priceable(rule)) {
             Some(rule) => {
                 let sealed = self.sealed_goals(game);
-                let mine = self.nearest_to_goal(game, player, rule.piece_type, sealed[player]);
+                let mine = self.nearest_to_goal(game, player, rule.types, sealed[player]);
                 let theirs =
-                    self.nearest_to_goal(game, 1 - player, rule.piece_type, sealed[1 - player]);
+                    self.nearest_to_goal(game, 1 - player, rule.types, sealed[1 - player]);
                 let progress = (theirs - mine) / t.goal_diameter;
                 // Stated for the side that arrives, so a rule whose result is a *loss*
                 // for the arriving side -- which the schema allows -- is a race to run
@@ -1117,9 +1114,8 @@ impl Evaluator {
     /// left, or with every goal sealed, scores as far away as it is possible to be
     /// rather than as a special case. Capped there too: one open goal of several can be
     /// farther than the union table's diameter.
-    fn nearest_to_goal(&self, game: &Game<'_>, player: usize, wanted: i32, sealed: u64) -> f64 {
+    fn nearest_to_goal(&self, game: &Game<'_>, player: usize, types: u32, sealed: u64) -> f64 {
         let t = game.t;
-        let types = if wanted >= 0 { 1u32 << wanted } else { u32::MAX };
         let best = self.goal_distance_of(game, player, types, sealed);
         if best == GOAL_UNREACHABLE {
             t.goal_diameter

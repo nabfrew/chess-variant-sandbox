@@ -129,9 +129,21 @@ pub const CONTROL_MAJORITY: u8 = 5;
 pub struct NeutralTables {
     index: Vec<u32>,
     squares: Vec<u8>,
+    /// Q1077 (`docs/plan-turncoat.md` §4.7): per type, whether a held piece of it may take
+    /// the royal of the player it is held against (`pieces[].takes_royal`), and so attacks
+    /// it. Empty where no type may, which is every game TC3 built.
+    takes_royal: Vec<bool>,
+    /// Whether any type may: the one test `threatened` and the check filter pay.
+    pub threatens_royals: bool,
 }
 
 impl NeutralTables {
+    /// Q1077: whether a held piece of `piece_type` may take a royal.
+    #[inline]
+    pub fn takes_royal(&self, piece_type: usize) -> bool {
+        self.takes_royal.get(piece_type).copied().unwrap_or(false)
+    }
+
     /// The squares next to `square` for a majority piece of `piece_type`.
     #[inline]
     pub fn neighbours(&self, n_squares: usize, piece_type: usize, square: usize) -> &[u8] {
@@ -968,9 +980,15 @@ impl DropRule {
     }
 }
 
+/// `ReachRule::types` for a goal any piece may reach.
+pub const REACH_ANY: u32 = u32::MAX;
+
 /// Reach rule: win by arrival, or (schema 18) by leaving.
 pub struct ReachRule {
-    pub piece_type: i32,
+    /// The types whose arrival (or leaving) decides, as a mask over declared types
+    /// (`REACH_ANY`, every bit, for any piece). SR3a (`docs/plan-schema-next.md` §1 rank
+    /// 4): `reach.piece` takes a list, so one type became a mask; one type is one bit.
+    pub types: u32,
     /// `squares[player]` -> set of target squares.
     pub squares: [Vec<bool>; 2],
     /// `goals[player]`: the same squares, ascending. The order `goal_distance_each`
@@ -985,6 +1003,14 @@ pub struct ReachRule {
     /// in `Game::goal_left_by`; a piece standing on a goal decides nothing. False for
     /// every ruleset before it, which is the boundary's inert default.
     pub leaves: bool,
+}
+
+impl ReachRule {
+    /// Whether a piece of `piece_type` is one the rule is about.
+    #[inline(always)]
+    pub fn admits(&self, piece_type: usize) -> bool {
+        self.types & (1u32 << piece_type) != 0
+    }
 }
 
 /// Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck. One piece nobody owns, in the
@@ -2499,7 +2525,9 @@ impl Tables {
     /// weight tested. `piece_type < 0` means "any piece", which is not one-sided,
     /// because the nearest piece to the goal is usually not the royal one.
     pub fn reach_is_priceable(&self, rule: &ReachRule) -> bool {
-        !rule.safe && (rule.piece_type < 0 || !self.is_royal(rule.piece_type as usize))
+        !rule.safe
+            && (rule.types == REACH_ANY
+                || !self.royal_types.iter().any(|royal| rule.admits(*royal)))
     }
 
     #[inline(always)]
@@ -3193,6 +3221,21 @@ impl Tables {
             return Ok(None);
         }
         let reach_piece: i32 = field(source, keys::REACH_PIECE_TYPE)?;
+        // SR3a: a goal for a list of two or more types crosses the list, beside a
+        // `reach_piece_type` of -1; one type (or any) crosses as it always did.
+        let reach_pieces: Vec<usize> = field(source, keys::REACH_PIECE_TYPES)?;
+        if reach_pieces.iter().any(|piece_type| *piece_type >= n_types.min(32)) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "reach_piece_types names a type the tables do not have",
+            ));
+        }
+        let types = if !reach_pieces.is_empty() {
+            reach_pieces.iter().fold(0u32, |mask, piece_type| mask | (1u32 << piece_type))
+        } else if reach_piece >= 0 {
+            1u32 << reach_piece
+        } else {
+            REACH_ANY
+        };
         let reach_squares_raw: Vec<u8> = field(source, keys::REACH_SQUARES)?;
         let reach_result: i8 = field(source, keys::REACH_RESULT)?;
         let reach_safe: bool = field(source, keys::REACH_SAFE)?;
@@ -3213,7 +3256,7 @@ impl Tables {
             ));
         }
         Ok(Some(ReachRule {
-            piece_type: reach_piece,
+            types,
             squares,
             goals,
             result: reach_result,
@@ -3484,8 +3527,23 @@ impl Tables {
                 "the neighbour tables do not fit this board's majority types",
             ));
         }
-        Ok(has_majority
-            .then(|| Box::new(NeutralTables { index: neighbour_index, squares: neighbour_squares })))
+        // Q1077: which held types may take a royal, empty where none may.
+        let takes: Vec<u8> = field(source, keys::NEUTRAL_TAKES_ROYAL)?;
+        if !takes.is_empty() && (!has_majority || takes.len() != n_types || takes.iter().any(|&b| b > 1)) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "neutral_takes_royal does not fit this board's majority types",
+            ));
+        }
+        let takes_royal: Vec<bool> = takes.iter().map(|&b| b == 1).collect();
+        let threatens_royals = takes_royal.iter().any(|&b| b);
+        Ok(has_majority.then(|| {
+            Box::new(NeutralTables {
+                index: neighbour_index,
+                squares: neighbour_squares,
+                takes_royal,
+                threatens_royals,
+            })
+        }))
     }
 
     /// The royal types, as flags, and which players start with a royal (Q133), on the
@@ -4672,6 +4730,7 @@ pub mod keys {
         NEIGHBOUR_INDEX => "neighbour_index",
         NEIGHBOUR_SQUARES => "neighbour_squares",
         NEUTRAL_CONTROL => "neutral_control",
+        NEUTRAL_TAKES_ROYAL => "neutral_takes_royal",
         NO_PROGRESS_DRAW => "no_progress_draw",
         NPC_BOUNTY => "npc_bounty",
         PIECE_BOUNTY => "piece_bounty",
@@ -4706,6 +4765,7 @@ pub mod keys {
         PROMO_TARGETS_INDEX => "promo_targets_index",
         REACH_LEAVES => "reach_leaves",
         REACH_PIECE_TYPE => "reach_piece_type",
+        REACH_PIECE_TYPES => "reach_piece_types",
         REACH_RESULT => "reach_result",
         REACH_SAFE => "reach_safe",
         REACH_SQUARES => "reach_squares",

@@ -360,10 +360,14 @@ def _sight_extras(pieces: Any) -> float:
 # placement beside it.
 _NOBODYS = 0.5
 _MAJORITY = 1.0
+# Q1077 (`docs/plan-turncoat.md` §4.7): a held piece that attacks the other royal is half a
+# rule more (it checks, and a check by it is answered by the count too), once for the game.
+_TAKES_ROYAL = 0.5
 
 
 def _neutral_extras(spec: dict[str, Any], pieces: Any) -> float:
-    """What a game's pieces nobody owns cost: the placement once, majority control once."""
+    """What a game's pieces nobody owns cost: the placement once, majority control once, and
+    (Q1077) a held piece that takes royals once."""
     setup = spec.get("setup")
     placements = setup.get("placements") if isinstance(setup, dict) else None
     if not any(
@@ -375,7 +379,12 @@ def _neutral_extras(spec: dict[str, Any], pieces: Any) -> float:
         isinstance(piece, dict) and piece.get("control", "stands") != "stands"
         for piece in (pieces if isinstance(pieces, list) else [])
     )
-    return _NOBODYS + (_MAJORITY if held else 0.0)
+    takes = held and any(
+        isinstance(piece, dict) and piece.get("control", "stands") != "stands"
+        and piece.get("takes_royal") is True
+        for piece in (pieces if isinstance(pieces, list) else [])
+    )
+    return _NOBODYS + (_MAJORITY if held else 0.0) + (_TAKES_ROYAL if takes else 0.0)
 
 
 # TC4 (`docs/plan-turncoat.md` §5.8): a bounty is half a rule a player is taught (what taking

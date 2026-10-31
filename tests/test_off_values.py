@@ -131,6 +131,7 @@ CASES = [
     ("pieces[].control", "rulesets/chess.json", _piece("control", "stands")),
     ("pieces[].bounty", "rulesets/chess.json", _piece("bounty", 0)),
     ("pieces[].price", "rulesets/chess.json", _piece("price", 0)),
+    ("pieces[].takes_royal", "rulesets/chess.json", _piece("takes_royal", False)),
     ("pieces[].sight[].through", "archive/madrasi.json", _through),
     ("pieces[].sight[].captures_own", "tests/_command_k1.json", _captures_own),
     ("rules.simultaneous.tie", "tests/_simultaneous_gardner.json", _simultaneous("tie", "both")),

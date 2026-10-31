@@ -9,9 +9,9 @@ pages wear (`site/pages.py`), and `site/feeds.py` writes the same entries as Ato
 **The payload is `web/changelog.py`'s** (`for_visitors`, with the Baseline's moves filed in
 by `site/stages.py`), so this page, the script's view and the feed read one answer, and an
 entry marked for maintainers is in none of them. Every piece of text is escaped here and
-nothing from the file becomes markup: `runs_html` writes a `<code>` or an `<em>` for those
-two kinds of piece and escapes the string inside, and an unknown kind is its own text,
-as `whatsnew.js`'s `newsRun` has it.
+nothing from the file becomes markup: `runs_html` writes a `<code>`, an `<em>` or an `<a>`
+to a path on this site for those kinds of piece and escapes the string inside, and an
+unknown kind is its own text, as `whatsnew.js`'s `newsRun` has it.
 
 **An entry's anchor** is `<day>-<its heading as a slug>`, with `-2`, `-3` for a heading a day
 uses twice, so a link to an entry (and a feed's id for it) names the entry, not its place in
@@ -95,14 +95,27 @@ def items(payload: Mapping[str, Any]) -> list[Item]:
 
 
 def runs_html(runs: Sequence[Mapping[str, Any]]) -> str:
-    """One paragraph's pieces as markup: `code`, `em` and plain text, every string escaped."""
+    """One paragraph's pieces as markup: `code`, `em`, a link and plain text, every string
+    escaped. A link is drawn only where its `href` is a path on this site (`site_path`), as
+    the parser made it; one that is not is its own words."""
     parts = []
     for run in runs:
         said = escape(str(run.get("s") or ""))
         kind = run.get("t")
+        if kind == "link":
+            words = f"<em>{said}</em>" if run.get("em") else said
+            href = str(run.get("href") or "")
+            parts.append(f'<a href="{escape(href, quote=True)}">{words}</a>'
+                         if site_path(href) else words)
+            continue
         parts.append(f"<code>{said}</code>" if kind == "code"
                      else f"<em>{said}</em>" if kind == "em" else said)
     return "".join(parts)
+
+
+def site_path(href: str) -> bool:
+    """Whether `href` is a path on this site: one slash first, never two or a backslash."""
+    return href.startswith("/") and not href.startswith("//") and "\\" not in href
 
 
 def blocks_html(blocks: Sequence[Mapping[str, Any]]) -> str:

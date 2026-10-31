@@ -830,7 +830,7 @@ def test_the_race_term_is_the_built_in_evaluators_distance(label: str, build: An
 
     def expected(state: Any, player: int) -> float:
         near = [
-            1.0 - min(1.0, oracle._nearest_to_goal(state, side, reach.piece_type) / diameter)
+            1.0 - min(1.0, oracle._nearest_to_goal(state, side, reach.mask) / diameter)
             for side in (0, 1)
         ]
         return near[player] - near[1 - player]

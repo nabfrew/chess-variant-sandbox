@@ -189,6 +189,12 @@ class TestWhatIsOwed:
 # ------------------------------------------------------------------ the sample
 
 
+def _units(work: Path) -> list[dict[str, Any]]:
+    """Every stage's unit files in a work directory (the count and records left out)."""
+    return [json.loads(path.read_text("utf-8")) for path in sorted(work.glob("*-*.json"))
+            if not path.name.startswith("record-")]
+
+
 def test_the_sample_skips_the_last_two_plies(played) -> None:
     engine = Engine(SPEC)
     runs = list(played.items())
@@ -267,6 +273,64 @@ class TestMake:
                              defence_nodes=SMALL)
         assert "count" in again["seconds"]
         assert list(puzzles.work_dir(copy / "runs", digest).parent.glob(f"{digest}.before-*"))
+
+    def test_work_from_another_core_is_moved_aside_and_proved_again(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q1082: Q1078 changed a game's legal moves and the old core's units were read
+        back as new. The work keys on the build and the compiled rules too, so work from
+        another core is set aside whole and every stage is asked again on this one."""
+        root, digest, _said = made
+        copy = tmp_path / "copy"
+        shutil.copytree(root, copy)
+        work = puzzles.work_dir(copy / "runs", digest)
+        before = puzzles.record_path(copy / "runs", digest).read_bytes()
+        built = puzzles.work_basis(SPEC)["built"]
+        # The core rebuilt since the work was made: what `make` reads the build as moves.
+        monkeypatch.setattr(measurement, "built_fingerprint", lambda: "a-newer-core")
+        said: list[str] = []
+        again = puzzles.make(SPEC, copy / "runs", workers=4, nodes=SMALL,
+                             defence_nodes=SMALL, say=said.append)
+        assert "count" in again["seconds"]
+        assert any("another core build" in line for line in said), said
+        [aside] = work.parent.glob(f"{digest}.before-*")
+        assert {unit["built"] for unit in _units(aside)} == {built}  # kept, not deleted
+        assert {unit["built"] for unit in _units(work)} == {"a-newer-core"}
+        data = json.loads(puzzles.record_path(copy / "runs", digest).read_text("utf-8"))
+        assert data["basis"]["built"] == "a-newer-core"
+        [kept] = work.glob("record-*.json")
+        assert kept.read_bytes() == before
+
+    def test_work_from_the_same_core_and_rules_is_picked_up(
+        self, made, tmp_path: Path
+    ) -> None:
+        """And the same build and rules re-ask nothing: every unit is read back."""
+        root, digest, _said = made
+        copy = tmp_path / "copy"
+        shutil.copytree(root, copy)
+        work = puzzles.work_dir(copy / "runs", digest)
+        units = {path: path.read_bytes() for path in work.glob("*.json")}
+        said: list[str] = []
+        again = puzzles.make(SPEC, copy / "runs", workers=4, nodes=SMALL,
+                             defence_nodes=SMALL, say=said.append)
+        assert "count" not in again["seconds"]
+        assert not any("written" in line or "moved aside" in line for line in said), said
+        assert not list(work.parent.glob(f"{digest}.before-*"))
+        assert all(path.read_bytes() == body for path, body in units.items())
+
+    def test_a_unit_from_another_build_or_budget_is_asked_again(
+        self, made, tmp_path: Path
+    ) -> None:
+        """Per unit too: a stage whole on another build no longer stands as one proof."""
+        root, digest, _said = made
+        work = puzzles.work_dir(root / "runs", digest)
+        paths = sorted(work.glob("batch-*.json"))
+        expected = [(path, [row["id"] for row in json.loads(path.read_text("utf-8"))["rows"]])
+                    for path in paths]
+        built = puzzles.work_basis(SPEC)["built"]
+        assert set(puzzles._standing_units(expected, built, SMALL)) == set(paths)
+        assert puzzles._standing_units(expected, "another", SMALL) == {}
+        assert puzzles._standing_units(expected, built, SMALL + 1) == {}
 
     def test_a_record_replaced_is_kept_and_other_work_moved_aside(
         self, made, tmp_path: Path

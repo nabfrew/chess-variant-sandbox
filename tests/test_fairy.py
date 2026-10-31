@@ -2205,3 +2205,44 @@ def fairy_why_not(spec: dict[str, Any]) -> list[str]:
     from chess_variant_sandbox.fairy import why_not
 
     return why_not(spec)
+
+
+class TestReachForAListOfPieces:
+    """SR3a (`docs/plan-schema-next.md` §1 rank 4): `flagPiece` is one type over there, so a
+    goal for a list of pieces is refused by name, and a goal for one is still written."""
+
+    @staticmethod
+    def _hill(piece: Any) -> dict[str, Any]:
+        spec = _spec("kingofthehill")
+        spec["rules"]["reach"]["piece"] = piece
+        return spec
+
+    def test_a_list_of_two_is_refused_by_name(self) -> None:
+        with pytest.raises(Untranslatable) as caught:
+            translate(self._hill(["K", "N"]))
+        assert any("flagPiece" in reason for reason in caught.value.reasons)
+
+    def test_a_list_of_one_is_the_one_piece_written_as_before(self) -> None:
+        assert translate(self._hill(["K"])).config == translate(_spec("kingofthehill")).config
+        assert "flagPiece = K" in translate(self._hill(["K"])).config.splitlines()
+
+    def test_flag_piece_takes_one_type_in_the_installed_pyffish(self) -> None:
+        """The probe the refusal rests on: no spelling of two letters flags both pieces.
+        If this starts failing, `flagPiece` may have learned a set, and the refusal in
+        `variant.py` should be revisited rather than this test loosened."""
+        sf = _pyffish()
+        knight = "1N2k3/8/8/8/8/8/8/4K3 b - - 0 1"
+        rook = "1R2k3/8/8/8/8/8/8/4K3 b - - 0 1"
+        for index, flag in enumerate(("nr", "rn", "n r", "n,r")):
+            name = f"sr3aflag{index}"
+            sf.load_variant_config(
+                f"[{name}:chess]\nflagPiece = {flag}\nflagRegionWhite = *8\n"
+                "flagRegionBlack = *1\nwhiteFlag = *8\nblackFlag = *1\n"
+            )
+            ended = [sf.is_immediate_game_end(name, fen, [])[0] for fen in (knight, rook)]
+            assert ended != [True, True], f"flagPiece = {flag} flagged both"
+        sf.load_variant_config(
+            "[sr3aflagany:chess]\nflagPiece = *\nflagRegionWhite = *8\n"
+            "flagRegionBlack = *1\nwhiteFlag = *8\nblackFlag = *1\n"
+        )
+        assert all(sf.is_immediate_game_end("sr3aflagany", fen, [])[0] for fen in (knight, rook))

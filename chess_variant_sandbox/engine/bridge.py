@@ -724,6 +724,10 @@ def _drops_fields(spec: CompiledSpec) -> dict[str, Any]:
 _REACH_INERT: dict[str, Any] = {
     "has_reach": False,
     "reach_piece_type": -1,
+    # SR3a (`docs/plan-schema-next.md` §1 rank 4): the runners of a goal for two or more
+    # types, ascending. Empty for one type or any, which cross as `reach_piece_type`
+    # always did, so no stored game's tables move.
+    "reach_piece_types": [],
     "reach_squares": [],
     "reach_result": 1,
     "reach_safe": False,
@@ -746,7 +750,12 @@ def _reach_fields(spec: CompiledSpec) -> dict[str, Any]:
             )
     return {
         "has_reach": reach is not None,
-        "reach_piece_type": reach.piece_type if reach else -1,
+        "reach_piece_type": (
+            reach.piece_types[0] if reach is not None and len(reach.piece_types) == 1 else -1
+        ),
+        "reach_piece_types": (
+            list(reach.piece_types) if reach is not None and len(reach.piece_types) > 1 else []
+        ),
         "reach_squares": reach_squares,
         "reach_result": _ENDING_RESULT[reach.result] if reach else 1,
         "reach_safe": reach.safe if reach else False,
@@ -970,6 +979,8 @@ _NEUTRAL_INERT: dict[str, Any] = {
     "neutral_control": [],
     "neighbour_index": [],
     "neighbour_squares": [],
+    # Q1077 (`docs/plan-turncoat.md` §4.7): per type, 1 where a held neutral may take a royal.
+    "neutral_takes_royal": [],
 }
 
 
@@ -979,11 +990,12 @@ def _neutral_fields(spec: CompiledSpec) -> dict[str, Any]:
     Pieces nobody owns from the setup: each type's neutral kind (`CONTROL_NEUTRAL` stands,
     `CONTROL_MAJORITY` moved by the majority holder, 0 otherwise), and the majority types'
     neighbours, flat by ``type * n_squares + square`` (`neighbour_index` the offsets, one
-    past the last).
+    past the last). Q1077: ``neutral_takes_royal``, per type 1 where a held piece of it may
+    take the royal of the player it is held against, empty where no type may.
     """
     neutrals = spec.neutrals
     if neutrals is None:
-        return {"neutral_control": [], "neighbour_index": [], "neighbour_squares": []}
+        return dict(_NEUTRAL_INERT)
     index = [0]
     squares: list[int] = []
     for piece_type in range(spec.n_types):
@@ -995,6 +1007,10 @@ def _neutral_fields(spec: CompiledSpec) -> dict[str, Any]:
         "neutral_control": list(neutrals.kind),
         "neighbour_index": index if neutrals.has_majority else [],
         "neighbour_squares": squares,
+        "neutral_takes_royal": (
+            [int(piece_type in neutrals.takes_royal) for piece_type in range(spec.n_types)]
+            if neutrals.takes_royal else []
+        ),
     }
 
 

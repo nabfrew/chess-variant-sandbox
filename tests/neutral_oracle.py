@@ -36,15 +36,24 @@ moves and hires, each kept
 unattacked. The engine is asked for the twin's lists, the board a move makes and whether a royal
 is attacked (check is unchanged by the rule: a neutral attacks nothing); it is never asked who
 holds a neutral or what a held neutral may do.
+
+**A held neutral that takes a royal** (Q1077, `pieces[].takes_royal`, `docs/plan-turncoat.md`
+§4.7) may also take the royal of the player it is held against, and so attacks it. The oracle
+reads that attack off the same frame-0 twin: a royal is attacked when the core, asked of the
+spec **without** the key, says so, or when some such neutral the other player holds has a twin
+move onto the royal's square. The core's own reading (`foreign.rs::held_attacks`, over the
+third block's attack sources) is never asked.
 """
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 from typing import Any
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import (
+    MOVE_CASTLE,
     MOVE_FOREIGN,
     MOVE_HIRE,
     MOVE_NORMAL,
@@ -126,6 +135,18 @@ class NeutralOracle:
             if piece_type in self.hire or piece_type in self.bribe:
                 self.near[piece_type] = next_to(piece)
         self.checkmate = rules.get("win", "checkmate") == "checkmate"
+        # Q1077: the types whose held pieces take royals, and the game without the key, whose
+        # check is the rest of the attack (the boards of the two read alike: same types).
+        self.takers = {
+            piece_type for piece_type, piece in enumerate(spec["pieces"])
+            if piece.get("takes_royal") is True and piece_type in self.majority
+        }
+        self.plain = engine
+        if self.takers:
+            without = copy.deepcopy(spec)
+            for piece in without["pieces"]:
+                piece.pop("takes_royal", None)
+            self.plain = Engine(without)
 
     # ---------------------------------------------------------------- the byte
 
@@ -157,6 +178,17 @@ class NeutralOracle:
             return -1
         return 0 if count[0] > count[1] else 1
 
+    def _twin_targets(self, state: GameState, square: int, player: int) -> list[int]:
+        """Where the neutral on ``square`` could land as ``player``'s piece of its type at
+        facing 0 (the frame-0 twin), by the plain game's ordinary generator."""
+        board = bytearray(state.board)
+        board[square] = self.byte(player, self.type_of(state.board[square]))
+        twin = dataclasses.replace(state, board=bytes(board), side_to_move=player)
+        return [
+            move_to(move) for move in self.plain.pseudo_legal_moves(twin)
+            if not move_foreign(move) and move_from(move) == square and move_type(move) == MOVE_NORMAL
+        ]
+
     def held_moves(self, state: GameState) -> list[int]:
         """The side to move's held neutrals' pseudo-legal moves, from the frame-0 twin."""
         player = state.side_to_move
@@ -164,20 +196,37 @@ class NeutralOracle:
         for square, value in enumerate(state.board):
             if not value or self.holder(state, square) != player:
                 continue
-            board = bytearray(state.board)
-            board[square] = self.byte(player, self.type_of(value))
-            twin = dataclasses.replace(state, board=bytes(board))
-            for move in self.engine.pseudo_legal_moves(twin):
-                if move_foreign(move) or move_from(move) != square or move_type(move) != MOVE_NORMAL:
-                    continue
-                target = move_to(move)
+            takes_royal = self.type_of(value) in self.takers
+            for target in self._twin_targets(state, square, player):
                 occupant = state.board[target]
                 if occupant and (
-                    self.owner(occupant) != 1 - player or self.type_of(occupant) in self.royal
+                    self.owner(occupant) != 1 - player
+                    or (self.type_of(occupant) in self.royal and not takes_royal)
                 ):
                     continue
                 found.append(encode_move(square, target, MOVE_NORMAL, 0) | MOVE_FOREIGN)
         return sorted(set(found))
+
+    def attacked(self, state: GameState, player: int) -> bool:
+        """Whether ``player``'s royal is attacked: by the plain game's reading, or (Q1077) by a
+        neutral of a type that takes royals, held by the other player, whose twin lands on it."""
+        if self.plain.in_check(state, player):
+            return True
+        if not self.takers:
+            return False
+        royals = {
+            square for square, value in enumerate(state.board)
+            if value and self.owner(value) == player and self.type_of(value) in self.royal
+        }
+        for square, value in enumerate(state.board):
+            if (
+                value and self.owner(value) == NOBODY_BLOCK
+                and self.type_of(value) in self.takers
+                and self.holder(state, square) == 1 - player
+                and royals.intersection(self._twin_targets(state, square, 1 - player))
+            ):
+                return True
+        return False
 
     def cost(self, state: GameState, square: int) -> int:
         """TC6: what buying the piece on ``square`` costs the side to move, 0 where it cannot:
@@ -212,7 +261,7 @@ class NeutralOracle:
     def legal_moves(self, state: GameState) -> list[int]:
         """The whole legal list, sorted, as the oracle reads it."""
         own = [
-            m for m in self.engine.pseudo_legal_moves(state)
+            m for m in self.plain.pseudo_legal_moves(state)
             if not move_foreign(m) and move_type(m) != MOVE_HIRE
         ]
         candidates = own + self.held_moves(state) + self.purchases(state)
@@ -220,5 +269,25 @@ class NeutralOracle:
             return sorted(candidates)
         player = state.side_to_move
         return sorted(
-            m for m in candidates if not self.engine.in_check(self.engine.apply(state, m), player)
+            m for m in candidates
+            if not self.attacked(self.plain.apply(state, m), player)
+            and not self._castles_through_a_held_attack(state, m)
         )
+
+    def _castles_through_a_held_attack(self, state: GameState, move: int) -> bool:
+        """Q1077: a castling king may not start on, pass or land on a square a held neutral
+        that takes royals attacks. The plain game's generator already asks its own attackers
+        of those squares; this asks the held ones, the king stood on each square in turn (the
+        oracle's reading of castling along a rank, which is how the games it holds castle)."""
+        if not self.takers or move_type(move) != MOVE_CASTLE:
+            return False
+        player = state.side_to_move
+        origin, target = move_from(move), move_to(move)
+        step = 1 if target > origin else -1
+        for square in range(origin, target + step, step):
+            board = bytearray(state.board)
+            board[origin] = 0
+            board[square] = state.board[origin]
+            if self.attacked(dataclasses.replace(state, board=bytes(board)), player):
+                return True
+        return False

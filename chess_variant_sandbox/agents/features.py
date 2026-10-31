@@ -272,15 +272,15 @@ def feature_context(spec: CompiledSpec) -> FeatureContext:
     reach_types: set[int] = set()
     reach_squares: tuple[set[int], set[int]] = (set(), set())
     if reach is not None:
-        # `piece_type == -1` is "any piece" (`compile.ReachRule`). Adding the -1 itself,
+        # No `piece_types` is "any piece" (`compile.ReachRule`). Adding the -1 itself,
         # as this did until Q465, named a type no board byte decodes to, so the term read
         # exactly zero on every such ruleset -- `intransitive` and `rps-v3` -- while
         # reading correctly on a named racer. Every type is eligible, royals included,
         # which is what `Evaluator._nearest_to_goal` and the core's arrival check count.
-        if reach.piece_type < 0:
+        if not reach.piece_types:
             reach_types.update(range(spec.n_types))
         else:
-            reach_types.add(reach.piece_type)
+            reach_types.update(reach.piece_types)  # SR3a: one type or several
         for player in (0, 1):
             reach_squares[player].update(reach.squares[player])
 

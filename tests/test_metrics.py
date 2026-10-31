@@ -23,10 +23,14 @@ from chess_variant_sandbox.metrics.components import Components
 from chess_variant_sandbox.metrics.scoring import DEFAULT_WEIGHTS, Curve
 
 # The committed rulesets that declare no capture matrix, on which one must be inert.
+# A duck game is left out as a matrix game is (Q1079, `rulesets/duck-chess.json`): nothing may
+# capture the duck, so its type's column of `capture_allowed` is false, which is a capture
+# restriction the geometry-only oracle cannot see.
 _WITHOUT_A_MATRIX = [
     path
     for path in sorted((Path(__file__).resolve().parents[1] / "rulesets").glob("*.json"))
     if not any("captures" in piece for piece in json.loads(path.read_text(encoding="utf-8"))["pieces"])
+    and "duck" not in json.loads(path.read_text(encoding="utf-8")).get("rules", {})
 ]
 
 

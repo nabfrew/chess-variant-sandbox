@@ -868,9 +868,7 @@ class Evaluator:
             direction = {"win": 1.0, "draw": 0.0, "loss": -1.0}[reach.result]
             sealed = self.sealed_goals(state)
             for side in (0, 1):
-                eligible = safe[side]
-                if reach.piece_type >= 0:
-                    eligible &= 1 << reach.piece_type
+                eligible = safe[side] & reach.mask
                 if not eligible:
                     continue
                 best = self._goal_distance_of(state, side, eligible, sealed[side])
@@ -947,15 +945,15 @@ class Evaluator:
         if reach is None or not _reach_is_priceable(spec, reach):
             return 0.0
         sealed = self.sealed_goals(state)
-        mine = self._nearest_to_goal(state, player, reach.piece_type, sealed[player])
-        theirs = self._nearest_to_goal(state, 1 - player, reach.piece_type, sealed[1 - player])
+        mine = self._nearest_to_goal(state, player, reach.mask, sealed[player])
+        theirs = self._nearest_to_goal(state, 1 - player, reach.mask, sealed[1 - player])
         # Stated for the side that arrives, so a rule whose result is a *loss* for the
         # arriving side -- which the schema allows -- is a race to run away from.
         direction = {"win": 1.0, "draw": 0.0, "loss": -1.0}[reach.result]
         return _clamp((theirs - mine) / spec.goal_diameter) * direction
 
     def _nearest_to_goal(
-        self, state: GameState, player: int, wanted: int, sealed: int = 0
+        self, state: GameState, player: int, types: int, sealed: int = 0
     ) -> float:
         """The fewest moves any of ``player``'s eligible pieces needs to reach a goal
         square that is not ``sealed`` (Q708).
@@ -970,7 +968,6 @@ class Evaluator:
         is not a piece either side is racing.
         """
         spec = self.spec
-        types = (1 << wanted) if wanted >= 0 else -1
         best = self._goal_distance_of(state, player, types, sealed)
         if best == UNREACHABLE:
             return float(spec.goal_diameter)
@@ -1174,8 +1171,9 @@ def _reach_is_priceable(spec: CompiledSpec, reach: ReachRule) -> bool:
     and ``quick_kill_rate`` goes from 0.041 to over 0.54, which is past the gate. Racing
     kings is the same shape and reaches ``quick_kill_rate`` 0.505 at the shared constant.
 
-    ``piece_type`` of -1 means "any piece" and is left in: the nearest piece to the goal
-    is usually not the royal one, so the term is not one-sided there.
+    No ``piece_types`` means "any piece" and is left in: the nearest piece to the goal
+    is usually not the royal one, so the term is not one-sided there. A list of runners
+    (SR3a) with a royal among them is out, as a royal runner is.
 
     The cost of the second rule is that no committed ruleset exercises the term any more.
     That is the same position ``screen`` and ``rules.turn`` are in, and it is handled the
@@ -1184,7 +1182,7 @@ def _reach_is_priceable(spec: CompiledSpec, reach: ReachRule) -> bool:
     """
     if reach.safe:
         return False
-    return reach.piece_type < 0 or reach.piece_type not in spec.royal_types
+    return not reach.piece_types or not any(t in spec.royal_types for t in reach.piece_types)
 
 
 def _mean_non_royal(

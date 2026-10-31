@@ -525,7 +525,7 @@ impl<'t> Game<'t> {
             let value = self.board[plans[i].target];
             left[i] = arriving[i]
                 && reach.squares[i][origin]
-                && (reach.piece_type < 0 || plans[i].piece_type == reach.piece_type as usize)
+                && reach.admits(plans[i].piece_type)
                 && value != 0
                 && t.owner_of(value) == i;
         }
@@ -1179,8 +1179,7 @@ impl<'t> Game<'t> {
                     [0, 1].map(|side| {
                         self.occupied()[side].iter().any(|square| {
                             reach.squares[side][square]
-                                && (reach.piece_type < 0
-                                    || t.type_of(self.board[square]) == reach.piece_type as usize)
+                                && reach.admits(t.type_of(self.board[square]))
                                 && !(reach.safe && self.threatened(1 - side, square))
                         })
                     })

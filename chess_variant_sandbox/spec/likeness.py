@@ -164,10 +164,11 @@ def _settings(path: str, value: Any, shape: Any, ids: set[str], out: set[str]) -
     spell an id is left as written. A list's items share one path (``[]``), and a bare
     object where the schema allows a list of them is read as a list of one.
     """
-    if shape is _ID:
+    if shape is _ID and not isinstance(value, list):
         out.add(f"{SETTING}{path}={_leaf(value, ids)}")
         return
-    if shape is _IDS and isinstance(value, list):
+    # SR3a: an id position may be written as a list (`rules.reach.piece`).
+    if shape in (_ID, _IDS) and isinstance(value, list):
         _leaves(f"{path}[]", [_leaf(item, ids) for item in value], out)
         return
     if shape is _KEYED and isinstance(value, dict):

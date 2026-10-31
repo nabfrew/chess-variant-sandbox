@@ -1024,15 +1024,16 @@ def _aside(path: Path, today: datetime.date) -> Path:
 
 
 def _standing_units(
-    expected: list[tuple[Path, list[str]]], built: str, nodes: int | None = None,
+    expected: list[tuple[Path, list[str]]], built: str, nodes: int,
 ) -> dict[Path, dict[str, Any]]:
     """The unit files on disk that stand, by path.
 
-    A unit stands only where it covers the positions it should (its rows' ids, in order).
-    Of those, every one stands where the stage is whole on one build (and budget): a whole
-    stage proved on another core is one proof and is kept. Otherwise only those made on
-    this build stand, and the rest are asked again, so a record never mixes two builds in
-    one stage.
+    A unit stands only where it covers the positions it should (its rows' ids, in order)
+    and was asked on this build at this budget; the rest are asked again, so a record never
+    mixes two builds or budgets in one stage. A whole stage proved on another core no
+    longer stands either (Q1082): the core decides every answer, and Q1078 changed a game's
+    legal moves under work that was then read back as current. `make` moves work from
+    another build aside before it reads a unit (`work_basis`); this is the check per unit.
     """
     loaded: dict[Path, dict[str, Any]] = {}
     for path, ids in expected:
@@ -1042,11 +1043,23 @@ def _standing_units(
             continue
         if isinstance(unit, dict) and [row.get("id") for row in unit.get("rows") or []] == ids:
             loaded[path] = unit
-    kinds = {(unit.get("built"), unit.get("nodes")) for unit in loaded.values()}
-    if len(loaded) == len(expected) and len(kinds) == 1:
-        return loaded
     return {path: unit for path, unit in loaded.items()
-            if unit.get("built") == built and (nodes is None or unit.get("nodes") == nodes)}
+            if unit.get("built") == built and unit.get("nodes") == nodes}
+
+
+WORK_WORDS = {"built": "core build", "tables": "compile of its rules"}
+"""What `work_basis` keys, in the words `make` names a moved-aside work's reason in."""
+
+
+def work_basis(spec: dict[str, Any]) -> dict[str, str]:
+    """What decides a proof beside the sampling (Q1082), as a library run's basis has it
+    (`measurement`): the core build (`built_fingerprint`, the half of a run's `engine` stamp
+    the core owns) and what this game compiles to (`tables_fingerprint`, the per-ruleset
+    half). The core answers every replay, proof and test from those two; the probe's own
+    Python is `PROOF_VERSION`'s, read off the record by `owes`."""
+    from chess_variant_sandbox.measurement import built_fingerprint, tables_fingerprint
+
+    return {"built": built_fingerprint(), "tables": tables_fingerprint(spec)}
 
 
 def _ask_units(
@@ -1096,7 +1109,8 @@ def make(
     written (`record`) into `runs_dir`'s `puzzles/`, replacing any there, which is kept
     beside the work as `record-<day>.json`. Each stage writes unit files under
     `work/<hash>/` and a run picks up from them (`_standing_units`); a work directory
-    sampled another way is moved aside first, never written over. A game whose runs hold
+    sampled another way, or made on another core build or compile of the rules
+    (`work_basis`, Q1082), is moved aside first, never written over, and done again. A game whose runs hold
     no small ending gets a record with no position. Rule 3: every candidate, proof and
     choice is the core's; this holds positions, asks, and counts.
 
@@ -1105,7 +1119,6 @@ def make(
     """
     import time
 
-    from chess_variant_sandbox import _core
     from chess_variant_sandbox.corpus import LIBRARY_SEEDS
     from chess_variant_sandbox.tournament.record import read_records
 
@@ -1124,18 +1137,21 @@ def make(
     missing = runs_missing(runs_dir, digest, seeds)
     if missing:
         raise FileNotFoundError(f"{game}: no library run on disk for seeds {missing}")
-    built = _core.BUILD_FINGERPRINT
+    basis = work_basis(spec)
+    built = basis["built"]
     seconds: dict[str, float] = {}
 
     # The count and the sample, keyed by how it was taken.
     work = work_dir(runs_dir, digest)
     # The runs by their bytes as well as their names (Q1032): a re-measured game keeps its
     # run directories' names, so work keyed on the names alone picked up the old runs'
-    # sample and re-proved the record it was meant to replace.
+    # sample and re-proved the record it was meant to replace. And by what answers every
+    # question asked of them (Q1082): Q1078 moved the push rule's legal moves under work
+    # keyed on the sampling alone, and the old core's proofs were written again as new.
     sampling = {"runs": [f"{digest}-{seed}" for seed in seeds], "max_pieces": MAX_PIECES,
                 "near": NEAR, "near_min": NEAR_MIN, "cap": CAP,
                 "games": [_file_digest(runs_dir / f"{digest}-{seed}" / "games.jsonl")
-                          for seed in seeds]}
+                          for seed in seeds], **basis}
     listed_path = work / "candidates.json"
     listed: dict[str, Any] | None = None
     try:
@@ -1143,9 +1159,14 @@ def make(
     except (OSError, ValueError):
         listed = None
     if listed is not None and listed.get("sampling") != sampling:
+        was = listed.get("sampling")
+        was = was if isinstance(was, dict) else {}
+        moved = [key for key in basis if was.get(key) != basis[key]]
+        why = (f"was made on another {' and '.join(WORK_WORDS[key] for key in moved)}"
+               if moved else "was sampled another way")
         aside = _aside(work, today)
         work.rename(aside)
-        note(f"{game}: its work was sampled another way; moved aside to {aside.name}")
+        note(f"{game}: its work {why}; moved aside to {aside.name}")
         listed = None
     elif listed is None and work.exists() and any(work.iterdir()):
         aside = _aside(work, today)
@@ -1181,7 +1202,7 @@ def make(
     units = [(work / f"batch-{start:04d}.json", taken_rows[start:start + PROVE_BATCH])
              for start in range(0, len(taken_rows), PROVE_BATCH)]
     kept = _standing_units([(path, [row["id"] for row in rows]) for path, rows in units],
-                           built)
+                           built, nodes)
 
     def prove_row(row: dict[str, Any]) -> dict[str, Any]:
         return prove(engine, Candidate(row["seed"], row["game"], row["ply"], row["pieces"],

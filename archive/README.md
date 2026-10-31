@@ -1218,6 +1218,16 @@ against chess's 87.9, the first seat 0.514 of decided games. The neutrals are mo
 they are taken (3,344 moves, 2,364 takings), the registration's prediction the other way.
 `tests/test_showcase_crowd.py` holds the mechanism, and `tests/crowd_study.py` reads the runs.
 
+**Edited in place 2026-10-31 (Q1077, `docs/plan-turncoat.md` §4.7), now `ea7aa465cbfb`** (was
+`961b230bc5eb`, whose runs stay): the condottiere `takes_royal` (generation 58), so a held one
+attacks the king of the side that does not hold it, gives check and can mate, and a check by one
+can be answered by tying the count beside it. The user reported that the mercenaries did not
+recognise check, and that under a win by mate a knight the king could ignore robbed the players
+of a winning scenario. It is now the showcase of `pieces[].takes_royal` too. The score above is
+the old game's; the new one reads stale until SR3r's replay. Ten self-play games at
+`minimax:nodes=1600`: a held knight's check in 4, nine ended by mate, one of them delivered by a
+held knight.
+
 ## `the-free-companies.json` — generations 44 to 46, mercenaries hired and bribed (TC10b)
 
 2026-10-30, **in the library** (`f858b7a63dea`). The successor showcase of hiring and bribing,

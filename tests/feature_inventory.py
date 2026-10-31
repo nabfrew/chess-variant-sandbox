@@ -50,14 +50,16 @@ from chess_variant_sandbox.spec.schema import (
     purse_pays_loser,
     purse_rule,
     push_rule,
+    reach_pieces,
     strike_is_live,
     sweep_range_stated_off,
+    takes_royal_ids,
     turn_is_long,
     uses_sweep,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 56
+LAST_BUMP = 58
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -1304,6 +1306,29 @@ def _schema_fifty_six_uses(spec: dict[str, Any]) -> set[str]:
     return used
 
 
+def _schema_fifty_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 57 added, by name (SR3a,
+    `docs/plan-schema-next.md` §1 rank 4; numbered by order of landing, bumping no version).
+    One name:
+
+    * ``rules.reach.piece.list`` -- a goal for a list of two or more pieces, won by any of
+      them arriving (or leaving), so a side chooses its runner. A list of one is its id.
+    """
+    rules = spec.get("rules") or {}
+    return {"rules.reach.piece.list"} if len(reach_pieces(rules.get("reach"))) > 1 else set()
+
+
+def _schema_fifty_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 58 added, by name (Q1077,
+    `docs/plan-turncoat.md` §4.7; numbered by order of landing, bumping no version). One name:
+
+    * ``pieces.takes_royal`` -- ``true`` on a majority type placed for nobody: a held piece of
+      it may take the royal of the player who does not hold it, so it gives check and mates.
+      ``false`` is the off value and names nothing.
+    """
+    return {"pieces.takes_royal"} if takes_royal_ids(spec) else set()
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -1353,4 +1378,6 @@ _COLLECTORS = {
     54: _schema_fifty_four_uses,
     55: _schema_fifty_five_uses,
     56: _schema_fifty_six_uses,
+    57: _schema_fifty_seven_uses,
+    58: _schema_fifty_eight_uses,
 }

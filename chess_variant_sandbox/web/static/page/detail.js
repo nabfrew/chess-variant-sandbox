@@ -97,6 +97,7 @@ async function showGame(hash) {
         ${whereHtml(game)}
         ${verdictHtml(game.verdict)}
         ${linksHtml(game)}
+        ${previewsSharingHtml(game)}
         ${offered('POST', '/api/run') ? sectionHtml('designRun',
           `Let a model try to improve it${info('designRun')}`, `<div class="panel">
           <div class="muted small">
@@ -658,6 +659,21 @@ function linksHtml(game) {
       ${shown.map(link => linkRow(link, scored)).join('')}
       ${more}
       ${nothing}
+    </div>`);
+}
+
+// Q1080: the previews that show a rule this game has beyond the reference game's
+// (`library.previews_sharing`), so a visitor on brink's page finds the new push games still
+// being tested. A preview is in no near list, which is why this is its own short section,
+// with names and nothing scored: a preview carries no score to compare.
+function previewsSharingHtml(game) {
+  const previews = game.previewsSharing || [];
+  if (!previews.length) return '';
+  return sectionHtml('previewsSharing', 'Previews of its rules', `<div class="panel">
+      <div class="muted small u-mb-4">New games still being tested that use a rule this one
+        has. Each is played for practice against the computer, and none has a score yet.</div>
+      <ul class="rules">${previews.map(one =>
+        `<li><a href="/game/${esc(one.hash)}">${esc(one.name)}</a></li>`).join('')}</ul>
     </div>`);
 }
 

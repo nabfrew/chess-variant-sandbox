@@ -1,0 +1,245 @@
+{
+  "schema_version": 31,
+  "name": "duck chess",
+  "description": "Duck chess, devised by Tim Paulden in 2016 and played widely online, is chess with a second move in every turn. After moving a piece, the player must pick up the duck, a piece belonging to nobody, and set it down on a different empty square. Nothing may move onto the duck or through it (a knight still jumps over it), and nothing can take it. Because the duck can be dropped into any line, a threat can always be walled off rather than answered, so check means nothing and there is no checkmate: the game is won by capturing the king, and a king may walk into attack or castle through it. Every turn is two questions at once, what to move and where to put the duck, and the duck is as often used to hem in the opponent, blocking the one square a defender needed or sealing a king's escape, as to shield your own pieces. The one ending turned upside down is stalemate: a player left with no legal move, perhaps because the duck has shut in their last free piece, wins. The rules are chess.com's: \"There are no checks or checkmates—players capture the enemy king to win\", and \"Players can also win a game by getting stalemated.\"",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "duck",
+      "value": 0,
+      "moves": []
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "win",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 800,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "duck": {
+      "piece": "D"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-31",
+    "origin": "human",
+    "author": "Tim Paulden",
+    "year": "2016",
+    "source": "a published chess variant; rules as the chess.com duck chess rules page states them, and as Fairy-Stockfish's duck variant plays them",
+    "history": "The user asked for it (Q1079, 2026-10-31): the standard game, beside the library's designed duck games. The duck starts off the board, White's first move places it, and it must move every turn to a different empty square; the king is captured, never mated, and may castle through attack; stalemate wins for the stalemated side. max_plies 800 is chess's 400 with each duck half counted as a ply."
+  }
+}

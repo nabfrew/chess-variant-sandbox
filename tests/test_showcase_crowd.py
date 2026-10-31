@@ -4,7 +4,8 @@
 whichever player has strictly more pieces on the king's step round one. Over seeded random games
 the core's legal list equals the declared oracle's (`tests/neutral_oracle.py`: the counts from the
 board, a held neutral's moves from the frame-0 twin) after every ply, and so do the holders; a
-neutral is never moved on a tie; a held neutral never takes a royal or its holder's piece; the
+neutral is never moved on a tie; a held neutral never takes its holder's piece, nor a royal (since
+Q1077 it attacks one, so no legal position leaves a king it could take); the
 mirrored position (ranks flipped, sides swapped) gives the mirrored holder. Three games fast,
 twenty of up to 400 plies slow.
 """
@@ -96,7 +97,8 @@ def _walk(seed: int, plies: int) -> int:
 
 
 def test_the_file_is_the_registered_game():
-    assert spec_hash(_spec()) == "961b230bc5eb"
+    # Q1077 (2026-10-31): `takes_royal` on the condottiere; was 961b230bc5eb.
+    assert spec_hash(_spec()) == "ea7aa465cbfb"
 
 
 def test_three_walks_agree():

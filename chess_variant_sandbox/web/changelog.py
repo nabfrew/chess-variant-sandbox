@@ -9,11 +9,18 @@ day's entry that holds a tag holds a tag on screen; there is no escaping step to
 and no path by which the file can become part of the document.
 
 What is supported is what the file uses and nothing else: the two heading levels, blank
-line separated paragraphs, emphasis, inline code and the horizontal rule. **Every other
-line is a paragraph of plain text**, printed as it stands -- a list item keeps its dash, a
-table row its pipes, a link its brackets. That is the safe direction: an unsupported
-construct reads as itself rather than as something this parser guessed at. Widening it is
-a case in `runs()` or `parse()` here, never a special case in the page.
+line separated paragraphs, emphasis, inline code, the horizontal rule, and a link to a page
+of this site (`[words](/game/<hash>)`, Q1080). **Every other line is a paragraph of plain
+text**, printed as it stands -- a list item keeps its dash, a table row its pipes, a link
+to anywhere else its brackets. That is the safe direction: an unsupported construct reads
+as itself rather than as something this parser guessed at. Widening it is a case in
+`runs()` or `parse()` here, never a special case in the page.
+
+**A link is only ever site-relative** (`_LINK`): one slash, then letters, digits and
+`/_.-#?=&%`, so it names a page on whichever server shows the file, the local application
+and the site alike, and can never be another site, a `javascript:` address or a
+protocol-relative `//host`. Its words are the link's text, emphasised when the whole of them
+is (`[*a name*](/game/...)`), which is how an entry names a game and links it at once.
 
 The file's own header -- the title and the note to whoever writes an entry, everything
 above the first `---` -- is not shown. It is instructions to the maintainer, and the page
@@ -47,10 +54,17 @@ CHANGELOG = Path("docs") / "changelog.md"
 _HEADING = re.compile(r"^(#+)\s+(.*)$")
 _RULE = re.compile(r"^-{3,}$")
 
-# `code` before `emphasis`, so a star inside backticks stays a star. Emphasis takes no
-# leading space, which is what keeps a lone `*` in prose from opening a run that swallows
-# the rest of the line.
-_INLINE = re.compile(r"`([^`]+)`|\*([^*\s][^*]*)\*")
+# `code` before `link` before `emphasis`, so a star inside backticks stays a star and a
+# link's emphasised words stay the link's. Emphasis takes no leading space, which is what
+# keeps a lone `*` in prose from opening a run that swallows the rest of the line. A link's
+# address is one slash and then a path on this site, never `//` (another host) and never a
+# scheme: anything else is not a link and stays its own brackets.
+_INLINE = re.compile(
+    r"`([^`]+)`"
+    r"|\[([^\]\[]+)\]\((/(?!/)[A-Za-z0-9/_.\-#?=&%]*)\)"
+    r"|\*([^*\s][^*]*)\*"
+)
+_WHOLLY_EMPHASISED = re.compile(r"^\*([^*\s][^*]*)\*$")
 
 # The line that marks an entry as the maintainer's, alone as the entry's first paragraph. The
 # file's own emphasis, so it reads as a sentence on GitHub and in the local application.
@@ -173,13 +187,14 @@ def body(text: str) -> str:
     return text
 
 
-def runs(text: str) -> list[dict[str, str]]:
-    """One paragraph as `text`, `code` and `em` pieces, in order.
+def runs(text: str) -> list[dict[str, Any]]:
+    """One paragraph as `text`, `code`, `em` and `link` pieces, in order.
 
     Nothing is escaped, because nothing becomes markup: `t` says which element the page
-    makes and `s` is that element's text.
+    makes and `s` is that element's text. A `link` also carries `href`, a path on this site
+    (`_INLINE` admits no other), and `em: true` when its words were emphasised whole.
     """
-    pieces: list[dict[str, str]] = []
+    pieces: list[dict[str, Any]] = []
 
     def plain(said: str) -> None:
         if said:
@@ -188,9 +203,15 @@ def runs(text: str) -> list[dict[str, str]]:
     at = 0
     for found in _INLINE.finditer(text):
         plain(text[at:found.start()])
-        code, emphasis = found.group(1), found.group(2)
-        pieces.append({"t": "code", "s": code} if code is not None
-                      else {"t": "em", "s": emphasis or ""})
+        code, words, href, emphasis = found.groups()
+        if code is not None:
+            pieces.append({"t": "code", "s": code})
+        elif words is not None:
+            stressed = _WHOLLY_EMPHASISED.match(words)
+            pieces.append({"t": "link", "s": stressed.group(1) if stressed else words,
+                           "href": href or "/", "em": bool(stressed)})
+        else:
+            pieces.append({"t": "em", "s": emphasis or ""})
         at = found.end()
     plain(text[at:])
     return pieces

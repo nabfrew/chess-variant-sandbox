@@ -7,11 +7,32 @@ numbers. How the work was organised is not in here. Pay particular attention to 
 The site's *What's new* is this file, so write an entry to a visitor: what they would notice, in their words, with no
 command, no path in the repository and no *you decided*. An entry that only a maintainer would notice (a command, a
 folder, a deploy, a decision taken) begins with the line `*For maintainers.*`, alone as its first paragraph; the local
-application shows it as written and the site skips it (`chess_variant_sandbox/web/changelog.py`, `MAINTAINERS`).
+application shows it as written and the site skips it (`chess_variant_sandbox/web/changelog.py`, `MAINTAINERS`). A site-relative link, `[words](/game/<hash>)`, renders as a link;
+any other address keeps its brackets.
 
 ---
 
 ## 2026-10-31
+
+### A new game: duck chess
+
+The library now has duck chess as it is played online: ordinary chess, except that after every move the player must
+also move a duck to a different empty square, where nothing can pass through it or take it. There is no check or
+checkmate; you win by capturing the king, and a player left with no legal move wins. It scores 0.848, the mean of four runs.
+
+### No shoving a row straight back
+
+In the shoving games, a piece just pushed can't be pushed back onto the square it left on the very next move, by anyone.
+The old rule only stopped the piece that did the pushing from being pushed straight back, so the other side could still
+undo a shove from the far end of the row, or with a piece slid in across a gap, and the two sides could swap the same row
+back and forth for ever. That now holds whoever pushes and however long the row is.
+
+### The crowd's captains can now threaten a king
+
+In *the crowd*, a captain standing neutral used to threaten nothing, so a king could stand beside one its opponent held and
+come to no harm, and in a game won only by checkmate that took a way to win away. Now a captain the opponent holds gives
+check like any other piece: a king may not stand where one could take it, and a captain can deliver mate. Hired and bribed
+pieces in the other games already gave check, and still do.
 
 ### Two more games draw when nobody can mate
 
@@ -48,8 +69,10 @@ each can shove only the next kind round a circle: rock shoves scissors, scissors
 mixed kinds can't be pushed by anyone, and a side with no piece left of one kind loses.
 
 Four smaller games show the rest of what shoving can do, each one idea on a familiar small board: an edge that stops a shove
-instead of throwing the piece off, a choice between shoving and taking, pillars that crush a piece shoved against them, and
-bishops that move on the diagonal but shove straight ahead. You can play each against the computer.
+instead of throwing the piece off ([*los alamos with a closed edge*](/game/daa6917bd359)), a choice between shoving and taking ([*los alamos with
+shove or take*](/game/1fced818630e)), pillars that crush a piece shoved against them ([*los alamos with crushing pillars*](/game/e72a8715217c)), and bishops that move
+on the diagonal but shove straight ahead ([*gardner with bishops that shove straight*](/game/e271933cd127)). They are previews, kept outside the
+library list, and each has its own page where you can play it against the computer.
 
 ### Dohyo: a wrestling ring where weight decides
 

@@ -1,7 +1,9 @@
 """No push back (Q1074b6, K5, `docs/plan-push.md` §3.12): `rules.push.no_push_back`.
 
-After a push that moved the piece landed on from `x` to `y` and did not throw it off, that
-piece's owner may not, on the very next move, push from `y` onto `x`. The bar is state
+After a push that moved the piece landed on from `x` to `y` and did not throw it off, no push
+on the very next move may carry that piece from `y` back onto `x`: not the piece itself
+shoving back, and (Q1078, the user, 2026-10-31) not a different piece shoving the row back
+from its far end, through a gap or through pieces in between, whoever's they are. The bar is state
 (`Game::push_bar`, `GameState.push_bar`): set and cleared in `make`, restored in `unmake`, in
 the key only under the rule. The core's push words, with the bar, agree with
 `tests/push_oracle.py` over seeded games, both seats, the bar and the key checked every ply;
@@ -325,3 +327,105 @@ def test_the_spec_is_left_untouched() -> None:
     kept = copy.deepcopy(spec)
     _engine(spec)
     assert spec == kept
+
+
+# Q1078 (the user, 2026-10-31: *"shove no-shove-back rule doesn't cover shoving back-and-forth in
+# rows where there's a piece in between"*). Each shape below was a 2-ply back-and-forth before:
+# the row shoved, then shoved straight back by a piece other than the one landed on.
+
+
+def _row_state(engine: Engine, pieces: dict[str, tuple[str, int]]) -> GameState:
+    """`_rows`' game with the kings out of the way and `pieces` on the fourth rank, White to
+    move."""
+    placed = {"g1": ("K", 0), "g7": ("K", 1), **pieces}
+    return engine.make_state(placed, side_to_move=0, moved=list(pieces))
+
+
+def _shove(engine: Engine, state: GameState, origin: str, target: str) -> GameState:
+    pushes = _pushes(engine, state, origin, target)
+    assert len(pushes) == 1, (origin, target, pushes)
+    return engine.apply(state, pushes[0])
+
+
+def test_a_different_shover_at_the_far_end_may_not_shove_the_row_back() -> None:
+    engine = _engine(_rows())
+    state = _row_state(engine, {"a4": ("R", 0), "b4": ("R", 1), "c4": ("R", 1)})
+    state = _shove(engine, state, "a4", "b4")
+    b4, c4 = engine._square_index("b4"), engine._square_index("c4")
+    assert state.push_bar == (c4, b4)
+    # Black's d4 rook, not the one landed on, would shove c4 back onto b4 and White onto a4.
+    assert _pushes(engine, state, "d4", "c4") == []
+    # The piece landed on may not shove back either (Q1074b6's case).
+    assert _pushes(engine, state, "c4", "b4") == []
+    # The bar lasts one move: a move each, and the same shove is offered.
+    state = engine.apply(state, _move(engine, state, "g7", "f7"))
+    state = engine.apply(state, _move(engine, state, "g1", "f1"))
+    assert len(_pushes(engine, state, "d4", "c4")) == 1
+
+
+def test_a_shover_sliding_in_across_a_gap_may_not_shove_the_row_back() -> None:
+    engine = _engine(_rows())
+    state = _row_state(engine, {"a4": ("R", 0), "b4": ("R", 1), "g4": ("R", 1)})
+    state = _shove(engine, state, "a4", "b4")
+    # Black's g4 rook slides d4..f4 and lands on its own c4 rook: the row would go back.
+    assert _pushes(engine, state, "g4", "c4") == []
+
+
+def test_a_gap_between_the_shover_and_the_shoved_bars_the_shove_back() -> None:
+    engine = _engine(_rows())
+    state = _row_state(engine, {"a4": ("R", 0), "c4": ("R", 1), "e4": ("R", 1)})
+    state = _shove(engine, state, "a4", "c4")
+    # White slid a4 to c4; Black's d4 rook (pushed there) and its e4 rook behind it.
+    assert _pushes(engine, state, "d4", "c4") == []
+    assert _pushes(engine, state, "e4", "d4") == []
+
+
+def test_an_own_piece_in_between_is_barred_from_coming_back() -> None:
+    """White shoves its own b4 rook and Black's c4 one: the piece landed on is White's, which
+    the old bar never named, and Black's d4 rook would shove both back."""
+    engine = _engine(_rows())
+    state = _row_state(engine, {"a4": ("R", 0), "b4": ("R", 0), "c4": ("R", 1)})
+    state = _shove(engine, state, "a4", "b4")
+    c4, b4 = engine._square_index("c4"), engine._square_index("b4")
+    assert state.push_bar == (c4, b4)
+    assert _pushes(engine, state, "d4", "c4") == []
+
+
+def test_a_longer_row_through_mixed_pieces_is_barred_from_coming_back() -> None:
+    engine = _engine(_rows())
+    state = _row_state(
+        engine, {"a4": ("R", 0), "b4": ("R", 1), "c4": ("R", 0), "d4": ("R", 1)}
+    )
+    state = _shove(engine, state, "a4", "b4")
+    # Black's e4 rook would shove d4, c4 and b4 back, the piece just shoved among them.
+    assert _pushes(engine, state, "e4", "d4") == []
+    assert _pushes(engine, state, "c4", "b4") == []
+
+
+def test_the_shoved_piece_may_still_be_shoved_aside() -> None:
+    """Only carrying it straight back is barred: a shove of the piece just shoved across its
+    file stands."""
+    engine = _engine(_rows())
+    state = _row_state(
+        engine, {"a4": ("R", 0), "b4": ("R", 1), "c4": ("R", 1), "c7": ("R", 1)}
+    )
+    state = _shove(engine, state, "a4", "b4")
+    # c7 slides down onto c4 (the piece just shoved) and shoves it to c3.
+    assert len(_pushes(engine, state, "c7", "c4")) == 1
+
+
+def test_dohyo_s_bouncer_may_not_shove_a_row_back_through_its_own_apprentice() -> None:
+    """The library game: White's bouncer shoves an apprentice from c4 to d4; Black's bouncer
+    on e4, which pushes either side's pieces, would shove the apprentice and White's bouncer
+    straight back (weight 1 + 2, strength 3)."""
+    spec = json.loads((ROOT / "rulesets/dohyo.json").read_text(encoding="utf-8"))
+    engine = _engine(spec)
+    state = engine.make_state(
+        {"d1": ("C", 0), "d7": ("C", 1), "b4": ("O", 0), "c4": ("D", 1), "e4": ("O", 1)},
+        side_to_move=0, moved=["b4", "c4", "e4"],
+    )
+    state = _shove(engine, state, "b4", "c4")
+    assert _pushes(engine, state, "e4", "d4") == []
+    state = engine.apply(state, _move(engine, state, "d7", "d6"))
+    state = engine.apply(state, _move(engine, state, "d1", "d2"))
+    assert len(_pushes(engine, state, "e4", "d4")) == 1

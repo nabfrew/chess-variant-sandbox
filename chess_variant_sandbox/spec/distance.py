@@ -67,11 +67,13 @@ from chess_variant_sandbox.spec.schema import (
     push_rule,
     pushable_ids,
     pushing_ids,
+    reach_pieces,
     simultaneous_switch,
     spy_ids,
     strike_changes_anything,
     strikers,
     sweep_length,
+    takes_royal_ids,
     wrap_stated,
 )
 from chess_variant_sandbox.spec.transform import keeps_a_survivor
@@ -296,6 +298,11 @@ _SCALES: dict[str, float] = {
     # standing on one: not costed in `complexity` (as 18c to 18e's flags are not), so it
     # needs a feature or a spec and its arrival twin read as one game.
     "wins_by_leaving": 1.0,
+    # SR3a (`docs/plan-schema-next.md` §1 rank 4). Whether a goal names a choice of runners
+    # (`reach.piece` a list of two or more): not costed in `complexity`, a clause of the
+    # goal's own sentence, so it needs a feature or a race and its one-runner twin read as
+    # one game.
+    "reach_runners": 1.0,
     # Schema 19 (Q771). How many portal pairs, as a share of the four a spec may have, so
     # one pair and two read as near and none as far; whether anyone moves an end; whether
     # any passage is one way or closed. The last two are charged in `complexity` only once
@@ -389,6 +396,9 @@ _SCALES: dict[str, float] = {
     "nobody_share": 1.0,
     "majority_share": 1.0,
     "majority_geometry": 1.0,
+    # Q1077 (`docs/plan-turncoat.md` §4.7): the share of declared types whose held pieces take
+    # royals, so a held neutral that checks and one that does not are not at distance zero.
+    "majority_takes_royal": 1.0,
     # TC4 (`docs/plan-turncoat.md` §5.8): the share of declared types carrying a bounty, so a
     # game and its bounty twin are not at distance zero.
     "bounty_share": 1.0,
@@ -587,6 +597,7 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
             if isinstance(rules.get("reach"), dict) and rules["reach"].get("on") == "leave"
             else 0.0
         ),
+        "reach_runners": 1.0 if len(reach_pieces(rules.get("reach"))) > 1 else 0.0,
         **_portal_features(rules.get("portals")),
         **_simultaneous_features(spec),
         **_rest_features(spec),
@@ -704,6 +715,10 @@ def _neutral_features(spec: dict[str, Any]) -> dict[str, float]:
         "majority_geometry": float(any(
             piece["id"] in held and isinstance(piece.get("control"), dict) for piece in declared
         )),
+        # Q1077 (`docs/plan-turncoat.md` §4.7): the share of them whose held pieces take royals.
+        "majority_takes_royal": (
+            len(takes_royal_ids(spec)) / len(declared) if declared else 0.0
+        ),
     }
 
 

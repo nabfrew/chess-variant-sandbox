@@ -641,13 +641,28 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "none against none included, means nobody moves it. Moving it does not "
                     "make it yours. Next to means the king's step (six steps on a hex "
                     'lattice), or the geometry {"majority": {"vectors": [...], "symmetry": '
-                    '...}} names. A held piece attacks nothing and gives no check. A majority '
+                    '...}} names. A held piece attacks nothing and gives no check, unless the '
+                    "type says takes_royal. A majority "
                     "type must read the same for both players (no facing, region, condition, "
                     "promotion, owner-named screen, sweep, or a move whose symmetry does not "
                     "cover both), and some placement must put it in nobody's block. Never on "
                     "a royal or a wild piece. Refused beside rules.territory, rules.reach "
                     "and rules.explode_on_capture. In a turn of several moves the holder is "
                     "read afresh at the start of each move."
+                ),
+            },
+            # Q1077 (`docs/plan-turncoat.md` §4.7).
+            "takes_royal": {
+                "type": "boolean",
+                "description": (
+                    'Only on a type with control "majority" placed for nobody, in a game with '
+                    "a royal. true: a held piece of this type may also take the royal of the "
+                    "player who does not hold it, so it attacks that royal: it gives check, it "
+                    "can mate, and a king may not stand where a held piece could take it. "
+                    "Since who holds it is counted from the board, a check by it can also be "
+                    "answered by tying the count beside it, and a move that hands the majority "
+                    "to the opponent may expose one's own king. false, the default: a held "
+                    "piece attacks nothing. Refused beside a line of sight (pieces[].sight)."
                 ),
             },
             "bounty": {
@@ -1746,8 +1761,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "type": "boolean",
                         "description": (
                             "true: a piece just pushed from one square to the next, and not "
-                            "removed, may not on its owner's very next move push from where "
-                            "it now stands onto the square it was pushed from (no shoving "
+                            "removed, may not be carried back onto the square it was pushed "
+                            "from by a push on the very next move, whether it pushes back "
+                            "itself or another piece pushes a row it stands in (no shoving "
                             "straight back); any other move is allowed, and the bar lasts one "
                             "move. false (the default): no such bar. Needs a move that pushes "
                             "enemy pieces (or a turn of several moves)."
@@ -1908,7 +1924,21 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
             ),
             "reach": _object(
                 {
-                    "piece": {"type": "string", "description": "Omit for any piece."},
+                    # SR3a (`docs/plan-schema-next.md` §1 rank 4): one id or a list.
+                    "piece": {
+                        "anyOf": [
+                            {"type": "string"},
+                            {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 1,
+                            },
+                        ],
+                        "description": (
+                            "Omit for any piece. A list: any listed piece arriving "
+                            "decides it, so a side chooses its runner."
+                        ),
+                    },
                     "squares": _squares("Where arriving decides the game."),
                     "mirror": {
                         "anyOf": [

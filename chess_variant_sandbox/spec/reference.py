@@ -418,8 +418,9 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "and pay a bounty to whoever takes them; the duck, which every turn ends by "
         "moving to an empty square, where nothing may take it; and neutral pieces placed for "
         "nobody, which stand and block until taken, or are moved by whichever player has "
-        "more pieces next to them.",
-        ("rules.npcs", "rules.duck", "pieces[].control"),
+        "more pieces next to them, and may be made to attack the other king, so that they "
+        "give check.",
+        ("rules.npcs", "rules.duck", "pieces[].control", "pieces[].takes_royal"),
     ),
     (
         "Coins and a market",

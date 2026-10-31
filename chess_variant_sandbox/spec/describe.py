@@ -75,9 +75,11 @@ from chess_variant_sandbox.spec.schema import (
     purse_rule,
     push_rule,
     pushing_ids,
+    reach_pieces,
     simultaneous_switch,
     spy_ids,
     sweep_length,
+    takes_royal_ids,
     wrap_stated,
 )
 
@@ -1872,17 +1874,35 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
             + (f"; for {', '.join(named)}, the squares its notes name" if named else "")
             + ")"
         )
+        # Q1077 (`docs/plan-turncoat.md` §4.7): the types whose held pieces take royals.
+        takers = sorted(takes_royal_ids(spec))
+        plain = [pid for pid in held if pid not in takers]
         lines.append(
             f"A piece nobody owns of type {', '.join(held)} may be moved by the player with "
             f"strictly more of their own pieces {where}, royals included, as that player's "
             "move; on a tie, none against none included, nobody may move it. It moves as its "
-            "type does, the same for either player, onto an empty square or capturing a "
-            "non-royal piece of the other player; it never promotes, castles or captures en "
-            "passant, and stays nobody's after it moves. It attacks nothing and gives no check, "
-            "though moving it may uncover one, and a move of it that leaves the mover's own "
-            "royal in check is illegal. Who holds it is read from the board at the start of "
-            "every move."
+            "type does, the same for either player, onto an empty square or capturing "
+            + ("a non-royal piece" if not takers else "a piece") + " of the other player"
+            + (f" (a royal only for {', '.join(takers)})" if takers and plain else "")
+            + "; it never promotes, castles or captures en passant, and stays nobody's after "
+            "it moves. Who holds it is read from the board at the start of every move."
         )
+        if plain:
+            lines.append(
+                f"A piece nobody owns of type {', '.join(plain)} attacks nothing and gives no "
+                "check, though moving it may uncover one, and a move of it that leaves the "
+                "mover's own royal in check is illegal."
+            )
+        if takers:
+            lines.append(
+                f"A piece nobody owns of type {', '.join(takers)} attacks the royal of the "
+                "player who does not hold it, as if it were the holder's own piece: it gives "
+                "check and can give checkmate, and a royal may not move to, or be left on, a "
+                "square such a piece could take it on. So a check by one can also be answered "
+                "by moving a piece next to it until the count ties or turns, and a move that "
+                "hands the count to the other player is illegal if the piece would then attack "
+                "the mover's royal."
+            )
     return lines
 
 
@@ -2210,9 +2230,10 @@ def _describe_push(spec: dict[str, Any]) -> list[str]:
     lines = [f"{chain} {wall}, and {edge}."]
     if rule["no_push_back"] is True:
         lines.append(
-            "No push back: a piece just pushed to a new square, and not removed, may not on "
-            "its owner's very next move push from there onto the square it was pushed from; "
-            "the bar lasts that one move."
+            "No push back: a piece just pushed to a new square, and not removed, may not be "
+            "carried back onto the square it was pushed from by a push on the very next move, "
+            "neither by pushing back itself nor in a row another piece pushes; the bar lasts "
+            "that one move."
         )
     if rule["chain"] == "weight":
         # Q1074b4s: the numbers themselves, a weight per piece and a strength per pusher (its
@@ -3093,14 +3114,14 @@ def _describe_extra_rules(rules: dict[str, Any], hexy: bool = False) -> list[str
     reach = rules.get("reach")
     if reach and reach.get("on") == "leave":
         # Schema 18 (Q786): the move's origin decides, not where a piece stands.
-        piece = reach.get("piece", "any piece")
+        piece = _runners(reach)
         where = _squares(reach["squares"], limit=6)
         lines.append(
             f"{piece} moving off {where} is a {reach.get('result', 'win')}: it has to get "
             f"there first and then step away, and standing there decides nothing."
         )
     elif reach:
-        piece = reach.get("piece", "any piece")
+        piece = _runners(reach)
         safe = " and surviving there" if reach.get("safe") else ""
         lines.append(
             f"{piece} reaching {_squares(reach['squares'], limit=6)}{safe} is a "
@@ -3425,6 +3446,16 @@ def _describe_win(win: str) -> str:
         "annihilation": "Win by leaving the opponent with no pieces.",
         "none": "The game is won only by the endings stated below.",
     }.get(win, f"Win by {win}.")
+
+
+def _runners(reach: dict[str, Any]) -> str:
+    """Who a ``reach`` goal is about, in words: one id, a choice of them (SR3a), or any piece."""
+    runners = reach_pieces(reach)
+    if not runners:
+        return "any piece"
+    if len(runners) == 1:
+        return runners[0]
+    return "any of " + ", ".join(runners[:-1]) + " or " + runners[-1]
 
 
 def _squares(squares: Any, limit: int = _SQUARE_LIMIT) -> str:

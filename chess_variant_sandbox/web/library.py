@@ -1018,6 +1018,9 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
         # K2: each piece alone on an empty board, the engine's answer, with the reference
         # game's piece it moves like where there is one.
         "pieceMaps": piece_maps(game, reference_of(others)),
+        # Q1080: the previews that show a rule of this game's beyond the reference game's,
+        # the way from a rule's library games to the new ones still being tested.
+        "previewsSharing": previews_sharing(game, others),
         "sides": list(sides(game)),
         "armies": armies(game),
         # Schema 26 (Q918c): whether both players move at once, every round, so the page
@@ -1894,6 +1897,46 @@ def reference_of(others: Iterable[Game] | None) -> Game | None:
         if game.path.name == REFERENCE_FILE and game.source == "committed":
             return game
     return None
+
+
+def previews_sharing(game: Game, others: Iterable[Game] | None) -> list[dict[str, str]]:
+    """The previews that have a rule of this game's that the reference game does not (Q1080).
+
+    The user, 2026-10-31: *"The changelog names four unnamed pushing games being added, I
+    can't find them."* A preview is listed apart from the library and stays out of every
+    near list (they are scored surfaces), so a game page of the rule it shows -- brink's,
+    for a push -- never named it. This is the game page's way to them: each preview with a
+    rule (`relate.rules_involved`, the words the map's families are named by) that this
+    game has and the reference game (`reference_of`) has not, so a rule chess already has
+    joins nobody, and a preview that shows pushing is named on every pushing game's page.
+    Read off the specs alone, so it needs no map, no measurement and no threshold.
+
+    `[{hash, name}]`, by name; the game itself is never in it, and nothing where the
+    reference is absent (a library without it has no *beyond* to read).
+    """
+    from chess_variant_sandbox.spec import relate
+
+    games = list(others or ())
+    reference = reference_of(games)
+    if reference is None:
+        return []
+    usual = relate.rules_involved(relate.normal_form(reference.spec))
+
+    def beyond(one: Game) -> frozenset[str]:
+        try:
+            return relate.rules_involved(relate.normal_form(one.spec)) - usual
+        except Exception:  # noqa: BLE001 - a page must survive one unloadable spec
+            return frozenset()
+
+    mine = beyond(game)
+    if not mine:
+        return []
+    found = [
+        {"hash": one.hash, "name": one.name}
+        for one in games
+        if is_preview(one) and one.hash != game.hash and mine & beyond(one)
+    ]
+    return sorted(found, key=lambda one: (one["name"].lower(), one["hash"]))
 
 
 def piece_maps(game: Game, reference: Game | None = None) -> list[dict[str, Any]] | None:

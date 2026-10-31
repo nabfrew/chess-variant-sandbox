@@ -413,6 +413,8 @@ def _key_of(form: NormalForm) -> str:
                   # TC5: a price decides what buying one costs.
                   | ({"price": piece["price"]} if "price" in piece else {})
                   | ({"control": _frozen(piece["control"])} if "control" in piece else {})
+                  # Q1077: whether a held one attacks the other royal.
+                  | ({"takes_royal": piece["takes_royal"]} if "takes_royal" in piece else {})
                   | ({"sight": _sight_form(piece)} if "sight" in piece else {})
                   # Q1074b5: whom a pusher may push, and under chain "weight" what each
                   # piece weighs and what a pusher can shift, are rules of the piece.
@@ -547,9 +549,9 @@ def _renamed(value: Any, shape: Any, ids: dict[str, str]) -> Any:
     """
     if shape is None or value is None:
         return value
-    if shape is _ID:
+    if shape is _ID and not isinstance(value, list):
         return ids.get(value, value) if isinstance(value, str) else value
-    if shape is _IDS:
+    if shape is _ID or shape is _IDS:  # SR3a: an id position may be written as a list
         if not isinstance(value, list):
             return value
         return [ids.get(item, item) if isinstance(item, str) else item for item in value]
@@ -719,10 +721,14 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
             _frozen(move.get("condition") or {}),
             move.get("screen_range"),
             move.get("screen"),
-            # T1: a slide whose path turns is another movement over the same directions;
-            # "straight", the off value, is the key's absence.
-            move.get("path", "straight"),
         )
+        path = move.get("path", "straight")
+        if path != "straight":
+            # T1: a slide whose path turns is another movement over the same directions;
+            # "straight", the off value, is the key's absence. Q1072: added only where a
+            # path turns -- T1 (a53ead54) put it in every move's tuple, which moved every
+            # library game's identity key.
+            attrs = (*attrs, ("path", path))
         push = move_push(move)
         if push is not None:
             # Q1074b5: a move that shoves what it lands on is another movement over the same
@@ -1078,7 +1084,7 @@ def _compare(
         # Q1074b5's weight and strength, what a pushed piece weighs and a pusher can shift.
         rest = (
             "region", "promoted_from", "beats", "spy", "speed", "rest", "bounty", "control",
-            "price", "weight", "strength",
+            "price", "weight", "strength", "takes_royal",
         )
         if _folded(_stated_sight(one, rest), _PIECE_FIELDS, ids_a) != _folded(
             _stated_sight(other, rest), _PIECE_FIELDS, ids_b

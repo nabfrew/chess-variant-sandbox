@@ -487,10 +487,10 @@ pub struct Game<'t> {
     /// 99 less 3 is not 98.
     purse_log: Vec<[u16; 2]>,
     /// Q1074b6 (K5, `rules.push.no_push_back`, `docs/plan-push.md` §3.12): the piece standing
-    /// on `push_bar[0]` was pushed there from `push_bar[1]` by the last move, and may not push
-    /// from `push_bar[0]` onto `push_bar[1]` on this one; `NO_BAR` for none. Set by `make`
-    /// on a push that moved its target's piece and did not remove it, where that piece's
-    /// owner makes the next piece move (`push::push_bar_after`), cleared by every other move
+    /// on `push_bar[0]` was pushed there from `push_bar[1]` by the last move, and no push on
+    /// this one may carry it back onto `push_bar[1]`, as the mover or in the line (Q1078);
+    /// `NO_BAR` for none. Set by `make` on a push that moved its target's piece and did not
+    /// remove it, whoever owns that piece (`push::push_bar_after`), cleared by every other move
     /// of `make`'s (a duck half leaves it, being no piece move). Restored from
     /// `push_bar_log` only under the rule; `portal_bar`'s shape.
     ///
@@ -1284,6 +1284,8 @@ impl<'t> Game<'t> {
             || (self.t.has_npcs
                 && self.attacks_square(WILD, square)
                 && (!self.t.npc_shield || !self.shielded_from_wild(square)))
+            || (self.t.majority.as_deref().is_some_and(|m| m.threatens_royals)
+                && self.held_attacks(by, square, None))
     }
 
     /// `threatened`, for the callers that mean a specific victim -- castling's transit
@@ -1299,6 +1301,8 @@ impl<'t> Game<'t> {
         }) || (self.t.has_npcs
             && self.attacks_square_as(WILD, square, victim)
             && !(self.t.npc_shield && self.shielded_from_wild(square)))
+            || (self.t.majority.as_deref().is_some_and(|m| m.threatens_royals)
+                && self.held_attacks(by, square, Some(victim)))
     }
 
     /// Whether `player` attacks `square` by any way the game has: `attacks_square`, and in
@@ -2875,7 +2879,7 @@ impl<'t> Game<'t> {
                 && !(kind == MOVE_CASTLE && played.target == origin)
                 && t.reach.as_ref().is_some_and(|rule| {
                     rule.squares[player][origin]
-                        && (rule.piece_type < 0 || played.piece_type == rule.piece_type as usize)
+                        && rule.admits(played.piece_type)
                 });
             self.goal_left_by = if left { player as i8 } else { -1 };
         }
@@ -5096,11 +5100,14 @@ impl<'t> Game<'t> {
                     // only by touching a source of an effect that binds now, or its ray
                     // (`effect_lines`, `docs/archive/plan-passive.md` §3.5's second lever), so those
                     // squares join the hop lines below.
+                    // * Q1077: a held neutral that `takes_royal` attacks for whoever holds
+                    //   it, and any move next to one can change who that is.
                     if t.explosion.is_some()
                         || t.royal_facing_forbidden
                         || t.has_npcs
                         || t.has_sweep
                         || t.portals.is_some()
+                        || t.majority.as_deref().is_some_and(|m| m.threatens_royals)
                         || self.in_check_at(player, royal)
                     {
                         let mut write = base;
@@ -5792,7 +5799,7 @@ impl<'t> Game<'t> {
                             continue;
                         }
                         let piece_type = t.type_of(self.board[square]);
-                        if reach.piece_type >= 0 && piece_type != reach.piece_type as usize {
+                        if !reach.admits(piece_type) {
                             continue;
                         }
                         if reach.safe && self.threatened(1 - side, square) {

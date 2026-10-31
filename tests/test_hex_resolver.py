@@ -289,6 +289,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "bounty_to_loser",  # TC9c
     "simultaneous", "simultaneous_initiative", "simultaneous_impossible", "beats_share",  # Q918a
     "wins_by_leaving",  # Q786
+    "reach_runners",  # SR3a
     "portal_pairs", "portals_move", "portals_one_way",  # Q771
     "portals_no_back",  # Q807
     "portals_ring", "portals_funnel", "portals_other_map", "portals_filtered",  # Q843a
@@ -316,6 +317,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "has_duck",  # N4b
     "duck_by_moves",  # N4b
     "nobody_share", "majority_share", "majority_geometry",  # TC3
+    "majority_takes_royal",  # Q1077
     "bounty_share",  # TC4
     "has_purse", "purse_start", "purse_region", "price_share",  # TC5
     "has_hire", "has_bribe",  # TC6
@@ -330,6 +332,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/berolina": "488735d94bc4a1ee",
     "rulesets/brink": "acbee9311ba0b12b",  # Q1074bg1, 2026-10-30
     "rulesets/dohyo": "058a15a873e5314b",  # Q1074bd, 2026-10-31: the corner ring (was 046edcf48e185db7, Q1074bg2)
+    "rulesets/duck-chess": "f9808c9f13e0867d",  # Q1079, 2026-10-31
     "rulesets/rock-paper-shove": "43142f6be2e63c9b",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "019f4704a5c0d78c",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "3510f2fd444cf5f9",  # Q1074bs, 2026-10-31
@@ -451,7 +454,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/the-shepherds-duck": "78dea89553770ad7",  # N6, generations 36 to 38 and 42
     "archive/the-hydra": "ebc692c2d1509cbb",  # N7, generations 39 to 41
     "archive/the-herd": "bc1e91a0f50ed3cb",  # N9, generations 37 and 42
-    "archive/the-crowd": "2f2261b72fe19494",  # TC8, generation 43
+    "archive/the-crowd": "57a95daaec1113a8",  # TC8, generation 43; Q1077 its condottiere takes royals (was 2f2261b72fe19494)
     "archive/the-free-companies": "76f4d21dc566ca00",  # TC10b, generations 44 to 46
     "archive/short-sweeping-bishop-chess": "980b6362973afb82",  # LPD, schema 31
     "archive/chess-with-galloping-knights": "582fe0dfb371a0e8",  # Q1023, schema 31

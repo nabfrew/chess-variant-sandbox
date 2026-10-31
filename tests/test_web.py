@@ -1512,6 +1512,8 @@ def _news_drawn(payload: dict) -> dict:
           set textContent(v) { node._text = String(v); node.children = []; },
           set innerHTML(v) { throw new Error('this element must not be given markup'); },
           append(...kids) { kids.forEach(kid => node.children.push(kid)); },
+          setAttribute(name, value) { node.attrs[name] = String(value); },
+          attrs: {},
         };
         return node;
       }
@@ -1531,7 +1533,7 @@ def _news_drawn(payload: dict) -> dict:
       const dump = node => node.tag === '#text'
         ? {{ tag: '#text', text: node._text }}
         : {{ tag: node.tag, className: node.className, text: node._text,
-             children: (node.children || []).map(dump) }};
+             attrs: node.attrs || {{}}, children: (node.children || []).map(dump) }};
       const where = __el('div');
       paintNews(where, {_json.dumps(payload)});
       console.log(JSON.stringify(dump(where)));
@@ -2533,6 +2535,68 @@ class TestWhatsNew:
         blocks = changelog.parse(text)[0]["entries"][0]["blocks"]
         said = [run["s"] for block in blocks for run in block.get("runs", [])]
         assert said == ["- a list item", "#### deeper", "[a](b)"]
+
+    def test_a_link_to_a_page_of_this_site_is_a_link(self) -> None:
+        """Q1080: `[words](/game/<hash>)` is a link on both drawings, its words emphasised
+        when the whole of them are, and a link anywhere else keeps its brackets."""
+        from chess_variant_sandbox.web import changelog
+        from chess_variant_sandbox.web.page import news_page
+
+        text = (
+            "---\n## 2026-10-31\n\n### Four\n\n"
+            "Try ([*a closed\nedge*](/game/daa6917bd359)), or [plain](/rules#push), "
+            "not [there](https://elsewhere.example), [far](//elsewhere.example), "
+            "[script](javascript:alert(1)) or [back](/\\elsewhere).\n"
+        )
+        runs = changelog.parse(text)[0]["entries"][0]["blocks"][0]["runs"]
+        links = [run for run in runs if run["t"] == "link"]
+        assert links == [
+            {"t": "link", "s": "a closed edge", "href": "/game/daa6917bd359", "em": True},
+            {"t": "link", "s": "plain", "href": "/rules#push", "em": False},
+        ]
+        said = "".join(run["s"] for run in runs if run["t"] == "text")
+        for kept in ("[there](https://elsewhere.example)", "[far](//elsewhere.example)",
+                     "[script](javascript:alert(1))", "[back](/\\elsewhere)"):
+            assert kept in said
+
+        html = news_page.runs_html(runs)
+        assert '<a href="/game/daa6917bd359"><em>a closed edge</em></a>' in html
+        assert '<a href="/rules#push">plain</a>' in html
+        assert html.count("<a ") == 2
+        # A run that claims a link to elsewhere is drawn as its words, whoever made it.
+        assert news_page.runs_html([{"t": "link", "s": "x", "href": "//evil"}]) == "x"
+
+        drawn = _news_drawn({"days": changelog.parse(text), "note": ""})
+        anchors = []
+
+        def walk(node: dict) -> None:
+            if node["tag"] == "a":
+                anchors.append(node)
+            for child in node.get("children", []):
+                walk(child)
+
+        walk(drawn)
+        assert [one["attrs"]["href"] for one in anchors] == ["/game/daa6917bd359", "/rules#push"]
+        assert anchors[0]["children"][0]["tag"] == "em"
+        assert anchors[0]["children"][0]["text"] == "a closed edge"
+
+    def test_the_push_previews_are_linked_from_their_entry(self) -> None:
+        """Q1080, the user's *"I can't find them"*: the entry that names the four push
+        previews links each name to its game's page."""
+        from chess_variant_sandbox.web import changelog
+
+        entry = next(
+            entry for day in changelog.payload()["days"] for entry in day["entries"]
+            if entry["heading"] == "Rock paper shove, and four small push games to try"
+        )
+        links = {run["s"]: run["href"] for block in entry["blocks"]
+                 for run in block.get("runs", []) if run["t"] == "link"}
+        assert links == {
+            "los alamos with a closed edge": "/game/daa6917bd359",
+            "los alamos with shove or take": "/game/1fced818630e",
+            "los alamos with crushing pillars": "/game/e72a8715217c",
+            "gardner with bishops that shove straight": "/game/e271933cd127",
+        }
 
     def test_nothing_in_the_file_can_become_markup(self) -> None:
         """An entry holding a script tag, and one holding a stray `<`.

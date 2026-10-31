@@ -893,6 +893,11 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             "TC3: how a piece nobody owns is moved, read off the compiled rule "
             "(compiled.neutrals); Fairy-Stockfish has no piece that belongs to nobody",
         ),
+        "takes_royal": (
+            _REFUSED,
+            "Q1077: a held neutral that attacks the other royal, read only beside majority "
+            "control, which is refused off the compiled rule (compiled.neutrals)",
+        ),
         "bounty": (
             _REFUSED,
             "TC4: what taking a piece pays, read off the compiled table (compiled.bounty); "
@@ -2201,7 +2206,20 @@ def _ending_lines(
                 "result"
             )
             approximates.add("reach")
-        lines.append(f"flagPiece = {chars[reach.piece_type]}")
+        # SR3a: `flagPiece` is one type over there. `fairy --config` and a pyffish 0.0.90
+        # probe (`tests/test_fairy.py::TestReachForAListOfPieces`) agree: `nr`, `n r` and
+        # `n,r` each flag one of the two, never both, so a goal for a list is refused rather
+        # than written as one of its runners. Any piece is `*`, which pyffish reads as
+        # every type (until SR3a this wrote the last declared type's letter).
+        if len(reach.piece_types) > 1:
+            reasons.append(
+                "rules.reach.piece lists several pieces, and flagPiece is one piece type "
+                "over there (or every type, as *): a race any listed runner wins has no "
+                "spelling"
+            )
+        else:
+            flag = chars[reach.piece_types[0]] if reach.piece_types else "*"
+            lines.append(f"flagPiece = {flag}")
         for player, label in ((0, "White"), (1, "Black")):
             squares = " ".join(
                 format_square(square % compiled.width, square // compiled.width)

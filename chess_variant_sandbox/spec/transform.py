@@ -43,6 +43,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_prices,
     purse_bribes,
     purse_market,
+    reach_pieces,
     strike_is_live,
     strike_states_nothing,
     strike_survives_anything,
@@ -225,9 +226,13 @@ def _forgotten_leaf(value: Any, position: Names, piece_id: str) -> tuple[str, An
     """One leaf of `_forgotten`: an id, a list of ids, or a map keyed by ids."""
     if position.gone == LEFT:
         return _KEPT, value
-    if position.shape == PIECE_ID:
+    if position.shape == PIECE_ID and not isinstance(value, list):
         return (_VERDICT[position.gone], value) if value == piece_id else (_KEPT, value)
-    if position.shape == PIECE_IDS:
+    if position.shape == PIECE_ID:
+        # SR3a: an id position written as a list (`rules.reach.piece`) loses the id, and
+        # its holder goes as one id's would once the list is empty.
+        value = [pid for pid in value if pid != piece_id]
+    elif position.shape == PIECE_IDS:
         if not isinstance(value, list) or (position.only_named and piece_id not in value):
             return _KEPT, value
         value = [pid for pid in value if pid != piece_id]
@@ -838,12 +843,13 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
             drop("castling")
     # Case 13: a rule about a piece that can never stand on the board.
     standing = _pieces_that_can_stand(spec, listed, rules, declared)
-    reach = rules.get("reach")
-    if (
-        isinstance(reach, dict)
-        and reach.get("piece") in declared
-        and reach.get("piece") not in standing
-    ):
+    reach: Any = rules.get("reach")
+    runners = reach_pieces(reach)
+    never = [pid for pid in runners if pid in declared and pid not in standing]
+    if never and isinstance(reach.get("piece"), list) and len(never) < len(runners):
+        # SR3a: a list keeps the runners that can stand; the rule goes with the last.
+        reach["piece"] = [pid for pid in reach["piece"] if pid not in never]
+    elif never:
         drop("reach")
     entries = _promotion_entries(rules)
     unborn = [

@@ -59,14 +59,50 @@ impl<'t> Game<'t> {
         }
         let low = t.value_low(1 - player);
         let high = low + t.side_stride as u16;
+        let rule = t.majority.as_deref().expect("checked above");
         for origin in self.occupied()[WILD].iter() {
             let value = self.board[origin];
             if t.kind_of(value) != CONTROL_MAJORITY || self.controller_of(origin) != player as i8 {
                 continue;
             }
             let piece_type = t.type_of(value);
-            self.push_foreign_piece(origin, piece_type, 0, player, Some((low, high)), out);
+            let royals = rule.takes_royal(piece_type);
+            self.push_foreign_piece(origin, piece_type, 0, player, Some((low, high)), royals, out);
         }
+    }
+
+    /// Q1077 (`docs/plan-turncoat.md` §4.7): whether a held neutral of a `takes_royal` type
+    /// that `by` holds now attacks `square` (as a capture of `victim`, or of whatever stands
+    /// there). The compiler files those types' frame-0 attack sources under the third owner's
+    /// block with the nobody's byte, so this is `attacks_square_as`'s walk over that block,
+    /// each matching source then asked who holds it. Reads the board, never the occupancy
+    /// sets, so a legality filter may ask it. Sweeps are refused on a majority type, and
+    /// its hop screens name no owner, so the path test reads alike for either holder.
+    #[cold]
+    #[inline(never)]
+    pub(super) fn held_attacks(&self, by: usize, square: usize, victim: Option<usize>) -> bool {
+        let t = self.t;
+        let victim = victim.unwrap_or_else(|| {
+            let occupant = self.board[square];
+            if occupant == 0 { usize::MAX } else { t.type_of(occupant) }
+        });
+        for source in t.attackers_of(WILD, square) {
+            if self.board[source.origin as usize] != source.piece_value {
+                continue;
+            }
+            if t.has_capture_matrix
+                && victim != usize::MAX
+                && !t.may_capture(t.type_of(source.piece_value), victim)
+            {
+                continue;
+            }
+            if self.path_clear_on(&self.board, by, source)
+                && self.controller_of(source.origin as usize) == by as i8
+            {
+                return true;
+            }
+        }
+        false
     }
 
     /// TC3 (`docs/plan-turncoat.md` §4.3): who may move the piece on `square` as a held
@@ -123,7 +159,7 @@ impl<'t> Game<'t> {
                 debug_assert!(!t.is_royal(piece_type), "a royal under a command");
                 let turncoat = bits & SIGHT_COMMAND_OWN != 0 && bits & SIGHT_DISARM == 0;
                 let takes = if turncoat { Some((low, high)) } else { None };
-                self.push_foreign_piece(origin, piece_type, frame, owner, takes, out);
+                self.push_foreign_piece(origin, piece_type, frame, owner, takes, false, out);
             }
         }
     }
@@ -135,9 +171,13 @@ impl<'t> Game<'t> {
     /// castling, an en passant, a drop or a promotion: an arrival that would have to promote
     /// is not offered, and under optional promotion the piece arrives as it is.
     #[inline(always)]
+    ///
+    /// `royals` (Q1077): a held neutral of a `takes_royal` type may take a royal in `takes`
+    /// too. False for every other foreign piece.
+    #[allow(clippy::too_many_arguments)]
     fn push_foreign_piece(
         &self, origin: usize, piece_type: usize, frame: usize, owner: usize, takes: ForeignTakes,
-        out: &mut Vec<u32>,
+        royals: bool, out: &mut Vec<u32>,
     ) {
         let t = self.t;
         let low = t.value_low(owner);
@@ -158,7 +198,7 @@ impl<'t> Game<'t> {
                 mode & 2 != 0
                     && from <= occupant
                     && occupant < to
-                    && !t.is_royal(t.type_of(occupant as u8))
+                    && (royals || !t.is_royal(t.type_of(occupant as u8)))
                     && may_take(t, piece_type, occupant)
             }
             None => false,

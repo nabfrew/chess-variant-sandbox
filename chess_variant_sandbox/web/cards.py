@@ -352,8 +352,11 @@ def field_for(node: dict[str, Any], path: str, key: str, required: bool) -> dict
         options = _finite(node["anyOf"])
         if options is not None:
             return {**base, "control": "menu", "options": _worded(path, options)}
+        # A branch is as required as the field it is a spelling of: an optional field left
+        # empty is the key left out, whichever branch shows (SR3a: `rules.reach.piece`, a
+        # piece or a list of them, empty for any piece).
         return {**base, "control": "either", "branches": [
-            {"label": _branch_label(branch), "field": field_for(branch, path, key, True)}
+            {"label": _branch_label(branch), "field": field_for(branch, path, key, required)}
             for branch in node["anyOf"]
         ]}
 

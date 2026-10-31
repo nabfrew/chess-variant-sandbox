@@ -470,7 +470,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
             value = board[plans[i]["target"]]
             left[i] = (
                 arriving[i] and origin in reach.squares[i]
-                and (reach.piece_type < 0 or plans[i]["type"] == reach.piece_type)
+                and reach.admits(plans[i]["type"])
                 and value != 0 and spec.owner_of(value) == i
             )
         return {(True, True): 2, (True, False): 0, (False, True): 1}.get(tuple(left), -1)

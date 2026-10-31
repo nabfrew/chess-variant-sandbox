@@ -594,6 +594,13 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "How each direction is turned into more, as on a way of moving; it must read the same "
         "from either player's side.",
     ),
+    # Q1077 (`docs/plan-turncoat.md` §4.7): a held piece nobody owns that attacks the other king.
+    "pieces.takes_royal": (
+        "attacks the king",
+        "A piece nobody owns of this kind, moved by whoever has more pieces next to it, may "
+        "also take the king of the other player, so it gives check and can give mate. A check "
+        "by it can be answered by moving a piece next to it until nobody has more.",
+    ),
     # TC5 (`docs/plan-turncoat.md` §5.4): what a piece costs from the market; TC6, to hire
     # or bribe.
     "pieces.price": (
@@ -663,9 +670,10 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     "rules.push.no_push_back": (
         "no shoving straight back",
         "When on, a piece that has just been shoved one square on, and is still on the board, "
-        "may not shove straight back from where it now stands onto the square it came from on "
-        "its owner's very next move: it can do anything else, and shove back the move after. "
-        "It stops two pieces shoving each other to and fro until the game is drawn.",
+        "may not be shoved straight back onto the square it came from on the very next move, "
+        "whether it shoves back itself or another piece shoves the row it stands in from the "
+        "far end: anything else is allowed, and the shove back the move after. It stops a row "
+        "being shoved to and fro until the game is drawn.",
     ),
     # TC4 (`docs/plan-turncoat.md` §5.1): what taking a piece pays.
     "pieces.bounty": (
@@ -785,7 +793,10 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "The ground being held, for 'region'. Written for the first player and mirrored, so "
         "holding the centre is the same for both and holding the other side's half is not.",
     ),
-    "rules.reach.piece": ("which piece", "Leave it empty for any piece."),
+    "rules.reach.piece": (
+        "which piece",
+        "Leave it empty for any piece. Several pieces: any one of them arriving decides it.",
+    ),
     "rules.reach.squares": ("the squares", None),
     "rules.reach.mirror": (
         "for the other player",

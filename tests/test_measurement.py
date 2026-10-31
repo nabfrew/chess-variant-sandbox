@@ -563,7 +563,18 @@ class TestTheFingerprintsPointAtSomething:
 # and `engine.py` carry `GameState.push_bar`, and `spec/describe.py` states the bar. Read only in
 # a push game, which no library game is, so no number moves; batch P's replay (Q1074br)
 # re-measures. It was "fc1dd3f84e30f9be" after Q1074b5.
-FROZEN_METRICS = "45d196cca374ce25"
+# **Moved 2026-10-31 by SR3a (a goal for a list of pieces)**: `agents/evaluation.py` reads the
+# goal's runners as `ReachRule.mask` and `ReachRule.piece_types` (one type is one bit, any piece
+# every bit), where it read one `piece_type`. The same number for every game with one runner or
+# none, which is every library game; batch A's replay (SR3r) re-measures. It was
+# "45d196cca374ce25" after Q1074b6.
+# **Moved 2026-10-31 by Q1077 (a held neutral that takes a royal, `docs/plan-turncoat.md`
+# §4.7)**: `engine/compile.py` files a `takes_royal` type's attack sources under the third
+# block, `spec/complexity.py` charges the key 0.5 and `spec/describe.py` states it. Read only
+# where the key is on, which is the crowd alone, edited to a new hash in the same change (its old
+# runs stay under `961b230bc5eb`); every other game's number is the same; batch A's replay (SR3r)
+# re-measures. It was "f7e44068dbef119a" after SR3a.
+FROZEN_METRICS = "5f16f00a20351d98"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -925,7 +936,10 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-30 by Q1074b6 (no push back)**: `GameState.push_bar` crosses the boundary
 # (`engine.py`'s pack and unpack) and the compiler draws its keys, only in a game under
 # `rules.push.no_push_back`, so no `analysis.json` moves. It was "15b9bee78794e7b2" after Q1074b5.
-FROZEN_ANALYSIS = "1969ab0341161e29"
+# **Moved 2026-10-31 by SR3a**: `agents/evaluation.py` reads a goal's runners as a mask (as
+# `FROZEN_METRICS` says), the same reading for one runner or any, so no `analysis.json` moves.
+# It was "1969ab0341161e29" after Q1074b6.
+FROZEN_ANALYSIS = "df2e6e632873f256"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

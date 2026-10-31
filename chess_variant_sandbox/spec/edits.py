@@ -48,6 +48,8 @@ EDITED: dict[str, str] = {
     # Q1073, 2026-10-31: `rules.insufficient_material` switched on for the sweep story's pair.
     "42bd7d06828d": "01cdfe2e679b",  # archive/chess-sweeping-bishops.json
     "c7c6907901b3": "ceec60c5fbbc",  # archive/short-sweeping-bishop-chess.json
+    # Q1077, 2026-10-31: the crowd's condottiere `takes_royal` (a held one gives check).
+    "961b230bc5eb": "ea7aa465cbfb",  # archive/the-crowd.json
 }
 
 

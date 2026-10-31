@@ -413,6 +413,15 @@ class SiteApp(App):
             ]
             found["history"] = history_shown(found, self.role == admin.ADMIN)
             found["trust"] = self._trust_line(parts[2], found.get("trust"))
+            # Q1081: the previews this page names (Q1080) through the listing's door, so a
+            # preview with no public row, or one taken off the site, is never linked.
+            if found.get("previewsSharing"):
+                with self._connection() as connection:
+                    found["previewsSharing"] = drafts.offered(
+                        found["previewsSharing"],
+                        shown=drafts.listed(connection),
+                        gone=admin.unlisted_games(connection),
+                    )
             return _without_records(found)
         if len(parts) == 3 and parts[:2] == ("api", "proven"):
             # Q993b: the positions' own page, the list with the reader's marks.

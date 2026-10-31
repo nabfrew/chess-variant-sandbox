@@ -550,10 +550,10 @@ impl FeatureEvaluator {
             let mut best = t.goal_diameter;
             for square in occupied[side].iter() {
                 let piece_type = t.type_of(game.board[square]);
-                // `piece_type < 0` is "any piece", as in `eval.rs::nearest_to_goal` and
-                // the arrival check in `game.rs`. Until Q465 this cast the -1 to a
-                // `usize` no type equals, so the term read zero on every such ruleset.
-                if rule.piece_type >= 0 && piece_type != rule.piece_type as usize {
+                // `REACH_ANY` is "any piece", as in `eval.rs::nearest_to_goal` and the
+                // arrival check in `game.rs`. Until Q465 this cast the -1 to a `usize`
+                // no type equals, so the term read zero on every such ruleset.
+                if !rule.admits(piece_type) {
                     continue;
                 }
                 let slot = t.goal_slot(side, piece_type, square);
