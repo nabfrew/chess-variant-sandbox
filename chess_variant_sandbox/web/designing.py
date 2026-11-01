@@ -84,6 +84,8 @@ from chess_variant_sandbox.spec.schema import (
     portal_groups,
     portal_map_shape,
     portal_moves,
+    provenance_note,
+    summary_lines,
 )
 from chess_variant_sandbox.spec.spelling import current_spelling
 from chess_variant_sandbox.viz.pieces import icons_for
@@ -3471,15 +3473,21 @@ def save(
         kept = archive.load_spec(digest) or {}
         name = str(spec.get("name") or digest)
         description = str(spec.get("description") or "")
+        # The short description and the note on where it came from are words too (Q1085c):
+        # a summary written after the first save is the same game with it, not *Already saved*.
+        summary = summary_lines(spec)
+        note = provenance_note(spec)
         differs = [
             word for word, was, now in (
                 ("name", existing.name, name),
                 ("description", str(kept.get("description") or ""), description),
+                ("summary", summary_lines(kept), summary),
+                ("note", provenance_note(kept), note),
             )
             if was != now
         ]
         if differs and restate:
-            archive.restate(digest, name, description)
+            archive.restate(digest, name, description, summary=summary, note=note)
         return {"hash": digest, "name": name if differs and restate else existing.name,
                 "created": False,
                 "restated": differs if restate else [],

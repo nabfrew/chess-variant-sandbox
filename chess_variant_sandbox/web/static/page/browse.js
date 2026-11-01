@@ -382,7 +382,7 @@ function narrowed() {
   const text = BROWSE.text.trim().toLowerCase();
   return inTab().filter(game => {
     if (text) {
-      const hay = `${game.name} ${game.description} ${game.hash} ${(game.cellBins || []).join(' ')}`;
+      const hay = `${game.name} ${cardWords(game)} ${game.description} ${game.hash} ${(game.cellBins || []).join(' ')}`;
       if (!hay.toLowerCase().includes(text)) return false;
     }
     if (BROWSE.stage && game.source !== BROWSE.stage) return false;
@@ -746,6 +746,13 @@ function pillLegendHtml() {
     name say ${said}. Tap or point at one for what it means.</div>`;
 }
 
+// What a card says about the game (Q1085c): its short description, the lines its page
+// leads with, run together; the longer description where it has none.
+function cardWords(game) {
+  const lines = game.summaryLines || [];
+  return lines.length ? lines.join(' ') : String(game.description || '');
+}
+
 function cardHtml(game) {
   // Where a game is kept is the maintainer's question and not a player's. On the site
   // every game is simply here, and "yardstick" is a word from the calibration corpus
@@ -783,7 +790,7 @@ function cardHtml(game) {
       <div class="muted small kind" title="${esc((game.cellBins || []).join(', '))}">${
         (game.cellBins || []).slice(0, 4).map(esc).join(' &middot; ')
       }</div>
-      <p>${esc(game.description)}</p>
+      <p>${esc(cardWords(game))}</p>
       ${game.preview ? '' : cardSplitHtml(game) + cardSeatHtml(game) + sortedByHtml(game)
         + cardBandHtml(game)}
       ${game.descent ? `<div class="muted small u-mt-6">${

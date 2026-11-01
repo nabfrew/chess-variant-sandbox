@@ -1507,3 +1507,47 @@ def test_the_prompt_states_the_portal_bar_as_the_validator_enforces_it() -> None
     spec["rules"]["turn"] = {"moves": 2}
     spec["rules"].pop("en_passant", None)
     assert not any("rules.portals[0].no_straight_back" in e for e in validate_spec(spec))
+
+
+class TestTheProposersSummary:
+    """Q1085c: a revision is not shown its parent's `summary`, and a proposal writes its own."""
+
+    @staticmethod
+    def _parent() -> dict:
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[1] / "rulesets" / "duck-chess.json"
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def test_a_revision_prompt_withholds_the_parents_summary(self) -> None:
+        from chess_variant_sandbox.llm.propose import _build_task
+
+        parent = self._parent()
+        assert parent["summary"]
+        task = _build_task(parent, "", [], "", "")
+        data, _ = json.JSONDecoder().raw_decode(task.split("\nAs data:\n", 1)[1].lstrip())
+        assert data["pieces"] == parent["pieces"]
+        assert "summary" not in data and "provenance" not in data and "description" not in data
+        for line in parent["summary"]:
+            assert line not in task, line
+
+    def test_the_proposal_is_asked_for_a_summary(self) -> None:
+        from chess_variant_sandbox.llm.propose import _build_task, proposal_schema
+        from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
+        from chess_variant_sandbox.spec.schema import SUMMARY_MAX_LINES
+
+        shown = proposal_schema()
+        assert shown["properties"]["summary"]["maxItems"] == SUMMARY_MAX_LINES
+        assert "summary" not in shown["required"]
+        # The spec's own schema still withholds it (test_spec); only the proposer's adds it.
+        assert "summary" not in rule_spec_schema()["properties"]
+        for parent in (None, self._parent()):
+            assert "In `summary`" in _build_task(parent, "", [], "", "")
+
+    def test_a_proposal_with_a_summary_is_accepted(self) -> None:
+        """The validator takes what the schema shown asks for."""
+        from chess_variant_sandbox.spec.schema import validate_spec
+
+        spec = self._parent()
+        spec["summary"] = ["Put the duck down after every move.", "Otherwise it is chess."]
+        assert validate_spec(spec) == []

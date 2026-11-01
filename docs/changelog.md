@@ -12,6 +12,12 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-01
+
+### Game cards and the designer use the short description
+
+The cards in the list of games now show each game's few short lines instead of its long description, and the designer has boxes for writing your own game's short lines and where it came from, which its page then opens with.
+
 ## 2026-10-31
 
 ### Every game now opens with its short description

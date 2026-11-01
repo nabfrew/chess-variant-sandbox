@@ -354,6 +354,16 @@ def first_sentence(text: str) -> str:
     return text
 
 
+def shelf_sentence(game: Any) -> str:
+    """What a shelf prints under a game's name (Q1085c): the first line of its short
+    description, the line its page leads with, else the first sentence of its description."""
+    from chess_variant_sandbox.spec.schema import summary_lines
+
+    spec = getattr(game, "spec", None)
+    lines = summary_lines(spec) if isinstance(spec, dict) else []
+    return lines[0] if lines else first_sentence(getattr(game, "description", ""))
+
+
 def new_cards(games: Iterable[Any], day: date | None = None) -> list[dict[str, Any]]:
     """The library's newest games among `games`, newest first (Q826).
 
@@ -376,7 +386,7 @@ def new_cards(games: Iterable[Any], day: date | None = None) -> list[dict[str, A
     shown = fresh[:NEW_SHOWN] if fresh else dated[:NEW_FALLBACK]
     return [
         {"name": str(game.name), "hash": str(game.hash),
-         "sentence": first_sentence(getattr(game, "description", "")),
+         "sentence": shelf_sentence(game),
          "added": _day_words(joined), "day": joined.isoformat(), "fresh": bool(fresh)}
         for joined, game in shown
     ]

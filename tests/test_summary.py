@@ -173,3 +173,54 @@ class TestThePageLeadsWithIt:
         html = drawing.view(drawn)
         assert "gameLead" not in html and "fullRules" not in html
         assert '<p class="gameAbout">' in html
+
+
+class TestADraftCarriesThem:
+    """Q1085c: the designer writes both, a save keeps them, a re-save restates them, and the
+    saved draft's page leads with them like any game's."""
+
+    @staticmethod
+    def _draft() -> dict[str, Any]:
+        from chess_variant_sandbox.web import designing
+
+        draft = copy.deepcopy(designing.templates()[0]["spec"])
+        draft["name"] = "a summary draft"
+        draft["description"] = "A longer paragraph about the draft."
+        return draft
+
+    @staticmethod
+    def _found(runs: Path, digest: str) -> library.Game:
+        games = library.discover(runs / "no-rulesets", runs, runs / "no-archive")
+        return next(game for game in games if game.hash == digest)
+
+    def test_a_saved_drafts_page_leads_with_its_lines_and_note(self, tmp_path: Path) -> None:
+        from chess_variant_sandbox.web import designing
+
+        draft = self._draft()
+        draft["summary"] = ["Move a piece.", "Otherwise it is chess."]
+        draft["provenance"] = {"note": "Made for a test."}
+        kept = designing.save(draft, runs_dir=tmp_path)
+        said = library.detail(self._found(tmp_path, kept["hash"]), [])
+        assert said["summaryLines"] == draft["summary"]
+        assert said["provenanceNote"] == "Made for a test."
+
+    def test_a_resave_restates_a_summary_written_after_the_first(self, tmp_path: Path) -> None:
+        from chess_variant_sandbox.web import designing
+
+        draft = self._draft()
+        first = designing.save(draft, runs_dir=tmp_path)
+        draft["summary"] = ["Move a piece."]
+        draft["provenance"] = {"note": "Made for a test."}
+        again = designing.save(draft, runs_dir=tmp_path)
+        assert again["hash"] == first["hash"] and not again["created"]
+        assert again["restated"] == ["summary", "note"]
+        written = json.loads(Path(again["path"]).read_text(encoding="utf-8"))
+        assert written["summary"] == ["Move a piece."]
+        assert written["provenance"] == {"note": "Made for a test."}
+        # Emptied, they go, and a provenance with nothing left in it goes with them.
+        del draft["summary"], draft["provenance"]
+        cleared = designing.save(draft, runs_dir=tmp_path)
+        assert cleared["restated"] == ["summary", "note"]
+        written = json.loads(Path(cleared["path"]).read_text(encoding="utf-8"))
+        assert "summary" not in written and "provenance" not in written
+        assert designing.save(draft, runs_dir=tmp_path)["restated"] == []

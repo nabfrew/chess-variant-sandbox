@@ -5436,6 +5436,10 @@ def mutate(
         # all. Where this candidate came from is the archive's business, and the archive
         # records it. (Outside MECHANIC_KEYS, so removing it moves no hash.)
         child.pop("provenance", None)
+        # Nor does its short description (Q1085c): the parent's `summary` says what the
+        # parent is, and this child's page would lead with lines about a game it is not.
+        # Without one the page leads with the description above, which is about the child.
+        child.pop("summary", None)
         mutation = Mutation(spec=child, operator=operator.name, summary=summary)
         if not wanted or descriptor(child) in wanted:
             return mutation

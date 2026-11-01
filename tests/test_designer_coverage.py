@@ -57,6 +57,10 @@ HAND: dict[str, str] = {
     # The game itself.
     "name": 'id="dName"',
     "description": 'id="dDesc"',
+    # The short description a page leads with and its line on where the game came from
+    # (Q1085a), drawn since Q1085c; a copy still drops its parent's (`forkOf`).
+    "summary": 'id="dSummary"',
+    "provenance.note": 'id="dNote"',
     "board": "boardFormHtml(",
     "pieces": 'id="dAddPiece"',
     "setup": "placementEditor(",
@@ -124,11 +128,6 @@ NOT_IN_DESIGNER: dict[str, str] = {
     "provenance.exhibit": "the maintainer's mark on a game kept for what it shows, not a draft's",
     "provenance.added": "stamped when a game joins the library, never by a designer",
     "provenance.preview": "the maintainer's mark on a game shown as a preview, not a draft's",
-    "provenance.note": "the library's one line on where a filed game came from, beside its summary",
-    "summary": (
-        "the short description written when a game is filed for the site (Q1085a); a "
-        "draft's page leads with its description instead, and a copy drops its parent's"
-    ),
 }
 
 # Every key set the validator keeps for a rule that holds keys of its own, by the path from
@@ -1092,3 +1091,80 @@ class TestTheOldRestSwitch:
         answer = designing.read_rule_file(json.dumps(self._old()))
         assert answer["valid"] is True, answer["errors"]
         assert _rests(answer["spec"]) == [1] * len(answer["spec"]["pieces"])
+
+
+class TestTheShortDescriptionHasAControl:
+    """Q1085c: `summary` (one line a row) and `provenance.note` are drawn under the
+    description, written back as the spec holds them, and a re-save names them."""
+
+    def _with_both(self) -> dict[str, Any]:
+        spec = copy.deepcopy(CHESS)
+        spec["summary"] = ["Move a piece & take one.", "Otherwise it is chess."]
+        spec["provenance"] = {"note": "Old as <the> hills."}
+        return spec
+
+    def test_the_boxes_hold_what_the_draft_says(self) -> None:
+        drawn = _draw(self._with_both(), "drawnForm()")
+        box = drawn[drawn.index('id="dSummary"'):]
+        box = box[box.index(">") + 1:box.index("</textarea>")].strip()
+        assert _decode(box) == "Move a piece & take one.\nOtherwise it is chess."
+        note = re.search(r'id="dNote" value="([^"]*)"', drawn)
+        assert note and _decode(note.group(1)) == "Old as <the> hills."
+        # Under the description, before the board.
+        order = [drawn.index(mark) for mark in
+                 ('id="dDesc"', 'id="dSummary"', 'id="dNote"', 'data-bfield="width"')]
+        assert order == sorted(order), order
+
+    def test_a_draft_without_them_draws_empty_boxes(self) -> None:
+        bare = copy.deepcopy(CHESS)
+        bare.pop("summary", None)
+        bare.pop("provenance", None)
+        drawn = _draw(bare, "drawnForm()")
+        box = drawn[drawn.index('id="dSummary"'):]
+        assert box[box.index(">") + 1:box.index("</textarea>")].strip() == ""
+        assert re.search(r'id="dNote" value=""', drawn)
+
+    def test_typing_writes_the_spec_shape(self) -> None:
+        said = _draw(CHESS, """(() => {
+          const d = { provenance: { parents: ['abc'] } };
+          writeSummary(d, '  First line. \\n\\n Second line.  \\n');
+          writeNote(d, '  Since 1900. ');
+          const both = JSON.parse(JSON.stringify(d));
+          writeSummary(d, ' \\n ');
+          writeNote(d, '');
+          const parentsLeft = JSON.parse(JSON.stringify(d));
+          const bare = {};
+          writeNote(bare, '');
+          return { both, parentsLeft, bare };
+        })()""")
+        assert said["both"] == {"summary": ["First line.", "Second line."],
+                                "provenance": {"parents": ["abc"], "note": "Since 1900."}}
+        assert said["parentsLeft"] == {"provenance": {"parents": ["abc"]}}
+        assert said["bare"] == {}
+
+    def test_what_it_writes_validates(self) -> None:
+        spec = _draw(CHESS, """(() => {
+          writeSummary(DRAFT, 'Move a piece.\\nOtherwise it is chess.');
+          writeNote(DRAFT, 'From a test.');
+          return DRAFT;
+        })()""")
+        assert validate_spec(spec) == []
+        assert spec_hash(spec) == spec_hash(CHESS)
+
+    def test_a_copy_still_starts_without_the_parents(self) -> None:
+        source = {"name": "chess", "spec": self._with_both()}
+        draft = _draw(CHESS, f"forkOf({json.dumps(source)}, 'abc')")
+        assert "summary" not in draft
+        assert draft["provenance"] == {"parents": ["abc"]}
+
+    @pytest.mark.parametrize("restated, says", [
+        (["description"], "the new description of"),
+        (["name", "description"], "the new name and description of"),
+        (["summary"], "the new short description of"),
+        (["summary", "note"], "the new short description and line on where it came from of"),
+        (["name", "summary", "note"],
+         "the new name, short description and line on where it came from of"),
+    ])
+    def test_a_resave_names_the_words_it_restated(self, restated: list[str], says: str) -> None:
+        said = _draw(CHESS, f"savedWordsHtml({json.dumps({'name': 'x', 'restated': restated})})")
+        assert says in " ".join(said.split()), said

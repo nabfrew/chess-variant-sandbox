@@ -71,7 +71,12 @@ from chess_variant_sandbox.llm.client import PROPOSAL_MODEL, Claude, cached_syst
 from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
-from chess_variant_sandbox.spec.schema import BARE_ROYAL_HOLDER, validate_spec
+from chess_variant_sandbox.spec.schema import (
+    BARE_ROYAL_HOLDER,
+    SUMMARY_MAX_LINE,
+    SUMMARY_MAX_LINES,
+    validate_spec,
+)
 from chess_variant_sandbox.spec.spelling import current_spelling
 
 DESIGN_BRIEF = """\
@@ -262,6 +267,29 @@ class Proposal:
         return spec_hash(self.spec) if self.spec else None
 
 
+def proposal_schema() -> dict[str, Any]:
+    """The rule spec's schema as the proposer is shown it: the spec's, plus ``summary``.
+
+    The spec's schema withholds ``summary`` (`tests/test_spec.py`), since a filed game's lines
+    are written and checked by hand. A proposal still writes a page's prose -- its
+    ``description`` -- and a page leads with the summary where there is one (Q1085a), so it
+    is asked for both (Q1085c). Optional: a reply without one is a game whose page leads with
+    its description, and `validate_spec` holds the lines to the validator's limits.
+    """
+    schema = rule_spec_schema()
+    schema["properties"]["summary"] = {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1, "maxLength": SUMMARY_MAX_LINE},
+        "minItems": 1,
+        "maxItems": SUMMARY_MAX_LINES,
+        "description": (
+            "What a player reads first on the game's page, above the full rules: four or "
+            "five short lines, one rule each, written to the player."
+        ),
+    }
+    return schema
+
+
 def propose_ruleset(
     client: Claude | None = None,
     parent: dict[str, Any] | None = None,
@@ -277,7 +305,7 @@ def propose_ruleset(
     difference between a model that rediscovers a dead end and one that does not.
     """
     client = client or Claude(model=PROPOSAL_MODEL, effort="high")
-    schema = rule_spec_schema()
+    schema = proposal_schema()
 
     stable = "\n\n".join(
         [DESIGN_BRIEF, SCHEMA_PREAMBLE, "The schema:", json.dumps(schema, indent=2)]
@@ -355,7 +383,10 @@ def _build_task(
         # ``provenance`` is withheld along with the prose: it names a human author, and a
         # model shown one has every reason to carry it over into a game they did not
         # write. It is not in the response schema either, so a proposal cannot invent one.
-        withheld = {"description", "provenance"}
+        # ``summary`` (Q1085c) is prose too: the parent's lines say what the parent is, and
+        # a model shown them carries them over to a revision they no longer describe. The
+        # proposal writes its own (`proposal_schema`).
+        withheld = {"description", "provenance", "summary"}
         parts.append(
             json.dumps({k: parent[k] for k in parent if k not in withheld}, indent=2)
         )
@@ -393,6 +424,10 @@ def _build_task(
         "\nReturn one complete ruleset as a single JSON object matching the schema, and "
         "nothing else -- no prose around it and no code fence. In `description`, say in "
         "two or three sentences what the game is about and what decision the player "
-        "faces -- not a list of the rules, which are already written above it."
+        "faces -- not a list of the rules, which are already written above it. In "
+        "`summary`, write the few short lines a player reads first: the game's own idea "
+        "as something a player does, then one rule per line, to 'you', in plain words "
+        "rather than the schema's; where the rest is chess, end with 'Otherwise it is "
+        "chess.'"
     )
     return "\n".join(parts)

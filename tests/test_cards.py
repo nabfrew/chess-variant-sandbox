@@ -104,3 +104,39 @@ class TestTheThumbnail:
         pills = card[card.index('<div class="row pills">'):card.index("</div>", card.index('<div class="row pills">'))]
         assert "levelTag(game)" in pills and "scoreTag(game)" in pills
         assert "unbeatenTag" not in pills and "fairyTag" not in pills
+
+
+class TestTheCardSaysTheShortVersion:
+    """Q1085c: a card shows the game's `summary`, the lines its page leads with, and the
+    longer description only where a game has none."""
+
+    def test_the_listing_carries_the_lines(self, tmp_path: Path) -> None:
+        rulesets = tmp_path / "rulesets"
+        rulesets.mkdir()
+        shutil.copy(RULESETS / "duck-chess.json", rulesets / "duck-chess.json")
+        # Every library game has one since Q1085b, so chess stands in with it taken out.
+        chess = json.loads((RULESETS / "chess.json").read_text(encoding="utf-8"))
+        chess.pop("summary", None)
+        (rulesets / "chess.json").write_text(json.dumps(chess), encoding="utf-8")
+        app = App(rulesets, tmp_path / "runs", archive_dir=tmp_path / "archive")
+        cards = {card["name"]: card for card in app.get("/api/library")["games"]}
+        duck = json.loads((RULESETS / "duck-chess.json").read_text(encoding="utf-8"))
+        assert cards[duck["name"]]["summaryLines"] == duck["summary"]
+        assert cards["chess"]["summaryLines"] == []
+
+    def test_a_card_shows_the_summary_and_falls_back(self) -> None:
+        games = [
+            {"summaryLines": ["Put the duck down.", "Otherwise it is chess."],
+             "description": "A long paragraph nobody reads on a card."},
+            {"summaryLines": [], "description": "Only this one."},
+        ]
+        said = _run(f"{json.dumps(games)}.map(cardWords)")
+        assert said == ["Put the duck down. Otherwise it is chess.", "Only this one."]
+
+    def test_the_card_draws_its_words(self) -> None:
+        from page_text import PAGE
+
+        card = PAGE[PAGE.index("function cardHtml(game)"):]
+        card = card[:card.index("\n}\n")]
+        assert "<p>${esc(cardWords(game))}</p>" in card
+        assert "esc(game.description)" not in card

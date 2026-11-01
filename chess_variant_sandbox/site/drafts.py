@@ -254,7 +254,7 @@ def keep(
     holds that game, because `games.parent` references `games.hash`. A fork of a draft
     nobody saved on the site has no parent row.
 
-    `restate` writes `spec`'s name and description over an existing row's, and only where
+    `restate` writes `spec`'s words (`_restate`) over an existing row's, and only where
     `restatable` still answers that it may (Q595); the rules in the row are not touched,
     since they are the hash and are the same.
     """
@@ -303,16 +303,38 @@ def keep(
 
 
 def _restate(connection: Any, digest: str, spec: Mapping[str, Any]) -> None:
-    """The row's name and description, from `spec`; its rules stay the row's own."""
+    """The row's words, from `spec`; its rules stay the row's own.
+
+    The words are the name, the description, the short description (`summary`) and the
+    note in `provenance` on where the game came from (Q1085c); none is in the hash.
+    """
     name = str(spec.get("name") or digest)
     description = str(spec.get("description") or "")
     with connection.cursor() as cursor:
+        cursor.execute("select spec from games where hash = %s", (digest,))
+        found = cursor.fetchone()
+    if found is None:
+        return
+    held = found[0] if isinstance(found[0], dict) else json.loads(found[0])
+    held = {**held, "name": name, "description": description}
+    if spec.get("summary"):
+        held["summary"] = list(spec["summary"])
+    else:
+        held.pop("summary", None)
+    note = (spec.get("provenance") or {}).get("note")
+    provenance = dict(held.get("provenance") or {})
+    if note:
+        provenance["note"] = note
+    else:
+        provenance.pop("note", None)
+    if provenance:
+        held["provenance"] = provenance
+    else:
+        held.pop("provenance", None)
+    with connection.cursor() as cursor:
         cursor.execute(
-            "update games set name = %s,"
-            " spec = jsonb_set(jsonb_set(spec, '{name}', to_jsonb(%s::text)),"
-            " '{description}', to_jsonb(%s::text))"
-            " where hash = %s",
-            (name, name, description, digest),
+            "update games set name = %s, spec = %s::jsonb where hash = %s",
+            (name, json.dumps(held), digest),
         )
 
 

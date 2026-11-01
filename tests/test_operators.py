@@ -5138,3 +5138,17 @@ class TestTheRoundOperators:
             child = copy.deepcopy(parent)
             assert apply.apply(child, random.Random(seed)) is None, f"{operator} applied at seed {seed}"
             assert child == parent
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_a_mutant_inherits_neither_its_parents_summary_nor_its_provenance(seed: int) -> None:
+    """Q1085c: a mechanical child drops the parent's `summary` beside its `provenance`. The
+    lines say what the parent is, and the child's page would lead with them; without them it
+    leads with the description `mutate` writes, which is about the child."""
+    parent = load_spec(RULESETS / "duck-chess.json")
+    assert parent.get("summary") and parent.get("provenance")
+    mutation = mutate(parent, random.Random(seed))
+    assert mutation is not None
+    assert "summary" not in mutation.spec
+    assert "provenance" not in mutation.spec
+    assert parent.get("summary"), "the parent keeps its own"

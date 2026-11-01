@@ -67,8 +67,13 @@ ABOUT = (
 
 
 def _described(spec: dict[str, Any], name: str, about: str) -> dict[str, Any]:
-    """The spec under its own name and description, neither of which moves its hash."""
-    return {**spec, "name": name, "description": about}
+    """The spec under its own name and description, neither of which moves its hash.
+
+    Without the short description of the game it was made from: since Q1085b `dull` has one,
+    and the page would lead with lines about another game (Q1085c)."""
+    bare = {**spec, "name": name, "description": about}
+    bare.pop("summary", None)
+    return bare
 
 
 SHORT = _described(_near(2, "x"), "Short walk", ABOUT)

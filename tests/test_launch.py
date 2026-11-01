@@ -230,6 +230,15 @@ class TestTheNewGamesAndTheSpotlight:
         assert cards[0]["added"] == "10 October 2026" and cards[0]["day"] == "2026-10-10"
         assert cards[0]["sentence"] == "A game."
 
+    def test_the_shelf_reads_the_first_line_of_a_summary(self) -> None:
+        """Q1085c: a game with a short description shows its first line, the one its page
+        leads with; one without keeps the first sentence of its description."""
+        game = _Dated("lined", self.DAY.isoformat())
+        game.spec["summary"] = ["Put the duck down.", "Otherwise it is chess."]
+        cards = launch.new_cards([game, _Dated("plain", self.DAY.isoformat())], self.DAY)
+        said = {card["name"]: card["sentence"] for card in cards}
+        assert said == {"lined": "Put the duck down.", "plain": "A game."}
+
     def test_a_game_added_tomorrow_is_on_the_shelf_tomorrow_with_no_edit(self) -> None:
         tomorrow = self.DAY + timedelta(days=1)
         games = [_Dated("old", "2026-10-01"), _Dated("tomorrow", tomorrow.isoformat())]

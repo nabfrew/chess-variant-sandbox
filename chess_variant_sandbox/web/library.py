@@ -298,6 +298,9 @@ class Game:
             "hash": self.hash,
             "name": self.name,
             "description": self.description,
+            # The short description a game's page leads with (Q1085a), which the card shows
+            # in place of the longer description where a game has one (Q1085c).
+            "summaryLines": summary_lines(self.spec),
             "source": self.source,
             # Where the game stands, in the one word every page uses (Q503b). A checkout
             # has no rows, so it is read from where the file is (`stages.local`); the

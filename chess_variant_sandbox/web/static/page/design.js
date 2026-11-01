@@ -746,6 +746,13 @@ function drawDesigner() {
         <textarea id="dDesc" class="u-minh-52"
           placeholder="What is this game? One sentence, in your own words: the library shows it under the name."
           >${esc(DRAFT.description || '')}</textarea></label>
+      <label class="field"><span>the short version, one rule a line: its page leads with these</span>
+        <textarea id="dSummary" class="u-minh-52"
+          placeholder="Put the duck on an empty square after every move.&#10;Otherwise it is chess."
+          >${esc(summaryText(DRAFT))}</textarea></label>
+      <label class="field"><span>where it came from, in one line, if that is of interest</span>
+        <input id="dNote" value="${esc(((DRAFT.provenance || {}).note) || '')}"
+          placeholder="Invented by ... in ..."></label>
       ${boardFormHtml(board)}
       <div id="dTurns">${turnsHtml()}</div>
     </div>
@@ -2675,6 +2682,28 @@ function wirePlacements(form) {
   });
 }
 
+// The short description (`summary`, Q1085a) is a list of lines; its box is one line each
+// (Q1085c). A blank line is dropped as it is typed, and an empty box leaves no key, so a
+// draft without one leads with its description, as any game does. What is too long or
+// too many is the validator's to say, through the check.
+function summaryText(draft) {
+  return Array.isArray(draft.summary) ? draft.summary.join('\n') : '';
+}
+
+function writeSummary(draft, text) {
+  const lines = String(text).split('\n').map(line => line.trim()).filter(Boolean);
+  if (lines.length) draft.summary = lines; else delete draft.summary;
+}
+
+// `provenance.note`: the one line under the summary. Emptied, it goes, and a provenance
+// left with nothing in it goes with it (`stampParent` writes `parents` at the save).
+function writeNote(draft, text) {
+  const note = String(text).trim();
+  const kept = { ...(draft.provenance || {}) };
+  if (note) kept.note = note; else delete kept.note;
+  if (Object.keys(kept).length) draft.provenance = kept; else delete draft.provenance;
+}
+
 function wireDesigner() {
   const form = document.getElementById('form');
   if (!form) return;
@@ -2688,6 +2717,8 @@ function wireDesigner() {
   form.querySelector('#dDesc').oninput = e => {
     DRAFT.description = e.target.value; checkDraft();
   };
+  form.querySelector('#dSummary').oninput = e => { writeSummary(DRAFT, e.target.value); checkDraft(); };
+  form.querySelector('#dNote').oninput = e => { writeNote(DRAFT, e.target.value); checkDraft(); };
   form.querySelector('#dUndo').onclick = () => stepDraft(false);
   form.querySelector('#dRedo').onclick = () => stepDraft(true);
   drawUndo();
@@ -4430,9 +4461,12 @@ function savedWordsHtml(kept) {
   if (kept.created) return `Saved as ${name}.`;
   const restated = kept.restated || [];
   if (restated.length) {
-    const what = restated.includes('name')
-      ? (restated.includes('description') ? 'name and description' : 'name')
-      : 'description';
+    const words = { name: 'name', description: 'description', summary: 'short description',
+                    note: 'line on where it came from' };
+    const named = ['name', 'description', 'summary', 'note']
+      .filter(word => restated.includes(word)).map(word => words[word]);
+    const what = named.length > 1
+      ? `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}` : named[0];
     return `Saved the new ${what} of ${name}. Its rules are the same, so it is the
       same game.`;
   }

@@ -283,7 +283,14 @@ class Archive:
         self._entries.append(entry)
         return entry
 
-    def restate(self, digest: str, name: str, description: str) -> None:
+    def restate(
+        self,
+        digest: str,
+        name: str,
+        description: str,
+        summary: list[str] | None = None,
+        note: str | None = None,
+    ) -> None:
         """Give one recorded game a new name and description, and change nothing else.
 
         The one exception to append-only, and only for the words: the hash names the
@@ -293,12 +300,31 @@ class Archive:
         is written back as it was read. Rewriting the lineage also moves its mtime, which is
         what `library._scan` reads to see that a spec beside it changed (Q595: a designer
         giving a saved draft the description it was saved without).
+
+        The page's other words go the same way (Q1085c): ``summary``, the short description,
+        and ``note``, the line in ``provenance`` on where the game came from. Each is left
+        alone when ``None`` and removed when empty, and neither is in the hash either.
         """
         path = self.directory / SPEC_DIR / f"{digest}.json"
         spec = self.load_spec(digest)
         if spec is not None:
             spec["name"] = name
             spec["description"] = description
+            if summary is not None:
+                if summary:
+                    spec["summary"] = list(summary)
+                else:
+                    spec.pop("summary", None)
+            if note is not None:
+                provenance = dict(spec.get("provenance") or {})
+                if note:
+                    provenance["note"] = note
+                else:
+                    provenance.pop("note", None)
+                if provenance:
+                    spec["provenance"] = provenance
+                else:
+                    spec.pop("provenance", None)
             _replace(path, json.dumps(spec, indent=2, sort_keys=True) + "\n")
         if not self.path.exists():
             return
