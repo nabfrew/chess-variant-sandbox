@@ -54,8 +54,10 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
 9. **Proven positions, after ladders** (Q993d, `docs/archive/plan-proven.md` §5). Only when no
    score and no ladder is owed does it read which Library and Baseline games are owed a
    proven-positions record (`proof_items`, `puzzles.survey`): none yet (`prove`), then one
-   whose positions no longer replay or whose format or probe version is older than the
-   code's (`re-prove`); within each, the launch set, then the oldest record, then the
+   owed only for the core or compile it was proved on (`re-certify`, Q1090: a sample
+   re-proved on this core, `puzzles.recertify`, then the full re-proof in the same lease
+   where it disagrees), then one whose positions no longer replay or whose format or
+   probe version is older than the code's (`re-prove`); within each, the launch set, then the oldest record, then the
    hash. One game a `heavy` lease: `puzzles.make` in a child of the worktree, writing the
    record straight into the main checkout's `runs/puzzles/` as a ladder is written
    (`prove_game`), its work resumable under `runs/puzzles/work/<hash>/`. A game whose runs
@@ -125,7 +127,10 @@ LEASE_FOR.update({needs: "heavy" for needs in LADDER_ORDER})
 # proved; one whose record no longer holds is proved again (`puzzles.NEEDS`). Each is up to
 # a few core-hours of the core's probe, under `heavy`. One that holds but was never sifted
 # for what its game has and chess lacks is re-filtered (Q1084): minutes, nothing proved.
-PROOF_ORDER = ("prove", "re-prove", "re-filter")
+# One owed only for the core or the compile it was proved on is re-certified from a sample
+# re-proved on this core first (Q1090): minutes, and the full re-proof only where it
+# disagrees.
+PROOF_ORDER = ("prove", "re-certify", "re-prove", "re-filter")
 LEASE_FOR.update({needs: "heavy" for needs in PROOF_ORDER})
 # The whole queue's first key: every score repair before any ladder, every ladder before
 # any proof.
@@ -893,11 +898,22 @@ def prove_game(
             note(f"{name}: {sift['offered']} offered, {sift['set_aside']} set aside; "
                  f"{sift['seconds']:.0f} s")
         else:
-            made = puzzles.make(spec, runs, workers=workers or puzzles.WORKERS, say=note,
-                                reference=reference)
-            took = ", ".join(f"{stage} {seconds:.0f} s"
-                             for stage, seconds in made["seconds"].items())
-            note(f"{name}: {made['proved']} proved, {made['offered']} offered; {took}")
+            whole = True
+            if needs == puzzles.RECERTIFY:
+                # Q1090: a sample re-proved on this core stands in for the full re-proof
+                # where it agrees; where it disagrees, the full re-proof follows here.
+                checked = puzzles.recertify(spec, runs, workers=workers or puzzles.WORKERS,
+                                            say=note, reference=reference)
+                whole = not checked["agreed"]
+                note(f"{name}: " + ("re-proving it whole" if whole else
+                                    f"re-certified from {checked['sample']} of "
+                                    f"{checked['rows']}; {checked['seconds']:.0f} s"))
+            if whole:
+                made = puzzles.make(spec, runs, workers=workers or puzzles.WORKERS,
+                                    say=note, reference=reference)
+                took = ", ".join(f"{stage} {seconds:.0f} s"
+                                 for stage, seconds in made["seconds"].items())
+                note(f"{name}: {made['proved']} proved, {made['offered']} offered; {took}")
         after = puzzles.standing(digest, name, spec, runs, reference=reference)
     except Exception as error:  # noqa: BLE001 - every failure is a logged refusal
         return done(needs, ERROR, f"{type(error).__name__}: {error}")

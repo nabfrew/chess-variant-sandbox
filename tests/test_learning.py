@@ -203,7 +203,6 @@ class TestTheFirstGamesOpponent:
         first = _game(app, _name_of("chess.json"))["firstGame"]
         assert first["gentle"]["agent"] not in ("random", "human")
         assert first["harder"]["agent"] != first["gentle"]["agent"]
-        assert first["far"] == []
 
     def test_a_rating_table_orders_them(self, app: App, monkeypatch: pytest.MonkeyPatch) -> None:
         """The order differs by game, which is why it is read from the table: here the
@@ -220,14 +219,10 @@ class TestTheFirstGamesOpponent:
         assert first["harder"]["agent"] == ladder[0]
         assert first["basis"] == "ratings"
 
-    def test_a_game_far_from_chess_says_why(self, app: App) -> None:
-        far = _game(app, _name_of("kingofthehill.json"))["firstGame"]["far"]
-        assert far == ["it is won by getting a piece to a particular place"]
-
 
 _FIRST = {"hash": "abc", "firstGame": {
     "gentle": {"agent": "greedy", "name": "greedy"},
-    "harder": {"agent": "minimax:nodes=100", "name": "easy"}, "basis": "ladder", "far": []}}
+    "harder": {"agent": "minimax:nodes=100", "name": "easy"}, "basis": "ladder"}}
 _ROSTER = "ROSTER = [{agent: 'human'}, {agent: 'greedy'}, {agent: 'minimax:nodes=100'}];"
 _STORE = ("const box = {}; window.localStorage = { getItem: k => (k in box ? box[k] : null),"
           " setItem: (k, v) => { box[k] = v; } };")
@@ -262,10 +257,9 @@ class TestTheFirstGameOnThePage:
     def test_a_far_game_no_longer_offers_a_watch_first(self) -> None:
         """Q1086, the user: the summary says how the game differs, and computer against
         computer is the watch, so the page draws neither the reasons nor the button."""
-        far = {**_FIRST, "firstGame": {**_FIRST["firstGame"], "far": ["it has no royal piece to trap"]}}
-        line = _run(f"(() => {{ {_ROSTER} return firstGameHtml({json.dumps(far)}); }})()")
+        line = _run(f"(() => {{ {_ROSTER} return firstGameHtml({json.dumps(_FIRST)}); }})()")
         assert "watch two computer players first" not in line
-        assert "it has no royal piece to trap" not in line
+        assert "far from chess" not in line
         assert "<b>greedy</b>" in line
 
     def test_a_first_game_opens_on_the_rules(self) -> None:

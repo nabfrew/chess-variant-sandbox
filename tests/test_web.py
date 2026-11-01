@@ -8512,7 +8512,7 @@ class TestTheRatedSwitchFollowsTheSeats:
         payload = _game_payload(self.DIGEST, site=True)
         payload["firstGame"] = {
             "gentle": {"agent": "minimax:nodes=400", "name": "easy"}, "harder": None,
-            "basis": "ladder", "far": ["it has no royal piece to trap"]}
+            "basis": "ladder"}
         html = _page_on(True, f"#/game/{self.DIGEST}", payload)["html"]
         for gone in ("far from chess", "no royal piece", "watch two computer players first",
                      "does this one count", "watch it play itself"):

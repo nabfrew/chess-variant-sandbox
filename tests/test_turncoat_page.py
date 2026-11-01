@@ -132,13 +132,6 @@ class TestTheServer:
         assert [position["purse"] for position in timeline] == [[4, 4], [0, 4], [0, 1]]
         assert all("held" in position for position in timeline)
 
-    def test_the_far_from_chess_words_call_a_neutral_no_wild_piece(self) -> None:
-        from chess_variant_sandbox.web.library import far_from_chess
-
-        far = far_from_chess(_game(_spec()))
-        assert "it has pieces that belong to neither side" in far
-        assert not any("wild" in reason for reason in far)
-
     def test_another_game_carries_none_of_it(self) -> None:
         spec = _spec("command_k1")
         session = _session(spec)

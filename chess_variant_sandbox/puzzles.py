@@ -1136,6 +1136,7 @@ def record(
     built: str,
     nodes: int = NODES,
     max_pieces: int = MAX_PIECES,
+    tables: str | None = None,
     made: datetime.date | None = None,
     distinct: int | None = None,
     near: int | None = NEAR,
@@ -1170,8 +1171,10 @@ def record(
     `shallow_nodes` (the second ask's budget), the players and seeds asked, `shallow_built`
     and `shallow_made`. Positions too easy to offer stay in
     the record; the reader leaves them out (`trivial`), so the record holds every proof.
-    The basis names the probe's version (`PROOF_VERSION`) and, where the sample skipped the
-    last plies of each game (`NEAR_MIN`), `near_min`.
+    The basis names the probe's version (`PROOF_VERSION`), the core build the proofs were
+    made on (`built`) and, where given, what the game compiled to (`tables`, Q1083): the two
+    halves of `work_basis`, which `owes` reads back. Where the sample skipped the last plies
+    of each game (`NEAR_MIN`), it names `near_min`.
 
     Where the sift was asked (`shows_nodes`, Q1084), a won row whose line showed nothing its
     game has and chess lacks (`shows` empty) is set aside (`sifted`): out of `positions`,
@@ -1196,6 +1199,8 @@ def record(
         "near": near,
         "cap": cap,
     }
+    if tables is not None:
+        basis["tables"] = tables
     if near_min is not None:
         basis["near_min"] = near_min
     if aimed is not None:
@@ -1271,11 +1276,13 @@ def write(path: Path, data: dict[str, Any]) -> None:
 
 DIRECTORY = "puzzles"
 """Where the records sit under `runs/`, and their work under `work/<hash>/`."""
-PROVE, REPROVE, FILTER = "prove", "re-prove", "re-filter"
-NEEDS = (PROVE, REPROVE, FILTER)
-"""What a game is owed: a record it has never had, then one it has that no longer holds,
-then one that holds but was never sifted for what its game has and chess lacks (Q1084),
-which `refilter` mends without proving anything again."""
+PROVE, RECERTIFY, REPROVE, FILTER = "prove", "re-certify", "re-prove", "re-filter"
+NEEDS = (PROVE, RECERTIFY, REPROVE, FILTER)
+"""What a game is owed: a record it has never had; then one that holds but was proved on
+another core build or compile, which a sample re-proved on this one can re-certify
+(`recertify`, Q1090); then one that no longer holds, or whose sample disagreed; then one
+that holds but was never sifted for what its game has and chess lacks (Q1084), which
+`refilter` mends without proving anything again."""
 STORED = "proofs:"
 """A game's record file, hashed under this prefix: what a refusal of its proofs is keyed
 on, never to be mistaken for its `canonical.json` digest or its ladder's."""
@@ -1372,17 +1379,37 @@ def unaimed(data: Any, seen: Distinction) -> str | None:
             "what the game has and chess lacks")
 
 
-def owes(engine: Engine, data: Any) -> str | None:
+def owes(engine: Engine, data: Any, now: dict[str, str]) -> str | None:
     """Why a game's record is owed a re-proof, or None where it holds (§5.2 (ii), (iii)).
 
     A record that is not this game's or cannot be read; one in a format older than the
     code's (`FORMAT`); one proved by an older probe (`PROOF_VERSION`; a record without the
-    field is version 1); or one with a proved position the engine no longer reaches as the
+    field is version 1); one proved on another core build, or another compile of its rules,
+    than ``now`` (this game's `work_basis`, the key `make` keeps its work under), as a
+    library run's basis is stale where either half moved (`measurement.Basis.stale_against`)
+    and one that names no compile is owed as a run that names none is (Q1083: a record
+    proved on an old core read as current while its rows still replayed), where a sample
+    re-certified it (`certificate`, Q1090) the core and compile that sample was re-proved
+    on in place of the record's own (`stale_basis`); or one with a
+    proved position the engine no longer reaches as the
     record says (`replays`), or reaches twice, or a row that is no proof (`holding`, which
     the site's loader reads: a record is owed exactly where the loader drops a row). A row
     proved lost for the side to move holds (Q993i). A record from newer code is not owed: this
     checkout cannot tell it is wrong. The engine answers every replay; this counts.
     """
+    return _unread(engine, data) or stale_basis(data, now) or _dropped(engine, data)
+
+
+def basis_owes(engine: Engine, data: Any, now: dict[str, str]) -> str | None:
+    """`owes` read off the record's basis alone, with no row replayed: what the site's
+    loader asks to mark a record *provisional* (Q1090), since it replays every row itself
+    and drops what no longer holds."""
+    return _unread(engine, data) or stale_basis(data, now)
+
+
+def _unread(engine: Engine, data: Any) -> str | None:
+    """Why a record cannot stand for this game's code at all: not its record, no format or
+    an older one, an older probe. No sample stands in for any of these (`certifiable`)."""
     if not isinstance(data, dict) or data.get("ruleset_hash") != engine.spec.hash:
         return "the record cannot be read as this game's"
     written = data.get("format")
@@ -1394,12 +1421,65 @@ def owes(engine: Engine, data: Any) -> str | None:
     version = basis.get("proof_version", 1) if isinstance(basis, dict) else 1
     if isinstance(version, int) and version < PROOF_VERSION:
         return f"it was proved by probe version {version}, and the code's is {PROOF_VERSION}"
+    return None
+
+
+def _dropped(engine: Engine, data: dict[str, Any]) -> str | None:
+    """Why a record's rows do not hold under today's rules (`holding`), or None."""
     rows = [row for row in data.get("positions") or []
             if not (isinstance(row, dict) and row.get("result") == LOST)]
     _kept, dropped = holding(engine, rows)
     if dropped:
         return f"{dropped} of its {len(rows)} proved positions no longer replay"
     return None
+
+
+def certificate(data: Any) -> dict[str, Any] | None:
+    """The sample that re-certified a record on a core that did not prove it (Q1090), or
+    None: `basis.certified`, as `recertify` writes it."""
+    basis = data.get("basis") if isinstance(data, dict) else None
+    found = basis.get("certified") if isinstance(basis, dict) else None
+    return found if isinstance(found, dict) and found.get("built") else None
+
+
+def stale_basis(data: Any, now: dict[str, str]) -> str | None:
+    """Why a record's core build or compile is not ``now`` (Q1083), or None.
+
+    The record's own `built` and `tables`, or, where a sample re-certified it (Q1090,
+    `certificate`), the certificate's in their place, as `measurement.Basis.stale_against`
+    reads a C6 certificate's fields in place of a stamp's: so a re-certified record is
+    current exactly while the core its sample ran on still is.
+    """
+    basis = data.get("basis") if isinstance(data, dict) else None
+    proved = basis if isinstance(basis, dict) else {}
+    found = certificate(data)
+    on = found if found is not None else proved
+    done = "re-certified" if found is not None else "proved"
+    if on.get("built") != now["built"]:
+        return (f"it was {done} on core build {on.get('built') or 'unnamed'}, and the "
+                f"loaded core is {now['built']}")
+    if not on.get("tables"):
+        return "it does not record what its rules compiled to when it was proved"
+    if on["tables"] != now["tables"]:
+        return f"its rules compile to different tables than it was {done} on"
+    return None
+
+
+def certifiable(engine: Engine, data: Any, now: dict[str, str]) -> str | None:
+    """The reason a record is owed, where a sample re-proved on ``now``'s core can stand in
+    for a full re-proof (Q1090), else None.
+
+    As C6's `Basis.certifiable`: a sample stands in for the core build and the compile of
+    the rules (`stale_basis`), and for nothing else. A record that is not this game's, in an
+    older format, from an older probe, or with a row that no longer replays owes its full
+    re-proof whatever a sample says.
+    """
+    if _unread(engine, data) is not None:
+        return None
+    why = stale_basis(data, now)
+    if why is None or _dropped(engine, data) is not None:
+        return None
+    return why
 
 
 def runs_missing(runs_dir: Path | str, digest: str, seeds: Iterable[int]) -> list[int]:
@@ -1441,7 +1521,14 @@ def standing(
         except (OSError, ValueError):
             data = None
         made = str(data.get("made") or "") if isinstance(data, dict) else ""
-        why = owes(engine, data)
+        now = work_basis(spec)
+        why = owes(engine, data, now)
+        # Q1090: owed only because the core or the compile moved, a sample re-proved on
+        # this core may stand in (`recertify`); read on as though it held, so a record that
+        # owes anything else is owed that instead.
+        moved = certifiable(engine, data, now) if why is not None else None
+        if moved is not None:
+            why = None
         if why is None and not is_sifted(data):
             # Q1084: a record that holds but was never sifted is mended by `refilter`,
             # which proves nothing again, so it needs no runs on disk.
@@ -1451,7 +1538,13 @@ def standing(
             # Only a record the sift left bare is read against the reference (Q1088).
             why = unaimed(data, distinction(
                 spec, reference if reference is not None else reference_spec()))
-        if why is None:
+        if why is not None:
+            needs, reason = REPROVE, why
+        elif moved is not None:
+            # A sample already re-proved on this core that disagreed owes the full re-proof.
+            failed = disagreed(runs_dir, digest, now)
+            needs, reason = (REPROVE, f"{moved}; {failed}") if failed else (RECERTIFY, moved)
+        else:
             rows = [row for row in data.get("positions") or []
                     if isinstance(row, dict) and row.get("result") == WON]
             offered = sum(1 for row in rows if not trivial(row))
@@ -1463,7 +1556,6 @@ def standing(
                     "has and chess lacks" if basis.get("aim") and basis.get("distinct")
                     else "current: its runs held no small ending to prove")
             return stands("", kept if rows or aside else bare, made)
-        needs, reason = REPROVE, why
     else:
         made = ""
         needs, reason = PROVE, "no record"
@@ -1581,8 +1673,8 @@ def _ask_units(
     say: Any,
     label: str,
 ) -> None:
-    """Ask every missing unit's positions on one pool, and write each unit as it is whole,
-    in order: the slowest position of one unit never idles the other threads, and a killed
+    """Ask every missing unit's positions on one pool, and write each unit as soon as it
+    is whole, in any order: the slowest position of one unit never idles the other threads, and a killed
     run loses only the units not yet written. The answers are the same however the work is
     divided, since each position is asked alone."""
     from concurrent.futures import ThreadPoolExecutor
@@ -1590,13 +1682,49 @@ def _ask_units(
     missing = [(path, items) for path, items in units if path not in standing]
     if not missing:
         return
+    from concurrent.futures import as_completed
+
     with ThreadPoolExecutor(max(1, workers)) as pool:
         futures = [(path, items, [pool.submit(ask, item) for item in items])
                    for path, items in missing]
-        for done, (path, items, asked) in enumerate(futures, start=1):
-            answers = [future.result() for future in asked]
-            write(path, unit_of(items, answers))
-            say(f"  {label} {done} of {len(futures)} written")
+        unit_of_future = {future: n for n, (_path, _items, asked) in enumerate(futures)
+                          for future in asked}
+        # Each unit is written as soon as it is whole, in whatever order that is (Q1090):
+        # one slow position no longer holds every later unit's answers in memory, where a
+        # killed run would lose them.
+        written: set[int] = set()
+        for future in as_completed(unit_of_future):
+            n = unit_of_future[future]
+            path, items, asked = futures[n]
+            if n in written or not all(one.done() for one in asked):
+                continue
+            write(path, unit_of(items, [one.result() for one in asked]))
+            written.add(n)
+            say(f"  {label} {len(written)} of {len(futures)} written")
+
+
+def _near_won(
+    engine: Engine, runs_dir: Path, seeds: tuple[int, ...], seen: Distinction,
+) -> tuple[list[Candidate], list[Candidate]]:
+    """The positions near a won end in the game's library runs, and the pool the sample is
+    taken from: the same in the reference, and in any other game only those that hold what
+    the game has and chess lacks (the aim, Q1088: `aim`, two plies deep, so the proofs are
+    spent where the sift can keep them, from the wider pool `AIM_MAX_PIECES` and
+    `AIM_NEAR` allow)."""
+    from chess_variant_sandbox.tournament.record import read_records
+
+    digest = engine.spec.hash
+
+    def near_won(pieces: int, plies: int, keep: Any = None) -> list[Candidate]:
+        return list(candidates(
+            engine, ((seed, read_records(runs_dir / f"{digest}-{seed}" / "games.jsonl"))
+                     for seed in seeds), max_pieces=pieces, near=plies,
+            near_min=NEAR_MIN, keep=keep))
+
+    near = near_won(MAX_PIECES, NEAR)
+    aimed = near if seen.same else near_won(
+        AIM_MAX_PIECES, AIM_NEAR, lambda state: aim(engine, seen, state))
+    return near, aimed
 
 
 def make(
@@ -1699,18 +1827,7 @@ def make(
                 yield one
 
         distinct = sum(1 for _ in candidates(engine, ((seed, records(seed)) for seed in seeds)))
-        def near_won(pieces: int, plies: int, keep: Any = None) -> list[Candidate]:
-            return list(candidates(
-                engine, ((seed, read_records(runs_dir / f"{digest}-{seed}" / "games.jsonl"))
-                         for seed in seeds), max_pieces=pieces, near=plies,
-                near_min=NEAR_MIN, keep=keep))
-
-        near = near_won(MAX_PIECES, NEAR)
-        # The aim (Q1088): only the positions that hold what the game has and chess lacks,
-        # two plies deep (`aim`), so the proofs are spent where the sift can keep them, from
-        # the wider pool the aim's bounds allow (`AIM_MAX_PIECES`, `AIM_NEAR`).
-        aimed = near if seen.same else near_won(
-            AIM_MAX_PIECES, AIM_NEAR, lambda state: aim(engine, seen, state))
+        near, aimed = _near_won(engine, runs_dir, seeds, seen)
         taken = sample(aimed)
         listed = {"ruleset_hash": digest, "sampling": sampling, "games": games,
                   "distinct": distinct, "near_count": len(near),
@@ -1799,6 +1916,7 @@ def make(
         note(f"{game}: {test} asked of {len(wanted)} ({seconds[test]:.0f} s)")
 
     data = record(engine, game, seeds, rows, proved_on, nodes=nodes, made=made,
+                  tables=basis["tables"],
                   distinct=int(listed["distinct"]), near_min=NEAR_MIN,
                   aimed=None if seen.same else int(listed["aimed"]),
                   max_pieces=MAX_PIECES if seen.same else AIM_MAX_PIECES,
@@ -1877,3 +1995,285 @@ def refilter(
             f"(the record before kept as {kept_as.name})")
     return {"hash": digest, "name": game, "asked": len(wanted), "offered": offered,
             "set_aside": aside, "seconds": round(time.monotonic() - began, 1)}
+
+
+# ------------------------------------------------- re-certified from a sample (Q1090)
+
+CERTIFY_VERSION = 1
+"""The sample and agreement rule `recertify` applies, pre-registered in
+`docs/reference/proven-positions.md` §7.6 before any record was re-certified. A new rule is
+a new version, never an edit."""
+CERTIFY_OTHERS = 16
+"""Rows re-proved beside every offered one: of the rows a record holds and does not offer
+(too easy, set aside, proved lost), evenly through the record's order (`certify_sample`)."""
+VERDICT = ("side", "result", "ends_in", "winning", "single", "others_lost")
+"""What a re-proof must give again of a row: every field of its verdict the site or the
+tests read. A root score itself is not compared where the move is open: it is the
+evaluator's guess, no proof, and nothing reads it."""
+MOVE_VERDICT = ("move", "text", "proof", "ends_in")
+"""What each root move must give again: the move, its words, its proof and, when proved,
+the plies to the ending."""
+CERTIFY_DIR = "certify"
+VERDICT_FILE = "verdict.json"
+
+
+def certify_dir(runs_dir: Path | str, digest: str) -> Path:
+    """Where a game's re-certification keeps its answers: `puzzles/certify/<hash>/`, beside
+    the work and not in it, so a full re-proof that moves the work aside (`make`) keeps the
+    verdict that owed it until the new record is written."""
+    return Path(runs_dir) / DIRECTORY / CERTIFY_DIR / digest
+
+
+def certify_sample(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """The rows `recertify` re-proves (§7.6): every row the record offers, then
+    `CERTIFY_OTHERS` of the rest (every row it holds and does not offer, in the record's
+    order, positions then set aside), the i-th at ``i * len(rest) // CERTIFY_OTHERS``, or all
+    of them where there are no more. Fixed by the record alone."""
+    held = [row for row in data.get("positions") or [] if isinstance(row, dict)]
+    aside = [row for row in data.get("set_aside") or [] if isinstance(row, dict)]
+    offered = [row for row in held if row.get("result") == WON and not trivial(row)]
+    rest = [row for row in held if not (row.get("result") == WON and not trivial(row))]
+    rest += aside
+    if len(rest) > CERTIFY_OTHERS:
+        rest = [rest[i * len(rest) // CERTIFY_OTHERS] for i in range(CERTIFY_OTHERS)]
+    return offered + rest
+
+
+def differs(
+    engine: Engine, data: dict[str, Any], row: dict[str, Any],
+    seen: Distinction | None = None,
+    keep: Any = None,
+) -> list[str]:
+    """What a row's re-proof on this core says other than the record (§7.6), or nothing.
+
+    The row's prefix is proved again at the record's budget (`prove`) and its verdict
+    compared field by field (`VERDICT`, and each root move's `MOVE_VERDICT`); where it
+    agrees, every engine-asked test the record answered of the row (T3, T4, T5, the sift)
+    is asked again at the record's budgets and its answer compared. Rule 3: every proof and
+    answer is the core's; this compares what was written with what is said now.
+
+    ``keep(stage, ask)`` returns a stage's disagreements, asking (``ask()``) only where it
+    holds none on disk: a row whose tests take long is picked up a stage at a time.
+    """
+    def kept(stage: str, ask: Any) -> list[str]:
+        return list(ask() if keep is None else keep(stage, ask))
+
+    basis = data.get("basis") or {}
+    nodes = int(basis.get("nodes") or NODES)
+    depth = int(basis.get("max_depth") or MAX_DEPTH)
+    found = row.get("id")
+
+    def proof() -> list[str]:
+        again = prove(engine, Candidate(row["seed"], row["game"], row["ply"], row["pieces"],
+                                        tuple(row["moves"])), nodes=nodes, max_depth=depth)
+        said = [f"{found}: {key} {row.get(key)!r}, now {again.get(key)!r}"
+                for key in VERDICT if row.get(key) != again.get(key)]
+        was = [{key: entry.get(key) for key in MOVE_VERDICT} for entry in row.get("scores") or []]
+        now = [{key: entry.get(key) for key in MOVE_VERDICT}
+               for entry in again.get("scores") or []]
+        if was != now:
+            moved = [f"{w.get('text')} {w.get('proof')}/{w.get('ends_in')} now "
+                     f"{n.get('text')} {n.get('proof')}/{n.get('ends_in')}"
+                     for w, n in zip(was, now, strict=False) if w != n]
+            said.append(f"{found}: its root moves differ ({len(was)} then, {len(now)} now"
+                        + (f"; {moved[0]}" if moved else "") + ")")
+        return said
+
+    said = kept("prove", proof)
+    if said:
+        return said
+    budget = {test: int(basis.get(f"{test}_nodes") or DEFENCE_NODES)
+              for test in ("defence", "hasten", "shallow", "shows")}
+
+    def answered(test: str, words: str, answer: Any) -> list[str]:
+        return [] if answer == row[test] else [f"{found}: {words} said {row[test]!r}, now {answer!r}"]
+
+    def t5() -> list[str]:
+        agents = tuple(basis.get("shallow_agents") or SHALLOW_AGENTS)
+        seeds = tuple(int(seed) for seed in basis.get("shallow_seeds") or SHALLOW_SEEDS)
+        asked = shallow(engine, row, agents=agents, seeds=seeds, nodes=budget["shallow"],
+                        max_depth=depth)
+        return answered("shallow", "T5", asked[0] if asked is not None else None)
+
+    def sift() -> list[str]:
+        if seen is None:
+            raise ValueError("a row the sift answered is compared against a distinction")
+        return answered("shows", "the sift",
+                        shows(engine, row, seen, nodes=budget["shows"], max_depth=depth))
+
+    stages = {
+        "defence": lambda: answered("defence", "T3", defence(
+            engine, row, nodes=budget["defence"], max_depth=depth)),
+        "hasten": lambda: answered("hasten", "T4", hasten(
+            engine, row, nodes=budget["hasten"], max_depth=depth)),
+        "shallow": t5,
+        "shows": sift,
+    }
+    for test, ask in stages.items():
+        if test in row:
+            said += kept(test, ask)
+    return said
+
+
+def disagreed(runs_dir: Path | str, digest: str, now: dict[str, str]) -> str | None:
+    """Why a game's record owes its full re-proof after its sample was re-proved on ``now``'s
+    core and disagreed (`recertify`), or None where no sample on this core disagreed."""
+    try:
+        verdict = json.loads((certify_dir(runs_dir, digest) / VERDICT_FILE)
+                             .read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(verdict, dict) or verdict.get("agreed") is not False:
+        return None
+    if verdict.get("built") != now["built"] or verdict.get("tables") != now["tables"]:
+        return None
+    said = [str(line) for line in verdict.get("disagrees") or []]
+    more = f" (and {len(said) - 1} more)" if len(said) > 1 else ""
+    return (f"a sample of {verdict.get('sample')} re-proved on this core disagreed: "
+            f"{said[0] if said else 'no reason kept'}{more}")
+
+
+def recertify(
+    spec: dict[str, Any],
+    runs_dir: Path | str,
+    workers: int = WORKERS,
+    say: Any = None,
+    seeds: Iterable[int] | None = None,
+    today: datetime.date | None = None,
+    reference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Re-certify one game's record on this core from a sample (Q1090, §7.6), as C6 keeps a
+    library score current from a sample replayed (`measurement.Certificate`).
+
+    Only a record `certifiable` names (owed for its core build or compile and nothing
+    else). Its `certify_sample` is re-proved on this core (`differs`); a record with no row
+    has its runs counted again, and agrees where they still hold no position to sample.
+    Where every sampled row agrees, the record is written again with `basis.certified`
+    (this core's build and compile, the day, the rule, how many rows of how many and which),
+    every row exactly as it was proved, and the record before is kept as
+    `work/<hash>/record-<day>.json`. Any disagreement leaves the record as it is and is
+    kept in `certify/<hash>/verdict.json`, which makes the game owed its full re-proof
+    (`disagreed`). Each row's answer is written as it is whole (`certify/<hash>/<n>.json`), so a
+    killed run picks up; the answers are the same however the work is divided.
+
+    Returns what it did: whether it agreed, the sample, the disagreements and the seconds.
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from chess_variant_sandbox.corpus import LIBRARY_SEEDS
+
+    began = time.monotonic()
+    today = today or datetime.date.today()
+    seeds = tuple(LIBRARY_SEEDS if seeds is None else seeds)
+    engine = Engine(spec)
+    digest = engine.spec.hash
+    game = str(spec.get("name") or digest)
+    runs_dir = Path(runs_dir)
+    path = record_path(runs_dir, digest)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    now = work_basis(spec)
+    moved = certifiable(engine, data, now)
+    if moved is None:
+        raise ValueError(f"{game}: its record is not one a sample can re-certify "
+                         f"({owes(engine, data, now) or 'it owes nothing'})")
+    seen = distinction(spec, reference if reference is not None else reference_spec())
+    work = work_dir(runs_dir, digest)
+    folder = certify_dir(runs_dir, digest)
+    key = {"built": now["built"], "tables": now["tables"], "rule": CERTIFY_VERSION}
+    def other(file: Path) -> bool:
+        try:
+            held = json.loads(file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return True
+        return not (isinstance(held, dict) and all(held.get(k) == v for k, v in key.items()))
+
+    if folder.exists() and any(other(file) for file in folder.glob("*.json")):
+        # Another core's or rule's attempt, or a part of one: kept, never written over.
+        aside = _aside(folder, today)
+        folder.rename(aside)
+        if say is not None:
+            say(f"{game}: an earlier sample's work moved aside to {aside.name}")
+    folder.mkdir(parents=True, exist_ok=True)
+    rows = certify_sample(data)
+    total = len(data.get("positions") or []) + len(data.get("set_aside") or [])
+    offered = sum(1 for row in data.get("positions") or []
+                  if row.get("result") == WON and not trivial(row))
+    disagrees: list[str] = []
+    if not rows:
+        missing = runs_missing(runs_dir, digest, seeds)
+        if missing:
+            raise FileNotFoundError(f"{game}: no library run on disk for seeds {missing}")
+        _near, aimed = _near_won(engine, runs_dir, seeds, seen)
+        if aimed:
+            disagrees.append(f"its runs now hold {len(aimed)} positions to sample, where the "
+                             "record found none")
+    else:
+        units = [(folder / f"{n:04d}.json", row) for n, row in enumerate(rows)]
+
+        def stands(unit: Path, row: dict[str, Any]) -> list[str] | None:
+            try:
+                held = json.loads(unit.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return None
+            if not isinstance(held, dict) or held.get("id") != row.get("id") or any(
+                    held.get(k) != v for k, v in key.items()):
+                return None
+            return [str(line) for line in held.get("disagrees") or []]
+
+        def keeper(unit: Path, row: dict[str, Any]) -> Any:
+            def keep(stage: str, ask: Any) -> list[str]:
+                part = unit.with_name(f"{unit.stem}-{stage}.json")
+                held = stands(part, row)
+                if held is None:
+                    held = list(ask())
+                    write(part, {**key, "id": row.get("id"), "made": today.isoformat(),
+                                 "disagrees": held})
+                return held
+            return keep
+
+        answers = {unit: stands(unit, row) for unit, row in units}
+        wanted = [(unit, row) for unit, row in units if answers[unit] is None]
+        if wanted:
+            with ThreadPoolExecutor(max(1, workers)) as pool:
+                futures = {pool.submit(differs, engine, data, row, seen,
+                                       keeper(unit, row)): (unit, row)
+                           for unit, row in wanted}
+                for done, future in enumerate(as_completed(futures), start=1):
+                    unit, row = futures[future]
+                    try:
+                        said = future.result()
+                    except Exception as error:  # noqa: BLE001 - a row it cannot ask disagrees
+                        said = [f"{row.get('id')}: could not be asked again "
+                                f"({type(error).__name__}: {error})"]
+                    write(unit, {**key, "id": row.get("id"), "made": today.isoformat(),
+                                 "disagrees": said})
+                    answers[unit] = said
+                    if say is not None:
+                        say(f"  {game}: re-proved {done} of {len(wanted)}"
+                            + (f": {said[0]}" if said else ""))
+        disagrees = [line for unit, _row in units for line in answers[unit] or []]
+    agreed = not disagrees
+    verdict = {**key, "made": today.isoformat(), "agreed": agreed, "sample": len(rows),
+               "rows": total, "offered": offered, "ids": [row.get("id") for row in rows],
+               "was": moved, "disagrees": disagrees}
+    write(folder / VERDICT_FILE, verdict)
+    if agreed:
+        stamp = {"built": now["built"], "tables": now["tables"], "made": today.isoformat(),
+                 "rule": CERTIFY_VERSION, "sample": len(rows), "rows": total,
+                 "offered": offered, "ids": [row.get("id") for row in rows]}
+        old = path.read_text(encoding="utf-8")
+        work.mkdir(parents=True, exist_ok=True)
+        kept_as = work / f"record-{today.isoformat()}.json"
+        kept_as = _aside(kept_as, today) if kept_as.exists() else kept_as
+        kept_as.write_text(old, encoding="utf-8")
+        data.setdefault("basis", {})["certified"] = stamp
+        write(path, data)
+    seconds = round(time.monotonic() - began, 1)
+    if say is not None:
+        say(f"{game}: " + (f"re-certified from a sample of {len(rows)} of {total}"
+                           if agreed else
+                           f"its sample of {len(rows)} disagreed ({len(disagrees)}): "
+                           f"{disagrees[0]}") + f" ({seconds:.0f} s)")
+    return {"hash": digest, "name": game, "agreed": agreed, "sample": len(rows),
+            "rows": total, "offered": offered, "disagrees": disagrees, "seconds": seconds}

@@ -1855,44 +1855,6 @@ def opening(game: Game) -> dict[str, Any] | None:
     return shape
 
 
-def far_from_chess(game: Game) -> list[str]:
-    """Why a game is far from chess, in a visitor's words, or nothing (K3, §4.2): no royal
-    piece, won by arriving somewhere, or wild pieces that belong to neither side. Read off
-    what the page already shows of it (the pieces' royal mark, the kind card's ending, the
-    opening position's owners), so the offer to watch first says what the page says."""
-    from chess_variant_sandbox.spec.describe import describe_pieces
-    from chess_variant_sandbox.spec.schema import neutral_ids
-
-    reasons: list[str] = []
-    try:
-        if not any(piece.royal for piece in describe_pieces(game.spec)):
-            reasons.append("it has no royal piece to trap")
-        ending = next((axis["bin"] for axis in describe_axes(descriptor(game.spec))
-                       if axis["axis"] == "ending"), None)
-        if ending == "arrival":
-            reasons.append("it is won by getting a piece to a particular place")
-        shape = still(game)
-        if shape is not None:
-            stride = shape.get("sideStride") or shape.get("nTypes") or 1
-            types = shape.get("nTypes") or 1
-            # A portal end (schema 19) stands in the third owner's block too, and is
-            # nobody's piece: the board, not a wild piece (Q772d).
-            ends = {end["type"] for end in (shape.get("portals") or {}).get("ends") or []}
-            # TC7 (`docs/plan-turncoat.md` §5.8): a piece placed for nobody stands there too,
-            # and is no wild piece: it walks no route, and a player may move or hire it.
-            ids = [piece.get("id") for piece in game.spec.get("pieces") or []]
-            neutral = {ids.index(pid) for pid in neutral_ids(game.spec) if pid in ids}
-            third = {(value - 1) % types for value in shape["board"]
-                     if value and (value - 1) // stride > 1} - ends
-            if third - neutral:
-                reasons.append("it has wild pieces that belong to neither side")
-            if third & neutral:
-                reasons.append("it has pieces that belong to neither side")
-    except Exception:  # noqa: BLE001 - a page must survive one unloadable spec
-        return []
-    return reasons
-
-
 # The game every other is compared with (`rulesets/chess.json`, the calibration baseline),
 # found in the library by its file's name and read as data: its pieces' names are its
 # spec's, and nothing here names one.

@@ -723,6 +723,12 @@ def _build_parser() -> argparse.ArgumentParser:
     proofs.add_argument("--workers", type=int, default=0,
                         help="threads to prove on (default: puzzles.WORKERS)")
     proofs.add_argument("--json", action="store_true", help="machine-readable output")
+    proofs.add_argument("--needs", default="",
+                        help="prove only the games owed this (prove, re-certify, re-prove, "
+                             "re-filter); omit for every game that is owed")
+    proofs.add_argument("--minutes", type=float, default=0.0,
+                        help="start no further game after this many minutes (0: no limit), "
+                             "so a campaign runs in slices; each game's work is resumable")
     proofs.set_defaults(handler=_cmd_proofs)
 
     strength = sub.add_parser(
@@ -1831,7 +1837,14 @@ def _cmd_proofs(args: argparse.Namespace) -> int:
                               for needs in puzzles.NEEDS))
         return 1 if owed else 0
     failed = 0
+    began = time.monotonic()
     for found in owed:
+        if args.needs and found.needs != args.needs:
+            continue
+        if args.minutes and time.monotonic() - began > args.minutes * 60:
+            if not args.json:
+                print(f"stopped after {args.minutes:g} minutes; run again to go on")
+            break
         outcome = refresher.prove_game(found.hash, args.runs, workers=args.workers,
                                        say=None if args.json else print)
         if args.json:

@@ -89,6 +89,8 @@ function provenViewHtml(data, gone) {
     <a class="crumb" id="back" href="/game/${esc(PROVEN.hash)}">&larr; ${name}</a>
     <h2 class="u-m-10-0-0">Proven positions on ${name}${info('provenPositions')}</h2>
     ${gone ? `<p class="muted small" id="provenGone">${esc(words.gone || '')}</p>` : ''}
+    ${data.provisional
+    ? `<p class="muted small" id="provenProvisional">${esc(data.provisional)}</p>` : ''}
     <div class="gameTop provenTop">${frame}</div>
     <details class="muted small u-mt-12">
       <summary>how these were proved</summary>

@@ -152,24 +152,65 @@ class TestWhatIsOwed:
     def test_each_way_a_record_stops_holding(self, made) -> None:
         root, digest, _said = made
         engine = Engine(SPEC)
+        now = puzzles.work_basis(SPEC)
         data = json.loads(puzzles.record_path(root / "runs", digest).read_text("utf-8"))
-        assert puzzles.owes(engine, data) is None
-        assert "format 3" in puzzles.owes(engine, {**data, "format": 3})
-        assert puzzles.owes(engine, {**data, "format": puzzles.FORMAT + 1}) is None
+        assert puzzles.owes(engine, data, now) is None
+        assert "format 3" in puzzles.owes(engine, {**data, "format": 3}, now)
+        assert puzzles.owes(engine, {**data, "format": puzzles.FORMAT + 1}, now) is None
         older = {**data, "basis": {**data["basis"], "proof_version": 0}}
-        assert "probe version 0" in puzzles.owes(engine, older)
+        assert "probe version 0" in puzzles.owes(engine, older, now)
         # Before the field existed: version 1, the probe as R9a ran it.
         unstamped = {**data, "basis": {k: v for k, v in data["basis"].items()
                                        if k != "proof_version"}}
-        assert puzzles.owes(engine, unstamped) is None
+        assert puzzles.owes(engine, unstamped, now) is None
         moved = json.loads(json.dumps(data))
         moved["positions"][0]["moves"] = [10 ** 6]
-        assert puzzles.owes(engine, moved) == (
+        assert puzzles.owes(engine, moved, now) == (
             f"1 of its {len(data['positions'])} proved positions no longer replay")
         twice = {**data, "positions": [data["positions"][0], data["positions"][0]]}
-        assert puzzles.owes(engine, twice) == "1 of its 2 proved positions no longer replay"
-        assert puzzles.owes(engine, {**data, "ruleset_hash": "x"}) is not None
-        assert puzzles.owes(engine, None) is not None
+        assert puzzles.owes(engine, twice, now) == (
+            "1 of its 2 proved positions no longer replay")
+        assert puzzles.owes(engine, {**data, "ruleset_hash": "x"}, now) is not None
+        assert puzzles.owes(engine, None, now) is not None
+
+    def test_a_record_proved_on_another_core_or_compile_is_owed(self, made) -> None:
+        """Q1083: a record proved on an old core read as current while its rows still
+        replayed. It is owed where its build or its compile is not this one's, as a library
+        run is (`Basis.stale_against`), and one that names no compile is owed as a run that
+        names none is; on this build and compile it holds."""
+        root, digest, _said = made
+        engine = Engine(SPEC)
+        now = puzzles.work_basis(SPEC)
+        data = json.loads(puzzles.record_path(root / "runs", digest).read_text("utf-8"))
+        assert {key: data["basis"][key] for key in now} == now  # `make` stamps both halves
+        assert puzzles.owes(engine, data, now) is None
+        rebuilt = {**now, "built": "a-newer-core"}
+        assert puzzles.owes(engine, data, rebuilt) == (
+            f"it was proved on core build {now['built']}, and the loaded core is a-newer-core")
+        recompiled = {**now, "tables": "other-tables"}
+        assert puzzles.owes(engine, data, recompiled) == (
+            "its rules compile to different tables than it was proved on")
+        unnamed = {**data, "basis": {k: v for k, v in data["basis"].items() if k != "tables"}}
+        assert "does not record what its rules compiled to" in puzzles.owes(
+            engine, unnamed, now)
+        nameless = {**data, "basis": {k: v for k, v in data["basis"].items() if k != "built"}}
+        assert "core build unnamed" in puzzles.owes(engine, nameless, now)
+
+    def test_a_record_from_an_old_core_is_owed_a_reproof_and_then_holds(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Through `standing` too: the core rebuilt, the game is owed (since Q1090 its
+        re-certification first, `RECERTIFY`), and `make` on the new core leaves it owing
+        nothing."""
+        root, digest, _said = made
+        copy = tmp_path / "copy"
+        shutil.copytree(root, copy)
+        assert not puzzles.standing(digest, "probe", SPEC, copy / "runs").owed
+        monkeypatch.setattr(measurement, "built_fingerprint", lambda: "a-newer-core")
+        found = puzzles.standing(digest, "probe", SPEC, copy / "runs")
+        assert found.needs == puzzles.RECERTIFY and "a-newer-core" in found.reason
+        puzzles.make(SPEC, copy / "runs", workers=4, nodes=SMALL, defence_nodes=SMALL)
+        assert not puzzles.standing(digest, "probe", SPEC, copy / "runs").owed
 
     def test_a_reproof_is_owed_only_where_the_runs_are(self, made, tmp_path: Path) -> None:
         root, digest, _said = made
@@ -184,6 +225,200 @@ class TestWhatIsOwed:
         shutil.rmtree(copy / "runs" / f"{digest}-1000")
         [found] = puzzles.survey(copy / "runs", copy)
         assert not found.owed and "seeds 1000" in found.reason
+
+
+# ------------------------------------------------- re-certified from a sample (Q1090)
+
+
+def _rebuilt(root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+             built: str = "a-newer-core") -> Path:
+    """A copy of the made game's runs, read from a core that did not prove its record."""
+    copy = tmp_path / "copy"
+    shutil.copytree(root, copy)
+    monkeypatch.setattr(measurement, "built_fingerprint", lambda: built)
+    return copy / "runs"
+
+
+class TestRecertify:
+    """§7.6: a record owed only for the core or compile it was proved on is re-proved in a
+    sample on this core; it is re-stamped where all agree and owed whole where any does not."""
+
+    def test_the_sample_is_every_offered_row_and_sixteen_of_the_rest(self) -> None:
+        def row(n: int, offered: bool) -> dict[str, Any]:
+            return {"id": f"0-{n}-0", "result": puzzles.WON, "ends_in": 3,
+                    "scores": [{"proof": puzzles.WON}] + [{"proof": puzzles.OPEN}] * 4,
+                    "shallow": puzzles.MISSED if offered else puzzles.FOUND}
+        positions = [row(n, n % 10 == 0) for n in range(60)]
+        aside = [row(100 + n, False) | {"shows": []} for n in range(20)]
+        picked = puzzles.certify_sample({"positions": positions, "set_aside": aside})
+        offered = [r for r in positions if r["shallow"] == puzzles.MISSED]
+        rest = [r for r in positions if r["shallow"] == puzzles.FOUND] + aside
+        assert picked[:len(offered)] == offered
+        assert picked[len(offered):] == [rest[i * len(rest) // 16] for i in range(16)]
+        few = puzzles.certify_sample({"positions": positions[:5], "set_aside": aside[:2]})
+        assert len(few) == 7  # fewer than sixteen to spare: all of them
+
+    def test_on_agreement_the_record_is_re_stamped_and_the_old_one_kept(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, digest, _said = made
+        runs = _rebuilt(root, tmp_path, monkeypatch)
+        path = puzzles.record_path(runs, digest)
+        before = path.read_bytes()
+        found = puzzles.standing(digest, "probe", SPEC, runs)
+        assert found.needs == puzzles.RECERTIFY
+        said = puzzles.recertify(SPEC, runs, workers=4)
+        assert said["agreed"] and not said["disagrees"]
+        data = json.loads(path.read_text("utf-8"))
+        old = json.loads(before)
+        stamp = data["basis"].pop("certified")
+        assert data == old  # every row exactly as proved; only the certificate is new
+        now = puzzles.work_basis(SPEC)
+        assert {k: stamp[k] for k in now} == now == {**now, "built": "a-newer-core"}
+        assert stamp["rule"] == puzzles.CERTIFY_VERSION and stamp["made"]
+        assert stamp["sample"] == len(puzzles.certify_sample(old)) == len(stamp["ids"])
+        assert stamp["rows"] == len(old["positions"]) + len(old.get("set_aside") or [])
+        [kept] = puzzles.work_dir(runs, digest).glob("record-*.json")
+        assert kept.read_bytes() == before
+        assert not puzzles.standing(digest, "probe", SPEC, runs).owed
+
+    def test_a_re_certified_record_is_owed_again_on_the_next_core(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, digest, _said = made
+        runs = _rebuilt(root, tmp_path, monkeypatch)
+        puzzles.recertify(SPEC, runs, workers=4)
+        monkeypatch.setattr(measurement, "built_fingerprint", lambda: "a-third-core")
+        found = puzzles.standing(digest, "probe", SPEC, runs)
+        assert found.needs == puzzles.RECERTIFY
+        assert "re-certified on core build a-newer-core" in found.reason
+
+    def test_on_a_disagreement_it_is_owed_its_full_re_proof(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, digest, _said = made
+        runs = _rebuilt(root, tmp_path, monkeypatch)
+        path = puzzles.record_path(runs, digest)
+        data = json.loads(path.read_text("utf-8"))
+        # The record says one thing of a sampled row; this core proves another.
+        first = puzzles.certify_sample(data)[0]["id"]
+        for row in data["positions"]:
+            if row["id"] == first:
+                row["ends_in"] = int(row["ends_in"]) + 2
+        path.write_text(json.dumps(data), encoding="utf-8")
+        before = path.read_bytes()
+        said = puzzles.recertify(SPEC, runs, workers=4)
+        assert not said["agreed"] and said["disagrees"][0].startswith(f"{first}: ends_in")
+        assert path.read_bytes() == before  # left as it was
+        found = puzzles.standing(digest, "probe", SPEC, runs)
+        assert found.needs == puzzles.REPROVE and "disagreed" in found.reason
+        puzzles.make(SPEC, runs, workers=4, nodes=SMALL, defence_nodes=SMALL)
+        assert not puzzles.standing(digest, "probe", SPEC, runs).owed
+
+    def test_a_changed_test_answer_disagrees_too(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, digest, _said = made
+        runs = _rebuilt(root, tmp_path, monkeypatch)
+        path = puzzles.record_path(runs, digest)
+        data = json.loads(path.read_text("utf-8"))
+        rows = [r for r in puzzles.certify_sample(data) if "shallow" in r]
+        assert rows, "the fixture's sample holds a row T5 answered"
+        flip = {puzzles.FOUND: puzzles.MISSED, puzzles.MISSED: puzzles.FOUND}
+        for row in [*data["positions"], *(data.get("set_aside") or [])]:
+            if row["id"] == rows[0]["id"]:
+                row["shallow"] = flip[row["shallow"]]
+        path.write_text(json.dumps(data), encoding="utf-8")
+        said = puzzles.recertify(SPEC, runs, workers=4)
+        assert not said["agreed"] and any("T5 said" in line for line in said["disagrees"])
+
+    def test_a_changed_or_unnamed_compile_is_re_certified_as_c6_does(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """C6's sample stands in for the tables as well as the core (`Basis.certifiable`),
+        so a record on other tables, or one naming none (every record before Q1083), is
+        re-certified, not owed whole."""
+        root, digest, _said = made
+        runs = _rebuilt(root, tmp_path, monkeypatch, built=puzzles.work_basis(SPEC)["built"])
+        path = puzzles.record_path(runs, digest)
+        data = json.loads(path.read_text("utf-8"))
+        engine = Engine(SPEC)
+        now = puzzles.work_basis(SPEC)
+        other = {**data, "basis": {**data["basis"], "tables": "other-tables"}}
+        assert puzzles.certifiable(engine, other, now) is not None
+        del data["basis"]["tables"]
+        path.write_text(json.dumps(data), encoding="utf-8")
+        assert puzzles.standing(digest, "probe", SPEC, runs).needs == puzzles.RECERTIFY
+        assert puzzles.recertify(SPEC, runs, workers=4)["agreed"]
+        assert not puzzles.standing(digest, "probe", SPEC, runs).owed
+
+    def test_no_sample_stands_in_for_anything_else(self, made) -> None:
+        root, digest, _said = made
+        engine = Engine(SPEC)
+        now = {**puzzles.work_basis(SPEC), "built": "a-newer-core"}
+        data = json.loads(puzzles.record_path(root / "runs", digest).read_text("utf-8"))
+        assert puzzles.certifiable(engine, data, now) is not None
+        assert puzzles.certifiable(engine, {**data, "format": 3}, now) is None
+        older = {**data, "basis": {**data["basis"], "proof_version": 0}}
+        assert puzzles.certifiable(engine, older, now) is None
+        moved = json.loads(json.dumps(data))
+        moved["positions"][0]["moves"] = [10 ** 6]
+        assert puzzles.certifiable(engine, moved, now) is None
+        assert puzzles.certifiable(engine, data, puzzles.work_basis(SPEC)) is None  # current
+
+    def test_a_killed_re_certification_picks_up(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, digest, _said = made
+        runs = _rebuilt(root, tmp_path, monkeypatch)
+        record = puzzles.record_path(runs, digest)
+        before = record.read_bytes()
+        first = puzzles.recertify(SPEC, runs, workers=4)
+        folder = puzzles.certify_dir(runs, digest)
+        units = sorted(folder.glob("[0-9][0-9][0-9][0-9].json"))
+        assert len(units) == first["sample"]
+        # Killed before its verdict: the record not yet stamped, one row unwritten.
+        record.write_bytes(before)
+        (folder / puzzles.VERDICT_FILE).unlink()
+        units[-1].unlink()
+        lines: list[str] = []
+        again = puzzles.recertify(SPEC, runs, workers=1, say=lines.append)
+        assert again["agreed"] and again["sample"] == first["sample"]
+        assert sum("re-proved" in line for line in lines) == 1
+
+    def test_the_refresher_re_certifies_and_owes_nothing_after(
+        self, made, fast, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, digest, _said = made
+        runs = _rebuilt(root, tmp_path, monkeypatch)
+        outcome = refresher.prove_game(digest, runs, root=runs.parent, workers=4)
+        assert not outcome.refused, outcome.reason
+        assert outcome.needs == puzzles.RECERTIFY
+        assert any("re-certified from" in line for line in outcome.lines)
+        assert puzzles.certificate(json.loads(
+            puzzles.record_path(runs, digest).read_text("utf-8"))) is not None
+
+    def test_the_site_marks_a_record_from_another_core_provisional(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The provisional rule (Q1090): a record owed for its core is shown, marked, never
+        as current and never hidden; once re-certified it is current, and says how."""
+        root, digest, said = made
+        record = proven.load(root / "runs", digest, SPEC)
+        assert record is not None and not record.provisional
+        assert proven.PROVISIONAL not in proven.basis_said(record)
+        runs = _rebuilt(root, tmp_path, monkeypatch)
+        stale = proven.load(runs, digest, SPEC)
+        assert stale is not None and len(stale.positions) == said["offered"]  # not hidden
+        assert stale.provisional
+        assert proven.page(stale, None)["provisional"] == proven.PROVISIONAL
+        assert proven.summary(stale, None)["provisional"] == proven.PROVISIONAL
+        assert proven.basis_said(stale).endswith(proven.PROVISIONAL)
+        puzzles.recertify(SPEC, runs, workers=4)
+        kept = proven.load(runs, digest, SPEC)
+        assert kept is not None and not kept.provisional and kept.certified
+        assert proven.page(kept, None)["provisional"] == ""
+        assert "Checked again on" in proven.basis_said(kept)
 
 
 # ------------------------------------------------------------------ the sample
@@ -462,7 +697,8 @@ class TestTheLoop:
         assert [(line["hash"], line["needs"]) for line in log if line["event"] == "repaired"] == [
             ("s", "rescore"), ("l", "ladder"), ("p", "prove"), ("q", "re-prove")]
         status = refresher.read_status(tmp_path)
-        assert status is not None and status["proof_counts"] == {"prove": 0, "re-prove": 0, "re-filter": 0}
+        assert status is not None and status["proof_counts"] == {
+            "prove": 0, "re-certify": 0, "re-prove": 0, "re-filter": 0}
 
     def test_the_proofs_are_not_read_while_a_score_or_ladder_is_owed(
         self, tmp_path: Path
@@ -610,7 +846,7 @@ class TestWhatItSays:
         assert main(["proofs", "--check", "--runs", "runs"]) == 1
         out = capsys.readouterr().out
         assert "prove     puzzle probe" in out and "no record" in out
-        assert "1 of 1 owed: 1 prove, 0 re-prove" in out
+        assert "1 of 1 owed: 1 prove, 0 re-certify, 0 re-prove" in out
         assert main(["proofs", "archive/probe.json", "--runs", "runs", "--workers", "4"]) == 0
         capsys.readouterr()
         assert main(["proofs", "--check", "--runs", "runs", "--json"]) == 0
@@ -672,14 +908,43 @@ LIBRARY = {digest: (name, spec) for digest, name, spec in puzzles.library(REPOSI
 
 
 @pytest.mark.parametrize("digest", sorted(LIBRARY))
-def test_every_delivered_record_owes_nothing(digest: str) -> None:
+def test_every_delivered_record_owes_nothing(
+    digest: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """`proofs --check` clean for every record the main checkout holds (§6's acceptance,
     then the upkeep's backfill): each replays whole and is current. One case a game of the
     library, which the tree fixes, so every xdist worker collects the same cases while the
     refresher writes records (Q993i: one test over the growing set ran past the duration
-    guard). Skips where the game has no record on disk."""
-    if not puzzles.record_path(MAIN_RUNS, digest).is_file():
+    guard). Skips where the game has no record on disk.
+
+    A record proved on another core build or compile is owed a re-proof (Q1083), and that
+    is the refresher's upkeep after every core change, not a defect a tree can fix: such a
+    record is held to everything else on the basis it names, a compile it does not name
+    read as this one (it replays, it is sifted and aimed as the code does), then skipped,
+    saying it is owed."""
+    path = puzzles.record_path(MAIN_RUNS, digest)
+    if not path.is_file():
         pytest.skip("no runs/puzzles/ record of this game here")
     name, spec = LIBRARY[digest]
-    found = puzzles.standing(digest, name, spec, MAIN_RUNS)
+    now = puzzles.work_basis(spec)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    basis = data.get("basis") if isinstance(data, dict) else None
+    # A record a sample re-certified (Q1090) stands on its certificate's core and compile.
+    certified = puzzles.certificate(data)
+    on = certified if certified is not None else basis
+    named = {key: on.get(key) for key in now} if isinstance(on, dict) else {}
+    if named == now:
+        found = puzzles.standing(digest, name, spec, MAIN_RUNS)
+        assert not found.owed, (name, found.reason)
+        return
+    assert named.get("built"), (name, "its record names no core build")
+    # Held on its own basis, from a copy: no runs are needed (`seeds=()`) to say it holds.
+    proved_on = {key: named.get(key) or now[key] for key in now}
+    held = {**basis, **proved_on}
+    if certified is not None:
+        held["certified"] = {**certified, **proved_on}
+    puzzles.write(puzzles.record_path(tmp_path, digest), {**data, "basis": held})
+    monkeypatch.setattr(puzzles, "work_basis", lambda _spec: proved_on)
+    found = puzzles.standing(digest, name, spec, tmp_path, seeds=())
     assert not found.owed, (name, found.reason)
+    pytest.skip(f"{name}: owed a re-proof on this core, proved on {named}")

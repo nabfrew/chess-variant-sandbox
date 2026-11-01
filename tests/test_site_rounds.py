@@ -610,9 +610,20 @@ class TestTheLibraryHandover:
 # ------------------------------------------------------------------------ over HTTP
 
 
+def _ahead() -> date:
+    """The round a test over HTTP opens: the month after the real clock's, read now.
+
+    The page sweeps with the real clock, and a sweep opens no round before the latest
+    (`rounds._open`). With the current month's round, a run that crossed the end of a month
+    in UTC had the page's sweep open the new month's round over the test's (Q1089: three
+    tests failed past local midnight on 31 October, as UTC reached 1 November). A round
+    a month ahead stays the latest whatever the clock does during the test."""
+    return rounds.next_month(rounds.month_of(datetime.now(UTC)))
+
+
 def _round_now(world: World) -> date:
-    """A round open now, whatever today's date: this month's, its week moved round now."""
-    day = rounds.month_of(NOW)
+    """A round open now, whatever today's date: next month's, its week moved round now."""
+    day = _ahead()
     world.sweep(rounds.start(day) + timedelta(minutes=1))
     with world.store.cursor() as cursor:
         cursor.execute(
@@ -731,17 +742,18 @@ class TestThePages:
     def test_the_maintainer_confirms_and_vetoes_from_admin(self, world: World) -> None:
         kept = world.nominee("kept")
         refused = world.nominee("refused")
-        day = rounds.month_of(NOW)
+        day = _ahead()
         world.sweep(rounds.start(day) + timedelta(minutes=1))
         for game in (kept, refused):
             for person in world.voters(game, 4):
                 rounds.vote(world.store, day, game, person, True,
                             rounds.start(day) + timedelta(hours=1))
         world.store.commit()
-        # Its week is over by now, or moved so: the page's own sweep closes it.
+        # Its week moved into the past: the page's own sweep closes it.
         with world.store.cursor() as cursor:
             cursor.execute(
-                "update rounds set closes = now() - interval '1 minute' where day = %s",
+                "update rounds set opens = now() - interval '8 days',"
+                " closes = now() - interval '1 minute' where day = %s",
                 (day,),
             )
         world.store.commit()

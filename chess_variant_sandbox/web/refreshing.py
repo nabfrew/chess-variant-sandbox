@@ -64,10 +64,12 @@ LADDER_COUNTED = {"ladder": "missing", "top-up": "short", "re-rate": "to rate ag
 # a first record has none, and one owed a re-proof has a record that no longer holds.
 PROOFS = {
     "prove": "proving its positions",
+    "re-certify": "proving a sample of its positions again on the current engine",
     "re-prove": "proving its positions again",
     "re-filter": "setting aside positions that show nothing of the game's own",
 }
-PROOF_COUNTED = {"prove": "with no record yet", "re-prove": "with a record that is out of date",
+PROOF_COUNTED = {"prove": "with no record yet",
+                 "re-certify": "with a record from an earlier engine", "re-prove": "with a record that is out of date",
                  "re-filter": "with positions not yet sifted"}
 
 # Why a game was refused, in plain words, by `refresher`'s refusal kinds.

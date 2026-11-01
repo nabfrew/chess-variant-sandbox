@@ -736,7 +736,7 @@ class App:
         chosen = launch.opponents(ladder, table)
         if chosen is None:
             return None
-        return {**chosen, "far": library.far_from_chess(game)}
+        return chosen
 
     def _remixes(self, game: library.Game, query: dict[str, str]) -> dict[str, Any]:
         """A starting point derived from this game, when the query asks for one.

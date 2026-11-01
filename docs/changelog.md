@@ -14,6 +14,18 @@ any other address keeps its brackets.
 
 ## 2026-11-01
 
+### Puzzles in seven more games, and a mark on any that are due a check
+
+Seven games that had no proven positions to solve now have some: steady ferry (12), carousel (9), ferry, kyoto and
+riders and leapers (8 each), dobutsu (5) and sluice (3). Every other game's positions were checked again on the
+current version of the computer's engine, by proving a sample of them again, and all came out the same; the page's
+account of how they were proved now says when and from how many. If a game's positions were proved on an earlier
+version of the engine and have not yet been checked on this one, its page now says so, plainly, beside them.
+
+### More puzzles in dohyo and the crowd
+
+Dohyo now has two *Find the move* puzzles where it had none, and the crowd has three where it had one.
+
 ### Game cards and the designer use the short description
 
 The cards in the list of games now show each game's few short lines instead of its long description, and the designer has boxes for writing your own game's short lines and where it came from, which its page then opens with.

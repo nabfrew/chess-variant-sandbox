@@ -62,7 +62,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.puzzles import FORMATS, LOST, OPEN, WON, holding, trivial
+from chess_variant_sandbox.puzzles import (
+    FORMATS,
+    LOST,
+    OPEN,
+    WON,
+    basis_owes,
+    certificate,
+    holding,
+    trivial,
+    work_basis,
+)
 from chess_variant_sandbox.web import card_rules, opponents
 from chess_variant_sandbox.web.library import engine_for
 from chess_variant_sandbox.web.page import game as game_drawing
@@ -157,6 +167,14 @@ class Record:
     """Whether the record carries T4's answers (`FORMAT` 3 or 4 with `hasten_nodes`)."""
     shallow: bool = False
     """Whether the record carries T5's answers (`FORMAT` 4 with `shallow_nodes`)."""
+    provisional: str = ""
+    """Why the record does not stand on the engine now running, or "" where it does
+    (Q1090: `puzzles.basis_owes`, the record proved, or last re-certified, on another core
+    build or compile of the rules, or by older code). Such a record is shown, marked
+    `PROVISIONAL`, never as current, until it is re-certified or proved again."""
+    certified: dict[str, Any] | None = None
+    """The sample that re-certified the record on a core that did not prove it
+    (`puzzles.certificate`), or None."""
 
     @property
     def tests(self) -> str:
@@ -281,6 +299,8 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
         and bool((data.get("basis") or {}).get("hasten_nodes")),
         shallow=data.get("format") not in (1, 2, 3)
         and bool((data.get("basis") or {}).get("shallow_nodes")),
+        provisional=basis_owes(engine, data, work_basis(spec)) or "",
+        certified=certificate(data),
     )
 
 
@@ -353,6 +373,15 @@ def basis_said(record: Record) -> str:
         )
     if record.made:
         said += f"Proved on {record.made}."
+    found = record.certified
+    if found is not None and not record.provisional:
+        # Q1090: kept current by a sample, as a library score is (C6), and said so.
+        said += (
+            f" Checked again on {found.get('made')}, on a later version of the computer's "
+            f"engine, by proving {_thousands(int(found.get('sample') or 0))} of its "
+            f"{_thousands(int(found.get('rows') or 0))} positions again: every one came out "
+            "the same."
+        )
     if record.too_easy:
         said += (f" Of the {_thousands(won)} it proved, " if won else " ") + (
             f"{_thousands(record.too_easy)} {TOO_EASY[record.tests]}")
@@ -368,8 +397,18 @@ def basis_said(record: Record) -> str:
             f" {record.dropped} more no longer replay under these rules, so they are "
             "not offered."
         )
+    if record.provisional:
+        # Q1090: last, so it closes the account of how they were proved.
+        said += " " + PROVISIONAL
     return said
 
+
+PROVISIONAL = (
+    "These were proved on an earlier version of the computer's engine and have not yet been "
+    "checked on the one now running, so they are provisional until they are."
+)
+"""What the page says of a record that does not stand on the engine now running (Q1090,
+`Record.provisional`): shown, and marked, never as current."""
 
 TOO_EASY = {
     "T5": (
@@ -657,6 +696,7 @@ def page(
         "signInToConvert": "" if signed_in else SIGN_IN_TO_CONVERT,
         "keep": "" if signed_in else PAGE_WORDS["keep"],
         "none": "" if rows else none_said(record),
+        "provisional": PROVISIONAL if record.provisional else "",
         "words": PAGE_WORDS,
     }
 
@@ -681,6 +721,7 @@ def summary(record: Record, marks: dict[str, set[str]] | None) -> dict[str, Any]
         "yours": progress_said(record, marks) if marks is not None and solved else "",
         "none": "" if count else none_said(record),
         "basis": "" if count else basis_said(record),
+        "provisional": PROVISIONAL if record.provisional else "",
         "open": PAGE_WORDS["open"],
     }
 

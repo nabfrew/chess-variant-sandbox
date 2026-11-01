@@ -1889,8 +1889,7 @@ function firstSeat(game) {
   return ROSTER.some(o => o.agent === gentle) ? gentle : null;
 }
 
-// The server still says why a game is far from chess (`firstGame.far`); the page no longer
-// draws it (Q1086): the short description above the page says how the game plays, and a
+// The page no longer says why a game is far from chess (Q1086, and Q1089 dropped the field): the short description above the page says how the game plays, and a
 // watch is two computer players and *start*.
 function firstGameHtml(game) {
   const first = game && game.firstGame;
@@ -3139,12 +3138,16 @@ function scoreHtml(score, guide, band, trust) {
 function provenHtml(game) {
   const proven = game.standing && game.standing.proven;
   if (!proven) return '';
+  // Q1090: a record from an earlier engine is shown, and marked provisional, never as current.
+  const provisional = proven.provisional
+    ? `<p class="muted small" id="provenProvisional">${esc(proven.provisional)}</p>` : '';
   // Q993g: a record whose every position was too easy says so, rather than listing none.
   if (!proven.count) {
     if (!proven.none) return '';
     return `<div class="panel proven u-mt-14" id="proven">
     <h3 class="u-mt-0">Proven positions${info('provenPositions')}</h3>
     <p class="muted small" id="provenNone">${esc(proven.none)}</p>
+    ${provisional}
     <details class="muted small u-mt-8">
       <summary>how these were proved</summary>
       <p id="provenBasis">${esc(proven.basis)}</p>
@@ -3154,6 +3157,7 @@ function provenHtml(game) {
   return `<div class="panel proven u-mt-14" id="proven">
     <h3 class="u-mt-0">Proven positions${info('provenPositions')}</h3>
     <p class="muted small u-m-0" id="provenSaid">${esc(proven.said)}</p>
+    ${provisional}
     ${proven.yours ? `<p class="small" id="provenYours">${esc(proven.yours)}</p>` : ''}
     <div class="row u-mt-8"><a id="provenOpen" class="proven-open"
       href="${provenPath(game.hash)}">${esc(proven.open)}</a></div>

@@ -162,6 +162,11 @@ BOTH = _position("0-2-2", 2, ELSEWHERE[3], ends_in=2)
 ONE_ID, LOSES_ID, BOTH_ID = _named(ONE), _named(LOSES), _named(BOTH)
 
 
+# What `_record` says its proofs were made on: `puzzles.owes` is asked against the same, so
+# only the rows decide (a record on another core is owed whatever its rows, Q1083).
+PROVED_ON = {"built": "0123456789abcdef", "tables": "fedcba9876543210"}
+
+
 def _record(positions: list[dict[str, Any]], digest: str = DIGEST) -> dict[str, Any]:
     return {
         "format": puzzles.FORMAT, "ruleset_hash": digest, "name": "proven test",
@@ -169,7 +174,7 @@ def _record(positions: list[dict[str, Any]], digest: str = DIGEST) -> dict[str, 
         "basis": {
             "probe": "Engine.root_scores", "nodes": 20_000_000, "max_depth": 400,
             "proven_at": puzzles.PROVEN, "goal": 16.0, "immune": 1.0,
-            "built": "0123456789abcdef", "runs": [f"{digest}-{s}" for s in (0, 1000, 2000, 3000)],
+            **PROVED_ON, "runs": [f"{digest}-{s}" for s in (0, 1000, 2000, 3000)],
             "max_pieces": 6, "distinct": 40, "near": 12, "cap": 240,
         },
         "counts": {"candidates": 5, "forced": 0, "won": 3, "lost": 0, "open": 2,
@@ -238,7 +243,7 @@ class TestTheLoader:
         assert record.dropped == 5
         assert "5 more no longer replay" in proven.basis_said(record)
         # The upkeep re-proves a record exactly where the loader drops a row (Q993i).
-        assert puzzles.owes(ENGINE, data) == "5 of its 6 proved positions no longer replay"
+        assert puzzles.owes(ENGINE, data, PROVED_ON) == "5 of its 6 proved positions no longer replay"
 
     def test_a_position_proved_lost_is_passed_over_never_dropped(self, tmp_path: Path) -> None:
         """Q993i, *queen bomb*'s record: the sample asks a position with the recorded
@@ -255,7 +260,7 @@ class TestTheLoader:
         record = _load(tmp_path)
         assert [found.id for found in record.positions] == [ONE_ID, BOTH_ID]
         assert record.dropped == 0 and record.find(_named(lost)) is None
-        assert puzzles.owes(ENGINE, data) is None
+        assert puzzles.owes(ENGINE, data, PROVED_ON) is None
         said = proven.basis_said(record)
         assert "1 it proved lost for the side to move" in said
         assert "no longer replay" not in said

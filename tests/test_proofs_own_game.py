@@ -170,7 +170,8 @@ def test_an_unsifted_record_is_owed_a_re_filter_and_then_is_current(tmp_path: Pa
     digest = Engine(SPEC).spec.hash
     puzzles.write(puzzles.record_path(runs, digest),
                   {"format": puzzles.FORMAT, "ruleset_hash": digest, "name": "probe",
-                   "basis": {"proof_version": puzzles.PROOF_VERSION}, "counts": {},
+                   "basis": {"proof_version": puzzles.PROOF_VERSION,
+                             **puzzles.work_basis(SPEC)}, "counts": {},
                    "positions": []})
     before = puzzles.standing(digest, "probe", SPEC, runs, seeds=())
     assert before.needs == puzzles.FILTER
@@ -267,7 +268,8 @@ def _bare(spec: dict[str, Any], basis: dict[str, Any], aside: int) -> tuple[str,
     digest = Engine(spec).spec.hash
     return digest, {"format": puzzles.FORMAT, "ruleset_hash": digest, "name": spec["name"],
                     "basis": {"proof_version": puzzles.PROOF_VERSION,
-                              "shows_version": puzzles.SHOWS_VERSION, **basis},
+                              "shows_version": puzzles.SHOWS_VERSION,
+                              **puzzles.work_basis(spec), **basis},
                     "counts": {}, "positions": [],
                     "set_aside": [_row(str(n), n) for n in range(aside)]}
 

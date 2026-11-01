@@ -25,7 +25,7 @@ def app(tmp_path_factory: pytest.TempPathFactory) -> App:
     (root / "rulesets").mkdir()
     archive = root / "archive"
     archive.mkdir()
-    for name in ("divide.json", "wolves.json", "cylinder-wormhole.json"):
+    for name in ("divide.json", "cylinder-wormhole.json"):
         shutil.copy(ARCHIVE / name, archive / name)
     return App(root / "rulesets", root / "runs", archive_dir=archive)
 
@@ -37,16 +37,14 @@ def _game(app: App, file: str) -> dict:
     return app.get("/api/game/" + digest)
 
 
-class TestAPortalIsNotAWildPiece:
+class TestAPortalGamesOpening:
+    """The page's far-from-chess reasons, which miscounted the ends, went with Q1086/Q1089;
+    the opening position still draws the ends."""
+
     @pytest.mark.parametrize("file", ["divide.json", "cylinder-wormhole.json"])
-    def test_a_portal_game_has_no_wild_pieces(self, app: App, file: str) -> None:
+    def test_a_portal_game_draws_its_ends(self, app: App, file: str) -> None:
         game = _game(app, file)
         assert game["opening"]["portals"]["ends"], "the opening position draws the ends"
-        assert "it has wild pieces that belong to neither side" not in game["firstGame"]["far"]
-
-    def test_a_wild_piece_still_is_one(self, app: App) -> None:
-        far = _game(app, "wolves.json")["firstGame"]["far"]
-        assert "it has wild pieces that belong to neither side" in far
 
 
 # A game between two people, a 4 x 4 board: the second player's piece on a1, and a move
