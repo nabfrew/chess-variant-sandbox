@@ -9,9 +9,11 @@ pass, and the duck beside portals.
   sweep. The probe found the core sweeps it (the sweep reads the static capture matrix, a
   shield is read from the board), and lands on it, and reads a sweep over a shielded piece as
   check: the refusal stays, and the reading is a strict xfail naming SR6g.
-* **K2, handed to SR3d.** The ruled reading: the duck is an uncapturable piece to every transit
-  and fold go-through. The core refuses the pair outright (`the duck and portals share the
-  third owner's block`): the refusal stays, and the reading is a strict xfail naming SR3d.
+* **K2, handed to SR3d, lifted there.** The ruled reading: the duck is an uncapturable piece to
+  every transit and fold go-through. The core refused the pair outright (`the duck and portals
+  share the third owner's block`); SR3d removed that refusal and the validator's, and the
+  probe below, a strict xfail until then, now passes on a validated spec. The walks are
+  `tests/test_duck_beside_portals.py`.
 
 The oracle for W9 is this file's `_sweep_walk`: no sweep's line crosses or ends on the duck's
 square (a declared test oracle, rule 3). Hand-built specs, not chess.
@@ -218,19 +220,17 @@ def _duck_and_portals(kind: str | None) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("kind", [None, "fold"])
-def test_the_duck_beside_portals_is_still_refused(kind: str | None) -> None:
-    assert "K2" in refused_ids(validate_spec(_duck_and_portals(kind)))
+def test_the_duck_beside_portals_is_valid(kind: str | None) -> None:
+    """K2, lifted by SR3d."""
+    assert validate_spec(_duck_and_portals(kind)) == []
 
 
-@pytest.mark.xfail(strict=True, reason="K2 is handed to SR3d: the core refuses the duck and "
-                   "portals together (they share the third owner's block)")
 @pytest.mark.parametrize("side", [0, 1])
 @pytest.mark.parametrize("kind, exit_square", [(None, "e5"), ("fold", "e4")])
-def test_the_duck_blocks_a_transit(monkeypatch: pytest.MonkeyPatch, side: int,
-                                   kind: str | None, exit_square: str) -> None:
+def test_the_duck_blocks_a_transit(side: int, kind: str | None, exit_square: str) -> None:
     """A rook on b1 runs up the b-file into the end on b3: with the duck on the exit (one step
     beyond the blue end for a momentum portal, the blue end itself for a fold), no transit."""
-    engine = _past_the_validator(monkeypatch, _duck_and_portals(kind))
+    engine = _engine(_duck_and_portals(kind))
     state = _position(engine, {"a1": ("K", side), "f6": ("K", 1 - side), "b1": ("R", side),
                                exit_square: ("D", 2)}, side)
     assert _sq(exit_square) not in _targets(engine, state, "b1")

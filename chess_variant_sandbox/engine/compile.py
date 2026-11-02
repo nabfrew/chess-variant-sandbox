@@ -79,6 +79,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_speeds,
     piece_strengths,
     piece_weights,
+    player_stocks,
     portal_end_ids,
     portal_groups,
     portal_has_folds,
@@ -95,6 +96,7 @@ from chess_variant_sandbox.spec.schema import (
     reach_pieces,
     reach_reflection,
     reflect_square,
+    screen_names_types,
     sight_affected_ids,
     simultaneous_switch,
     spy_ids,
@@ -245,7 +247,64 @@ SweepEntry = tuple[tuple[int, ...], tuple[int, ...], bool, int]
 SCREEN_ANY = 0
 SCREEN_OWN = 1
 SCREEN_ENEMY = 2
+# SR3c (`docs/plan-schema-next.md` §1 rank 7): a screen named by type is the code
+# ``SCREEN_TYPES + k``, ``k`` its place in `CompiledSpec.screen_types` (the distinct lists,
+# sorted). The three owner codes are what every game before it crossed, so none moved.
+SCREEN_TYPES = 3
 _SCREEN_BITS = {"any": SCREEN_ANY, "own": SCREEN_OWN, "enemy": SCREEN_ENEMY}
+
+
+def screen_type_lists(
+    pieces: list[dict[str, Any]], index_of: dict[str, int]
+) -> tuple[tuple[int, ...], ...]:
+    """SR3c: every distinct hop screen named by type, as its type indices ascending, the
+    lists in ascending order: list ``k`` is screen code ``SCREEN_TYPES + k``. A list naming
+    every type is ``"any"`` (as `normal.normal_form` writes it), so it is no list here."""
+    every = tuple(range(len(pieces)))
+    found: set[tuple[int, ...]] = set()
+    for piece in pieces:
+        for move in piece.get("moves") or ():
+            screen = move.get("screen") if isinstance(move, dict) else None
+            if isinstance(screen, list):
+                found.add(tuple(sorted({index_of[pid] for pid in screen})))
+    found.discard(every)
+    return tuple(sorted(found))
+
+
+def _with_screen_codes(
+    pieces: list[dict[str, Any]], lists: tuple[tuple[int, ...], ...], index_of: dict[str, int]
+) -> list[dict[str, Any]]:
+    """The pieces with each screen named by type written as its code, for the movement
+    tables, which group a ray by its screen (`_compile_square_full`). The pieces of every
+    game without one come back as they are."""
+    if not any(screen_names_types(m) for piece in pieces for m in piece.get("moves") or ()):
+        return pieces
+    resolved = []
+    for piece in pieces:
+        moves = piece.get("moves") or []
+        if not any(isinstance(m, dict) and isinstance(m.get("screen"), list) for m in moves):
+            resolved.append(piece)
+            continue
+        written = []
+        for move in moves:
+            screen = move.get("screen")
+            if isinstance(screen, list):
+                listed = tuple(sorted({index_of[pid] for pid in screen}))
+                code = SCREEN_TYPES + lists.index(listed) if listed in lists else SCREEN_ANY
+                move = {**move, "screen": code}
+            written.append(move)
+        resolved.append({**piece, "moves": written})
+    return resolved
+
+
+def _screen_code(screen: Any) -> int:
+    """A descriptor's screen as the code its tables cross: an owner word's, or the code
+    `_with_screen_codes` already wrote for a screen named by type."""
+    if isinstance(screen, int):
+        return screen
+    if isinstance(screen, list):
+        raise ValueError("a screen named by type is resolved by _with_screen_codes first")
+    return _SCREEN_BITS[str(screen)]
 
 # One way a square can be attacked:
 #   (origin, piece value, squares that must be empty, squares that hold the screens,
@@ -540,7 +599,9 @@ class ExplosionRule:
 
     ``blast[square]`` is the precomputed neighbourhood, so the hot path never does
     arithmetic on file and rank to find out what a capture takes with it. The capturing
-    piece always dies; ``immune_types`` is what survives standing next to one.
+    piece always dies; ``immune_types`` is what survives standing next to one: the rule's
+    ``immune`` list, and the duck's type beside ``rules.duck`` (SR3e, K3: the duck is untouched
+    by a blast, as it is out of the capture matrix).
 
     ``by_types`` and ``of_types`` are schema 10 (Q18) and narrow *when* the blast happens
     rather than what it reaches: whose capture explodes, and what has to be taken for it
@@ -590,6 +651,12 @@ class DropRule:
     # unlimited slot records no delta at all.
     stock: tuple[int, ...] = ()
     unlimited: tuple[bool, ...] = ()
+    # SR3b (``drops.stock_by_player``, `docs/plan-schema-next.md` §1 rank 6): each player's
+    # own stock, ``(player 0's, player 1's)``, each as ``stock`` is. Set only where the two
+    # differ, and then ``stock`` is empty; a stock both players share stays ``stock``, so
+    # every earlier game's tables are the ones it had. Read a hand's opening through
+    # ``stock_of``, never ``stock`` alone.
+    stock_by_player: tuple[tuple[int, ...], tuple[int, ...]] | tuple[()] = ()
     # Schema 18 (Q784): the placement phase. While a side holds anything in hand, its only
     # legal moves are drops, which with a stock and no capture hand is *while its stock is
     # unspent* (Fairy-Stockfish's ``mustDrop``). A royal may then start in the stock.
@@ -615,6 +682,18 @@ class DropRule:
             if paired == face:
                 return slot
         return face
+
+    def stock_of(self, player: int) -> tuple[int, ...]:
+        """What ``player``'s hand starts at, by type (SR3b); empty when it starts empty
+        for both players."""
+        if self.stock_by_player:
+            return self.stock_by_player[player]
+        return self.stock
+
+    @property
+    def stocked(self) -> bool:
+        """Whether either player's hand starts with anything in it."""
+        return bool(self.stock) or bool(self.stock_by_player)
 
 
 @dataclass(frozen=True)
@@ -792,19 +871,23 @@ def _compile_control(
     n_types: int, n_owners: int, npcs: NpcRule | None, duck: DuckRule | None,
     portals: PortalRule | None, neutrals: NeutralRule | None = None,
 ) -> ControlRule | None:
-    """`ControlRule` for a game with a third owner's block, ``None`` otherwise. TC3's
-    neutral kinds come from `NeutralRule`, which the validator refuses beside the other
-    three, so a type has one kind."""
+    """`ControlRule` for a game with a third owner's block, ``None`` otherwise.
+
+    SR3f (O1, O2): TC3's neutral kinds (from `NeutralRule`) share the block with wild pieces
+    and the duck; the validator keeps a placed type off a wild type and the duck's, so each
+    type still has one kind. A neutral game alone compiles to its neutral kinds as before."""
     if n_owners < 3:
         return None
-    if neutrals is not None:
-        return ControlRule(kind=neutrals.kind)
     kind = [CONTROL_ROUTE if npcs is not None else CONTROL_NONE] * n_types
     if portals is not None:
         for piece_type in portals.end_types:
             kind[piece_type] = CONTROL_PORTAL
     if duck is not None:
         kind[duck.piece_type] = CONTROL_DUCK
+    if neutrals is not None:
+        for piece_type, neutral in enumerate(neutrals.kind):
+            if neutral != CONTROL_NONE:
+                kind[piece_type] = neutral
     return ControlRule(kind=tuple(kind))
 
 
@@ -1073,7 +1156,7 @@ class PounceRule:
     * ``distance[a * n_squares + b]``: king's distance, the lattice's own on a hexagon.
 
     ``reach[type][origin]``: a ``"prey"`` pouncing type's captures from ``origin`` as ``(target, prefix,
-    window, screens)``, the attack sources' own frame-0 entries (player 0, facing 0: a pounce
+    window, screens, screen)`` (SR3c: ``screen`` the source's screen code), the attack sources' own frame-0 entries (player 0, facing 0: a pounce
     is refused on a type whose moves read differently for the two players, a facing, a
     region or a move condition) grouped by origin instead of by target. A source that needs
     an unmoved piece never fires for a wild piece and is left out. ``()`` for a type that
@@ -1086,7 +1169,9 @@ class PounceRule:
     value_rank: tuple[int, ...]
     reading_rank: tuple[tuple[int, ...], tuple[int, ...]]
     distance: tuple[int, ...]
-    reach: tuple[tuple[tuple[tuple[int, tuple[int, ...], tuple[int, ...], int], ...], ...], ...]
+    reach: tuple[
+        tuple[tuple[tuple[int, tuple[int, ...], tuple[int, ...], int, int], ...], ...], ...
+    ]
     # Generation 41 (N3d, `docs/archive/plan-npc.md` §4.5): ``split[type]``, the most wild pieces of a
     # splitting type standing at once (0 for a type that does not split), or ``()`` where no
     # type splits, so a pounce game without the rule compiles to what it compiled before.
@@ -2156,6 +2241,11 @@ class CompiledSpec:
     # Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): wild pieces that pounce, or ``None`` -- every
     # game in which no ``npcs`` entry says ``pounce``, whose boundary keys for it cross empty.
     pounce: PounceRule | None = None
+    # SR3c (`docs/plan-schema-next.md` §1 rank 7): the hop screens named by type, each its
+    # type indices ascending, the lists ascending; screen code ``SCREEN_TYPES + k`` in a hop
+    # entry or an attack source is list ``k``. Empty unless some hop names its screen's
+    # types, so every other game's tables are what they were.
+    screen_types: tuple[tuple[int, ...], ...] = ()
     # Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck, or ``None`` -- every game without
     # ``rules.duck``, whose boundary key for it crosses empty.
     duck: DuckRule | None = None
@@ -2667,8 +2757,12 @@ def _compile(
     n_frames = n_facings * 2
     # Q1074b1: whether some move pushes; every other game compiles exactly as it did.
     has_push = push_rule(spec) is not None
+    # SR3c: the screens named by type, empty in every game whose screens name none.
+    screen_types = screen_type_lists(pieces, index_of)
     frames = _compile_frames(
-        _without_self_destroying_captures(pieces, rules, index_of),
+        _with_screen_codes(
+            _without_self_destroying_captures(pieces, rules, index_of), screen_types, index_of
+        ),
         n_facings, n_squares, width, height, orientation, wrap, obstacles,
         blocks_leaps, radius, has_portals, share, push=has_push,
     )
@@ -2841,6 +2935,7 @@ def _compile(
         leaps=_freeze(leaps),
         slides=_freeze(slides),
         hops=_freeze(hops),
+        screen_types=screen_types,
         sweeps=_freeze(sweeps),
         attack_sources=attack_sources,
         capture_allowed=capture_allowed,
@@ -2910,7 +3005,8 @@ def _compile(
         ),
         drops=drops,
         explosion=_compile_explosion(
-            rules.get("explode_on_capture"), index_of, width, height, wrap, obstacles, radius
+            rules.get("explode_on_capture"), index_of, width, height, wrap, obstacles, radius,
+            duck_piece(rules),
         ),
         must_capture=bool(rules.get("must_capture", False)),
         forbid_immobility=bool(rules.get("forbid_immobility", False)),
@@ -3624,7 +3720,7 @@ def _compile_square_full(
                 requires_unmoved,
                 sweep_length(descriptor) if kind == "sweep"
                 else descriptor.get("screen_range", 0),
-                _SCREEN_BITS[str(descriptor.get("screen", "any"))],
+                _screen_code(descriptor.get("screen", "any")),
             )
             modes = ray_groups.setdefault(key, {})
             walked = ray_squares.setdefault(key, [])
@@ -4686,10 +4782,12 @@ def _royalty_can_multiply(
     # one would hold two. Schema 10 let a stock name a royal beside a placed one and the
     # core then guarded one king of two; the validator now refuses that spelling, and
     # this reads it honestly whatever the validator says.
-    stocked = drops.stock[royal] if drops is not None and drops.stock else 0
-    if stocked and drops is not None and drops.unlimited and drops.unlimited[royal]:
-        return True
+    # SR3b: each player's own stock, against that player's own placements.
     for player in (0, 1):
+        held = drops.stock_of(player) if drops is not None else ()
+        stocked = held[royal] if held else 0
+        if stocked and drops is not None and drops.unlimited and drops.unlimited[royal]:
+            return True
         placed = sum(
             1
             for value in board
@@ -4783,11 +4881,11 @@ def _settle_only_lost(
         owner = (value - 1) // (n_facings * n_types)
         if owner < 2:
             counts[owner][(value - 1) % n_types] += 1
-    if drops is not None and drops.placement and drops.stock:
-        for piece_type, held in enumerate(drops.stock):
-            if not (drops.unlimited and drops.unlimited[piece_type]):
-                counts[0][piece_type] += held
-                counts[1][piece_type] += held
+    if drops is not None and drops.placement:
+        for player in (0, 1):
+            for piece_type, held in enumerate(drops.stock_of(player)):
+                if not (drops.unlimited and drops.unlimited[piece_type]):
+                    counts[player][piece_type] += held
     opening = (tuple(counts[0]), tuple(counts[1]))
     return tuple(
         replace(rule, opening=opening) if rule.only_lost else rule for rule in promotions
@@ -4888,8 +4986,10 @@ def pieces_that_can_leave_their_zone(spec: dict[str, Any]) -> frozenset[str]:
     rules = spec.get("rules", {})
     board = spec["board"]
     width, height = board["width"], board["height"]
-    pieces = spec["pieces"]
-    index_of = {piece["id"]: i for i, piece in enumerate(pieces)}
+    index_of = {piece["id"]: i for i, piece in enumerate(spec["pieces"])}
+    pieces = _with_screen_codes(
+        spec["pieces"], screen_type_lists(spec["pieces"], index_of), index_of
+    )
     orientation = spec.get("setup", {}).get("orientation", "mirror")
     shape = board.get("shape", "grid")
     radius = _hexagon_radius(board)
@@ -5401,6 +5501,7 @@ def _compile_explosion(
     wrap: WrapRule | None = None,
     obstacles: frozenset[int] = frozenset(),
     hex_radius: int = 0,
+    duck: str | None = None,
 ) -> ExplosionRule | None:
     if not explosion:
         return None
@@ -5457,8 +5558,15 @@ def _compile_explosion(
             ):
                 neighbours.append(neighbour)
         blast.append(tuple(neighbours))
+    # SR3e (K3, `docs/plan-schema-next.md` §2.9): the duck is untouched by a blast. Its type
+    # joins the immune set here, the one place the rule is read, so every reader of the
+    # table (the core's blast, the legality filter's, the page, describe) spares it alike.
+    # The validator refuses the duck named in the rule's own lists.
+    immune = {index_of[p] for p in explosion.get("immune", [])}
+    if duck is not None:
+        immune.add(index_of[duck])
     return ExplosionRule(
-        immune_types=frozenset(index_of[p] for p in explosion.get("immune", [])),
+        immune_types=frozenset(immune),
         blast=tuple(blast),
         by_types=by,
         of_types=of,
@@ -6013,15 +6121,19 @@ def _compile_pounce(
     # Generation 40 (N3c): only a ``"prey"`` pouncer reads its own reach; an ``"attackers"``
     # one reads the players' inverse table, which is already compiled.
     prey = POUNCE_KINDS.index("prey") + 1
-    reach: list[list[list[tuple[int, tuple[int, ...], tuple[int, ...], int]]]] = [
+    reach: list[list[list[tuple[int, tuple[int, ...], tuple[int, ...], int, int]]]] = [
         [[] for _ in range(n_squares)] if kind[piece_type] == prey else []
         for piece_type in range(n_types)
     ]
     for target in range(n_squares):
-        for origin, value, prefix, window, screens, unmoved, _, sweep, _ in attack_sources[0][target]:
+        for origin, value, prefix, window, screens, unmoved, screen, sweep, _ in attack_sources[0][target]:
             piece_type = value - 1  # player 0, facing 0
             if piece_type < n_types and kind[piece_type] == prey and not unmoved and not sweep:
-                reach[piece_type][origin].append((target, tuple(prefix), tuple(window), screens))
+                # SR3c: the screen's code, SCREEN_ANY or a screen named by type (N13: an
+                # owner-named screen is refused beside a pounce).
+                reach[piece_type][origin].append(
+                    (target, tuple(prefix), tuple(window), screens, screen)
+                )
     # Generation 41 (N3d, §4.5): the cap per type (entries of one type agree, the validator
     # says), empty where nothing splits.
     split = [0] * n_types
@@ -6101,17 +6213,21 @@ def _compile_drops(
                     every_square if allowed is None else allowed
                 ) - obstacles
         per_player.append(tuple(row))
-    stated = drops.get("stock") or {}
-    stock = [0] * n_types
+    # SR3b: each player's stock (`schema.player_stocks`, `stock` read for both); the two
+    # equal compile as the one shared `stock` always did.
+    stocks = ([0] * n_types, [0] * n_types)
     unlimited = [False] * n_types
-    for piece, held in stated.items():
-        if piece not in index_of:
-            continue
-        if held == STOCK_UNLIMITED:
-            stock[index_of[piece]] = 1
-            unlimited[index_of[piece]] = True
-        else:
-            stock[index_of[piece]] = int(held)
+    for player, stated in enumerate(player_stocks(drops)):
+        for piece, held in stated.items():
+            if piece not in index_of:
+                continue
+            if held == STOCK_UNLIMITED:
+                stocks[player][index_of[piece]] = 1
+                unlimited[index_of[piece]] = True
+            else:
+                stocks[player][index_of[piece]] = int(held)
+    shared = stocks[0] == stocks[1]
+    stock = stocks[0] if shared else [0] * n_types
     return DropRule(
         from_captures=bool(drops.get("from_captures", True)),
         regions=(per_player[0], per_player[1]),
@@ -6121,6 +6237,7 @@ def _compile_drops(
         # fields sit at their inert defaults and no committed ruleset's tables move.
         stock=tuple(stock) if any(stock) else (),
         unlimited=tuple(unlimited) if any(unlimited) else (),
+        stock_by_player=() if shared else (tuple(stocks[0]), tuple(stocks[1])),
         placement=drops.get("placement") is True,
         faces=_drop_faces(drops, index_of, n_types, pieces),
         gates=_gates(drops.get("gating"), width, height, orientation, obstacles),

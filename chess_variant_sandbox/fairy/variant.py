@@ -201,7 +201,7 @@ def translate(spec: dict[str, Any] | CompiledSpec) -> Variant:
     rules = source.get("rules", {})
 
     _check_board(compiled, reasons)
-    _check_unsupported_rules(compiled, rules, reasons)
+    _check_unsupported_rules(compiled, rules, reasons, janggi_cannon_types(compiled, source))
     _check_walls(source, compiled, reasons)
     _check_unconsidered_keys(source, reasons)
 
@@ -369,11 +369,12 @@ _RULE_OBJECT_KEYS: dict[str, frozenset[str]] = {
     # as `mustDrop` by `_drop_lines`; `either_face` is schema 18 (Q785), `dropPromoted`
     # (`_drop_face_lines`).
     # `gating` is Q1059a: `gating` and `seirawanGating`, with the gate files in the FEN's
-    # castling field (`_drop_lines`, `position._castling_field`).
+    # castling field (`_drop_lines`, `position._castling_field`). `stock_by_player` is SR3b:
+    # each side's own pocket in the startFen, read off `DropRule.stock_of`.
     "drops": frozenset(
         {
             "from_captures", "no_doubled", "no_mate", "region", "stock", "placement",
-            "either_face", "gating",
+            "either_face", "gating", "stock_by_player",
         }
     ),
     # `by` and `of` are schema 10 and are listed here so the catch-all stops applying to
@@ -411,7 +412,10 @@ _RULE_OBJECT_KEYS: dict[str, frozenset[str]] = {
 
 
 def _check_unsupported_rules(
-    compiled: CompiledSpec, rules: dict[str, Any], reasons: list[str]
+    compiled: CompiledSpec,
+    rules: dict[str, Any],
+    reasons: list[str],
+    janggi: frozenset[int] = frozenset(),
 ) -> None:
     """Every rule with no counterpart, named individually.
 
@@ -485,7 +489,7 @@ def _check_unsupported_rules(
         _check_duck(compiled, reasons)
     elif compiled.turn is not None:
         reasons.append("rules.turn: a side moves once per turn in Fairy-Stockfish")
-    if _capture_matrix_beside_duck(compiled):
+    if _capture_matrix_beside_duck(compiled, janggi):
         reasons.append(
             "piece.captures: what a piece may take is not a property a piece can have there"
         )
@@ -692,22 +696,33 @@ def _check_duck(compiled: CompiledSpec, reasons: list[str]) -> None:
             "rules.duck beside rules.npcs: nothing there moves between turns, so the wild "
             "phase after the duck's half has no counterpart"
         )
+    if compiled.explosion is not None:
+        # SR3e (K3): ours spares the duck as an immune type; theirs is a wall, which no
+        # piece letter names in `blastImmuneTypes`, and the pair is unprobed there.
+        reasons.append(
+            "rules.duck beside rules.explode_on_capture: the duck there is a wall, and a "
+            "blast beside one is unchecked"
+        )
 
 
-def _capture_matrix_beside_duck(compiled: CompiledSpec) -> bool:
-    """Whether the capture matrix restricts anything the duck does not (generation 42).
+def _capture_matrix_beside_duck(
+    compiled: CompiledSpec, janggi: frozenset[int] = frozenset()
+) -> bool:
+    """Whether the capture matrix restricts anything the duck and Janggi's cannon do not
+    (generation 42; SR3c).
 
     The compiler clears the duck's row and column (nothing takes it, it takes nothing),
-    which over there is what a wall is; any other cleared cell is `piece.captures`.
+    which over there is what a wall is; Janggi's cannon not taking a cannon is what
+    ``janggiCannon`` does (`janggi_cannon_types`); any other cleared cell is `piece.captures`.
     """
-    if compiled.duck is None:
+    if compiled.duck is None and not janggi:
         return compiled.has_capture_matrix
-    duck = compiled.duck.piece_type
+    duck = compiled.duck.piece_type if compiled.duck is not None else -1
     return any(
         not allowed
         for taker, row in enumerate(compiled.capture_allowed)
         for taken, allowed in enumerate(row)
-        if duck not in (taker, taken)
+        if duck not in (taker, taken) and not (taker == taken and taker in janggi)
     )
 
 
@@ -969,7 +984,9 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "screen": (
             _TRANSLATED,
-            "any crosses; a hop that chooses whose piece it jumps is refused by name",
+            "any crosses; a hop that chooses whose piece it jumps is refused by name; a "
+            "screen named by type (SR3c) is janggiCannon where the piece is Janggi's own "
+            "cannon (`janggi_cannon_types`) and refused by name otherwise",
         ),
         "legs": (
             _TRANSLATED,
@@ -1379,9 +1396,12 @@ def _demotion_lines(
 #   restrictions, blast immunity, the river -- which is why those two have their own
 #   detectors above rather than appearing in this table.
 #
-# ``soldier``, ``janggiElephant`` and ``immobile`` are deliberately absent: the first
-# two mean more than their notation says, and the third is the empty string, which
-# every piece with no writable move would match.
+# ``soldier``, ``janggiElephant``, ``janggiCannon`` and ``immobile`` are deliberately
+# absent: the first three mean more than their notation says, and the fourth is the empty
+# string, which every piece with no writable move would match. ``janggiCannon`` is ``pR``
+# that may neither jump nor take another cannon (SR3c): a plain ``pR`` matched it by text
+# until then, a game in which a cannon could not jump a cannon that ours let it. It has its
+# own detector (`_is_janggi_cannon`).
 BUILTIN_PIECES: tuple[tuple[str, str], ...] = (
     ("knight", "N"),
     ("bishop", "B"),
@@ -1408,7 +1428,6 @@ BUILTIN_PIECES: tuple[tuple[str, str], ...] = (
     ("clobber", "cW"),
     ("breakthrough", "fmWfF"),
     ("cannon", "mRcpR"),
-    ("janggiCannon", "pR"),
     ("horse", "nN"),
     ("elephant", "nA"),
     ("wazir", "W"),
@@ -1479,6 +1498,8 @@ def _builtin_slot(
         return "pawn"
     if "soldier" not in taken and soldier_rank(piece, compiled) is not None:
         return "soldier"
+    if "janggiCannon" not in taken and _is_janggi_cannon(piece, compiled):
+        return "janggiCannon"
     notation = _plain_notation(piece, compiled)
     if notation is None:
         return None
@@ -1486,6 +1507,53 @@ def _builtin_slot(
         if spelling == notation and name not in taken:
             return name
     return None
+
+
+_ORTHOGONAL = frozenset({(1, 0), (0, 1), (-1, 0), (0, -1)})
+
+
+def janggi_cannon_types(compiled: CompiledSpec, source: dict[str, Any]) -> frozenset[int]:
+    """SR3c: our pieces that are Janggi's own cannon, Fairy-Stockfish's ``janggiCannon``.
+
+    One move, a hop along the four orthogonals to any distance past its screen, moving and
+    taking; its screen names every declared piece but itself (`screen` by type: it may not
+    jump another cannon), and it takes every type but its own (`captures`). Read off the
+    piece for its move and off the compiled matrix for its captures. At most one such type:
+    over there every ``janggiCannon`` refuses every other one, which two types of ours would
+    not. Probed on pyffish 0.0.90 (`tests/test_fairy.py::TestJanggisCannon`): no screen and no
+    capture on a cannon, and no palace diagonal without ``diagonalLines``, which is never
+    written.
+    """
+    found = frozenset(
+        index for index, piece in enumerate(source["pieces"])
+        if _is_janggi_cannon(piece, compiled)
+    )
+    return found if len(found) == 1 else frozenset()
+
+
+def _is_janggi_cannon(piece: dict[str, Any], compiled: CompiledSpec) -> bool:
+    moves = piece.get("moves") or []
+    if len(moves) != 1 or not isinstance(moves[0], dict):
+        return False
+    move = moves[0]
+    if set(move) - {"kind", "vectors", "symmetry", "screen", "mode", "range"}:
+        return False
+    if move.get("kind") != "hop" or move.get("mode", "both") != "both":
+        return False
+    if move.get("range", DEFAULT_RANGE["hop"]) != 0:
+        return False
+    directions: set[tuple[int, int]] = set()
+    for vector in move.get("vectors") or []:
+        directions |= expand_symmetry((vector[0], vector[1]), move.get("symmetry", "none"))
+    if directions != _ORTHOGONAL:
+        return False
+    index = compiled.piece_ids.index(piece["id"])
+    others = {pid for pid in compiled.piece_ids if pid != piece["id"]}
+    screen = move.get("screen")
+    if not isinstance(screen, list) or set(screen) != others:
+        return False
+    row = compiled.capture_allowed[index]
+    return all(allowed == (taken != index) for taken, allowed in enumerate(row))
 
 
 def _pawn_slot_is_safe(piece: dict[str, Any], compiled: CompiledSpec) -> bool:
@@ -1637,6 +1705,10 @@ def _piece_lines(
     for index, piece in enumerate(source["pieces"]):
         if index not in slots:
             continue  # the duck (generation 42): a wall, with no definition line
+        if slots[index] == "janggiCannon":
+            # SR3c: the slot carries the move, its screen and its captures; no Betza can.
+            lines.append(f"janggiCannon = {chars[index].lower()}")
+            continue
         notation = _betza_for(
             piece,
             compiled=compiled,
@@ -1799,6 +1871,12 @@ def _descriptor_term(
     mode = descriptor.get("mode", "both")
 
     if kind == "hop":
+        if isinstance(descriptor.get("screen"), list):
+            reasons.append(
+                f"{where}: a hop whose screen names its types has no counterpart but "
+                "Janggi's own cannon (janggiCannon), which this is not"
+            )
+            return None
         if descriptor.get("screen", "any") != "any":
             reasons.append(f"{where}: a hop that chooses whose piece it jumps has no counterpart")
             return None
@@ -1931,14 +2009,21 @@ def compiled_initial_state(compiled: CompiledSpec) -> Any:
     from chess_variant_sandbox.engine.state import GameState
 
     # A finite stock is each side's opening hand (schema 10), written into the startFen's
-    # pocket; the hand is otherwise empty, as the core's opening state is.
-    stock = compiled.drops.stock if compiled.drops is not None else ()
+    # pocket; the hand is otherwise empty, as the core's opening state is. SR3b: each
+    # side's own (`drops.stock_by_player`), which the pocket says per side as it always
+    # could (white's letters upper case, black's lower; probed in `tests/test_fairy.py`).
+    drops = compiled.drops
+    hands: tuple[tuple[int, ...], tuple[int, ...]] = (
+        (drops.stock_of(0), drops.stock_of(1))
+        if drops is not None and drops.stocked
+        else ((), ())
+    )
     return GameState(
         board=compiled.initial_board,
         side_to_move=0,
         unmoved=compiled.initial_unmoved,
         colour=bytes(compiled.n_squares) if compiled.territory is not None else b"",
-        hands=(tuple(stock), tuple(stock)) if stock else ((), ()),
+        hands=hands,
     )
 
 
@@ -2110,7 +2195,12 @@ def _types_in_hand(compiled: CompiledSpec) -> set[int]:
     """
     drops = compiled.drops
     stocked = (
-        {piece for piece, held in enumerate(drops.stock) if held}
+        {
+            piece
+            for player in (0, 1)
+            for piece, held in enumerate(drops.stock_of(player))
+            if held
+        }
         if drops is not None
         else set()
     )
@@ -2760,7 +2850,12 @@ def _drop_lines(
     needed = (
         set(range(compiled.n_types))
         if rule.from_captures
-        else {piece for piece, held in enumerate(rule.stock) if held}
+        else {
+            piece
+            for player in (0, 1)
+            for piece, held in enumerate(rule.stock_of(player))
+            if held
+        }
     )
     rest = (restricted - pawnish) & needed
     if not rest:

@@ -1460,12 +1460,12 @@ def _measured_values(spec: CompiledSpec) -> tuple[float, ...]:
 
 def _royal_loss_ends_it(spec: CompiledSpec, side: int) -> bool:
     """``tables.rs::royal_loss_ends_it``: a royal win condition, and a royal in ``side``'s
-    setup (on the opening board, or in a stock that holds one, which is both sides')."""
+    setup (on the opening board, or in ``side``'s stock, SR3b's per player)."""
     if spec.win not in ("checkmate", "royal_capture"):
         return False
     royals = spec.royal_types
     if spec.drops is not None:
-        stock = spec.drops.stock
+        stock = spec.drops.stock_of(side)
         if any(piece_type < len(stock) and stock[piece_type] > 0 for piece_type in royals):
             return True
     for value in spec.initial_board[: spec.n_squares]:

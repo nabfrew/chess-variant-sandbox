@@ -2246,3 +2246,109 @@ class TestReachForAListOfPieces:
             "flagRegionBlack = *1\nwhiteFlag = *8\nblackFlag = *1\n"
         )
         assert all(sf.is_immediate_game_end("sr3aflagany", fen, [])[0] for fen in (knight, rook))
+
+
+class TestAStockPerPlayer:
+    """SR3b (`docs/plan-schema-next.md` §1 rank 6): each side's own stock is its own pocket in
+    the startFen, which the FEN says per side (white's letters upper case, black's lower)."""
+
+    @staticmethod
+    def _handicap() -> dict[str, Any]:
+        spec = _spec("chess")
+        spec["rules"]["drops"] = {
+            "from_captures": False, "stock_by_player": {"0": {}, "1": {"N": 2}},
+        }
+        return spec
+
+    def test_the_second_players_knights_are_its_pocket(self) -> None:
+        written = translate(self._handicap())
+        (line,) = [line for line in written.config.splitlines() if line.startswith("startFen")]
+        assert line.endswith("[nn] w KQkq - 0 1"), line
+
+    def test_a_pocket_is_per_side_in_the_installed_pyffish(self) -> None:
+        """The probe the translation rests on: a pocket of black's letters alone gives black
+        drops and white none."""
+        sf = _pyffish()
+        fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[nn] {} KQkq - 0 1"
+        assert not any("@" in move for move in sf.legal_moves("crazyhouse", fen.format("w"), []))
+        assert any(move.startswith("N@") for move in sf.legal_moves("crazyhouse", fen.format("b"), []))
+
+    def test_a_handicap_plays_the_same_game(self) -> None:
+        from chess_variant_sandbox.fairy.verify import PyffishBackend, verify
+
+        _pyffish()
+        result = verify(self._handicap(), PyffishBackend(), "", depth=2, games=1, plies=30)
+        assert result.ok, result.summary()
+
+
+class TestJanggisCannon:
+    """SR3c (`docs/plan-schema-next.md` §1 rank 7): a hop screen named by type crosses as
+    Fairy-Stockfish's ``janggiCannon`` where the piece is Janggi's own cannon (no cannon as
+    its screen, no cannon taken), and is refused by name otherwise."""
+
+    @staticmethod
+    def _cannon(screen: Any = None, captures: Any = "others") -> dict[str, Any]:
+        spec = _spec("xiangqi")
+        others = [piece["id"] for piece in spec["pieces"] if piece["id"] != "C"]
+        for piece in spec["pieces"]:
+            if piece["id"] == "C":
+                piece["moves"] = [{
+                    "kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4",
+                    "screen": others if screen is None else screen,
+                }]
+                if captures == "others":
+                    piece["captures"] = list(others)
+        return spec
+
+    def test_janggis_cannon_is_the_slot(self) -> None:
+        written = translate(self._cannon())
+        assert "janggiCannon = c" in written.config.splitlines()
+
+    def test_the_slot_behaves_as_ours_in_the_installed_pyffish(self) -> None:
+        """The probe the translation rests on: no cannon screens it, no cannon is taken,
+        any other piece of either side screens it, and it gives no check through a
+        cannon; no palace diagonal without diagonalLines."""
+        sf = _pyffish()
+        name = "ng" + hashlib.sha1(b"sr3c janggi cannon probe").hexdigest()[:12]
+        sf.load_variant_config(
+            f"[{name}]\nmaxRank = 10\nmaxFile = 9\nrook = r\njanggiCannon = c\nking = k:W\n"
+            "startFen = 3k5/9/9/9/9/9/9/9/9/4K4 w - - 0 1\ncastling = false\n"
+            "flyingGeneral = false\n"
+        )
+
+        def moves(fen: str, origin: str) -> list[str]:
+            return sorted(m for m in sf.legal_moves(name, fen, []) if m.startswith(origin))
+
+        assert moves("3k5/9/9/9/9/9/9/c8/9/Cr2K4 w - - 0 1", "a1") == ["a1c1", "a1d1"]
+        assert moves("3k5/9/9/9/c8/9/9/R8/9/C3K4 w - - 0 1", "a1") == [
+            "a1a4", "a1a5", "a1f1", "a1g1", "a1h1", "a1i1",
+        ]
+        assert moves("3k5/9/9/9/9/9/9/5r3/4R4/3C1K3 w - - 0 1", "d1") == []
+        assert not sf.gives_check(name, "3k5/9/9/9/3c5/9/9/9/3C5/4K4 b - - 0 1", [])
+        assert sf.gives_check(name, "3k5/9/9/9/3r5/9/9/9/3C5/4K4 b - - 0 1", [])
+
+    def test_janggis_cannon_plays_the_same_game(self) -> None:
+        from chess_variant_sandbox.fairy.verify import PyffishBackend, verify
+
+        _pyffish()
+        result = verify(self._cannon(), PyffishBackend(), "", depth=2, games=1, plies=30)
+        assert result.ok, result.summary()
+
+    @pytest.mark.parametrize(
+        ("screen", "captures"),
+        [(["R", "S"], "others"), (None, None)],
+        ids=["another-list", "takes-a-cannon"],
+    )
+    def test_any_other_list_is_refused_by_name(self, screen: Any, captures: Any) -> None:
+        with pytest.raises(Untranslatable) as refused:
+            translate(self._cannon(screen, captures))
+        assert any(
+            "screen names its types has no counterpart but Janggi's own cannon" in reason
+            for reason in refused.value.reasons
+        )
+
+    def test_a_cannon_that_jumps_anything_is_no_janggi_cannon(self) -> None:
+        """A plain pR hop matched janggiCannon by its text until SR3c."""
+        written = translate(self._cannon(screen="any", captures=None))
+        assert not any(line.startswith("janggiCannon") for line in written.config.splitlines())
+        assert any(line.endswith(":pR") for line in written.config.splitlines())

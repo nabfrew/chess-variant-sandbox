@@ -136,7 +136,10 @@ NOTES: dict[str, str] = {
     "rules.promotion.to_by_player": (
         "Instead of `to`, a separate list of promotion targets for each player."
     ),
-    "rules.castling.king": "The id of the piece that castles, usually the royal piece.",
+    "rules.castling.king": (
+        "The id of the piece that castles, usually the royal piece. It need not be royal: "
+        "where check exists it castles as a king would, and never leaves the royal in check."
+    ),
     "rules.castling.rook": "The id of the piece it castles with.",
     "rules.castling.king_steps": "How many squares the castling piece moves.",
     "rules.castling.king_file": (

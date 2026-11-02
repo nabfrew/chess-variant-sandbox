@@ -154,7 +154,8 @@ SHAPE = [
     ),
     pytest.param(
         {"pieces.1.moves.0.screen": "anyone"},
-        "pieces[1].moves[0].screen must be one of ('any', 'own', 'enemy'), got 'anyone'",
+        "pieces[1].moves[0].screen must be one of ('any', 'own', 'enemy') or a list of piece ids, "
+        "got 'anyone'",
         id="screen-owner",
     ),
     pytest.param(

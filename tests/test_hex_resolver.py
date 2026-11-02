@@ -290,6 +290,8 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "simultaneous", "simultaneous_initiative", "simultaneous_impossible", "beats_share",  # Q918a
     "wins_by_leaving",  # Q786
     "reach_runners",  # SR3a
+    "stock_is_uneven",  # SR3b
+    "typed_screen_share",  # SR3c
     "portal_pairs", "portals_move", "portals_one_way",  # Q771
     "portals_no_back",  # Q807
     "portals_ring", "portals_funnel", "portals_other_map", "portals_filtered",  # Q843a

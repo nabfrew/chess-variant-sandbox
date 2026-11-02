@@ -38,17 +38,30 @@ from chess_variant_sandbox.spec.schema import (
     Fields,
     Names,
     drop_face_pairs,
+    duck_piece,
     hire_ids,
     piece_bounties,
     piece_prices,
     purse_bribes,
     purse_market,
     reach_pieces,
+    stocked_ids,
     strike_is_live,
     strike_states_nothing,
     strike_survives_anything,
     wrap_axes,
 )
+
+
+def _rungs(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """The pieces a strike's chain or a contact's links are read off: every declared piece but
+    a royal and the duck (SR3e, K3: no strike or contact reaches the duck, and none of their
+    lists may name it)."""
+    duck = duck_piece(spec.get("rules"))
+    return [
+        piece for piece in spec.get("pieces", [])
+        if isinstance(piece, dict) and not piece.get("royal") and piece.get("id") != duck
+    ]
 
 
 def pieces(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -309,7 +322,7 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
         # captures leaves a rule the validator refuses by name -- *"nothing else fills a
         # hand, so there is never anything to drop"*. The `castling` argument again: a
         # rule left naming nothing goes with what it named.
-        if not drops.get("from_captures", True) and not drops.get("stock"):
+        if not drops.get("from_captures", True) and not stocked_ids(drops):
             rules.pop("drops", None)
         # Schema 18e (Q785). The last `promoted_from` pair gone leaves a flag that pairs
         # nothing, which the validator refuses by name, so the flag goes with the pair.
@@ -789,7 +802,7 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
             isinstance(drops, dict)
             and drops
             and drops.get("from_captures", True)
-            and not drops.get("stock")
+            and not stocked_ids(drops)
         ):
             drop("drops")
     # Case 6: a hand that neither captures nor a stock can fill.
@@ -798,7 +811,7 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
         isinstance(drops, dict)
         and drops
         and not drops.get("from_captures", True)
-        and not drops.get("stock")
+        and not stocked_ids(drops)
     ):
         drop("drops")
     # Cases 7 to 10: a rule about a royal piece, in a game with none.
@@ -1628,11 +1641,7 @@ def set_strike(
     game rather than a modified one.
     """
     ranked = sorted(
-        (
-            piece
-            for piece in spec.get("pieces", [])
-            if isinstance(piece, dict) and not piece.get("royal")
-        ),
+        _rungs(spec),
         key=lambda piece: float(piece.get("value", 1)),
         reverse=effect == "demote",
     )
@@ -1681,7 +1690,13 @@ def set_stone(spec: dict[str, Any], piece_id: str, name: str = "stone") -> dict[
     drops = spec.setdefault("rules", {}).setdefault(
         "drops", {"from_captures": False}
     )
-    drops.setdefault("stock", {})[piece_id] = STOCK_UNLIMITED
+    by_player = drops.get("stock_by_player")
+    if isinstance(by_player, dict):
+        # SR3b: a stone is both players' supply, so it goes in each player's stock.
+        for player in ("0", "1"):
+            by_player.setdefault(player, {})[piece_id] = STOCK_UNLIMITED
+    else:
+        drops.setdefault("stock", {})[piece_id] = STOCK_UNLIMITED
     return spec
 
 
@@ -1744,11 +1759,7 @@ def set_contacts(
     ``advance`` beside a surviving target, which is why the two defaults differ.
     """
     ranked = sorted(
-        (
-            piece
-            for piece in spec.get("pieces", [])
-            if isinstance(piece, dict) and not piece.get("royal")
-        ),
+        _rungs(spec),
         key=lambda piece: float(piece.get("value", 1)),
         reverse=effect == "demote",
     )
@@ -1883,10 +1894,7 @@ def merge_links(spec: dict[str, Any]) -> list[dict[str, Any]]:
     that already has an own link is skipped; and ``mover_to`` is never the mover, since it
     sits at least one rung above the cheapest piece.
     """
-    ranked = sorted(
-        (piece for piece in pieces(spec) if not piece.get("royal")),
-        key=lambda piece: float(piece.get("value", 1)),
-    )
+    ranked = sorted(_rungs(spec), key=lambda piece: float(piece.get("value", 1)))
     contacts = spec.get("rules", {}).get("contacts")
     contacts = contacts if isinstance(contacts, dict) else {}
     declared = contacts.get("immune")

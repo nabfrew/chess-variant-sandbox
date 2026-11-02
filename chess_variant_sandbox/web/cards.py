@@ -58,6 +58,8 @@ PIECE_PATHS = frozenset({
     "pieces[].beats",
     # Q1074b2: who a pusher may push, a list of piece ids as `captures`.
     "pieces[].pushes",
+    # SR3c: a hop screen named by type, a list of piece ids beside the owner words.
+    "pieces[].moves[].screen",
     "setup.placements[].piece",
     "rules.promotion.piece",
     "rules.promotion.to",

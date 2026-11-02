@@ -249,13 +249,19 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "exceed range (0 means unlimited, so only beside an unlimited range)."
                 ),
             },
+            # SR3c (`docs/plan-schema-next.md` §1 rank 7): an owner word or a list of ids.
             "screen": {
-                "type": "string",
-                "enum": list(SCREEN_OWNERS),
+                "anyOf": [
+                    {"type": "string", "enum": list(SCREEN_OWNERS)},
+                    {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                ],
                 "description": (
-                    "For hops only, whose piece may serve as the screen. 'any' is the "
+                    "For hops only, which piece may serve as the screen. 'any' is the "
                     "xiangqi cannon and the default, 'own' is a piece that vaults its "
-                    "own army, and 'enemy' is one that can only jump an opponent."
+                    "own army, and 'enemy' is one that can only jump an opponent. A list "
+                    "of piece ids names the types that may screen, of either side: "
+                    "Janggi's cannon lists every piece but the cannon, so it may not "
+                    "jump another cannon."
                 ),
             },
             # Q1074b2 (`docs/plan-push.md` §1.2, §1.3).
@@ -334,6 +340,18 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
         required=["kind", "vectors"],
         strict=strict,
     )
+    # SR3c: a portal's moves are a piece's but for a screen named by type, which names
+    # pieces and is refused there; its screen is an owner word alone.
+    portal_move = {
+        **move,
+        "properties": {
+            **move["properties"],
+            "screen": {**move["properties"]["screen"]["anyOf"][0], "description": (
+                "For hops only, whose piece may serve as the screen: 'any' (the default), "
+                "'own' or 'enemy'."
+            )},
+        },
+    }
 
     # Schema 30 (Q999a, `docs/archive/plan-passive.md` §2): one line of sight, written with a slide's
     # geometry keys (the same vector, symmetries and bounds as a move's) and its effect.
@@ -794,8 +812,11 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "owns (under a mirrored setup their squares are mirrored too, still "
                     "nobody's). A piece nobody owns blocks and may be taken by either player; "
                     "its type's control says whether anyone may move it. Never a royal, a spy "
-                    "or a wild type, and refused beside rules.npcs, rules.duck, "
-                    "rules.portals, rules.simultaneous, rules.strike and rules.contacts."
+                    "or a wild type, and refused beside rules.simultaneous, rules.strike and "
+                    "rules.contacts. Beside rules.npcs a wild piece eats one its type may "
+                    "capture, paying nobody; the duck never lands on one. Beside "
+                    "rules.portals a held piece goes through a portal as its holder's piece "
+                    "would, and a fold may move under one."
                 ),
             },
             "facing": {
@@ -1441,7 +1462,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     {
                         "moves": {
                             "type": "array",
-                            "items": move,
+                            "items": portal_move,
                             "maxItems": MAX_MOVE_DESCRIPTORS,
                             "description": (
                                 "How an end of this group moves when a player moves it "
@@ -1706,9 +1727,11 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "by bounties and spent on buying pieces from a market, hiring a priced "
                     "piece nobody owns that stands next to one of theirs (its price), or "
                     "under bribe buying an enemy one (twice the price). Not beside rounds "
-                    "(rules.simultaneous), portals or explode_on_capture; under "
-                    "drops.placement a held hand is placed first. In a turn of several moves "
-                    "each buy is a move, paid from the purse as the move before left it."
+                    "(rules.simultaneous) or explode_on_capture; under drops.placement a "
+                    "held hand is placed first. In a turn of several moves each buy is a "
+                    "move, paid from the purse as the move before left it. Beside portals a "
+                    "piece is never bought onto a portal's square, but may be bought into an "
+                    "empty fold, where it stands."
                 ),
             ),
             # Q1074b2 (`docs/plan-push.md` §1.2, §2): the core plays the single push, and
@@ -1791,10 +1814,14 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "which may not stay where it is. It stands, blocks lines and "
                             "screens a hop; nothing may capture it and it captures nothing. "
                             "Only beside win 'royal_capture', 'annihilation' or 'none' (no "
-                            "check rule), never in rounds or beside turn, portals, a blast, "
-                            "a strike or contacts, and its type never sweeps; a player's sweep "
-                            "stops short of it, as of any piece it may not capture. max_plies "
-                            "must be even (each half is a ply)."
+                            "check rule), never in rounds or beside turn, and its type never "
+                            "sweeps; a player's sweep stops short of it, as of any piece it may "
+                            "not capture. A blast beside it leaves it standing, and no strike "
+                            "or contact reaches it. Beside portals it "
+                            "blocks a portal exit or a fold end it stands on, never goes "
+                            "through one, never lands on a portal end and may stop in an "
+                            "empty fold, which never moves it. max_plies must be even (each "
+                            "half is a ply)."
                         ),
                     },
                     "start": {
@@ -2043,6 +2070,31 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             ]
                         },
                     },
+                    # SR3b: what `compile.DropRule.stock_by_player` reads.
+                    "stock_by_player": _object(
+                        {
+                            player: {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "anyOf": [
+                                        {"type": "integer", "minimum": 1, "maximum": MAX_STOCK},
+                                        {"const": STOCK_UNLIMITED},
+                                    ]
+                                },
+                            }
+                            for player in ("0", "1")
+                        },
+                        required=["0", "1"],
+                        strict=strict,
+                        description=(
+                            "Each player's own stock, in place of 'stock': '0' the first "
+                            "player's, '1' the second's, each as 'stock' is ({} for "
+                            "nothing). A handicap: the second player starts with two "
+                            "knights in hand, {\"0\": {}, \"1\": {\"N\": 2}}. Not beside "
+                            "'stock'; not both empty. A type 'unlimited' for one player is "
+                            "'unlimited' for the other too, or absent there."
+                        ),
+                    ),
                     # Schema 18 (Q784): what `compile.DropRule.placement` reads.
                     "placement": {
                         "type": "boolean",

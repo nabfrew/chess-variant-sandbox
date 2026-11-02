@@ -56,6 +56,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_speeds,
     piece_strengths,
     piece_weights,
+    player_stocks,
     portal_groups,
     portal_map_shape,
     portal_stand_in_shape,
@@ -107,6 +108,10 @@ _SCALES: dict[str, float] = {
     # elsewhere than the computed leg (Janggi's elephant beside the (2, 3) lame); without
     # this the two would differ only by the rule charge in `special_rules`.
     "legs_share": 1.0,
+    # SR3c (`docs/plan-schema-next.md` §1 rank 7). A hop whose screen names its types
+    # (Janggi's cannon, which may not jump another cannon) is blocked where `any` is not;
+    # without this the two would read as one game.
+    "typed_screen_share": 1.0,
     # T1 (`docs/archive/plan-pieces-moves.md` §5.5). A slide whose path turns (a circle or a zigzag)
     # reaches other squares from the same directions; without this the ring queen and the
     # queen would differ only by the rule charge in `special_rules`.
@@ -127,6 +132,9 @@ _SCALES: dict[str, float] = {
     # the same distance from chess.
     "has_stock": 1.0,
     "stock_is_endless": 1.0,
+    # SR3b: a stock the two players do not share is a handicap, a game apart from the
+    # same hand given to both.
+    "stock_is_uneven": 1.0,
     # Schema 18d (Q784). Whether a held piece *must* be played: the whole difference
     # between a stock spent when it suits and a placement phase, and not costed in
     # `complexity` (as 18c's flags are not), so it needs a feature or the pair reads as
@@ -524,6 +532,10 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         "legs_share": sum(
             1 for piece in pieces for move in piece.get("moves", []) or []
             if isinstance(move, dict) and "legs" in move
+        ) / total_moves,
+        "typed_screen_share": sum(
+            1 for piece in pieces for move in piece.get("moves", []) or []
+            if isinstance(move, dict) and isinstance(move.get("screen"), list)
         ) / total_moves,
         "lame_rider_share": sum(
             1 for piece in pieces for move in piece.get("moves", []) or []
@@ -1144,14 +1156,17 @@ def _stock_features(drops: Any) -> dict[str, float]:
         "drops_either_face": either,
         "drops_gating": gating,
     }
-    stock = drops.get("stock") if isinstance(drops, dict) else None
-    if not isinstance(stock, dict) or not stock:
+    absent["stock_is_uneven"] = 0.0
+    # SR3b: either player's stock (`player_stocks`), and whether the two differ.
+    stocks = player_stocks(drops)
+    if not stocks[0] and not stocks[1]:
         return absent
     return {
         "has_stock": 1.0,
         "stock_is_endless": 1.0 if any(
-            held == STOCK_UNLIMITED for held in stock.values()
+            held == STOCK_UNLIMITED for stock in stocks for held in stock.values()
         ) else 0.0,
+        "stock_is_uneven": 0.0 if stocks[0] == stocks[1] else 1.0,
         "drops_placement": placement,
         "drops_either_face": either,
         "drops_gating": gating,

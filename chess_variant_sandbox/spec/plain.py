@@ -116,7 +116,8 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "whose piece it jumps",
         "For a hop only: whose piece it may jump over. 'any' is the xiangqi cannon, and the "
         "usual choice; 'own' jumps only its own side's pieces, and 'enemy' only the other "
-        "side's.",
+        "side's. A list of pieces names the kinds it may jump, of either side: Janggi's "
+        "cannon lists every piece but the cannon, so it never jumps another cannon.",
     ),
     "pieces.moves.condition": ("only when", None),
     "pieces.moves.condition.first_move": ("only on its first move", None),
@@ -851,6 +852,12 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "For each piece, how many each player holds before anything is taken: a count of 1 "
         "to 32, or 'unlimited' for a supply that never runs out. A held piece is the only "
         "one that may have no way of moving.",
+    ),
+    "rules.drops.stock_by_player": (
+        "held at the start, by player",
+        "Each player's own stock, in place of one both share: '0' the first player's, '1' "
+        "the second's, each as the stock is ({} for nothing). A handicap gives one side "
+        "pieces in hand the other lacks.",
     ),
     "rules.explode_on_capture.radius": ("how far it reaches", None),
     "rules.explode_on_capture.immune": ("pieces that survive it", None),

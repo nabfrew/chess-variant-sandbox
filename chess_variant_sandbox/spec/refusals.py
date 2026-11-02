@@ -3,7 +3,7 @@
 Each row is one plain two-key refusal the validator still makes: two rules (or a rule and a
 property, or a rule and the lattice) that may not stand in one game, refused whenever both
 are on, with one fixed message. Its id is the row of `docs/plan-schema-next.md` §2 that
-inventories it (an id can hold several rows when the plan's row names several keys: K1, K3,
+inventories it (an id can hold several rows when the plan's row names several keys: K1,
 R10), ``first`` and ``second`` are the two key paths, and ``message`` is the validator's text,
 word for word. `spec/schema.py` emits each through `refusal`, so a pair is stated once, a test
 asks `refused_ids` for the id instead of matching prose, and a lift deletes the row.
@@ -17,7 +17,8 @@ pair (a message naming a piece or an index, a third key, a dependency refused by
 stay inline in `schema.py`.
 
 Kept rows only: what SR2 and SR2b lifted (L5, L6, T2 and T5 in part, H1, H2, H6, W9, N20,
-V5 and V6 in part) is not here, or is here as the narrower case still refused.
+V5 and V6 in part) and the core lifts of SR3d (K2), SR3e (K3), SR3f (O1, O2) and SR3g (P9,
+P10) is not here, or is here as the narrower case still refused.
 """
 
 from __future__ import annotations
@@ -73,14 +74,6 @@ def _duck_check(second: str, rule: str) -> Refusal:
         f"rules.duck beside {rule}: a move's legality would depend on the duck move after "
         'it; the duck is for a game without check ("win": "royal_capture", "annihilation" '
         'or "none")',
-    )
-
-
-def _duck_taken(key: str) -> Refusal:
-    return Refusal(
-        "K3", "rules.duck", f"rules.{key}",
-        f"rules.duck beside rules.{key}: an uncapturable piece in a blast or a strike "
-        "would be a second rule",
     )
 
 
@@ -329,14 +322,6 @@ REFUSALS: tuple[Refusal, ...] = (
     _duck_check("rules.win", '"win": "checkmate"'),
     _duck_check("rules.forbid_check", '"forbid_check": true'),
     _duck_check("rules.check_limit", "rules.check_limit"),
-    Refusal(
-        "K2", "rules.duck", "rules.portals",
-        "rules.duck beside rules.portals: a portal end and the duck share the third "
-        "owner's block",
-    ),
-    _duck_taken("explode_on_capture"),
-    _duck_taken("strike"),
-    _duck_taken("contacts"),
     # §2.10 Portals. P7, P8 and P11 to P15 name a piece, a move or an index and stay inline.
     Refusal(
         "P1", "rules.portals", 'board.lattice: "hex"',
@@ -349,11 +334,7 @@ REFUSALS: tuple[Refusal, ...] = (
     _portals("P4", "contacts", _SECOND_LANDING),
     _portals("P5", "explode_on_capture", "a blast beside an exit is a second landing rule"),
     _portals("P6", "territory", "which square a transit colours is not settled"),
-    _purse("P9", "portals", "a portal end is nobody's and its own mover"),
-    _nobody("P10", "portals", "portal ends share nobody's block"),
     # §2.11 Pieces nobody owns, the purse, bounties and prices, in the validator's order.
-    _nobody("O1", "npcs", "the phase and the bounty tally read nobody's block as wild pieces"),
-    _nobody("O2", "duck", "the duck shares nobody's block, and its half reads the block as the duck's"),
     _nobody("O3", "strike", "what a capture leaves of a piece nobody owns is a second rule"),
     _nobody("O4", "contacts", "what a contact makes of a piece nobody owns is a second rule"),
     _majority("O10", "territory", "who claims a square a nobody's piece steps on is a second rule"),

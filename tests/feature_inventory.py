@@ -45,6 +45,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_bounties,
     piece_prices,
     piece_sights,
+    player_stocks,
     promoting_piece_ids,
     purse_bribes,
     purse_pays_loser,
@@ -59,7 +60,7 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 58
+LAST_BUMP = 65
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -1329,6 +1330,144 @@ def _schema_fifty_eight_uses(spec: dict[str, Any]) -> set[str]:
     return {"pieces.takes_royal"} if takes_royal_ids(spec) else set()
 
 
+def _schema_fifty_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 59 added, by name (SR3b,
+    `docs/plan-schema-next.md` §1 rank 6; numbered by order of landing, bumping no version).
+    One name:
+
+    * ``rules.drops.stock_by_player`` -- each player's own stock, the two different (a
+      handicap: the second player starts with two knights in hand). The two equal is
+      ``stock``, which the normal form writes, and names nothing.
+    """
+    drops = (spec.get("rules") or {}).get("drops")
+    if not isinstance(drops, dict) or not isinstance(drops.get("stock_by_player"), dict):
+        return set()
+    first, second = player_stocks(drops)
+    return {"rules.drops.stock_by_player"} if first != second else set()
+
+
+def _schema_sixty_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 60 added, by name (SR3c,
+    `docs/plan-schema-next.md` §1 rank 7; numbered by order of landing, bumping no version).
+    One name:
+
+    * ``pieces.moves.hop.screen.types`` -- a hop whose screen is a list of piece ids, the
+      types that may screen it, of either side (Janggi's cannon, which may not jump another
+      cannon). A list naming every declared piece is ``"any"``, which the normal form
+      writes, and names nothing.
+    """
+    ids = {piece.get("id") for piece in spec.get("pieces") or [] if isinstance(piece, dict)}
+    portals = bool((spec.get("rules") or {}).get("portals"))
+    for piece in spec.get("pieces") or []:
+        for move in piece.get("moves") or [] if isinstance(piece, dict) else []:
+            listed = move.get("screen") if isinstance(move, dict) else None
+            if isinstance(listed, list) and (portals or set(listed) != ids):
+                return {"pieces.moves.hop.screen.types"}
+    return set()
+
+
+def _schema_sixty_one_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 61 added, by name (SR3d,
+    `docs/plan-schema-next.md` §2.9 row K2; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.duck.portals`` -- the duck beside portals, momentum or fold: to every transit
+      and go-through the duck is a piece nobody may take, it never goes through one, and a
+      fold is floor to it.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if duck_piece(rules) is not None and rules.get("portals"):
+        return {"rules.duck.portals"}
+    return set()
+
+
+def _schema_sixty_two_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 62 added, by name (SR3e,
+    `docs/plan-schema-next.md` §2.9 row K3; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.duck.untouched`` -- the duck beside a blast, a strike or contacts: a blast beside
+      it leaves it standing, and no strike or contact reaches it.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if duck_piece(rules) is not None and any(
+        rules.get(key) for key in ("explode_on_capture", "strike", "contacts")
+    ):
+        return {"rules.duck.untouched"}
+    return set()
+
+
+def _schema_sixty_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 63 added, by name (SR3f,
+    `docs/plan-schema-next.md` §2.11 rows O1 and O2; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key:
+
+    * ``rules.npcs.nobodys`` -- a placement for nobody beside wild pieces: a wild piece eats a
+      nobody's piece its type may capture, as it eats a player's, and pays nobody.
+    * ``rules.duck.nobodys`` -- a placement for nobody beside the duck, which lands on empty
+      squares only.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if not neutral_ids(spec):
+        return set()
+    found: set[str] = set()
+    if rules.get("npcs"):
+        found.add("rules.npcs.nobodys")
+    if duck_piece(rules) is not None:
+        found.add("rules.duck.nobodys")
+    return found
+
+
+def _schema_sixty_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 64 added, by name (SR3g,
+    `docs/plan-schema-next.md` §2.10 rows P9 and P10; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key:
+
+    * ``rules.purse.portals`` -- a purse beside portals: a momentum end's square is not empty
+      for a buy, an empty fold's is, and the bought piece stands in it.
+    * ``rules.portals.nobodys`` -- a placement for nobody beside portals: a held piece transits
+      as its holder's would, a fold may move under a nobody's piece, and an exit onto one takes
+      it where the mover may.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if not rules.get("portals"):
+        return set()
+    found: set[str] = set()
+    if purse_rule(spec) is not None:
+        found.add("rules.purse.portals")
+    if neutral_ids(spec):
+        found.add("rules.portals.nobodys")
+    return found
+
+
+def _schema_sixty_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 65 added, by name (SR1d,
+    `docs/plan-schema-next.md` §1 rank 8, row Z2; numbered by order of landing, bumping no
+    version). One lifted refusal, no key:
+
+    * ``rules.castling.common_king`` -- ``rules.castling.king`` names a piece that is not royal
+      beside royals. Where check exists it castles as a king would, and the core asks every
+      such castle whether it leaves the royal attacked (its rook may be the sole blocker).
+      Under annihilation, with no royal, it castled before and is not this name.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    castling = rules.get("castling")
+    if not isinstance(castling, dict):
+        return set()
+    royals = {
+        piece.get("id") for piece in spec.get("pieces") or []
+        if isinstance(piece, dict) and piece.get("royal")
+    }
+    if royals and castling.get("king") not in royals:
+        return {"rules.castling.common_king"}
+    return set()
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -1380,4 +1519,11 @@ _COLLECTORS = {
     56: _schema_fifty_six_uses,
     57: _schema_fifty_seven_uses,
     58: _schema_fifty_eight_uses,
+    59: _schema_fifty_nine_uses,
+    60: _schema_sixty_uses,
+    61: _schema_sixty_one_uses,
+    62: _schema_sixty_two_uses,
+    63: _schema_sixty_three_uses,
+    64: _schema_sixty_four_uses,
+    65: _schema_sixty_five_uses,
 }

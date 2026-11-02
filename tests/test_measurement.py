@@ -574,7 +574,11 @@ class TestTheFingerprintsPointAtSomething:
 # where the key is on, which is the crowd alone, edited to a new hash in the same change (its old
 # runs stay under `961b230bc5eb`); every other game's number is the same; batch A's replay (SR3r)
 # re-measures. It was "f7e44068dbef119a" after SR3a.
-FROZEN_METRICS = "5f16f00a20351d98"
+# **Moved 2026-11-01 by SR3b (a stock per player)**: `spec/reachability.py` reads each player's
+# stock through `player_stocks` and `agents/evaluation.py` a side's own stock (`stock_of`). The
+# same reading for a stock both players share, which is every library game; batch A's replay
+# (SR3r) re-measures. It was "5f16f00a20351d98" after Q1077.
+FROZEN_METRICS = "ed744844a0087fc9"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -939,7 +943,10 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-31 by SR3a**: `agents/evaluation.py` reads a goal's runners as a mask (as
 # `FROZEN_METRICS` says), the same reading for one runner or any, so no `analysis.json` moves.
 # It was "1969ab0341161e29" after Q1074b6.
-FROZEN_ANALYSIS = "df2e6e632873f256"
+# **Moved 2026-11-01 by SR3b**: `agents/evaluation.py` reads a side's own stock (as
+# `FROZEN_METRICS` says), the same reading for a shared stock, so no `analysis.json` moves.
+# It was "df2e6e632873f256" after SR3a.
+FROZEN_ANALYSIS = "68eb45bc94c9628c"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

@@ -99,8 +99,9 @@ pub const DUCK_STEP: u32 = 0;
 pub const DUCK_PLACE: u32 = 1;
 pub const DUCK_PASS: u32 = 2;
 /// The owner a portal end's board byte belongs to: the third block, nobody's, which a wild
-/// piece uses too. The validator refuses the two rules together, so a game's third block
-/// holds one or the other (`compile.PortalRule`).
+/// piece and the duck use too. The validator refuses wild pieces beside portals; the duck
+/// shares the block with them since SR3d (K2), each byte told apart by `Tables::kind_of`
+/// (`compile.PortalRule`).
 pub const PORTAL_OWNER: usize = WILD;
 
 /// TC1 (`docs/plan-turncoat.md` §3.2): who moves a piece nobody owns, by its kind -- what
@@ -574,15 +575,39 @@ impl EntryRef {
 pub const SCREEN_ANY: u8 = 0;
 pub const SCREEN_OWN: u8 = 1;
 pub const SCREEN_ENEMY: u8 = 2;
+/// SR3c (`docs/plan-schema-next.md` §1 rank 7): the first code of a screen named by type.
+/// Code `SCREEN_TYPES + k` is the hop whose screen must be one of the types of the game's
+/// `k`-th listed screen, `Tables::screen_types[k]`, of either side. The three owner codes
+/// below it are every game's before SR3c, so none of their tables moved.
+pub const SCREEN_TYPES: u8 = 3;
 
-/// Whether a piece encoded in `occupant` may serve as a screen for `player`.
+/// SR3c: a screen named by type as a bit per board value (`[value >> 6] >> (value & 63)`),
+/// built from the crossed type list through `value_type`, so a facing or the third block's
+/// bytes of a listed type screen too and the core decodes no byte to ask.
+pub type ScreenMask = [u64; 4];
+
+/// Whether a piece encoded in `occupant` may serve as a screen for `player`: `low..high` is
+/// the player's own values, read only by the owner codes; `masks` is
+/// `Tables::screen_types`, read only by a screen named by type.
 #[inline(always)]
-pub fn screen_matches(owner: u8, occupant: u16, low: u16, high: u16) -> bool {
+pub fn screen_matches(owner: u8, occupant: u16, low: u16, high: u16, masks: &[ScreenMask]) -> bool {
+    if owner >= SCREEN_TYPES {
+        return screen_type_matches(owner, occupant, masks);
+    }
     match owner {
         SCREEN_OWN => low <= occupant && occupant < high,
         SCREEN_ENEMY => !(low <= occupant && occupant < high),
         _ => true,
     }
+}
+
+/// SR3c: `screen_matches` for a screen named by type, out of line so the owner codes every
+/// other game reads keep the branch they had.
+#[cold]
+#[inline(never)]
+fn screen_type_matches(owner: u8, occupant: u16, masks: &[ScreenMask]) -> bool {
+    let mask = &masks[(owner - SCREEN_TYPES) as usize];
+    (mask[(occupant >> 6) as usize & 3] >> (occupant & 63)) & 1 != 0
 }
 
 /// `[player][piece type][square] -> entries`, flattened.
@@ -927,8 +952,10 @@ pub struct DropRule {
     ///
     /// Empty when nothing is stocked, which is crazyhouse, shogi, dobutsu and every other
     /// ruleset with a hand up to now -- that is the boundary's inert default, so none of
-    /// their fingerprints moved.
-    pub stock: Vec<u32>,
+    /// their fingerprints moved. SR3b (`drops.stock_by_player`): `stock[player]`, each
+    /// player's own; the two are the same `drops_stock` unless `drops_stock_by_player`
+    /// crossed, and both empty when nothing is stocked.
+    pub stock: [Vec<u32>; 2],
     /// Which of those slots is never spent. An unlimited slot sits at 1 for the whole
     /// game: `make` skips its decrement and `unmake` therefore records no delta for it,
     /// which is why a stone needs no Zobrist term -- the hand is out of the key already
@@ -941,8 +968,10 @@ pub struct DropRule {
     /// Whether the stock holds a royal type, so a side's royal may be in its hand rather
     /// than off the board for good. Derived here from `stock` and `royal_types`, not sent:
     /// the readings of a missing royal (`Game::royal_gone`) ask it before they ask the
-    /// hand, so a ruleset whose stock holds no royal never reads a hand for it.
-    pub royal_stocked: bool,
+    /// hand, so a ruleset whose stock holds no royal never reads a hand for it. SR3b:
+    /// `royal_stocked[player]`, read per player, since one player's stock may hold a
+    /// royal and the other's not.
+    pub royal_stocked: [bool; 2],
     /// Schema 18 (Q785): drop either face. `faces[slot]` is the other face a piece held
     /// in that hand slot may be dropped as (the piece whose `promoted_from` it is), or -1.
     /// Empty for every ruleset before it, which is the boundary's inert default, so
@@ -1430,6 +1459,9 @@ impl LineTables {
 pub struct ReachEntry {
     pub target: u16,
     pub screens: u8,
+    /// SR3c: whose piece the window's screens must be, `SCREEN_ANY` or a screen named by
+    /// type (`SCREEN_TYPES + k`); an owner-named screen is refused beside a pounce (N13).
+    pub screen: u8,
     pub prefix_len: u16,
     pub path_len: u16,
     pub path_start: u32,
@@ -1680,6 +1712,9 @@ pub struct Tables {
     pub leaps: EntryTable,
     pub slides: EntryTable,
     pub hops: EntryTable,
+    /// SR3c: `[k]` -> the board values a hop whose screen code is `SCREEN_TYPES + k` may
+    /// vault, from `hop_screen_types`. Empty in every game whose screens name no type.
+    pub screen_types: Vec<ScreenMask>,
     /// Schema 13: the fourth move table, shaped as `slides`. Empty and never indexed
     /// unless `has_sweep`.
     pub sweeps: EntryTable,
@@ -2031,6 +2066,15 @@ impl Tables {
         self.kind_of(value) == CONTROL_PORTAL
     }
 
+    /// SR3f (O1): whether a wild piece stepping, pouncing or coming back onto `value` (a
+    /// non-empty byte) must wait: another wild piece, the duck or a portal end -- the third
+    /// block less its neutral pieces (TC3), which a wild piece eats as it eats a player's,
+    /// where its type may capture them. A player's piece answers false.
+    #[inline(always)]
+    pub fn halts_wild(&self, value: u8) -> bool {
+        self.owner_of(value) == WILD && !matches!(self.kind_of(value), CONTROL_NEUTRAL | CONTROL_MAJORITY)
+    }
+
     /// TC1 (`docs/plan-turncoat.md` §3.4): the one statement of what a piece becomes when it
     /// changes sides on the board -- Andernach's switch and a contact flip. `value` is the
     /// piece as it now is (its owner's byte; a strike that changed what it is passes the new
@@ -2343,7 +2387,10 @@ impl Tables {
         if owner == taker {
             return 0.0;
         }
-        let mut paid = if self.has_npcs && owner == WILD { self.wild_bounty(captured, square) } else { 0.0 };
+        // SR3f (O1): a route bounty is a wild piece's, never a nobody's piece's that stands on
+        // a route square.
+        let mut paid =
+            if self.has_npcs && owner == WILD && self.is_wild_piece(captured) { self.wild_bounty(captured, square) } else { 0.0 };
         if !self.piece_bounty.is_empty() {
             paid += self.piece_bounty[self.type_of(captured)];
         }
@@ -2593,7 +2640,7 @@ impl Tables {
         let entry_promotion = Self::entry_promotion_rule(source, n_types, n_squares)?;
         let bytes = Self::board_byte(source, n_owners, n_types, n_facings, &neutral_control)?;
         let ([value_owner, value_frame, value_type, value_kind], has_majority) = bytes;
-        let majority = Self::majority_rule(source, has_majority, n_types, n_squares)?;
+        let majority = Self::majority_rule(source, has_majority, has_portals, n_types, n_squares)?;
         let (royal_types, royal_flags, royal_at_start) =
             Self::royal_rule(source, &initial_board[..n_squares], &value_owner, &value_type, drops.as_mut())?;
 
@@ -2622,6 +2669,7 @@ impl Tables {
             leaps: Self::entry_table(source, [keys::LEAP_INDEX, keys::LEAP_REFS, keys::LEAP_SQUARES, keys::LEAP_MODES])?,
             slides: Self::entry_table(source, [keys::SLIDE_INDEX, keys::SLIDE_REFS, keys::SLIDE_SQUARES, keys::SLIDE_MODES])?,
             hops: Self::entry_table(source, [keys::HOP_INDEX, keys::HOP_REFS, keys::HOP_SQUARES, keys::HOP_MODES])?,
+            screen_types: Self::screen_types(source, n_types, &value_type)?,
             sweeps: Self::entry_table(source, [keys::SWEEP_INDEX, keys::SWEEP_REFS, keys::SWEEP_SQUARES, keys::SWEEP_MODES])?,
             has_sweep: field(source, keys::HAS_SWEEP)?,
             attack_index: field(source, keys::ATTACK_INDEX)?,
@@ -3007,6 +3055,17 @@ impl Tables {
         }
         let by_raw: Vec<u8> = field(source, keys::EXPLOSION_BY)?;
         let of_raw: Vec<u8> = field(source, keys::EXPLOSION_OF)?;
+        // SR3e (K3, `docs/plan-schema-next.md` §2.9): the duck is untouched by a blast, which
+        // the compiler states by putting its type in the immune set (`_compile_explosion`).
+        // A blast that would clear it is refused here rather than played.
+        let duck_field: Vec<u32> = field(source, keys::DUCK)?;
+        if let Some(&duck_type) = duck_field.first() {
+            if immune_raw.get(duck_type as usize).is_none_or(|v| *v == 0) {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "a blast that reaches the duck; the duck's type is immune to every blast",
+                ));
+            }
+        }
         Ok(Some(ExplosionRule {
             immune_types: immune_raw.iter().map(|v| *v != 0).collect(),
             blast,
@@ -3126,7 +3185,19 @@ impl Tables {
         }
         let no_doubled_raw: Vec<u8> = field(source, keys::DROPS_NO_DOUBLED)?;
         let no_mate_raw: Vec<u8> = field(source, keys::DROPS_NO_MATE)?;
-        let stock: Vec<u32> = field(source, keys::DROPS_STOCK)?;
+        let shared: Vec<u32> = field(source, keys::DROPS_STOCK)?;
+        // SR3b: each player's own stock, `[player][type]`, crossed only where the two
+        // differ; otherwise both hands start at the one shared `drops_stock`.
+        let by_player: Vec<u32> = field(source, keys::DROPS_STOCK_BY_PLAYER)?;
+        let stock = if by_player.is_empty() {
+            [shared.clone(), shared]
+        } else if by_player.len() == 2 * n_types && shared.is_empty() {
+            [by_player[..n_types].to_vec(), by_player[n_types..].to_vec()]
+        } else {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "drops_stock_by_player must be two stocks of n_types, beside an empty drops_stock",
+            ));
+        };
         let unlimited_raw: Vec<u8> = field(source, keys::DROPS_UNLIMITED)?;
         let placement: bool = field(source, keys::DROPS_PLACEMENT)?;
         let faces: Vec<i32> = field(source, keys::DROPS_FACES)?;
@@ -3141,7 +3212,7 @@ impl Tables {
             unlimited: unlimited_raw.iter().map(|v| *v != 0).collect(),
             placement,
             // Settled by `royal_rule`, once `royal_types` has been read.
-            royal_stocked: false,
+            royal_stocked: [false; 2],
             faces,
             slot_of,
             gates,
@@ -3384,19 +3455,15 @@ impl Tables {
                 "wild pieces and portals share the third owner's block; the validator refuses the two together",
             ));
         }
+        // SR3d (K2): the duck and portal ends share the block, told apart by kind
+        // (`CONTROL_DUCK`, `CONTROL_PORTAL`, `kind_of`), so nothing refuses the two together.
         let duck_field: Vec<u32> = field(source, keys::DUCK)?;
-        if !duck_field.is_empty() && has_portals {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "the duck and portals share the third owner's block; the validator refuses the two together",
-            ));
-        }
+        // SR3f (O1, O2): neutral pieces share the block with wild pieces and the duck, told
+        // apart by kind; a wild piece eats one its type may capture, and the duck lands on
+        // empty squares only. SR3g (P10): and with portal ends; a held piece transits as its
+        // holder's would (`foreign.rs::ForeignLanding`), a fold may move under one, and an
+        // exit onto one takes it where the mover may.
         let neutral_control: Vec<u8> = field(source, keys::NEUTRAL_CONTROL)?;
-        if !neutral_control.is_empty() && (has_npcs || has_portals || !duck_field.is_empty()) {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "neutral pieces share the third owner's block with wild pieces, the duck or \
-                 portals; the validator refuses them together",
-            ));
-        }
         Ok((has_npcs, has_portals, duck_field, neutral_control))
     }
 
@@ -3490,7 +3557,16 @@ impl Tables {
                 "neutral_control holds a kind that is not a neutral's",
             ));
         }
-        if !neutral_control.is_empty() && neutral_control != control_kind {
+        // SR3f (O1, O2): beside wild pieces or the duck, the other types carry their own
+        // kinds; a type is neutral in one exactly where it is in the other.
+        let neutral_kind = |kind: u8| matches!(kind, CONTROL_NEUTRAL | CONTROL_MAJORITY);
+        if !neutral_control.is_empty()
+            && (neutral_control.len() != control_kind.len()
+                || neutral_control
+                    .iter()
+                    .zip(&control_kind)
+                    .any(|(&neutral, &kind)| (neutral != CONTROL_NONE || neutral_kind(kind)) && neutral != kind))
+        {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "control_kind and neutral_control disagree about a neutral game's kinds",
             ));
@@ -3514,6 +3590,7 @@ impl Tables {
     fn majority_rule(
         source: &Bound<'_, PyDict>,
         has_majority: bool,
+        has_portals: bool,
         n_types: usize,
         n_squares: usize,
     ) -> PyResult<Option<Box<NeutralTables>>> {
@@ -3536,6 +3613,14 @@ impl Tables {
         }
         let takes_royal: Vec<bool> = takes.iter().map(|&b| b == 1).collect();
         let threatens_royals = takes_royal.iter().any(|&b| b);
+        // SR3g (P10): a held piece transits a portal, but `held_attacks` reads no portal, so
+        // a held piece that takes a royal stays refused beside portals (the validator's too).
+        if threatens_royals && has_portals {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a held neutral that takes a royal beside portals: its attack through a portal \
+                 is unread; the validator refuses the two together",
+            ));
+        }
         Ok(has_majority.then(|| {
             Box::new(NeutralTables {
                 index: neighbour_index,
@@ -3570,14 +3655,16 @@ impl Tables {
         }
         // Schema 18 (Q784): a royal may start in the hand under `drops.placement`, and a
         // side whose royal is in its stock had one to lose as surely as one whose royal
-        // was placed. Both players get the same stock (`_validate_stock`), so it is both
-        // sides or neither.
+        // was placed. SR3b: read per player, since each player may have a stock of their
+        // own (`drops.stock_by_player`); a shared stock is both sides or neither.
         if let Some(rule) = drops {
-            rule.royal_stocked = royal_types
-                .iter()
-                .any(|piece_type| rule.stock.get(*piece_type).is_some_and(|held| *held > 0));
-            if rule.royal_stocked {
-                royal_at_start = [true; 2];
+            for (player, at_start) in royal_at_start.iter_mut().enumerate() {
+                rule.royal_stocked[player] = royal_types.iter().any(|piece_type| {
+                    rule.stock[player].get(*piece_type).is_some_and(|held| *held > 0)
+                });
+                if rule.royal_stocked[player] {
+                    *at_start = true;
+                }
             }
         }
         Ok((royal_types, royal_flags, royal_at_start))
@@ -3591,6 +3678,34 @@ impl Tables {
             field(source, squares)?,
             field(source, modes)?,
         ))
+    }
+
+    /// SR3c: the screens named by type, `[k][type]` flattened as 0/1, each widened to the
+    /// board values of its types (`value_type`). Empty in every other game.
+    fn screen_types(
+        source: &Bound<'_, PyDict>, n_types: usize, value_type: &[u8; 256],
+    ) -> PyResult<Vec<ScreenMask>> {
+        let flat: Vec<u8> = field(source, keys::HOP_SCREEN_TYPES)?;
+        if n_types == 0 || !flat.len().is_multiple_of(n_types)
+            || flat.len() / n_types + SCREEN_TYPES as usize > u8::MAX as usize
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "hop_screen_types must be lists of n_types flags",
+            ));
+        }
+        Ok(flat
+            .chunks_exact(n_types)
+            .map(|listed| {
+                let mut mask: ScreenMask = [0; 4];
+                for value in 1..256usize {
+                    let ty = value_type[value] as usize;
+                    if ty < n_types && listed[ty] != 0 {
+                        mask[value >> 6] |= 1u64 << (value & 63);
+                    }
+                }
+                mask
+            })
+            .collect())
     }
 
     /// The movement tables' shapes, which span the frames, the types and the owners.
@@ -3622,6 +3737,16 @@ impl Tables {
                  and {path_modes} this ruleset needs",
                 self.sweeps.slots(), self.attack_path_modes.len(),
             )));
+        }
+        // SR3c: a screen code past the owner codes names one of `screen_types`, and
+        // `screen_matches` indexes it unchecked.
+        let codes = SCREEN_TYPES as usize + self.screen_types.len();
+        if self.hops.refs.iter().any(|entry| entry.screen_owner as usize >= codes)
+            || self.attack_sources.iter().any(|source| source.screen_owner as usize >= codes)
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a hop's screen names a type list hop_screen_types does not hold",
+            ));
         }
         if self.dedup.len() != expected - 1 || self.immobile_squares.len() != expected - 1 {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -3659,6 +3784,20 @@ impl Tables {
             let value = (WILD * tables.side_stride + piece_type + 1) as u8;
             if tables.kind_of(value) != CONTROL_DUCK {
                 return Err(pyo3::exceptions::PyValueError::new_err("the duck's type is not of the duck's control kind"));
+            }
+            // SR3e (K3, `docs/plan-schema-next.md` §2.9): the duck is untouched by a blast, a
+            // strike or contacts. The blast build is the compiler's (the duck's type is in the
+            // rule's immune set, so `ExplosionRule::clears` skips it in `write_blast` and the
+            // legality filter alike); a strike and a contact happen only on a capture, and the
+            // duck is out of the capture matrix both ways, so neither path ever meets it.
+            // Tables that say otherwise are refused here rather than played (the blast's half
+            // in `explosion_rule`, which reads the duck's field).
+            if (0..tables.n_types).any(|other| {
+                tables.may_capture(other, piece_type) || tables.may_capture(piece_type, other)
+            }) {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "a capture matrix that lets the duck take or be taken; it is out of the matrix both ways",
+                ));
             }
             Ok(Some(Box::new(DuckRule { value, piece_type, by_moves: *by_moves != 0, squares: set })))
         } else if !duck_field.is_empty() {
@@ -4168,7 +4307,16 @@ impl Tables {
         {
             return Err(bad("a table of the wrong size"));
         }
-        let targets: Vec<ReachEntry> = flat
+        // SR3c: a screen named by type per reach entry, empty where no pouncer's is.
+        let reach_screen: Vec<u32> = field(source, keys::POUNCE_REACH_SCREEN)?;
+        let codes = SCREEN_TYPES as u32 + tables.screen_types.len() as u32;
+        let known = |code: &u32| *code == SCREEN_ANY as u32 || (SCREEN_TYPES as u32..codes).contains(code);
+        if !reach_screen.is_empty()
+            && (reach_screen.len() != flat.len() / 5 || !reach_screen.iter().all(known))
+        {
+            return Err(bad("a pounce screen the tables do not hold"));
+        }
+        let mut targets: Vec<ReachEntry> = flat
             .chunks_exact(5)
             .map(|chunk| ReachEntry {
                 target: chunk[0] as u16,
@@ -4176,8 +4324,12 @@ impl Tables {
                 path_len: chunk[2] as u16,
                 prefix_len: chunk[3] as u16,
                 screens: chunk[4] as u8,
+                screen: SCREEN_ANY,
             })
             .collect();
+        for (entry, code) in targets.iter_mut().zip(&reach_screen) {
+            entry.screen = *code as u8;
+        }
         let in_bounds = targets.iter().all(|entry| {
             (entry.target as usize) < n
                 && entry.path_start as usize + entry.path_len as usize <= paths.len()
@@ -4662,6 +4814,7 @@ pub mod keys {
         DROPS_PLACEMENT => "drops_placement",
         DROPS_REGIONS => "drops_regions",
         DROPS_STOCK => "drops_stock",
+        DROPS_STOCK_BY_PLAYER => "drops_stock_by_player",
         DROPS_UNLIMITED => "drops_unlimited",
         DUCK => "duck",
         ENTRY_PROMOTION => "entry_promotion",
@@ -4834,6 +4987,8 @@ pub mod keys {
         POUNCE_REACH => "pounce_reach",
         POUNCE_PATHS => "pounce_paths",
         POUNCE_SPLIT => "pounce_split",
+        POUNCE_REACH_SCREEN => "pounce_reach_screen",
+        HOP_SCREEN_TYPES => "hop_screen_types",
         ZOBRIST_SIM => "zobrist_sim",
         ZOBRIST_PIECES => "zobrist_pieces",
         ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",

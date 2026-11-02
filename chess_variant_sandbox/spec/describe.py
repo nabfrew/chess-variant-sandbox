@@ -67,6 +67,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_speeds,
     piece_strengths,
     piece_weights,
+    player_stocks,
     portal_groups,
     portal_stand_in_shape,
     purse_bribes,
@@ -316,6 +317,7 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
             f"{castling['king']} may move {steps} squares toward an unmoved "
             f"{castling['rook']}, which jumps to the square it crossed."
         )
+    lines.extend(_describe_common_castling(spec, rules))
     lines.extend(
         _describe_extra_rules(rules, (spec.get("board") or {}).get("lattice") == "hex")
     )
@@ -324,6 +326,36 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_insufficient_material(spec, rules))
     lines.extend(_describe_ending_order(rules))
     return lines
+
+
+def _describe_common_castling(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR1d (Z2, `docs/plan-schema-next.md` §1 rank 8): a castling piece that is not royal.
+
+    Beside a royal: where check exists (checkmate) the castle is held to a royal's rule for the
+    castling piece itself and may never leave the royal in check, its rook included; under any
+    other win the castle reads no attack at all."""
+    castling = rules.get("castling")
+    if not isinstance(castling, dict):
+        return []
+    king = castling.get("king")
+    royals = {
+        piece.get("id") for piece in spec.get("pieces") or []
+        if isinstance(piece, dict) and piece.get("royal")
+    }
+    # Without a royal (annihilation, extinction) castling never read an attack, and the
+    # description of every such stored game stays as it was.
+    if not royals or not isinstance(king, str) or king in royals:
+        return []
+    if rules.get("win", "checkmate") == "checkmate":
+        return [
+            f"{king} is not royal, but castles as a royal piece would: never out of, across or "
+            "into a square under attack, and never so that the royal piece is left in "
+            f"check, the move of the {castling.get('rook')} it castles with included."
+        ]
+    return [
+        f"{king} is not royal, and no move here is barred for leaving a piece in check, so "
+        "it castles whether or not the squares it crosses are attacked."
+    ]
 
 
 def _describe_insufficient_material(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
@@ -764,9 +796,7 @@ def _move_descriptor(move: dict[str, Any]) -> str:
         reach = f"up to {max_range} squares"
 
     if kind == "hop":
-        screen = {"own": "one of your own pieces", "enemy": "one enemy piece"}.get(
-            str(move.get("screen", "any")), "exactly one piece of either side"
-        )
+        screen = _screen_words(move)
         screen_range = int(move.get("screen_range", 0))
         if screen_range == 1:
             where = ", landing immediately past it"
@@ -1321,12 +1351,21 @@ def _leap_words(move: dict[str, Any], aim: _Aim) -> str | None:
     return words + (", jumping over whatever is in between" if over else "")
 
 
+def _screen_words(move: dict[str, Any]) -> str:
+    """What a hop may jump: an owner's pieces, or (SR3c) the types its screen lists, of
+    either side."""
+    screen = move.get("screen", "any")
+    if isinstance(screen, list):
+        return f"exactly one piece of these kinds, of either side: {', '.join(sorted(screen))}"
+    return {"own": "one of your own pieces", "enemy": "one enemy piece"}.get(
+        str(screen), "exactly one piece of either side"
+    )
+
+
 def _hop_words(move: dict[str, Any], aim: _Aim) -> str | None:
     if not aim.step or aim.scale != 1:
         return None
-    screen = {"own": "one of your own pieces", "enemy": "one enemy piece"}.get(
-        str(move.get("screen", "any")), "exactly one piece of either side"
-    )
+    screen = _screen_words(move)
     # ``screen_range`` caps the landing from the screen; without one the descriptor's own
     # reach does, counted the same way from the screen outwards.
     capped = int(move.get("screen_range", 0))
@@ -1846,6 +1885,13 @@ def _describe_purse(spec: dict[str, Any]) -> list[str]:
             f"pieces next to it, for twice its price ({listed}): it changes sides where it "
             "stands, keeping the way it points, and whoever paid last owns it."
         )
+    # SR3g (P9): beside portals.
+    rules = spec.get("rules")
+    if purse_market(spec) and isinstance(rules, dict) and rules.get("portals"):
+        lines.append(
+            "A piece is never bought onto a portal's square; it may be bought into an empty "
+            "fold, where it stands, without going through."
+        )
     return lines
 
 
@@ -1903,6 +1949,30 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
                 "hands the count to the other player is illegal if the piece would then attack "
                 "the mover's royal."
             )
+    # SR3f (O1, O2): beside wild pieces and the duck.
+    rules = spec.get("rules")
+    if not isinstance(rules, dict):
+        return lines
+    if rules.get("npcs"):
+        lines.append(
+            "A wild piece walking into a piece nobody owns eats it if its type may capture "
+            "that type, as it eats a player's piece, and waits in front of it otherwise; the "
+            "eating pays nobody."
+        )
+    if duck_piece(rules) is not None:
+        lines.append("The duck never lands on a piece nobody owns: it lands on empty squares only.")
+    # SR3g (P10): beside portals.
+    if rules.get("portals"):
+        through = (
+            " A held piece goes through a portal or a fold as its holder's piece would, "
+            "landing only where it may land."
+            if majority_ids(spec) else ""
+        )
+        lines.append(
+            "A piece coming out of a portal onto a piece nobody owns takes it where it may "
+            "take that type, and a fold may move under a piece nobody owns, which then stands "
+            "in it." + through
+        )
     return lines
 
 
@@ -2270,13 +2340,37 @@ def _describe_duck(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         if isinstance(start, str)
         else f"The {name} starts off the board, and the first player's first {name} move puts it on any empty square."
     )
+    # SR3d (K2, `docs/plan-schema-next.md` §2.9): the duck beside portals.
+    groups = portal_groups(rules)
+    beside = ""
+    if groups:
+        folds = any(group["kind"] == "fold" for group in groups)
+        beside = (
+            f" Beside the portals the {name} is a piece nobody may take: a move whose way out "
+            f"of a portal{' or fold' if folds else ''} ends on it is no move. It never goes "
+            f"through a portal and never stands on a portal's square"
+            + ("; it may stop in an empty fold, which never moves it." if folds else ".")
+        )
+        if any(group["no_straight_back"] for group in groups):
+            beside += (
+                f" A {name} move is not the move a straight-back bar waits for: a portal "
+                f"just moved may not go straight back on the other player's next move."
+            )
+    # SR3e (K3, `docs/plan-schema-next.md` §2.9): the duck beside a blast, a strike or contacts.
+    if rules.get("explode_on_capture"):
+        beside += f" A blast beside the {name} leaves it standing."
+    if rules.get("strike") or rules.get("contacts"):
+        beside += (
+            f" No {'strike' if rules.get('strike') else 'contact'} reaches the {name}, "
+            f"which nothing takes."
+        )
     return [
         f"Every turn is two halves: the player moves a piece, then moves the {name} ({pid}), "
         f"a piece nobody owns, {goes}; with nowhere to go it stays and the turn ends. {where} "
         f"The {name} blocks lines like any piece, nothing may capture it and it captures "
         f"nothing. A move that takes a royal ends the game at once, with no {name} move. "
         f"Each half is a ply of the game's length; repetition and the clocks are counted "
-        f"only at a turn's start."
+        f"only at a turn's start.{beside}"
     ]
 
 
@@ -3172,7 +3266,16 @@ def _describe_extra_rules(rules: dict[str, Any], hexy: bool = False) -> list[str
                 if drops.get("from_captures", True)
                 else "Held pieces may be played onto the board."
             )
-        lines.extend(_describe_stock(drops.get("stock")))
+        if isinstance(drops.get("stock_by_player"), dict):
+            # SR3b: each player's own stock, said player by player.
+            stocks = player_stocks(drops)
+            for player, stock in enumerate(stocks):
+                lines.extend(
+                    _describe_stock(stock, f"The {_ORDINAL[player]} player")
+                    or [f"The {_ORDINAL[player]} player starts with nothing in hand."]
+                )
+        else:
+            lines.extend(_describe_stock(drops.get("stock")))
         if drops.get("placement") is True:
             # Schema 18 (Q784): the placement phase, which changes what a turn *is* for
             # the opening stretch of the game, so it is said right after the stock.
@@ -3253,7 +3356,10 @@ def _describe_explosion(explosion: Any, hexy: bool = False) -> list[str]:
     ]
 
 
-def _describe_stock(stock: Any) -> list[str]:
+_ORDINAL = ("first", "second")
+
+
+def _describe_stock(stock: Any, who: str = "Each player") -> list[str]:
     """What a player holds before anything has been captured (schema 10, Q51).
 
     Said before the restrictions on *where* a held piece may go, because it is the fact
@@ -3273,13 +3379,13 @@ def _describe_stock(stock: Any) -> list[str]:
     lines = []
     if counted:
         lines.append(
-            "Each player starts holding "
+            f"{who} starts holding "
             + ", ".join(f"{count} {piece}" for piece, count in counted)
             + ", playable from hand without ever having been captured."
         )
     if endless:
         lines.append(
-            f"Each player has an endless supply of {', '.join(endless)}, and playing one "
+            f"{who} has an endless supply of {', '.join(endless)}, and playing one "
             "from hand never uses it up."
         )
     return lines

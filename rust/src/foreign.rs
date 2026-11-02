@@ -24,6 +24,47 @@ use super::*;
 /// forbids. `None` lands on empty squares only.
 pub(super) type ForeignTakes = Option<(u16, u16)>;
 
+/// What a foreign piece may land on, and whose zone it would promote in: the one statement
+/// `push_foreign_piece` reads for its own landings and, SR3g (P10), for the exit of a
+/// momentum end and the far end of a fold (`Game::push_transits`, `Game::push_through_as`),
+/// so a held piece transits as its holder's piece would and lands only where it may land.
+#[derive(Clone, Copy)]
+pub(super) struct ForeignLanding {
+    pub takes: ForeignTakes,
+    /// Q1077: a held neutral of a `takes_royal` type may take a royal in `takes`.
+    pub royals: bool,
+    /// The player in whose zone the piece promotes (the owner's frame of its moves).
+    pub owner: usize,
+}
+
+impl ForeignLanding {
+    /// Whether the piece of `piece_type` may end on the non-empty byte `occupant` arriving
+    /// with `mode`: a capture, on a capture line, of a non-royal byte in `takes` (a royal
+    /// too under `royals`) of a type its capture list allows.
+    #[inline(always)]
+    pub fn lands(&self, t: &Tables, piece_type: usize, occupant: u16, mode: u8) -> bool {
+        match self.takes {
+            Some((from, to)) => {
+                mode & 2 != 0
+                    && from <= occupant
+                    && occupant < to
+                    && (self.royals || !t.is_royal(t.type_of(occupant as u8)))
+                    && may_take(t, piece_type, occupant)
+            }
+            None => false,
+        }
+    }
+
+    /// Whether an arrival on `target` would have to promote, which a foreign move never
+    /// does, so it is not offered. `leaving` is the origin's answer under `on_leaving`.
+    #[inline(always)]
+    pub fn must_promote(&self, t: &Tables, piece_type: usize, leaving: bool, target: usize) -> bool {
+        t.is_promoting(piece_type)
+            && !t.promotion_optional(piece_type)
+            && (leaving || t.promotes_on(self.owner, piece_type, target))
+    }
+}
+
 impl<'t> Game<'t> {
     /// Every foreign move the side to move may make, appended to `out` with `MOVE_FOREIGN`
     /// set. Today the commanded pieces alone (the table in the module's note): each of the
@@ -186,26 +227,18 @@ impl<'t> Game<'t> {
         let promoting = t.is_promoting(piece_type);
         let leaving =
             promoting && t.promotes_on_leaving(piece_type) && t.promotes_on(owner, piece_type, origin);
-        let must_promote = |target: usize| {
-            promoting
-                && !t.promotion_optional(piece_type)
-                && (leaving || t.promotes_on(owner, piece_type, target))
-        };
+        let landing = ForeignLanding { takes, royals, owner };
+        let must_promote = |target: usize| landing.must_promote(t, piece_type, leaving, target);
         // A capture: a non-royal byte in the admitted range, on a capture line, of a type the
         // piece may take.
-        let may_land_on = |occupant: u16, mode: u8| match takes {
-            Some((from, to)) => {
-                mode & 2 != 0
-                    && from <= occupant
-                    && occupant < to
-                    && (royals || !t.is_royal(t.type_of(occupant as u8)))
-                    && may_take(t, piece_type, occupant)
-            }
-            None => false,
-        };
+        let may_land_on = |occupant: u16, mode: u8| landing.lands(t, piece_type, occupant, mode);
         let word = |target: usize| with_foreign(encode_move(origin, target, MOVE_NORMAL, 0));
         let slot = t.slot(frame, piece_type, origin);
         let segment_start = out.len();
+        // SR3g (P10): a landing on an empty fold may also go through, as the holder's piece's
+        // would (`Game::push_through_as`). A command is refused beside portals, so only a held
+        // neutral meets one; one test for every other game.
+        let folds = t.portals.as_deref().is_some_and(|portals| portals.folds.is_some());
 
         for entry in t.leaps.entries(slot) {
             if entry.requires_unmoved && !origin_unmoved {
@@ -217,6 +250,9 @@ impl<'t> Game<'t> {
                 let target = squares[index] as usize;
                 let occupant = self.board[target] as u16;
                 let mode = modes[index];
+                if folds && occupant == 0 && mode != 0 && self.fold_on(target) {
+                    self.push_through_as(out, origin, target, mode, piece_type, leaving, Some(landing));
+                }
                 let lands = if occupant == 0 { mode & 1 != 0 } else { may_land_on(occupant, mode) };
                 if lands && !must_promote(target) {
                     out.push(word(target));
@@ -234,6 +270,9 @@ impl<'t> Game<'t> {
                 let target = squares[index] as usize;
                 let occupant = self.board[target] as u16;
                 let mode = modes[index];
+                if folds && occupant == 0 && mode != 0 && self.fold_on(target) {
+                    self.push_through_as(out, origin, target, mode, piece_type, leaving, Some(landing));
+                }
                 let lands = if occupant == 0 { mode & 1 != 0 } else { may_land_on(occupant, mode) };
                 if lands && !must_promote(target) {
                     out.push(word(target));
@@ -257,7 +296,7 @@ impl<'t> Game<'t> {
             }
             // The screen is judged as the owner would judge it.
             if index >= length
-                || !screen_matches(entry.screen_owner, self.board[squares[index] as usize] as u16, low, high)
+                || !screen_matches(entry.screen_owner, self.board[squares[index] as usize] as u16, low, high, &t.screen_types)
             {
                 continue;
             }
@@ -271,6 +310,9 @@ impl<'t> Game<'t> {
                 let target = squares[index] as usize;
                 let occupant = self.board[target] as u16;
                 let mode = modes[index];
+                if folds && occupant == 0 && mode != 0 && self.fold_on(target) {
+                    self.push_through_as(out, origin, target, mode, piece_type, leaving, Some(landing));
+                }
                 let lands = if occupant == 0 { mode & 1 != 0 } else { may_land_on(occupant, mode) };
                 if lands && !must_promote(target) {
                     out.push(word(target));
@@ -282,8 +324,19 @@ impl<'t> Game<'t> {
             }
         }
 
-        if t.dedup[slot] {
+        // A go-through to a square also reached directly, or through two folds, is one move
+        // (`dedup_fold_segment`, as for a player's piece).
+        if folds && out[segment_start..].iter().any(|&m| move_fold(m) != 0) {
+            dedup_fold_segment(out, segment_start);
+        } else if t.dedup[slot] {
             dedup_segment(out, segment_start);
+        }
+
+        // SR3g (P10): through a momentum end, as the holder's piece would go, landing at the
+        // exit only where this piece may land (`Game::push_transits`).
+        if let Some(portals) = t.portals.as_deref() {
+            let at = self.portal_squares(portals);
+            self.push_transits(out, portals, &at, origin, slot, piece_type, leaving, Some(landing));
         }
 
         // A turn in place, as the owner may turn it (`generate_pseudo_legal_as`).

@@ -46,7 +46,7 @@ impl<'t> Game<'t> {
         if standing == 0 {
             return true;
         }
-        if t.owner_of(standing) == WILD || shields.get(target) {
+        if t.halts_wild(standing) || shields.get(target) {
             return false;
         }
         t.may_capture(t.type_of(value), t.type_of(standing))

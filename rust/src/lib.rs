@@ -8,6 +8,7 @@
 //! a great deal.
 
 mod agents;
+mod endgame;
 mod eval;
 mod features;
 mod game;
@@ -27,7 +28,7 @@ use crate::agents::{AgentSpec, Player};
 use crate::eval::Evaluator;
 use crate::game::{count_colours, scan_occupied, Game, Snapshot};
 use crate::rng::PyRandom;
-use crate::tables::{PushTables, SquareSet, Tables, MAX_PORTAL_ENDS, MAX_SQUARES, NO_BAR, PURSE_MAX};
+use crate::tables::{PushTables, SquareSet, Tables, MAX_PORTAL_ENDS, MAX_SQUARES, NO_BAR, NO_SQUARE, PURSE_MAX};
 
 /// The full state crossing the boundary. Twelve fields: the original nine, plus checks
 /// (two u32), hands (two Vec<u32>), and everything schema 4 added grouped into one --
@@ -185,6 +186,47 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
     }
 }
 
+/// N1: a material set's position, built through `snapshot_from` exactly as a position Python
+/// sends is: `board` (the first `n_squares` bytes), `side` to move, the first-move bits, and
+/// everything else at its rest -- no en passant window, every clock and count at zero, no
+/// repetition history, empty hands, nothing coloured, a steady turn (`endgame::STEADY_TURNS`),
+/// the folds where they start. The key is computed from the result.
+fn endgame_position(t: &Tables, board: &[u8], side: usize, unmoved: [u8; 32]) -> Snapshot {
+    let hands = if t.drops.is_some() { vec![0u32; t.n_types] } else { Vec::new() };
+    let colour = if t.territory.is_some() { vec![0u8; t.n_squares] } else { Vec::new() };
+    let remaining = t.turn.as_ref().map_or(1, |rule| rule.length_of(endgame::STEADY_TURNS));
+    let state: StateIn = (
+        board.to_vec(),
+        side as u8,
+        unmoved.to_vec(),
+        NO_SQUARE,
+        NO_SQUARE,
+        0,
+        0,
+        0,
+        Vec::new(),
+        (0, 0),
+        (hands.clone(), hands),
+        (
+            colour,
+            remaining,
+            endgame::STEADY_TURNS,
+            (0.0, 0.0),
+            -1,
+            (NO_SQUARE, NO_SQUARE),
+            Vec::new(),
+            (-1, (NO_SQUARE, NO_SQUARE), Vec::new()),
+            (Vec::new(), Vec::new()),
+            Vec::new(),
+            Vec::new(),
+            ((0, 0), (NO_SQUARE, NO_SQUARE)),
+        ),
+    );
+    let mut snapshot = snapshot_from(t, &state);
+    snapshot.key = Game::from_snapshot(t, &snapshot).compute_hash();
+    snapshot
+}
+
 /// Q1074b6 (K5): the push-back bar as Python holds it, `(y, x)`, as `Game::push_bar`:
 /// `NO_BAR` without the rule, and for a pair not on the board.
 fn push_bar_in(t: &Tables, (standing, left): (i16, i16)) -> [i16; 2] {
@@ -314,6 +356,11 @@ fn record_out(output: play::GameOutput) -> RecordOut {
 /// `Core.effects`' answer: each square's bits, the moves removed by reason, the suppressed
 /// check, the commanded count and (generation 37, N2) each square's wild bits.
 type EffectsOut = (Vec<u8>, (u32, u32, u32), bool, u32, Vec<u8>);
+
+/// `Core.solve_endgame`'s answer for one material set: its pieces by owner (type indices),
+/// `(won, lost, drawn, illegal)`, `(longest win, longest loss, wins beyond the clock, longest
+/// to a reset)` and whether it is the set asked for.
+type EndgameSetOut = ((Vec<usize>, Vec<usize>, Vec<usize>), (u64, u64, u64, u64), (u32, u32, u64, u32), bool);
 
 #[pyclass(module = "chess_variant_sandbox._core", frozen)]
 pub struct Core {
@@ -1119,6 +1166,51 @@ impl Core {
         Ok(record_out(output))
     }
 
+    /// N1 (`docs/reference/no-forced-mate.md`): solve a material set forward, and every set it
+    /// leads to (`endgame.rs`). `pieces` is the set's type indices for player 0, player 1 and
+    /// nobody. The answer is one entry per set reached (`EndgameSetOut`), the solve's size
+    /// `(positions, edges, sweeps)`, and, for every position of the asked set decided in
+    /// `sample_plies` or fewer, `(position, value for the side to move, plies)`. Refused by
+    /// name where the game cannot be solved (`endgame::refusal`), and over `max_positions`
+    /// (at most `endgame::MAX_POSITIONS`).
+    #[pyo3(signature = (pieces, max_positions = endgame::MAX_POSITIONS, sample_plies = 0))]
+    #[allow(clippy::type_complexity)]
+    fn solve_endgame<'py>(
+        &self,
+        py: Python<'py>,
+        pieces: (Vec<usize>, Vec<usize>, Vec<usize>),
+        max_positions: u64,
+        sample_plies: u32,
+    ) -> PyResult<(Vec<EndgameSetOut>, (u64, u64, u32), Vec<(StateOut<'py>, i8, u32)>)> {
+        let requested: endgame::Material = [pieces.0, pieces.1, pieces.2];
+        let tables = &self.tables;
+        let solved = py
+            .detach(|| {
+                let build = |board: &[u8], side: usize, unmoved: [u8; 32]| endgame_position(tables, board, side, unmoved);
+                endgame::solve(tables, &requested, &build, max_positions, sample_plies)
+            })
+            .map_err(pyo3::exceptions::PyValueError::new_err)?;
+        let sets = solved
+            .sets
+            .into_iter()
+            .map(|set| {
+                let [mine, theirs, nobody] = set.material;
+                (
+                    (mine, theirs, nobody),
+                    (set.won, set.lost, set.drawn, set.illegal),
+                    (set.longest_win, set.longest_loss, set.beyond_clock, set.longest_to_reset),
+                    set.requested,
+                )
+            })
+            .collect();
+        let samples = solved
+            .samples
+            .iter()
+            .map(|sample| (state_out(py, &Game::from_snapshot(tables, &sample.snapshot)), sample.value, sample.distance))
+            .collect();
+        Ok((sets, (solved.positions, solved.edges, solved.sweeps), samples))
+    }
+
     /// Play a whole schedule across `threads` threads. `tasks` is
     /// `(seed, first agent index, second agent index)` into `agents`.
     #[pyo3(signature = (agents, values, tasks, collect_series = true, threads = 1))]
@@ -1243,6 +1335,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // CS7 (R15): the widest portal game the core holds, for a test to pin it equal to
     // `spec/schema.py::MAX_PORTAL_ENDS`, the validator's ceiling.
     m.add("MAX_PORTAL_ENDS", MAX_PORTAL_ENDS)?;
+    // N1: the most positions and edges one endgame solve may hold, for the wrapper to name.
+    m.add("ENDGAME_MAX_POSITIONS", endgame::MAX_POSITIONS)?;
+    m.add("ENDGAME_MAX_EDGES", endgame::MAX_EDGES)?;
     // CS2 (R1): the move word's field map as `(name, shift, width)` and its kinds as
     // `(name, value)`, for `tests/test_move_word.py` to pin `engine/moves.py`'s copies to.
     m.add("MOVE_FIELDS", PyTuple::new(m.py(), crate::tables::MOVE_FIELDS)?)?;

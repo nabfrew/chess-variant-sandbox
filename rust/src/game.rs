@@ -36,6 +36,7 @@ mod sight;
 // but does not own (today a commanded one).
 #[path = "foreign.rs"]
 mod foreign;
+use foreign::ForeignLanding;
 // Generation 36 (N1, `docs/archive/plan-npc.md` §4.1): wild pieces that come back, step 3 of the phase.
 #[path = "respawn.rs"]
 mod respawn;
@@ -605,10 +606,10 @@ impl<'t> Game<'t> {
     pub fn initial(t: &'t Tables) -> Self {
         // Schema 10 (Q51): a hand may start with something in it. `stock` is empty for
         // every ruleset written before that, so both hands start at zero exactly as they
-        // did -- and both players get the same stock, because a supply one side has and
-        // the other does not is a first-seat effect rather than a rule.
+        // did. SR3b (`drops.stock_by_player`): each player's hand starts at that player's
+        // own stock, the same one for both unless the spec gives each their own.
         let hands = match t.drops.as_ref() {
-            Some(rule) if !rule.stock.is_empty() => [rule.stock.clone(), rule.stock.clone()],
+            Some(rule) if !rule.stock[0].is_empty() => [rule.stock[0].clone(), rule.stock[1].clone()],
             Some(_) => [vec![0u32; t.n_types], vec![0u32; t.n_types]],
             None => [vec![], vec![]],
         };
@@ -1013,7 +1014,7 @@ impl<'t> Game<'t> {
     pub fn royal_in_hand(&self, player: usize) -> bool {
         let t = self.t;
         match t.drops.as_ref() {
-            Some(rule) if rule.royal_stocked => t
+            Some(rule) if rule.royal_stocked[player] => t
                 .royal_types
                 .iter()
                 .any(|piece_type| self.hands[player].get(*piece_type).is_some_and(|n| *n > 0)),
@@ -1191,7 +1192,7 @@ impl<'t> Game<'t> {
                     .filter(|s| {
                         let occupant = board[**s as usize] as u16;
                         occupant != 0
-                            && screen_matches(source.screen_owner, occupant, low, high)
+                            && screen_matches(source.screen_owner, occupant, low, high, &t.screen_types)
                     })
                     .count()
             };
@@ -1827,6 +1828,12 @@ impl<'t> Game<'t> {
         if captured == 0 {
             return None;
         }
+        // SR3e (K3): no strike or contact reaches the duck, which is out of the capture
+        // matrix both ways (`Tables::duck_rule` refuses tables that say otherwise).
+        debug_assert!(
+            self.t.duck.as_ref().is_none_or(|duck| duck.value != captured && duck.value != self.board[target]),
+            "a strike or a contact met the duck"
+        );
         // Read after the promotion branch, so an attacker that promoted on the strike
         // carries its new type wherever it ends up -- and *overridden* by a contact,
         // because a contact is stated about this particular meeting while a rank
@@ -2025,7 +2032,7 @@ impl<'t> Game<'t> {
         if standing == 0 {
             return Some(next);
         }
-        if t.owner_of(standing) == WILD || (SHIELDS && shields.get(next)) {
+        if t.halts_wild(standing) || (SHIELDS && shields.get(next)) {
             return None;
         }
         if t.may_capture(t.type_of(value), t.type_of(standing)) {
@@ -2885,18 +2892,31 @@ impl<'t> Game<'t> {
         }
     }
 
+    /// Schema 20 (Q807, Q883): who makes the next move a straight-back bar set now can meet:
+    /// the same player while its long turn lasts, else the other. SR3d (K2): a duck game's
+    /// turn is two halves, but its second is the duck's, which moves no end and leaves the
+    /// bar standing (`make_duck`), so the bar waits for the other player's piece half.
+    #[inline(always)]
+    fn bar_reader(&self, player: usize) -> usize {
+        if self.t.turn.is_some() && self.remaining > 1 && self.t.duck.is_none() {
+            player
+        } else {
+            1 - player
+        }
+    }
+
     /// Schema 20 (Q807): the straight-back bar. Set by a barring end's own move to
-    /// (where it stands now, where it came from), cleared by every other move, and
-    /// keyed. Every game without the rule skips this on one flag. Q883: set only when
-    /// the player to move next may move that end (`sets_bar`); `remaining` is not yet
-    /// spent, so the same player moves again exactly when more than one is left.
+    /// (where it stands now, where it came from), cleared by every other piece or end
+    /// move (a duck move leaves it, SR3d), and keyed. Every game without the rule skips
+    /// this on one flag. Q883: set only when the player who next moves a piece may move
+    /// that end (`sets_bar`, `bar_reader`).
     #[inline(always)]
     fn write_portal_bar(&mut self, played: &Played, key: &mut u64) {
         let t = self.t;
         if let Some(portals) = t.portals.as_deref().filter(|portals| portals.has_no_back) {
             let player = played.player;
             self.portal_bar_log.push(self.portal_bar);
-            let next = if t.turn.is_some() && self.remaining > 1 { player } else { 1 - player };
+            let next = self.bar_reader(player);
             let bar = if played.kind == MOVE_NORMAL && portals.sets_bar(played.piece_type, next) {
                 [played.target as i16, played.origin as i16]
             } else {
@@ -3161,7 +3181,7 @@ impl<'t> Game<'t> {
         }
         if portals.has_no_back {
             self.portal_bar_log.push(self.portal_bar);
-            let next = if t.turn.is_some() && self.remaining > 1 { player } else { 1 - player };
+            let next = self.bar_reader(player);
             let bar = if portals.sets_bar(portals.first_type + end, next) {
                 [target as i16, origin as i16]
             } else {
@@ -3347,7 +3367,12 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn generate_folded(&self, out: &mut Vec<u32>) {
-        self.generate_pseudo_legal_as::<true>(out)
+        self.generate_pseudo_legal_as::<true>(out);
+        // SR3g (P10): the neutrals the side to move holds, as in `generate_pseudo_legal`
+        // (a sight is refused beside portals, so there is no filter to run).
+        if self.t.majority.is_some() {
+            self.push_foreign(out);
+        }
     }
 
     #[inline(always)]
@@ -3637,7 +3662,8 @@ impl<'t> Game<'t> {
             // the line rather than being skipped over, exactly as a piece it may not
             // capture blocks a slide.
             if !screen_matches(
-                entry.screen_owner, self.board[squares[index] as usize] as u16, low, high
+                entry.screen_owner, self.board[squares[index] as usize] as u16, low, high,
+                &t.screen_types,
             ) {
                 continue;
             }
@@ -3924,11 +3950,16 @@ impl<'t> Game<'t> {
     ///
     /// Out of line: it runs only in a portal game, and the movegen loop pays one null
     /// test per piece for it.
+    ///
+    /// SR3g (P10): `foreign` is `None` for the side to move's own piece; for a foreign piece
+    /// (a held neutral, `foreign.rs::push_held`) it says what the piece may land on at the
+    /// exit (`ForeignLanding::lands`), and each word is marked `MOVE_FOREIGN` and never
+    /// promotes. The piece enters as its holder's would: the end admits the holder's type.
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
     fn push_transits(
         &self, out: &mut Vec<u32>, portals: &PortalTables, at: &[u16; MAX_PORTAL_ENDS], origin: usize,
-        slot: usize, piece_type: usize, leaving: bool,
+        slot: usize, piece_type: usize, leaving: bool, foreign: Option<ForeignLanding>,
     ) {
         let t = self.t;
         let player = self.side;
@@ -3989,7 +4020,7 @@ impl<'t> Game<'t> {
                 index += 1;
             }
             if index >= length
-                || !screen_matches(entry.screen_owner, self.board[squares[index] as usize] as u16, low, high)
+                || !screen_matches(entry.screen_owner, self.board[squares[index] as usize] as u16, low, high, &t.screen_types)
             {
                 continue;
             }
@@ -4038,6 +4069,8 @@ impl<'t> Game<'t> {
                 let occupant = self.board[exit as usize] as u16;
                 let allowed = if occupant == 0 {
                     quiet
+                } else if let Some(foreign) = foreign {
+                    taking && foreign.lands(t, piece_type, occupant, 2)
                 } else {
                     taking && may_land(t, 2, piece_type, occupant, low, high)
                 };
@@ -4056,7 +4089,11 @@ impl<'t> Game<'t> {
         for &(exit, _, entry_type) in exits.iter() {
             let exit = exit as usize;
             let word = with_portal(encode_move(origin, exit, MOVE_PORTAL, 0), entry_type as usize);
-            if promoting && (leaving || t.promotes_on(player, piece_type, exit)) {
+            if let Some(foreign) = foreign {
+                if !foreign.must_promote(t, piece_type, leaving, exit) {
+                    out.push(word | MOVE_FOREIGN);
+                }
+            } else if promoting && (leaving || t.promotes_on(player, piece_type, exit)) {
                 for &promoted in t.promotion_targets(player, piece_type) {
                     if self.promotion_offered(player, piece_type, promoted) {
                         out.push(word | ((promoted + 1) << 20));
@@ -4093,7 +4130,7 @@ impl<'t> Game<'t> {
             let leaving = t.is_promoting(piece_type)
                 && t.promotes_on_leaving(piece_type)
                 && t.promotes_on(player, piece_type, origin);
-            self.push_transits(out, portals, at, origin, slot, piece_type, leaving);
+            self.push_transits(out, portals, at, origin, slot, piece_type, leaving, None);
         }
         let mut ends = [(u16::MAX, 0usize); MAX_PORTAL_ENDS];
         for (end, item) in ends.iter_mut().enumerate().take(portals.n_ends) {
@@ -4150,7 +4187,7 @@ impl<'t> Game<'t> {
                     index += 1;
                 }
                 if index >= length
-                    || !screen_matches(entry.screen_owner, self.board[squares[index] as usize] as u16, low, high)
+                    || !screen_matches(entry.screen_owner, self.board[squares[index] as usize] as u16, low, high, &t.screen_types)
                 {
                     continue;
                 }
@@ -4199,6 +4236,20 @@ impl<'t> Game<'t> {
         &self, out: &mut Vec<u32>, origin: usize, square: usize, mode: u8, piece_type: usize,
         leaving: bool,
     ) {
+        self.push_through_as(out, origin, square, mode, piece_type, leaving, None);
+    }
+
+    /// `push_through` for a player's own piece (`foreign` `None`) or, SR3g (P10), for a
+    /// foreign piece the side to move moves (`foreign.rs::push_foreign_piece`): the far
+    /// square judged as that piece's landing (`ForeignLanding::lands`), the word marked
+    /// `MOVE_FOREIGN`, never promoting (an arrival that must promote is not offered).
+    #[cold]
+    #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
+    fn push_through_as(
+        &self, out: &mut Vec<u32>, origin: usize, square: usize, mode: u8, piece_type: usize,
+        leaving: bool, foreign: Option<ForeignLanding>,
+    ) {
         let t = self.t;
         let Some(portals) = t.portals.as_deref() else {
             return;
@@ -4213,6 +4264,8 @@ impl<'t> Game<'t> {
         let occupant = self.board[far] as u16;
         let lands = if occupant == 0 {
             mode & 1 != 0
+        } else if let Some(foreign) = foreign {
+            foreign.lands(t, piece_type, occupant, mode)
         } else {
             let low = t.value_low(player);
             may_land(t, mode, piece_type, occupant, low, low + t.side_stride as u16)
@@ -4222,6 +4275,13 @@ impl<'t> Game<'t> {
         }
         let promoting = t.is_promoting(piece_type);
         let promo_optional = promoting && t.promotion_optional(piece_type);
+        if let Some(foreign) = foreign {
+            if !foreign.must_promote(t, piece_type, leaving, far) {
+                let word = encode_move(origin, far, MOVE_NORMAL, 0);
+                out.push(with_fold(word, end + 1) | MOVE_FOREIGN);
+            }
+            return;
+        }
         let start = out.len();
         self.push_arrival(
             out, origin, far, piece_type, player, promoting, leaving, promo_optional, false,
@@ -4294,7 +4354,7 @@ impl<'t> Game<'t> {
                     index += 1;
                 }
                 if index >= length
-                    || !screen_matches(entry.screen_owner, self.board[squares[index] as usize] as u16, low, high)
+                    || !screen_matches(entry.screen_owner, self.board[squares[index] as usize] as u16, low, high, &t.screen_types)
                 {
                     continue;
                 }
@@ -4999,7 +5059,8 @@ impl<'t> Game<'t> {
     /// alone never leaves a player without a move. One test in every game without a rest.
     pub fn generate_legal(&mut self, out: &mut Vec<u32>) {
         // Generation 42 (N4b): a duck half lists the duck's moves alone, unfiltered: a duck
-        // game has no check, the duck never rests, and portals are refused beside it.
+        // game has no check and the duck never rests; beside portals (SR3d) the half moves
+        // the duck alone, never an end.
         if self.duck_owed() {
             return self.push_duck_moves(out);
         }
@@ -5160,7 +5221,17 @@ impl<'t> Game<'t> {
                                 || enters_play(move_kind(m))
                                 || (has_push && move_kind(m) == MOVE_PUSH)
                                 || (hop_relevant && (hop_lines.get(origin) || hop_lines.get(move_to(m))))
-                                || (has_strike && self.board[move_to(m)] != 0);
+                                || (has_strike && self.board[move_to(m)] != 0)
+                                // SR1d (Z2): a castle whose castling piece is not royal
+                                // moves a second piece, the rook, from a square that is
+                                // not the move's origin, and that rook may be the sole
+                                // blocker of a line onto the royal (royal b1, rook b2, an
+                                // enemy rook on b8). Asked last and only of a castle, so
+                                // a game whose royal castles pays one kind compare.
+                                || (move_kind(m) == MOVE_CASTLE
+                                    && t.castling.is_some_and(|(king, _, _)| {
+                                        !t.royal_types.contains(&king)
+                                    }));
                             if suspect && self.leaves_royal_attacked(m) {
                                 continue;
                             }

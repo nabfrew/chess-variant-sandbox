@@ -217,13 +217,23 @@ impl<'t> Game<'t> {
 
     /// Whether `entry`'s path is open on `board`: the prefix empty and the window holding
     /// exactly the screens it expects, of anybody's (a hop whose screen names an owner is
-    /// refused beside a pounce).
+    /// refused beside a pounce), or, SR3c, of the types its screen names (N13). A piece of
+    /// another type still stands in the window, so it is counted as an obstruction there
+    /// and is no screen, as `source_path_clear` reads it.
     #[inline]
-    fn path_open(board: &[u8; MAX_SQUARES], p: &PounceTables, entry: &ReachEntry) -> bool {
+    fn path_open(board: &[u8; MAX_SQUARES], t: &Tables, p: &PounceTables, entry: &ReachEntry) -> bool {
         let path = p.path(entry);
         let (prefix, window) = path.split_at(entry.prefix_len as usize);
-        prefix.iter().all(|s| board[*s as usize] == 0)
-            && window.iter().filter(|s| board[**s as usize] != 0).count() == entry.screens as usize
+        if !prefix.iter().all(|s| board[*s as usize] == 0)
+            || window.iter().filter(|s| board[**s as usize] != 0).count() != entry.screens as usize
+        {
+            return false;
+        }
+        entry.screen == SCREEN_ANY
+            || window.iter().all(|s| {
+                let occupant = board[*s as usize] as u16;
+                occupant == 0 || screen_matches(entry.screen, occupant, 0, 0, &t.screen_types)
+            })
     }
 
     /// **The rule, stated once**: the square of the piece the `"prey"` pouncer on `square`
@@ -246,7 +256,7 @@ impl<'t> Game<'t> {
                 continue;
             }
             let victim_type = t.type_of(victim);
-            if !t.may_capture(ty, victim_type) || shields.get(target) || !Self::path_open(board, p, entry) {
+            if !t.may_capture(ty, victim_type) || shields.get(target) || !Self::path_open(board, t, p, entry) {
                 continue;
             }
             let key = Self::prey_key(t, p, reading, square, target, victim_type);
@@ -396,7 +406,7 @@ impl<'t> Game<'t> {
         if standing == 0 {
             return Some(next);
         }
-        if t.owner_of(standing) == WILD || shields.get(next) {
+        if t.halts_wild(standing) || shields.get(next) {
             return None;
         }
         t.may_capture(t.type_of(value), t.type_of(standing)).then_some(next)

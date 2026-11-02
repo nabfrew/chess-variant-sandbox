@@ -23,6 +23,35 @@ def _in(value: Any, ids: Any) -> bool:
     return isinstance(value, str) and value in ids
 
 
+def player_stocks(drops: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Each player's stock, ``(player 0's, player 1's)``: the one reader of the spelling.
+
+    ``drops.stock`` is both players' (schema 10, Q51); SR3b's ``drops.stock_by_player``
+    (``{"0": {...}, "1": {...}}``, `docs/plan-schema-next.md` §1 rank 6) gives each player
+    their own, as ``promotion.to_by_player`` sits beside ``to``. Empty maps where nothing is
+    stocked, and where a key is malformed (refused by name by its own shape check).
+    """
+    if not isinstance(drops, dict):
+        return {}, {}
+    by_player = drops.get("stock_by_player")
+    if isinstance(by_player, dict):
+        first, second = by_player.get("0"), by_player.get("1")
+        return (
+            first if isinstance(first, dict) else {},
+            second if isinstance(second, dict) else {},
+        )
+    stock = drops.get("stock")
+    if isinstance(stock, dict):
+        return stock, stock
+    return {}, {}
+
+
+def stocked_ids(drops: Any) -> set[str]:
+    """Every piece id some player's stock holds (SR3b: either player's)."""
+    first, second = player_stocks(drops)
+    return _str_set(first) | _str_set(second)
+
+
 def pieces_a_player_can_hold(spec: dict[str, Any]) -> set[str]:
     """Every piece id a player can own at some point in a game, by any route.
 
@@ -55,9 +84,7 @@ def pieces_a_player_can_hold(spec: dict[str, Any]) -> set[str]:
             and placement.get("player") != "nobody"
         ):
             held.add(placement["piece"])
-    stock = (rules.get("drops") or {}).get("stock")
-    if isinstance(stock, dict):
-        held |= declared.intersection(stock)
+    held |= declared.intersection(stocked_ids(rules.get("drops")))
 
     entries, links, contact_links, hands_fill, demoted = _type_changes(pieces, rules, declared)
 
@@ -113,9 +140,8 @@ def _pieces_that_can_stand(
     # Schema 10 (Q51): a stocked piece is in a hand from ply zero, so it is on the board
     # the moment somebody plays it. The sixth route, and the first one that does not need
     # the piece to have been somewhere else first.
-    stock = (rules.get("drops") or {}).get("stock") if isinstance(rules, dict) else None
-    if isinstance(stock, dict):
-        reachable |= declared.intersection(stock)
+    if isinstance(rules, dict):
+        reachable |= declared.intersection(stocked_ids(rules.get("drops")))
 
     entries, links, contact_links, hands_fill, demoted = _type_changes(pieces, rules, declared)
 

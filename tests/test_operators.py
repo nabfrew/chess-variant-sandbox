@@ -95,7 +95,9 @@ _NUMBER_WORDS = {
     43: "forty_three", 44: "forty_four", 45: "forty_five", 46: "forty_six",
     47: "forty_seven", 48: "forty_eight", 49: "forty_nine", 50: "fifty", 51: "fifty_one",
     52: "fifty_two", 53: "fifty_three", 54: "fifty_four", 55: "fifty_five",
-    56: "fifty_six", 57: "fifty_seven", 58: "fifty_eight",
+    56: "fifty_six", 57: "fifty_seven", 58: "fifty_eight", 59: "fifty_nine", 60: "sixty",
+    61: "sixty_one", 62: "sixty_two", 63: "sixty_three", 64: "sixty_four",
+    65: "sixty_five",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -2051,7 +2053,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 58
+_FEATURES_ARE_FOR_SCHEMA = 65
 
 
 @dataclass(frozen=True)
@@ -2645,6 +2647,91 @@ def _parent_either_face_blast() -> dict:
     return spec
 
 
+def _parent_duck_portals() -> dict:
+    """The duck's chess with a pair of portals either player may step (SR3d, K2)."""
+    spec = _parent_duck()
+    spec["rules"]["portals"] = [{
+        "orange": "c4", "blue": "f5",
+        "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}],
+        "moved_by": {"orange": [0, 1], "blue": [0, 1]},
+    }]
+    return spec
+
+
+def _parent_duck_blast() -> dict:
+    """The duck's chess with atomic's blast, which leaves the duck standing (SR3e, K3)."""
+    spec = _parent_duck()
+    spec["rules"]["explode_on_capture"] = {"radius": 1}
+    return spec
+
+
+def _parent_duck_crowd() -> dict:
+    """The duck's chess with two condottieri nobody owns (SR3f, O2): the duck lands on empty
+    squares only."""
+    spec = _parent_duck()
+    neutrals = _parent_neutrals()
+    spec["pieces"].append(neutrals["pieces"][-1])
+    spec["setup"]["placements"].append(neutrals["setup"]["placements"][-1])
+    return spec
+
+
+def _parent_wolves_crowd() -> dict:
+    """*Wolves* with a condottiere nobody owns on d4 and d5, beside the wolves' walks (SR3f, O1)."""
+    wolves = load_spec(ROOT / "archive" / "wolves.json")
+    wolves["pieces"].append({"id": "C", "name": "condottiere", "value": 3, "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "dihedral8"}]})
+    wolves["setup"]["placements"].append({"piece": "C", "player": "nobody", "squares": ["d4"]})
+    return wolves
+
+
+def _parent_wormhole_market() -> dict:
+    """*Wormhole* with a purse of 2 and a market selling knights for 3 (SR3g, P9): a momentum
+    end's square is not empty for a buy."""
+    spec = load_spec(ROOT / "archive" / "wormhole.json")
+    for piece in spec["pieces"]:
+        if piece["id"] == "N":
+            piece["price"] = 3
+    spec["rules"]["purse"] = {"start": 2, "market": ["N"]}
+    return spec
+
+
+def _parent_wormhole_crowd() -> dict:
+    """*Wormhole* with a condottiere nobody owns on c3, between its two portals (SR3g, P10)."""
+    spec = load_spec(ROOT / "archive" / "wormhole.json")
+    spec["pieces"].append({"id": "C", "name": "condottiere", "value": 3, "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "dihedral8"}]})
+    spec["setup"]["placements"].append({"piece": "C", "player": "nobody", "squares": ["c3"]})
+    return spec
+
+
+def _parent_queen_castles() -> dict:
+    """Chess with the queen as the castling piece (SR1d, Z2): a piece that is not royal castles
+    beside the king, and asks every castle whether it leaves the king attacked."""
+    spec = _chess()
+    spec["rules"]["castling"]["king"] = "Q"
+    return spec
+
+
+def _castles(spec: dict) -> bool:
+    """A game with castling: where a castling piece that is not royal would be named."""
+    return bool((spec.get("rules") or {}).get("castling"))
+
+
+def _has_portals(spec: dict) -> bool:
+    """A game with portals: where a purse enters beside them (a crowd is a type of its own, so
+    it is entered keeping the army only by a portal on a crowd's game, `_has_nobodys`)."""
+    return bool((spec.get("rules") or {}).get("portals"))
+
+
+def _has_nobodys(spec: dict) -> bool:
+    """A game with pieces nobody owns: where a wild piece or a duck enters beside them."""
+    return bool(schema.neutral_ids(spec))
+
+
+def _has_a_duck(spec: dict) -> bool:
+    return schema.duck_piece(spec.get("rules")) is not None
+
+
 def _parent_duck_sweep() -> dict:
     """The duck's chess whose rooks sweep (SR2, W9)."""
     spec = _parent_duck()
@@ -3004,6 +3091,40 @@ def _held_without_check(spec: dict) -> bool:
     return bool(schema.majority_ids(spec)) and not schema.takes_royal_ids(spec)
 
 
+def _parent_janggi_cannon() -> dict:
+    """Xiangqi whose cannon's capture may not jump another cannon (SR3c,
+    `docs/plan-schema-next.md` §1 rank 7)."""
+    spec = load_spec(ROOT / "rulesets" / "xiangqi.json")
+    others = [str(piece["id"]) for piece in spec["pieces"] if piece["id"] != "C"]
+    for piece in spec["pieces"]:
+        if piece["id"] == "C":
+            for move in piece["moves"]:
+                if move["kind"] == "hop":
+                    move["screen"] = others
+    return spec
+
+
+def _has_a_hop(spec: dict) -> bool:
+    return any(
+        isinstance(move, dict) and move.get("kind") == "hop"
+        for piece in spec.get("pieces") or [] for move in piece.get("moves") or []
+    )
+
+
+def _parent_handicap() -> dict:
+    """Chess in which the second player starts with two knights in hand (SR3b,
+    `docs/plan-schema-next.md` §1 rank 6)."""
+    spec = _chess()
+    spec["rules"]["drops"] = {
+        "from_captures": False, "stock_by_player": {"0": {}, "1": {"N": 2}},
+    }
+    return spec
+
+
+def _has_a_hand(spec: dict) -> bool:
+    return isinstance((spec.get("rules") or {}).get("drops"), dict)
+
+
 # Generation 58 (Q1077, `docs/plan-turncoat.md` §4.7): one name, a held neutral that takes the
 # other royal, and so gives check. It rides on majority control, a piece key, so it has no
 # `rules` host. `gather-a-crowd` enters it (`takes_royal` switched on a majority type, or a new
@@ -3012,10 +3133,57 @@ def _held_without_check(spec: dict) -> bool:
 # type: like TC3's rows, it does not keep the army. Generation 57's row (SR3a's runners) retired
 # with the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `add-a-runner`
 # still crosses it.
+#
+# Generation 59 (SR3b, `docs/plan-schema-next.md` §1 rank 6): one name, each player's own
+# stock. It rides on the hand (`drops`), and `give-a-handicap` enters it (the second player
+# one more piece in hand) and leaves it (the uneven stock taken out), keeping the army.
+# Generation 58's row (Q1077) retired with the generation; `gather-a-crowd` still crosses it.
+#
+# Generation 60 (SR3c, `docs/plan-schema-next.md` §1 rank 7): one name, a hop's screen named by
+# type. It rides on a piece's move, so it has no `rules` host. `spare-its-own-kind` enters it (a
+# hop that may jump every piece but its own kind, Janggi's cannon) and leaves it (the screen
+# back to any), keeping the army. Generation 59's row (SR3b) retired with the generation, its
+# showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `give-a-handicap` still crosses it.
+#
+# Generation 61 (SR3d, `docs/plan-schema-next.md` §2.9 K2): one name, the duck beside portals,
+# a lifted refusal. `open-a-portal` enters it (a pair on a duck game) and leaves it (every
+# portal taken away), keeping the army; `loose-a-duck` crosses it too, but its duck is a type
+# of its own. Generation 60's row (SR3c) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `spare-its-own-kind` still crosses it.
+#
+# Generation 62 (SR3e, `docs/plan-schema-next.md` §2.9 K3): one name, the duck beside a blast,
+# a strike or contacts, a lifted refusal. `set-the-blast` enters it (atomic's blast on a duck
+# game) and leaves it (the blast taken off), keeping the army; `soften-the-capture`,
+# `become-what-you-take`, `merge-your-own` and `leave-something-behind` cross it too, and
+# `loose-a-duck` with a duck of its own. Generation 61's row (SR3d) retired with the generation,
+# its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `open-a-portal` still crosses it.
+#
+# Generation 63 (SR3f, `docs/plan-schema-next.md` §2.11 O1, O2): two names, a placement for
+# nobody beside wild pieces and beside the duck, two lifted refusals. `gather-a-crowd` enters
+# each (a condottiere on a wild or duck game) and leaves it (the crowd taken away), a type of
+# its own; `set-a-patrol` crosses the first keeping the army (a wild type the game had, on a
+# game with a crowd), and `loose-a-duck` the second with a duck of its own, so the duck's row
+# does not ask for the army kept (as SR2's W9 did not). Generation
+# 62's row (SR3e) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` still crosses it.
+#
+# Generation 64 (SR3g, `docs/plan-schema-next.md` §2.10 P9, P10): two names, a purse beside
+# portals and a placement for nobody beside portals, two lifted refusals. `open-a-portal`
+# enters each (a pair on a market or crowd game) and leaves it (every portal taken away),
+# keeping the army; `open-a-market` crosses the first from a portal game, and `gather-a-crowd`
+# the second with a type of its own. Generation 63's rows (SR3f) retired with the generation, their showcase still
+# owed (`_NO_SHOWCASE_ON_PURPOSE`); `gather-a-crowd` still crosses both.
+#
+# Generation 65 (SR1d, `docs/plan-schema-next.md` §1 rank 8, Z2): one name, a castling piece
+# that is not royal beside royals, a lifted refusal. No operator enters it: none adds castling,
+# names another castling piece or moves royalty (`_CANNOT_ENTER`); `toggle-a-rule` leaves it
+# (castling taken away), keeping the army. Generation 64's rows (SR3g) retired with the
+# generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `open-a-portal` still
+# crosses both.
 _FEATURES: dict[str, _Feature] = {
-    "Q1077 a held neutral checks": _Feature(
-        None, frozenset({"pieces.takes_royal"}), False,
-        "chess+crowd that checks", _parent_crowd_that_checks, likely=_held_without_check,
+    "SR1d a castling piece that is not royal": _Feature(
+        None, frozenset({"rules.castling.common_king"}), True,
+        "chess+the queen castling", _parent_queen_castles, likely=_castles,
     ),
 }
 
@@ -3028,6 +3196,23 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
 _SHOWCASE_OWED: dict[str, str] = {
+    # Generation 65 (SR1d): a castling piece that is not royal, owed by SR1s4 (castling with a
+    # non-royal king, `docs/plan-schema-next.md` §3.2), usable after SR3r replays batch A.
+    "SR1d a castling piece that is not royal": (
+        "owed by SR1s4, castling with a non-royal king (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 64's names (SR3g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR1d retired their
+    # `_FEATURES` rows, still owed by SR3s7.
+    # Generation 63's names (SR3f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3g retired their
+    # `_FEATURES` rows, still owed by SR3s6.
+    # Generation 62's name (SR3e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3f retired its
+    # `_FEATURES` row, still owed by SR3s5.
+    # Generation 61's name (SR3d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3e retired its
+    # `_FEATURES` row, still owed by SR3s4.
+    # Generation 60's name (SR3c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3d retired its
+    # `_FEATURES` row, still owed by SR3s3.
+    # Generation 59's name (SR3b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3c retired its
+    # `_FEATURES` row, still owed by SR3s2.
     # Generation 58 (Q1077) owes none: `archive/the-crowd.json` states it and reaches it (its
     # condottieri give check from the opening's scrum on).
     # Generation 57's name (SR3a) went to `_NO_SHOWCASE_ON_PURPOSE` when Q1077 retired its
@@ -3212,6 +3397,13 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     }),
     57: frozenset({"rules.reach.piece.list"}),
     58: frozenset({"pieces.takes_royal"}),
+    59: frozenset({"rules.drops.stock_by_player"}),
+    60: frozenset({"pieces.moves.hop.screen.types"}),
+    61: frozenset({"rules.duck.portals"}),
+    62: frozenset({"rules.duck.untouched"}),
+    63: frozenset({"rules.npcs.nobodys", "rules.duck.nobodys"}),
+    64: frozenset({"rules.purse.portals", "rules.portals.nobodys"}),
+    65: frozenset({"rules.castling.common_king"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -3220,6 +3412,51 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 64's names (SR3g), owed in `_SHOWCASE_OWED` until generation 65 (SR1d)
+    # retired their `_FEATURES` rows. Still owed by SR3s7 (`docs/plan-schema-next.md` §3.2),
+    # buying beside portals, usable after SR3r; the entries go the day it lands.
+    "schema 64: rules.purse.portals": (
+        "owed by SR3s7, buying beside portals (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 64: rules.portals.nobodys": (
+        "owed by SR3s7, beside buying beside portals: pieces nobody owns beside portals "
+        "(docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 63's names (SR3f), owed in `_SHOWCASE_OWED` until generation 64 (SR3g)
+    # retired their `_FEATURES` rows. Still owed by SR3s6 (`docs/plan-schema-next.md` §3.2), a
+    # neutral piece a wild piece eats, usable after SR3r; the entries go the day it lands.
+    "schema 63: rules.npcs.nobodys": (
+        "owed by SR3s6, a neutral piece a wild piece eats (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 63: rules.duck.nobodys": (
+        "owed by SR3s6, beside a neutral piece a wild piece eats: the duck beside pieces "
+        "nobody owns (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 62's name (SR3e), owed in `_SHOWCASE_OWED` until generation 63 (SR3f) retired
+    # its `_FEATURES` row. Still owed by SR3s5 (`docs/plan-schema-next.md` §3.2), the duck
+    # beside a blast, a strike or contacts, usable after SR3r; the entry goes the day it lands.
+    "schema 62: rules.duck.untouched": (
+        "owed by SR3s5, the duck beside a blast, a strike or contacts "
+        "(docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 61's name (SR3d), owed in `_SHOWCASE_OWED` until generation 62 (SR3e) retired
+    # its `_FEATURES` row. Still owed by SR3s4 (`docs/plan-schema-next.md` §3.2), the duck
+    # beside portals, usable after SR3r; the entry goes the day it lands.
+    "schema 61: rules.duck.portals": (
+        "owed by SR3s4, the duck beside portals (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 60's name (SR3c), owed in `_SHOWCASE_OWED` until generation 61 (SR3d) retired
+    # its `_FEATURES` row. Still owed by SR3s3 (`docs/plan-schema-next.md` §3.2), a hop that
+    # may not jump its own kind, usable after SR3r; the entry goes the day it lands.
+    "schema 60: pieces.moves.hop.screen.types": (
+        "owed by SR3s3, a screen by type (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 59's name (SR3b), owed in `_SHOWCASE_OWED` until generation 60 (SR3c) retired
+    # its `_FEATURES` row. Still owed by SR3s2 (`docs/plan-schema-next.md` §3.2), a handicap
+    # game, usable after SR3r; the entry goes the day it lands.
+    "schema 59: rules.drops.stock_by_player": (
+        "owed by SR3s2, a stock per player (docs/plan-schema-next.md §3.2)"
+    ),
     # Generation 57's name (SR3a), owed in `_SHOWCASE_OWED` until generation 58 (Q1077)
     # retired its `_FEATURES` row. Still owed by SR3s1 (`docs/plan-schema-next.md` §3.2), a race
     # any listed runner wins, usable after SR3r; the entry goes the day it lands.
@@ -3474,7 +3711,14 @@ def _feature_parents() -> dict[str, dict]:
 # `open-a-portal` both ways, so the tables are empty again. Generation 50's three (SR2:
 # majority and a purse in a long turn, a pouncing path, each two edits from any stored game)
 # retired with its `_FEATURES` rows (SR2b).
-_CANNOT_ENTER: dict[str, str] = {}
+_CANNOT_ENTER: dict[str, str] = {
+    # SR1d (generation 65, Z2): no operator adds castling, names another piece as the castling
+    # one, or moves royalty, and no stored game has the castling piece unroyal; only a model
+    # call reaches it. Its showcase (SR1s4) is the way into the corpus.
+    "SR1d a castling piece that is not royal": (
+        "no operator adds castling, renames the castling piece or moves royalty"
+    ),
+}
 _CANNOT_LEAVE: dict[str, str] = {}
 
 
@@ -4510,7 +4754,8 @@ _PINNED_SCALES: dict[str, float] = {
     "short_sweep_share": 1.0, "royal_types": 2.0, "royal_step": 2.0,
     "royal_slides": 1.0, "move_orthogonal_share": 1.0, "capture_orthogonal_share": 1.0,
     "mean_step": 3.0, "has_promotion": 1.0, "has_drops": 1.0, "has_stock": 1.0,
-    "stock_is_endless": 1.0, "drops_placement": 1.0, "drops_either_face": 1.0,
+    "stock_is_endless": 1.0, "stock_is_uneven": 1.0, "drops_placement": 1.0,
+    "drops_either_face": 1.0,
     "drops_gating": 1.0, "draws_insufficient_material": 1.0,
     "has_a_moveless_piece": 1.0, "has_castling": 1.0, "win_is_capture": 1.0,
     "wins_by_arrival": 1.0, "wins_by_check_count": 1.0, "wins_by_extinction": 1.0,
@@ -4543,6 +4788,7 @@ _PINNED_SCALES: dict[str, float] = {
     "has_purse": 1.0, "purse_start": 1.0, "purse_region": 1.0, "price_share": 1.0,
     "has_hire": 1.0, "has_bribe": 1.0, "bounty_to_loser": 1.0,
     "legs_share": 1.0,
+    "typed_screen_share": 1.0,  # SR3c
     "explodes_shaped": 1.0,
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
     "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
@@ -4631,14 +4877,15 @@ class TestDistanceIsPinnedToTheNumber:
         `draws_insufficient_material`, read with chess's draw on dead material taken off, since
         a bare-royal rule leaves that draw inert and would be a second difference: 0.0098;
         136 since Q1074b5's ten push features: 0.0091; 138 since Q1074bo's `push_no_back` and
-        `push_walls_crush`: 0.0089; 139 since Q1077's `majority_takes_royal`: 0.0088."""
+        `push_walls_crush`: 0.0089; 139 since Q1077's `majority_takes_royal`: 0.0088; 140 since
+        SR3b's `stock_is_uneven`: 0.0087; 141 since SR3c's `typed_screen_share`: 0.0087."""
         chess = _chess()
         chess["rules"].pop("insufficient_material")
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0088
+        assert distance(chess, twin) == 0.0087
 
 
 def _one_leap_beside_a_stone() -> dict:

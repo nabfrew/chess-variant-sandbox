@@ -246,6 +246,10 @@ def _board_fields(spec: CompiledSpec) -> dict[str, Any]:
 _MOVEMENT_INERT: dict[str, Any] = {
     "has_capture_matrix": False,
     "has_hop_attacks": False,
+    # SR3c (`docs/plan-schema-next.md` §1 rank 7): the hop screens named by type,
+    # `[k][type]` flattened as 0/1, list `k` being screen code `SCREEN_TYPES + k`. Empty
+    # unless a hop names its screen's types, so no stored game's tables move.
+    "hop_screen_types": [],
 }
 
 
@@ -274,6 +278,11 @@ def _movement_fields(spec: CompiledSpec) -> dict[str, Any]:
         "hop_refs": hop_refs,
         "hop_squares": hop_squares,
         "hop_modes": hop_modes,
+        "hop_screen_types": [
+            int(piece_type in listed)
+            for listed in spec.screen_types
+            for piece_type in range(n_types)
+        ],
         "dedup": [
             int(square in spec.dedup_squares[frame][piece_type])
             for frame in range(n_frames)
@@ -669,6 +678,10 @@ _DROPS_INERT: dict[str, Any] = {
     # Schema 10 (Q51). Empty is "nothing is held before a capture", which is every
     # ruleset with a hand up to now.
     "drops_stock": [],
+    # SR3b (`docs/plan-schema-next.md` §1 rank 6): each player's own stock,
+    # `[player][type]` flattened, only where the two differ (`drops_stock` is then empty).
+    # A stock both players share crosses as `drops_stock` always did.
+    "drops_stock_by_player": [],
     "drops_unlimited": [],
     # Schema 18 (Q784). False unless the hand says `placement`.
     "drops_placement": False,
@@ -705,6 +718,9 @@ def _drops_fields(spec: CompiledSpec) -> dict[str, Any]:
         # Schema 10 (Q51). Empty when nothing is stocked, which is every ruleset written
         # before it -- crazyhouse, shogi and dobutsu all keep the fingerprints they had.
         "drops_stock": list(drops.stock) if drops else [],
+        "drops_stock_by_player": (
+            [held for stock in drops.stock_by_player for held in stock] if drops else []
+        ),
         "drops_unlimited": [int(flag) for flag in drops.unlimited] if drops else [],
         # Schema 18 (Q784): the placement phase. False for every game before it.
         "drops_placement": bool(drops.placement) if drops else False,
@@ -1148,6 +1164,8 @@ _POUNCE_INERT: dict[str, Any] = {
     "pounce_paths": [],
     # Generation 41 (N3d). Empty unless an `npcs` entry says `split`.
     "pounce_split": [],
+    # SR3c: each reach entry's screen code, empty unless a pouncer's screen names its types.
+    "pounce_reach_screen": [],
 }
 
 
@@ -1165,14 +1183,16 @@ def _pounce_fields(spec: CompiledSpec) -> dict[str, Any]:
     pounce_reach_index: list[int] = []
     pounce_reach: list[int] = []
     pounce_paths: list[int] = []
+    pounce_reach_screen: list[int] = []
     if pounce is not None:
         pounce_reach_index.append(0)
         for per_type in pounce.reach:
             for origin in range(spec.n_squares):
-                for target, prefix, window, screens in per_type[origin] if per_type else ():
+                for target, prefix, window, screens, screen in per_type[origin] if per_type else ():
                     pounce_reach.extend(
                         (target, len(pounce_paths), len(prefix) + len(window), len(prefix), screens)
                     )
+                    pounce_reach_screen.append(screen)
                     pounce_paths.extend(prefix)
                     pounce_paths.extend(window)
                 pounce_reach_index.append(len(pounce_reach) // 5)
@@ -1190,6 +1210,8 @@ def _pounce_fields(spec: CompiledSpec) -> dict[str, Any]:
         # Generation 41 (N3d, `docs/archive/plan-npc.md` §4.5): the cap per type, empty
         # unless a type splits.
         "pounce_split": list(pounce.split) if pounce is not None else [],
+        # SR3c: a screen named by type on a pouncer (N13), one code per reach entry.
+        "pounce_reach_screen": pounce_reach_screen if any(pounce_reach_screen) else [],
     }
 
 
@@ -1790,6 +1812,10 @@ def rust_supports(spec: CompiledSpec) -> str | None:
     core the thing they guarded -- which is what a guard is for. The constants stay as
     the honest record of the ordering.
     """
+    # SR3c: a screen named by type is a one-byte code past the three owner codes, so the
+    # core holds at most 252 distinct lists; a game can hardly write that many.
+    if len(spec.screen_types) > 255 - 3:
+        return "pieces[].moves[].screen: more distinct type lists than a screen code holds"
     # Q1074b2 (`docs/plan-push.md` §7): the core plays the single push (`MOVE_PUSH`,
     # `chain: "one"`); what it does not yet play is held shut here (`_push_holds`).
     if spec.push is not None:

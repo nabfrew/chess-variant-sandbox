@@ -65,6 +65,10 @@ class TestTheTranslation:
         assert any("rules.duck beside rules.npcs" in r for r in said)
         # Not the long turn's refusal: the duck's two-move turn is the duck's half.
         assert not any(r.startswith("rules.turn") for r in _refusals(_with_duck(start="d4")))
+        # SR3e (K3): a blast beside the duck is ours alone, unprobed there.
+        atomic = copy.deepcopy(DUCK)
+        atomic["rules"]["explode_on_capture"] = {"radius": 1}
+        assert any("rules.duck beside rules.explode_on_capture" in r for r in _refusals(atomic))
 
     def test_the_duck_is_a_wall_in_the_fen_and_a_turn_one_move(self) -> None:
         engine = Engine(DUCK)

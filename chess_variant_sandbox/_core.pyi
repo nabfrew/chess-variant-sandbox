@@ -184,6 +184,28 @@ class Core:
         max_depth: int,
         goal: float = ...,
     ) -> list[float]: ...
+    # N1: a forward endgame solve of a material set (type indices for player 0, player 1 and
+    # nobody) and every set it leads to: per set `(material, (won, lost, drawn, illegal),
+    # (longest win, longest loss, wins beyond the clock, longest to a reset), requested)`,
+    # the solve's `(positions, edges, sweeps)`, and the asked set's positions decided in
+    # `sample_plies` or fewer as `(state, value, plies)`. `engine/endgame.py` reads it.
+    def solve_endgame(
+        self,
+        pieces: tuple[list[int], list[int], list[int]],
+        max_positions: int = ...,
+        sample_plies: int = ...,
+    ) -> tuple[
+        list[
+            tuple[
+                tuple[list[int], list[int], list[int]],
+                tuple[int, int, int, int],
+                tuple[int, int, int, int],
+                bool,
+            ]
+        ],
+        tuple[int, int, int],
+        list[tuple[State, int, int]],
+    ]: ...
     # Q665: the minimax player's own root value, move and completed depth on each state,
     # one stream per state from `seeds` (as `select_move`'s seed); a training label's
     # teacher, never called by play. The answer does not depend on `threads`.
@@ -247,6 +269,9 @@ ROUND_WIN_PIECES: float
 SPY_PIECES: float
 # CS7 (R15): the most portal ends the core holds; `spec/schema.py::MAX_PORTAL_ENDS` is its twin.
 MAX_PORTAL_ENDS: int
+# N1: the most positions and edges one endgame solve may hold (`rust/src/endgame.rs`).
+ENDGAME_MAX_POSITIONS: int
+ENDGAME_MAX_EDGES: int
 # CS2 (R1): the move word's fields as `(name, shift, width)` and its kinds as `(name, value)`;
 # `engine/moves.py` holds the copies `tests/test_move_word.py` pins to them.
 MOVE_FIELDS: tuple[tuple[str, int, int], ...]

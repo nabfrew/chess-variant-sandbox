@@ -111,9 +111,11 @@ def normal_form(spec: dict[str, Any]) -> dict[str, Any]:
     4. One spelling where there are two: ``promotion`` is always a list; ``reach.piece``
        written as a list is ascending, and a list of one is its id (SR3a); a promotion zone by
        rank is always ``ranks``, ascending, with ``"last"`` and the default resolved against
-       the board's height; ``to_by_player`` naming one list for both players is ``to``; a
+       the board's height; ``to_by_player`` naming one list for both players is ``to``, and
+       ``drops.stock_by_player`` naming one stock for both is ``stock`` (SR3b); a
        ``wrap`` is written key by key from `schema.wrap_stated`, ``X_by_player`` only where
-       the two players differ.
+       the two players differ; a hop's ``screen`` named by type is ascending, and one naming
+       every declared piece is ``"any"`` (SR3c).
     5. A key written at its off value is dropped (`drop_off_values`, Q1008c): before
        Q1008c the validator refused each of these, so no game that had a name writes one.
     6. Portal moves are written in the shape every portal game was named in (spelling 31,
@@ -163,9 +165,13 @@ def _normalise(normal: dict[str, Any]) -> dict[str, Any]:
         _drop_defaults(setup, _SETUP_DEFAULTS)
         for placement in _dicts(setup.get("placements")):
             _drop_defaults(placement, _PLACEMENT_DEFAULTS)
+    every_id = {
+        piece.get("id") for piece in _dicts(normal.get("pieces"))
+    } if not (normal.get("rules") or {}).get("portals") else None
     for piece in _dicts(normal.get("pieces")):
         _drop_defaults(piece, _PIECE_DEFAULTS)
         for move in _dicts(piece.get("moves")):
+            _normal_screen(move, every_id)
             _normal_move(move)
     rules = normal.get("rules")
     if isinstance(rules, dict):
@@ -313,6 +319,18 @@ def normal_push(spec: dict[str, Any]) -> None:
             piece["weight"] = piece.pop("strength")
 
 
+def _normal_screen(move: dict[str, Any], every_id: set[Any] | None) -> None:
+    """SR3c: a hop's screen named by type is a set, so it is written ascending; one naming
+    every declared piece is ``"any"``, the same tables (``every_id`` is ``None`` in a portal
+    game, whose ends are types no list can name, so no list there is ``"any"``)."""
+    listed = move.get("screen")
+    if not isinstance(listed, list) or not listed:
+        return
+    if not all(isinstance(pid, str) for pid in listed) or len(set(listed)) != len(listed):
+        return
+    move["screen"] = "any" if every_id is not None and set(listed) == every_id else sorted(listed)
+
+
 def _normal_move(move: dict[str, Any]) -> None:
     kind = move.get("kind")
     if isinstance(kind, str) and kind in DEFAULT_RANGE:
@@ -347,6 +365,21 @@ def _normal_rules(rules: dict[str, Any], height: Any, shape: Any) -> None:
             # SR3a: a goal's runners are a set, and a list of one is the one id.
             ordered = sorted(runners)
             reach["piece"] = ordered[0] if len(ordered) == 1 else ordered
+    drops = rules.get("drops")
+    by_player = drops.get("stock_by_player") if isinstance(drops, dict) else None
+    if (
+        isinstance(drops, dict)
+        and "stock" not in drops
+        and isinstance(by_player, dict)
+        and set(by_player) == {"0", "1"}
+        and isinstance(by_player["0"], dict)
+        and by_player["0"]
+        and _same(by_player["0"], by_player["1"])
+    ):
+        # SR3b: one stock for both players is `stock`, as `to_by_player` naming one list
+        # for both is `to`.
+        drops["stock"] = by_player["0"]
+        del drops["stock_by_player"]
     _drop_defaults(rules, _RULE_DEFAULTS)
     for key in [key for key in rules if key in _ABSENT_WHEN_EMPTY]:
         if any(_same(rules[key], empty) for empty in _EMPTY):

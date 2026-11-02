@@ -284,13 +284,20 @@ def facts(spec: dict[str, Any]) -> dict[str, Any]:
     if armies[2]:
         found["pieces neither player owns, at the start"] = army(armies[2])
     stock = compiled.drops.stock if compiled.drops is not None else ()
+    endless = inexhaustible_types(compiled)
     if any(stock):
         # An unlimited slot is stored as a constant 1 (`compile.DropRule`), and a 1 in
         # the facts told Jev a supply the description calls unlimited is one piece (Q132).
-        endless = inexhaustible_types(compiled)
         found["held in hand by each player at the start"] = {
             names[kind]: "unlimited" if kind in endless else held
             for kind, held in enumerate(stock) if held}
+    elif compiled.drops is not None and compiled.drops.stock_by_player:
+        # SR3b: each player's own stock.
+        for player, label in ((0, "first player"), (1, "second player")):
+            found[f"held in hand by the {label} at the start"] = {
+                names[kind]: "unlimited" if kind in endless else held
+                for kind, held in enumerate(compiled.drops.stock_of(player)) if held
+            } or "nothing"
     royal = [names[kind] for kind in compiled.royal_types]
     found["royal pieces (losing them loses the game)"] = royal or "none: no piece is royal"
     # Said from both sides, because the rules say it of the player it happens to and a

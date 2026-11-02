@@ -141,13 +141,20 @@ class TestCoherence:
         spec["rules"]["turn"] = {"moves": 1, "ramp": [1]}
         assert validate_spec(spec) == []
 
-    def test_castling_must_protect_royalty(self) -> None:
+    def test_a_piece_that_is_not_royal_may_castle_beside_royals(self) -> None:
+        """SR1d (Z2) lifted the refusal: the castling piece need not be royal
+        (`tests/test_castling_common_king.py` plays it)."""
         spec = copy.deepcopy(MINIMAL)
         spec["pieces"].append(
             {"id": "R", "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4"}]}
         )
-        spec["rules"]["castling"] = {"king": "R", "rook": "R"}
-        assert any("not a royal piece" in e for e in validate_spec(spec))
+        spec["pieces"].append(
+            {"id": "C", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}
+        )
+        spec["setup"]["placements"] += [{"piece": "C", "squares": ["b1"]},
+                                        {"piece": "R", "squares": ["d1"]}]
+        spec["rules"]["castling"] = {"king": "C", "rook": "R"}
+        assert validate_spec(spec) == []
 
     def test_min_range_may_not_exceed_range(self) -> None:
         spec = copy.deepcopy(MINIMAL)
@@ -1039,6 +1046,7 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_MOVE}/range": {"minimum": 0, "maximum": 16},
     f"{_MOVE}/min_range": {"minimum": 1, "maximum": 16},
     f"{_MOVE}/screen_range": {"minimum": 0, "maximum": 16},
+    f"{_MOVE}/screen/anyOf[1]": _AT_LEAST_ONE,  # SR3c: a screen named by type
     f"{_MOVE}/sweep_range": {"minimum": 0, "maximum": 16},  # Q1063
     f"{_MOVE}/legs": _AT_LEAST_ONE,  # SR1a: one list per vector, at most four squares
     **_vector_bounds(f"{_MOVE}/legs/items", {"minItems": 1, "maxItems": 4}),
@@ -1096,6 +1104,13 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_RULES}/extinction{_P}/min_count": {"minimum": 1, "maximum": 64},
     f"{_RULES}/drops{_P}/region/additionalProperties": _AT_LEAST_ONE,
     f"{_RULES}/drops{_P}/stock/additionalProperties/anyOf[0]": {"minimum": 1, "maximum": 32},
+    # SR3b: each player's own stock, bounded as `stock` is.
+    **{
+        f"{_RULES}/drops{_P}/stock_by_player{_P}/{player}/additionalProperties/anyOf[0]": {
+            "minimum": 1, "maximum": 32,
+        }
+        for player in ("0", "1")
+    },
     # Q1059a: a gate zone names at least one rank or square, and a rank is never negative.
     f"{_RULES}/drops{_P}/gating{_P}/ranks": _AT_LEAST_ONE,
     f"{_RULES}/drops{_P}/gating{_P}/ranks/items": {"minimum": 0},
@@ -1582,8 +1597,9 @@ class TestTheSchemaClosesItsObjects:
         objects = [n for n in _all_nodes(schema) if n.get("type") == "object"]
         assert objects
         closed = [n for n in objects if n.get("additionalProperties") is False]
-        # Only the maps (drops' region and stock) carry a value schema instead of False.
-        assert len(objects) - len(closed) == 2
+        # Only the maps (drops' region and stock, and SR3b's two stocks by player) carry a
+        # value schema instead of False.
+        assert len(objects) - len(closed) == 4
         assert all(isinstance(n["additionalProperties"], dict) for n in objects if n not in closed)
 
     def test_a_loose_schema_closes_nothing(self) -> None:

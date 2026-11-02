@@ -33,6 +33,8 @@ from chess_variant_sandbox.spec.reachability import (
 from chess_variant_sandbox.spec.reachability import (
     pieces_a_player_can_hold as pieces_a_player_can_hold,
 )
+from chess_variant_sandbox.spec.reachability import player_stocks as player_stocks
+from chess_variant_sandbox.spec.reachability import stocked_ids as stocked_ids
 from chess_variant_sandbox.spec.refusals import refusal
 
 if TYPE_CHECKING:
@@ -975,6 +977,9 @@ PIECE_POSITIONS: dict[str, Any] = {
     "drops": Fields({
         "no_doubled": _PRUNED, "no_mate": _PRUNED,
         "stock": Names(PIECE_KEYED, GOES_KEY), "region": Names(PIECE_KEYED, GOES_KEY),
+        # SR3b: one player's stock emptied stays (an empty hand is that player's stock);
+        # both emptied, the key goes, as `stock` does.
+        "stock_by_player": Fields({ANY_KEY: Names(PIECE_KEYED, KEPT_EMPTY)}, emptied=GOES_KEY),
     }),
     # A wild piece goes with its type, and the rule with its last wild piece.
     "npcs": Each(Fields({"piece": _ONE_GOES_WITH_IT, "immune": _PRUNED}), emptied=GOES_HOLDER),
@@ -1038,6 +1043,11 @@ PIECE_FIELDS: dict[str, Any] = {
     "sight": Each(
         Fields({"affects": Names(PIECE_IDS, GOES_HOLDER, only_named=True)}), emptied=GOES_KEY
     ),
+    # SR3c: a hop's screen named by type. The removed type leaves the list; a hop whose
+    # every listed screen is gone can jump nothing, so the move goes (an emptied list is
+    # refused, and dropping the key would read as *any piece*). An owner word is no list
+    # and is left alone; an emptied move list stays, a piece that never moves.
+    "moves": Each(Fields({"screen": Names(PIECE_IDS, GOES_HOLDER, only_named=True)})),
 }
 
 
@@ -1089,9 +1099,11 @@ _CASTLING_KEYS = {"king", "rook", "king_steps", "king_file", "rook_file"}
 # ``gating`` is Q1059a (Seirawan's gating, numbered generation 52): a held piece enters only
 # on a square a piece of its side vacates by leaving its setup square for the first time,
 # as part of that move. See ``_validate_gating`` and ``_check_gating_coherence``.
+# ``stock_by_player`` is SR3b (generation 59): each player's own stock, in place of
+# ``stock``. See ``player_stocks`` and ``_validate_stock_by_player``.
 _DROPS_KEYS = {
     "from_captures", "region", "no_doubled", "no_mate", "stock", "placement", "either_face",
-    "gating",
+    "gating", "stock_by_player",
 }
 # Which squares gate, stated as a promotion zone is, from the first player's side and read
 # by ``promotion_squares``: whole ``ranks`` or named ``squares``, one of the two.
@@ -1409,11 +1421,11 @@ def _check_moveless_coherence(
     # hand starts full (`from_captures` needs a capture first), no portal is theirs to move
     # and no command of theirs borrows an enemy piece.
     counts = opening_counts(spec)
-    stock = (rules.get("drops") or {}).get("stock") if isinstance(rules.get("drops"), dict) else None
+    stocks = player_stocks(rules.get("drops"))
     sights = piece_sights(pieces)
     for player in (0, 1):
         theirs = set(counts[player])
-        if not theirs or not theirs <= still or stock:
+        if not theirs or not theirs <= still or stocks[player]:
             continue
         if any(player in end["moved_by"] for group in portal_groups(rules) for end in group["ends"]):
             continue
@@ -2101,9 +2113,9 @@ def simultaneous_holdings(spec: dict[str, Any]) -> tuple[set[str], set[str]]:
             if player in (0, 1):
                 held[player].add(placement["piece"])
     drops: dict[str, Any] | None = rules["drops"] if isinstance(rules.get("drops"), dict) else None
-    if drops is not None and isinstance(drops.get("stock"), dict):
-        for player in (0, 1):
-            held[player] |= declared.intersection(drops["stock"])
+    if drops is not None:
+        for player, stock in enumerate(player_stocks(drops)):
+            held[player] |= declared.intersection(stock)
     hands_fill = drops is not None and drops.get("from_captures", True) is not False
     demoted = {
         piece["id"]: piece["promoted_from"] for piece in pieces
@@ -2229,8 +2241,7 @@ def _spy_gains(rules: dict[str, Any], spies: set[str]) -> list[str]:
                 found.append(f"a rules.contacts link turns a piece into the spy {link[key]!r}")
     drops = rules.get("drops")
     if isinstance(drops, dict):
-        stock = drops.get("stock")
-        for spy in sorted(spies & set(stock if isinstance(stock, dict) else ())):
+        for spy in sorted(spies & stocked_ids(drops)):
             found.append(f"rules.drops.stock puts the spy {spy!r} in a hand")
         if drops.get("from_captures", True) is not False:
             found.append(
@@ -2483,11 +2494,10 @@ def _check_simultaneous_coherence(
     if isinstance(drops, dict):
         if drops.get("no_mate"):
             errors.append(refusal("R13"))
-        stock = drops.get("stock")
         royal_ids = {
             p.get("id") for p in pieces if isinstance(p, dict) and p.get("royal") is True
         }
-        if drops.get("placement") is True and isinstance(stock, dict) and royal_ids & set(stock):
+        if drops.get("placement") is True and royal_ids & stocked_ids(drops):
             refuse(
                 "a royal in a placement stock",
                 "both players place at once, and a royal could be traded before the game starts",
@@ -2637,9 +2647,8 @@ def _check_only_lost_coherence(
     # any piece of its side moves, so the side starts with it as surely as with one placed.
     drops = rules.get("drops")
     if isinstance(drops, dict) and drops.get("placement") is True:
-        for player in (0, 1):
-            stock = drops.get("stock")
-            for piece, held in (stock if isinstance(stock, dict) else {}).items():
+        for player, stock in enumerate(player_stocks(drops)):
+            for piece, held in stock.items():
                 if isinstance(held, int) and not isinstance(held, bool):
                     counts[player][piece] = counts[player].get(piece, 0) + held
     for entry in flagged:
@@ -2674,9 +2683,10 @@ def royal_starts_in_hand(rules: Any, royal_ids: AbstractSet[str]) -> bool:
     drops = rules.get("drops")
     if not isinstance(drops, dict) or drops.get("placement") is not True:
         return False
-    stock = drops.get("stock")
-    return isinstance(stock, dict) and any(
-        stock.get(royal) == 1 for royal in royal_ids
+    # SR3b: either player's stock (`player_stocks`); the royal missing from the other
+    # side's placements and stock is that side without a royal, as horde's.
+    return any(
+        stock.get(royal) == 1 for stock in player_stocks(drops) for royal in royal_ids
     )
 
 
@@ -2697,41 +2707,52 @@ def _check_placement_coherence(
     * **more than one, or ``"unlimited"``** -- a royal is stocked once, as it is placed once
       where it is not placed at all;
     * **beside a placed royal of the same type** -- a side would hold two.
+
+    SR3b reads all three per player (`docs/plan-schema-next.md` H14 to H16): under
+    ``stock_by_player`` each player's stock is asked against that player's own placements,
+    so one side may place its royal while the other plays its royal from the hand.
     """
     drops = rules.get("drops")
     if not isinstance(drops, dict):
-        return
-    stock = drops.get("stock")
-    if not isinstance(stock, dict):
         return
     royal_ids = {
         piece["id"]
         for piece in pieces
         if isinstance(piece, dict) and piece.get("royal") and isinstance(piece.get("id"), str)
     }
-    stocked = sorted(royal for royal in royal_ids if royal in stock)
-    if not stocked:
+    if not royal_ids & stocked_ids(drops):
         return
+    by_player = "stock_by_player" in drops
     placement = drops.get("placement") is True
     counts = opening_counts(spec)
-    for royal in stocked:
-        held = stock[royal]
-        if not placement:
-            errors.append(
-                f"rules.drops.stock holds the royal {royal!r} outside the placement phase: "
-                "a side could move its army with its royal still in hand; add "
-                '"placement": true to rules.drops or take the royal out of the stock'
-            )
-        if held != 1:
-            errors.append(
-                f"rules.drops.stock holds {held!r} of the royal {royal!r}; a royal is "
-                "stocked once"
-            )
-        if counts[0].get(royal, 0) or counts[1].get(royal, 0):
-            errors.append(
-                f"the royal {royal!r} is both placed by setup.placements and stocked by "
-                "rules.drops.stock, so a side would hold two; place it or stock it"
-            )
+    stocks = player_stocks(drops)
+    # A shared stock is asked once, naming both players' placements, as it always was.
+    readings = (
+        [(f"rules.drops.stock_by_player[{str(player)!r}]", stocks[player], (player,))
+         for player in (0, 1)]
+        if by_player
+        else [("rules.drops.stock", stocks[0], (0, 1))]
+    )
+    for where, stock, players in readings:
+        for royal in sorted(royal for royal in royal_ids if royal in stock):
+            held = stock[royal]
+            if not placement:
+                errors.append(
+                    f"{where} holds the royal {royal!r} outside the placement phase: "
+                    "a side could move its army with its royal still in hand; add "
+                    '"placement": true to rules.drops or take the royal out of the stock'
+                )
+            if held != 1:
+                errors.append(
+                    f"{where} holds {held!r} of the royal {royal!r}; a royal is "
+                    "stocked once"
+                )
+            if any(counts[player].get(royal, 0) for player in players):
+                whose = "a side" if len(players) == 2 else f"player {players[0]}"
+                errors.append(
+                    f"the royal {royal!r} is both placed by setup.placements and stocked by "
+                    f"{where}, so {whose} would hold two; place it or stock it"
+                )
 
 
 def drop_face_pairs(pieces: Any) -> dict[str, list[str]]:
@@ -2831,7 +2852,7 @@ def _check_gating_coherence(
             "true, its default): a gating hand holds its stock alone; write "
             '"from_captures": false'
         )
-    if not drops.get("stock"):
+    if not stocked_ids(drops):
         errors.append(
             "rules.drops.gating with nothing in rules.drops.stock: no piece could ever "
             "enter; stock the hand or drop the rule"
@@ -2927,8 +2948,7 @@ def _check_either_face_coherence(
         for piece in pieces
         if isinstance(piece, dict) and piece.get("royal") and isinstance(piece.get("id"), str)
     }
-    stock = drops.get("stock")
-    stocked = set(stock) if isinstance(stock, dict) else set()
+    stocked = stocked_ids(drops)
     for base, listed in sorted(pairs.items()):
         if len(listed) > 1:
             errors.append(
@@ -3815,17 +3835,10 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_bounty_coherence(pieces, rules, errors)
     _check_purse_coherence(spec, pieces, rules, errors)
     _check_push_coherence(spec, pieces, rules, errors)
-
-    if isinstance(rules.get("castling"), dict):
-        castling = rules["castling"]
-        king_id = castling.get("king")
-        if has_royal and king_id is not None:
-            royal_ids = _str_set(p.get("id") for p in pieces if isinstance(p, dict) and p.get("royal"))
-            if not _in(king_id, royal_ids):
-                errors.append(
-                    f"rules.castling.king {king_id!r} is not a royal piece; castling protects "
-                    "royalty, so pointing it at a common piece is almost always a mistake"
-                )
+    # SR1d (Z2, `docs/plan-schema-next.md` §1 rank 8): `rules.castling.king` may name a piece
+    # that is not royal beside royals. The core castles by type; where check exists it reads
+    # the castling piece's start, crossing and landing as a king's, and asks every such castle
+    # whether it leaves the royal attacked (its rook may be the royal's sole blocker).
 
 
 def _check_path_coherence(
@@ -4948,7 +4961,7 @@ def _check_npc_pounce(
                 )
             if "condition" in move:
                 errors.append(f"{where}, whose move has a condition: a wild piece has no rank or first move of its own")
-            if move.get("screen", "any") != "any":
+            if screen_names_an_owner(move):
                 errors.append(f"{where}, a hop whose screen names an owner: a wild piece has no own or enemy")
         if piece.get("captures") == []:
             errors.append(f"{loc} on {piece_id!r}, which takes nothing: it would never pounce")
@@ -5067,26 +5080,29 @@ def _check_duck_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
     """The duck against everything else in the spec (`docs/archive/plan-npc.md` §4.6), each refusal
-    by name. Thirteen:
+    by name. Eleven (portals beside the duck are allowed since SR3d, K2: the duck is a piece
+    nobody may take to every transit and fold go-through, never transits, and takes a fold as
+    floor; and a blast, a strike or contacts since SR3e, K3: the duck is out of the capture
+    matrix, so no strike or contact meets it, and the compiler makes it immune to every blast;
+    `docs/plan-schema-next.md` §2.9):
 
     1. a check rule (checkmate, ``forbid_check``, ``check_limit``): a move's legality would
        depend on the duck move after it;
     2. rounds (``rules.simultaneous``, a spy game's too): nobody is the mover;
     3. ``rules.turn``: a turn already has its two halves;
-    4. portals: the third owner's block;
-    5. ``explode_on_capture``, ``strike`` or ``contacts``: an uncapturable piece in a blast or
-       a strike would be a second rule;
-    6. a duck type that sweeps (a player's sweep is allowed beside the duck since SR2,
+    4. a duck type that sweeps (a player's sweep is allowed beside the duck since SR2,
        `docs/plan-schema-next.md` §2.7 W9: nothing captures the duck, so it blocks a sweep as
        any piece the sweeper may not capture does);
-    7. a duck type that is royal, captures, or has a facing, rest, speed, spy, a region, a move
+    5. a duck type that is royal, captures, or has a facing, rest, speed, spy, a region, a move
        condition or a capture-only move;
-    8. ``goes: "by_moves"`` on moves that read differently for the two players;
-    9. ``goes: "by_moves"`` on a type with no moves (I1's, `docs/archive/plan-pieces-moves.md` §4.3);
-    10. moves on a duck that goes anywhere: never read, write ``moves: []``;
-    11. its type anywhere but ``rules.duck``;
-    12. a start the opening does not leave empty;
-    13. an odd ``max_plies``.
+    6. ``goes: "by_moves"`` on moves that read differently for the two players;
+    7. ``goes: "by_moves"`` on a type with no moves (I1's, `docs/archive/plan-pieces-moves.md` §4.3);
+    8. moves on a duck that goes anywhere: never read, write ``moves: []``;
+    9. its type anywhere but ``rules.duck`` (SR3e: a blast's, a strike's or a contact's lists
+       too, which nothing of the duck's ever meets);
+    10. a start the opening does not leave empty (a momentum end's start is not empty; a
+        fold's is, the duck standing in it);
+    11. an odd ``max_plies``.
     """
     duck = rules.get("duck")
     if not isinstance(duck, dict):
@@ -5105,11 +5121,6 @@ def _check_duck_coherence(
         errors.append(refusal("R15"))
     if "turn" in rules:
         errors.append(refusal("L7"))
-    if rules.get("portals"):
-        errors.append(refusal("K2"))
-    for key in ("explode_on_capture", "strike", "contacts"):
-        if rules.get(key):
-            errors.append(refusal("K3", f"rules.{key}"))
     if any(
         isinstance(p, dict) and p.get("id") == pid and any(
             isinstance(m, dict) and m.get("kind") == "sweep" for m in _listed(p.get("moves"))
@@ -5204,14 +5215,15 @@ def _duck_named_elsewhere(
     pid: str | None, pieces: list[Any], rules: dict[str, Any], setup: Any
 ) -> list[str]:
     """Where the duck's type is named outside ``rules.duck``: the setup, a hand, a
-    promotion, a wild piece, a goal, castling, a capture list or a demotion."""
+    promotion, a wild piece, a goal, castling, a capture list, a demotion, or a blast's, a
+    strike's or a contact's lists (SR3e)."""
     found: list[str] = []
     placements = setup.get("placements") if isinstance(setup, dict) else None
     for index, placement in enumerate(_listed(placements)):
         if isinstance(placement, dict) and placement.get("piece") == pid:
             found.append(f"setup.placements[{index}]")
     drops = rules.get("drops")
-    if isinstance(drops, dict) and isinstance(drops.get("stock"), dict) and pid in drops["stock"]:
+    if pid in stocked_ids(drops):
         found.append("rules.drops.stock")
     promotion = rules.get("promotion")
     for entry in promotion if isinstance(promotion, list) else [promotion]:
@@ -5239,6 +5251,9 @@ def _duck_named_elsewhere(
     castling = rules.get("castling")
     if isinstance(castling, dict) and pid in (castling.get("king"), castling.get("rook")):
         found.append("rules.castling")
+    # SR3e (K3): the duck is untouched by a blast, a strike or contacts, so none of their
+    # lists may name it (nothing it is in ever happens to it).
+    found.extend(_duck_in_capture_rules(pid, rules))
     for other in pieces:
         if not isinstance(other, dict) or other.get("id") == pid:
             continue
@@ -5249,11 +5264,43 @@ def _duck_named_elsewhere(
     return found
 
 
+def _duck_in_capture_rules(pid: str | None, rules: dict[str, Any]) -> list[str]:
+    """Where a blast, a strike or contacts name the duck's type (SR3e, K3)."""
+    found: list[str] = []
+    explosion = rules.get("explode_on_capture")
+    if isinstance(explosion, dict):
+        for key in ("by", "of", "immune"):
+            if pid in _listed(explosion.get(key)):
+                found.append(f"rules.explode_on_capture.{key}")
+    strike = rules.get("strike")
+    if isinstance(strike, dict):
+        for key in ("by", "immune", "switches_sides"):
+            if pid in _listed(strike.get(key)):
+                found.append(f"rules.strike.{key}")
+        if any(
+            isinstance(link, dict) and pid in (link.get("from"), link.get("to"))
+            for link in _listed(strike.get("chain"))
+        ):
+            found.append("rules.strike.chain")
+    contacts = rules.get("contacts")
+    if isinstance(contacts, dict):
+        if pid in _listed(contacts.get("immune")):
+            found.append("rules.contacts.immune")
+        if any(
+            isinstance(link, dict)
+            and pid in (link.get(k) for k in ("mover", "onto", "mover_to", "onto_to"))
+            for link in _listed(contacts.get("links"))
+        ):
+            found.append("rules.contacts.links")
+    return found
+
+
 def _opening_squares(
     spec: dict[str, Any], rules: dict[str, Any], width: int, height: int, orientation: str
 ) -> set[int]:
     """Every square the opening fills or forbids: the placements (mirrors included), the
-    wild pieces' starts, the walls and absent cells."""
+    wild pieces' starts, the momentum portal ends' starts (SR3d; a fold is floor, so the
+    duck may start in one), the walls and absent cells."""
     setup = spec.get("setup")
     taken: set[int] = set()
     if isinstance(setup, dict):
@@ -5271,6 +5318,13 @@ def _opening_squares(
                     other_file, other_rank = reflect_square(file, rank, width, height, orientation)
                     taken.add(other_rank * width + other_file)
     taken |= {square for _, _, square in npc_starts(rules, width, height, orientation)}
+    for group in portal_groups(rules):
+        if group["kind"] == "fold":
+            continue
+        for end in group["ends"]:
+            coords = parse_square(end["at"], width, height) if isinstance(end["at"], str) else None
+            if coords is not None:
+                taken.add(coords[1] * width + coords[0])
     taken |= set(obstacle_squares(rules, width, height, orientation))
     board = spec.get("board")
     if isinstance(board, dict):
@@ -5461,7 +5515,7 @@ def _never_in_a_hand(
     stock = drops.get("stock")
     if stock is not None and not isinstance(stock, dict):
         return None
-    if pid in (stock or {}):
+    if pid in stocked_ids(drops):
         return None
     from_captures = drops.get("from_captures", True)
     if not isinstance(from_captures, bool):
@@ -5639,7 +5693,7 @@ def _check_inert_rules(
             isinstance(drops, dict)
             and drops
             and drops.get("from_captures", True)
-            and not drops.get("stock")
+            and not stocked_ids(drops)
         ):
             errors.append(
                 f"rules.drops can never fill a hand: {nothing_taken}, and a hand fills "
@@ -5657,6 +5711,7 @@ def _check_inert_rules(
         and drops
         and not drops.get("from_captures", True)
         and not drops.get("stock")
+        and not drops.get("stock_by_player")
     ):
         errors.append(
             'rules.drops has "from_captures": false and nothing else fills a hand, so '
@@ -6329,8 +6384,40 @@ def _validate_pieces(
                 piece.get("beats"), f"pieces[{index}]", ids, errors, key="beats"
             )
             _validate_push_piece(piece, f"pieces[{index}]", ids, errors)
+            _validate_screen_types(piece, f"pieces[{index}]", ids, errors)
 
     return ids
+
+
+def screen_names_types(move: Any) -> bool:
+    """SR3c: whether a move's hop screen is a list of piece ids (a screen named by type)."""
+    return isinstance(move, dict) and isinstance(move.get("screen"), list)
+
+
+def screen_names_an_owner(move: Any) -> bool:
+    """Whether a move's hop screen is ``own`` or ``enemy``: the screens that read a side, which
+    a piece with no side (a wild or a nobody's piece) cannot have. A screen named by type
+    (SR3c) names no owner."""
+    return isinstance(move, dict) and move.get("screen", "any") in ("own", "enemy")
+
+
+def _validate_screen_types(
+    piece: dict[str, Any], where: str, piece_ids: list[str], errors: list[str]
+) -> None:
+    """SR3c (`docs/plan-schema-next.md` §1 rank 7): a hop's screen named by type is a
+    non-empty list of declared piece ids, none repeated. Of either side: Janggi's cannon
+    lists every piece but the cannon, so it may not jump another cannon."""
+    moves = piece.get("moves")
+    for number, move in enumerate(moves if isinstance(moves, list) else []):
+        if not screen_names_types(move):
+            continue
+        loc = f"{where}.moves[{number}]"
+        if not move["screen"]:
+            errors.append(
+                f"{loc}.screen is an empty list: a hop with nothing it may jump never moves"
+            )
+            continue
+        _validate_captures(move["screen"], loc, piece_ids, errors, key="screen")
 
 
 def _validate_facing(
@@ -6503,9 +6590,12 @@ def _validate_moves(
 
         if "screen" in move:
             owner = move.get("screen")
-            if owner not in SCREEN_OWNERS:
+            # SR3c: a list of piece ids is a screen named by type, its ids checked once
+            # every id is known (`_validate_screen_types`).
+            if not isinstance(owner, list) and owner not in SCREEN_OWNERS:
                 errors.append(
-                    f"{loc}.screen must be one of {SCREEN_OWNERS}, got {owner!r}"
+                    f"{loc}.screen must be one of {SCREEN_OWNERS} or a list of piece ids, "
+                    f"got {owner!r}"
                 )
             elif kind != "hop":
                 errors.append(f"{loc}.screen only means something on a hop, not a {kind}")
@@ -7152,6 +7242,12 @@ def _validate_drops(
                 errors.append(f"rules.drops.{key} entry {piece!r} is not a declared piece")
 
     _validate_stock(drops.get("stock"), piece_ids, errors)
+    if "stock_by_player" in drops:
+        if "stock" in drops:
+            errors.append(
+                "rules.drops has both 'stock' and 'stock_by_player'; use one or the other"
+            )
+        _validate_stock_by_player(drops["stock_by_player"], piece_ids, errors)
     if "gating" in drops:
         _validate_gating(drops["gating"], width, height, errors)
 
@@ -7224,19 +7320,77 @@ def _validate_stock(stock: Any, piece_ids: list[str], errors: list[str]) -> None
             f"values are counts of 1 to {MAX_STOCK} or {STOCK_UNLIMITED!r}"
         )
         return
+    _validate_stock_entries(stock, "rules.drops.stock", piece_ids, errors)
+
+
+def _validate_stock_entries(
+    stock: dict[str, Any], where: str, piece_ids: list[str], errors: list[str]
+) -> None:
+    """One stock's entries: declared pieces, each a count of 1 to ``MAX_STOCK`` or
+    ``"unlimited"``."""
     for piece, held in stock.items():
         if piece not in piece_ids:
-            errors.append(f"rules.drops.stock key {piece!r} is not a declared piece")
+            errors.append(f"{where} key {piece!r} is not a declared piece")
         if held == STOCK_UNLIMITED:
             continue
         if isinstance(held, bool) or not isinstance(held, int):
             errors.append(
-                f"rules.drops.stock[{piece!r}] must be an integer or {STOCK_UNLIMITED!r}"
+                f"{where}[{piece!r}] must be an integer or {STOCK_UNLIMITED!r}"
             )
         elif not 1 <= held <= MAX_STOCK:
             errors.append(
-                f"rules.drops.stock[{piece!r}] must be between 1 and {MAX_STOCK}, "
+                f"{where}[{piece!r}] must be between 1 and {MAX_STOCK}, "
                 f"got {held}"
+            )
+
+
+def _validate_stock_by_player(by_player: Any, piece_ids: list[str], errors: list[str]) -> None:
+    """Each player's own stock (SR3b, `docs/plan-schema-next.md` §1 rank 6).
+
+    ``{"0": {...}, "1": {...}}``, both players named, as ``promotion.to_by_player`` is; one
+    player's may be empty (a handicap: the second player starts with two knights in hand
+    and the first with nothing), but not both, which is no stock. The two equal is
+    ``stock``, which the normal form writes. `_validate_stock`'s symmetry argument is why
+    ``stock`` is both players': an asymmetric stock is a first-seat effect, which is here
+    on purpose, as an asymmetric army is.
+
+    An ``"unlimited"`` slot is a supply for the type, not for a player: the core never
+    spends it, nor fills it from a capture, in either hand (`DropRule::is_unlimited`). So a
+    type endless for one player is endless for the other or absent from their stock (they
+    never hold one), never a count there, which would never run down.
+    """
+    where = "rules.drops.stock_by_player"
+    if not isinstance(by_player, dict):
+        errors.append(f"{where} must be an object keyed by '0' and '1'")
+        return
+    unknown = sorted(str(key) for key in by_player if key not in ("0", "1"))
+    if unknown:
+        errors.append(f"{where} has unknown players: {', '.join(unknown)}")
+    stocks: list[dict[str, Any]] = []
+    for player in ("0", "1"):
+        if player not in by_player:
+            errors.append(f"{where} is missing player {player!r}")
+            continue
+        stock = by_player[player]
+        if not isinstance(stock, dict):
+            errors.append(
+                f"{where}[{player!r}] must be an object keyed by piece id, whose values "
+                f"are counts of 1 to {MAX_STOCK} or {STOCK_UNLIMITED!r} ({{}} for none)"
+            )
+            continue
+        _validate_stock_entries(stock, f"{where}[{player!r}]", piece_ids, errors)
+        stocks.append(stock)
+    if len(stocks) != 2:
+        return
+    if not stocks[0] and not stocks[1]:
+        errors.append(f"{where} stocks nothing for either player; leave it out")
+    for piece in sorted(stocked_ids({"stock_by_player": by_player})):
+        endless = [stock.get(piece) == STOCK_UNLIMITED for stock in stocks]
+        if any(endless) and not all(endless) and all(piece in stock for stock in stocks):
+            errors.append(
+                f"{where} gives {piece!r} an 'unlimited' supply for one player and a count "
+                "for the other: an endless slot is never spent, for either hand; make it "
+                "'unlimited' for both, a count for both, or leave it out of one"
             )
 
 
@@ -7545,11 +7699,8 @@ def piece_has_stock(rules: Any, piece_id: Any) -> bool:
     """
     if not isinstance(rules, dict):
         return False
-    drops = rules.get("drops")
-    if not isinstance(drops, dict):
-        return False
-    stock = drops.get("stock")
-    return isinstance(stock, dict) and _in(piece_id, stock)
+    # SR3b: under `stock_by_player`, either player's stock (the name predates it).
+    return _in(piece_id, stocked_ids(rules.get("drops")))
 
 
 def npc_immune_attackers(
@@ -7955,6 +8106,9 @@ def _validate_portal_moves(
             )
         if move.get("kind") == "sweep":
             errors.append(f"{where} may not sweep")
+        if screen_names_types(move):
+            # SR3c: a screen named by type is a piece's; a portal names no piece in its moves.
+            errors.append(f"{where}.screen may not name pieces: a portal's hop jumps any piece")
         condition = move.get("condition")
         if isinstance(condition, dict) and ({"from_rank", "region"} & set(condition)):
             errors.append(
@@ -8689,10 +8843,11 @@ def _check_neutral_coherence(
                 f"setup.placements[{index}].facing for nobody: a piece nobody owns has no forward"
             )
 
-    for key, rid in (
-        ("npcs", "O1"), ("duck", "O2"), ("portals", "P10"), ("simultaneous", "R18"),
-        ("strike", "O3"), ("contacts", "O4"),
-    ):
+    # SR3f (O1, O2) lifted wild pieces and the duck: the block is shared by kind, a wild
+    # piece eats a nobody's piece its type may capture, and the duck lands on empty squares.
+    # SR3g (P10) lifted portals: a held piece transits as its holder's would, a fold may move
+    # under a nobody's piece, and an exit onto one takes it where the mover may.
+    for key, rid in (("simultaneous", "R18"), ("strike", "O3"), ("contacts", "O4")):
         if key in rules:
             errors.append(refusal(rid))
 
@@ -8736,6 +8891,13 @@ def _check_takes_royal(spec: dict[str, Any], pieces: list[Any], errors: list[str
                 f"{loc} beside a line of sight: what a shield or a freeze does to a held "
                 "neutral's attack on a royal is a second rule"
             )
+        elif value and (spec.get("rules") or {}).get("portals"):
+            # SR3g (P10): a held piece transits a portal, but its attack on a royal is read
+            # off its own lines only (`foreign.rs::held_attacks`), never through a portal.
+            errors.append(
+                f"{loc} beside rules.portals: a held neutral's attack on a royal through a "
+                "portal is a second rule"
+            )
 
 
 def _check_majority_type(
@@ -8773,7 +8935,7 @@ def _check_majority_type(
             )
         if "condition" in move:
             errors.append(f"{where} has a condition: a piece nobody owns has no rank or first move")
-        if move.get("screen", "any") != "any":
+        if screen_names_an_owner(move):
             errors.append(f"{where} is a hop whose screen names an owner: nobody has no own or enemy")
 
 
@@ -8943,9 +9105,7 @@ def _validate_npc_immune(
         # held piece may go and is not a way of getting one, so it is deliberately not
         # here -- a spec whose only `drops` content is a region for some other type puts
         # this type in nobody's hand and is not refused.
-        in_hand = bool(drops.get("from_captures", True)) or piece in (
-            drops.get("stock") or {}
-        )
+        in_hand = bool(drops.get("from_captures", True)) or piece in stocked_ids(drops)
         if in_hand:
             errors.append(
                 f"{loc}.immune beside rules.drops: {piece!r} can reach a player's hand, "
@@ -10116,7 +10276,9 @@ def _check_purse_coherence(
         return
     errors.extend(
         refusal(rid)
-        for key, rid in (("simultaneous", "R19"), ("portals", "P9"), ("explode_on_capture", "O22"))
+        # SR3g (P9) lifted portals: a momentum end's square is not empty for a buy, an empty
+        # fold's is, and a bought piece stands in it (a buy never goes through).
+        for key, rid in (("simultaneous", "R19"), ("explode_on_capture", "O22"))
         if rules.get(key) not in (None, False)
     )
     # SR2 (`docs/plan-schema-next.md` §2.2 L6) lifted the long turn: a buy is a move, and two

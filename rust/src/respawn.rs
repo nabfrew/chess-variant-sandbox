@@ -48,7 +48,7 @@ impl<'t> Game<'t> {
             if standing == 0 {
                 return true;
             }
-            if t.owner_of(standing) == WILD || shields.get(*square) {
+            if t.halts_wild(standing) || shields.get(*square) {
                 return false;
             }
             let victim = t.type_of(standing);

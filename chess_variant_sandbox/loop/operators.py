@@ -101,6 +101,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     piece_speeds,
     placed_ids,
+    player_stocks,
     portal_groups,
     portal_open_ends,
     promoting_piece_ids,
@@ -118,6 +119,7 @@ from chess_variant_sandbox.spec.schema import (
     reflect_square,
     simultaneous_tie_pair,
     spy_ids,
+    stocked_ids,
     strike_is_live,
     strike_only_removes,
     strikers,
@@ -1619,8 +1621,7 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
-    if duck_piece(spec.get("rules")) is not None:
-        return None  # generation 42 (N4b): refused beside the duck (a strike)
+    # A strike beside the duck is allowed since SR3e (K3); `set_strike` never names it.
     if _turncoats(spec):
         return None  # V5, V6 (generation 51): refused beside captures_own only
     if _has_portals(spec):
@@ -1685,8 +1686,7 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
-    if duck_piece(spec.get("rules")) is not None:
-        return None  # generation 42 (N4b): refused beside the duck (a strike)
+    # Contacts beside the duck are allowed since SR3e (K3); `set_contacts` never names it.
     if _turncoats(spec):
         return None  # V5, V6 (generation 51): refused beside captures_own only
     if _has_portals(spec):
@@ -1770,7 +1770,9 @@ def _keep_the_mover(spec: dict[str, Any], rng: random.Random) -> str | None:
         if isinstance(link, dict) and link.get("own") is not True
     }
     promoting = promoting_piece_ids(rules)
-    targets = [pid for pid in names if pid not in royal and pid not in immune]
+    # SR3e (K3): no contact reaches the duck, so no link names it.
+    duck = duck_piece(rules)
+    targets = [pid for pid in names if pid not in royal and pid not in immune and pid != duck]
     choices = {
         mover: [onto for onto in targets if (mover, onto) not in paired]
         for mover in sorted(promoting)
@@ -1843,8 +1845,7 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
-    if duck_piece(spec.get("rules")) is not None:
-        return None  # generation 42 (N4b): refused beside the duck (contacts)
+    # Contacts beside the duck are allowed since SR3e (K3); `merge_links` never names it.
     if _turncoats(spec):
         return None  # V5, V6 (generation 51): refused beside captures_own only
     if _has_portals(spec):
@@ -2022,8 +2023,7 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     if purse_rule(spec) is not None:
         return None  # TC5 (`docs/plan-turncoat.md` §5.9): who is paid for a blast's victims
-    if duck_piece(spec.get("rules")) is not None:
-        return None  # generation 42 (N4b): refused beside the duck (a blast)
+    # A blast beside the duck is allowed since SR3e (K3): it leaves the duck standing.
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     drops = (spec.get("rules") or {}).get("drops")
@@ -2040,7 +2040,9 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
                 explosion.pop(key)
             return "every capture explodes again, whoever makes it and whatever it takes"
         if not narrowed and rng.random() < 0.5:
-            candidates = _non_royal(spec)
+            # SR3e (K3): never the duck, which no blast's list may name.
+            duck = duck_piece(rules)
+            candidates = [piece for piece in _non_royal(spec) if piece.get("id") != duck]
             if not candidates:
                 return None
             key = rng.choice(("by", "of"))
@@ -2782,9 +2784,8 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
     again is cheaper than being clever. What is checked here is only what would make
     *every* draw a rejection.
     """
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
-    if neutral_ids(spec):
-        return None
+    # SR3f (O1): wild pieces beside a piece nobody owns are allowed; a wild piece eats one its
+    # type may capture.
     # TC9c (§5.10): a wild piece's bounty is refused beside a bounty paid to the loser, and
     # every patrol this draws carries one.
     if purse_pays_loser(spec):
@@ -2824,6 +2825,8 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
         piece for piece in _non_royal(spec)
         if all(path_of(move) == "straight" for move in piece.get("moves", []))
         and piece.get("id") not in read and "weight" not in piece
+        and piece.get("id") not in neutral_ids(spec)  # SR3f: a type placed for nobody stands
+        and piece.get("id") not in piece_bounties(spec)  # a wild bounty is its npcs entry's
     ]
     if not candidates:
         return None
@@ -3122,7 +3125,7 @@ def _place_the_army(spec: dict[str, Any], rng: random.Random) -> str | None:
     if isinstance(drops, dict) and drops.get("placement") is True:
         return _unplace_the_army(spec)
     if isinstance(drops, dict) and drops:
-        if not isinstance(drops.get("stock"), dict) or not drops["stock"]:
+        if not stocked_ids(drops):
             return None
         trial = copy.deepcopy(spec)
         trial["rules"]["drops"]["placement"] = True
@@ -3745,6 +3748,11 @@ def _unplace_the_army(spec: dict[str, Any]) -> str | None:
     rules = spec["rules"]
     drops = rules["drops"]
     royal = {str(piece.get("id")) for piece in pieces(spec) if piece.get("royal")}
+    if not royal & stocked_ids(drops):
+        drops.pop("placement")
+        return "a player holding a piece may wait to place it again"
+    if "stock_by_player" in drops:
+        return None  # SR3b: putting one side's stocked royal back is a design of its own
     stock = drops.get("stock") if isinstance(drops.get("stock"), dict) else {}
     if not royal & set(stock):
         drops.pop("placement")
@@ -3824,8 +3832,7 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
     if neutral_ids(spec):
         return None
-    if duck_piece(spec.get("rules")) is not None:
-        return None  # generation 42 (N4b): refused beside the duck (a strike)
+    # A strike beside the duck is allowed since SR3e (K3): no strike reaches it.
     if _turncoats(spec):
         return None  # V5, V6 (generation 51): refused beside captures_own only
     if _has_portals(spec):
@@ -3869,7 +3876,12 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     ):
         return None  # two rules cannot both say what happens to a taken piece
     # I1: a piece that never moves never captures, so it never switches.
-    switching = sorted(str(piece["id"]) for piece in _non_royal(spec) if piece.get("moves"))
+    # SR3e (K3): the duck is never struck and never strikes, so no strike list names it.
+    duck = duck_piece(rules)
+    switching = sorted(
+        str(piece["id"]) for piece in _non_royal(spec)
+        if piece.get("moves") and piece.get("id") != duck
+    )
     if isinstance(strike, dict) and strike:
         if not strike_is_live(strike) or not switching:
             return None
@@ -4265,7 +4277,8 @@ def _loose_a_duck(spec: dict[str, Any], rng: random.Random) -> str | None:
     the mover puts on any empty square after every move. The duck is refused beside check, so a
     checkmate game becomes one won by taking the royal piece (``forbid_check`` and
     ``check_limit`` dropped), and an odd ply limit is made even; the validator decides the rest
-    (rounds, a turn, portals, a blast, a strike). In a game with one, one of four, at
+    (rounds, a turn; portals are allowed since SR3d, and a blast, a strike and contacts since
+    SR3e). In a game with one, one of four, at
     random: the duck goes (its type with it, since nothing else may name it); it walks by a
     king's step instead of going anywhere, or anywhere again; it starts on an empty square, or
     off the board again; its type shields the eight squares round it, or no longer does. A new
@@ -4384,8 +4397,9 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
     placements, and a type nothing else places); majority control is given to one standing
     type or taken from every type; a majority type's neighbours swap between the king's
     step and the orthogonal four; or (Q1077) a majority type's ``takes_royal`` is switched,
-    so its held pieces give check or no longer. The validator decides the rest (rounds, wild pieces, the
-    duck, portals, a strike, contacts, and beside majority a territory, a goal, a blast).
+    so its held pieces give check or no longer. The validator decides the rest (rounds,
+    portals, a strike, contacts, and beside majority a territory, a goal, a blast; wild pieces and
+    the duck are allowed since SR3f).
     """
     trial = copy.deepcopy(spec)
     placed = neutral_ids(spec)
@@ -5259,6 +5273,105 @@ def _add_a_runner(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+# --------------------------------------------------------------------------- the handicap
+#
+# SR3b (`docs/plan-schema-next.md` §1 rank 6, generation 59): `drops.stock_by_player`. One
+# operator gives the second player a piece in hand the first lacks, and takes an uneven
+# stock back to none.
+
+
+def _give_a_handicap(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Give the second player one more piece in hand than the first, or even the hands
+    again (`rules.drops.stock_by_player`, SR3b). The piece is drawn from the declared types
+    that move and are not royal; a stock both players share becomes each player's, with the
+    second player's one larger. The way back gives both players the larger hand, as one
+    shared ``stock``. The validator decides the rest."""
+    rules = spec.get("rules") or {}
+    drops = rules.get("drops")
+    trial = copy.deepcopy(spec)
+    trial_rules = trial.setdefault("rules", {})
+    if isinstance(drops, dict) and "stock_by_player" in drops:
+        hand = trial_rules["drops"]
+        first, second = player_stocks(hand)
+        hand.pop("stock_by_player")
+        # Each type at the larger of the two counts, for both players: what the favoured
+        # side held, given to the other too.
+        even: dict[str, Any] = {}
+        for stock in (first, second):
+            for piece, held in stock.items():
+                kept = even.get(piece)
+                if kept is None or (
+                    isinstance(held, int) and isinstance(kept, int) and held > kept
+                ):
+                    even[piece] = held
+        hand["stock"] = even
+        said = "both players start with the same pieces in hand"
+    else:
+        candidates = [
+            str(piece["id"]) for piece in pieces(trial)
+            if isinstance(piece.get("id"), str) and piece.get("moves") and not piece.get("royal")
+        ]
+        if not candidates:
+            return None
+        piece_id = rng.choice(candidates)
+        hand = trial_rules.setdefault("drops", {"from_captures": False})
+        if not isinstance(hand, dict):
+            return None
+        shared = hand.pop("stock", None)
+        shared = dict(shared) if isinstance(shared, dict) else {}
+        second = dict(shared)
+        held = second.get(piece_id, 0)
+        if not isinstance(held, int) or isinstance(held, bool):
+            return None  # an endless supply has nothing to add to
+        second[piece_id] = held + 1
+        hand["stock_by_player"] = {"0": shared, "1": second}
+        said = f"the second player starts with one more {piece_id} in hand than the first"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+# --------------------------------------------------------------------------- the screen
+#
+# SR3c (`docs/plan-schema-next.md` §1 rank 7, generation 60): a hop's screen named by type.
+# One operator makes a hop unable to jump its own kind (Janggi's cannon: every declared
+# piece but its own type screens it), and takes a screen named by type back to ``any``.
+
+
+def _spare_its_own_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Let a hop jump every piece but its own kind, or any piece again (`moves[].screen`
+    as a list of piece ids, SR3c). The hop is drawn from those whose screen is ``any``
+    (the way in) or names types (the way back); the validator decides the rest."""
+    trial = copy.deepcopy(spec)
+    ids = [str(piece["id"]) for piece in pieces(trial) if isinstance(piece.get("id"), str)]
+    listed = [
+        (piece, move) for piece in pieces(trial) for move in piece.get("moves") or []
+        if isinstance(move, dict) and isinstance(move.get("screen"), list)
+    ]
+    if listed:
+        piece, move = rng.choice(listed)
+        move.pop("screen")
+        said = f"{piece['id']}'s hop may jump any piece again"
+    else:
+        open_hops = [
+            (piece, move) for piece in pieces(trial) for move in piece.get("moves") or []
+            if isinstance(move, dict) and move.get("kind") == "hop"
+            and move.get("screen", "any") == "any"
+        ]
+        if not open_hops or len(ids) < 2:
+            return None
+        piece, move = rng.choice(open_hops)
+        move["screen"] = [pid for pid in ids if pid != piece["id"]]
+        said = f"{piece['id']}'s hop may not jump another {piece['id']}"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -5345,6 +5458,8 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("bar-the-push-back", _bar_the_push_back),
     Operator("crush-on-the-walls", _crush_on_the_walls),
     Operator("add-a-runner", _add_a_runner),
+    Operator("give-a-handicap", _give_a_handicap),
+    Operator("spare-its-own-kind", _spare_its_own_kind),
 )
 
 

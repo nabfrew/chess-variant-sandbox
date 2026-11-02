@@ -720,7 +720,8 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
             move.get("min_range", 1),
             _frozen(move.get("condition") or {}),
             move.get("screen_range"),
-            move.get("screen"),
+            tuple(sorted(move["screen"])) if isinstance(move.get("screen"), list)
+            else move.get("screen"),
         )
         path = move.get("path", "straight")
         if path != "straight":

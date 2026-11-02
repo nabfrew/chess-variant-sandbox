@@ -164,8 +164,7 @@ READERS: dict[str, dict[str, str]] = {
         "**Evaluator, not rules**: with no capture the term's premise is gone anyway; "
         "re-read this site if case 4 is ever re-proven",
         "rounds.rs::blasts": "schema 26's blast (§4 step 6), over the round's captures, of "
-        "which there are none when nothing can be taken",
-    },
+        "which there are none when nothing can be taken",    },
     # -- cases 5 and 6.
     "drops": {
         "game.rs::initial": "the opening hands: empty, since the refusals need no stock",
@@ -198,6 +197,10 @@ READERS: dict[str, dict[str, str]] = {
         "eval.rs::round_win": "Q986b: the same `mean_non_royal`, the same answer",
         "eval.rs::of": "`Immunity::of` skips unlimited drop types, of which there are none",
         "features.rs::new": "copies `has_drops` for `HAND_MATERIAL`",
+        "endgame.rs::refusal": "N1: refuses a capture hand or an endless stock; the refusals "
+        "switch off `from_captures` and need no stock, so it refuses nothing there",
+        "lib.rs::endgame_position": "N1: sizes a solved position's hands, empty, as the "
+        "opening's are under the refusals",
     },
     # Schema 26 (Q918a): a round mirrors `make`'s two readings.
 
@@ -256,6 +259,8 @@ READERS: dict[str, dict[str, str]] = {
         "king's own rank, and the `unmoved` mask is only ever cleared after ply zero",
         "game.rs::castling_partner": "answers a `MOVE_CASTLE`, which is never generated",
         "game.rs::castling_rook_squares": "answers a `MOVE_CASTLE`, which is never generated",
+        "game.rs::generate_checked": "SR1d's pin-shortcut clause, read only of a `MOVE_CASTLE`, "
+        "which is never generated",
     },
     "castle_files": {
         "game.rs::generate_castling": "the same premise as `castling`",
@@ -324,10 +329,15 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
         "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
-        "game.rs::push_through": "asked of the moving piece going through a fold (schema 24)",
+        "game.rs::push_through_as": "asked of the moving piece going through a fold (schema 24)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
         "foreign.rs::push_foreign_piece": "asked of a commanded piece (Q1007c), which is a moving "
         "piece: a phantom promotion's piece never stands, so it is never commanded",
+        "foreign.rs::must_promote": "asked of a foreign piece (Q1007c; SR3g's held piece at a "
+        "portal), which is a moving piece, as `push_foreign_piece` asks it",
+        "endgame.rs::standing_squares": "N1: asked of a piece a solved set places, to keep it "
+        "out of a zone where it must promote; a phantom promotion's piece is in no set the "
+        "game reaches, and its moves would promote it there as the moving piece's do",
     },
     "promotes_on()": {
         "game.rs::generate_pseudo_legal_as": "asked of a moving piece's origin",
@@ -338,8 +348,12 @@ READERS: dict[str, dict[str, str]] = {
         "features.rs::promotion_occupancy": "asked of a piece on the board",
         "foreign.rs::push_foreign_piece": "asked of a commanded piece's origin and targets (Q1007c), "
         "behind `is_promoting`, as the moving piece's are",
+        "foreign.rs::must_promote": "asked of a foreign piece's targets (Q1007c; SR3g's exit or "
+        "far end), behind `is_promoting`, as the moving piece's are",
         "push.rs::push_offered": "asked of a pusher's landing, behind `promoting`, as "
         "`push_arrival` asks it (Q1074b2)",
+        "endgame.rs::standing_squares": "N1: asked of a placed piece's squares, behind "
+        "`is_promoting`, as `push_arrival` asks a landing",
     },
     "promotes_on_leaving()": {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
@@ -348,9 +362,10 @@ READERS: dict[str, dict[str, str]] = {
     },
     "promotion_optional()": {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
-        "foreign.rs::push_foreign_piece": "asked of a commanded piece (Q1007c), behind `is_promoting`",
+        "foreign.rs::must_promote": "asked of a foreign piece (Q1007c, SR3g), behind `is_promoting`",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
-        "game.rs::push_through": "asked of the moving piece going through a fold (schema 24)",
+        "game.rs::push_through_as": "asked of the moving piece going through a fold (schema 24)",
+        "endgame.rs::standing_squares": "N1: asked of a placed piece, behind `is_promoting`",
     },
     "promotion_targets()": {
         "game.rs::push_hops": "asked of the moving piece at a hop's empty landing (CS4)",

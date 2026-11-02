@@ -342,13 +342,35 @@ class TestTheRefusals:
     def test_beside_a_turn(self) -> None:
         _refused_pair(_small(turn={"moves": 2}), "L7")
 
-    def test_beside_portals(self) -> None:
-        portal = [{"at": ["b3", "e4"]}]
-        _refused_pair(_small(portals=portal), "K2")
+    def test_beside_portals_since_sr3d(self) -> None:
+        """K2 is lifted (SR3d, `tests/test_duck_beside_portals.py`): a momentum pair and a fold
+        pair both validate beside the duck. The duck may start in a fold (floor), never on a
+        momentum end (a piece)."""
+        for kind in (None, "fold"):
+            group: dict[str, Any] = {"orange": "b3", "blue": "e4"}
+            if kind:
+                group["kind"] = kind
+            spec = _small(portals=[group])
+            assert validate_spec(spec) == [], kind
+            assert "K2" not in refused_ids(validate_spec(spec))
+            spec["rules"]["duck"]["start"] = "b3"
+            if kind:
+                assert validate_spec(spec) == []
+            else:
+                _refused(spec, "rules.duck.start b3 is a square the opening does not leave empty")
 
-    def test_beside_a_blast_a_strike_or_contacts(self) -> None:
-        _refused_pair(_small(explode_on_capture={"radius": 1}), "K3")
-        _refused_pair(_small(strike={"effect": "remove", "position": "stay"}), "K3")
+    def test_beside_a_blast_a_strike_or_contacts_since_sr3e(self) -> None:
+        """K3 is lifted (SR3e, `tests/test_duck_untouched.py`): the duck is untouched by all
+        three, so each validates beside it; their lists may not name it."""
+        for rules in (
+            {"explode_on_capture": {"radius": 1}},
+            {"strike": {"effect": "capture", "position": "stay", "immune": ["K"]}},
+            {"contacts": {"links": [{"mover": "R", "onto": "P", "onto_to": "R"}],
+                          "position": "stay", "immune": ["K"]}},
+        ):
+            assert validate_spec(_small(**rules)) == [], rules
+        _refused(_small(explode_on_capture={"radius": 1, "immune": ["D"]}),
+                 "rules.duck.piece 'D' is named in rules.explode_on_capture.immune")
 
     def test_a_duck_that_sweeps(self) -> None:
         """A player's sweep beside the duck is allowed since SR2 (W9: the duck blocks it,

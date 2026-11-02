@@ -24,6 +24,14 @@
 //! duck the phase runs once a turn, after the duck half, and never after the piece move. The
 //! duck move leaves the en passant window, the no-progress clock and the repetition window
 //! alone; a phase that eats or clears a right moves them as it does after a piece move.
+//!
+//! **Beside portals** (SR3d, K2, `docs/plan-schema-next.md` §2.9): the duck and the ends
+//! share the third owner's block, told apart by kind. To every transit and fold go-through
+//! the duck is a piece nobody may take (`may_land`), so an exit or a far fold end it stands
+//! on is blocked. The duck never transits (its moves are this file's alone), never lands on
+//! a momentum end (a board byte, so never empty), and takes a fold as floor: it may stop in
+//! an empty one, which never moves it. The half moves no end and leaves the straight-back
+//! bar standing for the other player (`Game::bar_reader`).
 
 use super::*;
 
