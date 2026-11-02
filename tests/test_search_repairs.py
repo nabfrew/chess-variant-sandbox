@@ -4,7 +4,8 @@ Three repairs (`docs/reference/general-player.md` §2 F), each one bit on the ag
 twelfth native slot and one option in its name: ``keep=1`` (the transposition table kept
 between moves), ``threats=1`` (threat-aware quiescence) and ``loud_drops=1``. E9 graded
 them (§6.7): ``threats`` won and is on by default, the other two lost and are off, and the
-player from before Q502i is spelled ``threats=0``. What this file holds:
+player from before Q502i is spelled ``threats=0`` (WK2's two duck orderings joined the default
+in `wakwak.md` §7.3, inert without a duck). What this file holds:
 
 * the default is the core's, and a player spelling every repair at its default is the
   unspelled player, bit for bit;
@@ -26,6 +27,9 @@ import chess_variant_sandbox._core as _core
 from chess_variant_sandbox.agents import native_spec
 from chess_variant_sandbox.agents.minimax import (
     DEFAULT_REPAIRS,
+    DUCK_FRONT,
+    DUCK_MOBILITY,
+    DUCK_REFUTE,
     KEEP_TABLE,
     LOUD_DROPS,
     THREATS,
@@ -38,8 +42,11 @@ from chess_variant_sandbox.tournament.play import play_game, play_game_python
 
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 REPAIRS_SLOT = 11
-# The search before Q502i, every repair spelled off.
-BEFORE = "keep=0,loud_drops=0,threats=0"
+# The search before Q502i, every repair spelled off (WK2's duck orderings, on by default
+# since `wakwak.md` §7.3, included).
+BEFORE = "duck_front=0,duck_mobility=0,duck_refute=0,keep=0,loud_drops=0,threats=0"
+# The default: `threats` (E9) and WK2's two duck-half orderings, which are inert without a duck.
+DEFAULT = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY
 
 
 def _engine(name: str) -> Engine:
@@ -57,11 +64,14 @@ def _same(engine: Engine, agents: tuple[str, str], seed: int = 5) -> None:
 
 
 def test_the_default_is_the_cores_and_is_the_duels_winner() -> None:
-    assert _core.DEFAULT_REPAIRS == DEFAULT_REPAIRS == THREATS
+    assert _core.DEFAULT_REPAIRS == DEFAULT_REPAIRS == DEFAULT
     plain = native_spec("minimax:nodes=150")
-    spelled = native_spec("minimax:keep=0,loud_drops=0,nodes=150,threats=1")
+    spelled = native_spec(
+        "minimax:duck_front=1,duck_mobility=1,duck_refute=1,keep=0,loud_drops=0,nodes=150,"
+        "threats=1"
+    )
     assert plain is not None and plain == spelled
-    assert plain[REPAIRS_SLOT] == THREATS
+    assert plain[REPAIRS_SLOT] == DEFAULT
 
 
 def test_every_repair_off_is_the_search_before_them() -> None:
@@ -73,11 +83,17 @@ def test_every_repair_off_is_the_search_before_them() -> None:
 
 
 def test_each_option_is_its_own_bit() -> None:
-    off = {"keep": 0, "threats": 0, "loud_drops": 0}
+    off = {
+        "keep": 0, "threats": 0, "loud_drops": 0, "duck_refute": 0, "duck_front": 0,
+        "duck_mobility": 0,
+    }
     assert repairs_of({**off, "keep": 1}) == KEEP_TABLE
     assert repairs_of({**off, "threats": 1}) == THREATS
     assert repairs_of({**off, "loud_drops": 1}) == LOUD_DROPS
-    assert repairs_of({"keep": 1, "threats": 1, "loud_drops": 1}) == 7
+    assert repairs_of({**off, "duck_refute": 1}) == DUCK_REFUTE
+    assert repairs_of({**off, "duck_front": 1}) == DUCK_FRONT
+    assert repairs_of({**off, "duck_mobility": 1}) == DUCK_MOBILITY
+    assert repairs_of({**off, "keep": 1, "threats": 1, "loud_drops": 1}) == 7
     assert repairs_of({}) == DEFAULT_REPAIRS
 
 

@@ -86,7 +86,7 @@ impl Player {
         debug_assert_eq!(game.side, 1 - announcer, "an announced round's side is its answerer");
 
         let key = self.table_key(game);
-        if let Some((stored_depth, value, bound, _)) = self.table.get(&key) {
+        if let Some((stored_depth, value, bound, _, _)) = self.table.get(&key) {
             if *stored_depth >= depth {
                 let usable = match bound {
                     Bound::Exact => true,
@@ -155,7 +155,7 @@ impl Player {
                 announcer_alpha = announcer_best;
             }
             if announcer_alpha >= announcer_beta {
-                self.remember(a, quiet, depth, ply);
+                self.remember(a, quiet, depth, ply, game.side);
                 break;
             }
         }
@@ -169,7 +169,7 @@ impl Player {
         } else {
             Bound::Exact
         };
-        self.table.insert(key, (depth, best, bound, self.generation));
+        self.table.insert(key, (depth, best, bound, self.generation, NO_MOVE));
         Ok(best)
     }
 
@@ -216,7 +216,7 @@ impl Player {
                 alpha = best;
             }
             if alpha >= beta {
-                self.remember(b, quiet, depth, ply);
+                self.remember(b, quiet, depth, ply, game.side);
                 break;
             }
         }

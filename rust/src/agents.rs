@@ -21,8 +21,8 @@ use crate::game::{Game, Outcome, Snapshot};
 use crate::net::{Net, NetEvaluator};
 use crate::rng::PyRandom;
 use crate::tables::{
-    move_kind, move_from, move_promotion, move_to, Tables, MOVE_CASTLE, MOVE_DROP,
-    MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_PORTAL, MOVE_PROMOTION, MOVE_PUSH, MOVE_ROTATE,
+    move_kind, move_from, move_promotion, move_to, Tables, DUCK_STEP, MOVE_CASTLE, MOVE_DROP,
+    MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_NORMAL, MOVE_PORTAL, MOVE_PROMOTION, MOVE_PUSH, MOVE_ROTATE,
     MOVE_SWEEP,
 };
 
@@ -97,9 +97,13 @@ impl Hasher for ZobristHasher {
     }
 }
 
-/// Depth, value, what kind of number the value is, and the search that stored it (Q502i:
-/// the generation `KEEP_TABLE` ages entries by), filed under the position's key.
-type Transpositions = HashMap<u64, (i32, f64, Bound, u16), BuildHasherDefault<ZobristHasher>>;
+/// Depth, value, what kind of number the value is, the search that stored it (Q502i:
+/// the generation `KEEP_TABLE` ages entries by), and the node's best move (WK4, `TT_MOVE`;
+/// `NO_MOVE` when none is kept), filed under the position's key.
+type Transpositions = HashMap<u64, (i32, f64, Bound, u16, u32), BuildHasherDefault<ZobristHasher>>;
+
+/// A table entry that keeps no best move.
+const NO_MOVE: u32 = u32::MAX;
 
 /// Q502i: the generic search repairs (`general-player.md` §2 F), one bit each on
 /// `AgentSpec::repairs`. Zero is today's search exactly, which is what every player
@@ -120,14 +124,63 @@ pub const THREATS: u32 = 2;
 /// **Loud drops.** On the first quiescence ply a drop is chased as a capture is. Inert
 /// in a game without a hand.
 pub const LOUD_DROPS: u32 = 4;
+/// WK1 (`docs/reference/wakwak.md` §3 A): **quiescence passes through an owed duck half.**
+/// Where the side to move still owes its duck move, quiescence does not stand pat: it plays
+/// the duck moves onto the squares that would block an opponent's attack on one of its
+/// pieces (the attack sources' paths, the duck lifted), and the first other duck move as the
+/// one that does nothing, and goes on into the opponent's half at the same quiescence depth.
+/// Read off the move list (a duck half lists duck moves alone), so inert without a duck.
+pub const DUCK_QUIESCE: u32 = 8;
+/// WK1 (`wakwak.md` §3 B): **a duck history of its own.** A duck move's history is filed by
+/// the mover and the duck's target, apart from the piece moves' `from * n + to`. Inert
+/// without a duck, since nothing else is a `MOVE_DUCK`.
+pub const DUCK_HISTORY: u32 = 16;
+/// WK2 (`wakwak.md` §3 C, §7): **the ducks that block a refutation, tried next.** At a duck
+/// half of the main search, once a duck move is refuted (the opponent's node below it cut
+/// off, on the move `refuters` records), the remaining duck moves onto that reply's target
+/// or the squares of its attack path move to the front, stably. Ordering only: the same
+/// moves are searched. Read off the move list and the attack tables, so inert without a duck.
+pub const DUCK_REFUTE: u32 = 32;
+/// WK2 (`wakwak.md` §3 C, §7): **threatened lines first.** At a duck half of the main
+/// search, before the first move, the duck moves onto `duck_blocks`' squares (an open
+/// attack's path, or where the duck's sight would bind its end) move to the front, stably:
+/// the table-driven reading of wakwak's *non-neutral before neutral*. Ordering only.
+pub const DUCK_FRONT: u32 = 64;
+/// WK3 (`wakwak.md` §3 E, §8): **mobility at a turn's start.** At a leaf on an owed duck
+/// half the mover's list is the duck's squares, so the move count the objective reads there
+/// is not mobility, and flips meaning with the depth's parity. Under this bit a duck-half
+/// leaf reads instead the move count of the turn's start (the piece half one ply up, the
+/// same side's list), so every leaf reads the side to move's piece moves at the start of its
+/// turn. Read off the move list (a duck half lists duck moves alone), so inert without a duck.
+pub const DUCK_MOBILITY: u32 = 128;
+/// WK4 (`wakwak.md` §3 D, §9): **the table's best move, tried first.** Every node of the main
+/// search files its best move beside its value: the move that raised its best score, or for
+/// a node where nothing beat alpha (an upper bound, whose best move is noise) the move the
+/// entry already held. A node that finds an entry it cannot answer from orders that move
+/// first, after every other ordering, when it is in its list. Ordering only: the same moves
+/// are searched, and nothing reads a piece. Every game, not only a duck's. Off by default: it
+/// lost its duel (0.491 ± 0.004 over twelve cells, `wakwak.md` §9.3).
+pub const TT_MOVE: u32 = 256;
 /// Every bit a spec may carry. A bit outside it is a player nobody has defined.
-pub const REPAIRS: u32 = KEEP_TABLE | THREATS | LOUD_DROPS;
+pub const REPAIRS: u32 = KEEP_TABLE
+    | THREATS
+    | LOUD_DROPS
+    | DUCK_QUIESCE
+    | DUCK_HISTORY
+    | DUCK_REFUTE
+    | DUCK_FRONT
+    | DUCK_MOBILITY
+    | TT_MOVE;
 /// The repairs a minimax player that spells none of them searches with: the ones that won
 /// their pre-registered duel (`general-player.md` §4.3 E9, §6.7). `THREATS` won (0.542
-/// over twelve cells); `KEEP_TABLE` and `LOUD_DROPS` lost and stay off. Python sends the
-/// bits explicitly and holds its copy to this one by a test, so the core keeps no default
-/// of its own -- this constant is here so that moving it moves the build fingerprint.
-pub const DEFAULT_REPAIRS: u32 = THREATS;
+/// over twelve cells); `KEEP_TABLE` and `LOUD_DROPS` lost and stay off. WK2's pair
+/// `DUCK_REFUTE | DUCK_FRONT` won together (0.5225 ± 0.0067 over six duck cells, `wakwak.md`
+/// §7.3; `DUCK_REFUTE` alone was a null) and is on: inert without a duck. WK3's
+/// `DUCK_MOBILITY` won its duel (0.542 ± 0.009 over the same six cells, `wakwak.md` §8.3)
+/// and is on: inert without a duck. Python sends the bits explicitly and holds its copy to
+/// this one by a test, so the core keeps no default of its own -- this constant is here so
+/// that moving it moves the build fingerprint.
+pub const DEFAULT_REPAIRS: u32 = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -398,6 +451,19 @@ pub struct Player {
     /// search raises at most one entry per cutoff, so this is short, and an entry
     /// that is not on it reads exactly as the zero the memset left.
     history_touched: Vec<u32>,
+    /// WK1 (`DUCK_HISTORY`): `[side * n_squares + target]` for duck moves, raised as
+    /// `history` is, with its own touched list. Empty unless the bit is on in a duck game.
+    duck_history: Vec<u64>,
+    duck_history_touched: Vec<u32>,
+    /// WK2 (`DUCK_REFUTE`): per ply, the move that cut off at the node last searched there
+    /// (`u32::MAX`: none). Cleared on entering a node, written on its cutoff, so a parent
+    /// reads its child's refutation the moment the child returns.
+    refuters: Vec<u32>,
+    /// WK3 (`DUCK_MOBILITY`): per ply, the length of the legal list of the piece-half node
+    /// last entered there; a duck-half leaf reads its parent's. Written only under the bit.
+    turn_moves: Vec<usize>,
+    /// WK2: scratch for the stable partitions, reused between nodes.
+    partition: Vec<u32>,
     /// One `(capture gain, killer rank, history, move)` per move being ordered, reused
     /// between nodes. `order` used to rebuild that triple *inside* the comparator, for
     /// both sides of every comparison -- `2 n log n` board reads, moduli and table
@@ -445,6 +511,11 @@ impl Player {
             _ => Objective::new(t, &spec.weights, &pair, mobility, goal, immune),
         };
         let round_win = crate::eval::round_win(t, eval.values());
+        let duck_history = if spec.repairs & DUCK_HISTORY != 0 && t.duck.is_some() {
+            vec![0; 2 * t.n_squares]
+        } else {
+            Vec::new()
+        };
         Self {
             round_win,
             eval,
@@ -456,6 +527,11 @@ impl Player {
             killers: vec![[u32::MAX; 2]; MAX_PLY],
             history: vec![0; t.n_squares * t.n_squares],
             history_touched: Vec::new(),
+            duck_history,
+            duck_history_touched: Vec::new(),
+            refuters: vec![u32::MAX; MAX_PLY],
+            turn_moves: vec![0; MAX_PLY],
+            partition: Vec::new(),
             order_keys: Vec::new(),
             n_squares: t.n_squares,
             generation: 0,
@@ -649,6 +725,9 @@ impl Player {
         for index in self.history_touched.drain(..) {
             self.history[index as usize] = 0;
         }
+        for index in self.duck_history_touched.drain(..) {
+            self.duck_history[index as usize] = 0;
+        }
         self.stats.moves += 1;
     }
 
@@ -672,6 +751,9 @@ impl Player {
         let mut best_move = moves[0];
         let mut arena = std::mem::take(&mut self.arena);
         arena.clear();
+        if self.spec.repairs & DUCK_MOBILITY != 0 {
+            self.note_turn(moves, 0);
+        }
 
         let mut exhausted = false;
         for m in moves {
@@ -724,6 +806,7 @@ impl Player {
         if self.nodes >= self.spec.nodes {
             return Err(Exhausted);
         }
+        self.refuters[ply.min(MAX_PLY - 1)] = u32::MAX;
         // Schema 27 (Q935b): a spy game's tree crosses into rounds once a spy falls in it;
         // a round node is searched by its phase (`spy_players.rs`).
         if SPY {
@@ -745,7 +828,9 @@ impl Player {
         }
 
         let key = self.table_key(game);
-        if let Some((stored_depth, value, bound, _)) = self.table.get(&key) {
+        let mut hint = NO_MOVE;
+        if let Some((stored_depth, value, bound, _, stored_move)) = self.table.get(&key) {
+            hint = *stored_move;
             // A stored number is only usable as an answer when the search that produced
             // it proved the right kind of thing. This used to return every entry as
             // though it were exact, which hands back a beta cutoff's lower bound as a
@@ -771,6 +856,10 @@ impl Player {
             return Ok(terminal_value(outcome, game));
         }
 
+        if self.spec.repairs & DUCK_MOBILITY != 0 {
+            self.note_turn(&arena[base..end], ply);
+        }
+
         if depth <= 0 {
             // Not the standing evaluation. Iterative deepening stops on whichever depth
             // the budget allowed, which is as often odd as even, so a leaf is as likely
@@ -790,10 +879,26 @@ impl Player {
             return self.quiesce_moves::<SPY>(game, arena, base, QUIESCENCE_DEPTH, ply, alpha, beta);
         }
 
+        // WK2: a duck half under either ordering repair (`DUCK_FRONT`, `DUCK_REFUTE`).
+        let duck_half = self.spec.repairs & (DUCK_FRONT | DUCK_REFUTE) != 0
+            && move_kind(arena[base]) == MOVE_DUCK;
+        let first = arena[base];
         self.order(game, arena, base, end, ply);
+        if duck_half && self.spec.repairs & DUCK_FRONT != 0 {
+            let blocks = duck_blocks(game, first);
+            self.bring_forward(arena, base, end, &blocks);
+        }
+        // WK4 (`TT_MOVE`): the move this position's entry kept goes first, the rest in order.
+        let tt_move = self.spec.repairs & TT_MOVE != 0;
+        if tt_move && hint != NO_MOVE {
+            if let Some(at) = arena[base..end].iter().position(|&m| m == hint) {
+                arena[base..=base + at].rotate_right(1);
+            }
+        }
 
         let opened_at = alpha;
         let mut best = f64::NEG_INFINITY;
+        let mut best_move = NO_MOVE;
         let mut alpha = alpha;
         for index in base..end {
             let m = arena[index];
@@ -824,13 +929,24 @@ impl Player {
             };
             if score > best {
                 best = score;
+                best_move = m;
             }
             if best > alpha {
                 alpha = best;
             }
             if alpha >= beta {
-                self.remember(m, quiet, depth, ply);
+                self.remember(m, quiet, depth, ply, mover);
+                self.refuters[ply.min(MAX_PLY - 1)] = m;
                 break;
+            }
+            // WK2 (`DUCK_REFUTE`): the reply that refuted this duck, if the child found
+            // one, sends the ducks that would stand in its way to the front of the rest.
+            if duck_half && self.spec.repairs & DUCK_REFUTE != 0 && index + 1 < end {
+                let reply = self.refuters[(ply + 1).min(MAX_PLY - 1)];
+                if reply != u32::MAX && move_kind(reply) != MOVE_DUCK {
+                    let blocks = reply_blocks(game, reply);
+                    self.bring_forward(arena, index + 1, end, &blocks);
+                }
             }
         }
 
@@ -842,7 +958,14 @@ impl Player {
         } else {
             Bound::Exact
         };
-        self.table.insert(key, (depth, best, bound, self.generation));
+        let kept = if !tt_move {
+            NO_MOVE
+        } else if bound == Bound::Upper {
+            hint
+        } else {
+            best_move
+        };
+        self.table.insert(key, (depth, best, bound, self.generation, kept));
         Ok(best)
     }
 
@@ -868,6 +991,7 @@ impl Player {
         if self.nodes >= self.spec.nodes {
             return Err(Exhausted);
         }
+        self.refuters[ply.min(MAX_PLY - 1)] = u32::MAX;
         // Schema 27 (Q935b): quiescence stops at a round; a capture in a round can be
         // dodged, so a round is a leaf here (`plan-spy.md` §3.3).
         if SPY && game.phase().is_round() {
@@ -902,7 +1026,24 @@ impl Player {
         beta: f64,
     ) -> Result<f64, Exhausted> {
         let end = arena.len();
-        let stand_pat = self.eval.evaluate(game, game.side, end - base);
+        // WK1: an owed duck half is no place to stop (`DUCK_QUIESCE`).
+        if self.spec.repairs & DUCK_QUIESCE != 0
+            && depth > 0
+            && end > base
+            && move_kind(arena[base]) == MOVE_DUCK
+        {
+            return self.quiesce_duck::<SPY>(game, arena, base, depth, ply, alpha, beta);
+        }
+        // WK3 (`DUCK_MOBILITY`): a duck half reads the turn's start's count, the ply above.
+        let mut count = end - base;
+        if self.spec.repairs & DUCK_MOBILITY != 0 && end > base {
+            if move_kind(arena[base]) == MOVE_DUCK {
+                count = self.turn_moves[ply.saturating_sub(1).min(MAX_PLY - 1)];
+            } else {
+                self.turn_moves[ply.min(MAX_PLY - 1)] = count;
+            }
+        }
+        let stand_pat = self.eval.evaluate(game, game.side, count);
         if depth <= 0 || stand_pat >= beta {
             arena.truncate(base);
             return Ok(stand_pat);
@@ -934,6 +1075,108 @@ impl Player {
                 self.quiesce::<SPY>(game, arena, depth - 1, ply + 1, -beta, -alpha)
             } else {
                 self.quiesce::<SPY>(game, arena, depth - 1, ply + 1, alpha, beta)
+            };
+            unstep::<SPY>(game);
+            let score = match child {
+                Err(Exhausted) => {
+                    arena.truncate(base);
+                    return Err(Exhausted);
+                }
+                Ok(value) => if flipped { -value } else { value },
+            };
+            if score > best {
+                best = score;
+            }
+            if best > alpha {
+                alpha = best;
+            }
+            if alpha >= beta {
+                self.refuters[ply.min(MAX_PLY - 1)] = m;
+                break;
+            }
+        }
+
+        arena.truncate(base);
+        Ok(best)
+    }
+
+    /// WK3 (`DUCK_MOBILITY`): file a piece half's legal count under its ply, for the duck
+    /// half below it to read; a duck half's own list is never filed. Mirrored by
+    /// `agents/minimax.py::_note_turn`.
+    fn note_turn(&mut self, moves: &[u32], ply: usize) {
+        if let Some(&first) = moves.first() {
+            if move_kind(first) != MOVE_DUCK {
+                self.turn_moves[ply.min(MAX_PLY - 1)] = moves.len();
+            }
+        }
+    }
+
+    /// WK2: move the entries of `arena[start..end]` whose target is on `squares` to the
+    /// front of that range, keeping order within each part. Mirrored by
+    /// `agents/minimax.py::_bring_forward`.
+    fn bring_forward(&mut self, arena: &mut [u32], start: usize, end: usize, squares: &[u64; 4]) {
+        let on = |m: u32| {
+            let square = move_to(m);
+            squares[square >> 6] & (1u64 << (square & 63)) != 0
+        };
+        let mut buffer = std::mem::take(&mut self.partition);
+        buffer.clear();
+        buffer.extend(arena[start..end].iter().copied().filter(|&m| on(m)));
+        buffer.extend(arena[start..end].iter().copied().filter(|&m| !on(m)));
+        arena[start..end].copy_from_slice(&buffer);
+        self.partition = buffer;
+    }
+
+    /// WK1 (`DUCK_QUIESCE`, `docs/reference/wakwak.md` §3 A): quiescence at an owed duck half.
+    ///
+    /// `arena[base..]` is the duck's moves. No stand pat: the mover must place the duck, and
+    /// standing pat here scored a capture before the recapture it allows. Kept: every duck
+    /// move onto a square of `duck_blocks`, and the first other one (the duck that does
+    /// nothing), in generation order, then ordered as any list is. Each continues into the
+    /// opponent's quiescence at the **same** depth: the duck half is half of a turn, not a
+    /// ply of it, so a duck game resolves as many exchanges as a game without one. Any
+    /// subset of the legal ducks is a lower bound, as a stand pat is. Mirrored by
+    /// `agents/minimax.py::_quiesce_duck`.
+    #[allow(clippy::too_many_arguments)]
+    fn quiesce_duck<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        arena: &mut Vec<u32>,
+        base: usize,
+        depth: i32,
+        ply: usize,
+        alpha: f64,
+        beta: f64,
+    ) -> Result<f64, Exhausted> {
+        let end = arena.len();
+        let blocks = duck_blocks(game, arena[base]);
+        let on = |square: usize| blocks[square >> 6] & (1u64 << (square & 63)) != 0;
+        let mut write = base;
+        let mut neutral = false;
+        for index in base..end {
+            let m = arena[index];
+            let blocking = on(move_to(m));
+            if blocking || !neutral {
+                neutral |= !blocking;
+                arena[write] = m;
+                write += 1;
+            }
+        }
+        arena.truncate(write);
+        let end = write;
+        self.order(game, arena, base, end, ply);
+
+        let mut best = f64::NEG_INFINITY;
+        let mut alpha = alpha;
+        for index in base..end {
+            let m = arena[index];
+            let mover = game.side;
+            step::<SPY>(game, m);
+            let flipped = game.side != mover;
+            let child = if flipped {
+                self.quiesce::<SPY>(game, arena, depth, ply + 1, -beta, -alpha)
+            } else {
+                self.quiesce::<SPY>(game, arena, depth, ply + 1, alpha, beta)
             };
             unstep::<SPY>(game);
             let score = match child {
@@ -1037,6 +1280,8 @@ impl Player {
             let values = self.eval.values();
             let killers = self.killers[ply.min(MAX_PLY - 1)];
             let history = &self.history;
+            let duck_history = &self.duck_history;
+            let duck_slot = game.side * self.n_squares;
             let n_squares = self.n_squares;
             for &m in &arena[base..end] {
                 let gain = capture_gain(t, board, m, values);
@@ -1047,7 +1292,12 @@ impl Player {
                 } else {
                     0
                 };
-                keys.push((gain, killer, history[move_from(m) * n_squares + move_to(m)], m));
+                let heard = if !duck_history.is_empty() && move_kind(m) == MOVE_DUCK {
+                    duck_history[duck_slot + move_to(m)]
+                } else {
+                    history[move_from(m) * n_squares + move_to(m)]
+                };
+                keys.push((gain, killer, heard, m));
             }
         }
         // Stable, and compared field by field rather than folded into one number: a
@@ -1068,13 +1318,23 @@ impl Player {
     }
 
     /// Record that this move caused a cutoff, so the next search tries it sooner.
-    fn remember(&mut self, m: u32, quiet: bool, depth: i32, ply: usize) {
+    ///
+    /// `side` is the mover's: WK1's duck history (`DUCK_HISTORY`) files a duck move under it.
+    fn remember(&mut self, m: u32, quiet: bool, depth: i32, ply: usize, side: usize) {
         let slot = ply.min(MAX_PLY - 1);
         if quiet && self.killers[slot][0] != m {
             self.killers[slot][1] = self.killers[slot][0];
             self.killers[slot][0] = m;
         }
         let weight = (depth.max(0) as u64) * (depth.max(0) as u64);
+        if !self.duck_history.is_empty() && move_kind(m) == MOVE_DUCK {
+            let index = side * self.n_squares + move_to(m);
+            if self.duck_history[index] == 0 {
+                self.duck_history_touched.push(index as u32);
+            }
+            self.duck_history[index] += weight;
+            return;
+        }
         let index = move_from(m) * self.n_squares + move_to(m);
         if self.history[index] == 0 {
             self.history_touched.push(index as u32);
@@ -1151,6 +1411,105 @@ fn terminal_score(outcome: Outcome, player: usize) -> f64 {
     } else {
         -1e9
     }
+}
+
+/// WK1: the squares where a duck would block an attack the opponent has on one of the
+/// mover's pieces, as a bit set over squares. Read off the attack sources, so no square is
+/// worked out here: every source of the opponent's onto a square the mover holds, its piece
+/// standing on its origin, with no screen and no sweep, whose path is empty but for the
+/// duck's own square (lifted, since the duck is about to leave it: `first` is the duck
+/// list's first word, a step from its square, a placement or a pass). Every square of such
+/// a path is a candidate. A superset is harmless (the ducks are the generator's, these only
+/// choose among them), so a source wanting an unmoved piece, or a capture the matrix
+/// forbids, is not asked about.
+///
+/// WK1b (`wakwak.md` §6.6): where the duck's type sees, also every square from which its
+/// sight would bind one of those attacks' ends -- the mover's piece attacked, or the
+/// opponent's piece attacking it -- read off the reverse sight table (`SightTables`), the
+/// sources filed under that piece whose byte is the duck's, their path empty but for the
+/// duck's own square. A shield beside a threatened piece, or a freeze on its attacker, is
+/// on no attack path. Any effect counts (a superset is harmless). A game whose duck sees
+/// nothing finds no such source, so its set is WK1's. Mirrored by
+/// `agents/minimax.py::_duck_blocks`.
+fn duck_blocks(game: &Game<'_>, first: u32) -> [u64; 4] {
+    let t = game.t;
+    let lifted = if move_promotion(first) == DUCK_STEP { move_from(first) } else { usize::MAX };
+    let mover = game.side;
+    let other = 1 - mover;
+    let board = &game.board;
+    let clear = |s: u16| board[s as usize] == 0 || s as usize == lifted;
+    let duck_sight = match (t.sight.as_deref(), t.duck.as_deref()) {
+        (Some(sight), Some(duck)) => Some((sight, duck.value)),
+        _ => None,
+    };
+    let mut mask = [0u64; 4];
+    let mut mark = |s: usize| mask[s >> 6] |= 1u64 << (s & 63);
+    // The ends of the open attacks, for the duck's sight: (square, owner).
+    let mut ends: Vec<(usize, usize)> = Vec::new();
+    for square in game.occupied()[mover].iter() {
+        let mut attacked = false;
+        for source in t.attackers_of(other, square) {
+            if source.screens != 0 || source.sweep != 0 {
+                continue;
+            }
+            if board[source.origin as usize] != source.piece_value {
+                continue;
+            }
+            let path = t.attack_path(source);
+            if path.iter().all(|&s| clear(s)) {
+                for &s in path {
+                    mark(s as usize);
+                }
+                if duck_sight.is_some() {
+                    attacked = true;
+                    ends.push((source.origin as usize, other));
+                }
+            }
+        }
+        if attacked {
+            ends.push((square, mover));
+        }
+    }
+    if let Some((sight, duck)) = duck_sight {
+        for (square, owner) in ends {
+            for source in sight.sources_of(owner, t.type_of(board[square]), square) {
+                if source.piece_value == duck
+                    && clear(source.origin)
+                    && sight.path(source).iter().all(|&s| clear(s))
+                {
+                    mark(source.origin as usize);
+                }
+            }
+        }
+    }
+    mask
+}
+
+/// WK2 (`DUCK_REFUTE`, `wakwak.md` §7): the squares where a duck would stand in the way of
+/// `reply`, the opponent's move that refuted a duck of the side to move: its target, and, for
+/// a plain move or a promotion, the path of every attack source of the opponent's onto that
+/// target from its origin and by the piece standing there (the tables', so no square is worked
+/// out here). A leap has an empty path; a pawn's push has no source, so only its target. A
+/// superset is harmless: these only choose which ducks come first. Mirrored by
+/// `agents/minimax.py::_reply_blocks`.
+fn reply_blocks(game: &Game<'_>, reply: u32) -> [u64; 4] {
+    let t = game.t;
+    let mut mask = [0u64; 4];
+    let target = move_to(reply);
+    mask[target >> 6] |= 1u64 << (target & 63);
+    let kind = move_kind(reply);
+    if kind == MOVE_NORMAL || kind == MOVE_PROMOTION {
+        let origin = move_from(reply);
+        let piece = game.board[origin];
+        for source in t.attackers_of(1 - game.side, target) {
+            if source.origin as usize == origin && source.piece_value == piece {
+                for &s in t.attack_path(source) {
+                    mask[s as usize >> 6] |= 1u64 << (s & 63);
+                }
+            }
+        }
+    }
+    mask
 }
 
 /// Order captures first, most valuable victim first. Cheap and generic.

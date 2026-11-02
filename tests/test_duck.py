@@ -499,6 +499,222 @@ class TestThePlayers:
         assert any(decode_move(m)[2] == MOVE_DUCK for m in native.moves)
         assert play_game(engine, agents, seed=5).moves == native.moves
 
+    # WK1 (`docs/reference/wakwak.md` §3 A, B): quiescence through the owed duck half and the
+    # duck's own history, each arm alone and both, against the oracle move for move and node
+    # for node; each moves the search on a duck game.
+    WK1_ARMS = ("duck_quiesce=1", "duck_history=1", "duck_quiesce=1,duck_history=1")
+
+    @pytest.mark.parametrize("arm", WK1_ARMS)
+    def test_the_wk1_arms_native_and_oracle_alike(self, arm: str) -> None:
+        engine = self._gardner_duck()
+        agents = (f"minimax:nodes=200,{arm}", "minimax:nodes=200")
+        native = play_game(engine, agents, seed=7)
+        in_python = play_game_python(engine, agents, seed=7)
+        assert native.moves == in_python.moves
+        assert native.nodes == in_python.nodes
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("arm", WK1_ARMS)
+    def test_the_wk1_arms_native_and_oracle_alike_deeper(self, arm: str) -> None:
+        """At 800 nodes, where the duck's own history moves a game (at 200 it rarely does:
+        within one search the duck stands on one square, so `from * n + to` already read
+        nearly as `[side][to]` does)."""
+        engine = self._gardner_duck()
+        agents = (f"minimax:nodes=800,{arm}", "minimax:nodes=800")
+        native = play_game(engine, agents, seed=2)
+        in_python = play_game_python(engine, agents, seed=2)
+        assert native.moves == in_python.moves
+        assert native.nodes == in_python.nodes
+
+    @pytest.mark.parametrize("arm", WK1_ARMS)
+    def test_each_wk1_arm_moves_a_duck_game(self, arm: str) -> None:
+        """Against the player WK1 was graded against (before WK2's orderings)."""
+        engine = self._gardner_duck()
+        control = "minimax:nodes=800,duck_refute=0,duck_front=0,duck_mobility=0"
+        armed = play_game(engine, (f"{control},{arm}", control), seed=2)
+        assert armed.moves != play_game(engine, (control,) * 2, seed=2).moves
+
+    # WK1b (`wakwak.md` §6.6): where the duck's type sees, `duck_quiesce`'s candidates also
+    # hold the squares from which its sight would bind an open attack's end.
+    @pytest.mark.parametrize(
+        ("nodes", "seeds"),
+        [(60, (1,)), pytest.param(200, (1, 4), marks=pytest.mark.slow)],
+        ids=["60", "200"],
+    )
+    def test_the_seeing_duck_arm_native_and_oracle_alike(
+        self, nodes: int, seeds: tuple[int, ...]
+    ) -> None:
+        engine = Engine(_load(SHEPHERD))
+        agents = (f"minimax:nodes={nodes},duck_quiesce=1", f"minimax:nodes={nodes}")
+        for seed in seeds:
+            native = play_game(engine, agents, seed=seed)
+            in_python = play_game_python(engine, agents, seed=seed)
+            assert native.moves == in_python.moves
+            assert native.nodes == in_python.nodes
+
+    def test_a_seeing_duck_widens_the_candidates(self) -> None:
+        """Along a game, the seeing duck's candidates hold its blind twin's, and somewhere
+        more: a square beside a threatened piece, on no attack path."""
+        from chess_variant_sandbox.agents.minimax import DUCK_QUIESCE, MinimaxAgent
+
+        spec = _load(SHEPHERD)
+        blind_spec = copy.deepcopy(spec)
+        for piece in blind_spec["pieces"]:
+            piece.pop("sight", None)
+        seeing, blind = Engine(spec), Engine(blind_spec)
+        sees = MinimaxAgent(seeing, nodes=10, repairs=DUCK_QUIESCE)
+        sees_not = MinimaxAgent(blind, nodes=10, repairs=DUCK_QUIESCE)
+        record = play_game(seeing, ("random", "random"), 3)
+        state, wider = seeing.initial_state(), 0
+        for move in record.moves:
+            moves = seeing.legal_moves(state)
+            if decode_move(moves[0])[2] == MOVE_DUCK:
+                mine = sees._duck_blocks(state, moves[0])
+                theirs = sees_not._duck_blocks(state, moves[0])
+                assert theirs <= mine
+                wider += mine != theirs
+            state = seeing.apply(state, move)
+        assert wider > 0
+
+    # WK2 (`wakwak.md` §7): the duck half's two orderings, each alone and both, against the
+    # oracle on the plain duck game and on the seeing duck's; each moves a duck game.
+    # Spelled whole: both are on by default since WK2 adopted them, so the control below is
+    # the player before WK2.
+    WK2_ARMS = (
+        "duck_refute=1,duck_front=0", "duck_refute=0,duck_front=1", "duck_refute=1,duck_front=1",
+    )
+    BEFORE_WK2 = "duck_refute=0,duck_front=0,duck_mobility=0"
+
+    @pytest.mark.parametrize(
+        ("game", "arm"),
+        [
+            *(("gardner", arm) for arm in WK2_ARMS),
+            ("shepherd", WK2_ARMS[2]),
+            *(pytest.param("shepherd", arm, marks=pytest.mark.slow) for arm in WK2_ARMS[:2]),
+        ],
+    )
+    def test_the_wk2_arms_native_and_oracle_alike(self, game: str, arm: str) -> None:
+        engine = self._gardner_duck() if game == "gardner" else Engine(_load(SHEPHERD))
+        nodes = 200 if game == "gardner" else 60
+        agents = (f"minimax:nodes={nodes},{arm}", f"minimax:nodes={nodes},{self.BEFORE_WK2}")
+        native = play_game(engine, agents, seed=7)
+        in_python = play_game_python(engine, agents, seed=7)
+        assert native.moves == in_python.moves
+        assert native.nodes == in_python.nodes
+
+    @pytest.mark.parametrize("arm", WK2_ARMS)
+    def test_each_wk2_arm_reorders_a_duck_search(self, arm: str) -> None:
+        """Each arm makes a depth-4 search (two whole turns) cheaper at a position of the
+        gardner duck game, with the same value. A duck half cuts off only below a finite
+        beta, so from ply 3, and a depth-2 search's duck halves never do; that is why
+        ordering them moves a *game* rarely at the duel's budgets (`wakwak.md` §7)."""
+        from chess_variant_sandbox.agents.minimax import MinimaxAgent, repairs_of
+
+        engine = self._gardner_duck()
+        spelled = dict(option.split("=") for option in arm.split(","))
+        repairs = repairs_of({option: int(value) for option, value in spelled.items()})
+        before = repairs_of({"duck_refute": 0, "duck_front": 0})
+        record = play_game(engine, ("random", "random"), 3)
+        state = engine.initial_state()
+        for move in record.moves[:2]:
+            state = engine.apply(state, move)
+        costs, values = [], []
+        for bits in (repairs, before):
+            agent = MinimaxAgent(engine, nodes=10**7, max_depth=4, repairs=bits)
+            agent._begin_search()
+            values.append(agent._negamax(state, 4, 0, -float("inf"), float("inf")))
+            costs.append(agent._nodes)
+        assert values[0] == values[1]
+        assert costs[0] < costs[1]
+
+    def test_a_refutation_names_its_path(self) -> None:
+        """`_reply_blocks` is a reply's target and the paths of the opponent's sources onto it
+        from its origin by the piece there: a slide's crossed squares, a leap's nothing; and a
+        drop's target alone."""
+        from chess_variant_sandbox.agents.minimax import MinimaxAgent
+        from chess_variant_sandbox.engine.moves import MOVE_DROP, encode_move
+
+        engine = self._gardner_duck()
+        agent = MinimaxAgent(engine, nodes=10)
+        state = engine.initial_state()
+        spec = engine.spec
+        seen_path = seen_leap = False
+        for target in range(spec.n_squares):
+            for source in spec.attack_sources[1][target]:
+                origin, value, prefix, window = source[:4]
+                if state.board[origin] != value:
+                    continue
+                path = set(prefix) | set(window)
+                assert agent._reply_blocks(state, encode_move(origin, target)) >= path | {target}
+                seen_path |= bool(path)
+                seen_leap |= not path
+        assert seen_path and seen_leap
+        assert agent._reply_blocks(state, encode_move(3, 3, MOVE_DROP)) == {3}
+
+    # WK3 (`wakwak.md` §3 E, §8): a duck-half leaf hands the objective its turn's start's
+    # move count, not the duck's squares.
+    WK3_ARM = "duck_mobility=1"
+    BEFORE_WK3 = "duck_mobility=0"
+
+    @pytest.mark.parametrize("arm", (*WK1_ARMS, *WK2_ARMS, BEFORE_WK2, WK3_ARM, BEFORE_WK3))
+    def test_the_wk1_arms_are_inert_without_a_duck(self, arm: str) -> None:
+        engine = _engine(_load(ROOT / "rulesets" / "gardner.json"))
+        plain = play_game(engine, ("minimax:nodes=200",) * 2, seed=7)
+        armed = play_game(engine, (f"minimax:nodes=200,{arm}",) * 2, seed=7)
+        assert armed.moves == plain.moves and armed.nodes == plain.nodes
+
+    def test_turn_start_mobility_is_inert_in_a_long_turn(self) -> None:
+        """A long turn (`rules.turn`) also moves the same side twice, but its mid-turn list is
+        piece moves, so WK3 leaves it alone: the bit reads only a duck half's list."""
+        engine = Engine(json.loads((ROOT / "tests" / "_command_turns.json").read_text("utf-8")))
+        for seed in (1, 7):
+            plain = play_game(engine, (f"minimax:nodes=300,{self.BEFORE_WK3}",) * 2, seed=seed)
+            armed = play_game(engine, ("minimax:nodes=300",) * 2, seed=seed)
+            assert armed.moves == plain.moves and armed.nodes == plain.nodes
+
+    @pytest.mark.parametrize(
+        "game", ["gardner", pytest.param("shepherd", marks=pytest.mark.slow)]
+    )
+    def test_the_wk3_arm_native_and_oracle_alike(self, game: str) -> None:
+        engine = self._gardner_duck() if game == "gardner" else Engine(_load(SHEPHERD))
+        nodes = 200 if game == "gardner" else 60
+        agents = (f"minimax:nodes={nodes}", f"minimax:nodes={nodes},{self.BEFORE_WK3}")
+        native = play_game(engine, agents, seed=7)
+        in_python = play_game_python(engine, agents, seed=7)
+        assert native.moves == in_python.moves
+        assert native.nodes == in_python.nodes
+
+    def test_the_wk3_arm_moves_a_duck_game(self) -> None:
+        engine = self._gardner_duck()
+        control = f"minimax:nodes=800,{self.BEFORE_WK3}"
+        armed = play_game(engine, ("minimax:nodes=800", control), seed=2)
+        assert armed.moves != play_game(engine, (control,) * 2, seed=2).moves
+
+    def test_a_duck_half_leaf_reads_the_turns_start(self) -> None:
+        """At depth 1 from a piece half every leaf is a duck half (no loud duck, no repair
+        that chases one), so the search's value is the best child's evaluation: under the
+        bit with the root's own count, every sibling alike; without it with the duck's."""
+        from chess_variant_sandbox.agents.minimax import DUCK_MOBILITY, MinimaxAgent
+
+        engine = self._gardner_duck()
+        record = play_game(engine, ("random", "random"), 3)
+        state = engine.initial_state()
+        for move in record.moves[:4]:
+            state = engine.apply(state, move)
+        moves = engine.legal_moves(state)
+        assert decode_move(moves[0])[2] != MOVE_DUCK
+        side = state.side_to_move
+        for bits in (DUCK_MOBILITY, 0):
+            agent = MinimaxAgent(engine, nodes=10**7, max_depth=1, repairs=bits)
+            agent._begin_search()
+            value = agent._negamax(state, 1, 0, -float("inf"), float("inf"))
+            leaves = []
+            for move in moves:
+                child = engine.apply(state, move)
+                count = len(moves) if bits else len(engine.legal_moves(child))
+                leaves.append(agent.evaluator.evaluate(engine, child, side, count))
+            assert value == max(leaves)
+
 
 class TestTheTally:
     def test_the_analysis_counts_what_the_duck_did(self) -> None:

@@ -32,12 +32,15 @@ from chess_variant_sandbox.agents.objective import objective_for
 from chess_variant_sandbox.agents.objective_options import objective_values as _values
 from chess_variant_sandbox.agents.objective_options import objective_weights as _objective
 from chess_variant_sandbox.engine import Engine, GameState, Outcome
+from chess_variant_sandbox.engine.compile import WILD
 from chess_variant_sandbox.engine.moves import (
+    DUCK_STEP,
     MOVE_CASTLE,
     MOVE_DROP,
     MOVE_DUCK,
     MOVE_EN_PASSANT,
     MOVE_FOLD,
+    MOVE_NORMAL,
     MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_PUSH,
@@ -82,15 +85,48 @@ _U64 = (1 << 64) - 1
 #   check says the mover has won, or, on the first quiescence ply only, one that leaves
 #   the other side's royal attacked.
 # * ``loud_drops``: on the first quiescence ply a drop is chased as a capture is.
-KEEP_TABLE, THREATS, LOUD_DROPS = 1, 2, 4
-REPAIR_OPTIONS = {"keep": KEEP_TABLE, "threats": THREATS, "loud_drops": LOUD_DROPS}
+# * ``duck_quiesce`` (WK1, `docs/reference/wakwak.md` §3 A): quiescence does not stand pat
+#   where the side to move owes its duck half; it plays the ducks that would block an
+#   opponent's attack, and one that does nothing, into the opponent's half at the same depth.
+# * ``duck_history`` (WK1, §3 B): a duck move's history is filed by mover and target, apart
+#   from the piece moves'. Both are inert without a duck.
+# * ``duck_refute`` (WK2, §3 C, §7): at a duck half of the main search, once a duck is
+#   refuted, the remaining ducks onto the refuting reply's target or attack path go first.
+# * ``duck_front`` (WK2): at a duck half of the main search, the ducks onto
+#   ``_duck_blocks``' squares go first. Both order only, and are inert without a duck.
+# * ``duck_mobility`` (WK3, §3 E, §8): a leaf on an owed duck half hands the objective the
+#   move count of its turn's start (the piece half one ply up), not the duck's squares, so
+#   mobility means one thing at either depth parity. Inert without a duck.
+# * ``tt_move`` (WK4, §3 D, §9): every node of the main search files its best move beside its
+#   value (for an upper bound, the move the entry already held), and a node that finds an
+#   entry it cannot answer from tries that move first. Ordering only; every game.
+#   Off: it lost its duel (0.491 +/- 0.004 over twelve cells, `wakwak.md` §9.3).
+KEEP_TABLE, THREATS, LOUD_DROPS, DUCK_QUIESCE, DUCK_HISTORY = 1, 2, 4, 8, 16
+DUCK_REFUTE, DUCK_FRONT, DUCK_MOBILITY, TT_MOVE = 32, 64, 128, 256
+# A table entry that keeps no best move (`agents.rs`'s ``NO_MOVE``).
+NO_MOVE = -1
+REPAIR_OPTIONS = {
+    "keep": KEEP_TABLE,
+    "threats": THREATS,
+    "loud_drops": LOUD_DROPS,
+    "duck_quiesce": DUCK_QUIESCE,
+    "duck_history": DUCK_HISTORY,
+    "duck_refute": DUCK_REFUTE,
+    "duck_front": DUCK_FRONT,
+    "duck_mobility": DUCK_MOBILITY,
+    "tt_move": TT_MOVE,
+}
 # Which repairs a player that spells none of them searches with: the ones that won their
 # pre-registered duel (general-player.md §4.3 E9, graded in §6.7). ``threats`` won and is
 # on; ``keep`` and ``loud_drops`` lost and are off, spelled only by their options. Moving
 # this is a new player at every budget and owes the library a replay; held to
 # ``_core.DEFAULT_REPAIRS`` by a test, so it moves the build fingerprint too. Today's
-# player before Q502i is ``threats=0``.
-DEFAULT_REPAIRS = THREATS
+# player before Q502i is ``threats=0``. WK2's ``duck_refute`` and ``duck_front`` won together
+# (`docs/reference/wakwak.md` §7.3) and are on; inert without a duck, so they move only duck
+# games. The duck player before WK2 is ``duck_refute=0,duck_front=0``. WK3's ``duck_mobility``
+# won its duel (§8.3) and is on, inert without a duck; the duck player before WK3 is
+# ``duck_mobility=0``, and before WK2 ``duck_refute=0,duck_front=0,duck_mobility=0``.
+DEFAULT_REPAIRS = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY
 
 # Every option a minimax player reads; any other is refused (`refuse_unknown_options`).
 OPTIONS = (
@@ -144,12 +180,23 @@ class MinimaxAgent:
         self._squares = engine.spec.n_squares
         self._killers: list[list[int]] = [[-1, -1] for _ in range(MAX_PLY)]
         self._history: dict[int, int] = {}
+        # WK1 (``duck_history``): ``side * squares + target`` for a duck move.
+        self._duck_history: dict[int, int] = {}
+        # WK2 (``duck_refute``): per ply, the move that cut off at the node last searched
+        # there (-1: none), cleared on entering a node, as `agents.rs`'s ``refuters``.
+        self._refuters = [-1] * MAX_PLY
+        # WK3 (``duck_mobility``): per ply, the legal count of the piece half last entered
+        # there, as `agents.rs`'s ``turn_moves``; written only under the bit.
+        self._turn_moves = [0] * MAX_PLY
+        # A diagnostic, never read by play: when a list, the index of the cutoff move at
+        # every duck half of the main search that cut off (`wakwak.md` §7).
+        self.duck_cutoffs: list[int] | None = None
         self.budget = max(1, int(nodes))
         self.max_depth = max_depth
         self.name = f"minimax:nodes={self.budget}"
         self.stats = SearchStats()
         self._nodes = 0
-        self._table: dict[int, tuple[int, float, int, int]] = {}
+        self._table: dict[int, tuple[int, float, int, int, int]] = {}
         self.repairs = repairs
         # Which search this is, for ``keep``'s aging; the core's is a wrapping u16 and
         # only equality with this search and the previous one is ever asked.
@@ -204,6 +251,7 @@ class MinimaxAgent:
         for slot in self._killers:
             slot[0] = slot[1] = -1
         self._history.clear()
+        self._duck_history.clear()
         self.stats.moves += 1
 
     def _end_search(self, reached: int) -> None:
@@ -351,7 +399,7 @@ class MinimaxAgent:
         key = self._table_key(state)
         cached = self._table.get(key)
         if cached is not None and cached[0] >= depth:
-            _, value, bound, _ = cached
+            _, value, bound, _, _ = cached
             if (
                 bound == EXACT
                 or (bound == LOWER and value >= beta)
@@ -383,7 +431,7 @@ class MinimaxAgent:
             if announcer_best > announcer_alpha:
                 announcer_alpha = announcer_best
             if announcer_alpha >= announcer_beta:
-                self._remember(move, quiet, depth, ply)
+                self._remember(move, quiet, depth, ply, state.side_to_move)
                 break
 
         best = -announcer_best
@@ -393,7 +441,7 @@ class MinimaxAgent:
             bound = LOWER
         else:
             bound = EXACT
-        self._table[key] = (depth, best, bound, self._generation)
+        self._table[key] = (depth, best, bound, self._generation, NO_MOVE)
         return best
 
     def _answer_row(
@@ -421,7 +469,7 @@ class MinimaxAgent:
             if best > alpha:
                 alpha = best
             if alpha >= beta:
-                self._remember(move, quiet, depth, ply)
+                self._remember(move, quiet, depth, ply, state.side_to_move)
                 break
         return best
 
@@ -429,6 +477,8 @@ class MinimaxAgent:
         engine = self.engine
         alpha = -INFINITY
         best_move = moves[0]
+        if self.repairs & DUCK_MOBILITY:
+            self._note_turn(moves, 0)
         for move in moves:
             # See ``_negamax``: the negation and the window flip are only right when the
             # side actually changed, which a turn longer than one move makes conditional.
@@ -447,6 +497,7 @@ class MinimaxAgent:
         self._nodes += 1
         if self._nodes >= self.budget:
             raise BudgetExhausted
+        self._refuters[min(ply, MAX_PLY - 1)] = -1
 
         engine = self.engine
         if self._spy:
@@ -466,12 +517,13 @@ class MinimaxAgent:
 
         key = self._table_key(state)
         cached = self._table.get(key)
+        hint = cached[4] if cached is not None else NO_MOVE
         if cached is not None and cached[0] >= depth:
             # A stored number is only usable as an answer when the search that produced
             # it proved the right kind of thing. This used to return every entry as
             # though it were exact, which hands back a beta cutoff's lower bound as a
             # value -- and a lower bound is exactly what a cutoff refuses to establish.
-            _, value, bound, _ = cached
+            _, value, bound, _, _ = cached
             if (
                 bound == EXACT
                 or (bound == LOWER and value >= beta)
@@ -484,6 +536,9 @@ class MinimaxAgent:
         if outcome is not None:
             return self._terminal_value(outcome, state)
 
+        if self.repairs & DUCK_MOBILITY:
+            self._note_turn(moves, ply)
+
         if depth <= 0:
             # Not the standing evaluation. Iterative deepening stops on whichever depth
             # the budget allowed, which is as often odd as even, so a leaf is as likely
@@ -491,11 +546,25 @@ class MinimaxAgent:
             # number about a position nobody would ever stop in.
             return self._quiesce(state, QUIESCENCE_DEPTH, ply, alpha, beta)
 
+        # WK2: a duck half under either ordering repair (``duck_front``, ``duck_refute``).
+        duck_half = bool(self.repairs & (DUCK_FRONT | DUCK_REFUTE)) and (
+            move_type(moves[0]) == MOVE_DUCK
+        )
+        first = moves[0]
         self._order(state, moves, ply)
+        if duck_half and self.repairs & DUCK_FRONT:
+            self._bring_forward(moves, 0, self._duck_blocks(state, first))
+        # WK4 (``tt_move``): the move this position's entry kept goes first, the rest in order.
+        tt_move = bool(self.repairs & TT_MOVE)
+        if tt_move and hint != NO_MOVE and hint in moves:
+            moves.remove(hint)
+            moves.insert(0, hint)
 
         opened_at = alpha
         best = -INFINITY
-        for move in moves:
+        best_move = NO_MOVE
+        for index in range(len(moves)):
+            move = moves[index]
             # Negamax negates the child and flips the window because the side is assumed
             # to alternate. Once a turn can be longer than one move it does not always,
             # and when the same player moves again the child's value is already from
@@ -512,11 +581,21 @@ class MinimaxAgent:
                 score = self._negamax(child, depth - 1, ply + 1, alpha, beta)
             if score > best:
                 best = score
+                best_move = move
             if best > alpha:
                 alpha = best
             if alpha >= beta:
-                self._remember(move, quiet, depth, ply)
+                self._remember(move, quiet, depth, ply, state.side_to_move)
+                self._refuters[min(ply, MAX_PLY - 1)] = move
+                if self.duck_cutoffs is not None and move_type(move) == MOVE_DUCK:
+                    self.duck_cutoffs.append(index)
                 break
+            # WK2 (``duck_refute``): the reply that refuted this duck, if the child found
+            # one, sends the ducks that would stand in its way to the front of the rest.
+            if duck_half and self.repairs & DUCK_REFUTE and index + 1 < len(moves):
+                reply = self._refuters[min(ply + 1, MAX_PLY - 1)]
+                if reply != -1 and move_type(reply) != MOVE_DUCK:
+                    self._bring_forward(moves, index + 1, self._reply_blocks(state, reply))
 
         if best <= opened_at:
             bound = UPPER
@@ -524,7 +603,13 @@ class MinimaxAgent:
             bound = LOWER
         else:
             bound = EXACT
-        self._table[key] = (depth, best, bound, self._generation)
+        if not tt_move:
+            kept = NO_MOVE
+        elif bound == UPPER:
+            kept = hint
+        else:
+            kept = best_move
+        self._table[key] = (depth, best, bound, self._generation, kept)
         return best
 
     def _quiesce(
@@ -539,6 +624,7 @@ class MinimaxAgent:
         self._nodes += 1
         if self._nodes >= self.budget:
             raise BudgetExhausted
+        self._refuters[min(ply, MAX_PLY - 1)] = -1
 
         engine = self.engine
         # Schema 27: quiescence stops at a round (a capture in a round can be dodged).
@@ -553,7 +639,17 @@ class MinimaxAgent:
         if outcome is not None:
             return self._terminal_value(outcome, state)
 
-        stand_pat = self.evaluator.evaluate(engine, state, state.side_to_move, len(moves))
+        # WK1: an owed duck half is no place to stop (``duck_quiesce``).
+        if self.repairs & DUCK_QUIESCE and depth > 0 and moves and move_type(moves[0]) == MOVE_DUCK:
+            return self._quiesce_duck(state, moves, depth, ply, alpha, beta)
+        # WK3 (``duck_mobility``): a duck half reads the turn's start's count, the ply above.
+        count = len(moves)
+        if self.repairs & DUCK_MOBILITY and moves:
+            if move_type(moves[0]) == MOVE_DUCK:
+                count = self._turn_moves[min(max(ply - 1, 0), MAX_PLY - 1)]
+            else:
+                self._turn_moves[min(ply, MAX_PLY - 1)] = count
+        stand_pat = self.evaluator.evaluate(engine, state, state.side_to_move, count)
         if depth <= 0 or stand_pat >= beta:
             return stand_pat
 
@@ -580,8 +676,130 @@ class MinimaxAgent:
             if best > alpha:
                 alpha = best
             if alpha >= beta:
+                self._refuters[min(ply, MAX_PLY - 1)] = move
                 break
         return best
+
+    def _note_turn(self, moves: list[int], ply: int) -> None:
+        """WK3 (``duck_mobility``): file a piece half's legal count under its ply, for the
+        duck half below it; a duck half's own list is never filed. `agents.rs::note_turn`."""
+        if moves and move_type(moves[0]) != MOVE_DUCK:
+            self._turn_moves[min(ply, MAX_PLY - 1)] = len(moves)
+
+    @staticmethod
+    def _bring_forward(moves: list[int], start: int, squares: set[int]) -> None:
+        """WK2: the moves of ``moves[start:]`` whose target is on ``squares`` first, order
+        kept within each part; the mirror of `agents.rs::bring_forward`."""
+        tail = moves[start:]
+        moves[start:] = [m for m in tail if move_to(m) in squares] + [
+            m for m in tail if move_to(m) not in squares
+        ]
+
+    def _reply_blocks(self, state: GameState, reply: int) -> set[int]:
+        """WK2: where a duck would stand in the way of ``reply``, the opponent's refutation.
+
+        The mirror of `agents.rs::reply_blocks`: its target and, for a plain move or a
+        promotion, the path of every attack source of the opponent's onto that target from its
+        origin by the piece standing there.
+        """
+        origin, target, kind, _ = decode_move(reply)
+        squares = {target}
+        if kind in (MOVE_NORMAL, MOVE_PROMOTION):
+            spec = self.engine.spec
+            piece = state.board[origin]
+            for source in spec.attack_sources[1 - state.side_to_move][target]:
+                start, piece_value, prefix, window = source[:4]
+                if start == origin and piece_value == piece:
+                    squares.update(prefix)
+                    squares.update(window)
+        return squares
+
+    def _quiesce_duck(
+        self, state: GameState, moves: list[int], depth: int, ply: int, alpha: float, beta: float
+    ) -> float:
+        """WK1: quiescence at an owed duck half, the mirror of `agents.rs::quiesce_duck`.
+
+        No stand pat. The ducks onto `_duck_blocks`' squares and the first other duck, in
+        generation order, then ordered; each into the opponent's quiescence at the same depth.
+        """
+        blocks = self._duck_blocks(state, moves[0])
+        kept: list[int] = []
+        neutral = False
+        for move in moves:
+            blocking = move_to(move) in blocks
+            if blocking or not neutral:
+                neutral = neutral or not blocking
+                kept.append(move)
+        self._order(state, kept, ply)
+
+        engine = self.engine
+        best = -INFINITY
+        for move in kept:
+            child = engine.apply(state, move)
+            if child.side_to_move != state.side_to_move:
+                score = -self._quiesce(child, depth, ply + 1, -beta, -alpha)
+            else:
+                score = self._quiesce(child, depth, ply + 1, alpha, beta)
+            if score > best:
+                best = score
+            if best > alpha:
+                alpha = best
+            if alpha >= beta:
+                break
+        return best
+
+    def _duck_blocks(self, state: GameState, first: int) -> set[int]:
+        """WK1: where a duck would block an opponent's attack on one of the mover's pieces.
+
+        The mirror of `agents.rs::duck_blocks`: every attack source of the opponent's onto a
+        square the mover holds, its piece on its origin, with no screen and no sweep, whose
+        path is empty but for the duck's own square (lifted when the duck steps off it).
+        WK1b: where the duck's type sees, also every square from which its sight would bind
+        an end of one of those attacks (the mover's piece attacked, or its attacker), read off
+        the reverse sight table: the sources whose byte is the duck's, path clear likewise.
+        """
+        spec = self.engine.spec
+        board = state.board
+        origin, _, _, how = decode_move(first)
+        lifted = origin if how == DUCK_STEP else -1
+        mover = state.side_to_move
+        other = 1 - mover
+        sources = spec.attack_sources[other]
+        sight = spec.sight
+        duck = spec.duck
+        duck_value = WILD * spec.side_stride + duck.piece_type + 1 if duck is not None else -1
+        sees = sight is not None and duck is not None
+        ends: list[tuple[int, int]] = []
+        blocks: set[int] = set()
+        for square, value in enumerate(board):
+            if not value or spec.owner_of(value) != mover:
+                continue
+            attacked = False
+            for source in sources[square]:
+                start, piece_value, prefix, window, screens, _, _, sweep, _ = source
+                if screens or sweep or board[start] != piece_value:
+                    continue
+                path = (*prefix, *window)
+                if all(board[s] == 0 or s == lifted for s in path):
+                    blocks.update(path)
+                    if sees:
+                        attacked = True
+                        ends.append((start, other))
+            if attacked:
+                ends.append((square, mover))
+        if sees:
+            assert sight is not None
+            for square, owner in ends:
+                for start, piece_value, _, path in sight.sources[owner][
+                    spec.type_of(board[square])
+                ][square]:
+                    if (
+                        piece_value == duck_value
+                        and (board[start] == 0 or start == lifted)
+                        and all(board[s] == 0 or s == lifted for s in path)
+                    ):
+                        blocks.add(start)
+        return blocks
 
     def _is_loud(self, state: GameState, move: int) -> bool:
         """Whether a move changes material.
@@ -639,26 +857,35 @@ class MinimaxAgent:
         board = state.board
         killers = self._killers[min(ply, MAX_PLY - 1)]
         squares = self._squares
+        ducks = bool(self.repairs & DUCK_HISTORY)
+        duck_slot = state.side_to_move * squares
 
         def rank(move: int) -> tuple[float, int, int]:
-            origin, target, _, _ = decode_move(move)
+            origin, target, kind, _ = decode_move(move)
             killer = 2 if move == killers[0] else (1 if move == killers[1] else 0)
-            return (
-                -self._capture_gain(board, move),
-                -killer,
-                -self._history.get(origin * squares + target, 0),
-            )
+            if ducks and kind == MOVE_DUCK:
+                heard = self._duck_history.get(duck_slot + target, 0)
+            else:
+                heard = self._history.get(origin * squares + target, 0)
+            return (-self._capture_gain(board, move), -killer, -heard)
 
         moves.sort(key=rank)
 
-    def _remember(self, move: int, quiet: bool, depth: int, ply: int) -> None:
-        """Record that this move caused a cutoff, so the next search tries it sooner."""
+    def _remember(self, move: int, quiet: bool, depth: int, ply: int, side: int) -> None:
+        """Record that this move caused a cutoff, so the next search tries it sooner.
+
+        ``side`` is the mover's: WK1's duck history files a duck move under it.
+        """
         slot = self._killers[min(ply, MAX_PLY - 1)]
         if quiet and slot[0] != move:
             slot[1] = slot[0]
             slot[0] = move
-        origin, target, _, _ = decode_move(move)
+        origin, target, kind, _ = decode_move(move)
         weight = max(depth, 0) ** 2
+        if self.repairs & DUCK_HISTORY and kind == MOVE_DUCK:
+            index = side * self._squares + target
+            self._duck_history[index] = self._duck_history.get(index, 0) + weight
+            return
         index = origin * self._squares + target
         self._history[index] = self._history.get(index, 0) + weight
 

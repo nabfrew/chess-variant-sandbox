@@ -1,5 +1,5 @@
 {
- "source_commit": "f87198e616702cc0f253f01ff670aa9e59793033",
+ "source_commit": "f8a391f85b85ff384d1d61a2c192b4a4c8afd4f4",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -1806,8 +1806,8 @@
   },
   {
    "path": "chess_variant_sandbox/agents/minimax.py",
-   "bytes": 32744,
-   "sha256": "2a84363d2c7cfc02f058f4f563316b6802e4ef11b5e253fdac6847361e38e28a"
+   "bytes": 44619,
+   "sha256": "df1a882fc6c94029b8335d30c209f3fffbe7d7959aedb5afdb809feff7394278"
   },
   {
    "path": "chess_variant_sandbox/agents/nets.py",
@@ -4666,8 +4666,8 @@
   },
   {
    "path": "rust/src/agents.rs",
-   "bytes": 60845,
-   "sha256": "5c004b3b91e1949a3df9218ee5c5812b7db4ebf4cff715d3d58e8269ace1e9d8"
+   "bytes": 78061,
+   "sha256": "c4663919540c4bbaa72b4d7e95ffe98689330b3bb70be7d4d456c2cf8fcef789"
   },
   {
    "path": "rust/src/duck.rs",
@@ -4776,8 +4776,8 @@
   },
   {
    "path": "rust/src/spy_players.rs",
-   "bytes": 17352,
-   "sha256": "23573b8d650ddd39bd9798b80e4c570f1e7fec7295c134db0aa89784cd1dd134"
+   "bytes": 17386,
+   "sha256": "62ab4d3e964ca312ad05f11b9d9cb0164ad01a428178e988eb29fb1eb3588d33"
   },
   {
    "path": "rust/src/tables.rs",
@@ -5721,8 +5721,8 @@
   },
   {
    "path": "tests/test_duck.py",
-   "bytes": 24652,
-   "sha256": "855c0f55934be7f7a675dea37b4791265fa2c759f36ceefbb715a54c3506687b"
+   "bytes": 35969,
+   "sha256": "3bebdb21444f291f503d7faa450ef3de78629028962e09eb5ceffba872cd0e82"
   },
   {
    "path": "tests/test_duck_beside_portals.py",
@@ -6826,8 +6826,8 @@
   },
   {
    "path": "tests/test_search_repairs.py",
-   "bytes": 6867,
-   "sha256": "fc37bc717ba1de9701df99f34b6829f652057354b020818701949bad8202c85c"
+   "bytes": 7630,
+   "sha256": "6fa13e4cac89f7696b9c963d6d3b230c1aa68a3db8d2d0c5d486a4b5f5fe3718"
   },
   {
    "path": "tests/test_seeds.py",
@@ -7448,6 +7448,11 @@
    "path": "tests/test_trust_line.py",
    "bytes": 24652,
    "sha256": "9fee18a8f35ba1d65c6f456efdbd2dd77d3f930f56075064a6aa67251cd39b13"
+  },
+  {
+   "path": "tests/test_tt_move.py",
+   "bytes": 4126,
+   "sha256": "53111561976983555e76b76a9bd01e0d902b3c068a388312e98a103e143c7187"
   },
   {
    "path": "tests/test_turncoat_facing.py",
