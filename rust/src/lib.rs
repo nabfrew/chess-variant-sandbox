@@ -359,8 +359,15 @@ type EffectsOut = (Vec<u8>, (u32, u32, u32), bool, u32, Vec<u8>);
 
 /// `Core.solve_endgame`'s answer for one material set: its pieces by owner (type indices),
 /// `(won, lost, drawn, illegal)`, `(longest win, longest loss, wins beyond the clock, longest
-/// to a reset)` and whether it is the set asked for.
-type EndgameSetOut = ((Vec<usize>, Vec<usize>, Vec<usize>), (u64, u64, u64, u64), (u32, u32, u64, u32), bool);
+/// to a reset)`, whether it is the set asked for, and (N2) the same verdicts by the player to
+/// move, `(won, lost, drawn, longest win, longest loss)` for player 0 then player 1.
+type EndgameSetOut = (
+    (Vec<usize>, Vec<usize>, Vec<usize>),
+    (u64, u64, u64, u64),
+    (u32, u32, u64, u32),
+    bool,
+    [(u64, u64, u64, u32, u32); 2],
+);
 
 #[pyclass(module = "chess_variant_sandbox._core", frozen)]
 pub struct Core {
@@ -1170,10 +1177,12 @@ impl Core {
     /// leads to (`endgame.rs`). `pieces` is the set's type indices for player 0, player 1 and
     /// nobody. The answer is one entry per set reached (`EndgameSetOut`), the solve's size
     /// `(positions, edges, sweeps)`, and, for every position of the asked set decided in
-    /// `sample_plies` or fewer, `(position, value for the side to move, plies)`. Refused by
+    /// `sample_plies` or fewer, `(position, value for the side to move, plies)`, and (N2) for
+    /// each of `probes` its `endgame::Probe`: value for the side to move, plies, plies to a
+    /// clock reset, normalised as a start is (`endgame.rs`'s docs). Refused by
     /// name where the game cannot be solved (`endgame::refusal`), and over `max_positions`
     /// (at most `endgame::MAX_POSITIONS`).
-    #[pyo3(signature = (pieces, max_positions = endgame::MAX_POSITIONS, sample_plies = 0))]
+    #[pyo3(signature = (pieces, max_positions = endgame::MAX_POSITIONS, sample_plies = 0, probes = Vec::new()))]
     #[allow(clippy::type_complexity)]
     fn solve_endgame<'py>(
         &self,
@@ -1181,13 +1190,15 @@ impl Core {
         pieces: (Vec<usize>, Vec<usize>, Vec<usize>),
         max_positions: u64,
         sample_plies: u32,
-    ) -> PyResult<(Vec<EndgameSetOut>, (u64, u64, u32), Vec<(StateOut<'py>, i8, u32)>)> {
+        probes: Vec<StateIn>,
+    ) -> PyResult<(Vec<EndgameSetOut>, (u64, u64, u32), Vec<(StateOut<'py>, i8, u32)>, Vec<endgame::Probe>)> {
         let requested: endgame::Material = [pieces.0, pieces.1, pieces.2];
         let tables = &self.tables;
+        let probes: Vec<Snapshot> = probes.iter().map(|state| snapshot_from(tables, state)).collect();
         let solved = py
             .detach(|| {
                 let build = |board: &[u8], side: usize, unmoved: [u8; 32]| endgame_position(tables, board, side, unmoved);
-                endgame::solve(tables, &requested, &build, max_positions, sample_plies)
+                endgame::solve(tables, &requested, &build, max_positions, sample_plies, &probes)
             })
             .map_err(pyo3::exceptions::PyValueError::new_err)?;
         let sets = solved
@@ -1200,6 +1211,7 @@ impl Core {
                     (set.won, set.lost, set.drawn, set.illegal),
                     (set.longest_win, set.longest_loss, set.beyond_clock, set.longest_to_reset),
                     set.requested,
+                    set.mover.map(|m| (m.won, m.lost, m.drawn, m.longest_win, m.longest_loss)),
                 )
             })
             .collect();
@@ -1208,7 +1220,7 @@ impl Core {
             .iter()
             .map(|sample| (state_out(py, &Game::from_snapshot(tables, &sample.snapshot)), sample.value, sample.distance))
             .collect();
-        Ok((sets, (solved.positions, solved.edges, solved.sweeps), samples))
+        Ok((sets, (solved.positions, solved.edges, solved.sweeps), samples, solved.probes))
     }
 
     /// Play a whole schedule across `threads` threads. `tasks` is

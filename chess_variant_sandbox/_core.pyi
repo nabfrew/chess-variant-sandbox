@@ -188,12 +188,16 @@ class Core:
     # nobody) and every set it leads to: per set `(material, (won, lost, drawn, illegal),
     # (longest win, longest loss, wins beyond the clock, longest to a reset), requested)`,
     # the solve's `(positions, edges, sweeps)`, and the asked set's positions decided in
-    # `sample_plies` or fewer as `(state, value, plies)`. `engine/endgame.py` reads it.
+    # `sample_plies` or fewer as `(state, value, plies)`. N2: each set also carries its
+    # verdicts by the player to move, `(won, lost, drawn, longest win, longest loss)` for
+    # player 0 then 1, and each of `probes` comes back as `(value, plies, plies to a reset)`,
+    # value 1 won, -1 lost, 0 drawn, 2 not in the table. `engine/endgame.py` reads it.
     def solve_endgame(
         self,
         pieces: tuple[list[int], list[int], list[int]],
         max_positions: int = ...,
         sample_plies: int = ...,
+        probes: list[tuple[Any, ...]] = ...,
     ) -> tuple[
         list[
             tuple[
@@ -201,10 +205,12 @@ class Core:
                 tuple[int, int, int, int],
                 tuple[int, int, int, int],
                 bool,
+                list[tuple[int, int, int, int, int]],
             ]
         ],
         tuple[int, int, int],
         list[tuple[State, int, int]],
+        list[tuple[int, int, int]],
     ]: ...
     # Q665: the minimax player's own root value, move and completed depth on each state,
     # one stream per state from `seeds` (as `select_move`'s seed); a training label's

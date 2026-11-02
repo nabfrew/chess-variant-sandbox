@@ -30,8 +30,24 @@
 //!
 //! **What is refused, by name** (`refusal`): a capture hand or an endless stock (material never
 //! shrinks), the purse (coins buy pieces), rounds and spies (a position's value is not won, lost or
-//! drawn), and two kinds of nobody's piece whose squares are state beyond a placement: wild pieces
-//! on routes and the duck.
+//! drawn).
+//!
+//! **Wild pieces and the duck** (N2) are the game's, never the set's. The wild pieces stand where
+//! the opening puts them, with their clocks and headings at rest, as the portal ends do, and the
+//! set's pieces are placed around them; every other square, clock and heading they take is what
+//! the walk reaches, so every position the solve labels is one the game's own phases lead to from
+//! a placement. The duck is placed on every square it may stand on, at a turn's start. Both are
+//! counted in every set's material (nobody's pieces), so a set where a wild piece was taken is a
+//! set of its own.
+//!
+//! **Points** (a bounty's tally) are left out of a position's identity: they are read only at the
+//! clocks (`Game::score_for`), which the solve leaves out, so two positions that differ only in
+//! points have the same value.
+//!
+//! **Probes** (N2): a caller may ask the value of given positions (from stored games) in the same
+//! solve. A probe is normalised as a start is (clocks at zero, first-move bits only where a start
+//! would keep them, so no castling right) and looked up by identity; one the walk never reached is
+//! answered "not in the table".
 
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
@@ -68,9 +84,22 @@ const ILLEGAL: u8 = 4;
 /// The pieces of one material set, by type index: player 0's, player 1's, and nobody's.
 pub type Material = [Vec<usize>; 3];
 
+/// One material set's verdicts with one player to move (N2): which side holds the win is read
+/// from these, never from the totals.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MoverStats {
+    pub won: u64,
+    pub lost: u64,
+    pub drawn: u64,
+    pub longest_win: u32,
+    pub longest_loss: u32,
+}
+
 /// One material set's verdicts, for the side to move.
 #[derive(Clone, Debug, Default)]
 pub struct SetStats {
+    /// The same verdicts split by the player to move (index 0 and 1).
+    pub mover: [MoverStats; 2],
     pub material: Material,
     pub won: u64,
     pub lost: u64,
@@ -97,12 +126,22 @@ pub struct Sample {
     pub distance: u32,
 }
 
+/// A probe's answer: its value for the side to move (`PROBE_WON`, `PROBE_LOST`, `PROBE_DRAWN`,
+/// or `PROBE_ABSENT` when the walk never reached it), its distance in plies, and its distance
+/// to the end or the next clock reset (`to_reset`'s).
+pub type Probe = (i8, u32, u32);
+pub const PROBE_WON: i8 = 1;
+pub const PROBE_LOST: i8 = -1;
+pub const PROBE_DRAWN: i8 = 0;
+pub const PROBE_ABSENT: i8 = 2;
+
 pub struct Solve {
     pub sets: Vec<SetStats>,
     pub positions: u64,
     pub edges: u64,
     pub sweeps: u32,
     pub samples: Vec<Sample>,
+    pub probes: Vec<Probe>,
 }
 
 /// Why a game cannot be solved here, by the rule's name; `None` when it can.
@@ -128,12 +167,6 @@ pub fn refusal(t: &Tables) -> Option<String> {
         return Some(
             "rounds (rules.simultaneous): a position's value is a matrix game, not won, lost or drawn".into(),
         );
-    }
-    if t.has_npcs {
-        return Some("wild pieces (rules.npcs): their squares, clocks and headings are not enumerated here".into());
-    }
-    if t.duck.is_some() {
-        return Some("the duck (rules.duck): its square and half-turn are not enumerated here".into());
     }
     None
 }
@@ -184,9 +217,10 @@ impl Digest {
 }
 
 /// The state the Zobrist key leaves out and a table needs: the first-move bits, the check
-/// counts, the hands, the points, the goal just left and the colouring. Read from a position's
-/// parts, so a child can be looked up before it is copied out of the game.
-fn extras_of(unmoved: SquareSet, checks: [u32; 2], hands: &[Vec<u32>; 2], points: [f64; 2], goal_left_by: i8, colour: &[u8]) -> u64 {
+/// counts, the hands, the goal just left and the colouring. Read from a position's parts, so a
+/// child can be looked up before it is copied out of the game. Points are not among them: they
+/// are read only at the clocks, which the solve leaves out (the module's docs).
+fn extras_of(unmoved: SquareSet, checks: [u32; 2], hands: &[Vec<u32>; 2], goal_left_by: i8, colour: &[u8]) -> u64 {
     let mut d = Digest(0x5eed);
     d.bytes(&unmoved.to_bytes());
     d.add(u64::from(checks[0]) | (u64::from(checks[1]) << 32));
@@ -195,15 +229,13 @@ fn extras_of(unmoved: SquareSet, checks: [u32; 2], hands: &[Vec<u32>; 2], points
             d.add(u64::from(*count));
         }
     }
-    d.add(points[0].to_bits());
-    d.add(points[1].to_bits());
     d.add(goal_left_by as u64);
     d.bytes(colour);
     d.0
 }
 
 fn extras(s: &Snapshot) -> u64 {
-    extras_of(s.unmoved, s.checks, &s.hands, s.points, s.goal_left_by, &s.colour)
+    extras_of(s.unmoved, s.checks, &s.hands, s.goal_left_by, &s.colour)
 }
 
 /// A position's identity in the table: its Zobrist key and the state the key leaves out.
@@ -212,13 +244,15 @@ fn identity(s: &Snapshot) -> u64 {
 }
 
 fn identity_of_game(game: &Game<'_>) -> u64 {
-    game.key ^ extras_of(game.unmoved, game.checks, &game.hands, game.points, game.goal_left_by, &game.colour)
+    game.key ^ extras_of(game.unmoved, game.checks, &game.hands, game.goal_left_by, &game.colour)
 }
 
 /// Everything in a snapshot but the board and what follows from it (the occupancy, the key):
 /// what a pending position shares with others, stored once.
 fn residual(s: &Snapshot) -> u64 {
     let mut d = Digest(extras(s));
+    d.add(s.points[0].to_bits());
+    d.add(s.points[1].to_bits());
     d.add(s.side as u64);
     d.add(s.ep_target as u64 & 0xffff | ((s.ep_victim as u64 & 0xffff) << 16));
     d.add(u64::from(s.remaining) | (u64::from(s.turns_taken) << 32));
@@ -367,19 +401,26 @@ impl Walk<'_, '_> {
     /// opening square keeps its first-move bit where it has a first move there; nothing else is
     /// unmoved, so no castling right survives into an endgame (as in Syzygy).
     fn start(&self, board: &[u8; MAX_SQUARES], side: usize) -> Snapshot {
-        let t = self.t;
-        let mut unmoved = SquareSet::EMPTY;
-        for (square, &value) in board.iter().enumerate().take(t.n_squares) {
-            if value != 0
-                && self.fixed[square] == 0
-                && t.initial_board[square] == value
-                && first_move_square(t, value, square)
-            {
-                unmoved.set(square);
-            }
-        }
-        (self.build)(&board[..t.n_squares], side, unmoved.to_bytes())
+        let unmoved = kept_first_moves(self.t, &self.fixed, board, None);
+        (self.build)(&board[..self.t.n_squares], side, unmoved.to_bytes())
     }
+}
+
+/// The first-move bits a start keeps on `board`: a piece on its own opening square with a first
+/// move there, and, for a probe, only where its own bits (`given`) say it has not moved.
+fn kept_first_moves(t: &Tables, fixed: &[u8; MAX_SQUARES], board: &[u8; MAX_SQUARES], given: Option<SquareSet>) -> SquareSet {
+    let mut unmoved = SquareSet::EMPTY;
+    for (square, &value) in board.iter().enumerate().take(t.n_squares) {
+        if value != 0
+            && fixed[square] == 0
+            && given.is_none_or(|bits| bits.get(square))
+            && t.initial_board[square] == value
+            && first_move_square(t, value, square)
+        {
+            unmoved.set(square);
+        }
+    }
+    unmoved
 }
 
 /// A position waiting to be expanded: its id, its key and its shared residual state. Its board
@@ -697,17 +738,29 @@ impl<'t> Solver<'t> {
 /// Solve `requested` and its closure. `build` makes a position (`lib.rs`), `cap` bounds the
 /// positions (at most `MAX_POSITIONS`), and every position of the requested set decided at
 /// `sample_plies` or fewer comes back as a sample.
-pub fn solve(t: &Tables, requested: &Material, build: &Build<'_>, cap: u64, sample_plies: u32) -> Result<Solve, String> {
+pub fn solve(
+    t: &Tables,
+    requested: &Material,
+    build: &Build<'_>,
+    cap: u64,
+    sample_plies: u32,
+    probes: &[Snapshot],
+) -> Result<Solve, String> {
     if let Some(why) = refusal(t) {
         return Err(format!("this game cannot be solved here: {why}"));
     }
     let cap = cap.min(MAX_POSITIONS);
     let n = t.n_squares;
-    // The fixed board: the portal ends, which stand where the opening puts them.
+    // The fixed board: the portal ends and the wild pieces, which stand where the opening puts
+    // them (the module's docs). The wild pieces are in every set's material.
     let mut fixed = [0u8; MAX_SQUARES];
+    let mut wild_types = Vec::new();
     for (fixed, &value) in fixed.iter_mut().zip(&t.initial_board).take(n) {
-        if t.is_portal_end(value) {
+        if t.is_portal_end(value) || t.is_wild_piece(value) {
             *fixed = value;
+        }
+        if t.is_wild_piece(value) {
+            wild_types.push(t.type_of(value));
         }
     }
     let mut placements = Vec::new();
@@ -721,7 +774,9 @@ pub fn solve(t: &Tables, requested: &Material, build: &Build<'_>, cap: u64, samp
             }
             let value = value_for(t, owner, piece_type);
             if owner == WILD && (t.is_wild_piece(value) || t.kind_of(value) == CONTROL_DUCK || t.is_portal_end(value)) {
-                return Err(format!("piece type {piece_type} is a wild piece, the duck or a portal end, never part of a set"));
+                return Err(format!(
+                    "piece type {piece_type} is a wild piece, the duck or a portal end: the game places those, never a set"
+                ));
             }
             let squares = standing_squares(t, owner, value, &fixed);
             if squares.is_empty() {
@@ -734,6 +789,17 @@ pub fn solve(t: &Tables, requested: &Material, build: &Build<'_>, cap: u64, samp
     if placements.is_empty() {
         return Err("a material set needs at least one piece".into());
     }
+    // The duck stands on every square it may, at a turn's start (`Build` gives the full turn).
+    if let Some(duck) = t.duck.as_deref() {
+        let squares: Vec<usize> = duck.squares.iter().filter(|&square| square < n && fixed[square] == 0).collect();
+        if squares.is_empty() {
+            return Err("the duck has no square it can stand on".into());
+        }
+        placements.push(Placement { value: duck.value, squares });
+        wild_types.push(duck.piece_type);
+    }
+    wanted[WILD].extend(wild_types);
+    wanted[WILD].sort_unstable();
     // An upper bound on the starting positions: both sides to move, each run of identical pieces
     // choosing its squares as a set.
     let mut estimate = 2.0f64;
@@ -773,6 +839,7 @@ pub fn solve(t: &Tables, requested: &Material, build: &Build<'_>, cap: u64, samp
     let shift = usize::from(!solver.groups.contains(&wanted));
     for id in 0..solver.value.len() {
         let stats = &mut sets[solver.group[id] as usize + shift];
+        let mover = &mut stats.mover[usize::from(solver.side[id]).min(1)];
         match solver.value[id] {
             ILLEGAL => stats.illegal += 1,
             WON => {
@@ -782,14 +849,43 @@ pub fn solve(t: &Tables, requested: &Material, build: &Build<'_>, cap: u64, samp
                 if reset[id] > clock {
                     stats.beyond_clock += 1;
                 }
+                mover.won += 1;
+                mover.longest_win = mover.longest_win.max(solver.dist[id]);
             }
             LOST => {
                 stats.lost += 1;
                 stats.longest_loss = stats.longest_loss.max(solver.dist[id]);
+                mover.lost += 1;
+                mover.longest_loss = mover.longest_loss.max(solver.dist[id]);
             }
-            _ => stats.drawn += 1,
+            _ => {
+                stats.drawn += 1;
+                mover.drawn += 1;
+            }
         }
     }
+
+    // The probes: each normalised as a start is, then looked up.
+    let answers = probes
+        .iter()
+        .map(|probe| {
+            let mut s = probe.clone();
+            normalise(&mut s);
+            s.unmoved = kept_first_moves(t, &walk.fixed, &s.board, Some(probe.unmoved));
+            s.key = Game::from_snapshot(t, &s).compute_hash();
+            let Some(&id) = solver.ids.get(&identity(&s)) else {
+                return (PROBE_ABSENT, 0, 0);
+            };
+            let id = id as usize;
+            match solver.value[id] {
+                WON => (PROBE_WON, solver.dist[id], reset[id]),
+                // No game reaches an illegal position, so a probe never should; it is not a verdict.
+                ILLEGAL => (PROBE_ABSENT, 0, 0),
+                LOST => (PROBE_LOST, solver.dist[id], reset[id]),
+                _ => (PROBE_DRAWN, 0, 0),
+            }
+        })
+        .collect();
 
     let mut samples = Vec::new();
     if sample_plies > 0 {
@@ -813,5 +909,6 @@ pub fn solve(t: &Tables, requested: &Material, build: &Build<'_>, cap: u64, samp
         edges: solver.edges.len() as u64,
         sweeps,
         samples,
+        probes: answers,
     })
 }

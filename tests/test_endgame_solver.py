@@ -13,6 +13,7 @@ knights never force mate, and FIDE's dead sets are drawn in every game where the
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from functools import cache
 from pathlib import Path
@@ -145,6 +146,100 @@ class TestTheSmallBoard:
         assert one.sets == two.sets and one.positions == two.positions
 
 
+def _small_wild() -> dict[str, Any]:
+    """The small board with a wild stepper walking a ring of four middle squares."""
+    spec = _small()
+    spec["name"] = "small endgame board with a wild piece"
+    spec["pieces"].append(
+        {"id": "X", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]}
+    )
+    spec["rules"]["npcs"] = [{"piece": "X", "route": ["b2", "c2", "c3", "b3"]}]
+    return spec
+
+
+def _small_duck() -> dict[str, Any]:
+    """The small board won by taking the royal, with a duck that goes anywhere."""
+    spec = _small()
+    spec["name"] = "small endgame board with a duck"
+    spec["pieces"].append({"id": "D", "value": 0, "moves": []})
+    spec["rules"]["win"] = "royal_capture"
+    spec["rules"]["duck"] = {"piece": "D"}
+    return spec
+
+
+@cache
+def _small_wild_engine() -> Engine:
+    return Engine(_small_wild())
+
+
+@cache
+def _small_duck_engine() -> Engine:
+    return Engine(_small_duck())
+
+
+class TestWildPiecesAndTheDuck:
+    """N2: the game places its wild pieces and its duck; every set carries them."""
+
+    @pytest.mark.parametrize("which", ["wild", "duck"])
+    def test_every_short_decision_agrees_with_the_probe(self, which: str) -> None:
+        engine = _small_wild_engine() if which == "wild" else _small_duck_engine()
+        solve = solve_endgame(engine, (["G", "A"], ["G"]), sample_plies=3)
+        assert solve.samples
+        for sample in solve.samples:
+            score = _probe(engine, sample.state, sample.plies)
+            assert abs(score) > WIN_SCORE / 2, (sample.plies, sample.value)
+            assert (score > 0) == (sample.value > 0)
+
+    def test_the_wild_piece_is_in_every_set(self) -> None:
+        solve = solve_endgame(_small_wild_engine(), (["G", "A"], ["G"]))
+        assert solve.requested.material == (("A", "G"), ("G",), ("X",))
+        assert solve.requested.positions > 0
+
+    def test_the_duck_is_in_every_set_and_stands_anywhere(self) -> None:
+        solve = solve_endgame(_small_duck_engine(), (["G"], ["G"]))
+        asked = solve.requested
+        assert asked.material == (("G",), ("G",), ("D",))
+        # Every placement of two royals and the duck, at a turn's start, both sides to move.
+        assert asked.positions + asked.illegal >= 2 * 16 * 15 * 14
+
+    def test_naming_a_wild_piece_or_the_duck_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="the game places those"):
+            solve_endgame(_small_wild_engine(), (["G"], ["G"], ["X"]))
+        with pytest.raises(ValueError, match="the game places those"):
+            solve_endgame(_small_duck_engine(), (["G"], ["G"], ["D"]))
+
+
+class TestProbesAndMovers:
+    def test_the_mover_counts_add_up_and_name_the_stronger_side(self) -> None:
+        asked = solve_endgame(_small_engine(), (["G", "A"], ["G"])).requested
+        assert sum(m.won for m in asked.mover) == asked.won
+        assert sum(m.lost for m in asked.mover) == asked.lost
+        assert sum(m.drawn for m in asked.mover) == asked.drawn
+        assert asked.forced_by(0) and not asked.forced_by(1)
+        assert not solve_endgame(_small_engine(), (["G", "J"], ["G"])).requested.forced_by(0)
+
+    def test_a_probe_reads_the_sample_it_was_given(self) -> None:
+        engine = _small_engine()
+        solve = solve_endgame(engine, (["G", "A"], ["G"]), sample_plies=3)
+        states = [sample.state for sample in solve.samples]
+        again = solve_endgame(engine, (["G", "A"], ["G"]), probes=states)
+        for sample, probe in zip(solve.samples, again.probes, strict=True):
+            assert probe.value == sample.value and probe.plies == sample.plies
+
+    def test_a_probe_with_clocks_running_is_the_same_position(self) -> None:
+        engine = _small_engine()
+        sample = solve_endgame(engine, (["G", "A"], ["G"]), sample_plies=3).samples[0]
+        ticking = dataclasses.replace(sample.state, halfmove=17, ply=60)
+        probe = solve_endgame(engine, (["G", "A"], ["G"]), probes=[ticking]).probes[0]
+        assert probe.value == sample.value
+
+    def test_a_position_of_another_set_is_not_in_the_table(self) -> None:
+        engine = _small_engine()
+        sample = solve_endgame(engine, (["G", "A"], ["G"]), sample_plies=3).samples[0]
+        probe = solve_endgame(engine, (["G", "J"], ["G"]), probes=[sample.state]).probes[0]
+        assert probe.value is None
+
+
 class TestRefusals:
     def test_an_unknown_piece_is_named(self) -> None:
         with pytest.raises(ValueError, match="not a piece of this game: Z"):
@@ -173,8 +268,6 @@ class TestRefusals:
             ("tests/_purse_market.json", "the purse"),
             ("tests/_retired_gardner_in_rounds.json", "rounds"),
             ("tests/_retired_gardner_with_spies.json", "spies"),
-            ("rulesets/duck-chess.json", "the duck"),
-            ("tests/_retired_the_menagerie.json", "wild pieces"),
         ],
     )
     def test_a_game_it_cannot_read_is_refused_by_name(self, path: str, rule: str) -> None:

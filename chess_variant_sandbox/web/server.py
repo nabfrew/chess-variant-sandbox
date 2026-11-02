@@ -39,6 +39,7 @@ from chess_variant_sandbox.web import (
     cards,
     changelog,
     designing,
+    endings,
     landing,
     launch,
     library,
@@ -612,6 +613,9 @@ class App:
                 # Why the outside engine is, or is not, among those opponents: the
                 # verdict the roster was just built from, so the two cannot disagree.
                 "fairyCheck": opponents.fairy_check(game.spec),
+                # N3: the small endings' fact sheet, from the game's persisted record
+                # (`runs/endgames/<hash>.json`), basis-stamped; `None` where there is none.
+                "endings": endings.sheet_for(self.runs_dir, game.hash, game.spec),
                 # A searched table the roster just left out as stale, one
                 # sentence each with the command that repairs it (Q142), and a built
                 # opponent it left out as a second spelling of a held plan (Q446). The

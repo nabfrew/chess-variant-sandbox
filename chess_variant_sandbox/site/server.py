@@ -110,6 +110,7 @@ from chess_variant_sandbox.spec.canonical import load_spec
 from chess_variant_sandbox.web import (
     changelog,
     designing,
+    endings,
     launch,
     library,
     opponents,
@@ -1199,6 +1200,7 @@ class SiteApp(App):
                 connection, digest, self.known(), self.game, self.near_cache,
                 seo.site_base(), self._near_names, self.pictures.address,
                 lambda digest, game: proven.offered(self.runs_dir, digest, game.spec),
+                lambda digest, game: endings.sheet_for(self.runs_dir, digest, game.spec),
             )
         return None if found is None else game_drawing.draw(found)
 

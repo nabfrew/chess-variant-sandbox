@@ -122,6 +122,9 @@ class Drawn:
     proven: int = 0
     """How many proven positions the game offers (`proven.offered`), linked from the page
     so a crawler reaches them (G10); nought, and no link, for a game with none."""
+    endings: Mapping[str, Any] | None = None
+    """The small endings' fact sheet (N3, `web/endings.sheet_for`), drawn under the full
+    rules; `None`, and nothing drawn, for a game with no record."""
 
 
 # ------------------------------------------------------------------------ the words
@@ -281,6 +284,28 @@ def head(drawn: Drawn) -> str:
                             image_alt=picture_alt(drawn))
 
 
+def endings_html(sheet: Mapping[str, Any] | None) -> str:
+    """The small endings' fact sheet, folded (N3; `detail.js` `endingsHtml` draws the same):
+    the server's sentences, the provisional tag where the record's basis is not this
+    build's, and nothing at all where there is no sheet."""
+    if not sheet or not sheet.get("lines"):
+        return ""
+    stalls = str(sheet.get("stalls") or "")
+    provisional = ('<span class="tag stale">provisional</span> '
+                   if sheet.get("status") == "provisional" else "")
+    return (
+        '<details class="u-mt-10 endings">'
+        f'<summary class="muted small">{escape(str(sheet.get("title") or ""))}</summary>'
+        f'<p class="small u-mt-6">{escape(str(sheet.get("intro") or ""))}</p>'
+        '<ul class="rules small">'
+        + "".join(f"<li>{escape(str(line))}</li>" for line in sheet["lines"])
+        + "</ul>"
+        + (f'<p class="small">{escape(stalls)}</p>' if stalls else "")
+        + f'<p class="muted small">{provisional}{escape(str(sheet.get("stamp") or ""))}</p>'
+        "</details>\n"
+    )
+
+
 def lead(drawn: Drawn) -> str:
     """What the game is, first (Q1085a, `detail.js` `leadHtml` draws the same): the spec's
     short description a line at a time, the line on where it came from, and the longer
@@ -290,15 +315,18 @@ def lead(drawn: Drawn) -> str:
         f'<p class="gameAbout">{escape(block)}</p>' for block in paragraphs(drawn.description)
     )
     lines = summary_lines(dict(drawn.spec))
+    endings = endings_html(drawn.endings)
     if not lines:
-        return longer
+        return longer + (
+            '<details class="sect fullRules"><summary><h3>Full rules</h3></summary>'
+            f"{endings}</details>\n" if endings else "")
     note = provenance_note(dict(drawn.spec))
     return (
         '<ul class="gameLead">' + "".join(f"<li>{escape(line)}</li>" for line in lines)
         + "</ul>\n"
         + (f'<p class="gameNote muted small">{escape(note)}</p>\n' if note else "")
         + (f'<details class="sect fullRules"><summary><h3>Full rules</h3></summary>'
-           f"{longer}</details>\n" if longer else "")
+           f"{longer}{endings}</details>\n" if longer or endings else "")
     )
 
 

@@ -12,6 +12,13 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-02
+
+### What each game's lone pieces can force
+
+Under each game's full rules, *Endings with few pieces* now says which single piece, with its king, can force a win
+against a lone king and in at most how many moves, which cannot, and how often the computer players missed such a win.
+
 ## 2026-11-01
 
 ### Puzzles in seven more games, and a mark on any that are due a check

@@ -235,6 +235,7 @@ def drawn(
     near_of: Callable[[library.Game], tuple[drawing.Near, ...]],
     picture_of: Callable[[str, library.Game], str | None] | None = None,
     proven_of: Callable[[str, library.Game], int] | None = None,
+    endings_of: Callable[[str, library.Game], Mapping[str, Any] | None] | None = None,
 ) -> drawing.Drawn | None:
     """What `/game/<digest>` draws, or `None` for the 404.
 
@@ -243,7 +244,8 @@ def drawn(
     `picture_of` names the game's own link-preview picture where one is made
     (`game_pictures.Pictures.address`, G6), and the site's stands in where it says nothing.
     `proven_of` says how many proven positions the game offers (`proven.offered`), which the
-    page links (G10).
+    page links (G10). `endings_of` is the game's small endings' fact sheet
+    (`web/endings.sheet_for`, N3), drawn under its full rules.
     """
     row = row_of(connection, digest)
     if row is None:
@@ -274,6 +276,7 @@ def drawn(
         base=base,
         picture=(picture_of(digest, game) if picture_of is not None else None) or "",
         proven=proven_of(digest, game) if proven_of is not None else 0,
+        endings=endings_of(digest, game) if endings_of is not None else None,
     )
 
 

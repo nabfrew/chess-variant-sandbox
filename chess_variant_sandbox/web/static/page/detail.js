@@ -331,8 +331,26 @@ function fullRulesHtml(game) {
         <ul class="rules muted small u-mt-6">${
           (game.setupLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
       </details>
+      ${endingsHtml(game.endings)}
       ${reportHtml(game)}
     </div></details>`;
+}
+
+// N3 (`docs/reference/no-forced-mate.md`): the small endings' fact sheet, folded under the
+// full rules. Every word is the server's (`web/endings.py`, from the game's persisted
+// record); the page adds only the fold and, where the record's basis is not this build's,
+// the provisional tag. No record, no fold.
+function endingsHtml(sheet) {
+  if (!sheet || !(sheet.lines || []).length) return '';
+  const provisional = sheet.status === 'provisional'
+    ? '<span class="tag stale">provisional</span> ' : '';
+  return `<details class="u-mt-10 endings">
+    <summary class="muted small">${esc(sheet.title)}</summary>
+    <p class="small u-mt-6">${esc(sheet.intro)}</p>
+    <ul class="rules small">${sheet.lines.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+    ${sheet.stalls ? `<p class="small">${esc(sheet.stalls)}</p>` : ''}
+    <p class="muted small">${provisional}${esc(sheet.stamp)}</p>
+  </details>`;
 }
 
 // ----------------------------------------------------------- the scores it replaced
