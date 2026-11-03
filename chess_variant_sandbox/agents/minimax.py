@@ -11,6 +11,7 @@ lengths of time. The strategic-depth metric compares exactly those pairs.
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 from typing import Any
 
 from chess_variant_sandbox.agents.base import (
@@ -20,7 +21,14 @@ from chess_variant_sandbox.agents.base import (
     register,
     register_native,
 )
-from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, WIN_SCORE, Evaluator
+from chess_variant_sandbox.agents.evaluation import (
+    GOAL_PIECES,
+    IMMUNE_PIECES,
+    WIN_SCORE,
+    Evaluator,
+    _mean_non_royal,
+    inexhaustible_types,
+)
 from chess_variant_sandbox.agents.matrix import (
     RoundSearch,
     matrix_round,
@@ -50,7 +58,7 @@ from chess_variant_sandbox.engine.moves import (
     move_to,
     move_type,
 )
-from chess_variant_sandbox.engine.state import SpyPhase
+from chess_variant_sandbox.engine.state import NO_SQUARE, SpyPhase
 
 INFINITY = float("inf")
 MAX_DEPTH = 64
@@ -103,6 +111,62 @@ _U64 = (1 << 64) - 1
 #   Off: it lost its duel (0.491 +/- 0.004 over twelve cells, `wakwak.md` §9.3).
 KEEP_TABLE, THREATS, LOUD_DROPS, DUCK_QUIESCE, DUCK_HISTORY = 1, 2, 4, 8, 16
 DUCK_REFUTE, DUCK_FRONT, DUCK_MOBILITY, TT_MOVE = 32, 64, 128, 256
+# * ``mopup`` (N4, `docs/reference/no-forced-mate.md` §10): where one side is bare and the other
+#   is not, a stand pat adds, for the armed side, ``MOPUP_PIECES`` mean pieces times
+#   how confined the bare side is (its box, ``MOPUP_AREA``, and its legal moves, ``MOPUP_SPAN``,
+#   half each). On by default since its duel (§10.4). Built-in objective only;
+#   moves only positions where a side is bare.
+MOPUP = 512
+# N4 (`docs/reference/no-forced-mate.md` §10): the mop-up term's weight in mean non-royal pieces,
+# and the legal-move count and box size at and above which a bare side reads as unconfined.
+# Here, not in `agents/evaluation.py`, because only a minimax player reads them and that file is
+# the analysis probe's ruler (in the `analysis` and `metrics` fingerprints). ``rust/src/eval.rs``
+# holds the core's copies, exported as ``_core.MOPUP_PIECES``, ``_core.MOPUP_SPAN`` and
+# ``_core.MOPUP_AREA`` and held to these by ``tests/test_mopup.py``.
+MOPUP_PIECES = 1.0
+MOPUP_SPAN = 8.0
+MOPUP_AREA = 64.0
+
+
+def mopup_weight(spec: Any, evaluator: object) -> float:
+    """N4: the mop-up term's weight in the units of ``evaluator``, or zero where it is undefined:
+    an objective other than the built-in one (a net or a heuristic vector), a game without a
+    royal, a negative material sign, or a duck, round, spy or long-turn game.
+    ``rust/src/agents.rs::mopup_weight_for`` is the same rule (the search bit is the caller's)."""
+    if not isinstance(evaluator, Evaluator):
+        return 0.0
+    if (
+        not spec.royal_types
+        or spec.duck is not None
+        or spec.simultaneous is not None
+        or spec.spy is not None
+        or spec.turn is not None
+        or evaluator.material_sign <= 0.0
+    ):
+        return 0.0
+    return MOPUP_PIECES * _mean_non_royal(
+        evaluator.values, spec.royal_types, inexhaustible_types(spec)
+    )
+
+
+def is_bare(spec: Any, state: GameState, player: int) -> bool:
+    """N4: ``player`` has royals on the board and nothing else, none in hand
+    (``Game::is_bare``)."""
+    royal = set(spec.royal_types)
+    mine = [spec.type_of(v) for v in state.board if v and spec.owner_of(v) == player]
+    hand = state.hands[player] if state.hands else ()
+    return bool(mine) and all(t in royal for t in mine) and all(n == 0 for n in hand)
+
+
+def is_armed(spec: Any, state: GameState, player: int) -> bool:
+    """N4: ``player`` holds anything but royals, on the board or in hand (``Game::is_armed``)."""
+    royal = set(spec.royal_types)
+    hand = state.hands[player] if state.hands else ()
+    return any(
+        v and spec.owner_of(v) == player and spec.type_of(v) not in royal for v in state.board
+    ) or any(n > 0 for n in hand)
+
+
 # A table entry that keeps no best move (`agents.rs`'s ``NO_MOVE``).
 NO_MOVE = -1
 REPAIR_OPTIONS = {
@@ -115,6 +179,7 @@ REPAIR_OPTIONS = {
     "duck_front": DUCK_FRONT,
     "duck_mobility": DUCK_MOBILITY,
     "tt_move": TT_MOVE,
+    "mopup": MOPUP,
 }
 # Which repairs a player that spells none of them searches with: the ones that won their
 # pre-registered duel (general-player.md §4.3 E9, graded in §6.7). ``threats`` won and is
@@ -125,8 +190,10 @@ REPAIR_OPTIONS = {
 # (`docs/reference/wakwak.md` §7.3) and are on; inert without a duck, so they move only duck
 # games. The duck player before WK2 is ``duck_refute=0,duck_front=0``. WK3's ``duck_mobility``
 # won its duel (§8.3) and is on, inert without a duck; the duck player before WK3 is
-# ``duck_mobility=0``, and before WK2 ``duck_refute=0,duck_front=0,duck_mobility=0``.
-DEFAULT_REPAIRS = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY
+# ``duck_mobility=0``, and before WK2 ``duck_refute=0,duck_front=0,duck_mobility=0``. N4's
+# ``mopup`` won its duel (`no-forced-mate.md` §10.4) and is on, inert where nobody is bare; the
+# player before N4 is ``mopup=0``.
+DEFAULT_REPAIRS = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY | MOPUP
 
 # Every option a minimax player reads; any other is refused (`refuse_unknown_options`).
 OPTIONS = (
@@ -198,6 +265,9 @@ class MinimaxAgent:
         self._nodes = 0
         self._table: dict[int, tuple[int, float, int, int, int]] = {}
         self.repairs = repairs
+        # N4 (``mopup``): the term's weight, zero where the bit is off or it is undefined.
+        self._mopup = mopup_weight(engine.spec, self.evaluator) if repairs & MOPUP else 0.0
+        self._mopup_cache: dict[int, int] = {}
         # Which search this is, for ``keep``'s aging; the core's is a wrapping u16 and
         # only equality with this search and the previous one is ever asked.
         self._generation = 0
@@ -650,6 +720,8 @@ class MinimaxAgent:
             else:
                 self._turn_moves[min(ply, MAX_PLY - 1)] = count
         stand_pat = self.evaluator.evaluate(engine, state, state.side_to_move, count)
+        if self._mopup != 0.0:
+            stand_pat += self._mopup_term(state, count)
         if depth <= 0 or stand_pat >= beta:
             return stand_pat
 
@@ -679,6 +751,63 @@ class MinimaxAgent:
                 self._refuters[min(ply, MAX_PLY - 1)] = move
                 break
         return best
+
+    def _mopup_term(self, state: GameState, count: int) -> float:
+        """N4 (``mopup``): the mop-up term at a stand pat, for the side to move: plus the
+        weight's confined share where the opponent is bare and the mover armed, minus it the
+        other way round, zero otherwise. The bare side's legal count is ``count`` on its own
+        move, else the engine's answer for the same position with the side replaced and no en
+        passant window. `agents.rs::mopup_term`."""
+        spec = self.engine.spec
+        side = state.side_to_move
+        if is_bare(spec, state, 1 - side) and is_armed(spec, state, side):
+            sign, bare = 1.0, 1 - side
+        elif is_bare(spec, state, side) and is_armed(spec, state, 1 - side):
+            sign, bare = -1.0, side
+        else:
+            return 0.0
+        if bare == side:
+            moves = count
+        else:
+            flipped = replace(state, side_to_move=bare, ep_target=NO_SQUARE, ep_victim=NO_SQUARE)
+            moves = len(self.engine.legal_moves(flipped))
+        area = MOPUP_AREA
+        # The box is a function of the position alone, remembered by key (`agents.rs`'s cache).
+        known = self._mopup_cache.get(state.key)
+        if known is None:
+            known = self._mopup_cache[state.key] = self._bare_reach(state, bare, int(area))
+        reach = float(known)
+        span = MOPUP_SPAN
+        confined = 0.5 * ((1.0 - min(reach, area) / area) + (1.0 - min(float(moves), span) / span))
+        return sign * (self._mopup * confined)
+
+    def _bare_reach(self, state: GameState, bare: int, cap: int) -> int:
+        """N4: how many positions ``bare`` could reach moving again and again while the other
+        player stands still, at most ``cap``, each told by its key after the move: the engine's
+        answer for every step, on the position with the side replaced and no en passant
+        window. A set, so the walk's order does not matter. `Game::bare_reach`."""
+        engine = self.engine
+        seen: set[int] = set()
+
+        def walk(position: GameState) -> None:
+            # The key follows the side, so a position reached in an odd and an even number
+            # of steps is told as one.
+            key = position.key
+            if position.side_to_move != bare:
+                key ^= engine.spec.zobrist_side
+            flipped = replace(
+                position, side_to_move=bare, ep_target=NO_SQUARE, ep_victim=NO_SQUARE, key=key
+            )
+            for move in engine.legal_moves(flipped):
+                if len(seen) >= cap:
+                    return
+                child = engine.apply(flipped, move)
+                if child.key not in seen:
+                    seen.add(child.key)
+                    walk(child)
+
+        walk(state)
+        return len(seen)
 
     def _note_turn(self, moves: list[int], ply: int) -> None:
         """WK3 (``duck_mobility``): file a piece half's legal count under its ply, for the

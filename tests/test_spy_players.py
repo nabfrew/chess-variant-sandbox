@@ -401,7 +401,9 @@ def test_a_guarded_spy_is_not_taken_for_a_rook(agent: str) -> None:
 # `ROUND_WIN_PIECES` mean pieces in the round search, a new round player. It was a559af13... .
 _INERT = {
     # Q1069a re-pinned chess on purpose: its new name, and its dead-material draws (was 454a5507...).
-    "rulesets/chess.json": "783fd8a917a610026d2631d00d8fd74b6603e689ac7a47645a9bca299164ed14",
+    # N4 re-pinned chess on purpose: the default minimax player now carries the mop-up term
+    # (`no-forced-mate.md` §10), which moves a game that reaches a bare king. It was 783fd8a9... .
+    "rulesets/chess.json": "3ce004d80aa98329d8f2b961d040b55c63bc27cea5420e7d707dbb16691683c4",
     "tests/_retired_gardner_in_rounds.json":
         "ea68bf59be2363fef170199cada924fac4b354a18be67e43e2e3726c2d22c835",
 }

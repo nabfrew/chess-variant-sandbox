@@ -1333,6 +1333,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // The immunity term's default weight, for the same reason.
     m.add("NET_INPUTS_VERSION", net::INPUTS_VERSION)?;
     m.add("IMMUNE_PIECES", crate::eval::IMMUNE_PIECES)?;
+    // N4: the mop-up term's weight and span, for the same reason.
+    m.add("MOPUP_PIECES", crate::eval::MOPUP_PIECES)?;
+    m.add("MOPUP_SPAN", crate::eval::MOPUP_SPAN)?;
+    m.add("MOPUP_AREA", crate::eval::MOPUP_AREA)?;
     // Q502i: the search repairs a minimax player takes unless it spells them, for the
     // same reason again.
     m.add("DEFAULT_REPAIRS", crate::agents::DEFAULT_REPAIRS)?;

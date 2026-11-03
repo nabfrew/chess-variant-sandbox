@@ -74,8 +74,9 @@ def test_native_and_oracle_alike_deeper(seed: int) -> None:
 
 def test_the_move_moves_a_game() -> None:
     engine = _engine("gardner")
-    control = "minimax:nodes=800,tt_move=0"
-    armed = play_game(engine, ("minimax:nodes=800,tt_move=1", control), seed=2)
+    # Spelled as the player before N4 (`mopup=0`), whose seed-2 game this test was written on.
+    control = "minimax:nodes=800,tt_move=0,mopup=0"
+    armed = play_game(engine, ("minimax:nodes=800,tt_move=1,mopup=0", control), seed=2)
     assert armed.moves != play_game(engine, (control,) * 2, seed=2).moves
 
 

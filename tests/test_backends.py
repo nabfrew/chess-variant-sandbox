@@ -1480,7 +1480,12 @@ def _facing_agent(weights: tuple[float, ...], name: str) -> str:
 
 @pytest.mark.parametrize(
     "agents",
-    [("minimax:nodes=150", "greedy"), ("minimax:nodes=150", "minimax:nodes=150")],
+    [
+        ("minimax:nodes=150", "greedy"),
+        # Slow since N4: its game reaches a bare king, where the oracle walks the mop-up
+        # term's box through the engine at every stand pat (`tests/test_mopup.py`).
+        pytest.param(("minimax:nodes=150", "minimax:nodes=150"), marks=pytest.mark.slow),
+    ],
     ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
 )
 def test_a_board_that_faces_is_searched_the_same_way_on_both_sides(

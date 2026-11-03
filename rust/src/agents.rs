@@ -161,6 +161,17 @@ pub const DUCK_MOBILITY: u32 = 128;
 /// are searched, and nothing reads a piece. Every game, not only a duck's. Off by default: it
 /// lost its duel (0.491 ± 0.004 over twelve cells, `wakwak.md` §9.3).
 pub const TT_MOVE: u32 = 256;
+/// N4 (`docs/reference/no-forced-mate.md` §10): **the mop-up term.** Where one side is bare
+/// (royals alone, nothing in hand) and the other is not, a stand pat adds, for the armed side,
+/// `eval::MOPUP_PIECES` mean non-royal pieces times how confined the bare side is: half the
+/// share of `eval::MOPUP_AREA` positions it could reach moving alone that it cannot
+/// (`Game::bare_reach`), half the share of `eval::MOPUP_SPAN` legal moves it has lost (its
+/// own list when it is to move, else `Game::legal_count_as`). It
+/// reads the core's legal list, never a square or a piece's name. Built-in objective only, and
+/// undefined (so never read) without a royal, under a negative material sign, or in a duck,
+/// round, spy or long-turn game. Moves only the positions where a side is bare. On by default
+/// since its duel (0.5127 ± 0.0010 over 27 cells, `no-forced-mate.md` §10.4).
+pub const MOPUP: u32 = 512;
 /// Every bit a spec may carry. A bit outside it is a player nobody has defined.
 pub const REPAIRS: u32 = KEEP_TABLE
     | THREATS
@@ -170,17 +181,19 @@ pub const REPAIRS: u32 = KEEP_TABLE
     | DUCK_REFUTE
     | DUCK_FRONT
     | DUCK_MOBILITY
-    | TT_MOVE;
+    | TT_MOVE
+    | MOPUP;
 /// The repairs a minimax player that spells none of them searches with: the ones that won
 /// their pre-registered duel (`general-player.md` §4.3 E9, §6.7). `THREATS` won (0.542
 /// over twelve cells); `KEEP_TABLE` and `LOUD_DROPS` lost and stay off. WK2's pair
 /// `DUCK_REFUTE | DUCK_FRONT` won together (0.5225 ± 0.0067 over six duck cells, `wakwak.md`
 /// §7.3; `DUCK_REFUTE` alone was a null) and is on: inert without a duck. WK3's
 /// `DUCK_MOBILITY` won its duel (0.542 ± 0.009 over the same six cells, `wakwak.md` §8.3)
-/// and is on: inert without a duck. Python sends the bits explicitly and holds its copy to
+/// and is on: inert without a duck. N4's `MOPUP` won its duel (0.5127 ± 0.0010 over 27 cells,
+/// `no-forced-mate.md` §10.4) and is on: inert where nobody is bare. Python sends the bits explicitly and holds its copy to
 /// this one by a test, so the core keeps no default of its own -- this constant is here so
 /// that moving it moves the build fingerprint.
-pub const DEFAULT_REPAIRS: u32 = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY;
+pub const DEFAULT_REPAIRS: u32 = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY | MOPUP;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -481,6 +494,40 @@ pub struct Player {
     /// in the round search, in this player's evaluator units: `eval::ROUND_WIN_PIECES` mean
     /// non-royal pieces of the values its objective reads. Read only by a round search.
     round_win: f64,
+    /// N4 (`MOPUP`): the mop-up term's weight in this player's evaluator units, zero where
+    /// the bit is off or the term is undefined (`mopup_weight_for`).
+    mopup: f64,
+    /// N4: scratch for the bare side's legal list when it is not to move.
+    mopup_moves: Vec<u32>,
+    /// N4: scratch for the keys of the bare side's box (`Game::bare_reach`).
+    mopup_seen: Vec<u64>,
+    /// N4: the box by position key, direct-mapped (`MOPUP_CACHE` slots, allocated on first
+    /// use); `u32::MAX` is an empty slot.
+    mopup_cache: Vec<(u64, u32)>,
+}
+
+/// N4: slots in the mop-up term's box cache.
+const MOPUP_CACHE: usize = 1 << 14;
+
+/// N4: the mop-up weight a player with this spec and objective reads, or zero where the bit
+/// is off or the term is undefined. `agents/minimax.py::mopup_weight` is the oracle.
+fn mopup_weight_for(t: &Tables, spec: &AgentSpec, eval: &Objective) -> f64 {
+    if spec.kind != Kind::Minimax
+        || spec.repairs & MOPUP == 0
+        || t.royal_types.is_empty()
+        || t.duck.is_some()
+        || t.simultaneous.is_some()
+        || t.spy.is_some()
+        || t.turn.is_some()
+    {
+        return 0.0;
+    }
+    match eval {
+        Objective::Builtin(evaluator) if evaluator.material_sign() > 0.0 => {
+            crate::eval::mopup_weight(t, &evaluator.values)
+        }
+        _ => 0.0,
+    }
 }
 
 /// How many plies from the root the killer table has room for. `MAX_DEPTH` is 64 and a
@@ -511,6 +558,7 @@ impl Player {
             _ => Objective::new(t, &spec.weights, &pair, mobility, goal, immune),
         };
         let round_win = crate::eval::round_win(t, eval.values());
+        let mopup = mopup_weight_for(t, &spec, &eval);
         let duck_history = if spec.repairs & DUCK_HISTORY != 0 && t.duck.is_some() {
             vec![0; 2 * t.n_squares]
         } else {
@@ -518,6 +566,10 @@ impl Player {
         };
         Self {
             round_win,
+            mopup,
+            mopup_moves: Vec::new(),
+            mopup_seen: Vec::new(),
+            mopup_cache: Vec::new(),
             eval,
             spec,
             stats: Stats::default(),
@@ -1043,7 +1095,10 @@ impl Player {
                 self.turn_moves[ply.min(MAX_PLY - 1)] = count;
             }
         }
-        let stand_pat = self.eval.evaluate(game, game.side, count);
+        let mut stand_pat = self.eval.evaluate(game, game.side, count);
+        if self.mopup != 0.0 {
+            stand_pat += self.mopup_term(game, count);
+        }
         if depth <= 0 || stand_pat >= beta {
             arena.truncate(base);
             return Ok(stand_pat);
@@ -1125,6 +1180,46 @@ impl Player {
         buffer.extend(arena[start..end].iter().copied().filter(|&m| !on(m)));
         arena[start..end].copy_from_slice(&buffer);
         self.partition = buffer;
+    }
+
+    /// N4 (`MOPUP`): the mop-up term at a stand pat, for the side to move: plus the weight's
+    /// confined share (half the box the bare side is held in, `Game::bare_reach` against
+    /// `eval::MOPUP_AREA`, half its legal moves against `eval::MOPUP_SPAN`) where the opponent is bare and the mover armed, minus it the other way
+    /// round, zero otherwise. `count` is the mover's legal count. Mirrored by
+    /// `agents/minimax.py::_mopup`.
+    fn mopup_term(&mut self, game: &mut Game<'_>, count: usize) -> f64 {
+        let side = game.side;
+        let (sign, bare) = if game.is_bare(1 - side) && game.is_armed(side) {
+            (1.0, 1 - side)
+        } else if game.is_bare(side) && game.is_armed(1 - side) {
+            (-1.0, side)
+        } else {
+            return 0.0;
+        };
+        let moves = if bare == side {
+            count
+        } else {
+            game.legal_count_as(bare, &mut self.mopup_moves)
+        };
+        let area = crate::eval::MOPUP_AREA;
+        // The box is a function of the position alone (the key; no clock reads it), so it is
+        // remembered by key: a cache changes no answer, only the time the walk takes.
+        let key = game.key;
+        let slot = (key as usize) & (MOPUP_CACHE - 1);
+        if self.mopup_cache.is_empty() {
+            self.mopup_cache = vec![(0, u32::MAX); MOPUP_CACHE];
+        }
+        let reach = if self.mopup_cache[slot].0 == key && self.mopup_cache[slot].1 != u32::MAX {
+            self.mopup_cache[slot].1 as f64
+        } else {
+            let found = game.bare_reach(bare, area as usize, &mut self.mopup_seen);
+            self.mopup_cache[slot] = (key, found as u32);
+            found as f64
+        };
+        let span = crate::eval::MOPUP_SPAN;
+        let confined =
+            0.5 * ((1.0 - reach.min(area) / area) + (1.0 - (moves as f64).min(span) / span));
+        sign * (self.mopup * confined)
     }
 
     /// WK1 (`DUCK_QUIESCE`, `docs/reference/wakwak.md` §3 A): quiescence at an owed duck half.

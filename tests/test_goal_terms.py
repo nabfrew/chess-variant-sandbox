@@ -169,7 +169,7 @@ HAND = {
 # threat-aware quiescence is a search change, on by default since, that moved four of
 # them (threecheck, shatranj, xiangqi, crazyhouse) without any term reading anything.
 # Pinning the search they were written against keeps each table's claim about terms.
-_BEFORE_Q502I = "threats=0"
+_BEFORE_Q502I = "threats=0,mopup=0"  # the player before Q502i and N4
 _PAIRINGS = [
     ("greedy", f"minimax:nodes=400,{_BEFORE_Q502I}"),
     (f"minimax:nodes=800,{_BEFORE_Q502I}", f"minimax:nodes=800,{_BEFORE_Q502I}"),

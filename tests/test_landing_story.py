@@ -319,8 +319,9 @@ def test_a_library_storys_quick_answers_are_the_designers(rendered: dict[str, An
     assert quick["said"][0] == f"It plays and reaches an ending, with {checked['openingWords']}."
     stats = screened["stats"]
     assert screened["passed"] is True
-    assert quick["said"][1] == ("The eight-game check finds a winner in "
-                                f"{int(stats['decisive'])} of its {int(stats['games'])} games.")
+    games, decisive = int(stats["games"]), int(stats["decisive"])
+    count = f"all {games}" if decisive == games else f"{decisive} of its {games}"
+    assert quick["said"][1] == f"The eight-game check finds a winner in {count} games."
     assert quick["when"] == stories.LIBRARY_QUICK_WHEN
 
 

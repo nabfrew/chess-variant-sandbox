@@ -79,7 +79,9 @@ def _config(tmp_path, **overrides) -> LoopConfig:
         # flip on whether the larger budget wins, the fixture's candidates pass their
         # gates on the flip that search gives, and these tests are about the loop, not
         # the search. Q502i's default flipped it to non-viable.
-        "agents": ("random", "minimax:nodes=80,threats=0", "minimax:nodes=320,threats=0"),
+        "agents": (
+            "random", "minimax:nodes=80,threats=0,mopup=0", "minimax:nodes=320,threats=0,mopup=0"
+        ),
         "games_per_pairing": 1,
         "workers": 1,
         "smoke_games": 12,
@@ -518,6 +520,9 @@ class TestBatchedGenerations:
         with pytest.raises(ValueError, match="promote"):
             LoopConfig(batch=4, promote=5)
 
+    # Slow since N4 (about 4 s): its screen's default players walk the mop-up term's box in
+    # every bare ending (`no-forced-mate.md` §10.5).
+    @pytest.mark.slow
     def test_a_batch_does_not_change_what_a_candidate_scores(self, tmp_path) -> None:
         """The seed discipline, which batching must not disturb.
 
@@ -536,16 +541,16 @@ class TestBatchedGenerations:
         on how many operators there are: Q452's `promote-on-leaving` turned seed 0's first
         draw into a `restrict-a-capture` child the gates reject, and the test then compared
         nothing. So it takes the first seed whose first child is measured, which any
-        operator set has within a few. The search starts at 11, the first such seed since
-        N3b's `set-the-hounds` (it was 3 from Q452's 34 operators until then; seeds 3 to 10
-        no longer measure their first child), so the test costs two runs until the next
-        operator moves it.
+        operator set has within a few. The search starts at 13, the first such seed since
+        N4's mop-up term moved the gates' games (it was 11 from N3b's `set-the-hounds`, and 3
+        from Q452's 34 operators until then), so the test costs two runs until the next
+        change moves it.
         """
 
         def measured(archive: Archive) -> dict[str, Entry]:
             return {e.hash: e for e in archive.entries if e.parent and e.status == "evaluated"}
 
-        for seed in range(11, 19):
+        for seed in range(13, 21):
             alone = measured(self._seeded(tmp_path / f"a{seed}", batch=1, seed=seed))
             if alone:
                 break
@@ -866,6 +871,9 @@ class TestTheRequestTheLoopActuallySends:
             client.structured(system="s", user="u", schema={"type": "object"}, max_tokens=64)
 
 
+# Slow since N4 (about 4 s): its screen's default players walk the mop-up term's box in
+# every bare ending (`no-forced-mate.md` §10.5).
+@pytest.mark.slow
 def test_a_model_free_run_does_not_draw_a_generation_it_cannot_use(tmp_path) -> None:
     """"Propose from scratch" needs the operator that can.
 

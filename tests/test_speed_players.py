@@ -355,6 +355,9 @@ def test_a_speed_games_analysis_holds_the_four_tallies() -> None:
 # analysis pass is unchanged. It was 099aacbe... . Q1008a re-pinned both: each is its file with
 # `max_plies` cut to 40, a game no one stored, so its name is its normal form's now and its
 # position keys moved with it; the pass is unchanged. They were 9bccaa30... and 4b5c1c10... .
+# N4 re-pinned gardner's on purpose: its records are the default minimax player with the
+# mop-up term on (`no-forced-mate.md` §10), which reaches a bare ending there; the pass is
+# unchanged. It was fa20bd99... .
 ANALYSED = {
     "tests/_simultaneous_gardner.json": ("greedy", "matrix:nodes=200"),
     "rulesets/gardner.json": ("greedy", "minimax:nodes=200"),
@@ -362,7 +365,7 @@ ANALYSED = {
 _ANALYSIS_DIGESTS = {
     "tests/_simultaneous_gardner.json":
         "a8b854b2ecda2ca0acbf7760e8d75a055ae2963e463f430a918f1a5c5b3ae398",
-    "rulesets/gardner.json": "fa20bd9930c1921451bd40862227ecde66ef06273c5ce137568fb45c81aa30e7",
+    "rulesets/gardner.json": "a3c1077e596ae4ae19ca6cc28f350e6257b8daa696dc7f3f179971c67eb3bd36",
 }
 
 

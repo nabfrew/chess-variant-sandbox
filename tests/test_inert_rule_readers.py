@@ -195,6 +195,7 @@ READERS: dict[str, dict[str, str]] = {
         "`has_drops`",
         "eval.rs::with_immunity": "the same `mean_non_royal`, the same answer",
         "eval.rs::round_win": "Q986b: the same `mean_non_royal`, the same answer",
+        "eval.rs::mopup_weight": "N4: the same `mean_non_royal`, the same answer",
         "eval.rs::of": "`Immunity::of` skips unlimited drop types, of which there are none",
         "features.rs::new": "copies `has_drops` for `HAND_MATERIAL`",
         "endgame.rs::refusal": "N1: refuses a capture hand or an endless stock; the refusals "

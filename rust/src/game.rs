@@ -5057,6 +5057,107 @@ impl<'t> Game<'t> {
     /// and before `restrict`, lifted when it would leave nothing; and when `restrict` then
     /// empties a list the rest shortened, the list is made again without it, so the rest
     /// alone never leaves a player without a move. One test in every game without a rest.
+    /// N4 (the mop-up term, `agents.rs::MOPUP`): how many legal moves `player` would have
+    /// here were it `player`'s move, with no en passant window. `out` is scratch. The side
+    /// and the window are put back as they were, and the check memo is cleared on both
+    /// sides of the question, so the position is untouched. The oracle asks the engine the
+    /// same question of the same position with the side and the window replaced
+    /// (`agents/minimax.py::_mopup`). Never called in a duck, round, spy or long-turn game.
+    pub fn legal_count_as(&mut self, player: usize, out: &mut Vec<u32>) -> usize {
+        let (side, ep_target, ep_victim) = (self.side, self.ep_target, self.ep_victim);
+        self.side = player;
+        self.ep_target = -1;
+        self.ep_victim = -1;
+        self.check_memo.set([-1, -1]);
+        out.clear();
+        self.generate_legal(out);
+        let count = out.len();
+        self.side = side;
+        self.ep_target = ep_target;
+        self.ep_victim = ep_victim;
+        self.check_memo.set([-1, -1]);
+        count
+    }
+
+    /// N4 (the mop-up term): how many positions `player` could reach by moving again and
+    /// again while the other player stands still, at most `cap`: the box a bare royal is
+    /// held in. Each step is `player`'s legal move on the position with the side replaced and
+    /// no en passant window, played with `make` (so the phase of wild pieces runs as it would);
+    /// a position is told by its key after the move. Counted as a set, so the answer does not
+    /// depend on the order of the walk; past `cap` the walk stops and answers `cap`. The
+    /// position is put back as it was. `seen` is scratch. The oracle walks the same steps
+    /// through the engine (`agents/minimax.py::_bare_reach`).
+    pub fn bare_reach(&mut self, player: usize, cap: usize, seen: &mut Vec<u64>) -> usize {
+        // `seen` is an open-addressed set of keys (0 is an empty slot; a key of 0 is told by
+        // `zero_seen`), twice `cap` rounded up to a power of two, so a probe is short.
+        let slots = (2 * cap.max(1)).next_power_of_two();
+        seen.clear();
+        seen.resize(slots, 0);
+        let mut walk = ReachWalk { cap, count: 0, zero_seen: false, moves: Vec::new() };
+        let (side, ep_target, ep_victim) = (self.side, self.ep_target, self.ep_victim);
+        let key = self.key;
+        self.reach_from(player, seen, &mut walk);
+        self.key = key;
+        self.side = side;
+        self.ep_target = ep_target;
+        self.ep_victim = ep_victim;
+        self.check_memo.set([-1, -1]);
+        walk.count
+    }
+
+    fn reach_from(&mut self, player: usize, seen: &mut [u64], walk: &mut ReachWalk) {
+        // The key follows the side, so a position reached in an odd and an even number of
+        // steps is told as one.
+        if self.side != player {
+            self.key ^= self.t.zobrist_side;
+        }
+        self.side = player;
+        self.ep_target = -1;
+        self.ep_victim = -1;
+        self.check_memo.set([-1, -1]);
+        let base = walk.moves.len();
+        let mut moves = std::mem::take(&mut walk.moves);
+        self.generate_legal(&mut moves);
+        let end = moves.len();
+        walk.moves = moves;
+        for index in base..end {
+            if walk.count >= walk.cap {
+                break;
+            }
+            let m = walk.moves[index];
+            self.make(m);
+            let key = self.key;
+            if walk.insert(seen, key) {
+                let (side, ep_target, ep_victim) = (self.side, self.ep_target, self.ep_victim);
+                self.reach_from(player, seen, walk);
+                self.key = key;
+                self.side = side;
+                self.ep_target = ep_target;
+                self.ep_victim = ep_victim;
+            }
+            self.check_memo.set([-1, -1]);
+            self.unmake();
+            self.check_memo.set([-1, -1]);
+        }
+        walk.moves.truncate(base);
+    }
+
+    /// N4: whether `player` is bare (royals on the board and nothing else, none in hand).
+    pub fn is_bare(&self, player: usize) -> bool {
+        let t = self.t;
+        let mine = self.occupied()[player];
+        !mine.is_empty()
+            && !mine.iter().any(|sq| !t.is_royal(t.type_of(self.board[sq])))
+            && self.hands[player].iter().all(|n| *n == 0)
+    }
+
+    /// N4: whether `player` holds anything but royals, on the board or in hand.
+    pub fn is_armed(&self, player: usize) -> bool {
+        let t = self.t;
+        self.occupied()[player].iter().any(|sq| !t.is_royal(t.type_of(self.board[sq])))
+            || self.hands[player].iter().any(|n| *n > 0)
+    }
+
     pub fn generate_legal(&mut self, out: &mut Vec<u32>) {
         // Generation 42 (N4b): a duck half lists the duck's moves alone, unfiltered: a duck
         // game has no check and the duck never rests; beside portals (SR3d) the half moves
@@ -6170,6 +6271,42 @@ impl Iterator for NpcOrder<'_> {
     }
 }
 
+/// N4: the state of one `Game::bare_reach` walk: the cap, how many positions it has found,
+/// whether one of them had the key 0, and the move lists of the positions on its path.
+struct ReachWalk {
+    cap: usize,
+    count: usize,
+    zero_seen: bool,
+    moves: Vec<u32>,
+}
+
+impl ReachWalk {
+    /// Add `key` to the set; whether it was new.
+    fn insert(&mut self, seen: &mut [u64], key: u64) -> bool {
+        if key == 0 {
+            if self.zero_seen {
+                return false;
+            }
+            self.zero_seen = true;
+            self.count += 1;
+            return true;
+        }
+        let mask = seen.len() - 1;
+        let mut slot = (key as usize) & mask;
+        loop {
+            if seen[slot] == key {
+                return false;
+            }
+            if seen[slot] == 0 {
+                seen[slot] = key;
+                self.count += 1;
+                return true;
+            }
+            slot = (slot + 1) & mask;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::dedup_segment;
@@ -6252,3 +6389,4 @@ mod tests {
         }
     }
 }
+

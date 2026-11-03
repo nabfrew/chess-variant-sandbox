@@ -217,6 +217,29 @@ pub const RACE_SHARE: f64 = 0.125;
 /// Zero by construction wherever `Immunity::of` finds the term undefined.
 pub const IMMUNE_PIECES: f64 = 1.0;
 
+/// N4 (`docs/reference/no-forced-mate.md` §10): the mop-up term's whole weight, in mean
+/// non-royal pieces. Where one side is bare (royals alone, nothing in hand) and the other is
+/// not, the armed side gains `MOPUP_PIECES` times how confined the bare side is: half for the
+/// share of `MOPUP_AREA` positions it could not reach moving alone, half for the share of
+/// `MOPUP_SPAN` legal moves it lacks. It reads the core's own legal lists, never a square.
+/// Read only by a minimax player under the `MOPUP` search bit (`agents.rs`). Mirrors
+/// `MOPUP_PIECES` and `MOPUP_SPAN` in `chess_variant_sandbox/agents/minimax.py`; the
+/// module exports both so a test holds them together.
+pub const MOPUP_PIECES: f64 = 1.0;
+/// N4: the legal-move count at and above which a bare side reads as unconfined. Eight is a
+/// lone king's most on a square board; a bare royal with more reads the term at zero.
+pub const MOPUP_SPAN: f64 = 8.0;
+/// N4: the size of box (positions a bare side reaches moving alone) at and above which it
+/// reads as unconfined; the walk stops there. A square board of 64 squares, whole.
+pub const MOPUP_AREA: f64 = 64.0;
+
+/// N4: the mop-up term's weight in the units of an evaluator whose piece values are
+/// `values`: `MOPUP_PIECES` mean non-royal pieces, as `round_win` is. `agents/minimax.py::
+/// mopup_weight` is the oracle (which also says where the term is defined).
+pub fn mopup_weight(t: &Tables, values: &[f64]) -> f64 {
+    MOPUP_PIECES * mean_non_royal(values, &t.royal_types, t.drops.as_ref())
+}
+
 /// The two value tables an objective needs, so neither can be passed as the other.
 ///
 /// Mirrors `agents/evaluation.PieceValues`, and exists for the same reason: they are the
@@ -942,6 +965,13 @@ impl Evaluator {
             }
         }
         scaled
+    }
+
+    /// Whether having more material is what this ruleset rewards (`-1.0` under an
+    /// extinction rule that any piece wins). The mop-up term (N4) is defined only at `1.0`.
+    #[inline]
+    pub fn material_sign(&self) -> f64 {
+        self.material_sign
     }
 
     /// Score the position for `player`. Higher is better. `move_count` is the mover's

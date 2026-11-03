@@ -12,6 +12,16 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-03
+
+### The computer finishes off a lone king
+
+When one side is down to its king alone, the computer players now work to hem that king in, so they mate with a
+queen or a rook instead of wandering until the move limit. Against the old players they score a little better in
+every game where that happens, and about a third fewer of the library's long, drawn-out games pass through a win
+nobody took. Every game's score was measured again with the new players; a few stall-heavy games (bastion,
+shatranj, makruk, sittuyin) score noticeably higher, and no game changed whether it counts as playable.
+
 ## 2026-11-02
 
 ### What each game's lone pieces can force
