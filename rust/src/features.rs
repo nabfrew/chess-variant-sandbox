@@ -58,7 +58,8 @@ pub struct FeatureContext {
     extinction_types: Vec<usize>,
     extinction_initial: Vec<usize>,
     /// Schema 27 (Q936), `"per_type": "own"`: each side's counted types with the count of
-    /// each it started with. Empty for both sides under every other spelling.
+    /// each it started with, the opening stock included (SR4d2). Empty for both sides
+    /// under every other spelling.
     extinction_own: [Vec<(usize, usize)>; 2],
     has_drops: bool,
     promotable: Vec<usize>,
@@ -113,7 +114,13 @@ impl FeatureContext {
                                     && t.type_of(value) == piece_type
                             })
                             .count();
-                        (piece_type, started)
+                        // SR4d2: a kind in the opening stock is one the side starts
+                        // with (`compile._side_types`), so its stocked count is part of
+                        // the opening it is read against. Empty stock: unchanged.
+                        let stocked = t.drops.as_ref().map_or(0, |drops| {
+                            drops.stock[player].get(piece_type).map_or(0, |held| *held as usize)
+                        });
+                        (piece_type, started + stocked)
                     })
                     .collect()
             }),
@@ -469,7 +476,10 @@ impl FeatureEvaluator {
                 c.extinction_own[side]
                     .iter()
                     .fold(1.0f64, |worst, &(piece_type, started)| {
-                        let left = live_of(game, piece_type, side) as f64;
+                        // SR4d2: and the hand, exactly as `Game::short_of`'s `held`
+                        // counts it under "own": a held piece of the kind is not gone.
+                        let held = game.hands[side].get(piece_type).map_or(0, |n| *n as usize);
+                        let left = (live_of(game, piece_type, side) + held) as f64;
                         worst.min(left / std::cmp::max(started, 1) as f64)
                     })
             };

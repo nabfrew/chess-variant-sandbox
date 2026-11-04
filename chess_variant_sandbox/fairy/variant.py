@@ -2263,9 +2263,10 @@ def _ending_lines(
                 'rules.extinction.per_type "own": extinctionPieceTypes is one list for both '
                 "colours, so a type one side never had is run out for it from the start"
             )
-        # Their count includes the hand (`count_with_hand`) and ours is the board, so a
-        # type gone to a hand is run out here and not there.
-        if rule.per_type and compiled.drops is not None:
+        # Their count includes the hand (`count_with_hand`) and ours under `true` is the
+        # board, so a type gone to a hand is run out here and not there. Under `"own"` ours
+        # reads the hand too (SR4d, H11), and `"own"` is refused above by its own reason.
+        if rule.per_type and not rule.own and compiled.drops is not None:
             reasons.append(
                 "rules.extinction.per_type beside rules.drops: a type held in hand counts "
                 "over there and not here"

@@ -75,6 +75,7 @@ from chess_variant_sandbox.spec.schema import (
     strikers,
     sweep_length,
     takes_royal_ids,
+    wild_type_ids,
     wrap_stated,
 )
 from chess_variant_sandbox.spec.transform import keeps_a_survivor
@@ -1027,7 +1028,7 @@ def _strikers_share(spec: dict[str, Any], strike: dict[str, Any]) -> float:
     pieces = spec.get("pieces")
     if not isinstance(by, list) or not by or not isinstance(pieces, list):
         return 1.0
-    firing = strikers(pieces, strike)
+    firing = strikers(pieces, strike, wild_type_ids(spec.get("rules")))
     if not firing:
         return 1.0
     return len(set(firing) & set(by)) / len(firing)

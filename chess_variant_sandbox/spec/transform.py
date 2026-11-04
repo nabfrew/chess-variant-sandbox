@@ -49,18 +49,20 @@ from chess_variant_sandbox.spec.schema import (
     strike_is_live,
     strike_states_nothing,
     strike_survives_anything,
+    wild_type_ids,
     wrap_axes,
 )
 
 
 def _rungs(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """The pieces a strike's chain or a contact's links are read off: every declared piece but
-    a royal and the duck (SR3e, K3: no strike or contact reaches the duck, and none of their
-    lists may name it)."""
-    duck = duck_piece(spec.get("rules"))
+    a royal, the duck and a wild type (SR3e, K3; SR4e, T6, T7: no strike or contact reaches
+    the duck or a wild type, and none of their lists may name one)."""
+    rules = spec.get("rules")
+    spared = wild_type_ids(rules) | {duck_piece(rules)}
     return [
         piece for piece in spec.get("pieces", [])
-        if isinstance(piece, dict) and not piece.get("royal") and piece.get("id") != duck
+        if isinstance(piece, dict) and not piece.get("royal") and piece.get("id") not in spared
     ]
 
 
@@ -359,7 +361,7 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
     # with the last piece it could reach, the way an emptied chain goes above.
     remaining = [str(piece.get("id")) for piece in pieces(spec)]
     for key in ("strike", "contacts"):
-        if strike_states_nothing(rules.get(key), key, remaining):
+        if strike_states_nothing(rules.get(key), key, remaining, wild_type_ids(rules)):
             rules.pop(key, None)
     # Schema 21 (Q849): a filter that kept out only the dropped piece now names every piece
     # that can move, which the validator refuses as no filter written the long way.
@@ -982,10 +984,12 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
         rule = rules.get(key)
         shape: list[str] = []
         if key == "contacts":
-            _validate_contacts_shape(rule, piece_ids, shape, promoting_piece_ids(rules))
+            _validate_contacts_shape(
+                rule, piece_ids, shape, promoting_piece_ids(rules), wild_type_ids(rules)
+            )
         else:
-            shape_of(rule, piece_ids, shape)
-        if not shape and strike_states_nothing(rule, key, piece_ids):
+            shape_of(rule, piece_ids, shape, wild_type_ids(rules))
+        if not shape and strike_states_nothing(rule, key, piece_ids, wild_type_ids(rules)):
             drop(key)
     # A wild piece's `immune` list that takes it from nobody (`_validate_npc_immune`):
     # every type not named is wild, so the key does nothing. Not asked of a list naming
@@ -1835,7 +1839,8 @@ def keeps_a_survivor(spec: dict[str, Any], key: str) -> bool:
             if isinstance(piece, dict) and isinstance(piece.get("id"), str)
         )
     )
-    return strike_survives_anything(spec.get("rules", {}).get(key), key, piece_ids)
+    rules = spec.get("rules", {})
+    return strike_survives_anything(rules.get(key), key, piece_ids, wild_type_ids(rules))
 
 
 def set_landing(spec: dict[str, Any], key: str) -> dict[str, Any]:

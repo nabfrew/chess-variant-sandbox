@@ -730,7 +730,11 @@ class FeatureEvaluator:
             def own_worst(side: int) -> float:
                 worst = 1.0
                 for piece_type, started in ctx.extinction_own[side]:
-                    left = _live_of(state.board, ctx, piece_type, side)
+                    # SR4d2: and the hand, as the rule's count reads it under "own"
+                    # (`Game::short_of`'s `held`): a held piece of the kind is not gone.
+                    hand = state.hands[side] if state.hands else ()
+                    held = hand[piece_type] if piece_type < len(hand) else 0
+                    left = _live_of(state.board, ctx, piece_type, side) + held
                     worst = min(worst, left / max(started, 1))
                 return worst
 
@@ -886,7 +890,8 @@ def _clamp(value: float) -> float:
 def _extinction_own(
     spec: CompiledSpec,
 ) -> tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]]:
-    """Each side's ``"own"`` extinction types with its opening count of each (schema 27)."""
+    """Each side's ``"own"`` extinction types with its opening count of each (schema 27),
+    the opening stock included (SR4d2: a stocked kind is one the side starts with)."""
     rule = spec.extinction
     if rule is None or not rule.own:
         return (), ()
@@ -894,11 +899,12 @@ def _extinction_own(
     lists = []
     for player in (0, 1):
         low = player * stride + 1
+        stock = spec.drops.stock_of(player) if spec.drops is not None else ()
         lists.append(tuple(
             (piece_type, sum(
                 1 for value in spec.initial_board
                 if low <= value < low + stride and spec.type_of(value) == piece_type
-            ))
+            ) + (stock[piece_type] if piece_type < len(stock) else 0))
             for piece_type in rule.side_types[player]
         ))
     return lists[0], lists[1]

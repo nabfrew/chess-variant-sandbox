@@ -141,9 +141,10 @@ def test_the_rules_refused_beside_a_command(key: str, value: Any, rid: str) -> N
     assert rid in refused_ids(errors_of(spec)), errors_of(spec)
 
 
-def test_a_strike_beside_a_command_is_refused_only_with_captures_own() -> None:
-    """SR2b (V5): a plain command lands on empty squares, which a strike never touches; its
-    `captures_own` stays refused (SR4h). `tests/test_readings_without_core.py` plays the pair."""
+def test_a_strike_beside_a_command_is_valid_with_or_without_captures_own() -> None:
+    """SR2b (V5): a plain command lands on empty squares, which a strike never touches; SR4h
+    lifted its `captures_own`, whose own-side capture is an ordinary removal.
+    `tests/test_readings_without_core.py` and `tests/test_commanders_hand.py` play the pair."""
     strike = {"effect": "promote", "position": "stay", "chain": [{"from": "P", "to": "N"}],
               "immune": ["K"]}
     spec = k1()
@@ -151,7 +152,7 @@ def test_a_strike_beside_a_command_is_refused_only_with_captures_own() -> None:
     assert errors_of(spec) == []
     spec = k2()
     spec["rules"]["strike"] = strike
-    assert "V5" in refused_ids(errors_of(spec))
+    assert errors_of(spec) == []
 
 
 def test_a_rest_beside_a_command_is_refused() -> None:
@@ -166,10 +167,11 @@ def test_a_sweep_beside_a_command_is_refused() -> None:
     assert "V8" in refused_ids(errors_of(spec))
 
 
-def test_captures_own_beside_a_capture_hand_is_refused() -> None:
+def test_captures_own_beside_a_capture_hand_is_valid() -> None:
+    """SR4h (V9): the piece taken goes to the commander's hand (`tests/test_commanders_hand.py`)."""
     spec = k2()
     spec["rules"]["drops"] = {}
-    assert "V9" in refused_ids(errors_of(spec))
+    assert errors_of(spec) == []
     spec = k1()
     spec["rules"]["drops"] = {}
     assert not any("from_captures" in error for error in errors_of(spec))

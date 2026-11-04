@@ -81,7 +81,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from chess_variant_sandbox.spec.schema import strike_changes_anything, wrap_stated
+from chess_variant_sandbox.spec.schema import strike_changes_anything, wild_type_ids, wrap_stated
 
 # --------------------------------------------------------------------------- axes
 
@@ -250,7 +250,8 @@ def _taking(spec: dict[str, Any]) -> int:
         )
     )
     kept = any(
-        strike_changes_anything(rules.get(key), key, piece_ids) for key in ("contacts", "strike")
+        strike_changes_anything(rules.get(key), key, piece_ids, wild_type_ids(rules))
+        for key in ("contacts", "strike")
     )
     return 1 if kept else 0
 

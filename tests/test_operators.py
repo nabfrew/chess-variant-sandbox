@@ -30,8 +30,10 @@ from chess_variant_sandbox.spec.schema import (
     CLOCK_BOUNDS,
     REPETITION_NEVER,
     SCORING_COUNTS,
+    neutral_ids,
     opening_counts,
     push_bars,
+    uses_sweep,
 )
 from tests import feature_inventory
 from tests.feature_inventory import LAST_BUMP
@@ -97,7 +99,10 @@ _NUMBER_WORDS = {
     52: "fifty_two", 53: "fifty_three", 54: "fifty_four", 55: "fifty_five",
     56: "fifty_six", 57: "fifty_seven", 58: "fifty_eight", 59: "fifty_nine", 60: "sixty",
     61: "sixty_one", 62: "sixty_two", 63: "sixty_three", 64: "sixty_four",
-    65: "sixty_five",
+    65: "sixty_five", 66: "sixty_six", 67: "sixty_seven", 68: "sixty_eight",
+    69: "sixty_nine", 70: "seventy", 71: "seventy_one", 72: "seventy_two",
+    73: "seventy_three", 74: "seventy_four", 75: "seventy_five",
+    76: "seventy_six", 77: "seventy_seven",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -2053,7 +2058,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 65
+_FEATURES_ARE_FOR_SCHEMA = 77
 
 
 @dataclass(frozen=True)
@@ -2712,6 +2717,200 @@ def _parent_queen_castles() -> dict:
     return spec
 
 
+def _parent_sweeping_bishops_hand() -> dict:
+    """The sweeping bishops with a capture hand (SR4b, W4): every enemy piece a bishop sweeps
+    goes to the sweeper's hand, its own swept pieces to none."""
+    spec = load_spec(ARCHIVE / "chess-sweeping-bishops.json")
+    spec["rules"]["drops"] = {"from_captures": True}
+    return spec
+
+
+def _parent_wolves_strike() -> dict:
+    """The wolves with a shot (SR4e, T7): a capture removes its victim and leaves the taker
+    where it stood, and a wolf, immune without being listed, is taken as ever."""
+    spec = load_spec(ARCHIVE / "wolves.json")
+    spec["rules"]["strike"] = {"effect": "capture", "position": "stay", "immune": ["K"]}
+    return spec
+
+
+def _parent_wolves_contacts() -> dict:
+    """The wolves with a contact table read off the values (SR4e, T6): no link names the
+    wolf, which no contact reaches."""
+    from chess_variant_sandbox.spec.transform import set_contacts
+
+    spec = load_spec(ARCHIVE / "wolves.json")
+    set_contacts(spec, effect="promote")
+    return spec
+
+
+def _parent_wolves_sweeping() -> dict:
+    """The wolves with sweeping bishops (SR4c, W5): every wolf a bishop sweeps pays its
+    route's bounty to the sweeper."""
+    spec = load_spec(ARCHIVE / "wolves.json")
+    for piece in spec["pieces"]:
+        if piece["id"] == "B":
+            for move in piece["moves"]:
+                move["kind"] = "sweep"
+    return spec
+
+
+def _parent_wolves_blast() -> dict:
+    """The wolves with atomic's blast (SR4f, T8): a wolf's eat never explodes, and a wolf a
+    player's blast destroys pays its bounty to the mover."""
+    spec = load_spec(ARCHIVE / "wolves.json")
+    spec["rules"]["explode_on_capture"] = {"radius": 1}
+    return spec
+
+
+def _parent_pitchfork_in_hand() -> dict:
+    """The pitchfork with a hand that fills from captures (SR4g, N17): its wolves are immune to
+    all but a pawn only while they are wild."""
+    spec = load_spec(ARCHIVE / "pitchfork.json")
+    spec["rules"]["drops"] = {"from_captures": True}
+    return spec
+
+
+def _parent_preaching_bishops(**rules: Any) -> dict:
+    """The preaching bishops (whose pawns a bishop may command onto their own side,
+    `captures_own`) with ``rules`` added (SR4h, V5, V6, V9)."""
+    spec = load_spec(ARCHIVE / "chess-with-preaching-bishops.json")
+    spec["rules"].update(copy.deepcopy(rules))
+    return spec
+
+
+def _parent_preaching_shot() -> dict:
+    """The preaching bishops with a shot (SR4h, V5): a commanded pawn's own-side capture is an
+    ordinary removal, and every other capture leaves its taker where it stood."""
+    return _parent_preaching_bishops(
+        strike={"effect": "capture", "position": "stay", "immune": ["K"]}
+    )
+
+
+def _parent_preaching_contacts() -> dict:
+    """The preaching bishops with a contact table read off the values (SR4h, V6)."""
+    from chess_variant_sandbox.spec.transform import set_contacts
+
+    spec = _parent_preaching_bishops()
+    set_contacts(spec, effect="promote")
+    return spec
+
+
+def _parent_preaching_hand() -> dict:
+    """The preaching bishops with a hand that fills from captures (SR4h, V9): a commanded
+    pawn's own-side capture fills the commander's hand."""
+    return _parent_preaching_bishops(drops={"from_captures": True})
+
+
+def _commands_own(spec: dict) -> bool:
+    """A game whose command takes its own side: where a strike, contacts or a hand enter."""
+    return any(
+        isinstance(entry, dict) and entry.get("captures_own")
+        for piece in spec.get("pieces") or [] if isinstance(piece, dict)
+        for entry in piece.get("sight") or []
+    )
+
+
+def _parent_merger_must_capture() -> dict:
+    """The merger (a pawn may merge with its own rook) with compulsory capture (SR4i, T9): a
+    merge is no capture, offered only where nothing enemy can be taken."""
+    spec = load_spec(ARCHIVE / "merger.json")
+    spec["rules"]["must_capture"] = True
+    return spec
+
+
+def _parent_archers_switching() -> dict:
+    """Rifle given to the bishops (`by`), beside a switch of every non-royal piece (SR4j,
+    T10): a bishop shoots and changes sides where it stood, any other capturer advances and
+    changes sides on the square it took."""
+    spec = load_spec(ARCHIVE / "rifle.json")
+    spec["rules"]["strike"]["by"] = ["B"]
+    spec["rules"]["strike"]["switches_sides"] = ["B", "N", "P", "Q", "R"]
+    return spec
+
+
+def _parent_crowd_struck() -> dict:
+    """`archive/the-crowd.json` (a condottiere nobody owns, held by the count) beside rifle
+    (SR4k, O3): a held piece shoots as its holder's would and stays nobody's."""
+    spec = load_spec(ARCHIVE / "the-crowd.json")
+    spec["rules"]["strike"] = {"effect": "capture", "position": "stay", "immune": ["K"]}
+    return spec
+
+
+def _parent_crowd_linked() -> dict:
+    """`archive/the-crowd.json` beside a contact (SR4k, O4): a held condottiere meeting a pawn
+    turns it into a knight, as its holder's condottiere would."""
+    spec = load_spec(ARCHIVE / "the-crowd.json")
+    spec["rules"]["contacts"] = {
+        "position": "stay", "immune": ["K"],
+        "links": [{"mover": "C", "onto": "P", "onto_to": "N"}],
+    }
+    return spec
+
+
+def _parent_wormhole_struck() -> dict:
+    """`archive/wormhole.json` beside rifle (SR4m, P3): a capture through a portal removes the
+    piece at the exit and leaves the mover where it was."""
+    spec = load_spec(ARCHIVE / "wormhole.json")
+    spec["rules"]["strike"] = {"effect": "capture", "position": "stay", "immune": ["K"]}
+    return spec
+
+
+def _parent_wormhole_linked() -> dict:
+    """`archive/wormhole.json` beside a contact (SR4m, P4): a knight meeting a pawn at an exit
+    turns it into a bishop, as anywhere."""
+    spec = load_spec(ARCHIVE / "wormhole.json")
+    spec["rules"]["contacts"] = {
+        "position": "stay", "immune": ["K"],
+        "links": [{"mover": "N", "onto": "P", "onto_to": "B"}],
+    }
+    return spec
+
+
+def _has_doors(spec: dict) -> bool:
+    """A game with portals: where a strike or contacts enters beside them."""
+    return bool((spec.get("rules") or {}).get("portals"))
+
+
+def _parent_market_atomic() -> dict:
+    """`_parent_market` beside atomic's blast, the kings immune (SR4l, O22): a blast pays the
+    mover every enemy victim's bounty into the purse (chess carries no bounty, so the pair is
+    what the inventory names)."""
+    spec = _parent_market()
+    spec["rules"]["explode_on_capture"] = {"radius": 1, "immune": ["K"]}
+    return spec
+
+
+def _keeps_coins(spec: dict) -> bool:
+    """A game with a purse: where a blast enters beside one."""
+    return isinstance((spec.get("rules") or {}).get("purse"), dict)
+
+
+def _crowded(spec: dict) -> bool:
+    """A game with a piece nobody owns: where a strike or contacts enters beside one."""
+    return bool(neutral_ids(spec))
+
+
+def _shoots(spec: dict) -> bool:
+    """A game whose strike has `by`: where a switch enters beside it."""
+    strike = (spec.get("rules") or {}).get("strike")
+    return isinstance(strike, dict) and "by" in strike
+
+
+def _must_capture(spec: dict) -> bool:
+    """A game with compulsory capture: where an own contact link enters beside it."""
+    return bool((spec.get("rules") or {}).get("must_capture"))
+
+
+def _has_wild_pieces(spec: dict) -> bool:
+    """A game with wild pieces: where a strike or contacts enter beside them."""
+    return bool((spec.get("rules") or {}).get("npcs"))
+
+
+def _sweeps(spec: dict) -> bool:
+    """A game with a sweep: where a capture hand enters beside it."""
+    return uses_sweep(spec)
+
+
 def _castles(spec: dict) -> bool:
     """A game with castling: where a castling piece that is not royal would be named."""
     return bool((spec.get("rules") or {}).get("castling"))
@@ -3125,6 +3324,20 @@ def _has_a_hand(spec: dict) -> bool:
     return isinstance((spec.get("rules") or {}).get("drops"), dict)
 
 
+def _counts_own_kinds(spec: dict) -> bool:
+    """`"per_type": "own"`: where a hand enters beside it (generation 69, SR4d)."""
+    extinction = (spec.get("rules") or {}).get("extinction")
+    return isinstance(extinction, dict) and extinction.get("per_type") == "own"
+
+
+def _parent_riders_in_hand() -> dict:
+    """Riders and leapers, `"own"`'s showcase, with a hand that fills from captures (SR4d,
+    H11): a held piece of a kind counts against its holder's running out."""
+    spec = load_spec(ROOT / "archive" / "riders-and-leapers.json")
+    spec["rules"]["drops"] = {"from_captures": True}
+    return spec
+
+
 # Generation 58 (Q1077, `docs/plan-turncoat.md` §4.7): one name, a held neutral that takes the
 # other royal, and so gives check. It rides on majority control, a piece key, so it has no
 # `rules` host. `gather-a-crowd` enters it (`takes_royal` switched on a majority type, or a new
@@ -3180,10 +3393,94 @@ def _has_a_hand(spec: dict) -> bool:
 # (castling taken away), keeping the army. Generation 64's rows (SR3g) retired with the
 # generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `open-a-portal` still
 # crosses both.
+#
+# Generation 66 (SR4b, `docs/plan-schema-next.md` §2.6 W4): one name, a sweep beside a hand, a
+# lifted refusal. `hand-the-pieces-back` enters it on a sweep game and leaves it (the hand
+# taken away); `sweep-a-slider` crosses it from a hand game, keeping the army. Generation 65's
+# row (SR1d) retired with the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`),
+# and with it its `_CANNOT_ENTER` row.
+#
+# Generation 67 (SR4e, `docs/plan-schema-next.md` §2.4 T6, T7): two names, a strike and a
+# contact table beside wild pieces, two lifted refusals. `soften-the-capture` and
+# `leave-something-behind` enter the first on a wolves game, `become-what-you-take` the second, and
+# `set-a-patrol` both from a strike or contacts game; each leaves by taking its rule or the
+# wild pieces away. Generation 66's row (SR4b) retired with the generation, its showcase still
+# owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 68 (SR4c, `docs/plan-schema-next.md` §2.6 W5): one name, a sweep beside wild pieces,
+# a lifted refusal. `set-a-patrol` enters it on a sweep game and `sweep-a-slider` on a wolves
+# game, keeping the army; each leaves by taking the wild pieces or the sweep away. Generation
+# 67's rows (SR4e) retired with the generation, their showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 69 (SR4d, `docs/plan-schema-next.md` §2.5 H11): one name, `"per_type": "own"`
+# beside a hand, a lifted refusal. `hand-the-pieces-back` enters it on an own game and leaves it
+# (the hand taken away), keeping the army; `count-each-kind` crosses it from a hand game.
+# Generation 68's row (SR4c) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `set-a-patrol` and `sweep-a-slider` still cross it.
+#
+# Generation 70 (SR4f, `docs/plan-schema-next.md` §2.4 T8): one name, a blast beside wild
+# pieces, a lifted refusal. `set-the-blast` enters it on a wolves game and `set-a-patrol` on a
+# blast game, keeping the army; each leaves by taking the blast or the wild pieces away.
+# Generation 69's row (SR4d) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `hand-the-pieces-back` and `count-each-kind` still cross it.
+#
+# Generation 71 (SR4g, `docs/plan-schema-next.md` §2.8 N17): one name, a wild immunity beside a
+# hand, a lifted refusal. `hand-the-pieces-back` enters it on a game whose wild pieces are
+# immune, `hunt-the-wild` and `set-a-patrol` on a hand game; each leaves by taking the hand,
+# the immunity or the wild pieces away. Generation 70's row (SR4f) retired with the
+# generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` and
+# `set-a-patrol` still cross it.
+#
+# Generation 72 (SR4h, `docs/plan-schema-next.md` §2.4 V5, V6, V9): three names, a command that
+# takes its own side beside a strike, contacts and a capture hand, three lifted refusals.
+# `soften-the-capture`, `become-what-you-take` and `hand-the-pieces-back` enter them on a game
+# whose command `captures_own`, `turn-the-gaze` on a strike, contacts or hand game with a
+# command; each leaves by taking the rule, the `captures_own` or the command away. Generation
+# 71's row (SR4g) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `hand-the-pieces-back`, `hunt-the-wild` and `set-a-patrol` still
+# cross it.
+#
+# Generation 73 (SR4i, `docs/plan-schema-next.md` §2.4 T9): one name, an own contact link beside
+# compulsory capture, a lifted refusal. `merge-your-own` enters it on a `must_capture` game and
+# leaves it by taking the merge away. Generation 72's rows (SR4h) retired with the generation,
+# their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `soften-the-capture`,
+# `become-what-you-take`, `hand-the-pieces-back` and `turn-the-gaze` still cross them.
+#
+# Generation 74 (SR4j, `docs/plan-schema-next.md` §2.4 T10): one name, a strike's `by` beside its
+# `switches_sides`, a lifted refusal. `leave-something-behind` enters it on a shooting game (a
+# switch added to a strike with `by`) and leaves it by taking `by` or the switch away.
+# Generation 73's row (SR4i) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `merge-your-own` still crosses it.
+#
+# Generation 75 (SR4k, `docs/plan-schema-next.md` §2.11 O3, O4): two names, a piece nobody owns
+# beside a strike and beside contacts, two lifted refusals. `soften-the-capture` and
+# `leave-something-behind` enter the strike, `become-what-you-take` and `merge-your-own` the
+# contacts, on a game with a piece nobody owns; each leaves by taking the rule (or the pieces
+# nobody owns, `gather-a-crowd`) away. Generation 74's row (SR4j) retired with the generation,
+# its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `leave-something-behind` still crosses it.
+#
+# Generation 76 (SR4l, `docs/plan-schema-next.md` §2.11 O22): one name, the purse beside a blast,
+# a lifted refusal. `set-the-blast` enters it on a purse game and `open-a-market` on a blast
+# game; each leaves by taking its own rule away. Generation 75's rows (SR4k) retired with the
+# generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `soften-the-capture`,
+# `become-what-you-take`, `merge-your-own`, `leave-something-behind` and `gather-a-crowd` still
+# cross them.
+#
+# Generation 77 (SR4m, `docs/plan-schema-next.md` §2.10 P3, P4): two names, a strike and contacts
+# beside portals, two lifted refusals. `soften-the-capture` and `leave-something-behind` enter the
+# strike, `become-what-you-take` and `merge-your-own` the contacts, on a portal game, and
+# `open-a-portal` puts portals beside either; each leaves by taking its own rule away. Generation
+# 76's row (SR4l) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` and `open-a-market` still cross it.
 _FEATURES: dict[str, _Feature] = {
-    "SR1d a castling piece that is not royal": _Feature(
-        None, frozenset({"rules.castling.common_king"}), True,
-        "chess+the queen castling", _parent_queen_castles, likely=_castles,
+    "SR4m a strike beside portals": _Feature(
+        None, frozenset({"rules.portals.strike"}), True,
+        "wormhole+rifle", _parent_wormhole_struck, likely=_has_doors,
+    ),
+    "SR4m contacts beside portals": _Feature(
+        None, frozenset({"rules.portals.contacts"}), True,
+        "wormhole+contacts", _parent_wormhole_linked, likely=_has_doors,
     ),
 }
 
@@ -3196,11 +3493,38 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
 _SHOWCASE_OWED: dict[str, str] = {
-    # Generation 65 (SR1d): a castling piece that is not royal, owed by SR1s4 (castling with a
-    # non-royal king, `docs/plan-schema-next.md` §3.2), usable after SR3r replays batch A.
-    "SR1d a castling piece that is not royal": (
-        "owed by SR1s4, castling with a non-royal king (docs/plan-schema-next.md §3.2)"
+    # Generation 77 (SR4m): a strike and contacts beside portals, owed by SR4s13 (a shot through
+    # a portal, `docs/plan-schema-next.md` §3.2), usable after SR4r replays batch B.
+    "SR4m a strike beside portals": (
+        "owed by SR4s13, a shot through a portal (docs/plan-schema-next.md §3.2)"
     ),
+    "SR4m contacts beside portals": (
+        "owed by SR4s13, a shot through a portal (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 76's name (SR4l) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4m retired its
+    # `_FEATURES` row, still owed by SR4s12.
+    # Generation 75's names (SR4k) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4l retired their
+    # `_FEATURES` rows, still owed by SR4s11.
+    # Generation 74's name (SR4j) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4k retired its
+    # `_FEATURES` row, still owed by SR4s10.
+    # Generation 73's name (SR4i) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4j retired its
+    # `_FEATURES` row, still owed by SR4s9.
+    # Generation 72's names (SR4h) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4i retired their
+    # `_FEATURES` rows, still owed by SR4s8.
+    # Generation 71's name (SR4g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4h retired its
+    # `_FEATURES` row, still owed by SR4s7.
+    # Generation 70's name (SR4f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4g retired its
+    # `_FEATURES` row, still owed by SR4s6.
+    # Generation 69's name (SR4d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4f retired its
+    # `_FEATURES` row, still owed by SR4s4.
+    # Generation 68's name (SR4c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4d retired its
+    # `_FEATURES` row, still owed by SR4s3.
+    # Generation 67's names (SR4e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4c retired their
+    # `_FEATURES` rows, still owed by SR4s5.
+    # Generation 66's name (SR4b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4e retired its
+    # `_FEATURES` row, still owed by SR4s2.
+    # Generation 65's name (SR1d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4b retired its
+    # `_FEATURES` row, still owed by SR1s4.
     # Generation 64's names (SR3g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR1d retired their
     # `_FEATURES` rows, still owed by SR3s7.
     # Generation 63's names (SR3f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3g retired their
@@ -3405,6 +3729,22 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     63: frozenset({"rules.npcs.nobodys", "rules.duck.nobodys"}),
     64: frozenset({"rules.purse.portals", "rules.portals.nobodys"}),
     65: frozenset({"rules.castling.common_king"}),
+    66: frozenset({"rules.drops.sweep"}),
+    67: frozenset({"rules.strike.npcs", "rules.contacts.npcs"}),
+    68: frozenset({"rules.npcs.sweep"}),
+    69: frozenset({"rules.extinction.per_type.own.drops"}),
+    70: frozenset({"rules.npcs.explode_on_capture"}),
+    71: frozenset({"rules.npcs.immune.drops"}),
+    72: frozenset({
+        "pieces.sight.command.captures_own.strike",
+        "pieces.sight.command.captures_own.contacts",
+        "pieces.sight.command.captures_own.drops",
+    }),
+    73: frozenset({"rules.must_capture.contacts.own"}),
+    74: frozenset({"rules.strike.by.switches_sides"}),
+    75: frozenset({"rules.strike.nobodys", "rules.contacts.nobodys"}),
+    76: frozenset({"rules.purse.explode_on_capture"}),
+    77: frozenset({"rules.portals.strike", "rules.portals.contacts"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -3413,6 +3753,90 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 76's name (SR4l), owed in `_SHOWCASE_OWED` until generation 77 (SR4m) retired
+    # its `_FEATURES` row. Still owed by SR4s12 (`docs/plan-schema-next.md` §3.2), a blast that
+    # pays; the entry goes the day it lands.
+    "schema 76: rules.purse.explode_on_capture": (
+        "owed by SR4s12, a blast that pays (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 75's names (SR4k), owed in `_SHOWCASE_OWED` until generation 76 (SR4l) retired
+    # their `_FEATURES` rows. Still owed by SR4s11 (`docs/plan-schema-next.md` §3.2), a neutral
+    # piece struck into something else; each entry goes the day it lands.
+    "schema 75: rules.strike.nobodys": (
+        "owed by SR4s11, a neutral piece struck into something else (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 75: rules.contacts.nobodys": (
+        "owed by SR4s11, a neutral piece struck into something else (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 74's name (SR4j), owed in `_SHOWCASE_OWED` until generation 75 (SR4k) retired
+    # its `_FEATURES` row. Still owed by SR4s10 (`docs/plan-schema-next.md` §3.2), a strike's
+    # `by` beside `switches_sides`; the entry goes the day it lands.
+    "schema 74: rules.strike.by.switches_sides": (
+        "owed by SR4s10, a strike's by beside switches_sides (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 73's name (SR4i), owed in `_SHOWCASE_OWED` until generation 74 (SR4j) retired
+    # its `_FEATURES` row. Still owed by SR4s9 (`docs/plan-schema-next.md` §3.2), an own contact
+    # beside `must_capture`; the entry goes the day it lands.
+    "schema 73: rules.must_capture.contacts.own": (
+        "owed by SR4s9, an own contact beside must_capture (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 72's names (SR4h), owed in `_SHOWCASE_OWED` until generation 73 (SR4i) retired
+    # their `_FEATURES` rows. Still owed by SR4s8 (`docs/plan-schema-next.md` §3.2), the
+    # commander's hand and a commanded capture; each entry goes the day it lands.
+    "schema 72: pieces.sight.command.captures_own.strike": (
+        "owed by SR4s8, the commander's hand and a commanded capture (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 72: pieces.sight.command.captures_own.contacts": (
+        "owed by SR4s8, the commander's hand and a commanded capture (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 72: pieces.sight.command.captures_own.drops": (
+        "owed by SR4s8, the commander's hand and a commanded capture (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 71's name (SR4g), owed in `_SHOWCASE_OWED` until generation 72 (SR4h) retired
+    # its `_FEATURES` row. Still owed by SR4s7 (`docs/plan-schema-next.md` §3.2), an immunity
+    # only while wild; the entry goes the day it lands.
+    "schema 71: rules.npcs.immune.drops": (
+        "owed by SR4s7, an immunity only while wild (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 70's name (SR4f), owed in `_SHOWCASE_OWED` until generation 71 (SR4g) retired
+    # its `_FEATURES` row. Still owed by SR4s6 (`docs/plan-schema-next.md` §3.2), wild pieces
+    # beside a blast; the entry goes the day it lands.
+    "schema 70: rules.npcs.explode_on_capture": (
+        "owed by SR4s6, wild pieces beside a blast (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 69's name (SR4d), owed in `_SHOWCASE_OWED` until generation 70 (SR4f) retired
+    # its `_FEATURES` row. Still owed by SR4s4 (`docs/plan-schema-next.md` §3.2), a held kind
+    # counts; the entry goes the day it lands.
+    "schema 69: rules.extinction.per_type.own.drops": (
+        "owed by SR4s4, a held kind counts (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 68's name (SR4c), owed in `_SHOWCASE_OWED` until generation 69 (SR4d) retired
+    # its `_FEATURES` row. Still owed by SR4s3 (`docs/plan-schema-next.md` §3.2), swept
+    # bounties; the entry goes the day it lands.
+    "schema 68: rules.npcs.sweep": (
+        "owed by SR4s3, swept bounties (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 67's names (SR4e), owed in `_SHOWCASE_OWED` until generation 68 (SR4c) retired
+    # their `_FEATURES` rows. Still owed by SR4s5 (`docs/plan-schema-next.md` §3.2), wild pieces
+    # beside a strike or contacts; the entries go the day it lands.
+    "schema 67: rules.strike.npcs": (
+        "owed by SR4s5, wild pieces beside a strike or contacts (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 67: rules.contacts.npcs": (
+        "owed by SR4s5, wild pieces beside a strike or contacts (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 66's name (SR4b), owed in `_SHOWCASE_OWED` until generation 67 (SR4e) retired
+    # its `_FEATURES` row. Still owed by SR4s2 (`docs/plan-schema-next.md` §3.2), swept pieces
+    # into the hand; the entry goes the day it lands.
+    "schema 66: rules.drops.sweep": (
+        "owed by SR4s2, swept pieces into the hand (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 65's name (SR1d), owed in `_SHOWCASE_OWED` until generation 66 (SR4b) retired
+    # its `_FEATURES` row. Still owed by SR1s4 (`docs/plan-schema-next.md` §3.2), castling with
+    # a non-royal king; the entry goes the day it lands.
+    "schema 65: rules.castling.common_king": (
+        "owed by SR1s4, castling with a non-royal king (docs/plan-schema-next.md §3.2)"
+    ),
     # Generation 64's names (SR3g), owed in `_SHOWCASE_OWED` until generation 65 (SR1d)
     # retired their `_FEATURES` rows. Still owed by SR3s7 (`docs/plan-schema-next.md` §3.2),
     # buying beside portals, usable after SR3r; the entries go the day it lands.
@@ -3706,14 +4130,7 @@ def _feature_parents() -> dict[str, dict]:
 # `open-a-portal` both ways, so the tables are empty again. Generation 50's three (SR2:
 # majority and a purse in a long turn, a pouncing path, each two edits from any stored game)
 # retired with its `_FEATURES` rows (SR2b).
-_CANNOT_ENTER: dict[str, str] = {
-    # SR1d (generation 65, Z2): no operator adds castling, names another piece as the castling
-    # one, or moves royalty, and no stored game has the castling piece unroyal; only a model
-    # call reaches it. Its showcase (SR1s4) is the way into the corpus.
-    "SR1d a castling piece that is not royal": (
-        "no operator adds castling, renames the castling piece or moves royalty"
-    ),
-}
+_CANNOT_ENTER: dict[str, str] = {}
 _CANNOT_LEAVE: dict[str, str] = {}
 
 

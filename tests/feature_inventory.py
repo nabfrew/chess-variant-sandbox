@@ -57,10 +57,11 @@ from chess_variant_sandbox.spec.schema import (
     takes_royal_ids,
     turn_is_long,
     uses_sweep,
+    wild_type_ids,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 65
+LAST_BUMP = 77
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -1167,7 +1168,8 @@ def _schema_fifty_one_uses(spec: dict[str, Any]) -> set[str]:
       move lands only on empty squares, so the strike never meets it;
     * ``pieces.sight.command.contacts`` -- a command beside contacts (V6), as V5.
 
-    Both stay refused beside ``captures_own`` (SR4h), so neither names a turncoat command.
+    Both were refused beside ``captures_own`` until generation 72 (SR4h), whose own names say
+    the turncoat half; these two name any command beside the rule.
     """
     rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
     assert isinstance(rules, dict)
@@ -1468,6 +1470,244 @@ def _schema_sixty_five_uses(spec: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _schema_sixty_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 66 added, by name (SR4b,
+    `docs/plan-schema-next.md` §2.6 row W4; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.drops.sweep`` -- a sweep beside `rules.drops`: every swept piece the mover does
+      not own goes to the mover's hand (demoted, as a taken piece), a swept friendly piece to
+      none, and the deposit is undone with the clear. A stock-only hand beside a sweep is the
+      same lift (the refusal read any hand).
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if rules.get("drops") and uses_sweep(spec):
+        return {"rules.drops.sweep"}
+    return set()
+
+
+def _schema_sixty_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 67 added, by name (SR4e,
+    `docs/plan-schema-next.md` §2.4 rows T6 and T7; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key:
+
+    * ``rules.strike.npcs`` -- a live strike beside wild pieces: every wild type is in
+      `strike.immune` without being listed, so taking a piece of one is an ordinary capture,
+      and a wild piece's eat is ordinary;
+    * ``rules.contacts.npcs`` -- a contact table beside wild pieces, the same reading.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if not wild_type_ids(rules):
+        return set()
+    found = set()
+    if strike_is_live(rules.get("strike")):
+        found.add("rules.strike.npcs")
+    contacts = rules.get("contacts")
+    if isinstance(contacts, dict) and contacts.get("links"):
+        found.add("rules.contacts.npcs")
+    return found
+
+
+def _schema_sixty_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 68 added, by name (SR4c,
+    `docs/plan-schema-next.md` §2.6 row W5; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.npcs.sweep`` -- a sweep beside wild pieces: every swept wild piece pays its
+      route's bounty to the mover, and every swept piece but the mover's own its type's
+      bounty, as a capture of it would; the payments are undone with the clear.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if rules.get("npcs") and uses_sweep(spec):
+        return {"rules.npcs.sweep"}
+    return set()
+
+
+
+def _schema_sixty_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 69 added, by name (SR4d,
+    `docs/plan-schema-next.md` §2.5 row H11; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.extinction.per_type.own.drops`` -- ``"per_type": "own"`` beside a hand: a held
+      piece counts, so a side whose last piece of a kind is in hand has not run out of it,
+      and a kind in a side's opening stock is one it starts with.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    extinction = rules.get("extinction")
+    if (
+        isinstance(extinction, dict) and extinction.get("per_type") == "own"
+        and isinstance(rules.get("drops"), dict)
+    ):
+        return {"rules.extinction.per_type.own.drops"}
+    return set()
+
+
+def _schema_seventy_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 70 added, by name (SR4f,
+    `docs/plan-schema-next.md` §2.4 row T8; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.npcs.explode_on_capture`` -- a blast beside wild pieces: a wild piece's eat never
+      explodes, and a wild piece a player's blast destroys pays its bounty to the mover, as
+      taking it would; the payment is undone with the blast.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if rules.get("npcs") and rules.get("explode_on_capture"):
+        return {"rules.npcs.explode_on_capture"}
+    return set()
+
+
+def _schema_seventy_one_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 71 added, by name (SR4g,
+    `docs/plan-schema-next.md` §2.8 row N17; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.npcs.immune.drops`` -- a wild immunity beside a hand: it holds only while the
+      piece is wild, so a wild piece taken into a hand and dropped is captured as any piece
+      of its type.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    drops = rules.get("drops")
+    immune = any(isinstance(npc, dict) and "immune" in npc for npc in rules.get("npcs") or ())
+    if immune and isinstance(drops, dict) and drops:
+        return {"rules.npcs.immune.drops"}
+    return set()
+
+
+def _schema_seventy_two_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 72 added, by name (SR4h,
+    `docs/plan-schema-next.md` §2.4 rows V5, V6, V9; numbered by order of landing, bumping no
+    version). Three lifted refusals, no key, each a command that ``captures_own`` beside:
+
+    * ``pieces.sight.command.captures_own.strike`` -- a live strike (V5): the commanded
+      own-side capture is an ordinary removal, nothing struck, no side changed;
+    * ``pieces.sight.command.captures_own.contacts`` -- contacts (V6): as V5, no link read;
+    * ``pieces.sight.command.captures_own.drops`` -- a hand that fills from captures (V9): the
+      piece taken goes to the commander's hand.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    found: set[str] = set()
+    sights = [sight for entries in piece_sights(spec).values() for sight in entries]
+    if not any(sight.effect == "command" and sight.captures_own for sight in sights):
+        return found
+    if strike_is_live(rules.get("strike")):
+        found.add("pieces.sight.command.captures_own.strike")
+    contacts = rules.get("contacts")
+    if isinstance(contacts, dict) and contacts.get("links"):
+        found.add("pieces.sight.command.captures_own.contacts")
+    drops = rules.get("drops")
+    if isinstance(drops, dict) and drops and drops.get("from_captures", True) is not False:
+        found.add("pieces.sight.command.captures_own.drops")
+    return found
+
+
+def _schema_seventy_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 73 added, by name (SR4i,
+    `docs/plan-schema-next.md` §2.4 row T9; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.must_capture.contacts.own`` -- an own contact link beside ``must_capture``:
+      moving onto your own piece is no capture, so a merge is offered only where no enemy
+      capture is, and never compelled.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    contacts = rules.get("contacts")
+    links = contacts.get("links") if isinstance(contacts, dict) else None
+    if rules.get("must_capture") and any(
+        isinstance(link, dict) and link.get("own") is True for link in links or ()
+    ):
+        return {"rules.must_capture.contacts.own"}
+    return set()
+
+
+def _schema_seventy_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 74 added, by name (SR4j,
+    `docs/plan-schema-next.md` §2.4 row T10; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.strike.by.switches_sides`` -- a strike's ``by`` beside its ``switches_sides``,
+      read apart: ``by`` says whose captures strike, ``switches_sides`` who changes sides.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    strike = rules.get("strike")
+    if isinstance(strike, dict) and strike.get("by") and strike.get("switches_sides"):
+        return {"rules.strike.by.switches_sides"}
+    return set()
+
+
+def _schema_seventy_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 75 added, by name (SR4k,
+    `docs/plan-schema-next.md` §2.11 rows O3, O4; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key, each a piece nobody owns (a placement for nobody)
+    beside:
+
+    * ``rules.strike.nobodys`` -- a strike: a struck nobody's piece becomes what the chain says
+      and stays nobody's, and a held piece's capture strikes as its holder's piece would;
+    * ``rules.contacts.nobodys`` -- contacts: as the strike, by the links.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if not neutral_ids(spec):
+        return set()
+    found: set[str] = set()
+    if strike_is_live(rules.get("strike")):
+        found.add("rules.strike.nobodys")
+    contacts = rules.get("contacts")
+    if isinstance(contacts, dict) and contacts.get("links"):
+        found.add("rules.contacts.nobodys")
+    return found
+
+
+def _schema_seventy_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 76 added, by name (SR4l,
+    `docs/plan-schema-next.md` §2.11 row O22; numbered by order of landing, bumping no
+    version). One lifted refusal, no key:
+
+    * ``rules.purse.explode_on_capture`` -- the purse beside a blast: the blast pays the mover
+      every enemy victim's bounty, nothing for its own, up to the cap.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if isinstance(rules.get("purse"), dict) and rules.get("explode_on_capture") not in (
+        None, False
+    ):
+        return {"rules.purse.explode_on_capture"}
+    return set()
+
+
+def _schema_seventy_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 77 added, by name (SR4m,
+    `docs/plan-schema-next.md` §2.10 rows P3, P4; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key, each beside portals (momentum ends or folds):
+
+    * ``rules.portals.strike`` -- a strike: the exit, or a fold's far square, is the capture
+      square, read as anywhere (rifle leaves the mover where it was, swap puts the struck
+      piece there, home and choose advance the mover to it);
+    * ``rules.portals.contacts`` -- contacts: the exit is where the mover meets its target.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if not rules.get("portals"):
+        return set()
+    found: set[str] = set()
+    if strike_is_live(rules.get("strike")):
+        found.add("rules.portals.strike")
+    contacts = rules.get("contacts")
+    if isinstance(contacts, dict) and contacts.get("links"):
+        found.add("rules.portals.contacts")
+    return found
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -1526,4 +1766,16 @@ _COLLECTORS = {
     63: _schema_sixty_three_uses,
     64: _schema_sixty_four_uses,
     65: _schema_sixty_five_uses,
+    66: _schema_sixty_six_uses,
+    67: _schema_sixty_seven_uses,
+    68: _schema_sixty_eight_uses,
+    69: _schema_sixty_nine_uses,
+    70: _schema_seventy_uses,
+    71: _schema_seventy_one_uses,
+    72: _schema_seventy_two_uses,
+    73: _schema_seventy_three_uses,
+    74: _schema_seventy_four_uses,
+    75: _schema_seventy_five_uses,
+    76: _schema_seventy_six_uses,
+    77: _schema_seventy_seven_uses,
 }

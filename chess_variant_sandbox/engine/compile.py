@@ -51,6 +51,7 @@ from chess_variant_sandbox.spec.schema import (
     bribe_ids,
     control_geometry,
     duck_piece,
+    has_neutrals,
     has_rests,
     has_speeds,
     has_third_owner,
@@ -61,8 +62,9 @@ from chess_variant_sandbox.spec.schema import (
     is_nobodys,
     majority_ids,
     move_push,
-    neutral_ids,
+    nobodys_ids,
     npc_immune_attackers,
+    npc_immunity_unbound,
     npc_pounce,
     npc_respawn,
     npc_routes,
@@ -106,6 +108,7 @@ from chess_variant_sandbox.spec.schema import (
     turning_order,
     turns_less_than_half,
     validate_or_raise,
+    wild_type_ids,
     wrap_stated,
 )
 from chess_variant_sandbox.spec.schema import (
@@ -749,6 +752,12 @@ class ExtinctionRule:
     ``_side_types``; under ``true`` both are ``piece_types``, and under the summed rule both
     are empty. The set is fixed at ply zero: a kind a side gains later by promotion, a side
     switch or a drop is never counted against it.
+
+    SR4d (H11, `docs/plan-schema-next.md` §2.5): beside ``rules.drops`` a held piece
+    counts. A side starts with a kind it holds in its stock as well as one on the board
+    (``_side_types``' ``stocked``), and the core's count under ``own`` adds the side's hand
+    (``Game::short_of``'s ``held``), so a side whose last piece of a kind is in hand has
+    not run out of it. ``true`` and the summed count read the board alone.
     """
 
     piece_types: tuple[int, ...]
@@ -999,8 +1008,12 @@ def _compile_neutrals(
     width: int, height: int, orientation: str, wrap: WrapRule | None,
     obstacles: frozenset[int], radius: int,
 ) -> NeutralRule | None:
-    """`NeutralRule`, or ``None`` when no placement is nobody's (every game before TC3)."""
-    placed = neutral_ids(spec)
+    """`NeutralRule`, or ``None`` when no placement is nobody's (every game before TC3).
+
+    SR4k (O3, O4): a type a strike or a contact makes of a nobody's piece is given its kind
+    too (`schema.nobodys_ids`), so the piece it becomes stays nobody's under the new type's
+    ``control``: it stands, or (a majority type) is held by the count beside it."""
+    placed = nobodys_ids(spec)
     if not placed:
         return None
     held = majority_ids(spec)
@@ -2025,6 +2038,11 @@ class CompiledSpec:
     # Whether any piece restricts what it may capture. False lets the core skip the
     # lookup entirely, which is every committed ruleset.
     has_capture_matrix: bool
+    # SR4g (N17): the capture matrix without `npcs[].immune`, read by the core for every
+    # piece that is not wild, so a wild immunity holds only while the piece is wild. Empty
+    # unless a piece of an immune wild type can stand on the board without being wild
+    # (`schema.npc_immunity_unbound`) and the two matrices differ.
+    capture_owned: tuple[tuple[bool, ...], ...]
 
     initial_board: bytes
     initial_unmoved: int
@@ -2783,16 +2801,22 @@ def _compile(
     leap_dirs, slide_dirs, hop_dirs = frames.leap_dirs, frames.slide_dirs, frames.hop_dirs
 
     duck = _compile_duck(rules, index_of, width, height, obstacles)
-    capture_allowed = _clear_duck_captures(
-        _apply_portal_immunity(
-            _apply_npc_immunity(
-                _build_capture_matrix(pieces, index_of), rules, piece_ids, index_of
-            ),
-            declared_types,
-            {index_of[piece["id"]] for piece in movement},
-        ),
-        duck,
-    )
+    portal_types = {index_of[piece["id"]] for piece in movement}
+
+    def settled(matrix: tuple[tuple[bool, ...], ...]) -> tuple[tuple[bool, ...], ...]:
+        return _clear_duck_captures(
+            _apply_portal_immunity(matrix, declared_types, portal_types), duck
+        )
+
+    base_matrix = _build_capture_matrix(pieces, index_of)
+    capture_allowed = settled(_apply_npc_immunity(base_matrix, rules, piece_ids, index_of))
+    # SR4g (N17): a wild immunity holds only while the piece is wild. Where a piece of an
+    # immune type can stand on the board without being wild, the core reads the matrix
+    # without the immunity for every byte that is not a wild piece; elsewhere nothing
+    # crosses, and every stored game's tables are the ones they were.
+    capture_owned = settled(base_matrix) if npc_immunity_unbound(spec) else ()
+    if capture_owned == capture_allowed:
+        capture_owned = ()
     npcs = _compile_npcs(rules, pieces, index_of, width, height, orientation)
     # A third owner's block for wild pieces (schema 9), for portals (schema 19) or for the
     # duck (generation 42), which are nobody's too; the validator refuses portals beside
@@ -2852,12 +2876,20 @@ def _compile(
         and isinstance(strike_source.get("landing"), dict)
         else ()
     )
+    # SR4e (T6, T7): every wild type is in both rules' `immune` without being listed, so a
+    # player's capture of a wild piece is an ordinary capture. A wild piece's own eat is the
+    # phase's and never reaches the strike.
+    wild = frozenset(index_of[pid] for pid in wild_type_ids(rules) if pid in index_of)
     strike = _compile_strike(
         rules.get("strike"), index_of, n_types, landing,
-        rebirth=(board, width, n_facings, board_spec.get("lattice", "square") == "hex"),
+        rebirth=(
+            board, width, n_facings, board_spec.get("lattice", "square") == "hex",
+            has_neutrals(spec),
+        ),
+        wild=wild,
     )
     if strike is None:
-        strike = _compile_contacts(rules.get("contacts"), index_of, n_types, landing)
+        strike = _compile_contacts(rules.get("contacts"), index_of, n_types, landing, wild=wild)
     drops = _compile_drops(
         rules.get("drops"), index_of, n_types, width, height, orientation, obstacles,
         pieces,
@@ -2949,6 +2981,7 @@ def _compile(
         sweeps=_freeze(sweeps),
         attack_sources=attack_sources,
         capture_allowed=capture_allowed,
+        capture_owned=capture_owned,
         has_capture_matrix=any(
             not allowed for row in capture_allowed for allowed in row
         ),
@@ -2994,7 +3027,7 @@ def _compile(
         check_limit=int(rules.get("check_limit", 0)),
         reach=_compile_reach(rules.get("reach"), index_of, width, height),
         extinction=_compile_extinction(
-            rules.get("extinction"), index_of, board, n_types, n_facings
+            rules.get("extinction"), index_of, board, n_types, n_facings, rules.get("drops")
         ),
         scoring=_compile_scoring(rules.get("scoring"), width, height, orientation),
         territory=_compile_territory(rules.get("territory")),
@@ -5697,7 +5730,8 @@ def _compile_strike(
     index_of: dict[str, int],
     n_types: int,
     landing: tuple[tuple[tuple[int, ...], ...], ...] = (),
-    rebirth: tuple[Sequence[int], int, int, bool] | None = None,
+    rebirth: tuple[Sequence[int], int, int, bool, bool] | None = None,
+    wild: frozenset[int] = frozenset(),
 ) -> StrikeRule | None:
     """Resolve the strike chain into one target type per victim type.
 
@@ -5709,14 +5743,15 @@ def _compile_strike(
     Schema 17 (Q540) gives ``"capture"`` two positions that say something (``stay``,
     rifle; ``home``, circe) and adds ``switches_sides`` (Andernach) under any effect.
     A1 adds ``by``: only the listed types' captures strike, a row mask over the table.
-    ``rebirth`` is ``(initial board, width, n_facings, hex lattice)``, from which
-    ``home`` builds its table; without it the rule says only whether anything survives.
+    ``rebirth`` is ``(initial board, width, n_facings, hex lattice, nobody's pieces)``,
+    from which ``home`` builds its table (SR4k: a third block where pieces nobody owns stand); without it the rule says only whether anything survives.
+    ``wild`` (SR4e, T7) is the wild types, immune without being listed.
     """
     if not strike:
         return None
     effect = strike.get("effect", "capture")
     position = strike.get("position", "advance")
-    immune = frozenset(index_of[p] for p in strike.get("immune", []) if p in index_of)
+    immune = wild | frozenset(index_of[p] for p in strike.get("immune", []) if p in index_of)
     switching = frozenset(
         index_of[p] for p in strike.get("switches_sides") or [] if p in index_of
     )
@@ -5749,11 +5784,13 @@ def _compile_strike(
 
     # Schema 17: the attacker changes sides on every capture that reaches its victim. A
     # capture of an immune piece is a plain capture, and stays one for the attacker too.
+    # SR4j (T10): `by` says which captures strike and `switches_sides` which capturers change
+    # sides, read apart, so a switcher outside `by` flips on its plain capture (the core
+    # advances it: its row of `onto_to` is -1).
     mover_flips: tuple[bool, ...] = ()
     if switching:
         mover_flips = tuple(
             mover in switching and victim not in immune
-            and (strikers is None or mover in strikers)
             for mover in range(n_types)
             for victim in range(n_types)
         )
@@ -5787,12 +5824,17 @@ def _compile_strike(
     if not (rule.survives_anything or rule.removes_in_place or rule.changes_mover):
         return None
     if position == "home" and rebirth is not None:
-        rule = replace(rule, rebirth=_compile_rebirth(*rebirth, n_types))
+        board, width, n_facings, hex_lattice, nobodys = rebirth
+        rule = replace(
+            rule,
+            rebirth=_compile_rebirth(board, width, n_facings, hex_lattice, n_types, nobodys),
+        )
     return rule
 
 
 def _compile_rebirth(
-    board: Sequence[int], width: int, n_facings: int, hex_lattice: bool, n_types: int
+    board: Sequence[int], width: int, n_facings: int, hex_lattice: bool, n_types: int,
+    nobodys: bool = False,
 ) -> tuple[int, ...]:
     """Where each piece is reborn under ``position: "home"`` (schema 17, Q540; circe).
 
@@ -5828,10 +5870,14 @@ def _compile_rebirth(
     def colour(square: int) -> int:
         return (square % width + square // width) % 2
 
-    table = [-1] * (2 * n_types * n_squares)
+    # SR4k (O3): a struck nobody's piece is reborn nobody's, on a home its type stands on for
+    # nobody in the setup, so a game with one has a third block. Never a wild piece's, which
+    # no strike reaches (SR4e), the duck's (SR3e) or a portal end's (out of the matrix).
+    owners = 3 if nobodys else 2
+    table = [-1] * (owners * n_types * n_squares)
     for (owner, piece_type), squares in homes.items():
-        if owner > 1:
-            continue  # a wild piece is never struck: `npcs` is refused beside a strike
+        if owner >= owners:
+            continue
         colour_first = not hex_lattice and all(
             sum(1 for home in squares if colour(home) == shade) <= 1 for shade in (0, 1)
         )
@@ -5859,6 +5905,7 @@ def _compile_contacts(
     index_of: dict[str, int],
     n_types: int,
     landing: tuple[tuple[tuple[int, ...], ...], ...] = (),
+    wild: frozenset[int] = frozenset(),
 ) -> StrikeRule | None:
     """Resolve the contact table into the two ``n_types x n_types`` arrays (schema 10).
 
@@ -5868,10 +5915,11 @@ def _compile_contacts(
     rather than the question. Q56 ruled on the empty-list reading before the key existed
     (``docs/reference/bugs-investigations.md``, "Ruled on in advance, for Q86") -- an empty table is no rule, so ``complexity._RULE_ACTIVE`` agrees with
     the compiler and the declaration is not charged for nothing.
+    ``wild`` (SR4e, T6) is the wild types, immune without being listed.
     """
     if not contacts:
         return None
-    immune = frozenset(index_of[p] for p in contacts.get("immune", []) if p in index_of)
+    immune = wild | frozenset(index_of[p] for p in contacts.get("immune", []) if p in index_of)
     links = contacts.get("links") or []
     onto_to = [-1] * (n_types * n_types)
     mover_to = [-1] * (n_types * n_types)
@@ -6366,7 +6414,11 @@ def _drop_faces(
 
 
 def _side_types(
-    board: bytes, n_types: int, n_facings: int, types: Sequence[int]
+    board: bytes,
+    n_types: int,
+    n_facings: int,
+    types: Sequence[int],
+    stocked: tuple[frozenset[int], frozenset[int]] = (frozenset(), frozenset()),
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
     """Each player's subset of ``types``: the ones it has at least one of on the opening
     board, in the order listed, each once.
@@ -6377,8 +6429,12 @@ def _side_types(
     resolves its two lists here, and the spy's two lists of spy types come from the same
     place (``SpyRule``, Q935a), so the two rules share one compiled shape; the core counts
     them differently (``Game::short_of`` each type apart, ``Game::has_spy`` summed).
+
+    ``stocked`` (SR4d, H11) is each player's types held in its opening stock, which it
+    starts with as much as a piece on the board: only ``"own"`` beside ``rules.drops``
+    passes it, the spy never does.
     """
-    started: tuple[set[int], set[int]] = (set(), set())
+    started: tuple[set[int], set[int]] = (set(stocked[0]), set(stocked[1]))
     for value in board:
         if not value:
             continue
@@ -6401,6 +6457,7 @@ def _compile_extinction(
     board: bytes,
     n_types: int,
     n_facings: int,
+    drops: Any = None,
 ) -> ExtinctionRule | None:
     if not extinction:
         return None
@@ -6414,7 +6471,14 @@ def _compile_extinction(
     own = per_type and spelled == "own"
     side_types: tuple[tuple[int, ...], tuple[int, ...]] = ((), ())
     if own:
-        side_types = _side_types(board, n_types, n_facings, piece_types)
+        # SR4d (H11): a kind held in a side's opening stock is one it starts with.
+        stocked = tuple(
+            frozenset(index_of[p] for p, held in stock.items() if p in index_of and held)
+            for stock in player_stocks(drops)
+        )
+        side_types = _side_types(
+            board, n_types, n_facings, piece_types, (stocked[0], stocked[1])
+        )
     elif per_type:
         side_types = (piece_types, piece_types)
     return ExtinctionRule(

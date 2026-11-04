@@ -285,7 +285,7 @@ impl<'t> Game<'t> {
     ) -> bool {
         let t = self.t;
         (kinds & ATTACK_BY_CAPTURE != 0 && t.may_capture(attacker, victim))
-            || (kinds & ATTACK_BY_PUSH != 0 && push.may_push(t.n_types, attacker, victim))
+            || (kinds & ATTACK_BY_PUSH != 0 && push.may_push(t.n_types, attacker, t.victim_type(victim)))
     }
 }
 

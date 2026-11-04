@@ -85,12 +85,11 @@ _CORE_KNOWS_FACING = True
 _CORE_KNOWS_NPCS = True
 
 # The portal pairs `rust_supports` holds shut for a spec that reached the compiler past the
-# validator, each by its refused pairs' ids (`spec/refusals.py`; a compiled strike is either
-# spelling, so P3 and P4 are one hold), in the order its message names them. A lift of a row
-# here lifts it in the validator's table too.
+# validator, each by its refused pairs' ids (`spec/refusals.py`), in the order its message
+# names them. A lift of a row here lifts it in the validator's table too: SR4m lifted P3 and
+# P4 (a strike or contact table, read at the exit as anywhere).
 PORTAL_CORE_HOLDS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("P2",), "rules.npcs"),
-    (("P3", "P4"), "a strike or contact table"),
     (("P5",), "rules.explode_on_capture"),
     (("W8",), "a sweep"),
     (("P6",), "rules.territory"),
@@ -245,6 +244,8 @@ def _board_fields(spec: CompiledSpec) -> dict[str, Any]:
 
 _MOVEMENT_INERT: dict[str, Any] = {
     "has_capture_matrix": False,
+    # SR4g (N17): empty unless a wild immunity must not follow its type off the route.
+    "capture_owned": [],
     "has_hop_attacks": False,
     # SR3c (`docs/plan-schema-next.md` §1 rank 7): the hop screens named by type,
     # `[k][type]` flattened as 0/1, list `k` being screen code `SCREEN_TYPES + k`. Empty
@@ -293,6 +294,8 @@ def _movement_fields(spec: CompiledSpec) -> dict[str, Any]:
         # for the same reason everything else here is: the core wants one index, not two
         # pointer hops, on a path that runs per capture test.
         "capture_allowed": [int(allowed) for row in spec.capture_allowed for allowed in row],
+        # SR4g (N17): the matrix without the wild immunity, for every piece that is not wild.
+        "capture_owned": [int(allowed) for row in spec.capture_owned for allowed in row],
         # Q1074b2: a push game always reads the victim's type, since a push source attacks
         # only what its pusher's list names (R1, `Game::attacks_square_as`).
         "has_capture_matrix": spec.has_capture_matrix or spec.push is not None,
@@ -1842,14 +1845,14 @@ def rust_supports(spec: CompiledSpec) -> str | None:
             return "pieces[].moves[].push beside " + "; ".join(held)
     # Schema 19 (Q771): the core's portal arm walks a transit as one landing and keeps
     # portals in the third owner's block, so it has no reading for a portal beside a wild
-    # piece (the same block), a strike, a blast or a sweep (a second landing rule), a
+    # piece (the same block), a blast or a sweep (a second landing rule; a strike, SR4m,
+    # reads the exit as anywhere), a
     # colouring (which square a transit paints) or a hex lattice (whose six neighbours the
     # eight-direction exit table does not name). The validator refuses each by name; this
     # holds a spec that reached the compiler some other way.
     if spec.portals is not None:
         present = {
             "P2": spec.npcs is not None,
-            "P3": spec.strike is not None,
             "P5": spec.explosion is not None,
             "W8": spec.has_sweep,
             "P6": spec.territory is not None,

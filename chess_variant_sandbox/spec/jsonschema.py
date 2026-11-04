@@ -134,7 +134,12 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "leap or a range-1 slide. Its legs may be stated instead (legs). "
                     "sweep: jump to any square along the line, removing every piece "
                     "passed over, friendly included; a piece it may not capture blocks, "
-                    "and a sweep that could pass over the enemy royal is check. With a "
+                    "and a sweep that could pass over the enemy royal is check. Beside a "
+                    "hand that fills from captures (rules.drops) every swept piece but the "
+                    "mover's own goes to the mover's hand, as a taken piece does; a swept "
+                    "friendly piece goes to none. Each swept piece but the mover's own "
+                    "pays its bounty as a capture of it does (a wild piece its route's, to "
+                    "the mover). With a "
                     "sweep_range shorter than its range it clears only that far, and rides "
                     "on past it as a slide."
                 ),
@@ -445,8 +450,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "Only beside effect 'command': true lets a commanded piece also be made to "
                     "take a piece of its own side that its captures list allows (never a "
                     "royal or a shielded piece, and not while it is disarmed); omit it for a "
-                    "command that moves its pieces onto empty squares only. Refused beside "
-                    "drops that fill a hand from captures, rules.strike and rules.contacts."
+                    "command that moves its pieces onto empty squares only. The piece taken "
+                    "goes to the commanding player's hand where captures fill one, and beside "
+                    "rules.strike or rules.contacts it is simply removed: nothing is struck, "
+                    "no link is read and no side changes."
                 ),
             },
         },
@@ -611,8 +618,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "command never touches a royal (an affects naming one is refused) and is "
                     "refused beside rules.simultaneous, rules.reach, rules.territory, "
                     "pieces[].rest and a sweep move; beside rules.strike or rules.contacts "
-                    "it moves onto empty squares, which neither touches, and its "
-                    "captures_own is refused there."
+                    "a commanded capture of its own side (captures_own) is an ordinary "
+                    "removal: nothing is struck, no link is read, no side changes."
                 ),
             },
             "control": {
@@ -663,7 +670,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "type says takes_royal. A majority "
                     "type must read the same for both players (no facing, region, condition, "
                     "promotion, owner-named screen, sweep, or a move whose symmetry does not "
-                    "cover both), and some placement must put it in nobody's block. Never on "
+                    "cover both), and some placement must put it in nobody's block, or a "
+                    "strike or contact must make a piece nobody owns into it. Never on "
                     "a royal or a wild piece. Refused beside rules.territory, rules.reach "
                     "and rules.explode_on_capture. In a turn of several moves the holder is "
                     "read afresh at the start of each move."
@@ -691,7 +699,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     f"What taking a piece of this type pays, 1 to {BOUNTY_MAX}; omit it for "
                     "nothing. Paid into the points tally of the player whose move took it, "
                     "whoever owned it (a piece nobody owns too), never for a player's own "
-                    "piece; a wild piece's or a blast's taking pays no type bounty. Needs "
+                    "piece; a wild piece's taking pays no type bounty, and a blast pays the "
+                    "mover for every piece it destroys as taking it would. Needs "
                     'rules.scoring.count "points", which compares the tallies at the clock, '
                     "or rules.purse, whose coins it also pays (capped at "
                     f"{PURSE_MAX}). Never on a royal, a wild type (its rules.npcs entry "
@@ -812,11 +821,15 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "owns (under a mirrored setup their squares are mirrored too, still "
                     "nobody's). A piece nobody owns blocks and may be taken by either player; "
                     "its type's control says whether anyone may move it. Never a royal, a spy "
-                    "or a wild type, and refused beside rules.simultaneous, rules.strike and "
-                    "rules.contacts. Beside rules.npcs a wild piece eats one its type may "
-                    "capture, paying nobody; the duck never lands on one. Beside "
-                    "rules.portals a held piece goes through a portal as its holder's piece "
-                    "would, and a fold may move under one."
+                    "or a wild type, and refused beside rules.simultaneous. Beside rules.npcs "
+                    "a wild piece eats one its type may capture, paying nobody; the duck never "
+                    "lands on one. Beside rules.portals a held piece goes through a portal as "
+                    "its holder's piece would, and a fold may move under one. Beside "
+                    "rules.strike or rules.contacts one struck or linked becomes what the "
+                    "chain or link says and stays nobody's (so the type it becomes may not be "
+                    "one nobody may own), and a held piece's capture strikes, or meets its "
+                    "target, as its holder's piece of the type would, staying nobody's and "
+                    "never changing sides."
                 ),
             },
             "facing": {
@@ -1169,8 +1182,14 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "and position 'stay' it is a piece that shoots: a capture by "
                             "a listed piece removes its target and the piece stays where "
                             "it stood (an archer). Each listed piece must capture "
-                            "something the strike reaches, the list may not name every "
-                            "piece that does, and it may not stand beside switches_sides."
+                            "something the strike reaches, and the list may not name every "
+                            "piece that does. Beside switches_sides the two lists are read "
+                            "apart: by says whose captures strike, switches_sides who "
+                            "changes sides, so a switcher outside by captures as usual and "
+                            "changes sides on the square it took, and one in both strikes "
+                            "and changes sides where the strike leaves it. A strike that "
+                            "only switches sides reaches nothing, so by beside it is "
+                            "refused."
                         ),
                     },
                     "landing": {**landing, "description": landing_description},
@@ -1181,7 +1200,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "Pieces a strike cannot reach; taking one removes it as "
                             "usual. Every royal piece must be listed here, because a "
                             "king that turns into something else makes check a "
-                            "question about a piece that is not on the board yet."
+                            "question about a piece that is not on the board yet. A "
+                            "wild piece's type is immune without being listed, "
+                            "and no strike list may name one."
                         ),
                     },
                 },
@@ -1224,7 +1245,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                                         "Set true and the link is about the mover's own "
                                         "piece: the mover may move onto a friendly 'onto' "
                                         "along its capture moves, and the link says what "
-                                        "both become. Leave it out for an enemy target."
+                                        "both become. Leave it out for an enemy target. "
+                                        "Beside rules.must_capture moving onto your own "
+                                        "piece is no capture: never compulsory, and not "
+                                        "allowed while a capture is on offer."
                                     ),
                                 },
                             },
@@ -1261,7 +1285,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "and leaves the mover alone. Every royal piece must be "
                             "listed here, because a king that turns into something else "
                             "makes check a question about a piece that is not on the "
-                            "board yet."
+                            "board yet. A wild piece's type is immune without "
+                            "being listed, and no link may name one."
                         ),
                     },
                 },
@@ -1414,7 +1439,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "type": "number",
                             "minimum": 0,
                             "description": (
-                                "What a player gains by taking it, read by rules.scoring "
+                                "What a player gains by taking it (or by a capture whose "
+                                "blast destroys it), read by rules.scoring "
                                 "with count 'points'. Defaults to the piece's value."
                             ),
                         },
@@ -1433,10 +1459,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "description": (
                                 "The only piece ids that may take this wild piece; it is "
                                 "immune to every other. Leave the key out and anything "
-                                "may take it. Another wild piece is not bound by it. Not "
-                                "usable beside rules.drops, because capture permission is "
-                                "a fact about a type rather than about who owns it and "
-                                "the immunity would follow the piece out of a hand."
+                                "may take it. Another wild piece is not bound by it. It "
+                                "holds only while the piece is wild: one taken into a "
+                                "hand and dropped (rules.drops), or placed for a player, "
+                                "is captured as any piece of its type."
                             ),
                         },
                     },
@@ -1453,7 +1479,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "A wild piece's type may carry a line of sight (pieces[].sight, whose "
                     "'any'), freezing, disarming or shielding both players' pieces alike, and "
                     "a wild piece never takes a shielded piece: it waits in front of one, so "
-                    "a shielded royal on its next square is not in check from it."
+                    "a shielded royal on its next square is not in check from it. "
+                    "Where captures explode, a wild piece's eat never does, "
+                    "and a wild piece a player's blast destroys pays its bounty to the "
+                    "mover, as taking it would."
                 ),
             },
             "portals": {
@@ -1653,9 +1682,12 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "piece it may not take, another portal, or its own square) is no move. "
                     "An end that does not let a piece in is an uncapturable obstacle to it. "
                     "A portal is never captured. A group with kind 'fold' works "
-                    "differently (see kind). Not usable on a hex lattice or beside "
-                    "npcs, strike, contacts, explode_on_capture, territory, a sweep, or a "
-                    "piece region."
+                    "differently (see kind). Beside strike or contacts the square a move "
+                    "comes out on (a fold's far square) is the capture square, read as "
+                    "anywhere: a strike that stays leaves the mover where it set out, a swap "
+                    "puts the struck piece on that square, home and choose move the mover to "
+                    "the exit. Not usable on a hex lattice or beside npcs, "
+                    "explode_on_capture, territory, a sweep, or a piece region."
                 ),
             },
             "purse": _object(
@@ -1727,7 +1759,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "by bounties and spent on buying pieces from a market, hiring a priced "
                     "piece nobody owns that stands next to one of theirs (its price), or "
                     "under bribe buying an enemy one (twice the price). Not beside rounds "
-                    "(rules.simultaneous) or explode_on_capture; under drops.placement a "
+                    "(rules.simultaneous). Beside explode_on_capture a blast pays the mover "
+                    "the bounty of every piece it destroys as taking it would (nothing for "
+                    "the mover's own), up to the cap; under drops.placement a "
                     "held hand is placed first. In a turn of several moves each buy is a "
                     "move, paid from the purse as the move before left it. Beside portals a "
                     "piece is never bought onto a portal's square, but may be bought into an "
@@ -2013,7 +2047,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "description": "The result for the player who falls below the count.",
                     },
                     # Schema 18 (Q783): what `compile.ExtinctionRule.per_type` reads;
-                    # schema 27 (Q936) adds "own" (`ExtinctionRule.own`).
+                    # schema 27 (Q936) adds "own" (`ExtinctionRule.own`), which reads the
+                    # hand beside drops since SR4d (H11).
                     "per_type": {
                         "anyOf": [
                             {"type": "boolean"},
@@ -2025,7 +2060,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "'own' counts each listed type on its own too, but "
                             "only against a player who starts with it, so two armies of "
                             "different kinds each lose by running out of any one of their "
-                            "own; list both armies' kinds. False, the default, counts the "
+                            "own; list both armies' kinds. Under 'own' a piece in hand "
+                            "counts (rules.drops): a player starts with what its stock holds "
+                            "as well as what stands on the board, and has not run out of a "
+                            "kind while one is held. False, the default, counts the "
                             "listed types together. Needs two or more types listed."
                         ),
                     },

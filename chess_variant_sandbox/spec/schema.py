@@ -14,7 +14,7 @@ dropping it would produce a game nobody asked for.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from functools import cmp_to_key
@@ -560,11 +560,12 @@ REPETITION_NEVER = "never"
 # The one thing it must state, and Q84 asked for the decision out loud: ``capture_allowed``
 # is keyed by *type* and not by owner, so a type that is both wild and in a player's hand
 # under ``drops`` -- "tame the boar", which schema 9 deliberately allows -- would be
-# uncapturable in the player's hands too. That is refused rather than read owner-blind: the
-# rule's own name says *wild piece*, being wrong in the permissive direction is silent, and
-# nothing becomes inexpressible by it because per-piece ``captures`` lists still say the
-# owner-blind thing the long way. `npc_immune_attackers` is the one reading of the key,
-# shared by the validator and the compiler.
+# uncapturable in the player's hands too. That was refused until SR4g (N17, ruled
+# 2026-10-27): the immunity holds only while the piece is wild. A taken wild piece dropped,
+# placed, promoted into or made by a strike is captured as any piece of its type, through a
+# second matrix the compiler crosses only then (``capture_owned``,
+# ``npc_immunity_unbound``). `npc_immune_attackers` is the one reading of the key, shared by
+# the validator and the compiler.
 
 # Schema 7: reach.mirror may be the string "rotate" instead of a boolean.
 #
@@ -1300,7 +1301,7 @@ def _check_rest_coherence(
     ]
     if not written:
         return
-    wild = _wild_ids(rules)
+    wild = wild_type_ids(rules)
     for index, piece in written:
         value = piece["rest"]
         if (
@@ -1733,7 +1734,6 @@ def _check_sight_coherence(
     }
     shields = False
     commands = False
-    turncoats = False
     for index, piece in written:
         where = f"pieces[{index}].sight"
         sight = piece["sight"]
@@ -1768,8 +1768,6 @@ def _check_sight_coherence(
                         f"{loc}.captures_own means something only beside effect 'command' (a "
                         "commanded piece made to take its own side); leave it out"
                     )
-                else:
-                    turncoats |= entry["captures_own"]
             whose = entry.get("whose")
             if "whose" in entry and whose not in SIGHT_WHOSE:
                 errors.append(f"{loc}.whose must be one of {SIGHT_WHOSE}, got {whose!r}")
@@ -1832,22 +1830,20 @@ def _check_sight_coherence(
     if shields and uses_sweep(spec):
         errors.append(refusal("W10"))
     if commands:
-        _check_command_beside(spec, pieces, rules, turncoats, errors)
+        _check_command_beside(spec, pieces, rules, errors)
 
 
 # Q1007c (`docs/archive/plan-schema-31.md` §3.6): each rule refused beside a command, by its
 # refused pair's id (`spec/refusals.py`).
 _COMMAND_REFUSED_RULES = {"simultaneous": "R17", "reach": "V3", "territory": "V4"}
 
-# Generation 51 (V5, V6, `docs/plan-schema-next.md` §2.4): a command moves onto empty squares,
-# so a strike or contacts meet a commanded move only under ``captures_own``, whose own-side
-# capture the core does not yet play as the ordinary removal it is ruled to be (SR4h).
-_TURNCOAT_REFUSED_RULES = {"strike": "V5", "contacts": "V6"}
+# Generation 72 (SR4h, V5, V6, V9, `docs/plan-schema-next.md` §2.4): a commanded own-side
+# capture (``captures_own``) is an ordinary removal beside a strike or contacts, and fills the
+# commander's hand, so nothing about it is refused here any more.
 
 
 def _check_command_beside(
-    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], turncoats: bool,
-    errors: list[str],
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str],
 ) -> None:
     """The rules a command sight is refused beside (Q1007c, `docs/archive/plan-schema-31.md` §3.6)."""
     for key, rid in _COMMAND_REFUSED_RULES.items():
@@ -1856,17 +1852,10 @@ def _check_command_beside(
         value = rules.get(key)
         if value is not None and value is not False and (key != "strike" or strike_is_live(value)):
             errors.append(refusal(rid))
-    for key, rid in _TURNCOAT_REFUSED_RULES.items():
-        value = rules.get(key)
-        if turncoats and value and (key != "strike" or strike_is_live(value)):
-            errors.append(refusal(rid))
     if has_rests(pieces):
         errors.append(refusal("V7"))
     if uses_sweep(spec):
         errors.append(refusal("V8"))
-    drops = rules.get("drops")
-    if turncoats and isinstance(drops, dict) and drops.get("from_captures", True) is not False:
-        errors.append(refusal("V9"))
 
 
 def has_speeds(spec_or_pieces: Any) -> bool:
@@ -1891,11 +1880,14 @@ def piece_speeds(spec_or_pieces: Any) -> dict[str, int]:
     return speeds
 
 
-def _wild_ids(rules: Any) -> set[str]:
+def wild_type_ids(rules: Any) -> set[str]:
     """The declared types of the wild pieces (``rules.npcs``)."""
     listed = rules.get("npcs") if isinstance(rules, dict) else None
-    wild = {npc.get("piece") for npc in _listed(listed) if isinstance(npc, dict)}
-    return {pid for pid in wild if isinstance(pid, str)}
+    # Read before validation too (SR4e), so a malformed `piece` is skipped, never hashed.
+    return {
+        npc["piece"] for npc in _listed(listed)
+        if isinstance(npc, dict) and isinstance(npc.get("piece"), str)
+    }
 
 
 def _never_moved(rules: Any) -> set[str]:
@@ -1903,7 +1895,7 @@ def _never_moved(rules: Any) -> set[str]:
     the players move but never as their own piece (a portal is no declared type since
     spelling 31)."""
     duck = duck_piece(rules)
-    return _wild_ids(rules) | ({duck} if duck is not None else set())
+    return wild_type_ids(rules) | ({duck} if duck is not None else set())
 
 
 def speed_ranks_in_use(spec: dict[str, Any]) -> list[int]:
@@ -1966,7 +1958,7 @@ def _check_speed_coherence(
         )
         return
     malformed = False
-    wild = _wild_ids(rules)
+    wild = wild_type_ids(rules)
     for index, piece in written:
         value = piece["speed"]
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -2994,8 +2986,9 @@ def _check_extinction_coherence(spec: dict[str, Any], rules: dict[str, Any], err
     holds for each kind a side starts with, and four spellings state nothing new
     (`docs/reference/extinction-any-kind.md` §2): a listed kind neither side starts with
     names nothing; every kind started by both is ``true``'s game under a second hash; no
-    side with two counted kinds is the summed count's; and beside ``drops`` a kind can
-    start in hand, with an opening count of zero on the board.
+    side with two counted kinds is the summed count's. Beside ``drops`` a held piece
+    counts (SR4d, H11): a kind may start in hand, and ``"own"`` reads the stock beside the
+    board (``_check_own_extinction``), as the core reads the hand beside it.
     """
     extinction = rules.get("extinction")
     if not isinstance(extinction, dict):
@@ -3047,13 +3040,20 @@ def _check_own_extinction(
     counts: tuple[dict[str, int], dict[str, int]],
     errors: list[str],
 ) -> None:
-    """``"per_type": "own"`` (schema 27, Q936) against the opening board."""
+    """``"per_type": "own"`` (schema 27, Q936) against the opening board.
+
+    Beside ``rules.drops`` a held piece counts (SR4d, H11, `docs/plan-schema-next.md`
+    §2.5): a side starts with what its stock holds as well as what stands on the board, as
+    ``compile._side_types`` reads it, and an unlimited slot never runs out. ``true`` and the
+    summed count read the board alone, so beside drops neither is ``"own"``'s game under
+    another name, and the two redirects below do not apply.
+    """
     kinds = sorted({p for p in pieces if isinstance(p, str)})
     if len(kinds) < 2:
         return  # `_validate_extinction` names a single listed type
-    if isinstance(rules.get("drops"), dict):
-        errors.append(refusal("H11"))
-        return
+    held = isinstance(rules.get("drops"), dict)
+    if held:
+        counts = _with_stocks(counts, rules.get("drops"))
     for piece in kinds:
         if not any(counts[player].get(piece, 0) for player in (0, 1)):
             errors.append(
@@ -3069,6 +3069,8 @@ def _check_own_extinction(
                     f"of {piece!r}, fewer than min_count {count}, so the game would be over "
                     "before the first move"
                 )
+    if held:
+        return
     if all(counts[player].get(piece, 0) for piece in kinds for player in (0, 1)):
         errors.append(
             'rules.extinction.per_type "own": both players start with every listed kind, '
@@ -3081,6 +3083,24 @@ def _check_own_extinction(
             'rules.extinction.per_type "own": no player starts with two of the listed '
             "kinds, so counting each on its own is the count together; drop per_type"
         )
+
+
+def _with_stocks(
+    counts: tuple[dict[str, int], dict[str, int]], drops: Any
+) -> tuple[dict[str, int], dict[str, int]]:
+    """``opening_counts`` with each player's stock added (SR4d, H11): what a side starts
+    with when a held piece counts. An unlimited slot is never spent, so it reads as more
+    than any ``min_count``."""
+    added: list[dict[str, int]] = []
+    for player, stock in enumerate(player_stocks(drops)):
+        mine = dict(counts[player])
+        for piece, held in stock.items():
+            if held == STOCK_UNLIMITED:
+                mine[piece] = 10**9
+            elif isinstance(held, int) and not isinstance(held, bool) and held > 0:
+                mine[piece] = mine.get(piece, 0) + held
+        added.append(mine)
+    return added[0], added[1]
 
 
 def strike_is_live(strike: Any) -> bool:
@@ -3196,8 +3216,6 @@ _SWEEP_EXCLUDES: tuple[tuple[str, str], ...] = (
     ("strike", "W1"),
     ("contacts", "W2"),
     ("explode_on_capture", "W3"),
-    ("drops", "W4"),
-    ("npcs", "W5"),
     ("wrap", "W6"),
 )
 
@@ -3215,8 +3233,6 @@ def sweep_conflicts(rules: Any) -> list[str]:
         "contacts": isinstance(rules.get("contacts"), dict)
         and bool(rules["contacts"].get("links")),
         "explode_on_capture": bool(rules.get("explode_on_capture")),
-        "drops": bool(rules.get("drops")),
-        "npcs": bool(rules.get("npcs")),
         "wrap": _wrap_joins_an_edge(rules.get("wrap")),
     }
     return [key for key, _ in _SWEEP_EXCLUDES if active[key]]
@@ -3236,10 +3252,12 @@ def _wrap_joins_an_edge(wrap: Any) -> bool:
 def _check_sweep_coherence(
     pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
-    """The six refusals a sweep carries (Q21).
+    """The five refusals a sweep carries (Q21; `drops`, W4, lifted by SR4b: every swept
+    piece the mover does not own goes to its hand, a swept friendly piece to none; `npcs`,
+    W5, lifted by SR4c: every swept wild piece pays its bounty to the mover).
 
-    Five rules say what a taken piece becomes or how a move is named, and a sweep takes
-    several pieces along a path a move word does not carry. The sixth keeps a sweeper from
+    Four rules say what a taken piece becomes or how a move is named, and a sweep takes
+    several pieces along a path a move word does not carry. The fifth keeps a sweeper from
     promoting: a move word's kind holds a promotion or a sweep, not both. That refusal is
     also why no sweeper is ever the en passant piece.
     """
@@ -4536,7 +4554,7 @@ def _check_strike_coherence(
     if rules.get("drops") and not strike_only_removes(strike):
         errors.append(refusal("T2"))
 
-    _check_strike_by(pieces, strike, errors)
+    _check_strike_by(pieces, strike, errors, wild_type_ids(rules))
 
     immune = strike.get("immune")
     immune_ids = _str_set(immune) if isinstance(immune, list) else set()
@@ -4573,7 +4591,9 @@ def _check_strike_coherence(
             )
 
 
-def strikers(pieces: list[Any], strike: dict[str, Any]) -> list[str] | None:
+def strikers(
+    pieces: list[Any], strike: dict[str, Any], wild: Collection[str] = ()
+) -> list[str] | None:
     """The piece ids whose captures a strike can ever fire on, ignoring its ``by``.
 
     A type strikes when it has a move that may capture (a ``mode`` other than ``"move"``)
@@ -4581,20 +4601,22 @@ def strikers(pieces: list[Any], strike: dict[str, Any]) -> list[str] | None:
     (asked of the compiler, `_compiled_strike`, with ``by`` taken off) does not leave as a
     plain capture. ``None`` on anything malformed, so a spec already collecting errors is
     not also told its ``by`` is wrong (A1, `docs/archive/plan-pieces-moves.md` §6.3).
+    ``wild`` is the wild types, which no strike reaches (SR4e, T7).
+
+    SR4j (T10): read with ``switches_sides`` taken off too, since ``by`` narrows the strike
+    and not the switch; so beside pure Andernach (a switch and nothing else) nothing strikes,
+    and every ``by`` is refused as never firing.
     """
     if not all(isinstance(piece, dict) and isinstance(piece.get("id"), str) for piece in pieces):
         return None
     piece_ids = [piece["id"] for piece in pieces]
-    compiled = _compiled_strike({**strike, "by": None}, "strike", piece_ids)
+    compiled = _compiled_strike(
+        {**strike, "by": None, "switches_sides": None}, "strike", piece_ids, wild
+    )
     if compiled is None:
         return []
     n = len(piece_ids)
-    reached = {
-        piece_ids[victim]
-        for victim in range(n)
-        if compiled.onto_to[victim] != -1 or (compiled.mover_flips and any(
-            compiled.mover_flips[mover * n + victim] for mover in range(n)))
-    }
+    reached = {piece_ids[victim] for victim in range(n) if compiled.onto_to[victim] != -1}
     found = []
     for piece in pieces:
         moves = piece.get("moves")
@@ -4602,6 +4624,8 @@ def strikers(pieces: list[Any], strike: dict[str, Any]) -> list[str] | None:
             return None
         if not any(move.get("mode", "both") != "move" for move in moves):
             continue
+        if piece["id"] in wild:
+            continue  # SR4e: no strike list may name a wild type, `by` included
         allowed = piece.get("captures")
         takes = set(allowed) if isinstance(allowed, list) else set(piece_ids)
         if takes & reached:
@@ -4609,21 +4633,29 @@ def strikers(pieces: list[Any], strike: dict[str, Any]) -> list[str] | None:
     return found
 
 
-def _check_strike_by(pieces: list[Any], strike: dict[str, Any], errors: list[str]) -> None:
+def _check_strike_by(
+    pieces: list[Any], strike: dict[str, Any], errors: list[str], wild: Collection[str] = ()
+) -> None:
     """Refusals 2 and 3 of A1 (`docs/archive/plan-pieces-moves.md` §6.3), on a live strike.
 
     A ``by`` naming every type whose captures the strike reaches is the strike without
     ``by``, one game in two spellings. A listed type that never captures anything the
-    strike reaches names a strike that never fires. The shape (a non-empty list of
-    declared ids, once each, not beside ``switches_sides``) is `_validate_strike_shape`'s.
+    strike reaches names a strike that never fires; beside ``switches_sides`` (SR4j) the
+    strike is read without the switch, so a ``by`` beside pure Andernach never fires. The
+    shape (a non-empty list of declared ids, once each) is `_validate_strike_shape`'s.
     """
     by = strike.get("by")
     if not isinstance(by, list) or not by or not all(isinstance(p, str) for p in by):
         return
     declared = {piece.get("id") for piece in pieces if isinstance(piece, dict)}
-    if any(pid not in declared for pid in by) or strike.get("switches_sides") is not None:
+    if any(pid not in declared for pid in by):
         return
-    firing = strikers(pieces, strike)
+    switching = strike.get("switches_sides")
+    if switching is not None and (
+        not isinstance(switching, list) or any(pid not in declared for pid in switching)
+    ):
+        return
+    firing = strikers(pieces, strike, wild)
     if firing is None:
         return
     names = {
@@ -4652,8 +4684,8 @@ def _check_contact_coherence(
     together. That is the whole of the relationship between them at the spec level: they
     compile to the same ``StrikeRule``, so a spec carrying both would be two rules
     saying what happens when two pieces meet, and neither ordering is the obvious one --
-    the shape ``npcs`` beside ``strike`` already has, and the reason ``contacts`` is not
-    simply a rewrite of ``strike``.
+    the shape ``explode_on_capture`` beside ``strike`` has, and the reason ``contacts`` is
+    not simply a rewrite of ``strike``.
 
     The other three refusals are ``_check_strike_coherence``'s, restated over this
     spelling rather than shared with it, because the messages have to name the key the
@@ -4667,9 +4699,9 @@ def _check_contact_coherence(
 
     if rules.get("strike"):
         errors.append(refusal("T3"))
-    for other, rid in (("explode_on_capture", "T4"), ("npcs", "T6")):
-        if rules.get(other):
-            errors.append(refusal(rid))
+    # SR4e lifted T6 (`npcs`): a contact never reaches a wild piece (`_check_npc_coherence`).
+    if rules.get("explode_on_capture"):
+        errors.append(refusal("T4"))
     # SR2 (`docs/plan-schema-next.md` §2.4 T5): a link with no ``onto_to`` removes its target,
     # which goes to the hand as any capture's does; a link that keeps it stays refused.
     if rules.get("drops") and not contacts_only_remove(contacts):
@@ -4678,10 +4710,8 @@ def _check_contact_coherence(
     immune = contacts.get("immune")
     immune_ids = _str_set(immune) if isinstance(immune, list) else set()
     links = [link for link in contacts["links"] if isinstance(link, dict)]
-    # Schema 11: `must_capture` asks whether a move takes an enemy piece, and nothing
-    # settles whether a move onto an own piece is one. Refused rather than guessed.
-    if rules.get("must_capture") and any(link.get("own") is True for link in links):
-        errors.append(refusal("T9"))
+    # SR4i (T9, ruled 2026-10-27): beside `must_capture` a move onto an own piece is no
+    # capture (the core's `restrict` asks the target's owner), so the pair plays.
     met = _str_set(link.get("onto") for link in links)
     for piece in pieces:
         if not isinstance(piece, dict) or not piece.get("royal"):
@@ -4724,9 +4754,11 @@ def _check_npc_coherence(
       pieces on *one* route are schema 23's ``also_at``, which keeps the tables a route's;
     * **a wild piece starting under the opening array** -- two pieces on one square, for
       every start, ``also_at``'s included;
-    * **``strike``, ``explode_on_capture`` and a ``turn`` longer than one move** -- the
-      first two are two rules saying what happens when a piece is taken (the shape
-      ``_check_strike_coherence`` refuses), and the third puts the phase *between turns*
+    * **``explode_on_capture`` and a ``turn`` longer than one move** -- the first is two
+      rules saying what happens when a piece is taken (the shape
+      ``_check_strike_coherence`` refuses; ``strike`` and ``contacts`` were refused too
+      until SR4e, which reads every wild type as immune to both, so only a list naming
+      one is refused), and the second puts the phase *between turns*
       where a legality filter would have to know whether the move it is testing ends the
       turn. One condition in two places, liftable, and not worth its test surface in the
       bump that introduces the rule;
@@ -4812,11 +4844,22 @@ def _check_npc_coherence(
                 "wild piece needs an empty square to start from"
             )
 
-    strike = rules.get("strike")
-    if strike_is_live(strike):
-        errors.append(refusal("T7"))
-    if rules.get("explode_on_capture"):
-        errors.append(refusal("T8"))
+    # SR4e (T6, T7, ruled 2026-10-27): a strike and contacts leave every wild type alone, as
+    # if it were in their `immune` (the compiler's `wild`), and a wild piece's eat is an
+    # ordinary capture; so no list of either may name a wild type (the duck's rule, SR3e).
+    # The immunity is the type's, so a player's piece of a wild type is spared too.
+    for pid in sorted(wild_type_ids(rules)):
+        naming = strike_lists_naming(pid, rules)
+        if naming:
+            errors.append(
+                f"{', '.join(naming)} name{'s' if len(naming) == 1 else ''} {pid!r}, which "
+                "rules.npcs makes a wild type; a strike and contacts never reach a piece "
+                "of a wild type (taking one is an ordinary capture, with no list saying "
+                "so) and a wild piece makes no player's capture, so leave it out"
+            )
+    # SR4f (T8, ruled 2026-10-27): a blast beside wild pieces is allowed. A wild piece's eat
+    # never explodes (the phase writes its own steps), and a wild piece a player's blast
+    # destroys pays its bounty to the mover, as taking it would (`Game::write_payments`).
     _check_npc_turns_back(npcs, rules, errors)
     _check_npc_pounce(npcs, by_id, rules, orientation, errors)
     _check_npc_split(npcs, rules, errors)
@@ -5272,6 +5315,13 @@ def _duck_in_capture_rules(pid: str | None, rules: dict[str, Any]) -> list[str]:
         for key in ("by", "of", "immune"):
             if pid in _listed(explosion.get(key)):
                 found.append(f"rules.explode_on_capture.{key}")
+    return found + strike_lists_naming(pid, rules)
+
+
+def strike_lists_naming(pid: str | None, rules: dict[str, Any]) -> list[str]:
+    """Where a strike or contacts name ``pid``: the duck's type (SR3e, K3) or a wild type
+    (SR4e, T6, T7), which both rules leave alone without a list saying so."""
+    found: list[str] = []
     strike = rules.get("strike")
     if isinstance(strike, dict):
         for key in ("by", "immune", "switches_sides"):
@@ -7068,8 +7118,12 @@ def _validate_rules(
     _validate_turn(rules.get("turn"), errors)
     _validate_wrap(rules.get("wrap"), errors, shape)
     _validate_obstacles(rules.get("obstacles"), width, height, errors)
-    _validate_strike(rules.get("strike"), piece_ids, errors)
-    _validate_contacts(rules.get("contacts"), piece_ids, errors, promoting_piece_ids(rules))
+    # SR4e (T6, T7): both rules leave every wild type alone without listing it.
+    wild = wild_type_ids(rules)
+    _validate_strike(rules.get("strike"), piece_ids, errors, wild)
+    _validate_contacts(
+        rules.get("contacts"), piece_ids, errors, promoting_piece_ids(rules), wild
+    )
     _validate_npcs(rules.get("npcs"), piece_ids, width, height, errors, rules)
     _validate_duck(rules.get("duck"), piece_ids, width, height, errors)
     _validate_purse(rules.get("purse"), piece_ids, width, height, errors)
@@ -7732,6 +7786,43 @@ def npc_immune_attackers(
     return {pid for pid in piece_ids if pid not in named and pid not in wild}
 
 
+def npc_immunity_unbound(spec: Any) -> set[str]:
+    """SR4g (N17): the wild types whose ``immune`` list clears something and of which a
+    piece that is *not* wild can stand on the board -- placed in the setup (for a player or
+    for nobody), taken into a hand and dropped, promoted into, or made by a strike or a
+    contact. The immunity holds only while the piece is wild, so for these types the
+    compiler crosses a second capture matrix without it (``capture_owned``), which the core
+    reads for every byte that is not a wild piece.
+
+    Over-approximates where ``_arrives_after_setup`` does (a hand that fills from captures
+    holds every type): a type named here that no such piece ever reaches crosses a matrix
+    nobody reads, which changes no answer.
+    """
+    if not isinstance(spec, dict):
+        return set()
+    rules: dict[str, Any] = spec["rules"] if isinstance(spec.get("rules"), dict) else {}
+    pieces = spec.get("pieces")
+    piece_ids = [
+        p["id"] for p in _listed(pieces) if isinstance(p, dict) and isinstance(p.get("id"), str)
+    ]
+    setup: dict[str, Any] = spec["setup"] if isinstance(spec.get("setup"), dict) else {}
+    placed = {
+        placement["piece"] for placement in _listed(setup.get("placements"))
+        if isinstance(placement, dict) and isinstance(placement.get("piece"), str)
+        and placement.get("squares")
+    }
+    unbound: set[str] = set()
+    for npc in _listed(rules.get("npcs")):
+        if not isinstance(npc, dict) or not isinstance(npc.get("piece"), str):
+            continue
+        piece = npc["piece"]
+        if not npc_immune_attackers(rules, piece_ids, npc):
+            continue
+        if piece in placed or _arrives_after_setup(rules, piece):
+            unbound.add(piece)
+    return unbound
+
+
 def npc_routes(
     rules: Any, width: int, height: int, orientation: str = "mirror"
 ) -> list[tuple[str, tuple[int, ...]]]:
@@ -8305,9 +8396,10 @@ def _check_portal_coherence(
 
     The rules refused beside it in the first build are each a reading nobody has asked for:
     a hex lattice (a sign does not name one of six neighbours), wild pieces (a route is a
-    static table and a portal moves), a sweep, a strike or contact table and an explosion
-    (what a capture leaves behind at an exit is a second landing rule), territory (which
-    square a transit paints), and a confined piece (a region an exit could leave).
+    static table and a portal moves), a sweep, an explosion (what a capture leaves behind at
+    an exit is a second landing rule), territory (which square a transit paints), and a
+    confined piece (a region an exit could leave). SR4m (P3, P4) lifted a strike and contacts:
+    the exit, or a fold's far square, is the capture square, read as anywhere.
     """
     if "portals" not in rules or not isinstance(rules.get("portals"), list):
         return
@@ -8323,8 +8415,7 @@ def _check_portal_coherence(
     if isinstance(board, dict) and board.get("lattice") == "hex":
         errors.append(refusal("P1"))
     for key, rid in (
-        ("npcs", "P2"), ("strike", "P3"), ("contacts", "P4"), ("explode_on_capture", "P5"),
-        ("territory", "P6"),
+        ("npcs", "P2"), ("explode_on_capture", "P5"), ("territory", "P6"),
     ):
         if key in rules:
             errors.append(refusal(rid))
@@ -8713,15 +8804,55 @@ def control_geometry(
     return KING_STEP_HEX if hex_lattice else KING_STEP_SQUARE
 
 
+def nobodys_ids(spec: Any) -> set[str]:
+    """SR4k (O3, O4): the piece ids a piece nobody owns can be. Those a placement puts in
+    nobody's block (`neutral_ids`), and what a strike or a contact makes of one, to a fixed
+    point: a struck or linked nobody's piece becomes what the chain or link says (the
+    compiled table's victim column, any capturer's row) and stays nobody's, and a held piece
+    (a majority type) a link changes (its row's ``mover_to``) stays nobody's too.
+
+    Equal to `neutral_ids` in every game without a strike or contacts, which is every game
+    before SR4k, so no stored game's kinds or neighbours move."""
+    placed = neutral_ids(spec)
+    rules = spec.get("rules") if isinstance(spec, dict) else None
+    if not placed or not isinstance(rules, dict):
+        return placed
+    pieces = [
+        piece for piece in _listed(spec.get("pieces"))
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    ]
+    piece_ids = [piece["id"] for piece in pieces]
+    index = {pid: i for i, pid in enumerate(piece_ids)}
+    held = {piece["id"] for piece in pieces if piece_control(piece) == "majority"}
+    reached = {pid for pid in placed if pid in index}
+    for key in ("strike", "contacts"):
+        compiled = _compiled_strike(rules.get(key), key, piece_ids, wild_type_ids(rules))
+        if compiled is None:
+            continue
+        n = compiled.n_types
+        frontier = sorted(reached)
+        while frontier:
+            x = index[frontier.pop()]
+            made = {compiled.onto_to[mover * n + x] for mover in range(n)}
+            if piece_ids[x] in held:
+                made |= {compiled.mover_to[x * n + victim] for victim in range(n)}
+            for into in sorted(t for t in made if t >= 0):
+                if piece_ids[into] not in reached:
+                    reached.add(piece_ids[into])
+                    frontier.append(piece_ids[into])
+    return reached | placed
+
+
 def majority_ids(spec: Any) -> set[str]:
     """The piece ids a player may move by holding the majority next to one (TC3): a type
-    with ``control`` majority that some placement puts in nobody's block."""
+    with ``control`` majority that some placement puts in nobody's block, or (SR4k) that a
+    strike or a contact makes of a nobody's piece (`nobodys_ids`)."""
     pieces = spec.get("pieces") if isinstance(spec, dict) else None
     return {
         piece["id"] for piece in _listed(pieces)
         if isinstance(piece, dict) and isinstance(piece.get("id"), str)
         and piece_control(piece) == "majority"
-    } & neutral_ids(spec)
+    } & nobodys_ids(spec)
 
 
 def takes_royal_ids(spec: Any) -> set[str]:
@@ -8797,7 +8928,10 @@ def _check_neutral_coherence(
         if isinstance(piece, dict) and "control" in piece:
             _validate_control(piece, f"pieces[{index}]", errors)
     _check_takes_royal(spec, pieces, errors)
-    neutrals = neutral_ids(spec)
+    # SR4k (O3, O4): every type a piece nobody owns can be, a strike's or a contact's making
+    # included, so a chain into a royal, a resting or a seeing type is refused as a placement is.
+    neutrals = nobodys_ids(spec)
+    placed_for_nobody = neutral_ids(spec)
     wild = {
         npc["piece"] for npc in _listed(rules.get("npcs"))
         if isinstance(npc, dict) and isinstance(npc.get("piece"), str)
@@ -8826,7 +8960,10 @@ def _check_neutral_coherence(
         piece = by_id.get(pid)
         if not isinstance(piece, dict):
             continue
-        where = f"a placement for nobody of {pid!r}"
+        where = (
+            f"a placement for nobody of {pid!r}" if pid in placed_for_nobody
+            else f"{pid!r}, which a strike or a contact makes of a piece nobody owns"
+        )
         if piece.get("royal"):
             errors.append(f"{where}: a royal always belongs to a player")
         if piece.get("spy") is True:
@@ -8846,10 +8983,12 @@ def _check_neutral_coherence(
     # SR3f (O1, O2) lifted wild pieces and the duck: the block is shared by kind, a wild
     # piece eats a nobody's piece its type may capture, and the duck lands on empty squares.
     # SR3g (P10) lifted portals: a held piece transits as its holder's would, a fold may move
-    # under a nobody's piece, and an exit onto one takes it where the mover may.
-    for key, rid in (("simultaneous", "R18"), ("strike", "O3"), ("contacts", "O4")):
-        if key in rules:
-            errors.append(refusal(rid))
+    # under a nobody's piece, and an exit onto one takes it where the mover may. SR4k (O3, O4)
+    # lifted a strike and contacts: a struck or linked nobody's piece becomes what the chain
+    # or link says and stays nobody's (`nobodys_ids`), and a held piece's capture strikes, or
+    # meets its target, as its holder's piece of the type would.
+    if "simultaneous" in rules:
+        errors.append(refusal("R18"))
 
     _check_neutral_squares(spec, setup, orientation, errors)
 
@@ -9068,17 +9207,19 @@ def _validate_npc_immune(
 ) -> None:
     """Schema 10: the types that may still take this wild piece, and nothing else may.
 
-    Three refusals, and each is decidable from the spec alone:
+    Two refusals, and each is decidable from the spec alone:
 
     * a list of ids, and every id declared -- the ``captures`` shape;
     * a list that takes the wild type away from *nobody* is the key doing nothing, which
       is Q57's rule (``_check_inert_rules``) applied one level down: a declaration with no
       effect is the same game under a second hash, and ``rule_mass`` charges for ``npcs``
       whatever it compiles to (under ``v10`` that deflated ``rule_yield`` rather than
-      merely failing to help);
-    * and the one Q84 asked to be decided out loud: ``capture_allowed`` is keyed by type
-      rather than by owner, so a wild type that can also reach a player's *hand* would
-      carry its immunity there. Refused rather than read owner-blind.
+      merely failing to help).
+
+    The third, beside ``drops`` (N17, Q84's question: the immunity would follow the piece
+    into a hand), is lifted by SR4g: the immunity holds only while the piece is wild, and the
+    core reads a second matrix without it for every piece that is not
+    (``npc_immunity_unbound``).
     """
     immune = npc.get("immune")
     if immune is None:
@@ -9098,22 +9239,6 @@ def _validate_npc_immune(
             "protects it from nothing; leave the key out"
         )
 
-    drops = rules.get("drops")
-    piece = npc.get("piece")
-    if isinstance(drops, dict) and drops and isinstance(piece, str):
-        # The two routes into a hand, and only those two. `drops.region` says *where* a
-        # held piece may go and is not a way of getting one, so it is deliberately not
-        # here -- a spec whose only `drops` content is a region for some other type puts
-        # this type in nobody's hand and is not refused.
-        in_hand = bool(drops.get("from_captures", True)) or piece in stocked_ids(drops)
-        if in_hand:
-            errors.append(
-                f"{loc}.immune beside rules.drops: {piece!r} can reach a player's hand, "
-                "and capture permission is a fact about a piece type rather than about "
-                "who owns it, so the immunity would follow it out of the hand. Say it "
-                "with per-piece 'captures' lists if that is the game you mean."
-            )
-
 
 # The piece-naming fields of one link, required and optional, for each spelling.
 _STRIKE_LINK_ROLES = {
@@ -9122,7 +9247,9 @@ _STRIKE_LINK_ROLES = {
 }
 
 
-def strike_survives_anything(rule: Any, key: str, piece_ids: Sequence[str]) -> bool:
+def strike_survives_anything(
+    rule: Any, key: str, piece_ids: Sequence[str], wild: Collection[str] = ()
+) -> bool:
     """Whether ``rules[key]`` ever leaves a struck piece on the board (Q271).
 
     ``key`` is ``"strike"`` or ``"contacts"``. This is the compiler's own answer,
@@ -9137,12 +9264,17 @@ def strike_survives_anything(rule: Any, key: str, piece_ids: Sequence[str]) -> b
     This is the question about a *survivor*, which is what those two refusals are about.
     Whether the rule is there at all is `strike_changes_anything`, and for a contacts
     table the two differ.
+
+    ``wild`` (SR4e, T6, T7) is the spec's wild types (`wild_type_ids`), which both rules
+    leave alone without listing them; each reader that has the spec's rules passes them.
     """
-    compiled = _compiled_strike(rule, key, piece_ids)
+    compiled = _compiled_strike(rule, key, piece_ids, wild)
     return compiled is not None and compiled.survives_anything
 
 
-def strike_changes_anything(rule: Any, key: str, piece_ids: Sequence[str]) -> bool:
+def strike_changes_anything(
+    rule: Any, key: str, piece_ids: Sequence[str], wild: Collection[str] = ()
+) -> bool:
     """Whether the compiler keeps ``rules[key]`` at all, rather than plain capture (Q417).
 
     ``key`` is ``"strike"`` or ``"contacts"``, and the answer is the compiler's whole one:
@@ -9156,12 +9288,15 @@ def strike_changes_anything(rule: Any, key: str, piece_ids: Sequence[str]) -> bo
 
     This is the question a reader asks whose answer is "is capture still capture here",
     the grid's ``taking`` axis and ``distance``'s contact features. Before it, they had
-    only `strike_survives_anything`, which answers half of it for a table.
+    only `strike_survives_anything`, which answers half of it for a table. ``wild`` is
+    `strike_survives_anything`'s.
     """
-    return _compiled_strike(rule, key, piece_ids) is not None
+    return _compiled_strike(rule, key, piece_ids, wild) is not None
 
 
-def _compiled_strike(rule: Any, key: str, piece_ids: Sequence[str]) -> StrikeRule | None:
+def _compiled_strike(
+    rule: Any, key: str, piece_ids: Sequence[str], wild: Collection[str] = ()
+) -> StrikeRule | None:
     """``rules[key]`` as ``compile_spec`` compiles it, or ``None`` where it drops it.
 
     **Why this may borrow from the compiler when ``royalty_can_multiply`` may not.** That
@@ -9205,24 +9340,31 @@ def _compiled_strike(rule: Any, key: str, piece_ids: Sequence[str]) -> StrikeRul
         ],
     }
     index_of = {piece: index for index, piece in enumerate(piece_ids)}
-    compile_rule = _compile_strike if key == "strike" else _compile_contacts
-    return compile_rule(readable, index_of, len(piece_ids))
+    wild_types = frozenset(index_of[p] for p in wild if p in index_of)
+    if key == "strike":
+        return _compile_strike(readable, index_of, len(piece_ids), wild=wild_types)
+    return _compile_contacts(readable, index_of, len(piece_ids), wild=wild_types)
 
 
-def _validate_strike(strike: Any, piece_ids: list[str], errors: list[str]) -> None:
+def _validate_strike(
+    strike: Any, piece_ids: list[str], errors: list[str], wild: Collection[str] = ()
+) -> None:
     """What happens instead of removal when a piece is taken.
 
     The shape first, then, on a strike whose shape is sound, whether it says anything
     (Q538). Asked only of a well-formed rule, so that refusal is a fact about the rule
-    rather than a consequence of a typo the shape check already named.
+    rather than a consequence of a typo the shape check already named. ``wild`` is the
+    wild types, immune without being listed (SR4e, T7).
     """
     before = len(errors)
-    _validate_strike_shape(strike, piece_ids, errors)
+    _validate_strike_shape(strike, piece_ids, errors, wild)
     if len(errors) == before:
-        errors.extend(strike_states_nothing(strike, "strike", piece_ids))
+        errors.extend(strike_states_nothing(strike, "strike", piece_ids, wild))
 
 
-def strike_states_nothing(strike: Any, key: str, piece_ids: Sequence[str]) -> list[str]:
+def strike_states_nothing(
+    strike: Any, key: str, piece_ids: Sequence[str], wild: Collection[str] = ()
+) -> list[str]:
     """The refusal for a strike that states a rule the core plays as plain capture (Q538).
 
     ``key`` is ``"strike"`` or ``"contacts"``: the table is the strike's other spelling
@@ -9251,7 +9393,7 @@ def strike_states_nothing(strike: Any, key: str, piece_ids: Sequence[str]) -> li
     if not isinstance(strike, dict) or not strike:
         return []
     position = strike.get("position", "advance")
-    if position == "choose" or strike_changes_anything(strike, key, piece_ids):
+    if position == "choose" or strike_changes_anything(strike, key, piece_ids, wild):
         return []
     if key == "contacts":
         if not strike.get("links"):
@@ -9304,7 +9446,9 @@ PLAYED_AS_CAPTURE = (
 )
 
 
-def _validate_strike_shape(strike: Any, piece_ids: list[str], errors: list[str]) -> None:
+def _validate_strike_shape(
+    strike: Any, piece_ids: list[str], errors: list[str], wild: Collection[str] = ()
+) -> None:
     """The strike's keys, values and chain, and the refusals that read its position."""
     if strike is None:
         return
@@ -9359,8 +9503,9 @@ def _validate_strike_shape(strike: Any, piece_ids: list[str], errors: list[str])
                     errors.append(f"rules.strike.by entry {piece!r} is not a declared piece")
             if len(set(map(str, by))) != len(by):
                 errors.append("rules.strike.by names a piece twice")
-        if switching is not None:
-            errors.append(refusal("T10"))
+        # SR4j (T10, ruled 2026-10-27): `by` narrows which captures strike and
+        # `switches_sides` which capturers change sides, read apart (`_check_strike_by`
+        # refuses a `by` beside a switch and nothing else, as never firing).
 
     immune = strike.get("immune", [])
     if not isinstance(immune, list):
@@ -9418,12 +9563,13 @@ def _validate_strike_shape(strike: Any, piece_ids: list[str], errors: list[str])
 
     # One question decides both refusals, and it is the compiler's: a link from an immune
     # piece keeps nothing alive, because a strike never reaches that piece (Q271).
-    if position == "advance" and strike_survives_anything(strike, "strike", piece_ids):
+    if position == "advance" and strike_survives_anything(strike, "strike", piece_ids, wild):
         survivors = [
             source
             for source, target in sorted(links.items())
             if strike_survives_anything(
-                {**strike, "chain": [{"from": source, "to": target}]}, "strike", piece_ids
+                {**strike, "chain": [{"from": source, "to": target}]}, "strike", piece_ids,
+                wild,
             )
         ]
         errors.append(
@@ -9431,7 +9577,9 @@ def _validate_strike_shape(strike: Any, piece_ids: list[str], errors: list[str])
             f"survives ({', '.join(survivors)}); the attacker takes its square, so "
             "use 'stay', 'swap' or 'choose'"
         )
-    if position == "choose" and not strike_survives_anything(strike, "strike", piece_ids):
+    if position == "choose" and not strike_survives_anything(
+        strike, "strike", piece_ids, wild
+    ):
         errors.append(
             "rules.strike.position 'choose' needs a chain that keeps a struck piece "
             "alive, and a strike never reaches a piece in rules.strike.immune; with "
@@ -9462,6 +9610,7 @@ def _validate_contacts(
     piece_ids: list[str],
     errors: list[str],
     promoting: AbstractSet[str] = frozenset(),
+    wild: Collection[str] = (),
 ) -> None:
     """The contact table: what two pieces that meet both become (schema 10, Q19a).
 
@@ -9483,9 +9632,9 @@ def _validate_contacts(
     (Q538, ``strike_states_nothing``), as for the strike.
     """
     before = len(errors)
-    _validate_contacts_shape(contacts, piece_ids, errors, promoting)
+    _validate_contacts_shape(contacts, piece_ids, errors, promoting, wild)
     if len(errors) == before:
-        errors.extend(strike_states_nothing(contacts, "contacts", piece_ids))
+        errors.extend(strike_states_nothing(contacts, "contacts", piece_ids, wild))
 
 
 def _validate_contacts_shape(
@@ -9493,6 +9642,7 @@ def _validate_contacts_shape(
     piece_ids: list[str],
     errors: list[str],
     promoting: AbstractSet[str] = frozenset(),
+    wild: Collection[str] = (),
 ) -> None:
     """The table's keys, values and links, and the refusals that read its position.
 
@@ -9595,7 +9745,7 @@ def _validate_contacts_shape(
 
     # The strike's one question, asked of the table: a link onto an immune target keeps
     # nothing alive, because a contact reaches that target only through `own` (Q271).
-    survives = strike_survives_anything(contacts, "contacts", piece_ids)
+    survives = strike_survives_anything(contacts, "contacts", piece_ids, wild)
     if position == "advance" and survives:
         errors.append(
             "rules.contacts.position 'advance' has nowhere to put a target that "
@@ -10274,13 +10424,11 @@ def _check_purse_coherence(
             )
     if purse is None:
         return
-    errors.extend(
-        refusal(rid)
-        # SR3g (P9) lifted portals: a momentum end's square is not empty for a buy, an empty
-        # fold's is, and a bought piece stands in it (a buy never goes through).
-        for key, rid in (("simultaneous", "R19"), ("explode_on_capture", "O22"))
-        if rules.get(key) not in (None, False)
-    )
+    # SR3g (P9) lifted portals: a momentum end's square is not empty for a buy, an empty fold's
+    # is, and a bought piece stands in it (a buy never goes through). SR4l (O22) lifted a blast:
+    # it pays the mover every enemy victim's bounty, nothing for the mover's own.
+    if rules.get("simultaneous") not in (None, False):
+        errors.append(refusal("R19"))
     # SR2 (`docs/plan-schema-next.md` §2.2 L6) lifted the long turn: a buy is a move, and two
     # buys in a turn are two moves, each paid from the purse as the move before left it.
     for index, npc in enumerate(_listed(rules.get("npcs"))):

@@ -275,8 +275,10 @@ impl<'t> Game<'t> {
         if victim == 0 || plan.origin == Some(plan.target) {
             return false;
         }
-        let (becomes, mover_becomes, flips) = self.meeting(plan.piece_type, victim, player);
-        becomes != -1 || mover_becomes >= 0 || flips
+        // SR4j (T10): a meeting the strike does not reach advances; a switch alone changes
+        // the captor's side where it lands (`strike_after`), never where it stood.
+        let (becomes, mover_becomes, _) = self.meeting(plan.piece_type, victim, player);
+        becomes != -1 || mover_becomes >= 0
     }
 
     /// The part of the key a round's standoff state contributes (§5.3, `zobrist_standoff`).
@@ -948,6 +950,19 @@ impl<'t> Game<'t> {
                 continue;
             }
             let hit = centres.get(square) || (blast.get(square) && explosion.clears(t, value));
+            if hit && t.pays && !centres.get(square) {
+                // SR4f (T8), SR4l (O22): a blast pays for every piece it destroys as taking it
+                // would (a wild piece its route's bounty, an enemy its type's, the captor's own
+                // nothing): here to each captor whose blast reached it. A purse is never beside
+                // a round, so into the tally alone.
+                for taken in takings {
+                    if explosion.fires(taken.captor_type, t.type_of(taken.victim))
+                        && explosion.reach(taken.square).contains(&square)
+                    {
+                        self.points[taken.captor] += t.bounty_paid(value, square, taken.captor);
+                    }
+                }
+            }
             if hit {
                 self.write(square, 0);
                 facts.touched.set(square);
@@ -1192,7 +1207,12 @@ impl<'t> Game<'t> {
                 let short = [0, 1].map(|side| {
                     let mine = self.occupied()[side];
                     if extinction.per_type {
-                        self.short_of(side, &extinction.side_types[side], extinction.min_count)
+                        self.short_of(
+                            side,
+                            &extinction.side_types[side],
+                            extinction.min_count,
+                            extinction.own,
+                        )
                     } else if extinction.any_piece {
                         mine.len() < extinction.min_count
                     } else {

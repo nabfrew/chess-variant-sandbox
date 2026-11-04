@@ -31,7 +31,6 @@ from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import distance, features
-from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.transform import drop_piece
 from tests.feature_inventory import _schema_thirty_five_uses
 
@@ -140,10 +139,12 @@ class TestTheRefusals:
         errors = validate_spec(_with(strike))
         assert any(words in error for error in errors), errors
 
-    def test_beside_switches_sides_is_refused(self) -> None:
+    def test_beside_pure_andernach_it_never_fires(self) -> None:
+        """SR4j: the lists are read apart, so beside a switch and nothing else no capture
+        strikes, and a listed piece names a strike that never fires."""
         strike = {"effect": "capture", "immune": ["K"], "by": ["B"], "switches_sides": ["B"]}
         errors = validate_spec(_with(strike))
-        assert "T10" in refused_ids(errors), errors
+        assert any("its strike never fires" in error for error in errors), errors
 
     def test_a_listed_piece_that_never_captures_is_refused(self) -> None:
         spec = _with(ARCHERS)

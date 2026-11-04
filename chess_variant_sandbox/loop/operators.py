@@ -121,12 +121,14 @@ from chess_variant_sandbox.spec.schema import (
     spy_ids,
     stocked_ids,
     strike_is_live,
+    strike_lists_naming,
     strike_only_removes,
     strikers,
     sweep_conflicts,
     sweep_length,
     turn_is_long,
     uses_sweep,
+    wild_type_ids,
 )
 from chess_variant_sandbox.spec.transform import (
     capture_is_possible,
@@ -251,9 +253,9 @@ def _gone_words(key: str) -> str:
 
 
 def _has_portals(spec: dict[str, Any]) -> bool:
-    """Schema 19: whether the spec has portals, beside which the validator refuses a
-    strike, a contact table, an explosion, a colouring, a sweep and a wild piece -- so an
-    operator that would add one of those is not offered there."""
+    """Schema 19: whether the spec has portals, beside which the validator refuses an
+    explosion, a colouring, a sweep and a wild piece -- so an operator that would add one of
+    those is not offered there (a strike and a contact table are allowed since SR4m)."""
     return bool((spec.get("rules") or {}).get("portals"))
 
 
@@ -1082,22 +1084,15 @@ def _drop_royalty(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
-def _counts_own_kinds(rules: dict[str, Any]) -> bool:
-    """Schema 27's ``"per_type": "own"``, which the validator refuses beside a hand."""
-    extinction = rules.get("extinction")
-    return isinstance(extinction, dict) and extinction.get("per_type") == "own"
-
-
 def _a_hand_is_refused_beside_the_capture(spec: dict[str, Any]) -> bool:
-    """Whether the validator refuses a hand beside what this spec's captures do: a sweep
-    (several pieces into a hand at once), a live strike that leaves its victim standing, or
-    a contact link that keeps its target. A shot and removing links are allowed since SR2
-    (`docs/plan-schema-next.md` §2.4 T2, T5): their victim goes to the hand."""
+    """Whether the validator refuses a hand beside what this spec's captures do: a live
+    strike that leaves its victim standing, or a contact link that keeps its target. A shot
+    and removing links are allowed since SR2 (`docs/plan-schema-next.md` §2.4 T2, T5): their
+    victim goes to the hand; a sweep since SR4b (§2.6 W4): every enemy piece it sweeps does."""
     rules = spec.get("rules") or {}
     strike = rules.get("strike")
     return (
-        uses_sweep(spec)
-        or (strike_is_live(strike) and not strike_only_removes(strike))
+        (strike_is_live(strike) and not strike_only_removes(strike))
         or (bool(rules.get("contacts")) and not contacts_only_remove(rules.get("contacts")))
     )
 
@@ -1122,8 +1117,7 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
     and the operator was a silent no-op. 108 of its 318 children in the sweep, 78 to the
     stamp and 30 to the `strike` clash below.
     """
-    if _turncoats(spec):
-        return None  # Q1007c: a capture hand is refused beside captures_own (§3.6)
+    # A capture hand beside captures_own is allowed since SR4h (V9): the commander's hand.
     rules = spec.setdefault("rules", {})
     if rules.get("drops"):
         if any(
@@ -1143,23 +1137,14 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
         rules.pop("drops", None)
         return "captured pieces are gone for good again"
     if _a_hand_is_refused_beside_the_capture(spec):
-        return None  # a sweep, or a strike or contact that leaves its victim standing
-    if _counts_own_kinds(rules):
-        return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
+        return None  # a strike or contact that leaves its victim standing
     if any(npc_split(npc) for npc in rules.get("npcs") or ()):
         return None  # generation 41 (N3d): copies would mint pieces for a capture hand
     if spy_ids(spec):
         return None  # schema 27: a hand that fills from captures or holds a spy gives one back
     # `only_lost` reads the board, and a piece in hand is not on it (SR2, H1): no guard.
-    if any(
-        isinstance(npc, dict) and "immune" in npc for npc in rules.get("npcs") or ()
-    ):
-        # Schema 10 (Q78), and the same one-sided refusal `strike` had: a wild piece with
-        # an immunity can reach a player's hand under `drops`, and capture permission is
-        # a fact about a type rather than about who owns it, so the validator refuses the
-        # pair. `_set_a_patrol` already declines to offer an immunity beside `drops`; this
-        # is the other direction, which nobody wrote.
-        return None
+    # A wild immunity beside the hand (N17) holds only while the piece is wild (SR4g): no
+    # guard.
     if not capture_is_possible(spec):
         # A hand that fills from captures, in a game where nothing can be taken, is
         # refused as declaring nothing (inert-rule case 5) on every draw (Q110).
@@ -1618,14 +1603,11 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     """
     if push_bars(spec, "strike"):
         return None  # Q1074b5: `rules.strike` is refused beside a push (§3.14)
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
-    if neutral_ids(spec):
-        return None
+    # SR4k (O3, O4) lifted TC3's refusal beside a piece nobody owns: a struck or linked
+    # nobody's piece stays nobody's, and a held piece strikes as its holder's would.
     # A strike beside the duck is allowed since SR3e (K3); `set_strike` never names it.
-    if _turncoats(spec):
-        return None  # V5, V6 (generation 51): refused beside captures_own only
-    if _has_portals(spec):
-        return None  # refused beside portals (schema 19)
+    # Beside captures_own since SR4h (V5, V6): a commanded own-side capture is a removal.
+    # SR4m (P3, P4) lifted portals: a strike or link at an exit reads as anywhere.
     rules = spec.setdefault("rules", {})
     if rules.get("strike"):
         placed = _place_the_survivor(spec, "strike", rng)
@@ -1636,15 +1618,13 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     if (
         rules.get("explode_on_capture")
         or rules.get("drops")
-        or rules.get("npcs")
         or rules.get("contacts")
         or uses_sweep(spec)
     ):
-        # Two rules cannot both say what happens to a taken piece. `npcs` is the third
-        # member and was missing: `_set_a_patrol` has always refused a patrol beside a
-        # strike, and the refusal was never symmetric, so every draw on `archive/wolves`
-        # was thrown away. `contacts` is the fourth and arrived the same way (Q108) --
-        # a strike beside a contact table is refused as *two spellings of one rule*.
+        # Two rules cannot both say what happens to a taken piece. `contacts` arrived as the
+        # fourth (Q108) -- a strike beside a contact table is refused as *two spellings of
+        # one rule*. `npcs` was the third until SR4e (T7): a strike leaves every wild type
+        # alone, and `set_strike`'s chain (`_rungs`) never names one.
         return None
     if is_simultaneous(rules):
         return None  # schema 26: a strike that stays is refused beside rounds
@@ -1683,14 +1663,11 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     """
     if push_bars(spec, "contacts"):
         return None  # Q1074b5: `rules.contacts` is refused beside a push (§3.14)
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
-    if neutral_ids(spec):
-        return None
+    # SR4k (O3, O4) lifted TC3's refusal beside a piece nobody owns: a struck or linked
+    # nobody's piece stays nobody's, and a held piece strikes as its holder's would.
     # Contacts beside the duck are allowed since SR3e (K3); `set_contacts` never names it.
-    if _turncoats(spec):
-        return None  # V5, V6 (generation 51): refused beside captures_own only
-    if _has_portals(spec):
-        return None  # refused beside portals (schema 19)
+    # Beside captures_own since SR4h (V5, V6): a commanded own-side capture is a removal.
+    # SR4m (P3, P4) lifted portals: a strike or link at an exit reads as anywhere.
     from chess_variant_sandbox.spec.transform import set_contacts
 
     rules = spec.setdefault("rules", {})
@@ -1703,9 +1680,10 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
             return placed
         strip_rule(spec, "contacts")
         return "taking a piece leaves the taker as it was again"
+    # SR4e (T6): contacts beside wild pieces are allowed; `set_contacts` never names a wild type.
     if (
         rules.get("strike") or rules.get("explode_on_capture") or rules.get("drops")
-        or rules.get("npcs") or uses_sweep(spec)
+        or uses_sweep(spec)
     ):
         return None  # two rules cannot both say what happens to a taken piece
     before = rules.get("contacts")
@@ -1770,9 +1748,10 @@ def _keep_the_mover(spec: dict[str, Any], rng: random.Random) -> str | None:
         if isinstance(link, dict) and link.get("own") is not True
     }
     promoting = promoting_piece_ids(rules)
-    # SR3e (K3): no contact reaches the duck, so no link names it.
+    # SR3e (K3), SR4e (T6): no contact reaches the duck or a wild type, so no link names one.
     duck = duck_piece(rules)
-    targets = [pid for pid in names if pid not in royal and pid not in immune and pid != duck]
+    spared = wild_type_ids(rules) | {duck}
+    targets = [pid for pid in names if pid not in royal and pid not in immune and pid not in spared]
     choices = {
         mover: [onto for onto in targets if (mover, onto) not in paired]
         for mover in sorted(promoting)
@@ -1842,14 +1821,11 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
     """
     if push_bars(spec, "contacts"):
         return None  # Q1074b5: `rules.contacts` is refused beside a push (§3.14)
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
-    if neutral_ids(spec):
-        return None
+    # SR4k (O3, O4) lifted TC3's refusal beside a piece nobody owns: a struck or linked
+    # nobody's piece stays nobody's, and a held piece strikes as its holder's would.
     # Contacts beside the duck are allowed since SR3e (K3); `merge_links` never names it.
-    if _turncoats(spec):
-        return None  # V5, V6 (generation 51): refused beside captures_own only
-    if _has_portals(spec):
-        return None  # refused beside portals (schema 19)
+    # Beside captures_own since SR4h (V5, V6): a commanded own-side capture is a removal.
+    # SR4m (P3, P4) lifted portals: a strike or link at an exit reads as anywhere.
     from chess_variant_sandbox.spec.transform import merge_links, set_own_link, settle_landing
 
     rules = spec.setdefault("rules", {})
@@ -1881,10 +1857,11 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
     if spy_ids(spec):
         return None  # schema 27: a merge may turn a piece into the spy, which a spy game refuses
 
-    if rules.get("must_capture"):
-        return None  # whether moving onto your own piece is a capture is not settled
+    # SR4i (T9): beside `must_capture` a merge is no capture, offered only where nothing
+    # enemy can be taken, so the pair is allowed.
+    # SR4e (T6): an own link beside wild pieces is allowed; `merge_links` never names a wild type.
     if not rules.get("contacts") and (
-        rules.get("strike") or rules.get("explode_on_capture") or rules.get("drops") or rules.get("npcs")
+        rules.get("strike") or rules.get("explode_on_capture") or rules.get("drops")
     ):
         return None  # two rules cannot both say what happens to a taken piece
     if uses_sweep(spec):
@@ -1973,13 +1950,9 @@ def _place_a_stone(spec: dict[str, Any], rng: random.Random) -> str | None:
         return f"the {stone.get('name', stone['id'])} is gone; every move is a move again"
 
     if _a_hand_is_refused_beside_the_capture(spec):
-        return None  # a sweep, or a strike or contact that leaves its victim standing
-    if _counts_own_kinds(rules):
-        return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
+        return None  # a strike or contact that leaves its victim standing
     if spy_ids(spec):
         return None  # schema 27: a hand that fills from captures or holds a spy gives one back
-    if any(isinstance(npc, dict) and "immune" in npc for npc in rules.get("npcs") or ()):
-        return None  # an immune type that can reach a hand is refused by name
     taken = {str(piece.get("id")) for piece in pieces(spec)}
     spare = [pid for pid in _SPARE_IDS if pid not in taken]
     if not spare:
@@ -2021,8 +1994,7 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
     # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
     if majority_ids(spec):
         return None
-    if purse_rule(spec) is not None:
-        return None  # TC5 (`docs/plan-turncoat.md` §5.9): who is paid for a blast's victims
+    # SR4l (O22) lifted the purse: a blast pays the mover every enemy victim's bounty.
     # A blast beside the duck is allowed since SR3e (K3): it leaves the duck standing.
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
@@ -2053,8 +2025,10 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
         strip_rule(spec, "explode_on_capture")
         return "a capture no longer takes its neighbours with it"
 
-    if rules.get("strike") or rules.get("contacts") or rules.get("npcs") or uses_sweep(spec):
+    if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
         return None  # two rules cannot both say what happens to a taken piece
+    # A blast beside wild pieces is allowed since SR4f (T8): a wild eat does not explode, and a
+    # wild piece the blast destroys pays its bounty to the mover.
     # A blast beside a hand that drops either face is allowed since SR2 (H6): its victims
     # enter no hand.
     if not capture_is_possible(spec):
@@ -2437,12 +2411,6 @@ def _commands(spec: dict[str, Any]) -> bool:
     )
 
 
-def _turncoats(spec: dict[str, Any]) -> bool:
-    """Whether a command may make its pieces take their own side (Q1007c's `captures_own`),
-    beside which a hand filled from captures, a strike and contacts are refused (V5, V6)."""
-    return any(sight.captures_own for sights in piece_sights(spec).values() for sight in sights)
-
-
 def _sight_names(spec: dict[str, Any]) -> dict[str, str]:
     """Each piece id's name, as `describe.sight_sentence` says the types a sight touches."""
     return {
@@ -2541,9 +2509,9 @@ def _cast_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
             target = next(p for p in pieces(trial) if p.get("id") == piece["id"])
             target.setdefault("sight", []).append(entry)
             if validate_spec(trial) and entry.get("captures_own"):
-                # V5, V6 (generation 51): a command stands beside rules (a strike, contacts,
-                # a capture hand) that refuse only its `captures_own`, so the plain command
-                # is the next try, drawing nothing more.
+                # A command may stand beside a rule that refuses only its `captures_own`
+                # (a push, Q1074b5), so the plain command is the next try, drawing nothing
+                # more.
                 entry = {k: v for k, v in entry.items() if k != "captures_own"}
                 if entry in (piece.get("sight") or []):
                     continue
@@ -2604,8 +2572,8 @@ def _widen_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
 def _turn_the_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Let one command make its pieces take their own side, or stop it doing so again (Q1007c's
     `captures_own`, `docs/archive/plan-schema-31.md` §3.3, §3.8). Only a command sight; each child must
-    pass the validator, so a turncoat capture nothing could make, or one beside a capture hand,
-    is not drawn."""
+    pass the validator, so a turncoat capture nothing could make, or one beside a push, is not
+    drawn."""
     lines = [
         (piece, entry) for piece in pieces(spec) if isinstance(piece.get("sight"), list)
         for entry in piece["sight"]
@@ -2740,9 +2708,8 @@ def _hunt_the_wild(spec: dict[str, Any], rng: random.Random) -> str | None:
 
     **Capture permission is a fact about a type**, and the validator refuses two wild
     pieces of one type with different immunities by name, so the edit is applied to every
-    wild piece of the type it picks and not to one entry. Not offered beside `drops`,
-    where an immune type that reaches a hand is refused; that is the guard the add branch
-    already has, asked here too.
+    wild piece of the type it picks and not to one entry. Offered beside `drops` too since
+    SR4g (N17): the immunity holds only while the piece is wild.
     """
     npcs = [npc for npc in spec.get("rules", {}).get("npcs") or () if isinstance(npc, dict)]
     if not npcs or rng.random() < 0.5:
@@ -2753,8 +2720,6 @@ def _hunt_the_wild(spec: dict[str, Any], rng: random.Random) -> str | None:
         for npc in family:
             npc.pop("immune", None)
         return f"anything may take a wild {kind} again, not only the one type that could"
-    if spec.get("rules", {}).get("drops"):
-        return None  # an immune type that can reach a hand is refused by name
     # Generation 42 (N4b): the duck's type is named by `rules.duck` alone, and nobody owns it,
     # so it hunts nothing (N6's shepherds duck was the first library game to meet this).
     duck = duck_piece(spec.get("rules", {}))
@@ -2780,7 +2745,7 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
     Both halves, for the reason every add-or-remove operator here has two.
 
     Refused by the validator rather than checked here wherever it can be: a route across
-    a wall, under a placement or beside a strike is a rejected candidate, and drawing
+    a wall or under a placement is a rejected candidate, and drawing
     again is cheaper than being clever. What is checked here is only what would make
     *every* draw a rejection.
     """
@@ -2804,16 +2769,13 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
             return hunted
         clear_npcs(spec)
         return "the wild pieces are gone; every piece on the board belongs to somebody"
-    if (
-        rules.get("strike")
-        or rules.get("explode_on_capture")
-        or rules.get("turn")
-        or rules.get("contacts")
-        or rules.get("portals")
-        or uses_sweep(spec)
-        or _shields(spec)
-    ):
+    if rules.get("turn") or rules.get("portals") or _shields(spec):
         return None  # the validator refuses each of these beside a wild piece
+    # SR4f (T8): a blast beside wild pieces is allowed; a wild eat does not explode, and a
+    # wild piece the blast destroys pays its bounty to the mover.
+    # SR4c (W5): a sweep beside wild pieces is allowed; each swept wild piece pays the mover.
+    # SR4e (T6, T7): a strike and contacts beside wild pieces are allowed; neither may name
+    # the wild type, so a type one of their lists names is no candidate.
 
     # T1: a wild type's moves are never read, so the validator refuses a turning path on one.
     # Q1074b5: nor a type the push reads (a pusher, a type a list names, a weighed type):
@@ -2827,6 +2789,7 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
         and piece.get("id") not in read and "weight" not in piece
         and piece.get("id") not in neutral_ids(spec)  # SR3f: a type placed for nobody stands
         and piece.get("id") not in piece_bounties(spec)  # a wild bounty is its npcs entry's
+        and not strike_lists_naming(piece.get("id"), rules)  # SR4e: no strike list names it
     ]
     if not candidates:
         return None
@@ -2882,12 +2845,12 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
     # knight may take it" is a different *kind* of game from "anything may take it" --
     # `distance.npcs_are_hard_to_kill` says so -- and an axis no operator can cross is an
     # axis only the model can reach. The hunter is one other declared type, chosen the
-    # way the wild type is: from what the spec already has, inventing nothing. Refused
-    # beside `drops` by the validator, so the draw is simply not offered there.
+    # way the wild type is: from what the spec already has, inventing nothing. Beside
+    # `drops` too since SR4g (N17): the immunity holds only while the piece is wild.
     hunters = [p for p in pieces(spec) if p.get("id") != piece["id"]]
     immune = (
         [rng.choice(hunters)["id"]]
-        if hunters and not rules.get("drops") and rng.random() < 0.5
+        if hunters and rng.random() < 0.5
         else None
     )
     set_npc(spec, piece["id"], [name_of(s) for s in loop], immune=immune)
@@ -3135,9 +3098,7 @@ def _place_the_army(spec: dict[str, Any], rng: random.Random) -> str | None:
         spec.update(trial)
         return "a player holding a piece must place it before anything on the board moves"
     if _a_hand_is_refused_beside_the_capture(spec):
-        return None  # a sweep, or a strike or contact that leaves its victim standing
-    if _counts_own_kinds(rules):
-        return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
+        return None  # a strike or contact that leaves its victim standing
     if spy_ids(spec):
         return None  # schema 27: a hand that fills from captures or holds a spy gives one back
     setup = spec.get("setup")
@@ -3829,14 +3790,11 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     """
     if push_bars(spec, "strike"):
         return None  # Q1074b5: `rules.strike` is refused beside a push (§3.14)
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
-    if neutral_ids(spec):
-        return None
+    # SR4k (O3, O4) lifted TC3's refusal beside a piece nobody owns: a struck or linked
+    # nobody's piece stays nobody's, and a held piece strikes as its holder's would.
     # A strike beside the duck is allowed since SR3e (K3): no strike reaches it.
-    if _turncoats(spec):
-        return None  # V5, V6 (generation 51): refused beside captures_own only
-    if _has_portals(spec):
-        return None  # refused beside portals (schema 19)
+    # Beside captures_own since SR4h (V5, V6): a commanded own-side capture is a removal.
+    # SR4m (P3, P4) lifted portals: a strike or link at an exit reads as anywhere.
     rules = spec.setdefault("rules", {})
     strike = rules.get("strike")
     explosion = rules.get("explode_on_capture")
@@ -3844,6 +3802,22 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         explosion["radius"] = 1
         return "a capture takes its neighbours with it again, not only the two pieces"
     if isinstance(strike, dict) and "by" in strike:
+        # SR4j (T10): `by` and `switches_sides` read apart, so a shooting strike may also
+        # gain a switch (half the draws), every capturer changing sides by its own list.
+        if "switches_sides" not in strike and not spy_ids(spec) and rng.random() < 0.5:
+            never_switch = {*wild_type_ids(rules), duck_piece(rules)}
+            trial = copy.deepcopy(spec)
+            trial["rules"]["strike"]["switches_sides"] = sorted(
+                str(piece["id"]) for piece in _non_royal(spec)
+                if piece.get("moves") and piece.get("id") not in never_switch
+            )
+            if trial["rules"]["strike"]["switches_sides"] and not validate_spec(trial):
+                spec.clear()
+                spec.update(trial)
+                return (
+                    "a piece that captures also changes sides, the listed pieces still "
+                    "striking and every other capturing as usual"
+                )
         strike.pop("by")
         return "a capture by any piece strikes again, not only one by the listed pieces"
     if isinstance(strike, dict) and "switches_sides" in strike:
@@ -3870,17 +3844,15 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         return "a capture destroys the taker with what it took, and nothing beside them"
     if spy_ids(spec):
         return None  # schema 27: a strike may switch a spy to the other side, which a spy game refuses
-    if (
-        explosion or rules.get("drops") or rules.get("npcs") or rules.get("contacts")
-        or uses_sweep(spec)
-    ):
+    if explosion or rules.get("drops") or rules.get("contacts") or uses_sweep(spec):
         return None  # two rules cannot both say what happens to a taken piece
     # I1: a piece that never moves never captures, so it never switches.
-    # SR3e (K3): the duck is never struck and never strikes, so no strike list names it.
-    duck = duck_piece(rules)
+    # SR3e (K3): the duck is never struck and never strikes, so no strike list names it;
+    # SR4e (T7): nor a wild type, which a strike beside wild pieces leaves alone.
+    spared = wild_type_ids(rules) | {duck_piece(rules)}
     switching = sorted(
         str(piece["id"]) for piece in _non_royal(spec)
-        if piece.get("moves") and piece.get("id") != duck
+        if piece.get("moves") and piece.get("id") not in spared
     )
     if isinstance(strike, dict) and strike:
         if not strike_is_live(strike) or not switching:
@@ -3932,7 +3904,7 @@ def _arm_one_piece(
     validator; ``None`` where the result is refused, with the spec left alone.
     """
     listed = pieces(spec)
-    firing = strikers(listed, strike)
+    firing = strikers(listed, strike, wild_type_ids(spec.get("rules")))
     if not firing or len(firing) < 2:
         return None
     shooter = rng.choice(sorted(firing))
@@ -4397,9 +4369,9 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
     placements, and a type nothing else places); majority control is given to one standing
     type or taken from every type; a majority type's neighbours swap between the king's
     step and the orthogonal four; or (Q1077) a majority type's ``takes_royal`` is switched,
-    so its held pieces give check or no longer. The validator decides the rest (rounds,
-    portals, a strike, contacts, and beside majority a territory, a goal, a blast; wild pieces and
-    the duck are allowed since SR3f).
+    so its held pieces give check or no longer. The validator decides the rest (rounds, and
+    beside majority a territory, a goal, a blast; wild pieces and the duck are allowed since
+    SR3f, portals since SR3g, a strike and contacts since SR4k).
     """
     trial = copy.deepcopy(spec)
     placed = neutral_ids(spec)

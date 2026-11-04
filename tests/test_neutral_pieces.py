@@ -403,7 +403,7 @@ class TestRefusals:
 
     @pytest.mark.parametrize("key, value, rid", [
         ("simultaneous", {}, "R18"),
-        ("strike", {"effect": "capture"}, "O3"),
+        # O3 and O4 (a strike, contacts) lifted by SR4k: `tests/test_struck_nobody.py`.
     ])
     def test_beside_a_rule_that_shares_the_block_or_the_capture(self, key, value, rid):
         spec = _spec(**{key: value})

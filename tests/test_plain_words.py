@@ -503,12 +503,10 @@ class TestACommandsWords:
             assert plain_problems(validate_spec(spec), spec) == []
 
     def test_each_refusal_of_a_command_is_said_in_the_designers_words(self) -> None:
-        from test_command import KING_COMMAND, KNIGHT_COMMAND, chess, k1, k2, with_sight
+        from test_command import KING_COMMAND, KNIGHT_COMMAND, chess, k1, with_sight
 
         reach = k1()
         reach["rules"]["reach"] = {"squares": ["e4"]}
-        hand = k2()
-        hand["rules"]["drops"] = {}
         no_turncoat = with_sight(chess(), "N", {**KNIGHT_COMMAND, "affects": ["B"],
                                                 "captures_own": True})
         next(p for p in no_turncoat["pieces"] if p["id"] == "B")["captures"] = ["K"]
@@ -517,10 +515,6 @@ class TestACommandsWords:
                 "A command ('what it sees' effect 'command') beside the rule 'winning by "
                 "arriving': whether a commanded arrival wins for the mover or the owner would be "
                 "a second rule; leave one out.")),
-            "a turncoat beside a capture hand": (hand, (
-                "A command's 'may make them take their own side' beside the rule 'pieces played "
-                "back onto the board', 'captured pieces': whose hand a turncoat capture fills "
-                "would be a second rule; leave one out.")),
             "a turncoat beside a freeze": (
                 with_sight(chess(), "N", {**KNIGHT_COMMAND, "effect": "freeze",
                                           "captures_own": True}),

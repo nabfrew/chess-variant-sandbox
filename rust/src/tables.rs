@@ -197,8 +197,11 @@ pub const SWEEP_LENGTH_SHIFT: u8 = 2;
 /// enters on; it is the word's last free bit.
 ///
 /// **Bits 25 to 30, the extension, hold at most one field today.** Landing, portal and fold
-/// share bits 25-29 and are told apart by the rules (a strike is refused beside portals) and
-/// the kind; foreign has its own bit, but the validator refuses every rule pair that would set
+/// share bits 25-29 and are told apart by the rules and the kind: SR4m (P3) lifted a strike
+/// beside portals, and a capture through an end or a fold that places a survivor under
+/// `position: "choose"` carries its landing there and names no end (`Game::fans_out`; two
+/// ways to one exit with one landing are one move); every other transit and go-through
+/// names its end, and every other capture's landing is 0; foreign has its own bit, but the validator refuses every rule pair that would set
 /// it beside a tag (a sight beside portals, a commanded capture beside a strike). So every
 /// encoder `debug_assert`s the whole extension is empty, which is what catches the first lifted
 /// refusal (SR5c's commanded fold transit sets foreign *and* fold): that task decides whether
@@ -327,9 +330,18 @@ pub fn move_landing(m: u32) -> usize {
     move_tag(m)
 }
 
+/// SR4m narrows the assertion for this field alone (the field map's *the task decides*): a
+/// held piece's choosing capture (SR4k) carries the foreign bit beside its landing, so only
+/// the tag and bit 31 must be empty here. A landing never shares the tag: a choosing capture
+/// through a portal end or a fold names its landing and no end (`Game::fans_out`).
 #[inline(always)]
 pub fn with_landing(m: u32, index: usize) -> u32 {
-    with_tag(m, index, "landing index")
+    debug_assert!(index < 1 << MOVE_TAG_BITS, "a landing index of {index} past the move word's tag field");
+    debug_assert!(
+        m & (MOVE_TAG_MASK | MOVE_GATE_ROOK) == 0,
+        "a landing index written onto a move word whose tag or bit 31 is taken: {m:#010x}"
+    );
+    m | ((index as u32) << MOVE_TAG_SHIFT)
 }
 
 /// Schema 19: a `MOVE_PORTAL` with the internal type of the end it went in by. The core never
@@ -1110,13 +1122,15 @@ pub struct ExtinctionRule {
     pub per_type: bool,
     /// Schema 27 (Q936): the types counted against each side, apart, under `per_type`.
     /// `"per_type": "own"` resolves them in the compiler, each side's being the listed
-    /// types it starts with on the board (`compile._side_types`); every other spelling
+    /// types it starts with on the board or in its stock (`compile._side_types`; the stock
+    /// since SR4d); every other spelling
     /// crosses the boundary empty and both entries are `piece_types`, so no earlier game
     /// reads a different list. The core walks the list it is handed and never asks who
     /// started with what.
     pub side_types: [Vec<usize>; 2],
     /// Whether `side_types` came across the boundary (`"per_type": "own"`), so the two
-    /// lists may differ. Read by the evaluator's features, never by the ending.
+    /// lists may differ. Read by the evaluator's features, and (SR4d, H11) by the ending,
+    /// whose count then reads the hand too (`Game::short_of`'s `held`): a held piece counts.
     pub own: bool,
 }
 
@@ -1817,6 +1831,19 @@ pub struct Tables {
     /// Whether any piece restricts what it may capture. False skips every lookup, which
     /// is every committed ruleset.
     pub has_capture_matrix: bool,
+    /// SR4g (N17): the matrix the capture tests read, `[attacker * capture_stride + column]`,
+    /// a column per *victim* rather than per type (`victim_of`). `capture_allowed` itself
+    /// where nothing splits a type (stride `n_types`, a byte's column its type); where a
+    /// wild immunity (`npcs[].immune`) must hold only while the piece is wild, stride
+    /// `2 * n_types`: the first `n_types` columns are `capture_allowed` (the wild piece's,
+    /// immunity cleared), the next `capture_owned` (anyone else's piece of the type, the
+    /// immunity not applied). A wild attacker's row is the same in both halves (the
+    /// immunity never binds a wild piece), so its sites may pass a plain type.
+    capture_matrix: Vec<bool>,
+    capture_stride: usize,
+    /// Each board byte's column in `capture_matrix`: its type, plus `n_types` for a byte
+    /// that is not a wild piece in a split game.
+    value_victim: [u8; 256],
 
     pub multi_royal: bool,
     /// `demotions[piece_type]` -> what it reverts to when captured.
@@ -2029,6 +2056,12 @@ impl Tables {
     /// every ruleset before this one.
     #[inline]
     pub fn arriving_value(&self, player: usize, piece_type: usize, square: usize) -> u8 {
+        // SR4k (O3, O4): a piece nobody owns that a strike or a contact leaves standing has no
+        // promotion zone (the mover's reading binds only a move a player makes with it), and
+        // stands at facing 0, as every nobody's piece does (TC3).
+        if player == WILD {
+            return self.piece_value(WILD, 0, piece_type);
+        }
         if self.entry_promotion.is_empty() {
             return self.entering_value(player, piece_type);
         }
@@ -2535,8 +2568,66 @@ impl Tables {
     /// `attackers_of`. The `has_capture_matrix` short-circuit is what keeps it free for
     /// the rulesets that do not use it, which is all twenty-two committed ones.
     #[inline(always)]
+    ///
+    /// `victim` is a column, not a type (SR4g): `victim_of(byte)` for a piece standing on
+    /// the board, `owned_victim(type)` for a player's piece a caller means (castling's), a
+    /// plain type where the answer is the wild piece's or no immunity can differ.
     pub fn may_capture(&self, attacker: usize, victim: usize) -> bool {
-        !self.has_capture_matrix || self.capture_allowed[attacker * self.n_types + victim]
+        !self.has_capture_matrix || self.capture_matrix[attacker * self.capture_stride + victim]
+    }
+
+    /// SR4g (N17): the capture-matrix column of the piece `value` encodes. Its type, except
+    /// in a game whose wild immunity holds only while the piece is wild, where a byte that
+    /// is not a wild piece reads the matrix without the immunity.
+    #[inline(always)]
+    pub fn victim_of(&self, value: u8) -> usize {
+        self.value_victim[value as usize] as usize
+    }
+
+    /// SR4g: the column of a player's piece of `piece_type` (never the wild piece's).
+    #[inline(always)]
+    pub fn owned_victim(&self, piece_type: usize) -> usize {
+        piece_type + self.capture_stride - self.n_types
+    }
+
+    /// The type a capture-matrix column stands for.
+    #[inline(always)]
+    pub fn victim_type(&self, victim: usize) -> usize {
+        if victim >= self.n_types { victim - self.n_types } else { victim }
+    }
+
+    /// SR4g (N17): build `capture_matrix`, `capture_stride` and `value_victim` from the
+    /// crossed matrices. `capture_owned` is empty unless a wild immunity must not follow a
+    /// piece of its type that is not wild (a hand, a placement, a promotion).
+    fn capture_columns(
+        source: &Bound<'_, PyDict>,
+        n_types: usize,
+        capture_allowed: &[bool],
+        value_type: &[u8; 256],
+        value_kind: &[u8; 256],
+    ) -> PyResult<(Vec<bool>, usize, [u8; 256])> {
+        let owned = flags(source, keys::CAPTURE_OWNED)?;
+        if owned.is_empty() {
+            return Ok((capture_allowed.to_vec(), n_types, *value_type));
+        }
+        if owned.len() != n_types * n_types || capture_allowed.len() != n_types * n_types {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "capture_owned must be n_types * n_types flags beside a full capture_allowed",
+            ));
+        }
+        let mut matrix = Vec::with_capacity(2 * n_types * n_types);
+        for attacker in 0..n_types {
+            let row = attacker * n_types..(attacker + 1) * n_types;
+            matrix.extend_from_slice(&capture_allowed[row.clone()]);
+            matrix.extend_from_slice(&owned[row]);
+        }
+        let mut value_victim = *value_type;
+        for value in 1..256 {
+            if value_kind[value] != CONTROL_ROUTE {
+                value_victim[value] = value_type[value] + n_types as u8;
+            }
+        }
+        Ok((matrix, 2 * n_types, value_victim))
     }
 
     /// Whether the game has any schema-2 ending rules.
@@ -2657,6 +2748,10 @@ impl Tables {
         let (royal_types, royal_flags, royal_at_start) =
             Self::royal_rule(source, &initial_board[..n_squares], &value_owner, &value_type, drops.as_mut())?;
 
+        let capture_allowed = flags(source, keys::CAPTURE_ALLOWED)?;
+        let (capture_matrix, capture_stride, value_victim) =
+            Self::capture_columns(source, n_types, &capture_allowed, &value_type, &value_kind)?;
+
         let mut tables = Self {
             width,
             height,
@@ -2760,7 +2855,10 @@ impl Tables {
             forbid_immobility: field(source, keys::FORBID_IMMOBILITY)?,
             royal_facing_forbidden: field(source, keys::ROYAL_FACING_FORBIDDEN)?,
             check_limit: field(source, keys::CHECK_LIMIT)?,
-            capture_allowed: flags(source, keys::CAPTURE_ALLOWED)?,
+            capture_allowed,
+            capture_matrix,
+            capture_stride,
+            value_victim,
             has_capture_matrix: field(source, keys::HAS_CAPTURE_MATRIX)?,
             bare_royal,
             insufficient_material: Self::insufficient_material_rule(source, n_types, n_squares)?,
@@ -3140,8 +3238,14 @@ impl Tables {
             return Err(unknown("strike entry", "removed in place outside stay"));
         }
         let rebirth: Vec<i32> = field(source, keys::STRIKE_REBIRTH)?;
-        let expected = if position == StrikePosition::Home { 2 * n_types * n_squares } else { 0 };
-        if rebirth.len() != expected {
+        // SR4k (O3): a third block, nobody's homes, where pieces nobody owns stand.
+        let block = n_types * n_squares;
+        let fits = if position == StrikePosition::Home {
+            rebirth.len() == 2 * block || rebirth.len() == 3 * block
+        } else {
+            rebirth.is_empty()
+        };
+        if !fits {
             return Err(unknown("strike rebirth length", &rebirth.len().to_string()));
         }
         let flips_raw: Vec<u8> = field(source, keys::CONTACT_MOVER_FLIPS)?;
@@ -4599,6 +4703,9 @@ mod tests {
         assert!(move_foreign(foreign) && move_extended(foreign));
         assert_eq!((move_landing(foreign), move_fold(foreign)), (0, 0));
         assert_eq!(foreign & MOVE_BASE_MASK, base);
+        // SR4k, SR4m: a held piece's choosing capture carries the foreign bit and a landing.
+        let held = with_landing(foreign, 5);
+        assert!(move_foreign(held) && move_landing(held) == 5 && held & MOVE_BASE_MASK == base);
         for m in [with_landing(base, 1), with_fold(base, 1), with_portal(base, 1)] {
             assert!(!move_foreign(m) && move_extended(m));
             assert_eq!(m & MOVE_BASE_MASK, base);
@@ -4823,6 +4930,7 @@ pub mod keys {
         ATTACK_SWEEP => "attack_sweep",
         BARE_ROYAL => "bare_royal",
         CAPTURE_ALLOWED => "capture_allowed",
+        CAPTURE_OWNED => "capture_owned",
         CASTLE_KING => "castle_king",
         CASTLE_KING_FILES => "castle_king_files",
         CASTLE_ROOK => "castle_rook",

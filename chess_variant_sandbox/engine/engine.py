@@ -547,7 +547,12 @@ class Engine:
             # Q1007c (`docs/archive/plan-schema-31.md` §3.7): a commanded move is the same move
             # written with a ``~`` before the piece, which is the opponent's (``~Nb8-c6``);
             # the origin names the piece, so the text stays unique.
-            return "~" + self.describe_move(state, move & ~MOVE_FOREIGN)
+            return "~" + self._move_text(state, move & ~MOVE_FOREIGN, foreign=True)
+        return self._move_text(state, move, foreign=False)
+
+    def _move_text(self, state: GameState, move: int, foreign: bool) -> str:
+        """`describe_move`'s text for ``move`` without its foreign bit; ``foreign`` says the
+        mover is not the side to move's own piece (SR4h: its own-side capture strikes nothing)."""
         spec = self.spec
         origin, target, kind, promoted = decode_move(move)
         if kind == MOVE_DROP:
@@ -592,8 +597,12 @@ class Engine:
             # TC6 (`docs/plan-turncoat.md` §5.8): a hire or a bribe is written as ``$``, the
             # piece and the square it stands on (``$Nd4``): the piece stays, its side changes.
             return f"${piece}{_square_name(origin, spec.width)}"
-        if kind in (MOVE_NORMAL, MOVE_PROMOTION) and move_fold(move) and self._has_folds:
-            return self._fold_text(state, move)
+        if (
+            kind in (MOVE_NORMAL, MOVE_PROMOTION) and move_fold(move) and self._has_folds
+            # SR4m (P3): a choosing capture's tag is its landing, not a fold end.
+            and self.landing_square(state, move) is None
+        ):
+            return self._fold_text(state, move, foreign)
         if kind == MOVE_ROTATE:
             # A turn goes nowhere, so the "origin-dash-target" shape would read as a
             # piece moving to the square it is already on. It is written as the piece,
@@ -605,7 +614,7 @@ class Engine:
                 f"^{FACING_NAMES[facing_quarter_turns(promoted, spec.n_facings)]}"
             )
         if kind == MOVE_PORTAL:
-            return self._transit_text(state, move)
+            return self._transit_text(state, move, foreign)
         if kind == MOVE_PUSH:
             # Q1074b2 (`docs/plan-push.md` K6): ``>`` for a push, ``>>`` for one that threw the
             # piece off the board (``Rd1>d5``, ``Rd1>>d8``); the promotion field is the type
@@ -648,51 +657,11 @@ class Engine:
                 for square, _ in spec.sweep_victims(state.board, move)
             ]
             text += f" (sweeps {', '.join(swept)})"
-        # A strike is generated as a capture and written as one, so "Rh8xf8" would say
-        # the rook moved to f8 when under `stay` it never left h8 -- and a reader with
-        # no way to tell the two apart cannot follow the game at all. The suffix names
-        # what the capture actually did, and it is appended rather than replacing the
-        # capture text because the move *is* the same move.
-        # Q539: a contact that turns the attacker into something else overrides a
-        # promotion on the same move (`strike_writes` reads the promoted piece and replaces
-        # it), so the "=X" a promotion word would print is not what stands there.
-        promotion_overridden = False
+        # What a capture by a strike or a link did (`_strike_text`), appended to the capture.
+        struck_text, promotion_overridden = self._strike_text(state, move, foreign)
+        text += struck_text
         if spec.strike is not None and state.board[target]:
-            # Keyed by the pair since schema 10: a contact's outcome depends on who is
-            # arriving as well as on who is standing there, and a `strike` fills the
-            # attacker's column with -1, so this reads schema 6 exactly as it did.
-            mover = spec.type_of(state.board[origin])
-            victim = spec.type_of(state.board[target])
-            cell = mover * spec.strike.n_types + victim
-            # Schema 11: a friendly target reads the own tables.
-            own = spec.owner_of(state.board[origin]) == spec.owner_of(state.board[target])
-            onto_table = spec.strike.own_onto_to if own else spec.strike.onto_to
-            mover_table = spec.strike.own_mover_to if own else spec.strike.mover_to
-            becomes = onto_table[cell] if onto_table else -1
-            mover_becomes = mover_table[cell] if mover_table else -1
-            flips = not own and bool(spec.strike.mover_flips) and spec.strike.mover_flips[cell]
-            if spec.strike.position == "home" and becomes >= 0:
-                # Schema 17 (Q540, circe). Where the piece went, and whether its home was
-                # free, is the core's answer: the move is played and the square read back.
-                if becomes != victim:
-                    text += f"->{spec.piece_ids[becomes]}"
-                text += self._reborn(state, move, becomes)
-            elif becomes == REMOVED_IN_PLACE:
-                text += " (stays)"  # schema 17: rifle
-            elif becomes >= 0 or mover_becomes >= 0:
-                if becomes >= 0:
-                    text += f"->{spec.piece_ids[becomes]}"
-                if mover_becomes >= 0:
-                    promotion_overridden = True
-                    text += f"/{spec.piece_ids[mover]}->{spec.piece_ids[mover_becomes]}"
-                if spec.strike.position == "stay":
-                    text += " (stands fast)"
-                elif spec.strike.position == "swap":
-                    text += " (swap)"
-                elif spec.strike.position == "choose" and becomes >= 0:
-                    text += self._placed_on(state, move)
-            if flips:
-                text += " (changes sides)"  # schema 17: Andernach
+            pass  # the capture's strike text, above
         elif (
             kind == MOVE_EN_PASSANT
             and spec.strike is not None
@@ -722,6 +691,73 @@ class Engine:
             text += " e.p."
         return text + self._gate_text(state, move)
 
+    def _strike_text(self, state: GameState, move: int, foreign: bool) -> tuple[str, bool]:
+        """What a capture onto an occupied target did under a strike or a contact table, as a
+        suffix to its text, and whether a contact overrode a promotion on it; ``("", False)``
+        for every other move. SR4m (P3, P4): a transit's exit and a fold's far square are the
+        capture square, so `_transit_text` and `_fold_text` append it too."""
+        spec = self.spec
+        origin, target, _, _ = decode_move(move)
+        text = ""
+        promotion_overridden = False
+        # A strike is generated as a capture and written as one, so "Rh8xf8" would say
+        # the rook moved to f8 when under `stay` it never left h8 -- and a reader with
+        # no way to tell the two apart cannot follow the game at all. The suffix names
+        # what the capture actually did, and it is appended rather than replacing the
+        # capture text because the move *is* the same move.
+        # Q539: a contact that turns the attacker into something else overrides a
+        # promotion on the same move (`strike_writes` reads the promoted piece and replaces
+        # it), so the "=X" a promotion word would print is not what stands there.
+        # SR4h (V5, V6): a commanded piece taking its own side is an ordinary removal, so its
+        # text is a plain capture's (`strike_writes` reads no table for it).
+        commanded_own = foreign and spec.owner_of(state.board[origin]) == spec.owner_of(
+            state.board[target]
+        )
+        if spec.strike is None or not state.board[target] or commanded_own:
+            return text, promotion_overridden
+        # Keyed by the pair since schema 10: a contact's outcome depends on who is
+        # arriving as well as on who is standing there, and a `strike` fills the
+        # attacker's column with -1, so this reads schema 6 exactly as it did.
+        mover = spec.type_of(state.board[origin])
+        victim = spec.type_of(state.board[target])
+        cell = mover * spec.strike.n_types + victim
+        # Schema 11: a friendly target reads the own tables.
+        own = spec.owner_of(state.board[origin]) == spec.owner_of(state.board[target])
+        onto_table = spec.strike.own_onto_to if own else spec.strike.onto_to
+        mover_table = spec.strike.own_mover_to if own else spec.strike.mover_to
+        becomes = onto_table[cell] if onto_table else -1
+        mover_becomes = mover_table[cell] if mover_table else -1
+        # SR4k (O3): a held piece (nobody's) strikes as its holder's would and never
+        # changes sides: moving it does not make it the holder's.
+        held = spec.owner_of(state.board[origin]) == WILD
+        flips = (
+            not own and not held and bool(spec.strike.mover_flips)
+            and spec.strike.mover_flips[cell]
+        )
+        if spec.strike.position == "home" and becomes >= 0:
+            # Schema 17 (Q540, circe). Where the piece went, and whether its home was
+            # free, is the core's answer: the move is played and the square read back.
+            if becomes != victim:
+                text += f"->{spec.piece_ids[becomes]}"
+            text += self._reborn(state, move, becomes)
+        elif becomes == REMOVED_IN_PLACE:
+            text += " (stays)"  # schema 17: rifle
+        elif becomes >= 0 or mover_becomes >= 0:
+            if becomes >= 0:
+                text += f"->{spec.piece_ids[becomes]}"
+            if mover_becomes >= 0:
+                promotion_overridden = True
+                text += f"/{spec.piece_ids[mover]}->{spec.piece_ids[mover_becomes]}"
+            if spec.strike.position == "stay":
+                text += " (stands fast)"
+            elif spec.strike.position == "swap":
+                text += " (swap)"
+            elif spec.strike.position == "choose" and becomes >= 0:
+                text += self._placed_on(state, move)
+        if flips:
+            text += " (changes sides)"  # schema 17: Andernach
+        return text, promotion_overridden
+
     def _gate_text(self, state: GameState, move: int) -> str:
         """Q1059a: a gating move's piece in hand, ``/E`` after the move (Seirawan's ``Nf3/E``).
 
@@ -743,23 +779,30 @@ class Engine:
                 return f"{text}@{_square_name(square, self.spec.width)}"
         return text
 
-    def _transit_text(self, state: GameState, move: int) -> str:
+    def _transit_text(self, state: GameState, move: int, foreign: bool = False) -> str:
         """A move through a portal (schema 19): origin, the end it went in by, then the exit.
 
         ``Bc1-d2>e3``, with a capture ``Bc1-d2>xe3`` and a promotion ``Pe7-e8>f8=Q``.
         Each exit is its own move with its own text, so ``find_move`` stays unique.
+
+        SR4m (P3, P4): a capture at the exit says what a strike or a link did there, as any
+        capture does (``Bc1-d2>xe3 (stays)``). One that places a survivor under ``choose``
+        names its landing and no end (`portal_entry`), so it is written ``Bc1>xe3 (placed on
+        e4)``: one move however many ends lead to that exit.
         """
         spec = self.spec
         origin, target, _, promoted = decode_move(move)
         piece = spec.piece_ids[spec.type_of(state.board[origin])]
-        entry = self.portal_entry(state, move)
-        text = f"{piece}{_square_name(origin, spec.width)}-"
-        text += _square_name(entry, spec.width) if entry is not None else "?"
+        text = f"{piece}{_square_name(origin, spec.width)}"
+        if self.landing_square(state, move) is None:
+            entry = self.portal_entry(state, move)
+            text += "-" + (_square_name(entry, spec.width) if entry is not None else "?")
         text += ">x" if state.board[target] else ">"
         text += _square_name(target, spec.width)
-        if promoted:
+        struck, overridden = self._strike_text(state, move, foreign)
+        if promoted and not overridden:
             text += f"={spec.piece_ids[promoted - 1]}"
-        return text
+        return text + struck
 
     @property
     def _has_folds(self) -> bool:
@@ -794,6 +837,10 @@ class Engine:
             MOVE_NORMAL, MOVE_PROMOTION,
         ):
             return None
+        # SR4m (P3): a capture that places a survivor under ``choose`` carries its landing in
+        # the tag, through a fold or not, and names no fold.
+        if self.landing_square(state, move) is not None:
+            return None
         end = tag - 1
         way_in = self.fold_square(state, end)
         dest = portals.dest[portals.end_types[end]]
@@ -802,7 +849,7 @@ class Engine:
             return None
         return way_in, way_out
 
-    def _fold_text(self, state: GameState, move: int) -> str:
+    def _fold_text(self, state: GameState, move: int, foreign: bool = False) -> str:
         """A move through a fold (schema 24, `docs/archive/plan-portals-2.md` §3R.2): its way in, and
         its way out, which is where it ends. ``Ra3-b3~e4`` (in at b3, out on e4); a capture
         ``Ra3-b3~xe4``; a promotion ``Pc6-c7~f8=Q``. A stay is written as any move,
@@ -815,18 +862,22 @@ class Engine:
         text = f"{piece}{_square_name(origin, spec.width)}-{_square_name(way_in, spec.width)}~"
         text += "x" if state.board[target] else ""
         text += _square_name(target, spec.width)
-        if kind == MOVE_PROMOTION:
+        # SR4m (P3, P4): the far square is the capture square, read as anywhere.
+        struck, overridden = self._strike_text(state, move, foreign)
+        if kind == MOVE_PROMOTION and not overridden:
             text += f"={spec.piece_ids[promoted]}"
-        return text
+        return text + struck
 
     def portal_entry(self, state: GameState, move: int) -> int | None:
         """The square of the portal end a ``MOVE_PORTAL`` goes in by, read off the board.
 
         The move word names the end by its type, which is unique on the board, so a stored
-        transit means the same move wherever that end stands (schema 19).
+        transit means the same move wherever that end stands (schema 19). SR4m (P3): a capture
+        that places a survivor under ``choose`` carries its landing there instead and names no
+        end, so it has none (``None``).
         """
         spec = self.spec
-        if spec.portals is None:
+        if spec.portals is None or self.landing_square(state, move) is not None:
             return None
         value = spec.encode_piece(WILD, move_portal(move))
         square = state.board.find(bytes((value,)))
@@ -848,10 +899,16 @@ class Engine:
         mover, victim = state.board[origin], state.board[struck]
         cell = spec.type_of(mover) * strike.n_types + spec.type_of(victim)
         own = spec.owner_of(mover) == spec.owner_of(victim)
+        if own and move & MOVE_FOREIGN:
+            return None  # SR4h: a commanded own-side capture strikes nothing
         onto = strike.own_onto_to if own else strike.onto_to
         if not onto or onto[cell] < 0:
             return None
-        return strike.landing[spec.owner_of(mover)][struck][move_landing(move)]
+        # SR4k (O3): a held piece's landings are its holder's, the side that moves it.
+        player = spec.owner_of(mover)
+        if player == WILD:
+            player = state.side_to_move
+        return strike.landing[player][struck][move_landing(move)]
 
     def _reborn(self, state: GameState, move: int, becomes: int) -> str:
         """Where a struck piece was reborn under ``position: "home"`` (schema 17), as text.

@@ -1,20 +1,24 @@
 """SR2b (`docs/plan-schema-next.md` §3.2, rows T9, T10, V5 and V6): the readings that should need
-no core, each fed to the core past the validator and held to its ruled reading move by move.
+no core, each held to its ruled reading move by move (fed to the core past the validator while
+refused; every row here is lifted now, by SR2b itself or by SR4h, SR4i and SR4j).
 
 * **T10** (`strike.by` beside `strike.switches_sides`): ``by`` narrows which captures strike and
-  ``switches_sides`` which capturers change sides, independently. The core disagrees: it reads
+  ``switches_sides`` which capturers change sides, independently. The core disagreed: it read
   the strike's position for every capturer that flips, so under rifle a switcher outside ``by``
-  stays where it stood (and `compile._compile_strike` flips only a listed striker). Refused
-  still, handed to SR4j, a strict xfail here.
+  stayed where it stood (and `compile._compile_strike` flipped only a listed striker). Handed
+  to SR4j, which lifted it (the test below, a strict xfail until then, and
+  `tests/test_strike_lists_apart.py`).
 * **V5, V6** (a command beside `strike` or `contacts`): a command moves onto empty squares
   unless ``captures_own``, so without it the strike and the contacts never meet a commanded
   move, and the pair plays as each rule alone: lifted. A commanded own-side capture under
-  ``captures_own`` should be an ordinary removal; the core instead panics beside a strike (the
-  own-side table is empty) and reads an own contact link beside contacts, so that half stays
-  refused, handed to SR4h with strict xfails here.
+  ``captures_own`` is an ordinary removal; the core panicked beside a strike (the own-side
+  table is empty) and read an own contact link beside contacts, so that half was refused and
+  handed to SR4h, which lifted it (`strike_writes` reads no table for it; the test below,
+  a strict xfail until then, and `tests/test_commanders_hand.py`).
 * **T9** (an own contact link beside `must_capture`): moving onto your own piece is no capture.
-  The core's `restrict` counts any occupied target as one, so the merge is compelled; refused
-  still, handed to SR4i, a strict xfail here.
+  The core's `restrict` counted any occupied target as one, so the merge was compelled; handed
+  to SR4i, which lifted it (`restrict` asks the target's owner; the test below, a strict xfail
+  until then, and `tests/test_own_contact_must_capture.py`).
 
 The oracles are this file's: the command pair's legal list is the strike's (or contact's) own
 moves and the command's foreign moves, each applied as its own game applies it; the switch's
@@ -33,12 +37,9 @@ from typing import Any
 
 import pytest
 
-import chess_variant_sandbox.engine.compile as compile_module
 from chess_variant_sandbox.engine import Engine
-from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_FOREIGN
 from chess_variant_sandbox.engine.state import GameState
-from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import validate_spec
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,11 +82,6 @@ def _engine(spec: dict[str, Any]) -> Engine:
     return Engine(spec)
 
 
-def _past_the_validator(monkeypatch: pytest.MonkeyPatch, spec: dict[str, Any]) -> Engine:
-    monkeypatch.setattr(compile_module, "validate_or_raise", lambda spec: None)
-    return Engine(compile_spec(spec))
-
-
 def _between(engine: Engine, state: GameState, origin: str, target: str) -> int:
     wanted = (engine._square_index(origin), engine._square_index(target))
     found = [m for m in engine.legal_moves(state) if (m & 0xFF, (m >> 8) & 0xFF) == wanted]
@@ -116,16 +112,15 @@ T10_POSITION = {
 }
 
 
-def test_by_beside_switches_sides_stays_refused() -> None:
-    errors = validate_spec(_chess(strike=T10_STRIKE))
-    assert "T10" in refused_ids(errors), errors
+def test_by_beside_switches_sides_validates() -> None:
+    """SR4j lifted T10."""
+    assert validate_spec(_chess(strike=T10_STRIKE)) == []
 
 
-@pytest.mark.xfail(strict=True, reason="SR4j: the core reads a strike's position for every "
-                   "flipping capturer (a switcher outside `by` stays under rifle), and "
-                   "`compile._compile_strike` flips only a listed striker")
-def test_each_capturer_reads_its_two_lists(monkeypatch: pytest.MonkeyPatch) -> None:
-    engine = _past_the_validator(monkeypatch, _chess(strike=T10_STRIKE))
+def test_each_capturer_reads_its_two_lists() -> None:
+    """A strict xfail until SR4j: the core read a strike's position for every flipping
+    capturer, and `compile._compile_strike` flipped only a listed striker."""
+    engine = _engine(_chess(strike=T10_STRIKE))
     spec = engine.spec
     state = engine.make_state(T10_POSITION, side_to_move=0, moved=["e1", "e8"])
     for (origin, target), (ends, owner) in T10_EXPECTED.items():
@@ -158,10 +153,10 @@ class TestACommandBesideAStrikeOrContacts:
         assert validate_spec(_commanding(_chess(**rules), "N", KNIGHT_COMMAND)) == []
 
     @pytest.mark.parametrize("rules", COMMANDS_BESIDE.values(), ids=COMMANDS_BESIDE.keys())
-    def test_with_captures_own_it_stays_refused(self, rules: dict[str, Any]) -> None:
-        rid = {"strike": "V5", "contacts": "V6"}[next(iter(rules))]
+    def test_with_captures_own_it_validates_too(self, rules: dict[str, Any]) -> None:
+        """SR4h lifted the turncoat half (V5, V6)."""
         errors = validate_spec(_commanding(_chess(**rules), "K", KING_COMMAND))
-        assert rid in refused_ids(errors), errors
+        assert errors == [], errors
 
     @pytest.mark.parametrize("rules", COMMANDS_BESIDE.values(), ids=COMMANDS_BESIDE.keys())
     def test_the_pair_plays_as_each_rule_alone(self, rules: dict[str, Any]) -> None:
@@ -219,27 +214,22 @@ OWN_CONTACT = {"position": "advance", "immune": ["K"], "links": [
     {"mover": "Q", "onto": "N", "own": True, "mover_to": "R"}]}
 
 
-@pytest.mark.xfail(strict=True, reason="SR4h: a commanded own-side capture beside a strike or "
-                   "contacts; the core panics on the strike's empty own-side table and reads an "
-                   "own contact link")
 @pytest.mark.parametrize("rules", [{"strike": RIFLE}, {"strike": ANDERNACH}, {"strike": CIRCE},
                                    {"contacts": OWN_CONTACT}],
                          ids=["rifle", "andernach", "circe", "own link"])
-def test_a_commanded_own_side_capture_is_an_ordinary_removal(
-    monkeypatch: pytest.MonkeyPatch, rules: dict[str, Any]
-) -> None:
-    engine = _past_the_validator(monkeypatch, _commanding(_chess(**rules), "K", KING_COMMAND))
+def test_a_commanded_own_side_capture_is_an_ordinary_removal(rules: dict[str, Any]) -> None:
+    """A strict xfail until SR4h: the core panicked on the strike's empty own-side table and
+    read an own contact link."""
+    engine = _engine(_commanding(_chess(**rules), "K", KING_COMMAND))
     state = engine.make_state(K2_MATE, side_to_move=0)
-    try:
-        for target in ("h5", "b5"):
-            move = _between(engine, state, "e2", target)
-            assert move & MOVE_FOREIGN
-            after = engine.apply(state, move)
-            assert after.board[engine._square_index(target)] == state.board[
-                engine._square_index("e2")]
-            assert after.board[engine._square_index("e2")] == 0
-    except BaseException as exc:  # a core panic is a BaseException
-        raise AssertionError(f"the core: {exc}") from None
+    for target in ("h5", "b5"):
+        move = _between(engine, state, "e2", target)
+        assert move & MOVE_FOREIGN
+        assert "->" not in engine.describe_move(state, move)
+        after = engine.apply(state, move)
+        assert after.board[engine._square_index(target)] == state.board[
+            engine._square_index("e2")]
+        assert after.board[engine._square_index("e2")] == 0
 
 
 # --------------------------------------------------------------------------- T9
@@ -249,15 +239,14 @@ MERGE = {"position": "advance", "immune": ["K"],
          "links": [{"mover": "P", "onto": "R", "own": True, "mover_to": "Q"}]}
 
 
-def test_an_own_link_beside_must_capture_stays_refused() -> None:
-    errors = validate_spec(_chess(contacts=MERGE, must_capture=True))
-    assert "T9" in refused_ids(errors), errors
+def test_an_own_link_beside_must_capture_validates() -> None:
+    """SR4i lifted T9."""
+    assert validate_spec(_chess(contacts=MERGE, must_capture=True)) == []
 
 
-@pytest.mark.xfail(strict=True, reason="SR4i: the core's `restrict` counts a move onto an own "
-                   "piece as a capture, so must_capture compels the merge")
-def test_an_own_contact_is_no_capture_for_must_capture(monkeypatch: pytest.MonkeyPatch) -> None:
-    engine = _past_the_validator(monkeypatch, _chess(contacts=MERGE, must_capture=True))
+def test_an_own_contact_is_no_capture_for_must_capture() -> None:
+    """A strict xfail until SR4i: `restrict` counted a move onto an own piece as a capture."""
+    engine = _engine(_chess(contacts=MERGE, must_capture=True))
     merge_only = {"e1": ("K", 0), "b2": ("P", 0), "a3": ("R", 0), "e8": ("K", 1), "h7": ("P", 1)}
     state = engine.make_state(merge_only, side_to_move=0, moved=list(merge_only))
     texts = engine.move_texts(state)

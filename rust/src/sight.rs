@@ -180,7 +180,7 @@ impl<'t> Game<'t> {
             }
         }
         let victim = victim.unwrap_or_else(|| {
-            if occupant == 0 || !t.has_capture_matrix { usize::MAX } else { t.type_of(occupant) }
+            if occupant == 0 || !t.has_capture_matrix { usize::MAX } else { t.victim_of(occupant) }
         });
         for source in t.attackers_of(player, square) {
             if self.board[source.origin as usize] != source.piece_value {

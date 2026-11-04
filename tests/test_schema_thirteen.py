@@ -134,9 +134,6 @@ class TestTheValidator:
             ("strike", lambda spec: set_strike(spec, effect="demote", position="stay"), "W1"),
             ("contacts", lambda spec: set_contacts(spec, effect="promote"), "W2"),
             ("explode_on_capture", set_explosion, "W3"),
-            ("drops", lambda spec: spec["rules"].__setitem__("drops", {"from_captures": True}),
-             "W4"),
-            ("npcs", lambda spec: set_npc(spec, "N", ["c3", "c4", "d4", "d3"]), "W5"),
             ("wrap", lambda spec: set_wrap(spec, "files"), "W6"),
         ],
     )
@@ -149,6 +146,20 @@ class TestTheValidator:
         assert spec["rules"].get(key), f"the helper did not write rules.{key}"
         errors = validate_spec(spec)
         assert rid in refused_ids(errors), errors
+
+    def test_a_hand_beside_a_sweep_is_allowed(self, sweeping: dict[str, Any]) -> None:
+        """SR4b lifted W4: every swept enemy piece goes to the hand
+        (`tests/test_swept_hand.py` plays it)."""
+        spec = copy.deepcopy(sweeping)
+        spec["rules"]["drops"] = {"from_captures": True}
+        assert validate_spec(spec) == []
+
+    def test_wild_pieces_beside_a_sweep_are_allowed(self, sweeping: dict[str, Any]) -> None:
+        """SR4c lifted W5: every swept wild piece pays its bounty to the mover
+        (`tests/test_swept_bounty.py` plays it)."""
+        spec = copy.deepcopy(sweeping)
+        set_npc(spec, "N", ["c3", "c4", "d4", "d3"])
+        assert "W5" not in refused_ids(validate_spec(spec))
 
     def test_a_promoting_piece_may_not_sweep(self, sweeping: dict[str, Any]) -> None:
         """So no sweeper is ever the en passant piece, and no sweep opens a window."""

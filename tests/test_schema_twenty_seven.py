@@ -24,7 +24,6 @@ from chess_variant_sandbox.engine.bridge import build_tables
 from chess_variant_sandbox.engine.compile import _side_types, compile_spec
 from chess_variant_sandbox.engine.state import GameState, Outcome
 from chess_variant_sandbox.spec import load_spec, validate_spec
-from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, opening_counts
 from tests.feature_inventory import _schema_twenty_seven_uses
 
@@ -156,10 +155,10 @@ class TestValidation:
         assert validate_spec(gap({"pieces": ["A", "B"], "per_type": True}))
         assert validate_spec(gap({"pieces": ["A", "B"]}))
 
-    def test_beside_drops_is_refused(self) -> None:
+    def test_beside_drops_validates(self) -> None:
+        """SR4d lifted H11: a held piece counts (`tests/test_held_kind_counts.py` plays it)."""
         spec = gap(drops={"from_captures": True})
-        errors = _errors_about_own(spec)
-        assert "H11" in refused_ids(errors), validate_spec(spec)
+        assert validate_spec(spec) == []
 
     def test_beside_rounds_validates(self) -> None:
         assert validate_spec(gap(simultaneous={})) == []

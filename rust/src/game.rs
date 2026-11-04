@@ -234,6 +234,9 @@ struct StrikeOutcome {
     count: usize,
     survivor: Option<(usize, u8)>,
     mover_material_changed: bool,
+    /// Whether the attacker stayed on its origin: the strike's `stay`, read only where the
+    /// strike reaches the meeting (SR4j: a switch alone advances).
+    stayed: bool,
 }
 
 impl StrikeOutcome {
@@ -1104,7 +1107,7 @@ impl<'t> Game<'t> {
         let victim = if occupant == 0 {
             usize::MAX
         } else {
-            self.t.type_of(occupant)
+            self.t.victim_of(occupant)
         };
         self.attacks_square_as(player, square, victim)
     }
@@ -1226,7 +1229,7 @@ impl<'t> Game<'t> {
         let index = source.prefix_len as usize;
         let attacker = t.type_of(source.piece_value);
         let blocks = |occupant: u8| {
-            occupant != 0 && t.has_capture_matrix && !t.may_capture(attacker, t.type_of(occupant))
+            occupant != 0 && t.has_capture_matrix && !t.may_capture(attacker, t.victim_of(occupant))
         };
         if path[..index].iter().any(|square| blocks(self.board[*square as usize])) {
             return false;
@@ -1338,7 +1341,7 @@ impl<'t> Game<'t> {
     ) -> bool {
         let victim = victim.unwrap_or_else(|| {
             let occupant = self.board[square];
-            if occupant == 0 { usize::MAX } else { self.t.type_of(occupant) }
+            if occupant == 0 { usize::MAX } else { self.t.victim_of(occupant) }
         });
         self.attacks_square_as(player, square, victim)
             || (portals.folds.is_some() && self.fold_attacks(portals, player, square, victim))
@@ -1771,6 +1774,43 @@ impl<'t> Game<'t> {
         }
     }
 
+    /// SR4m (P3, P4, `docs/plan-schema-next.md` §2.10): whether a capture by `mover_type`,
+    /// moved by `player`, of the piece on `square` fans out over its landings -- a strike
+    /// under `position: "choose"` that leaves the victim standing -- so its words carry a
+    /// landing in the tag. `fan_out_landing`'s own test, asked ahead of it where a word would
+    /// otherwise carry a portal end or a fold end there: such a capture through an end or a
+    /// fold names its landing and no end, so two ways to one exit with one landing are one
+    /// move (the position after is the same). Cold: only portal games ask it.
+    #[cold]
+    #[inline(never)]
+    pub(super) fn fans_out(&self, mover_type: usize, player: usize, square: usize) -> bool {
+        let t = self.t;
+        let Some(rule) = t.strike.as_ref() else {
+            return false;
+        };
+        let victim = self.board[square];
+        if rule.position != StrikePosition::Choose || victim == 0 {
+            return false;
+        }
+        let cell = mover_type * rule.n_types + t.type_of(victim);
+        let becomes = if t.owner_of(victim) == player { rule.own_to[cell] } else { rule.to[cell] };
+        becomes >= 0
+    }
+
+    /// SR4m: `fans_out` for a word already generated, read off the board it was generated
+    /// on: the mover on its origin (`player` moving a held piece), the victim on its
+    /// target. `dedup_fold_segment` asks it to tell a landing from a fold end in the tag.
+    /// `player` is the side the words were generated for. A commanded piece (the
+    /// opponent's) never strikes by a landing (SR4h), so never fans.
+    fn word_fans_out(&self, m: u32, player: usize) -> bool {
+        let value = self.board[move_from(m)];
+        if value == 0 {
+            return false;
+        }
+        let owner = self.t.owner_of(value);
+        (owner == player || owner == WILD) && self.fans_out(self.t.type_of(value), player, move_to(m))
+    }
+
     fn fan_out_landing(
         &self, out: &mut Vec<u32>, m: u32, mover_type: usize, player: usize,
         captured_square: usize,
@@ -1843,6 +1883,22 @@ impl<'t> Game<'t> {
         let attacker = self.board[target];
         let mover_owner = self.t.owner_of(attacker);
         let owner = self.t.owner_of(captured);
+        // SR4h (V5, V6, `docs/plan-schema-next.md` §2.4): a commanded piece taking its own
+        // side (`captures_own`) is an ordinary removal: nothing struck, no link read, no side
+        // changed. The attacker and its victim share an owner who is not the side to move
+        // (both callers play the move as `self.side`); a player's own contact is the case
+        // where that owner *is* the side to move.
+        if owner == mover_owner && mover_owner != self.side {
+            return None;
+        }
+        // SR4k (O3, O4, `docs/plan-schema-next.md` §2.11): a held piece (nobody's, moved by
+        // the side to move) strikes, or meets its target, as its holder's piece of the type
+        // would: its holder's landings and the enemy tables (it takes only the holder's
+        // opponent). It stays nobody's: a change of type is written into nobody's block, and
+        // no side switch moves it, since moving it never made it the holder's. A struck
+        // nobody's piece is the victim's half: it becomes what the table says, nobody's still.
+        let held = mover_owner == WILD;
+        let holder = if held { self.side } else { mover_owner };
         let cell = mover_type * strike.n_types + self.t.type_of(captured);
         // Schema 11: a friendly target reads its own pair of tables. Movegen offers such a
         // move only where `own_link` is set, so the tables are never empty here.
@@ -1854,16 +1910,22 @@ impl<'t> Game<'t> {
         // Schema 17 (Q540): the attacker changes sides (Andernach) -- only on a meeting
         // with the other side, since `switches_sides` is a strike's and a strike never
         // meets its own.
-        let flips = owner != mover_owner && strike.flips(cell);
-        if becomes == -1 && mover_becomes < 0 && !flips {
+        let flips = owner != mover_owner && !held && strike.flips(cell);
+        // SR4j (T10, `docs/plan-schema-next.md` §2.4): `by` says which captures strike and
+        // `switches_sides` which capturers change sides, read apart. A meeting the strike
+        // does not reach (a capturer outside `by`, an unlinked victim) is an ordinary
+        // capture, which advances, and the switch alone changes the capturer's side there.
+        let struck = becomes != -1 || mover_becomes >= 0;
+        if !struck && !flips {
             return None;
         }
+        let position = if struck { strike.position } else { StrikePosition::Advance };
         // The survivor is a piece that has just become something else, which is the
         // same event as a promotion and a drop and takes the same answer: it enters
         // play as its new type's initial orientation. There is no other reading -- the
         // facing it had belonged to the type it no longer is. The attacker's half of a
         // contact is the same event read from the other side and gets the same answer.
-        let landing = match strike.position {
+        let landing = match position {
             StrikePosition::Stay => origin,
             _ => target,
         };
@@ -1903,7 +1965,7 @@ impl<'t> Game<'t> {
         // a home square anything stands on removes it (circe). And `flips` (above) only
         // changes what `attacker` is, so every arm carries it.
         let changes_attacker = mover_becomes >= 0 || flips;
-        let (writes, count, survivor) = match (strike.position, becomes >= 0) {
+        let (writes, count, survivor) = match (position, becomes >= 0) {
             (StrikePosition::Stay, true) => {
                 let survivor = self.t.arriving_value(owner, becomes as usize, captured_square);
                 (
@@ -1921,7 +1983,7 @@ impl<'t> Game<'t> {
                 )
             }
             (StrikePosition::Choose, true) => {
-                let chosen = strike.landing(mover_owner, captured_square)[landing_index] as usize;
+                let chosen = strike.landing(holder, captured_square)[landing_index] as usize;
                 let survivor = self.t.arriving_value(owner, becomes as usize, chosen);
                 (
                     [(origin, 0), (target, attacker), (chosen, survivor), (0, 0)],
@@ -1963,7 +2025,8 @@ impl<'t> Game<'t> {
                 ([(captured_square, 0), (origin, 0), (target, attacker), (0, 0)], 3, None)
             }
         };
-        Some(StrikeOutcome { writes, count, survivor, mover_material_changed })
+        let stayed = position == StrikePosition::Stay;
+        Some(StrikeOutcome { writes, count, survivor, mover_material_changed, stayed })
     }
 
     /// The squares wild pieces stand on right now, ascending (schema 9).
@@ -2298,7 +2361,7 @@ impl<'t> Game<'t> {
         self.write_gate(m, &mut played);
         self.write_unmoved(&played);
         self.write_ep_window(m, &played);
-        self.write_payments(&played);
+        self.write_payments(&played, &cleared);
 
         // The phase (schema 9): every wild piece walks, after the player's move is
         // complete and the en passant window has been set, and before the hand, the
@@ -2332,7 +2395,7 @@ impl<'t> Game<'t> {
             key ^= t.zobrist_ep_file(self.ep_target);
         }
 
-        self.deposit_capture(&mut played);
+        self.deposit_capture(&mut played, &cleared);
         self.count_check(player);
         let coloured = self.write_territory(&played, &mut key);
         let (irreversible, progress) = progress_of(
@@ -2594,8 +2657,7 @@ impl<'t> Game<'t> {
             }
             played.struck = outcome.survivor;
             played.contact_changed_mover = outcome.mover_material_changed;
-            played.stayed =
-                t.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Stay);
+            played.stayed = outcome.stayed;
             if played.struck.is_some() {
                 // Both positions that place a survivor off the three squares the
                 // generic restore knows mark it here: `choose` with its landing
@@ -2753,8 +2815,11 @@ impl<'t> Game<'t> {
     /// TC4: under a purse the same payment also fills the payee's purse, capped at
     /// `PURSE_MAX`. That one *is* logged (`purse_log`, only under the rule), because
     /// the cap loses what passes it and a read-back could not find it again.
+    ///
+    /// SR4c (W5): a sweep's swept pieces pay too, each as its capture would
+    /// (`pay_swept`, read back by `refund_swept` off the same `cleared` log).
     #[inline(always)]
-    fn write_payments(&mut self, played: &Played) {
+    fn write_payments(&mut self, played: &Played, cleared: &[(usize, u8)]) {
         let t = self.t;
         let player = played.player;
         let paid = if t.pays && played.captured != 0 {
@@ -2784,19 +2849,83 @@ impl<'t> Game<'t> {
                 self.purse[player] = after;
             }
             if paid > 0.0 && payee < 2 {
-                let before = self.purse[payee];
-                let after = (before + paid as u16).min(PURSE_MAX);
-                if after != before {
-                    self.working_key ^= purse.key(payee, before) ^ purse.key(payee, after);
-                    self.purse[payee] = after;
+                self.fill_purse(purse, payee, paid);
+            }
+        }
+        // SR4c (W5): a sweep takes every piece on its path, and each pays as a capture of it
+        // would, after the landing's (under the purse's log pushed above). SR4f (T8), SR4l
+        // (O22): a blast pays for every piece it destroys alike, to the mover (or `bounty_to`'s
+        // payee), into the points and the purse: a wild piece its route's bounty, an enemy its
+        // type's, the mover's own nothing (the capturer, first on the log, among them).
+        // `cleared` is the one or the other (a sweep is refused beside a blast).
+        if t.pays && !cleared.is_empty() {
+            self.pay_swept(player, cleared);
+        }
+    }
+
+    /// TC4: a payment into `payee`'s purse, capped at `PURSE_MAX`, its key moved with it.
+    /// Logged by the caller (`purse_log`), since the cap loses what passes it.
+    #[inline(always)]
+    fn fill_purse(&mut self, purse: &PurseTables, payee: usize, paid: f64) {
+        let before = self.purse[payee];
+        let after = (before + paid as u16).min(PURSE_MAX);
+        if after != before {
+            self.working_key ^= purse.key(payee, before) ^ purse.key(payee, after);
+            self.purse[payee] = after;
+        }
+    }
+
+    /// SR4c (W5, `docs/plan-schema-next.md` §2.6): a sweep's swept pieces paid for, in ray
+    /// order, each as `Tables::bounty_paid` says a capture of it pays (a wild piece its
+    /// route's bounty at the square it stood on, any piece but the mover's own its type's), to
+    /// `bounty_payee`, into the points and under a purse the purse. `cleared` is the sweep's
+    /// path alone while W3 stands (`sweep_to_hand`). The points are not logged: `unmake`
+    /// reads them back off the same `Undo.cleared` (`refund_swept`), as it reads the
+    /// landing's back off `captured`; the purse is under its log already.
+    ///
+    /// SR4f (T8), SR4l (O22): a blast's victims go through here too, each as taking it would
+    /// pay (the capturer, the mover's own, pays nothing).
+    #[cold]
+    fn pay_swept(&mut self, player: usize, cleared: &[(usize, u8)]) {
+        let t = self.t;
+        for &(square, value) in cleared {
+            let paid = t.bounty_paid(value, square, player);
+            if paid == 0.0 {
+                continue;
+            }
+            let payee = t.bounty_payee(value, player);
+            if payee >= 2 {
+                continue;
+            }
+            self.points[payee] += paid;
+            if let Some(purse) = t.purse.as_deref() {
+                if paid > 0.0 {
+                    self.fill_purse(purse, payee, paid);
                 }
+            }
+        }
+    }
+
+    /// SR4c: `pay_swept`'s points taken back, in the reverse of the order they were paid.
+    /// `player` is the side that made the move (`unmake` has flipped the side back).
+    #[cold]
+    fn refund_swept(&mut self, player: usize, cleared: &[(usize, u8)]) {
+        let t = self.t;
+        for &(square, value) in cleared.iter().rev() {
+            let paid = t.bounty_paid(value, square, player);
+            if paid == 0.0 {
+                continue;
+            }
+            let payee = t.bounty_payee(value, player);
+            if payee < 2 {
+                self.points[payee] -= paid;
             }
         }
     }
 
     /// Drops: captured pieces go to captor's hand.
     #[inline(always)]
-    fn deposit_capture(&mut self, played: &mut Played) {
+    fn deposit_capture(&mut self, played: &mut Played, cleared: &[(usize, u8)]) {
         let t = self.t;
         if let Some(ref drops_rule) = t.drops {
             if played.kind == MOVE_DROP {
@@ -2817,6 +2946,35 @@ impl<'t> Game<'t> {
                     debug_assert!(played.hand.is_none(), "a move changed two hand entries");
                     played.hand = Some((played.player as u8, demoted as u8, 1));
                 }
+            }
+            if played.kind == MOVE_SWEEP && drops_rule.from_captures {
+                self.sweep_to_hand(played.player, cleared, 1);
+            }
+        }
+    }
+
+    /// SR4b (W4): a sweep's swept pieces into the mover's hand, each as a capture's victim
+    /// goes (demoted, an unlimited slot untouched), every one the mover does not own; a swept
+    /// friendly piece reaches no hand. `delta` is +1 from `make` and -1 from `unmake`, which
+    /// reads the same `cleared` log back, so the variable-length deposit is undone as the
+    /// clear is and `Undo` does not grow. The landing's own capture is `deposit_capture`'s
+    /// ordinary entry (`Undo.hand`).
+    ///
+    /// `cleared` is the sweep's path alone: a sweep is refused beside `explode_on_capture`
+    /// (W3), whose victims share the log and would reach no hand (H6). The sweep switch
+    /// (SR6c) that lifts W3 must split the log first.
+    #[cold]
+    fn sweep_to_hand(&mut self, player: usize, cleared: &[(usize, u8)], delta: i32) {
+        let t = self.t;
+        let Some(drops_rule) = t.drops.as_ref() else { return };
+        for &(_, value) in cleared {
+            if value == 0 || t.owner_of(value) == player {
+                continue;
+            }
+            let demoted = t.demotions[t.type_of(value)];
+            if !drops_rule.is_unlimited(demoted) {
+                let slot = &mut self.hands[player][demoted];
+                *slot = slot.wrapping_add_signed(delta);
             }
         }
     }
@@ -3041,8 +3199,17 @@ impl<'t> Game<'t> {
                     rule.rebirth_square(t.owner_of(undo.captured), becomes, undo.captured_square)
                         as usize
                 } else {
-                    rule.landing(t.owner_of(undo.moving), undo.captured_square)
-                        [undo.placed as usize - 1] as usize
+                    // SR4k: a held piece's landings are its holder's, the side that moved
+                    // (`self.side` is put back below, so read through the turn count).
+                    let owner = t.owner_of(undo.moving);
+                    let player = if owner != WILD {
+                        owner
+                    } else if self.turns_taken != undo.turns_taken {
+                        1 - self.side
+                    } else {
+                        self.side
+                    };
+                    rule.landing(player, undo.captured_square)[undo.placed as usize - 1] as usize
                 };
                 self.put(placed_on, 0);
             }
@@ -3089,10 +3256,21 @@ impl<'t> Game<'t> {
         }
         self.remaining = undo.remaining;
         self.turns_taken = undo.turns_taken;
+        // SR4b (W4): the swept pieces' deposit, read back off the log `make` wrote it from;
+        // `self.side` is the mover again (above).
+        if undo.kind == MOVE_SWEEP && self.t.drops.as_ref().is_some_and(|rule| rule.from_captures) {
+            self.sweep_to_hand(self.side, &undo.cleared, -1);
+        }
         // The bounty, taken back (schema 9). `self.side` is the side that made this move
         // again by here -- the flip above is undone from `turns_taken`, which is the only
         // reliable witness -- and what the move was paid is the same question `make`
         // asked of the same two fields.
+        // SR4c (W5): the swept pieces' bounties first, the reverse of `make`'s order.
+        if self.t.pays && !undo.cleared.is_empty() {
+            // SR4c (W5) a sweep's, SR4f (T8) and SR4l (O22) a blast's victims, read back off
+            // the same log; the purse comes back off its own log.
+            self.refund_swept(self.side, &undo.cleared);
+        }
         if self.t.pays && undo.captured != 0 {
             let paid = self.t.bounty_paid(undo.captured, undo.captured_square, self.side);
             if paid != 0.0 {
@@ -3278,12 +3456,19 @@ impl<'t> Game<'t> {
 /// alike but for the fold end they went through (`move_fold`) reach one position, so they
 /// are one move: the first occurrence keeps its place and takes the lowest tag, which is
 /// the direct move's 0 where there is one, else the lowest fold end's.
-fn dedup_fold_segment(out: &mut Vec<u32>, start: usize) {
+///
+/// SR4m (P3): under a strike's `position: "choose"`, a capture that places a survivor
+/// carries its landing in the tag, direct or through a fold (`Game::fans_out`), and names no
+/// fold end; `landing(m)` says which words those are (the same answer for every word with
+/// one origin and target), and they are compared whole, so two landings stay two moves and a
+/// go-through with a direct move's landing is that move.
+fn dedup_fold_segment(out: &mut Vec<u32>, start: usize, landing: impl Fn(u32) -> bool) {
     const WORD: u32 = MOVE_BASE_MASK;
     let mut write = start;
     for index in start..out.len() {
         let m = out[index];
-        if let Some(kept) = out[start..write].iter_mut().find(|kept| **kept & WORD == m & WORD) {
+        let key = if landing(m) { WORD | MOVE_TAG_MASK } else { WORD };
+        if let Some(kept) = out[start..write].iter_mut().find(|kept| **kept & key == m & key) {
             if move_fold(m) < move_fold(*kept) {
                 *kept = m;
             }
@@ -3571,9 +3756,10 @@ impl<'t> Game<'t> {
 
             // Schema 24: a go-through to a square also reached directly, or through two
             // folds, is one move (`dedup_fold_segment`); only a segment holding a tagged
-            // word can have one.
-            if FOLDS && out[segment_start..].iter().any(|&m| move_fold(m) != 0) {
-                dedup_fold_segment(out, segment_start);
+            // word can have one, or (SR4m) under `choose`, where a go-through capture that
+            // places a survivor carries its landing, which may be 0.
+            if FOLDS && (choosing || out[segment_start..].iter().any(|&m| move_fold(m) != 0)) {
+                dedup_fold_segment(out, segment_start, |m| choosing && self.word_fans_out(m, player));
             } else if ambiguous {
                 dedup_segment(out, segment_start);
             }
@@ -4086,24 +4272,45 @@ impl<'t> Game<'t> {
 
         let promoting = t.is_promoting(piece_type);
         let promo_optional = promoting && t.promotion_optional(piece_type);
+        // SR4m (P3, P4): the exit is the capture square, read as anywhere; `make` plays the
+        // strike or link there. A capture that places a survivor under `position: "choose"`
+        // fans out over the landings (`fans_out`), each word carrying its landing and no
+        // end, so the exits reached through two ends are one move: the sorted list puts them
+        // side by side, and the second is skipped.
+        let mut fanned = usize::MAX;
         for &(exit, _, entry_type) in exits.iter() {
             let exit = exit as usize;
-            let word = with_portal(encode_move(origin, exit, MOVE_PORTAL, 0), entry_type as usize);
+            let fans = self.board[exit] != 0 && self.fans_out(piece_type, player, exit);
+            if fans {
+                if fanned == exit {
+                    continue;
+                }
+                fanned = exit;
+            }
+            let base = encode_move(origin, exit, MOVE_PORTAL, 0);
+            let foreign_bit = if foreign.is_some() { MOVE_FOREIGN } else { 0 };
+            let mut emit = |word: u32| {
+                if fans {
+                    self.fan_out_landing(out, word | foreign_bit, piece_type, player, exit);
+                } else {
+                    out.push(with_portal(word, entry_type as usize) | foreign_bit);
+                }
+            };
             if let Some(foreign) = foreign {
                 if !foreign.must_promote(t, piece_type, leaving, exit) {
-                    out.push(word | MOVE_FOREIGN);
+                    emit(base);
                 }
             } else if promoting && (leaving || t.promotes_on(player, piece_type, exit)) {
                 for &promoted in t.promotion_targets(player, piece_type) {
                     if self.promotion_offered(player, piece_type, promoted) {
-                        out.push(word | ((promoted + 1) << 20));
+                        emit(base | ((promoted + 1) << 20));
                     }
                 }
                 if promo_optional {
-                    out.push(word);
+                    emit(base);
                 }
             } else {
-                out.push(word);
+                emit(base);
             }
         }
     }
@@ -4275,19 +4482,31 @@ impl<'t> Game<'t> {
         }
         let promoting = t.is_promoting(piece_type);
         let promo_optional = promoting && t.promotion_optional(piece_type);
+        // SR4m (P3, P4): the far square is the capture square, read as anywhere. A capture
+        // there that places a survivor under `position: "choose"` fans out over the landings
+        // and carries the landing, not the fold end, so it is the direct capture's word where
+        // there is one (`dedup_fold_segment`). Under every other reading the strike or link
+        // is `make`'s, which reads the far square as the target already.
+        let fans = occupant != 0 && self.fans_out(piece_type, player, far);
         if let Some(foreign) = foreign {
             if !foreign.must_promote(t, piece_type, leaving, far) {
                 let word = encode_move(origin, far, MOVE_NORMAL, 0);
-                out.push(with_fold(word, end + 1) | MOVE_FOREIGN);
+                if fans {
+                    self.fan_out_landing(out, word | MOVE_FOREIGN, piece_type, player, far);
+                } else {
+                    out.push(with_fold(word, end + 1) | MOVE_FOREIGN);
+                }
             }
             return;
         }
         let start = out.len();
         self.push_arrival(
-            out, origin, far, piece_type, player, promoting, leaving, promo_optional, false,
+            out, origin, far, piece_type, player, promoting, leaving, promo_optional, fans,
         );
-        for word in &mut out[start..] {
-            *word = with_fold(*word, end + 1);
+        if !fans {
+            for word in &mut out[start..] {
+                *word = with_fold(*word, end + 1);
+            }
         }
     }
 
@@ -4647,7 +4866,7 @@ impl<'t> Game<'t> {
                         // `attacks_square` would skip the capture matrix and call a
                         // square attacked by a piece that could not take a king.
                         if self.threatened_as(
-                            1 - player, rank * width + file as usize, king_type,
+                            1 - player, rank * width + file as usize, self.t.owned_victim(king_type),
                         ) {
                             crossed_attack = true;
                             break;
@@ -4694,7 +4913,7 @@ impl<'t> Game<'t> {
                     let mut crossed_attack = false;
                     loop {
                         if self.threatened_as(
-                            1 - player, rank * width + file as usize, king_type,
+                            1 - player, rank * width + file as usize, self.t.owned_victim(king_type),
                         ) {
                             crossed_attack = true;
                             break;
@@ -5497,20 +5716,27 @@ impl<'t> Game<'t> {
         // must_capture: antichess — a capture on offer is the only move
         if t.must_capture {
             // A capture takes an enemy piece off the board, and three move kinds can.
-            // A leap, a slide and a hop all refuse a friendly occupant, so an occupied
-            // target under `MOVE_NORMAL` or `MOVE_PROMOTION` holds an enemy piece; an
-            // en passant takes the piece on `ep_victim` and lands on an empty square.
+            // A leap, a slide and a hop refuse a friendly occupant unless an own contact
+            // link (`contacts.links[].own`) lets the mover merge with it, so an occupied
+            // target under `MOVE_NORMAL` or `MOVE_PROMOTION` holds an enemy piece or the
+            // mover's own; SR4i (T9): moving onto your own piece is no capture, so the
+            // target must not be the side to move's. A commanded `captures_own` capture
+            // takes the opponent's piece, which is the mover's enemy. An en passant takes
+            // the piece on `ep_victim` and lands on an empty square.
             // The kinds left out end on an occupied square and take nothing -- a
             // rotation on the piece that is turning, a file-based castling on the
             // king's own rook -- so reading the target square alone would make castling
             // compulsory wherever it is available, which is a rule nobody wrote.
+            let side = self.side;
             let takes = |m: u32, board: &[u8; MAX_SQUARES]| {
                 let kind = move_kind(m);
+                let held = board[move_to(m)];
                 // Schema 13: a sweep takes its path even onto an empty square.
                 kind == MOVE_EN_PASSANT
                     || kind == MOVE_SWEEP
                     || ((kind == MOVE_NORMAL || kind == MOVE_PROMOTION || kind == MOVE_PORTAL)
-                        && board[move_to(m)] != 0)
+                        && held != 0
+                        && t.owner_of(held) != side)
                     // Q1074b3 (C6): a push that throws an enemy off the board takes it; one
                     // that moves its piece, or throws the mover's own off, does not.
                     || (kind == MOVE_PUSH && t.push_takes(board, m))
@@ -5890,10 +6116,11 @@ impl<'t> Game<'t> {
     ///
     /// Schema 27 (Q936): each side is read against its own list, `side_types[side]`, which
     /// is `piece_types` for both unless the rule says `"own"` (`ExtinctionRule::side_types`).
+    /// Under `"own"` a held piece counts (SR4d, H11): `extinction.own` is `short_of`'s `held`.
     fn extinct_per_type(&self, extinction: &ExtinctionRule) -> Option<Outcome> {
         let mover = self.last_mover();
         for side in [mover, 1 - mover] {
-            if self.short_of(side, &extinction.side_types[side], extinction.min_count) {
+            if self.short_of(side, &extinction.side_types[side], extinction.min_count, extinction.own) {
                 return Some(decide(side, extinction.result, Reason::Extinction));
             }
         }
@@ -5906,7 +6133,12 @@ impl<'t> Game<'t> {
     /// alternating play and in rounds. The spy does not (Q935a): *has a spy* is summed over
     /// the spy types (`Game::has_spy`), where this is short at any one type below `min`. An
     /// empty list is never short. Wild pieces are nobody's and are not in `occupied()[side]`.
-    pub(crate) fn short_of(&self, side: usize, types: &[usize], min: usize) -> bool {
+    ///
+    /// `held` (SR4d, H11; `"per_type": "own"` alone) adds `side`'s hand to the count: a
+    /// piece in hand is not lost, so a side whose last piece of a kind is held has not run
+    /// out of it. An unlimited slot sits at 1 and is never spent, so its kind never runs
+    /// out. Without drops the hand is empty and the count is the board's.
+    pub(crate) fn short_of(&self, side: usize, types: &[usize], min: usize, held: bool) -> bool {
         if types.is_empty() {
             return false;
         }
@@ -5914,6 +6146,11 @@ impl<'t> Game<'t> {
         let mut counts = [0usize; MAX_PIECE_TYPES];
         for square in self.occupied()[side].iter() {
             counts[t.type_of(self.board[square])] += 1;
+        }
+        if held {
+            for (piece_type, n) in self.hands[side].iter().enumerate() {
+                counts[piece_type] += *n as usize;
+            }
         }
         types.iter().any(|&piece_type| counts[piece_type] < min)
     }
@@ -6180,7 +6417,7 @@ fn may_take(t: &Tables, attacker: usize, occupant: u16) -> bool {
     if !t.has_capture_matrix {
         return true;
     }
-    t.may_capture(attacker, t.type_of(occupant as u8))
+    t.may_capture(attacker, t.victim_of(occupant as u8))
 }
 
 /// Whether a move may end on an occupied square, for all three movement arms.

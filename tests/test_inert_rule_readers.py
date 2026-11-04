@@ -172,6 +172,11 @@ READERS: dict[str, dict[str, str]] = {
         "empty for the life of the game, so no drop is ever generated to reach it",
         "game.rs::deposit_capture": "`make`'s fill (CS8), behind `captured != 0` and "
         "`from_captures`, which the two refusals switch off between them",
+        "game.rs::sweep_to_hand": "SR4b's swept deposit, reached only behind `from_captures` "
+        "(case 6 switches it off), over a sweep's cleared path, which holds only pieces the "
+        "sweeper may capture (one it may not blocks), so none under case 5",
+        "game.rs::unmake": "SR4b: takes the swept deposit back, behind `from_captures` and "
+        "`MOVE_SWEEP`, over the same log `sweep_to_hand` read, empty under both cases",
         "game.rs::write_gate": "`make`'s gate (Q1059a, CS8): asks whether the hand gates; the "
         "refusals state no `gating`, so `gates` is `None` and it writes nothing",
         "game.rs::generate_pseudo_legal_as": "calls `generate_drops`, which returns at once on "

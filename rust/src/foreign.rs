@@ -125,7 +125,7 @@ impl<'t> Game<'t> {
         let t = self.t;
         let victim = victim.unwrap_or_else(|| {
             let occupant = self.board[square];
-            if occupant == 0 { usize::MAX } else { t.type_of(occupant) }
+            if occupant == 0 { usize::MAX } else { t.victim_of(occupant) }
         });
         for source in t.attackers_of(WILD, square) {
             if self.board[source.origin as usize] != source.piece_value {
@@ -239,6 +239,11 @@ impl<'t> Game<'t> {
         // would (`Game::push_through_as`). A command is refused beside portals, so only a held
         // neutral meets one; one test for every other game.
         let folds = t.portals.as_deref().is_some_and(|portals| portals.folds.is_some());
+        // SR4k (O3): a held piece's capture under `position: "choose"` fans out over its
+        // holder's landing squares, as its holder's piece's would. Only a held piece: a
+        // commanded one never strikes (an empty landing, or SR4h's own-side removal).
+        let choosing = owner == self.side
+            && t.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Choose);
 
         for entry in t.leaps.entries(slot) {
             if entry.requires_unmoved && !origin_unmoved {
@@ -255,7 +260,11 @@ impl<'t> Game<'t> {
                 }
                 let lands = if occupant == 0 { mode & 1 != 0 } else { may_land_on(occupant, mode) };
                 if lands && !must_promote(target) {
-                    out.push(word(target));
+                    if choosing && occupant != 0 {
+                        self.fan_out_landing(out, word(target), piece_type, owner, target);
+                    } else {
+                        out.push(word(target));
+                    }
                 }
             }
         }
@@ -275,7 +284,11 @@ impl<'t> Game<'t> {
                 }
                 let lands = if occupant == 0 { mode & 1 != 0 } else { may_land_on(occupant, mode) };
                 if lands && !must_promote(target) {
-                    out.push(word(target));
+                    if choosing && occupant != 0 {
+                        self.fan_out_landing(out, word(target), piece_type, owner, target);
+                    } else {
+                        out.push(word(target));
+                    }
                 }
                 if occupant != 0 {
                     break;
@@ -315,7 +328,11 @@ impl<'t> Game<'t> {
                 }
                 let lands = if occupant == 0 { mode & 1 != 0 } else { may_land_on(occupant, mode) };
                 if lands && !must_promote(target) {
-                    out.push(word(target));
+                    if choosing && occupant != 0 {
+                        self.fan_out_landing(out, word(target), piece_type, owner, target);
+                    } else {
+                        out.push(word(target));
+                    }
                 }
                 if occupant != 0 {
                     break;
@@ -326,8 +343,8 @@ impl<'t> Game<'t> {
 
         // A go-through to a square also reached directly, or through two folds, is one move
         // (`dedup_fold_segment`, as for a player's piece).
-        if folds && out[segment_start..].iter().any(|&m| move_fold(m) != 0) {
-            dedup_fold_segment(out, segment_start);
+        if folds && (choosing || out[segment_start..].iter().any(|&m| move_fold(m) != 0)) {
+            dedup_fold_segment(out, segment_start, |m| choosing && self.word_fans_out(m, owner));
         } else if t.dedup[slot] {
             dedup_segment(out, segment_start);
         }

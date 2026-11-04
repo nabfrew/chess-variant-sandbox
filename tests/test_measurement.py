@@ -578,7 +578,19 @@ class TestTheFingerprintsPointAtSomething:
 # stock through `player_stocks` and `agents/evaluation.py` a side's own stock (`stock_of`). The
 # same reading for a stock both players share, which is every library game; batch A's replay
 # (SR3r) re-measures. It was "5f16f00a20351d98" after Q1077.
-FROZEN_METRICS = "ed744844a0087fc9"
+# **Moved 2026-11-04 by SR4h (a turncoat capture beside a strike, contacts or a hand)**:
+# `engine/engine.py`'s `describe_move` keeps the foreign bit (`_move_text`), so a commanded
+# own-side capture reads as a plain capture, and `landing_square` answers `None` for it. Read only
+# beside a command that `captures_own` and a strike or contacts, which no library game is, so no
+# number moves; batch B's replay (SR4r) re-measures. It was "ed744844a0087fc9" after SR3b.
+# **Moved 2026-11-04 by SR4k and SR4m, re-frozen by SR4r (batch B's replay)**: SR4k's
+# `describe_move` text and landing for a held piece's strike (`engine/engine.py`: a wild mover
+# strikes as its holder would, a struck nobody's piece stays nobody's) and SR4m's for a strike or
+# a link at a portal's exit (a choosing capture through an end or a fold carries its landing).
+# Read only beside a strike with held pieces or portals, which no library game is; SR4r replayed
+# the library on build b42c85254ca8c92c (`docs/reference/replay-2026-11-04b.md`). It was
+# "bf2782a85e7f1b1a" after SR4h.
+FROZEN_METRICS = "7abe38341bdf5a58"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -946,7 +958,14 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-11-01 by SR3b**: `agents/evaluation.py` reads a side's own stock (as
 # `FROZEN_METRICS` says), the same reading for a shared stock, so no `analysis.json` moves.
 # It was "df2e6e632873f256" after SR3a.
-FROZEN_ANALYSIS = "68eb45bc94c9628c"
+# **Moved 2026-11-04 by SR4h**: `describe_move`'s text for a commanded own-side capture (as
+# `FROZEN_METRICS` says), only beside a turncoat command and a strike or contacts, so no
+# `analysis.json` moves. It was "68eb45bc94c9628c" after SR3b.
+# **Moved 2026-11-04 by SR4k and SR4m, re-frozen by SR4r**: `describe_move`'s text for a held
+# piece's strike and for a strike or link at a portal's exit (as `FROZEN_METRICS` says), only in
+# games no library game is; SR4r replayed the library under it. It was "dd51025cdd89f60d" after
+# SR4h.
+FROZEN_ANALYSIS = "a637827f2e7b0d6f"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

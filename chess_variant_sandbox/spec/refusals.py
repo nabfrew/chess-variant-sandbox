@@ -17,8 +17,9 @@ pair (a message naming a piece or an index, a third key, a dependency refused by
 stay inline in `schema.py`.
 
 Kept rows only: what SR2 and SR2b lifted (L5, L6, T2 and T5 in part, H1, H2, H6, W9, N20,
-V5 and V6 in part) and the core lifts of SR3d (K2), SR3e (K3), SR3f (O1, O2) and SR3g (P9,
-P10) is not here, or is here as the narrower case still refused.
+V5 and V6 in part) and the core lifts of SR3d (K2), SR3e (K3), SR3f (O1, O2), SR3g (P9,
+P10), SR4b (W4), SR4c (W5), SR4d (H11), SR4e (T6, T7), SR4f (T8), SR4h (V5, V6, V9), SR4i (T9) and SR4j (T10) is not here, or is here as the
+narrower case still refused.
 """
 
 from __future__ import annotations
@@ -39,7 +40,6 @@ class Refusal(NamedTuple):
 _SWEEP = "pieces[].moves[].kind: \"sweep\""
 _LONG_TURN = "rules.turn (moves or ramp over 1)"
 _COMMAND = "pieces[].sight effect \"command\""
-_CAPTURES_OWN = "pieces[].sight captures_own"
 _NOBODY = "setup.placements player \"nobody\""
 _MAJORITY = "pieces[].control: \"majority\""
 
@@ -56,15 +56,6 @@ def _command(rid: str, key: str, why: str) -> Refusal:
     return Refusal(
         rid, _COMMAND, f"rules.{key}",
         f"a command (pieces[].sight effect 'command') beside rules.{key}: {why}; leave one out",
-    )
-
-
-def _turncoat(rid: str, key: str) -> Refusal:
-    return Refusal(
-        rid, _CAPTURES_OWN, f"rules.{key}",
-        f"captures_own (a commanded piece taking its own side) beside rules.{key}: "
-        "what a commanded own-side capture leaves behind would be a second rule; "
-        "leave one out",
     )
 
 
@@ -95,7 +86,6 @@ def _purse(rid: str, key: str, why: str) -> Refusal:
 
 _TAKEN_BY_CONTACT = "an explosion destroys what a contact just transformed"
 _NO_CHECK_AT_ONCE = "there is no check when both players move at once"
-_SECOND_LANDING = "what a capture leaves behind beside an exit is a second landing rule"
 
 REFUSALS: tuple[Refusal, ...] = (
     # §2.2 Long turns.
@@ -199,34 +189,6 @@ REFUSALS: tuple[Refusal, ...] = (
         "hand only links that remove their target, naming nothing it becomes, are "
         "allowed)",
     ),
-    Refusal(
-        "T6", "rules.contacts", "rules.npcs",
-        "rules.contacts and rules.npcs both say what happens to a taken piece; a wild piece "
-        "eats what it steps onto, and a contact says what that meeting leaves behind",
-    ),
-    Refusal(
-        "T7", "rules.npcs", "rules.strike",
-        "rules.npcs and rules.strike both say what happens when a piece is taken; a "
-        "struck wild piece would have to become a wild piece of another type, or a "
-        "player's, and neither is a rule anybody wrote",
-    ),
-    Refusal(
-        "T8", "rules.npcs", "rules.explode_on_capture",
-        "rules.npcs and rules.explode_on_capture both say what happens when a piece "
-        "is taken; a blast that destroys a wild piece pays nobody its bounty, and a "
-        "wild piece that eats does not explode",
-    ),
-    Refusal(
-        "T9", "rules.contacts.links[].own", "rules.must_capture",
-        "rules.contacts has a link onto an own piece beside rules.must_capture; "
-        "whether moving onto your own piece counts as a capture is not settled",
-    ),
-    Refusal(
-        "T10", "rules.strike.by", "rules.strike.switches_sides",
-        "rules.strike.by beside rules.strike.switches_sides: rules.strike.switches_sides "
-        "already names the capturers it changes, and two lists of capturers in one strike "
-        "would make which one a switch reads a second rule; leave one out",
-    ),
     # §2.5 Promotion, the hand and extinction. H4 (its message names the position) stays inline.
     Refusal(
         "H3", "rules.promotion.only_lost", "rules.promote_on_entry",
@@ -239,12 +201,6 @@ REFUSALS: tuple[Refusal, ...] = (
         "rules.drops.either_face beside rules.strike.switches_sides: a capture "
         "already changes a piece's side, so what a taken piece becomes has two "
         "answers; drop one of the two",
-    ),
-    Refusal(
-        "H11", 'rules.extinction.per_type: "own"', "rules.drops",
-        'rules.extinction.per_type "own" beside rules.drops: a kind that starts in hand '
-        "has no opening count on the board, and whether a held kind counts is not "
-        "settled; drop one of the two",
     ),
     # §2.6 Sweeps, in `_check_sweep_coherence`'s order. W7 (it names the piece) stays inline.
     _sweep(
@@ -260,12 +216,6 @@ REFUSALS: tuple[Refusal, ...] = (
     _sweep(
         "W3", "explode_on_capture",
         "two multi-square clears on one move would be undone in an order nobody stated",
-    ),
-    _sweep("W4", "drops", "a sweep over several pieces would put several in a hand at once"),
-    _sweep(
-        "W5", "npcs",
-        "a bounty is paid per victim, and a swept wild piece would be a second "
-        "victim with nowhere to be paid",
     ),
     _sweep(
         "W6", "wrap",
@@ -300,8 +250,6 @@ REFUSALS: tuple[Refusal, ...] = (
         "V4", "territory",
         "whether a commanded arrival paints for the mover or the owner would be a second rule",
     ),
-    _turncoat("V5", "strike"),
-    _turncoat("V6", "contacts"),
     Refusal(
         "V7", _COMMAND, "pieces[].rest",
         "a command (pieces[].sight effect 'command') beside pieces[].rest: whose turns a "
@@ -311,12 +259,6 @@ REFUSALS: tuple[Refusal, ...] = (
         "V8", _COMMAND, _SWEEP,
         "a command (pieces[].sight effect 'command') beside a sweep move: what a commanded "
         "sweep clears would be a second rule; leave one out",
-    ),
-    Refusal(
-        "V9", _CAPTURES_OWN, "rules.drops.from_captures",
-        "captures_own (a commanded piece taking its own side) beside "
-        "rules.drops.from_captures: whose hand a turncoat capture fills would be a second "
-        "rule; leave one out",
     ),
     # §2.9 The duck. K4 (it names the clock) and K5 to K11 (one rule's own shape) stay inline.
     _duck_check("rules.win", '"win": "checkmate"'),
@@ -330,17 +272,18 @@ REFUSALS: tuple[Refusal, ...] = (
         "not name one of them",
     ),
     _portals("P2", "npcs", "a wild piece walks a fixed route and a portal moves"),
-    _portals("P3", "strike", _SECOND_LANDING),
-    _portals("P4", "contacts", _SECOND_LANDING),
+    # P3 and P4 (a strike, contacts) lifted by SR4m: the exit is the capture square, read as
+    # anywhere (rifle leaves the mover where it was, swap puts the struck piece there).
     _portals("P5", "explode_on_capture", "a blast beside an exit is a second landing rule"),
     _portals("P6", "territory", "which square a transit colours is not settled"),
     # §2.11 Pieces nobody owns, the purse, bounties and prices, in the validator's order.
-    _nobody("O3", "strike", "what a capture leaves of a piece nobody owns is a second rule"),
-    _nobody("O4", "contacts", "what a contact makes of a piece nobody owns is a second rule"),
+    # O3 and O4 (a strike, contacts) lifted by SR4k: a struck or linked nobody's piece stays
+    # nobody's, and a held piece strikes as its holder's piece would.
     _majority("O10", "territory", "who claims a square a nobody's piece steps on is a second rule"),
     _majority("O11", "reach", "whether a nobody's piece reaching a goal wins is a second rule"),
     _majority("O12", "explode_on_capture", "who a held piece's blast is charged to is a second rule"),
-    _purse("O22", "explode_on_capture", "who is paid for a blast's victims is a second rule"),
+    # O22 (the purse beside a blast) lifted by SR4l: the mover is paid every enemy victim's
+    # bounty, nothing for its own.
     # §2.14 Lattice and shape. X2 to X4, X7 and X9 to X11, X13 name a location or a value.
     Refusal(
         "X5", 'setup.orientation (not "rotate")', 'board.lattice: "hex"',

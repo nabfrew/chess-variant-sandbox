@@ -505,6 +505,9 @@ class TestBatchedGenerations:
         assert len(measured) == 1, [(e.status, e.name) for e in children]
         assert all(e.status in ("evaluated", "rejected", "duplicate") for e in children)
 
+    # Slow since SR4b's gate (2026-11-04): 3.7 s alone on main's code, 4.2 s by both clocks
+    # under the four-core suite, over `duration_guard`'s limit (three tournaments).
+    @pytest.mark.slow
     def test_promoting_more_than_one_costs_more_than_one_tournament(self, tmp_path) -> None:
         archive = self._seeded(tmp_path, batch=6, promote=3)
         measured = [

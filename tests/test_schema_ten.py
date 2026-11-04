@@ -428,15 +428,15 @@ class TestNpcsMayBeImmune:
         partial["rules"]["npcs"][1].pop("immune")
         assert any("different 'immune' lists" in e for e in validate_spec(partial))
 
-    def test_it_is_refused_beside_drops(self) -> None:
-        """Q84's caveat, decided rather than read owner-blind.
+    def test_it_is_valid_beside_drops(self) -> None:
+        """Q84's caveat, refused until SR4g (N17) and now read as ruled: the immunity holds
+        only while the piece is wild.
 
-        `capture_allowed` is keyed by type and not by owner, so a wild type that can also
-        reach a player's hand -- "tame the boar", which schema 9 deliberately allows --
-        would carry its immunity out of the hand with it. The rule's own name says *wild
-        piece*, and being wrong in the permissive direction is silent, so the combination
-        is refused. Nothing becomes inexpressible: per-piece `captures` lists still say
-        the owner-blind thing the long way, which is what `wolves` did.
+        `capture_allowed` is keyed by type, so a wild type that can also reach a player's
+        hand -- "tame the boar", which schema 9 deliberately allows -- carried its immunity
+        out of the hand with it; the pair was refused rather than read owner-blind. SR4g
+        crosses a second matrix without the immunity for every piece that is not wild
+        (`tests/test_immunity_while_wild.py` plays it), so both routes into a hand are valid.
         """
         for drops in (
             {"from_captures": True},
@@ -445,17 +445,7 @@ class TestNpcsMayBeImmune:
         ):
             spec = _hunted(_wolves())
             spec["rules"]["drops"] = drops
-            assert any(
-                "can reach a player's hand" in error for error in validate_spec(spec)
-            ), drops
-
-        # A `drops` that puts some *other* type in a hand is not this refusal's business:
-        # `region` says where a held piece may go, not how one is got.
-        allowed = _hunted(_wolves())
-        allowed["rules"]["drops"] = {"from_captures": False, "stock": {"P": 2}}
-        assert not any(
-            "can reach a player's hand" in error for error in validate_spec(allowed)
-        )
+            assert validate_spec(spec) == [], drops
 
     def test_it_narrows_a_legal_move_from_the_start_of_a_real_game(self) -> None:
         """The play-test, from `wolves`' own opening array and four ordinary plies.
@@ -1709,7 +1699,6 @@ class TestTheContactTable:
         [
             ("explode_on_capture", {"radius": 1}, "T4"),
             ("drops", {"from_captures": True}, "T5"),
-            ("npcs", [{"piece": "P", "route": ["d4", "d5"]}], "T6"),
         ],
     )
     def test_it_is_refused_beside_the_other_rules_about_a_taken_piece(
@@ -1728,6 +1717,15 @@ class TestTheContactTable:
         spec["rules"][other] = value
         errors = validate_spec(spec)
         assert rid in refused_ids(errors), errors
+
+    def test_it_is_allowed_beside_wild_pieces(self, chess: dict[str, Any]) -> None:
+        """SR4e lifted T6: no contact reaches a wild type, so only a link naming one is
+        refused (`tests/test_wild_beside_strike.py` plays the pair)."""
+        spec = _contacts(chess, [{"mover": "P", "onto": "R", "mover_to": "N"}])
+        spec["rules"]["npcs"] = [{"piece": "B", "route": ["d4", "d5"]}]
+        assert validate_spec(spec) == []
+        spec["rules"]["npcs"] = [{"piece": "R", "route": ["d4", "d5"]}]
+        assert any("makes a wild type" in e for e in validate_spec(spec))
 
     def test_a_link_that_changes_nothing_is_refused(self, chess: dict[str, Any]) -> None:
         errors = validate_spec(_contacts(chess, [{"mover": "P", "onto": "R"}]))
@@ -2188,25 +2186,22 @@ class TestARoyalMetByAContactIsNamedOnItsSide:
 
 
 class TestAnImmuneWildPieceBesideADropsBlock:
-    @staticmethod
-    def _errors(drops: dict[str, Any]) -> list[str]:
-        spec = _hunted(_wolves())
-        spec["rules"]["drops"] = drops
-        return [e for e in validate_spec(spec) if ".immune beside rules.drops" in e]
+    """Refused until SR4g (N17): every route into a hand is valid beside an immunity now."""
 
     @pytest.mark.parametrize(
-        ("drops", "refused"),
+        "drops",
         [
-            ({"stock": {"P": 1}}, True),                         # captures fill a hand by default
-            ({"from_captures": True}, True),
-            ({"from_captures": False}, False),
-            ({"from_captures": False, "stock": {"P": 1}}, False),  # a stock of another type
-            ({"from_captures": False, "stock": {"W": 1}}, True),   # the wild type itself, stocked
+            {"stock": {"P": 1}},                      # captures fill a hand by default
+            {"from_captures": True},
+            {"from_captures": False},
+            {"from_captures": False, "stock": {"P": 1}},  # a stock of another type
+            {"from_captures": False, "stock": {"W": 1}},  # the wild type itself, stocked
         ],
         ids=str,
     )
-    def test_when_the_wild_piece_can_reach_a_hand(self, drops: dict, refused: bool) -> None:
+    def test_no_hand_is_refused(self, drops: dict) -> None:
         spec = _hunted(_wolves())
         wild = spec["rules"]["npcs"][0]["piece"]
-        drops = json.loads(json.dumps(drops).replace('"W"', json.dumps(wild)))
-        assert bool(self._errors(drops)) is refused
+        spec["rules"]["drops"] = json.loads(json.dumps(drops).replace('"W"', json.dumps(wild)))
+        assert not [e for e in validate_spec(spec) if ".immune beside rules.drops" in e]
+        assert not [e for e in validate_spec(spec) if "immune" in e]

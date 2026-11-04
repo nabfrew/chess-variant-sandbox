@@ -131,10 +131,11 @@ class TestTheKeys:
         errors = validate_spec(spec)
         assert any(words in error for error in errors), errors
 
-    def test_a_blast_beside_the_purse_is_refused(self) -> None:
+    def test_a_blast_beside_the_purse_is_lifted(self) -> None:
+        """SR4l (O22): `tests/test_blast_pays.py` plays it."""
         spec = _market()
         spec["rules"]["explode_on_capture"] = {}
-        assert "O22" in refused_ids(validate_spec(spec))
+        assert "O22" not in refused_ids(validate_spec(spec))
 
     def test_a_market_type_with_no_square_it_may_stand_on_is_refused(self) -> None:
         spec = _market()

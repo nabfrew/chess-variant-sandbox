@@ -701,22 +701,23 @@ class TestWhatTheValidatorRefuses:
     @pytest.mark.parametrize(
         ("rule", "value", "rid"),
         [
-            (
-                "strike",
-                {"effect": "demote", "position": "stay", "immune": ["K"],
-                 "chain": [{"from": "Q", "to": "R"}]},
-                "T7",
-            ),
-            ("explode_on_capture", {"radius": 1}, "T8"),
             ("turn", {"moves": 2, "ramp": [1]}, "L3"),
         ],
     )
-    def test_three_combinations_are_refused_by_name(
+    def test_a_combination_is_refused_by_name(
         self, chess_spec: dict[str, Any], rule: str, value: Any, rid: str
     ) -> None:
         spec = _boar(chess_spec, **{rule: value})
         errors = validate_spec(spec)
         assert rid in refused_ids(errors), errors
+
+    def test_a_strike_beside_a_wild_piece_is_allowed(self, chess_spec: dict[str, Any]) -> None:
+        """SR4e lifted T7: a strike never reaches a wild type (`tests/test_wild_beside_strike.py`
+        plays it)."""
+        strike = {"effect": "demote", "position": "stay", "immune": ["K"],
+                  "chain": [{"from": "Q", "to": "R"}]}
+        spec = _boar(chess_spec, strike=strike)
+        assert validate_spec(spec) == []
 
     def test_a_strike_that_compiles_to_nothing_is_not_a_strike(
         self, chess_spec: dict[str, Any]

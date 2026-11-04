@@ -54,6 +54,8 @@ from chess_variant_sandbox.spec.schema import (
     majority_ids,
     move_push,
     neutral_ids,
+    nobodys_ids,
+    npc_immunity_unbound,
     npc_pounce,
     npc_respawn,
     npc_split,
@@ -79,8 +81,11 @@ from chess_variant_sandbox.spec.schema import (
     reach_pieces,
     simultaneous_switch,
     spy_ids,
+    strike_is_live,
     sweep_length,
     takes_royal_ids,
+    uses_sweep,
+    wild_type_ids,
     wrap_stated,
 )
 
@@ -321,6 +326,12 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(
         _describe_extra_rules(rules, (spec.get("board") or {}).get("lattice") == "hex")
     )
+    lines.extend(_describe_swept_hand(spec, rules))
+    lines.extend(_describe_swept_bounty(spec, rules))
+    lines.extend(_describe_wild_beside_strike(spec, rules))
+    lines.extend(_describe_wild_beside_blast(spec, rules))
+    lines.extend(_describe_immunity_while_wild(spec))
+    lines.extend(_describe_commanded_own_capture(spec, rules))
     lines.extend(_describe_scoring_rules(spec, rules))
     lines.append(_describe_clocks(rules))
     lines.extend(_describe_insufficient_material(spec, rules))
@@ -355,6 +366,118 @@ def _describe_common_castling(spec: dict[str, Any], rules: dict[str, Any]) -> li
     return [
         f"{king} is not royal, and no move here is barred for leaving a piece in check, so "
         "it castles whether or not the squares it crosses are attacked."
+    ]
+
+
+def _describe_swept_hand(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR4b (W4, `docs/plan-schema-next.md` §2.6): a sweep beside a hand that fills from
+    captures. Said after the hand's own sentence, which it narrows."""
+    drops = rules.get("drops")
+    if not isinstance(drops, dict) or not drops or drops.get("from_captures", True) is False:
+        return []
+    if not uses_sweep(spec):
+        return []
+    return [
+        "A sweep captures every piece it removes: each one the mover did not own goes to the "
+        "mover's hand, as a piece taken on the landing square does, and the mover's own swept "
+        "pieces go to no hand."
+    ]
+
+
+def _describe_swept_bounty(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR4c (W5, `docs/plan-schema-next.md` §2.6): a sweep beside a bounty, a wild piece's or a
+    type's. Every piece the sweep removes is taken, so each pays as a capture does."""
+    if not uses_sweep(spec):
+        return []
+    if not rules.get("npcs") and not piece_bounties(spec):
+        return []
+    return [
+        "A sweep takes every piece it removes, so each one the mover did not own pays its "
+        "bounty as a capture of it does (a swept wild piece pays its route's bounty to the "
+        "mover), and the piece on the landing square pays its own besides."
+    ]
+
+
+def _describe_wild_beside_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR4e (T6, T7, `docs/plan-schema-next.md` §2.4): a strike or contacts beside wild
+    pieces leave every wild type alone, which no list in the rule says."""
+    wild = sorted(wild_type_ids(rules))
+    if not wild:
+        return []
+    contacts = rules.get("contacts")
+    if strike_is_live(rules.get("strike")):
+        rule = "The strike"
+    elif isinstance(contacts, dict) and contacts.get("links"):
+        rule = "No contact"
+    else:
+        return []
+    names = {
+        piece["id"]: piece.get("name", piece["id"])
+        for piece in spec.get("pieces", [])
+        if isinstance(piece, dict) and "id" in piece
+    }
+    kinds = " or ".join(str(names.get(pid, pid)) for pid in wild)
+    reach = "never reaches" if rule == "The strike" else "ever reaches"
+    return [
+        f"{rule} {reach} a {kinds}, wild or a player's: taking one is an ordinary capture, "
+        "and a wild piece's eat removes what it eats, as it does in any game."
+    ]
+
+
+def _describe_immunity_while_wild(spec: dict[str, Any]) -> list[str]:
+    """SR4g (N17, `docs/plan-schema-next.md` §2.8): a wild piece's `immune` list holds only
+    while the piece is wild, said where a piece of its type can be something else's -- taken
+    into a hand and dropped, placed, promoted into or made by a strike."""
+    unbound = sorted(npc_immunity_unbound(spec))
+    if not unbound:
+        return []
+    names = {
+        piece["id"]: piece.get("name", piece["id"])
+        for piece in spec.get("pieces", [])
+        if isinstance(piece, dict) and "id" in piece
+    }
+    kinds = " or ".join(str(names.get(pid, pid)) for pid in unbound)
+    return [
+        f"A {kinds} is immune only while it is wild: one a player holds or drops, or that "
+        "stands for a player or for nobody, is captured as any piece of its type."
+    ]
+
+
+def _describe_commanded_own_capture(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR4h (V5, V6, V9, `docs/plan-schema-next.md` §2.4): a commanded piece made to take its own
+    side (`captures_own`) beside a capture hand, a strike or contacts. The taken piece goes to
+    the commander's hand; beside a strike or contacts the capture is an ordinary removal."""
+    if not any(
+        sight.effect == "command" and sight.captures_own
+        for sights in piece_sights(spec).values() for sight in sights
+    ):
+        return []
+    lines = []
+    drops = rules.get("drops")
+    if isinstance(drops, dict) and drops and drops.get("from_captures", True) is not False:
+        lines.append(
+            "A piece a commanded piece takes from its own side goes to the hand of the player "
+            "who commanded it."
+        )
+    contacts = rules.get("contacts")
+    if strike_is_live(rules.get("strike")) or (isinstance(contacts, dict) and contacts.get("links")):
+        lines.append(
+            "A commanded piece that takes its own side makes an ordinary capture: the piece it "
+            "takes is removed and it lands on that square; nothing is struck, no link applies "
+            "and nobody changes sides."
+        )
+    return lines
+
+
+def _describe_wild_beside_blast(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR4f (T8, `docs/plan-schema-next.md` §2.4): a blast beside wild pieces. A wild piece's
+    eat never explodes, and a wild piece a player's blast destroys pays its bounty to the
+    mover, as taking it would."""
+    if not rules.get("npcs") or not rules.get("explode_on_capture"):
+        return []
+    return [
+        "A wild piece's eat never explodes. A wild piece that a player's blast destroys "
+        "pays its bounty to the player who made the capture, as taking it would."
     ]
 
 
@@ -1825,19 +1948,29 @@ def _describe_bounties(spec: dict[str, Any]) -> list[str]:
         return []
     listed = ", ".join(f"{pid} {worth}" for pid, worth in sorted(bounties.items()))
     into = "into the points and the purse" if purse_rule(spec) is not None else "into the points"
+    # SR4l (O22): a blast pays for every piece it destroys as taking it would.
+    rules = spec.get("rules")
+    blast = isinstance(rules, dict) and bool(rules.get("explode_on_capture"))
     if purse_pays_loser(spec):
         # TC9c (`docs/plan-turncoat.md` §5.10): the payee is the player who lost the piece.
         return [
             f"Taking a piece pays its bounty ({listed}) {into} of the player who lost it, not "
             "the player whose move took it: coins run against the lead. Taking a piece nobody "
             "owns pays nobody, taking your own piece pays nothing, and a piece removed by "
-            "anything but a move's capture pays nobody."
+            "anything but a move's capture pays nobody"
+            + (", except one a blast destroys, which pays as if taken." if blast else ".")
         ]
     return [
         f"Taking a piece pays its bounty ({listed}) {into} of the player whose move "
         "took it, whoever owned it, a piece nobody owns included; taking your own piece pays "
-        "nothing, and a piece removed by anything but a move's capture (a blast, a wild "
-        "piece's step) pays nobody."
+        + (
+            "nothing, and a piece removed by anything but a move's capture (a wild piece's "
+            "step) pays nobody; a blast pays the player who made the capture for every piece "
+            "it destroys, as taking it would (nothing for that player's own)."
+            if blast else
+            "nothing, and a piece removed by anything but a move's capture (a blast, a wild "
+            "piece's step) pays nobody."
+        )
     ]
 
 
@@ -1972,6 +2105,24 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
             "A piece coming out of a portal onto a piece nobody owns takes it where it may "
             "take that type, and a fold may move under a piece nobody owns, which then stands "
             "in it." + through
+        )
+    # SR4k (O3, O4): beside a strike or contacts.
+    key = "strike" if rules.get("strike") else "contacts" if rules.get("contacts") else None
+    if key is not None:
+        rule = "strike" if key == "strike" else "contact"
+        made = sorted(nobodys_ids(spec) - set(neutrals))
+        becomes = (
+            f" (so a piece nobody owns may also be a {', '.join(made)})" if made else ""
+        )
+        held_line = (
+            f" A held piece's capture is a {rule} as its holder's piece of the type would make "
+            "it, landing and placing as that player's piece would, and the piece stays nobody's "
+            "whatever it becomes; it never changes sides."
+            if majority_ids(spec) else ""
+        )
+        lines.append(
+            f"A {rule} that reaches a piece nobody owns turns it into what the {rule} says, and "
+            f"it stays nobody's{becomes}." + held_line
         )
     return lines
 
@@ -2558,10 +2709,18 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         if isinstance(switching, list) and facing_ids.intersection(switching)
         else ""
     )
+    # SR4j (T10): under `stay` a capture the strike reaches leaves its capturer where it stood,
+    # so a switcher changes sides there; any other capture moves it onto the square it took.
+    switch_where = (
+        "where its capture leaves it: where it stood if the capture strikes, otherwise on the "
+        "square it took"
+        if position == "stay"
+        else "on the square it took"
+    )
     switch_lines = (
         [
             f"A {', '.join(str(names.get(pid, pid)) for pid in switching)} that captures "
-            "changes sides: it becomes the other player's piece on the square it took."
+            f"changes sides: it becomes the other player's piece {switch_where}."
             + keeps
         ]
         if isinstance(switching, list) and switching
@@ -2593,7 +2752,8 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
                 f"{', '.join(immune)} cannot be shot, and a {shooters} that takes one "
                 "moves onto its square as usual."
             )
-        return lines
+        # SR4j (T10): the switch reads its own list, beside the shooters.
+        return lines + switch_lines
     if effect == "capture":
         # Schema 17 (Q540): what a plain capture leaves behind, when it is not plain.
         said = {
@@ -2716,6 +2876,12 @@ def _describe_contacts(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]
         if any(link.get("own") is True for link in links)
         else []
     )
+    if own_lines and rules.get("must_capture"):
+        # SR4i (T9): moving onto your own piece is no capture.
+        own_lines.append(
+            "Moving onto your own piece is not a capture: it is never compulsory, and it "
+            "is not allowed while a capture is on offer."
+        )
     lines = own_lines + [
         "Some captures change both pieces, not just the one that was taken. Which "
         f"change depends on who took what, and {where}.",
@@ -3012,6 +3178,17 @@ def _describe_portals(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         "en passant capture never go through a fold, and a move that went through one "
         "opens no en passant."
         )
+    # SR4m (P3, P4): a strike or contacts beside portals, read at the exit as anywhere.
+    contacts = rules.get("contacts")
+    if strike_is_live(rules.get("strike")) or (isinstance(contacts, dict) and contacts.get("links")):
+        lines.append(
+            "A capture through a portal or a fold is made on the square the move comes out "
+            "on, and what the capture leaves behind is read from that square as from any "
+            "other: a capturer that stays where it set out never goes through at all, the "
+            "piece it took being removed or changed at the exit; a swap puts the struck piece "
+            "on the square the mover left; where the struck piece goes home or is placed by "
+            "choice, the capturer stands on the exit."
+        )
     players = ("the first player", "the second player")
     for group in groups:
         ends = group["ends"]
@@ -3236,6 +3413,13 @@ def _describe_extra_rules(rules: dict[str, Any], hexy: bool = False) -> list[str
                 "where one move does that to both sides, it is the side that moved that "
                 "has it."
             )
+            if rules.get("drops"):
+                # SR4d (H11): a held piece counts, and a stocked kind is one a side starts with.
+                lines.append(
+                    "Pieces in hand count as well as pieces on the board: a player has not "
+                    "run out of a kind while one is held, and starts with any kind its stock "
+                    "holds."
+                )
         elif extinction.get("per_type") is True:
             # Schema 18 (Q783): each type on its own, and the one ordering a reader has to
             # be told -- a move can run out a type on both sides at once.

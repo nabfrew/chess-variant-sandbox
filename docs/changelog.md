@@ -12,6 +12,16 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-04
+
+### More rules work together
+
+A dozen pairs of rules that used to refuse each other can now share a game. Pieces swept off the board can go to
+the sweeper's hand, and wild pieces swept away pay their bounty. A piece held for another player counts as theirs.
+Wild pieces can be struck, linked and eaten in more ways: an eaten piece does not explode, and an explosion pays the
+bounties it earns. A struck piece nobody owns, a purse beside an explosion, and a capture made at a portal's exit
+all now play by stated rules instead of being refused. No game in the library changed its score.
+
 ## 2026-11-03
 
 ### A new game: runners

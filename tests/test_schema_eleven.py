@@ -29,7 +29,6 @@ from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import _describe_contacts
 from chess_variant_sandbox.spec.distance import _SCALES, distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
-from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
 from tests.feature_inventory import _schema_eleven_uses
 
@@ -116,11 +115,11 @@ class TestTheValidator:
         errors = validate_spec(_contacts(chess, [dict(MERGE, onto="K")]))
         assert any("which rules.contacts.immune says no contact reaches" in e for e in errors)
 
-    def test_it_is_refused_beside_must_capture(self, chess: dict[str, Any]) -> None:
+    def test_it_is_allowed_beside_must_capture(self, chess: dict[str, Any]) -> None:
+        """SR4i lifted T9: a merge is no capture (`tests/test_own_contact_must_capture.py`)."""
         spec = _contacts(chess, [MERGE])
         spec["rules"]["must_capture"] = True
-        errors = validate_spec(spec)
-        assert "T9" in refused_ids(errors), errors
+        assert validate_spec(spec) == []
 
     def test_an_own_link_has_to_change_something(self, chess: dict[str, Any]) -> None:
         errors = validate_spec(_contacts(chess, [{"mover": "P", "onto": "R", "own": True}]))

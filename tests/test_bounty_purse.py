@@ -262,10 +262,10 @@ class TestPaying:
 class TestThePurse:
     def test_the_validator_refuses_what_the_purse_is_refused_beside(self) -> None:
         """TC4's hook refused these; TC5's `rules.purse` is refused by the validator. A long
-        turn was lifted by SR2 (`tests/test_long_turn_turncoat.py`)."""
+        turn was lifted by SR2 (`tests/test_long_turn_turncoat.py`), a blast by SR4l
+        (`tests/test_blast_pays.py`)."""
         refusals = {
             "R19": _purse_spec(3, simultaneous={}, win="royal_capture"),
-            "O22": _purse_spec(3, explode_on_capture={}),
         }
         for rid, spec in refusals.items():
             assert rid in refused_ids(validate_spec(spec)), (rid, validate_spec(spec))
