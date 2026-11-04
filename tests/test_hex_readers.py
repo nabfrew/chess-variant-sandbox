@@ -315,6 +315,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/brink": "2307e963db78b4b2",  # Q1074bg1, 2026-10-30
     "rulesets/dohyo": "540f1a7a8d2039d7",  # Q1074bd, 2026-10-31: the corner ring (was ee04f5c4ac063dae, Q1074bg2)
     "rulesets/duck-chess": "7cc8b4708407e4df",  # Q1079, 2026-10-31
+    "rulesets/runners": "6cda351ff3b64cd3",  # SR3s1, 2026-11-03
     "rulesets/rock-paper-shove": "cc56261d19467597",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "2c67ec37c9123078",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "2702b1dee85bfe5c",  # Q1074bs, 2026-10-31

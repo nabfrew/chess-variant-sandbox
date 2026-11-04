@@ -2268,6 +2268,16 @@ class CompiledSpec:
     insufficient_material: InsufficientMaterialRule | None = None
     # Q1074b1: the push rule's tables, or ``None`` -- every game no move of which pushes.
     push: PushRule | None = None
+    # R14 (`docs/plan-smells-rust.md`): where each square stands for the two features that
+    # read the board's shape, so neither works out a rank or a file (rule 4). See
+    # `_feature_geometry`. ``feature_rank[player][square]``: the square's row counted from
+    # that player's own side, 0 everywhere where the player's rows wrap;
+    # ``feature_rank_span``: the largest such row (``height - 1``);
+    # ``feature_centre[player][square]``: twice the square's distance from the middle,
+    # measured against the edges that are edges for that player.
+    feature_rank: tuple[tuple[int, ...], ...] = ()
+    feature_rank_span: int = 0
+    feature_centre: tuple[tuple[int, ...], ...] = ()
 
     @property
     def rest_max(self) -> int:
@@ -3025,6 +3035,7 @@ def _compile(
         facing_lines=_facing_lines(
             rules.get("royal_facing") == "forbidden", width, height, obstacles, wrap, radius
         ),
+        **_feature_geometry(width, height, shape, wrap),
         **_goal_distances(
             _compile_reach(rules.get("reach"), index_of, width, height),
             leaps,
@@ -5115,6 +5126,75 @@ def _compile_reach(
 # real distance can be, so "unreachable" compares as worse than the worst reachable
 # square without being a special case at every read.
 UNREACHABLE = 255
+
+
+def _feature_geometry(
+    width: int, height: int, shape: str, wrap: WrapRule | None
+) -> dict[str, Any]:
+    """Where each square stands for the ``advance`` and ``centrality`` features (R14).
+
+    Both read the board's shape, and until R14 both read it as ``square // width`` and
+    ``square % width`` in the core and in the oracle. That is the rhombus the board is
+    stored in, not the board: on a hexagon it left out one of the three pairs of sides,
+    and on a wrapped board it measured distance to a seam, which is no edge.
+
+    **The board's sides come in opposite pairs, and each pair is an axis.** A grid has two
+    (files, ranks), a hex rhombus the same two, a hexagon three: its ``nw_se`` sides are
+    the file coordinate's, ``n_s`` the rank's, ``ne_sw`` the third axial coordinate's
+    (``-(file + rank)``, `schema.WRAP_PAIRS`' copy vectors move each pair's own
+    coordinate by ``2R + 1``). A square's distance from the middle is its largest offset
+    along any axis whose two sides are edges *for that player* -- the owner's own
+    permission, as every move reads it (D1). A pair either side of which the player may
+    cross is a seam, not an edge, and drops out: every file of a cylinder is as central as
+    every other, and nothing is central on a torus. Doubled, so the middle of an even
+    board is a whole number. On a grid and a hex rhombus with no seam this is exactly the
+    reading it replaces, so no such game's answer moves.
+
+    ``feature_rank`` is the row counted from the player's own side -- the rank on both
+    lattices, the rows a hex board is drawn in -- reflected for the second player as every
+    setup orientation reflects it. Where the player's rows wrap (``ranks``, or a hexagon's
+    ``n_s``) there is no far side to walk towards, and every square reads 0.
+    """
+    n_squares = width * height
+    span = height - 1
+    hexagon = shape == "hexagon"
+
+    def joined(key: str, player: int) -> bool:
+        return wrap is not None and any(getattr(wrap, key)[player])
+
+    rank_tables: list[tuple[int, ...]] = []
+    centre_tables: list[tuple[int, ...]] = []
+    for player in (0, 1):
+        if joined("n_s" if hexagon else "ranks", player):
+            rank_tables.append((0,) * n_squares)
+        else:
+            rank_tables.append(tuple(
+                square // width if player == 0 else span - square // width
+                for square in range(n_squares)
+            ))
+        files_edge = not joined("nw_se" if hexagon else "files", player)
+        ranks_edge = not joined("n_s" if hexagon else "ranks", player)
+        third_edge = hexagon and not joined("ne_sw", player)
+        row: list[int] = []
+        for square in range(n_squares):
+            rank, file = divmod(square, width)
+            # Doubled offsets from the middle of the frame (a hexagon's is its centre cell).
+            along_file = 2 * file - (width - 1)
+            along_rank = 2 * rank - (height - 1)
+            distance = 0
+            if files_edge:
+                distance = max(distance, abs(along_file))
+            if ranks_edge:
+                distance = max(distance, abs(along_rank))
+            if third_edge:
+                distance = max(distance, abs(along_file + along_rank))
+            row.append(distance)
+        centre_tables.append(tuple(row))
+    return {
+        "feature_rank": tuple(rank_tables),
+        "feature_rank_span": max(span, 0),
+        "feature_centre": tuple(centre_tables),
+    }
 
 
 def _goal_distances(

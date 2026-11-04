@@ -3215,8 +3215,9 @@ _SHOWCASE_OWED: dict[str, str] = {
     # `_FEATURES` row, still owed by SR3s2.
     # Generation 58 (Q1077) owes none: `archive/the-crowd.json` states it and reaches it (its
     # condottieri give check from the opening's scrum on).
-    # Generation 57's name (SR3a) went to `_NO_SHOWCASE_ON_PURPOSE` when Q1077 retired its
-    # `_FEATURES` row, still owed by SR3s1.
+    # Generation 57 (SR3a) owes none since 2026-11-03: SR3s1 put `rulesets/runners.json` (a
+    # knight or a pawn safe on the far rank wins) in the library (`docs/plan-schema-next.md`
+    # §3.8.1).
     # Generation 56 (the push): no game pushes until batch P's replay; sumo chess (Q1074bg1),
     # Dohyo (Q1074bg2) and the other push showcases (Q1074bs) are owed, `docs/plan-push.md` §6.
     # "Q1074 a push" and "Q1074 a push along a rank" went on 2026-10-30, when Q1074bg1 put
@@ -3456,12 +3457,6 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # game, usable after SR3r; the entry goes the day it lands.
     "schema 59: rules.drops.stock_by_player": (
         "owed by SR3s2, a stock per player (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 57's name (SR3a), owed in `_SHOWCASE_OWED` until generation 58 (Q1077)
-    # retired its `_FEATURES` row. Still owed by SR3s1 (`docs/plan-schema-next.md` §3.2), a race
-    # any listed runner wins, usable after SR3r; the entry goes the day it lands.
-    "schema 57: rules.reach.piece.list": (
-        "owed by SR3s1, a goal for a list of pieces (docs/plan-schema-next.md §3.2)"
     ),
     # Generation 54's name (TC9c), owed in `_SHOWCASE_OWED` until generation 55 (Q1069a)
     # retired its `_FEATURES` row: *the indemnity* (§8.6) and *the quartermaster* (§8.7, TC9d)

@@ -107,6 +107,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/cylinder.json": ("a9306688fe57", "6a56433c2492eaf3"),
     "rulesets/dobutsu.json": ("a2f0c65ceedf", "d158e949aa940a34"),
     "rulesets/duck-chess.json": ("7acb867a99aa", "06ae7548db734adb"),  # Q1079, 2026-10-31: standard duck chess
+    "rulesets/runners.json": ("a628a77ab8e3", "43f6c285058edcba"),  # SR3s1, 2026-11-03: a knight or a pawn safe on the far rank
     "rulesets/dull.json": ("fe7c42772c71", "0909393f145e303c"),
     "rulesets/gardner.json": ("975dde173f01", "c70b9b68c5e7108a"),
     "rulesets/horde.json": ("15593fc47f6d", "abcf4aed8c6ec0b9"),

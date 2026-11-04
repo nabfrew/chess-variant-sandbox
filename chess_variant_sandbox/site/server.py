@@ -335,6 +335,19 @@ class SiteApp(App):
         self._request.source = address
 
     @property
+    def deploy(self) -> bool:
+        """Whether this request is the deploy's own warm read on the box (Q1091).
+
+        Written by the handler from `usage.from_deploy`, per request like `source`, and
+        read only by the usage row.
+        """
+        return bool(getattr(self._request, "deploy", False))
+
+    @deploy.setter
+    def deploy(self, made: bool) -> None:
+        self._request.deploy = made
+
+    @property
     def grant(self) -> Grant | None:
         """What this request did to the session, for the handler to write as a cookie."""
         return getattr(self._request, "grant", None)
@@ -3292,8 +3305,10 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             First thing in both verbs, because the sign-in limit is the reason the
             address is read at all and a route that skips `_identify` must not skip this.
             """
-            app.source = quota.source_address(
-                self.client_address[0], self.headers.get("X-Forwarded-For")
+            peer, forwarded = self.client_address[0], self.headers.get("X-Forwarded-For")
+            app.source = quota.source_address(peer, forwarded)
+            app.deploy = usage.from_deploy(
+                peer, forwarded, self.headers.get(usage.DEPLOY_HEADER)
             )
 
         # ------------------------------------------------------------ the site's pages
@@ -3557,8 +3572,8 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             """
             path = urlparse(self.path).path
             timed = usage.Timing(produce)
-            self._counted: tuple[str, str, int | None, usage.Timing] | None = (
-                usage.template(self.command, path), path, app.viewer, timed
+            self._counted: tuple[str, str, int | None, bool, usage.Timing] | None = (
+                usage.template(self.command, path), path, app.viewer, app.deploy, timed
             )
             app.usage.enter()
             try:
@@ -3570,7 +3585,7 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             counted = getattr(self, "_counted", None)
             if counted is not None:
                 self._counted = None
-                route, path, viewer, timed = counted
+                route, path, viewer, deploy, timed = counted
                 app.usage.record(
                     route,
                     timed.variant or usage.default_variant(route, path),
@@ -3579,6 +3594,7 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                     viewer,
                     timed.cpu,
                     timed.wall,
+                    deploy=deploy,
                 )
                 if status >= 500:
                     # Q721. The hourly counts say a route failed; this line, in the

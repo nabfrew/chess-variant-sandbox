@@ -1805,12 +1805,18 @@ class Browser:
 
     `client` is the whole `X-Forwarded-For` header, so a test can write what Caddy would
     -- one address, or a forged list with the real one appended (Q369).
+
+    `extra` is any other header sent with every request, such as the deploy's mark.
     """
 
-    def __init__(self, port: int, forwarded: str = "", client: str = "") -> None:
+    def __init__(
+        self, port: int, forwarded: str = "", client: str = "",
+        extra: dict[str, str] | None = None,
+    ) -> None:
         self.port = port
         self.forwarded = forwarded
         self.client = client
+        self.extra = dict(extra or {})
         self.cookie: str | None = None
 
     def get(self, path: str) -> Answer:
@@ -1820,7 +1826,7 @@ class Browser:
         return self._ask("POST", path, payload or {})
 
     def _ask(self, method: str, path: str, payload: dict[str, Any] | None) -> Answer:
-        headers: dict[str, str] = {}
+        headers: dict[str, str] = dict(self.extra)
         if self.cookie is not None:
             headers["Cookie"] = f"{site_pages.COOKIE}={self.cookie}"
         if self.forwarded:
@@ -3611,6 +3617,63 @@ class TestUsageIsCounted:
             ("POST /api/test", "", 404, "KeyError", usage.VISITOR): 1,
             (usage.OTHER, "", 404, "KeyError", usage.VISITOR): 1,
         }
+
+    def test_only_the_box_can_mark_a_request_as_the_deploys(self) -> None:
+        """Q1091. The mark counts from a loopback peer with no forwarding header, which
+        nothing through Caddy is; through the front server it is ignored."""
+        assert usage.from_deploy("127.0.0.1", None, "warm")
+        assert usage.from_deploy("::1", None, "warm")
+        assert not usage.from_deploy("127.0.0.1", None, None)
+        assert not usage.from_deploy("127.0.0.1", None, "")
+        assert not usage.from_deploy("127.0.0.1", "203.0.113.9", "warm")
+        assert not usage.from_deploy("127.0.0.1", "", "warm")
+        assert not usage.from_deploy("203.0.113.9", None, "warm")
+
+    def test_the_deploys_warm_reads_are_not_a_visitors(
+        self, app: SiteApp, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q1091, `usage-first-month.md` §4.3: the restart's warm requests were counted as
+        a visitor's library reads. Marked from the box they are the deploy's; the same mark
+        sent by a visitor through the front server leaves them a visitor."""
+        monkeypatch.setattr(app, "identify", lambda token: None)
+        monkeypatch.setattr(App, "_play_draft", lambda self, body: {"played": True})
+        monkeypatch.setattr(app, "usage", usage.Counter())
+        server = Server(("127.0.0.1", 0), site_server.site_handler_for(app))
+        threading.Thread(target=server.serve_forever, kwargs=SERVE_FAST, daemon=True).start()
+        port = server.server_port
+        mark = {usage.DEPLOY_HEADER: "warm"}
+        try:
+            assert Browser(port, extra=mark).post("/api/design/play", {"spec": {}}).status == 200
+            assert Browser(port, client="203.0.113.9", extra=mark).post(
+                "/api/design/play", {"spec": {}}).status == 200
+            assert Browser(port).post("/api/design/play", {"spec": {}}).status == 200
+        finally:
+            server.shutdown()
+            server.server_close()
+        drained = app.usage.drain(final=True)
+        counts = {key[1:]: sums.count for key, sums in drained.hours.items()}
+        play = "POST /api/design/play"
+        assert counts == {
+            (play, "", 200, "", usage.DEPLOY): 1,
+            (play, "", 200, "", usage.VISITOR): 2,
+        }
+        assert not drained.rows
+
+    def test_a_deploy_row_is_written_and_counts_nobody(self) -> None:
+        """Q1091: `0044_usage_deploy` lets the store hold `who = 'deploy'`."""
+        with _migrated() as connection:
+            clock = Clock()
+            clock.now = HOUR + 10
+            counter = usage.Counter(clock=clock)
+            counter.record(LIBRARY, "", 200, "", None, 22.0, 80.0, deploy=True)
+            counter.record(LIBRARY, "", 200, "", None, 0.5, 1.0)
+            counter.flush(connection, final=True)
+            with connection.cursor() as cursor:
+                cursor.execute("select who, count, cpu from usage_hours order by who")
+                assert cursor.fetchall() == [
+                    (usage.DEPLOY, 1, 22.0), (usage.VISITOR, 1, 0.5)]
+                cursor.execute("select count(*) from usage_people")
+                assert cursor.fetchone() == (0,)
 
     def test_a_flush_writes_a_restart_adds_and_old_rows_go(self) -> None:
         with _migrated() as connection:

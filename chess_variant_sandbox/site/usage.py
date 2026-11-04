@@ -36,6 +36,11 @@ SAMPLE_EVERY = 300.0
 
 MEMBER = "member"
 VISITOR = "visitor"
+DEPLOY = "deploy"
+"""`who` for a request the deploy made on the box itself (Q1091, `from_deploy`)."""
+
+DEPLOY_HEADER = "X-Chess-Variant-Sandbox-Deploy"
+"""The header `deploy/remote/deploy.sh`'s `restart` step sends with its warm requests."""
 
 # Anything a request did not match, including an invented path. A withheld route keeps
 # its own template, so demand for it can be read.
@@ -74,6 +79,26 @@ def template(method: str, path: str) -> str:
         parts = routes.split(path)
         found = next((one for one in routes.WITHHELD if one.matches(method, parts)), None)
     return OTHER if found is None else f"{found.method} {found.path}"
+
+
+def from_deploy(peer: str, forwarded: str | None, marker: str | None) -> bool:
+    """Whether a request is the deploy's own, made on the box, and not a visitor's (Q1091).
+
+    `deploy/remote/deploy.sh`'s `restart` step warms the library, the map and the games
+    list unsigned, straight at 127.0.0.1:8765, and those reads counted as a visitor's:
+    `docs/reference/usage-first-month.md` §4.3 found them carrying nearly all of the
+    visitor rows' library CPU. They are tagged `DEPLOY` instead.
+
+    The marker is believed only from a source that only the box can be. The app listens
+    on loopback, and every request from outside reaches it through Caddy, which always
+    writes `X-Forwarded-For` (and strips `DEPLOY_HEADER`, `deploy/remote/Caddyfile`). So
+    a request with the header, from a loopback peer and with no forwarding header at all,
+    was made on the box. A visitor sending the header through the front server is still
+    a visitor: they cannot remove the forwarding header Caddy adds.
+    """
+    if not marker or forwarded is not None:
+        return False
+    return quota.is_loopback(peer)
 
 
 def default_variant(route: str, path: str) -> str:
@@ -182,14 +207,19 @@ class Counter:
         viewer: int | None,
         cpu: float,
         wall: float,
+        deploy: bool = False,
     ) -> None:
-        """Add one finished request to its hour's row."""
+        """Add one finished request to its hour's row.
+
+        `deploy` is `from_deploy`'s answer: the row is the deploy's, never a visitor's,
+        and nobody's people count.
+        """
         hour = hour_of(self._clock())
-        who = VISITOR if viewer is None else MEMBER
+        who = DEPLOY if deploy else VISITOR if viewer is None else MEMBER
         with self._lock:
             key = (hour, route, variant, status, kind, who)
             self._hours.setdefault(key, Sums()).add(Sums(1, cpu, wall, wall))
-            if viewer is None:
+            if viewer is None or deploy:
                 return
             people = self._people.setdefault((hour, route, variant), People())
             people.made[viewer] = people.made.get(viewer, 0) + 1

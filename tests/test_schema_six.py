@@ -595,8 +595,9 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # TC8's crowd, which declares none; 112 since TC10b's free companies, which declares none;
     # 113 since Q1074bg1's brink, which declares none; 114 since Q1074bg2's dohyo, which declares none;
     # 119 since Q1074bs's rock paper shove and four push previews, which declare none;
-    # 120 since Q1079's duck chess, which declares none.
-    assert len(paths) == 120
+    # 120 since Q1079's duck chess, which declares none; 121 since SR3s1's runners, which does,
+    # sending each side to the other's whole back rank (both readings agree on a whole rank).
+    assert len(paths) == 121
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:
@@ -620,7 +621,7 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
 
     assert sorted(with_reach) == [
         "dobutsu", "intransitive", "jeson-mor", "kingofthehill", "racingkings", "rps-v3",
-        "watering-hole",
+        "runners", "watering-hole",
     ]
     differ = sorted(name for name, (built, other) in with_reach.items() if built != other)
     assert differ == ["intransitive"]

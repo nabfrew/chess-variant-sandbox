@@ -335,6 +335,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/brink": "acbee9311ba0b12b",  # Q1074bg1, 2026-10-30
     "rulesets/dohyo": "058a15a873e5314b",  # Q1074bd, 2026-10-31: the corner ring (was 046edcf48e185db7, Q1074bg2)
     "rulesets/duck-chess": "f9808c9f13e0867d",  # Q1079, 2026-10-31
+    "rulesets/runners": "bc491b28315f0aba",  # SR3s1, 2026-11-03
     "rulesets/rock-paper-shove": "43142f6be2e63c9b",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "019f4704a5c0d78c",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "3510f2fd444cf5f9",  # Q1074bs, 2026-10-31

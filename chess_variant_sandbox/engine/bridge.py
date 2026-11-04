@@ -1567,6 +1567,20 @@ def _zobrist_fields(spec: CompiledSpec) -> dict[str, Any]:
     }
 
 
+def _feature_geometry_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """R14 (`docs/plan-smells-rust.md`): each square's row from each player's side and its
+    doubled distance from the middle, `[player][square]` flattened, for the two features
+    that read the board's shape (`compile._feature_geometry`). A function of the board's
+    shape alone -- its size, lattice cut and seams, which the movement tables already fix
+    -- so the fingerprint leaves them out (`_DERIVED`): no stored basis moves for a
+    restatement, and the code that walks them is in the build fingerprint."""
+    return {
+        "feature_rank": [rank for row in spec.feature_rank for rank in row],
+        "feature_rank_span": spec.feature_rank_span,
+        "feature_centre": [distance for row in spec.feature_centre for distance in row],
+    }
+
+
 _NO_INERT: dict[str, Any] = {}
 
 # Every rule's flattener and the inert defaults of its keys, in the order `build_tables`
@@ -1608,6 +1622,7 @@ _FLATTENERS: tuple[tuple[Callable[[CompiledSpec], dict[str, Any]], dict[str, Any
     (_rest_fields, _REST_INERT),
     (_sight_fields, _SIGHT_INERT),
     (_push_fields, _PUSH_INERT),
+    (_feature_geometry_fields, _NO_INERT),
     (_zobrist_fields, _NO_INERT),
 )
 
@@ -1654,7 +1669,10 @@ _INERT_DEFAULTS: dict[str, Any] = {
 # kinds carry a rule of their own, and they cross fingerprinted under `neutral_control`
 # rather than by moving this key out of the set: a wild game's `control_kind` is not empty,
 # so fingerprinting it would move every wild game's stored basis for nothing.
-_DERIVED = frozenset({"control_kind"})
+#
+# R14's feature geometry (`_feature_geometry_fields`): the board's shape restated per square
+# for the `advance` and `centrality` features.
+_DERIVED = frozenset({"control_kind", "feature_rank", "feature_rank_span", "feature_centre"})
 
 # Keys that are part of what every game means, whatever rules it declares: the board's
 # shape, the movement and attack tables, the opening array, the ending clocks, the

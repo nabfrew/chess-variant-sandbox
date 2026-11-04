@@ -202,7 +202,6 @@ class FeatureContext:
     height: int
     total_material: float
     royal_types: frozenset[int]
-    centre: tuple[float, float]
     diameter: float
     territory_win_at: int
     has_territory: bool
@@ -299,7 +298,6 @@ def feature_context(spec: CompiledSpec) -> FeatureContext:
         height=spec.height,
         total_material=total or 1.0,
         royal_types=frozenset(spec.royal_types),
-        centre=((spec.width - 1) / 2.0, (spec.height - 1) / 2.0),
         diameter=float(max(spec.width, spec.height)) or 1.0,
         territory_win_at=territory.win_at if territory else 0,
         has_territory=territory is not None,
@@ -625,12 +623,16 @@ class FeatureEvaluator:
         old code did worse than that -- ``owner == player`` is false for a wild piece
         whoever is asking, so a boar was subtracted from *both* players and the term
         stopped being antisymmetric.
+
+        **The row is the compiled one** (R14, `compile._feature_geometry`): counted from
+        the owner's own side, and 0 on every square where the owner's rows wrap, since a
+        board with no far side has nothing to advance towards. Never ``square // width``.
         """
-        if ctx.height < 2:
-            return 0.0
         spec = ctx.base.spec
-        width = ctx.width
-        span = ctx.height - 1
+        span = spec.feature_rank_span
+        if span == 0:
+            return 0.0
+        rows = spec.feature_rank
         total = 0.0
         count = 0
         for square, value in enumerate(state.board[: ctx.n_squares]):
@@ -639,8 +641,7 @@ class FeatureEvaluator:
             owner, piece_type = spec.owner_of(value), spec.type_of(value)
             if owner == WILD or piece_type in ctx.royal_types:
                 continue
-            rank = square // width
-            progress = rank / span if owner == 0 else (span - rank) / span
+            progress = rows[owner][square] / span
             total += progress if owner == player else -progress
             count += 1
         return total / count if count else 0.0
@@ -655,10 +656,14 @@ class FeatureEvaluator:
         ``royal_exposure`` read by asking the engine rather than by reading the board
         here. Counted as the opponent's, which is what the two-row table did, a boar
         parked on the centre made both players look worse placed than they were.
+
+        **The distance is the compiled one** (R14, `compile._feature_geometry`): twice
+        the square's offset from the middle along every pair of sides that is an edge
+        for the owner -- a hexagon's three, a grid's two, never a seam -- halved here
+        exactly, so a board with plain edges reads what it always did.
         """
         spec = ctx.base.spec
-        width = ctx.width
-        cx, cy = ctx.centre
+        centre = spec.feature_centre
         total = 0.0
         count = 0
         for square, value in enumerate(state.board[: ctx.n_squares]):
@@ -667,8 +672,7 @@ class FeatureEvaluator:
             owner = spec.owner_of(value)
             if owner == WILD:
                 continue
-            rank, file = divmod(square, width)
-            distance = max(abs(file - cx), abs(rank - cy)) / ctx.diameter
+            distance = (centre[owner][square] / 2.0) / ctx.diameter
             near = 1.0 - distance
             total += near if owner == player else -near
             count += 1

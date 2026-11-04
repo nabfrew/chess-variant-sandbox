@@ -94,6 +94,10 @@ def test_the_core_and_the_oracle_score_portal_positions_alike(
         )
 
 
-@pytest.mark.parametrize("name", MOMENTUM)
+@pytest.mark.parametrize("name", [
+    # ferry-no-straight-back: 2.7 s alone, 4.4 s wall and CPU in a fast-suite run (Q1097).
+    pytest.param(n, marks=[pytest.mark.slow] if n == "ferry-no-straight-back" else [])
+    for n in MOMENTUM
+])
 def test_a_momentum_game_is_played_the_same_on_both_sides(name: str) -> None:
     _assert_same_played(_momentum(name), ("minimax:nodes=150", "greedy"))

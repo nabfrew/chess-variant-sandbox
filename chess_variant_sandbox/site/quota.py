@@ -374,8 +374,10 @@ SHOW_ME_AN_HOUR = 50
 """How many times one person may press *show me* or *show the stuck game* in a rolling hour.
 
 The user, 2026-09-13: *"give it 50 presses per user per hour"*. A *show me* press plays 32
-core games, 0.3-0.6 CPU-seconds, so fifty is at most half a minute of one core an hour per
-person. A *show the stuck game* press plays 16 random games and draws on the same fifty.
+core games. The estimate here was 0.3-0.6 CPU-seconds; the box measured 1.0-2.6 on the
+three presses on record (`docs/reference/usage-first-month.md` §4.1, thread clock), so
+fifty is at most about 130 CPU-seconds, two minutes of one core an hour per person, under
+2% of the box's two cores. A *show the stuck game* press plays 16 random games and draws on the same fifty.
 Rolling, like `MATCHES_A_DAY`, so there is no reset time to wait for.
 """
 
@@ -652,7 +654,7 @@ def source_address(peer: str, forwarded: str | None) -> str:
     A peer that is not loopback is not the proxy, so its header is read from nobody and
     the peer itself is the answer.
     """
-    if not forwarded or not _is_loopback(peer):
+    if not forwarded or not is_loopback(peer):
         return peer
     entries = [part.strip() for part in forwarded.split(",") if part.strip()]
     if not entries:
@@ -660,7 +662,7 @@ def source_address(peer: str, forwarded: str | None) -> str:
     return entries[-1][:64]
 
 
-def _is_loopback(peer: str) -> bool:
+def is_loopback(peer: str) -> bool:
     """Whether this peer is the front server on the same box, and so worth listening to."""
     try:
         return ipaddress.ip_address(peer.strip("[]")).is_loopback

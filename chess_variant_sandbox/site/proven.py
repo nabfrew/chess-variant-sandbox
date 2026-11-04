@@ -55,13 +55,20 @@ person lost; and the record's basis is on the page (`basis_said`).
 
 from __future__ import annotations
 
+import ast
+import contextlib
+import hashlib
 import json
+import os
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.measurement import ROOT, built_fingerprint, tables_cache_path
 from chess_variant_sandbox.puzzles import (
     FORMATS,
     LOST,
@@ -73,7 +80,7 @@ from chess_variant_sandbox.puzzles import (
     trivial,
     work_basis,
 )
-from chess_variant_sandbox.web import card_rules, opponents
+from chess_variant_sandbox.web import card_rules, library, opponents
 from chess_variant_sandbox.web.library import engine_for
 from chess_variant_sandbox.web.page import game as game_drawing
 from chess_variant_sandbox.web.page import game_picture, proven_page
@@ -199,6 +206,11 @@ def path(runs_dir: Path | str, digest: str) -> Path:
 
 _CACHE: dict[tuple[str, str], tuple[tuple[int, int, str], Record | None]] = {}
 _LOCK = threading.Lock()
+_FLIGHTS: dict[tuple[str, str], threading.Lock] = {}
+"""One lock a record (Q1093, `docs/reference/library-cold-read.md` fix 1). The first reader
+of a version `_CACHE` does not hold replays it; every reader arriving meanwhile waits on this
+lock and takes that answer rather than replaying the record alongside. On 2026-11-02 eleven
+library reads each replayed every stale record at once: 12 in flight, up to 357 s."""
 
 
 def load(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> Record | None:
@@ -209,7 +221,8 @@ def load(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> Reco
     where it is not a format it reads (`FORMATS`) or not this game's, and where no
     spec is given. A
     record is read once a process for each version of the file on disk and these rules,
-    since the replay costs a few tenths of a second on a record of 150.
+    since the replay costs a few tenths of a second on a record of 150, and readers asking
+    for the same version at once share that one replay (`_FLIGHTS`).
     """
     if spec is None:
         return None
@@ -222,27 +235,318 @@ def load(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> Reco
     key = (str(where), digest)
     with _LOCK:
         cached = _CACHE.get(key)
+        flight = _FLIGHTS.setdefault(key, threading.Lock())
     if cached is not None and cached[0] == stamp:
         return cached[1]
+    # Single flight: one replay a version of the record, however many readers ask at once.
+    # A reader that waited here finds the first one's answer in the cache and returns it.
+    with flight:
+        with _LOCK:
+            cached = _CACHE.get(key)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        try:
+            body = where.read_bytes()
+        except OSError:
+            body = b""
+        found = _replayed(body, digest, spec)
+        with _LOCK:
+            _CACHE[key] = (stamp, found)
+        return found
+
+
+def _replayed(body: bytes, digest: str, spec: dict[str, Any]) -> Record | None:
+    """The record these bytes hold, replayed (`_read`), or None where they hold none."""
     try:
-        data = json.loads(where.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        data = json.loads(body.decode("utf-8"))
+    except ValueError:
         data = None
-    found = _read(data, digest, spec) if isinstance(data, dict) else None
-    with _LOCK:
-        _CACHE[key] = (stamp, found)
-    return found
+    return _read(data, digest, spec) if isinstance(data, dict) else None
+
+
+_COUNTED: dict[tuple[str, str], tuple[tuple[int, int, str], int]] = {}
+"""`offered`'s answers this process took from the store (`ProofAnswers`) or worked out, by the
+version of the record on disk they answer, as `_CACHE` keeps whole records."""
+
+
+def _known(key: tuple[str, str], stamp: tuple[int, int, str]) -> int | None:
+    """`offered`'s answer for this version of the record if this process has it; under `_LOCK`."""
+    cached = _CACHE.get(key)
+    if cached is not None and cached[0] == stamp:
+        return 0 if cached[1] is None else len(cached[1].positions)
+    counted = _COUNTED.get(key)
+    return counted[1] if counted is not None and counted[0] == stamp else None
 
 
 def offered(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> int:
     """How many proven positions the game's page offers: nought where it has no section.
 
-    The games list's *proven positions* filter reads this (Q972), the same `load` and the
+    The games list's *proven positions* filter reads this (Q972), the same replay and the
     same positions the game page's section draws, so a card the filter keeps is exactly a
     game whose page has the section. A game with no record costs one `stat`.
+
+    **Kept on disk** (Q1094, `docs/reference/library-cold-read.md` fix 2). The count is a
+    pure function of the record's bytes, the spec and the code that replays it, so it is
+    stored under exactly those (`ProofAnswers`, `proof_answers_key`) and a new process reads
+    it back instead of replaying the record: a restart's library read hashes each record
+    and replays only those whose bytes, spec or replaying code it has no answer for. A
+    replay done here also leaves its `Record` in `_CACHE` for the game page. Readers asking
+    for the same version at once share one replay or one lookup (`_FLIGHTS`).
     """
-    record = load(runs_dir, digest, spec)
-    return 0 if record is None else len(record.positions)
+    if spec is None:
+        return 0
+    where = path(runs_dir, digest)
+    try:
+        held = where.stat()
+    except OSError:
+        return 0
+    stamp = (held.st_mtime_ns, held.st_size, json.dumps(spec, sort_keys=True))
+    key = (str(where), digest)
+    with _LOCK:
+        known = _known(key, stamp)
+        flight = _FLIGHTS.setdefault(key, threading.Lock())
+    if known is not None:
+        return known
+    with flight:
+        with _LOCK:
+            known = _known(key, stamp)
+        if known is not None:
+            return known
+        try:
+            body = where.read_bytes()
+        except OSError:
+            return 0
+        record_digest = hashlib.sha256(body).hexdigest()
+        spec_digest = hashlib.sha256(stamp[2].encode("utf-8")).hexdigest()
+        answer = _PROOFS.get(digest, record_digest, spec_digest)
+        if answer is None:
+            found = _replayed(body, digest, spec)
+            answer = 0 if found is None else len(found.positions)
+            with _LOCK:
+                _CACHE[key] = (stamp, found)
+            _PROOFS.put(digest, record_digest, spec_digest, answer)
+            _PROOFS.save()
+        with _LOCK:
+            _COUNTED[key] = (stamp, answer)
+        return answer
+
+
+# ------------------------------------------------------- the replay's answers' store
+#
+# Q1094. Every cold `/api/library` replayed every proof record to count what `offered`
+# says: 7,574 rows and 1.2 million plies stepped from Python, plus each game compiled
+# again, about two thirds of the deploy's ~125 s warm on the box (`library-cold-read.md`).
+# The count is kept on disk as Q887 keeps the cards' answers (`library.CardAnswers`).
+
+PROOF_ANSWERS_NAME = "library-proven.json"
+# Moves when the file's shape does, what a stored answer means, or how the key is read.
+_PROOF_FORMAT = 1
+_HERE = "chess_variant_sandbox/site/proven.py"
+_PUZZLES = "chess_variant_sandbox/puzzles.py"
+
+
+def proof_answers_path() -> Path:
+    """Beside the card answers and the tables cache (`measurement.tables_cache_path`): on
+    the box `/opt/chess-variant-sandbox/runs/`, the app user's and kept across a deploy's
+    swap; in a test run the session's own directory, never the checkout's `runs/`."""
+    return tables_cache_path().with_name(PROOF_ANSWERS_NAME)
+
+
+def _disk(name: str) -> bytes:
+    try:
+        return (ROOT / name).read_bytes()
+    except OSError:
+        return b"<unreadable>"
+
+
+def module_imports(body: bytes) -> bytes:
+    """The import statements a module runs when it is imported, and none it defers into a
+    function or a class: the source of every import outside a `def` or `class` body."""
+    text = body.decode("utf-8")
+    heads: list[str] = []
+    for node in ast.parse(text).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, (ast.Import, ast.ImportFrom)):
+                heads.append(ast.get_source_segment(text, inner) or "")
+    return "\n".join(heads).encode("utf-8")
+
+
+@lru_cache(maxsize=1)
+def proof_files() -> tuple[tuple[str, bytes], ...]:
+    """Every file whose content can decide a stored count, by repository path, with its bytes.
+
+    The count is `len(_read(...).positions)`: `_read`'s gate (`FORMATS`, the record's own
+    hash), the engine compiled from the spec (`Engine`), `puzzles.holding` (which replays
+    each won row and names the position it reaches) and `puzzles.trivial`. So the key holds
+
+    - this file whole (`_read`, `_kept`, `offered`, this store);
+    - `puzzles.py` whole;
+    - the import closure of what `puzzles.py` imports when it is imported (`module_imports`),
+      deferred imports in those files followed too: the engine, its compiler and bridge,
+      `agents`, `tournament`, `spec`, `fairy` and `measurement`, 47 files on 2026-11-04.
+
+    Left out on purpose: `puzzles.py`'s own deferred imports, which reach `web.library` and
+    so the whole package, but sit in functions the count never calls (`spec.relate`,
+    `corpus`, the record writer's `rules_beyond`); and this file's other imports (`web`, the
+    page drawing), which `_read` never calls. `tests/test_site_proven.py` holds both: an AST
+    walk from `holding` and `trivial` reaches no deferred import, the names `_read` and
+    `_kept` call come only from the key's modules, and a traced replay runs no package file
+    outside it. With the core's build fingerprint (`_core.BUILD_FINGERPRINT`, Rust) beside
+    them, nothing that moves the count is outside the key: more would only replay again
+    after an unrelated edit, fewer could serve a stale count."""
+    found = {_HERE: _disk(_HERE), _PUZZLES: _disk(_PUZZLES)}
+    entries = library.imported_paths(module_imports(found[_PUZZLES]))
+    for name, body in library.package_files(entries):
+        found.setdefault(name, body)
+    return tuple(sorted(found.items()))
+
+
+def proof_files_in(
+    read: Callable[[str], bytes | None], listing: Callable[[str], frozenset[str]]
+) -> tuple[tuple[str, bytes], ...]:
+    """`proof_files` in any tree (Q1095): ``read`` gives a file's bytes by repository path,
+    or ``None``, and ``listing`` the exact names of the files in a directory, as
+    `library.card_files_in` takes them. `deploy/proven.py` reads a git ref's blobs through
+    this, to know the key the box will run a ref under before it is deployed; over this
+    checkout's disk it is `proof_files` (`tests/test_deploy_proven.py` holds the two equal)."""
+    found = {name: read(name) or b"<unreadable>" for name in (_HERE, _PUZZLES)}
+    entries = library.imported_paths(module_imports(found[_PUZZLES]), listing)
+    for name, body in library.card_files_in(read, listing, (), entries=entries):
+        found.setdefault(name, body)
+    return tuple(sorted(found.items()))
+
+
+def proof_key(core: str, files: Iterable[tuple[str, bytes]]) -> str:
+    """SHA-256 over `_PROOF_FORMAT`, a core build fingerprint and ``files`` by repository
+    path and exact bytes: `proof_answers_key` for any core and tree."""
+    digest = hashlib.sha256(f"library-proven {_PROOF_FORMAT}\0core {core}\0".encode())
+    for name, body in files:
+        digest.update(name.encode("utf-8") + b"\0" + body + b"\0")
+    return digest.hexdigest()
+
+
+@lru_cache(maxsize=1)
+def proof_answers_key() -> str:
+    """The key the stored counts are read and written under in this process: `proof_key`
+    of the loaded core's build fingerprint and `proof_files`. Cached for the process:
+    neither moves under it."""
+    return proof_key(built_fingerprint(), proof_files())
+
+
+class ProofAnswers:
+    """`offered`'s count for each game's record, read from disk once and written back.
+
+    The file holds one key's answers, ``{"sources": key, "proven": {game hash: {"record":
+    sha256 of the record's bytes, "spec": sha256 of the spec's sorted JSON, "offered":
+    count}}}``. A count is read back only when all three match: the code and core
+    (`proof_answers_key`), the record's exact bytes (a digest, not the mtime, so a copy
+    that changes nothing invalidates nothing) and the spec. One entry a game, so the file
+    stays the library's size whatever the upkeep rewrites. Anything malformed, a partial
+    write or another key reads as no answer, and the record is replayed.
+
+    `save` writes to a temporary file renamed over the old one, after folding in what
+    another process stored meanwhile under the same key. A `runs/` that cannot be written
+    leaves the answers in memory: the worst a failure costs is a replay.
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self._fixed = path
+        self._lock = threading.Lock()
+        self._read_as: tuple[Path, str] | None = None
+        self._proven: dict[str, dict[str, Any]] = {}
+        self._added = False
+
+    def _path(self) -> Path:
+        return self._fixed if self._fixed is not None else proof_answers_path()
+
+    @staticmethod
+    def _valid(entry: Any) -> bool:
+        return (isinstance(entry, dict) and isinstance(entry.get("record"), str)
+                and isinstance(entry.get("spec"), str)
+                and type(entry.get("offered")) is int and entry["offered"] >= 0)
+
+    @classmethod
+    def _stored(cls, path: Path, key: str) -> dict[str, dict[str, Any]]:
+        try:
+            held = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(held, dict) or held.get("sources") != key:
+            return {}
+        proven = held.get("proven")
+        if not isinstance(proven, dict):
+            return {}
+        return {str(game): dict(entry) for game, entry in proven.items() if cls._valid(entry)}
+
+    def _current(self) -> dict[str, dict[str, Any]]:
+        """The answers for this path and key, read at most once per pair; under the lock."""
+        place = (self._path(), proof_answers_key())
+        if self._read_as != place:
+            self._proven = self._stored(*place)
+            self._read_as = place
+            self._added = False
+        return self._proven
+
+    def get(self, game: str, record: str, spec: str) -> int | None:
+        with self._lock:
+            entry = self._current().get(game)
+        if entry is None or entry["record"] != record or entry["spec"] != spec:
+            return None
+        return int(entry["offered"])
+
+    def put(self, game: str, record: str, spec: str, offered: int) -> None:
+        with self._lock:
+            self._current()[game] = {"record": record, "spec": spec, "offered": int(offered)}
+            self._added = True
+
+    def save(self) -> None:
+        with self._lock:
+            if not self._added or self._read_as is None:
+                return
+            path, key = self._read_as
+            merged = {**self._stored(path, key), **self._proven}
+            self._proven = merged
+            payload = json.dumps({"sources": key, "proven": dict(sorted(merged.items()))},
+                                 sort_keys=True, separators=(",", ":"))
+            temporary = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temporary.write_text(payload, encoding="utf-8")
+                os.replace(temporary, path)
+            except OSError:
+                with contextlib.suppress(OSError):
+                    temporary.unlink()
+                return
+            self._added = False
+
+
+_PROOFS = ProofAnswers()
+
+
+def _kept(
+    engine: Engine, rows: list[Any]
+) -> tuple[list[tuple[int, int, str, dict[str, Any]]], int, int]:
+    """The rows a record offers, in the page's order, with how many were too easy and how
+    many did not hold. Everything `offered`'s count is decided by past `_read`'s gate."""
+    kept: list[tuple[int, int, str, dict[str, Any]]] = []
+    too_easy = 0
+    # The won rows that hold, by name (`puzzles.holding`, which `puzzles.owes` reads too). A
+    # second row reaching a position already named is the same position twice: the first
+    # is kept, as a record from the runs never holds one (`puzzles.candidates`). A row the
+    # record proves lost is passed over and not dropped (Q993i): a true proof, never a
+    # position to offer, and nothing the upkeep would re-prove.
+    holds, dropped = holding(engine, rows)
+    for order, called, row in holds:
+        if trivial(row):
+            too_easy += 1
+            continue
+        kept.append((int(row.get("ends_in") or 0), order, called, row))
+    # Shortest proved win first, then the record's own order: a fixed order the server
+    # decides, so the page sorts nothing.
+    kept.sort(key=lambda entry: (entry[0], entry[1]))
+    return kept, too_easy, dropped
 
 
 def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | None:
@@ -254,23 +558,10 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
         # no record, and the game has no section, as before it was asked. One whose every
         # proof was set aside (Q1084) is a record, which says why it offers none.
         return None
-    engine = engine_for(spec)
-    kept: list[tuple[int, int, str, dict[str, Any]]] = []
-    too_easy = 0
-    # The won rows that hold, by name (`puzzles.holding`, which `puzzles.owes` reads too). A
-    # second row reaching a position already named is the same position twice: the first
-    # is kept, as a record from the runs never holds one (`puzzles.candidates`). A row the
-    # record proves lost is passed over and not dropped (Q993i): a true proof, never a
-    # position to offer, and nothing the upkeep would re-prove.
-    holds, dropped = holding(engine, data.get("positions") or [])
-    for order, called, row in holds:
-        if trivial(row):
-            too_easy += 1
-            continue
-        kept.append((int(row.get("ends_in") or 0), order, called, row))
-    # Shortest proved win first, then the record's own order: a fixed order the server
-    # decides, so the page sorts nothing.
-    kept.sort(key=lambda entry: (entry[0], entry[1]))
+    # The engine is compiled here, not through `library.engine_for`, so the code that
+    # decides the count is in `proof_files` (`Engine`'s closure), not `web/library.py`.
+    engine = Engine(spec)
+    kept, too_easy, dropped = _kept(engine, list(data.get("positions") or []))
     positions = tuple(
         Position(
             id=called,

@@ -699,7 +699,9 @@ def _goal_arm_cases() -> list[Any]:
     cases = []
     for agents in (("minimax:nodes=150", "greedy"), ("minimax:nodes=150", "minimax:nodes=150")):
         for label, build in GOAL_ARMS:
-            slow = label == "capture-matrix" and agents[1] != "greedy"
+            # scoring-on-ground vs minimax: 3.8 s alone, over the 4 s guard under load (Q1096).
+            slow = (label == "capture-matrix" and agents[1] != "greedy") or (
+                label == "scoring-on-ground" and agents[1] != "greedy")
             cases.append(pytest.param(
                 label, build, agents, id=f"{agents[0]}-vs-{agents[1]}-{label}",
                 marks=[pytest.mark.slow] if slow else [],
@@ -911,8 +913,18 @@ def test_the_race_at_the_default_is_what_goal_2_gave_it(label: str, build: Any) 
     assert Evaluator.for_spec(spec, goal_pieces=0.0).race_weight == 0.0
 
 
-@pytest.mark.parametrize("label,build", RACE_ARMS, ids=[arm[0] for arm in RACE_ARMS])
-@pytest.mark.parametrize("player", RACE_SHARE_PLAYERS, ids=lambda name: name)
+def _race_share_cases() -> list[Any]:
+    """Every race arm against both players. The named-piece arm's plain minimax player is
+    3.4 s alone, over the 4 s guard under load (Q1096), so that one case runs slow."""
+    return [
+        pytest.param(label, build, player, id=f"{player}-{label}",
+                     marks=[pytest.mark.slow] if (
+                         label == "a-named-piece" and player == RACE_SHARE_PLAYERS[0]) else [])
+        for label, build in RACE_ARMS for player in RACE_SHARE_PLAYERS
+    ]
+
+
+@pytest.mark.parametrize(("label", "build", "player"), _race_share_cases())
 def test_the_built_in_race_is_weighed_the_same_way_on_both_sides(
     label: str, build: Any, player: str
 ) -> None:

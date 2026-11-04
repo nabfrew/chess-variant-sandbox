@@ -14,6 +14,13 @@ any other address keeps its brackets.
 
 ## 2026-11-03
 
+### A new game: runners
+
+*Runners* has no kings. You win by landing your one knight, or any of your pawns, on the far rank where nothing can
+take it. It shows off a newer rule: a goal square can count for a list of pieces rather than just one. In testing,
+the knight and the pawns each won about half of the races to the far rank, and neither side had a real edge from
+moving first.
+
 ### The computer finishes off a lone king
 
 When one side is down to its king alone, the computer players now work to hem that king in, so they mate with a

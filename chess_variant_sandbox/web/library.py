@@ -2222,6 +2222,7 @@ def card_files_in(
     read: Callable[[str], bytes | None],
     listing: Callable[[str], frozenset[str]],
     assets: Iterable[str],
+    entries: Iterable[str] = (CARD_ENTRY,),
 ) -> tuple[tuple[str, bytes], ...]:
     """`card_sources` and their bytes in any tree, by repository path (POSIX, relative).
 
@@ -2232,9 +2233,12 @@ def card_files_in(
 
     Sorted by path in byte order, never by `Path`: Windows compares paths case-blind, so
     the same tree's files came out in another order there than on the box, and the key
-    moved between the two for the same bytes (Q890)."""
+    moved between the two for the same bytes (Q890).
+
+    ``entries`` are where the walk starts: `CARD_ENTRY` for the card answers, and
+    `site/proven.py` for the proof replay's answers (Q1094, `proven.ProofAnswers`)."""
     found: dict[str, bytes] = {}
-    queue = [CARD_ENTRY]
+    queue = list(entries)
     while queue:
         name = queue.pop()
         if name in found:
@@ -2273,6 +2277,25 @@ def _card_files() -> tuple[tuple[str, bytes], ...]:
 
     assets = [_repo_name(path) for path in ASSET_ROOT.rglob("*") if path.is_file()]
     return card_files_in(_disk_read, _disk_listing, assets)
+
+
+@lru_cache(maxsize=8)
+def package_files(entries: tuple[str, ...]) -> tuple[tuple[str, bytes], ...]:
+    """The import closure of ``entries`` (repository paths) on this checkout's disk, with
+    each file's bytes, by path in byte order: `card_files_in` with no assets. Cached for the
+    process, as `_card_files` is: the tree does not move under it."""
+    return card_files_in(_disk_read, _disk_listing, (), entries=entries)
+
+
+def imported_paths(
+    body: bytes, listing: Callable[[str], frozenset[str]] | None = None
+) -> tuple[str, ...]:
+    """The repository paths, on this checkout's disk (or in the tree ``listing`` names the
+    files of), of every package module the import statements in ``body`` name, parent
+    packages included, by path in byte order."""
+    names = _disk_listing if listing is None else listing
+    found = {_module_path(dotted, names) for dotted in _package_imports(body)}
+    return tuple(sorted(path for path in found if path is not None))
 
 
 def card_sources() -> tuple[Path, ...]:

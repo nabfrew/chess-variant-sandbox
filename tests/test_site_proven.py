@@ -29,7 +29,9 @@ from __future__ import annotations
 import html
 import json
 import os
+import threading
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -305,6 +307,41 @@ class TestTheLoader:
         os.utime(where, ns=(where.stat().st_atime_ns, where.stat().st_mtime_ns + 10**9))
         assert len(_load(tmp_path).positions) == 3
 
+    def test_concurrent_cold_reads_share_one_replay(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q1093 (`docs/reference/library-cold-read.md` fix 1): on 2026-11-02 eleven library
+        reads each replayed every stale record at once. Twelve listings asking at the same
+        moment, each for two records, pay one replay a record; every one gets its answer."""
+        replays: list[str] = []
+        real = proven._read
+
+        def slow(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Any:
+            replays.append(digest)
+            threading.Event().wait(0.2)  # long enough for every reader to arrive meanwhile
+            return real(data, digest, spec)
+
+        monkeypatch.setattr(proven, "_read", slow)
+        first, second = _fresh(tmp_path, [ONE, LOSES, BOTH]), _fresh(tmp_path, [ONE])
+        readers = 12
+        start = threading.Barrier(readers)
+
+        def listing(_: int) -> tuple[int, int]:
+            start.wait()
+            return (proven.offered(first, DIGEST, SPEC), proven.offered(second, DIGEST, SPEC))
+
+        with ThreadPoolExecutor(max_workers=readers) as pool:
+            answers = list(pool.map(listing, range(readers)))
+        assert answers == [(3, 1)] * readers
+        assert len(replays) == 2
+        # A new version of a record is replayed again, once.
+        where = proven.path(first, DIGEST)
+        where.write_text(json.dumps(_record([ONE, BOTH])), encoding="utf-8")
+        os.utime(where, ns=(where.stat().st_atime_ns, where.stat().st_mtime_ns + 10**9))
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            again = list(pool.map(lambda _: proven.offered(first, DIGEST, SPEC), range(4)))
+        assert again == [2] * 4 and len(replays) == 3
+
     @pytest.mark.parametrize(
         "path", sorted((Path(RUNS_DIR) / "puzzles").glob("*.json")) or [None],
         ids=lambda path: "none-here" if path is None else path.stem,
@@ -476,6 +513,225 @@ class TestTheLoader:
                           "of": None, "singles": None, "solved": None, "share": None}]
         assert proven.overall({DIGEST: {_named(seen): {proven.CONVERTED}}},
                               {DIGEST: loaded}) is None
+
+
+# ------------------------------------------------------- the replay's answer on disk
+
+
+@pytest.fixture(autouse=True)
+def _own_proof_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """Every test here a store of its own (Q1094), so a count stored by one never answers
+    another's replay count."""
+    store = tmp_path / "proof-store" / proven.PROOF_ANSWERS_NAME
+    monkeypatch.setattr(proven, "_PROOFS", proven.ProofAnswers(store))
+    yield store
+    proven.proof_answers_key.cache_clear()
+
+
+def _restart(monkeypatch: pytest.MonkeyPatch, store: Path) -> list[str]:
+    """What a new process sees: nothing in memory but the store's file. Returns the list
+    every replay from here on (`_read`) appends its game to."""
+    monkeypatch.setattr(proven, "_CACHE", {})
+    monkeypatch.setattr(proven, "_COUNTED", {})
+    monkeypatch.setattr(proven, "_FLIGHTS", {})
+    monkeypatch.setattr(proven, "_PROOFS", proven.ProofAnswers(store))
+    proven.proof_answers_key.cache_clear()
+    replays: list[str] = []
+    real = proven._read
+
+    def counted(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Any:
+        replays.append(digest)
+        return real(data, digest, spec)
+
+    monkeypatch.setattr(proven, "_read", counted)
+    return replays
+
+
+class TestTheStoredCount:
+    """Q1094 (`docs/reference/library-cold-read.md` fix 2): `offered`'s count is kept on
+    disk under the record's bytes, the spec and the code and core that replay it."""
+
+    def test_a_restart_reads_the_count_back_without_replaying(
+        self, runs: Path, monkeypatch: pytest.MonkeyPatch, _own_proof_store: Path
+    ) -> None:
+        assert proven.offered(runs, DIGEST, SPEC) == 3
+        assert _own_proof_store.exists()
+        replays = _restart(monkeypatch, _own_proof_store)
+        assert proven.offered(runs, DIGEST, SPEC) == 3
+        assert replays == []
+        # The game page still has its record, replayed the first time it asks.
+        assert len(_load(runs).positions) == 3 and replays == [DIGEST]
+
+    def test_a_copy_that_changes_no_byte_is_still_a_hit(
+        self, runs: Path, monkeypatch: pytest.MonkeyPatch, _own_proof_store: Path
+    ) -> None:
+        assert proven.offered(runs, DIGEST, SPEC) == 3
+        where = proven.path(runs, DIGEST)
+        where.write_bytes(where.read_bytes())
+        os.utime(where, ns=(where.stat().st_atime_ns, where.stat().st_mtime_ns + 10**9))
+        replays = _restart(monkeypatch, _own_proof_store)
+        assert proven.offered(runs, DIGEST, SPEC) == 3 and replays == []
+
+    def test_a_changed_record_misses_and_replays(
+        self, runs: Path, monkeypatch: pytest.MonkeyPatch, _own_proof_store: Path
+    ) -> None:
+        assert proven.offered(runs, DIGEST, SPEC) == 3
+        where = proven.path(runs, DIGEST)
+        held = where.stat()
+        where.write_text(json.dumps(_record([ONE, BOTH])), encoding="utf-8")
+        # Even with the old mtime put back: the bytes name the version, not the clock.
+        os.utime(where, ns=(held.st_atime_ns, held.st_mtime_ns))
+        replays = _restart(monkeypatch, _own_proof_store)
+        assert proven.offered(runs, DIGEST, SPEC) == 2 and replays == [DIGEST]
+        # Stored again under the new bytes: the next restart reads it back.
+        replays = _restart(monkeypatch, _own_proof_store)
+        assert proven.offered(runs, DIGEST, SPEC) == 2 and replays == []
+
+    def test_a_changed_spec_misses_and_replays(
+        self, runs: Path, monkeypatch: pytest.MonkeyPatch, _own_proof_store: Path
+    ) -> None:
+        assert proven.offered(runs, DIGEST, SPEC) == 3
+        longer = json.loads(json.dumps(SPEC))
+        longer["rules"]["max_plies"] = 60
+        replays = _restart(monkeypatch, _own_proof_store)
+        assert proven.offered(runs, DIGEST, longer) == 3 and replays == [DIGEST]
+
+    def test_another_core_build_misses_and_replays(
+        self, runs: Path, monkeypatch: pytest.MonkeyPatch, _own_proof_store: Path
+    ) -> None:
+        assert proven.offered(runs, DIGEST, SPEC) == 3
+        before = proven.proof_answers_key()
+        replays = _restart(monkeypatch, _own_proof_store)
+        monkeypatch.setattr(proven, "built_fingerprint", lambda: "another build")
+        assert proven.proof_answers_key() != before
+        assert proven.offered(runs, DIGEST, SPEC) == 3 and replays == [DIGEST]
+
+    def test_an_edit_to_the_replaying_code_misses_and_replays(
+        self, runs: Path, monkeypatch: pytest.MonkeyPatch, _own_proof_store: Path
+    ) -> None:
+        assert proven.offered(runs, DIGEST, SPEC) == 3
+        before = proven.proof_answers_key()
+        files = proven.proof_files()
+        replays = _restart(monkeypatch, _own_proof_store)
+        edited = tuple((name, body + b"\n# edited\n" if name.endswith("engine/compile.py")
+                        else body) for name, body in files)
+        monkeypatch.setattr(proven, "proof_files", lambda: edited)
+        assert proven.proof_answers_key() != before
+        assert proven.offered(runs, DIGEST, SPEC) == 3 and replays == [DIGEST]
+
+    @pytest.mark.parametrize("text", [
+        "", "{\"sources\": \"", "[]", "{\"sources\": 3}", "not json at all",
+        "\x00\x01\x02",
+    ], ids=["empty", "partial", "a-list", "no-key", "garbage", "binary"])
+    def test_a_corrupt_or_partial_store_is_a_miss_not_a_crash(
+        self, runs: Path, monkeypatch: pytest.MonkeyPatch, _own_proof_store: Path, text: str
+    ) -> None:
+        _own_proof_store.parent.mkdir(parents=True, exist_ok=True)
+        _own_proof_store.write_text(text, encoding="utf-8")
+        replays = _restart(monkeypatch, _own_proof_store)
+        assert proven.offered(runs, DIGEST, SPEC) == 3 and replays == [DIGEST]
+        # The replay's answer replaced what could not be read.
+        assert json.loads(_own_proof_store.read_text(encoding="utf-8"))["sources"] == (
+            proven.proof_answers_key())
+
+    def test_a_malformed_entry_under_the_right_key_is_a_miss(
+        self, runs: Path, monkeypatch: pytest.MonkeyPatch, _own_proof_store: Path
+    ) -> None:
+        assert proven.offered(runs, DIGEST, SPEC) == 3
+        held = json.loads(_own_proof_store.read_text(encoding="utf-8"))
+        for bad in ({**held["proven"][DIGEST], "offered": "3"},
+                    {**held["proven"][DIGEST], "offered": -1},
+                    {**held["proven"][DIGEST], "offered": True},
+                    {"offered": 3}, "3"):
+            _own_proof_store.write_text(json.dumps(
+                {**held, "proven": {DIGEST: bad}}), encoding="utf-8")
+            replays = _restart(monkeypatch, _own_proof_store)
+            assert proven.offered(runs, DIGEST, SPEC) == 3 and replays == [DIGEST]
+
+    def test_a_store_that_cannot_be_written_keeps_the_answer_in_memory(
+        self, runs: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        blocked = tmp_path / "a-directory"
+        (blocked / "inside").mkdir(parents=True)
+        replays = _restart(monkeypatch, blocked)
+        assert proven.offered(runs, DIGEST, SPEC) == 3 and replays == [DIGEST]
+        assert proven.offered(runs, DIGEST, SPEC) == 3 and replays == [DIGEST]
+
+    def test_the_key_holds_the_replaying_code_and_not_the_pages(self) -> None:
+        names = {name for name, _ in proven.proof_files()}
+        for needed in ("chess_variant_sandbox/site/proven.py", "chess_variant_sandbox/puzzles.py",
+                       "chess_variant_sandbox/engine/__init__.py",
+                       "chess_variant_sandbox/engine/engine.py",
+                       "chess_variant_sandbox/engine/compile.py",
+                       "chess_variant_sandbox/engine/bridge.py",
+                       "chess_variant_sandbox/engine/state.py"):
+            assert needed in names
+        for outside in ("chess_variant_sandbox/web/library.py",
+                        "chess_variant_sandbox/site/server.py"):
+            assert outside not in names
+        assert [name for name, _ in proven.proof_files()] == sorted(names)
+
+    def test_the_count_calls_nothing_outside_the_key(self) -> None:
+        """What the key leaves out is never called on the way to the count: `_read`,
+        `_kept` and `_replayed` use no name this module imports from outside `puzzles` and
+        the engine, and nothing `puzzles.holding` or `puzzles.trivial` reaches in
+        `puzzles.py` defers an import (which would reach past the key: `web.library`)."""
+        import ast
+
+        source = (REPOSITORY / "chess_variant_sandbox/site/proven.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imported: dict[str, str] = {}
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and node.module:
+                for alias in node.names:
+                    imported[alias.asname or alias.name] = node.module
+        allowed = {"chess_variant_sandbox.puzzles", "chess_variant_sandbox.engine"}
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        for name in ("_read", "_kept", "_replayed"):
+            used = {inner.id for inner in ast.walk(functions[name]) if isinstance(inner, ast.Name)}
+            outside = {word for word in used
+                       if word in imported and imported[word].startswith("chess_variant_sandbox")
+                       and imported[word] not in allowed}
+            assert outside == set(), (name, outside)
+        body = (REPOSITORY / "chess_variant_sandbox/puzzles.py").read_text(encoding="utf-8")
+        definitions = {node.name: node for node in ast.parse(body).body
+                       if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+        queue, reached = ["holding", "trivial"], set()
+        while queue:
+            name = queue.pop()
+            if name in reached:
+                continue
+            reached.add(name)
+            for inner in ast.walk(definitions[name]):
+                assert not isinstance(inner, (ast.Import, ast.ImportFrom)), (name, inner.lineno)
+                if isinstance(inner, ast.Name) and inner.id in definitions:
+                    queue.append(inner.id)
+        assert {"holding", "trivial", "replays", "name"} <= reached
+
+    def test_a_replay_runs_no_package_file_outside_the_key(self) -> None:
+        """Traced: compiling the game and replaying a record's rows (`_kept`) executes no
+        file of the package that `proof_files` leaves out."""
+        import sys
+
+        ran: set[str] = set()
+        package = REPOSITORY / "chess_variant_sandbox"
+
+        def seen(frame: Any, _event: str, _arg: Any) -> None:
+            ran.add(frame.f_code.co_filename)
+
+        sys.setprofile(seen)
+        try:
+            found = proven._kept(proven.Engine(SPEC), _record([ONE, LOSES, BOTH])["positions"])
+        finally:
+            sys.setprofile(None)
+        assert len(found[0]) == 3
+        names = {name for name, _ in proven.proof_files()}
+        files = set()
+        for filename in ran:
+            where = Path(filename)
+            if where.is_relative_to(package):
+                files.add(where.relative_to(REPOSITORY).as_posix())
+        assert files and files <= names, files - names
 
 
 # ------------------------------------------------------------------- find the move

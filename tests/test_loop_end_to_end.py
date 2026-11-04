@@ -297,6 +297,7 @@ def _relabelled(generation: int) -> dict[str, Any]:
     return clone
 
 
+@pytest.mark.slow  # 3.1 s alone, over the 4 s fast-suite guard under load (Q1096)
 def test_a_run_of_clones_reports_no_improvement(tmp_path) -> None:
     """The acceptance test for interval-aware selection.
 
@@ -391,6 +392,7 @@ class TestMechanicalOperator:
     the run needs no credentials.
     """
 
+    @pytest.mark.slow  # 2.8 s alone, over the 4 s fast-suite guard under load (Q1096)
     def test_a_run_needs_no_model_at_all(self, tmp_path) -> None:
         import json
 

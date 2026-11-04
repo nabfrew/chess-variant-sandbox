@@ -1846,6 +1846,17 @@ pub struct Tables {
     /// unless a priced race gives a side more than one goal square; read through
     /// `goal_each_slot` only when some but not all of a side's goals are sealed.
     pub goal_distance_each: Vec<u8>,
+    /// R14: `[player * n_squares + square]` -> the square's row counted from that
+    /// player's own side, 0 everywhere where the player's rows wrap
+    /// (`compile._feature_geometry`). What `features::advance` reads in place of
+    /// `square / width`, which is the stored rhombus's row and blind to a seam.
+    pub feature_rank: Vec<u32>,
+    /// The largest `feature_rank` (`height - 1`): the far side's row.
+    pub feature_rank_span: u32,
+    /// R14: `[player * n_squares + square]` -> twice the square's distance from the
+    /// middle, measured along every pair of sides that is an edge for that player (a
+    /// hexagon's three, a grid's two, a seam's none). What `features::centrality` reads.
+    pub feature_centre: Vec<u32>,
     pub extinction: Option<ExtinctionRule>,
     /// Schema 3. `None` keeps the draw the clocks have always produced.
     pub scoring: Option<ScoringRule>,
@@ -2625,6 +2636,8 @@ impl Tables {
         let strike = Self::strike_rule(source, n_types, n_squares)?;
         let mut drops = Self::drop_rule(source, n_types, n_squares)?;
         let (goal_distance, goal_diameter, goal_distance_each) = Self::goal_distances(source)?;
+        let (feature_rank, feature_rank_span, feature_centre) =
+            Self::feature_geometry(source, n_squares)?;
         let reach = Self::reach_rule(source, n_types, n_squares, &goal_distance_each)?;
         let turn = Self::turn_rule(source)?;
         let territory = Self::territory_rule(source)?;
@@ -2712,6 +2725,9 @@ impl Tables {
             goal_distance,
             goal_diameter,
             goal_distance_each,
+            feature_rank,
+            feature_rank_span,
+            feature_centre,
             extinction,
             scoring,
             territory,
@@ -3278,6 +3294,23 @@ impl Tables {
         let goal_diameter: f64 = field::<u32>(source, keys::GOAL_DIAMETER)? as f64;
         let goal_distance_each: Vec<u8> = field(source, keys::GOAL_DISTANCE_EACH)?;
         Ok((goal_distance, goal_diameter, goal_distance_each))
+    }
+
+    /// R14: the per-square rows and centre distances the two shape features read,
+    /// checked for length so a feature never indexes past them.
+    fn feature_geometry(
+        source: &Bound<'_, PyDict>,
+        n_squares: usize,
+    ) -> PyResult<(Vec<u32>, u32, Vec<u32>)> {
+        let feature_rank: Vec<u32> = field(source, keys::FEATURE_RANK)?;
+        let feature_rank_span: u32 = field(source, keys::FEATURE_RANK_SPAN)?;
+        let feature_centre: Vec<u32> = field(source, keys::FEATURE_CENTRE)?;
+        if feature_rank.len() != 2 * n_squares || feature_centre.len() != 2 * n_squares {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "feature_rank and feature_centre must hold one entry per player and square",
+            ));
+        }
+        Ok((feature_rank, feature_rank_span, feature_centre))
     }
 
     /// Reach: a piece type reaching a goal square wins (or loses).
@@ -4833,6 +4866,9 @@ pub mod keys {
         EXTINCTION_SIDE_TYPES => "extinction_side_types",
         EXTINCTION_TYPES => "extinction_types",
         FOLD_STARTS => "fold_starts",
+        FEATURE_CENTRE => "feature_centre",
+        FEATURE_RANK => "feature_rank",
+        FEATURE_RANK_SPAN => "feature_rank_span",
         FACING_AXES => "facing_axes",
         FACING_ENTRIES => "facing_entries",
         FACING_INDEX => "facing_index",

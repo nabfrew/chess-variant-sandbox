@@ -57,6 +57,8 @@ PINNED = {
     "0042_portal_moves.sql": "6e3369c6137e47d36ee7146ff08202d2892ad3be718bdab07d2080fe787cc84d",
     "0043_provisional_measured.sql": (
         "9c9a9835f07fcd85f9006864b7c38634268e10b2d1677a5dc11c61a72a52152b"),
+    "0044_usage_deploy.sql": (
+        "3da0fd44cd1f2208a0800474cd795468f16803f34126c15cf901757751d70651"),
 }
 
 

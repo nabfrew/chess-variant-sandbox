@@ -48,8 +48,6 @@ const ALIGNMENT: [f64; 4] = [1.0, 0.0, -1.0, 0.0];
 /// Per-ruleset constants, derived once. Everything here is a fact about the rules.
 pub struct FeatureContext {
     total_material: f64,
-    centre_x: f64,
-    centre_y: f64,
     diameter: f64,
     territory_win_at: usize,
     has_territory: bool,
@@ -157,8 +155,6 @@ impl FeatureContext {
 
         Self {
             total_material: if total != 0.0 { total } else { 1.0 },
-            centre_x: (t.width as f64 - 1.0) / 2.0,
-            centre_y: (t.height as f64 - 1.0) / 2.0,
             diameter: std::cmp::max(t.width, t.height) as f64,
             territory_win_at: t.territory.as_ref().map(|r| r.win_at as usize).unwrap_or(0),
             has_territory: t.territory.is_some(),
@@ -379,10 +375,11 @@ impl FeatureEvaluator {
     /// would stop being antisymmetric -- silently. Hence the assertion.
     fn advance(&self, game: &Game<'_>, player: usize) -> f64 {
         let t = game.t;
-        if t.height < 2 {
+        if t.feature_rank_span == 0 {
             return 0.0;
         }
-        let span = (t.height - 1) as f64;
+        let span = f64::from(t.feature_rank_span);
+        let n_squares = t.n_squares;
         let mut total = 0.0;
         let mut count = 0usize;
         for square in game.all_occupied().iter() {
@@ -393,12 +390,8 @@ impl FeatureEvaluator {
             if t.is_royal(piece_type) {
                 continue;
             }
-            let rank = (square / t.width) as f64;
-            let progress = if owner == 0 {
-                rank / span
-            } else {
-                (span - rank) / span
-            };
+            // R14: the row from the owner's own side, compiled (`Tables::feature_rank`).
+            let progress = f64::from(t.feature_rank[owner * n_squares + square]) / span;
             if owner == player {
                 total += progress;
             } else {
@@ -423,14 +416,16 @@ impl FeatureEvaluator {
     fn centrality(&self, game: &Game<'_>, player: usize) -> f64 {
         let t = game.t;
         let c = &self.context;
+        let n_squares = t.n_squares;
         let mut total = 0.0;
         let mut count = 0usize;
         for square in game.all_occupied().iter() {
             let owner = t.owner_of(game.board[square]);
             debug_assert!(owner != WILD, "a wild piece reached centrality");
-            let rank = (square / t.width) as f64;
-            let file = (square % t.width) as f64;
-            let distance = (file - c.centre_x).abs().max((rank - c.centre_y).abs()) / c.diameter;
+            // R14: twice the distance from the middle along the owner's edges, compiled
+            // (`Tables::feature_centre`); halved exactly, so a grid reads what it did.
+            let doubled = f64::from(t.feature_centre[owner * n_squares + square]);
+            let distance = (doubled / 2.0) / c.diameter;
             let near = 1.0 - distance;
             if owner == player {
                 total += near;
