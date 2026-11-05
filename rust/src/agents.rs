@@ -23,7 +23,7 @@ use crate::rng::PyRandom;
 use crate::tables::{
     move_kind, move_from, move_promotion, move_to, Tables, DUCK_STEP, MOVE_CASTLE, MOVE_DROP,
     MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_NORMAL, MOVE_PORTAL, MOVE_PROMOTION, MOVE_PUSH, MOVE_ROTATE,
-    MOVE_SWEEP,
+    MOVE_SWEEP, SIGHT_PATH_AURA, SIGHT_PATH_SQUARE,
 };
 
 // Schema 26 (Q918b): the players for rounds, a child of this module so they share the
@@ -1570,7 +1570,13 @@ fn duck_blocks(game: &Game<'_>, first: u32) -> [u64; 4] {
             for source in sight.sources_of(owner, t.type_of(board[square]), square) {
                 if source.piece_value == duck
                     && clear(source.origin)
-                    && sight.path(source).iter().all(|&s| clear(s))
+                    && sight.path(source).iter().all(|&s| {
+                        // SR5c: an aura's square beside momentum portals is closed only by
+                        // a portal end (`Game::sight_path_open`).
+                        let square = s & SIGHT_PATH_SQUARE;
+                        clear(square)
+                            || (s & SIGHT_PATH_AURA != 0 && !t.is_portal_end(board[square as usize]))
+                    })
                 {
                     mark(source.origin as usize);
                 }
@@ -1629,8 +1635,7 @@ fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> f64 {
     // Schema 13: a sweep also takes every piece on its path, and they are summed onto
     // the target's. Mirrored by `agents/minimax.py::_capture_gain`.
     if kind == MOVE_SWEEP {
-        let origin = move_from(m);
-        let mut victims = t.sweep_victims(board[origin], origin, move_to(m));
+        let mut victims = t.sweep_victims(m, board[move_from(m)]);
         while let Some((_, swept)) = victims.next_on(board) {
             gain += values[t.type_of(swept)];
         }

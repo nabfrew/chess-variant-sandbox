@@ -590,7 +590,13 @@ class TestTheFingerprintsPointAtSomething:
 # Read only beside a strike with held pieces or portals, which no library game is; SR4r replayed
 # the library on build b42c85254ca8c92c (`docs/reference/replay-2026-11-04b.md`). It was
 # "bf2782a85e7f1b1a" after SR4h.
-FROZEN_METRICS = "7abe38341bdf5a58"
+# **Moved by batches C and D (SR5a-SR5k, SR6a-SR6g), re-frozen 2026-11-04 by SR5r+SR6r (their
+# replay)**: the engine's Python side (`engine/compile.py`, `bridge.py`, `engine.py`, `moves.py`,
+# `state.py`) for the blast's strike switch, sights, portals on hex, territory beside a held
+# piece, the sweep switch and what blocks a sweep. Read only in games no library game is; SR5r
+# replayed the library on build 865fca5eb3a023f9 (`docs/reference/replay-2026-11-05.md`). It was
+# "7abe38341bdf5a58" after SR4r.
+FROZEN_METRICS = "5a9df6bcc63dfa8f"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -965,7 +971,10 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # piece's strike and for a strike or link at a portal's exit (as `FROZEN_METRICS` says), only in
 # games no library game is; SR4r replayed the library under it. It was "dd51025cdd89f60d" after
 # SR4h.
-FROZEN_ANALYSIS = "a637827f2e7b0d6f"
+# **Moved by batches C and D, re-frozen 2026-11-04 by SR5r+SR6r**: the engine's Python side (as
+# `FROZEN_METRICS` says), only in games no library game is; SR5r replayed the library under it.
+# It was "a637827f2e7b0d6f" after SR4r.
+FROZEN_ANALYSIS = "9185155861926832"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

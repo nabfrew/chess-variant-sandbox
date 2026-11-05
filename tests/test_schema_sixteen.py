@@ -431,10 +431,12 @@ class TestTheNineRefusals:
         parent["rules"]["obstacles"]["blocks_leaps"] = True
         assert _errors(parent, "must state its 'legs'")
 
-    def test_a_sweep_beside_a_hexagon_seam_is_still_refused(self, flanks) -> None:
+    def test_a_sweep_beside_a_hexagon_seam_is_lifted(self, flanks) -> None:
+        """SR6d lifted W6: round a seam two rays reach one square, and the word names its ray
+        (`tests/test_sweep_wrap.py` plays the cylinder)."""
         rook = next(p for p in flanks["pieces"] if p["id"] == "R")
         rook["moves"][0]["kind"] = "sweep"
-        assert "W6" in refused_ids(validate_spec(flanks))
+        assert "W6" not in refused_ids(validate_spec(flanks))
 
 
 # ======================================================================= the twin

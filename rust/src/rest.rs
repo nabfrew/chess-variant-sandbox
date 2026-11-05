@@ -18,6 +18,11 @@
 //!   can end a rest, §3.4), then enter the piece standing where the move ended, as the type it
 //!   now is (§3.3).
 //!
+//! Beside a command (SR5e, `docs/plan-schema-next.md` §2.7 row V7) a commanded move rests
+//! its piece in its **owner's** list, counted on the owner's turns, and a resting piece is moved
+//! by neither player: `rest_filter` reads both lists (`RestTables::commanded`), so the lift
+//! fires for a player whose every offer, commands included, is a resting piece's.
+//!
 //! Every game without a rest has `Tables::rest` `None` and pays one test at each call site.
 //! `tests/rest_oracle.py` is the declared oracle.
 
@@ -41,25 +46,37 @@ impl Resting {
     }
 }
 
-/// Each player's resting pieces, `REST_MAX` slots each, unused slots `Resting::NONE`.
-pub type RestLists = [[Resting; REST_MAX]; 2];
+/// Each player's resting pieces, `REST_SLOTS` slots each, unused slots `Resting::NONE`.
+pub type RestLists = [[Resting; REST_SLOTS]; 2];
 
-pub const NO_REST: RestLists = [[Resting::NONE; REST_MAX]; 2];
+pub const NO_REST: RestLists = [[Resting::NONE; REST_SLOTS]; 2];
 
 impl<'t> Game<'t> {
     /// Drop from `out[base..]` every move of one of `player`'s resting pieces (never a drop,
     /// and never a fold's own move, which moves no piece), unless that would leave none: the
-    /// lift (§3.7). Returns whether anything was dropped.
+    /// lift (§3.7). Beside a command (SR5e, V7) the opponent's resting pieces too: a resting
+    /// piece is moved by neither player, so a commanded move of one is dropped, and the lift
+    /// reads the player's every offer, commands included. Returns whether anything was dropped.
     pub(super) fn rest_filter(&self, player: usize, out: &mut Vec<u32>, base: usize) -> bool {
         // The live squares first, so each move pays a comparison or two rather than a walk
         // of every slot: under a rest of 1 a player has at most one entry, and breather's
         // rounds bench within 3% of schema 27's one square only so (Q983a's benches).
-        let slots = self.t.rest.as_deref().map_or(REST_MAX, |rest| rest.slots);
-        let mut squares = [usize::MAX; REST_MAX];
+        let (slots, both) = self
+            .t
+            .rest
+            .as_deref()
+            .map_or((REST_SLOTS, false), |rest| (rest.slots, rest.commanded));
+        let mut squares = [usize::MAX; 2 * REST_SLOTS];
         let mut live = 0;
         for entry in self.resting[player][..slots].iter().filter(|e| e.live()) {
             squares[live] = entry.square as usize;
             live += 1;
+        }
+        if both {
+            for entry in self.resting[1 - player][..slots].iter().filter(|e| e.live()) {
+                squares[live] = entry.square as usize;
+                live += 1;
+            }
         }
         match live {
             0 => false,
@@ -71,17 +88,20 @@ impl<'t> Game<'t> {
     /// The end of `player`'s turn under the rest: count `player`'s entries down, drop every
     /// entry (either player's) whose square no longer holds the code that rested there, and
     /// enter the piece now standing on `end` (the square the move ended on, `None` where no
-    /// piece made it or none is left) if it is `player`'s and its type rests. Returns the
-    /// change to the key. Out of line, so `make` stays its size in a game without a rest.
+    /// piece made it or none is left) in `owner`'s list if it is `owner`'s and its type
+    /// rests. `owner` is `player` for the player's own piece, and the piece's owner for a
+    /// commanded move (SR5e, V7: a command starts the rest as the owner's move would, and it
+    /// counts on the owner's turns). Returns the change to the key. Out of line, so `make`
+    /// stays its size in a game without a rest.
     #[inline(never)]
-    pub(super) fn rest_after_turn(&mut self, player: usize, end: Option<usize>) -> u64 {
+    pub(super) fn rest_after_turn(&mut self, player: usize, end: Option<usize>, owner: usize) -> u64 {
         let t = self.t;
         let rest = t.rest.as_deref().expect("a rest update without a rest");
         let n = t.n_squares;
         // The piece that enters, decided first: the board does not change here.
         let entering = end.and_then(|square| {
             let value = self.board[square];
-            if value == 0 || t.owner_of(value) != player {
+            if value == 0 || t.owner_of(value) != owner {
                 return None;
             }
             let turns = rest.turns[t.type_of(value)];
@@ -89,13 +109,16 @@ impl<'t> Game<'t> {
         });
         // One pass over both lists: `player`'s entries count down, and an entry leaves when
         // its count ends, when its square no longer holds the code that rested there, or
-        // when it is `player`'s on the square a piece enters from (a turn in place, a contact
-        // that stays, under the lift: it rests afresh, one entry a square).
+        // when it is in the entering piece's owner's list on the square the piece enters (a
+        // turn in place, a contact that stays, under the lift; or, under a command's
+        // `captures_own`, the owner's resting piece taken there: it rests afresh, one entry a
+        // square).
         let entering_square = entering.map_or(usize::MAX, |(square, _, _)| square);
         let mut delta = 0u64;
-        for owner in 0..2 {
-            let own = owner == player;
-            for entry in self.resting[owner][..rest.slots].iter_mut() {
+        for list in 0..2 {
+            let own = list == player;
+            let entered = list == owner;
+            for entry in self.resting[list][..rest.slots].iter_mut() {
                 if !entry.live() {
                     continue;
                 }
@@ -103,12 +126,12 @@ impl<'t> Game<'t> {
                 let left = entry.left - own as u8;
                 if left == 0
                     || self.board[square] != entry.code
-                    || (own && square == entering_square)
+                    || (entered && square == entering_square)
                 {
-                    delta ^= rest.key(n, owner, square, entry.left);
+                    delta ^= rest.key(n, list, square, entry.left);
                     *entry = Resting::NONE;
                 } else if own {
-                    delta ^= rest.key(n, owner, square, entry.left) ^ rest.key(n, owner, square, left);
+                    delta ^= rest.key(n, list, square, entry.left) ^ rest.key(n, list, square, left);
                     entry.left = left;
                 }
             }
@@ -116,12 +139,12 @@ impl<'t> Game<'t> {
         let Some((square, value, turns)) = entering else {
             return delta;
         };
-        let slot = self.resting[player][..rest.slots]
+        let slot = self.resting[owner][..rest.slots]
             .iter_mut()
             .find(|e| !e.live())
-            .expect("more resting pieces than the longest rest: a long turn beside rest");
+            .expect("more resting pieces than the slots: a long turn beside rest");
         *slot = Resting { square: square as i16, left: turns, code: value };
-        delta ^ rest.key(n, player, square, turns)
+        delta ^ rest.key(n, owner, square, turns)
     }
 
     /// Q1074b8 (N5, `docs/plan-push.md` §3.9): a push moves every piece of its line, and a
@@ -177,7 +200,8 @@ impl<'t> Game<'t> {
     /// on the same board with nothing resting, so the rest took away at least one move;
     /// `lifted` when they do not, yet a resting piece's move (never a drop's, never a fold's
     /// own) is among them, which the rule allows only when the rest would leave no move
-    /// (§3.7). Never both. The list is the one the game offers here: a round's for `player`
+    /// (§3.7); beside a command (SR5e) a resting piece of either list. Never both. The list
+    /// is the one the game offers here: a round's for `player`
     /// in a game in rounds or a spy game's round, the side to move's otherwise (asked for
     /// `player`, as `player` would see it). Both false in a game without a rest. For the
     /// analysis pass's tallies and the page's sentence: Python asks, the core answers.
@@ -205,12 +229,14 @@ impl<'t> Game<'t> {
         if held != free {
             return (true, false);
         }
-        let entries = &self.resting[player][..slots];
+        let both = self.t.rest.as_deref().is_some_and(|rest| rest.commanded);
+        let theirs = if both { slots } else { 0 };
+        let entries = self.resting[player][..slots].iter().chain(self.resting[1 - player][..theirs].iter());
         let lifted = free.iter().any(|&m| {
             let kind = move_kind(m);
             !enters_play(kind)
                 && kind != MOVE_FOLD
-                && entries.iter().any(|e| e.live() && e.square as usize == move_from(m))
+                && entries.clone().any(|e| e.live() && e.square as usize == move_from(m))
         });
         (false, lifted)
     }
@@ -269,7 +295,7 @@ pub fn rest_lists_from(t: &Tables, board: &[u8; MAX_SQUARES], given: [&[(i16, u8
     let Some(rest) = t.rest.as_deref() else {
         return lists;
     };
-    let longest = rest.slots as u8;
+    let longest = rest.longest as u8;
     for (player, entries) in given.iter().enumerate() {
         let mut slot = 0;
         for &(square, left) in entries.iter() {

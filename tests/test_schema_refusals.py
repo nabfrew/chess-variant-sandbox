@@ -710,12 +710,6 @@ PORTAL = [
         id="passage-key",
     ),
     pytest.param(
-        {"pieces.1.region": ["a1", "b1"]},
-        "piece 'R' has a region, which rules.portals refuses in this schema: an exit could "
-        "put the piece outside it",
-        id="region-beside-portals",
-    ),
-    pytest.param(
         {"rules.portals.0.moves": "step"},
         "rules.portals[0].moves must be an array of moves, as a piece's are",
         id="portal-moves-type",

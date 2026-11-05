@@ -28,6 +28,8 @@ pub(super) type ForeignTakes = Option<(u16, u16)>;
 /// `push_foreign_piece` reads for its own landings and, SR3g (P10), for the exit of a
 /// momentum end and the far end of a fold (`Game::push_transits`, `Game::push_through_as`),
 /// so a held piece transits as its holder's piece would and lands only where it may land.
+/// `owner` is also whose passage it is (`Game::passage_player`, SR5c2): a commanded piece
+/// answers to its owner's `enter` and `carries`, a held one to its holder's.
 #[derive(Clone, Copy)]
 pub(super) struct ForeignLanding {
     pub takes: ForeignTakes,
@@ -73,9 +75,12 @@ impl<'t> Game<'t> {
     /// non-royal pieces only under `SIGHT_COMMAND_OWN` without `SIGHT_DISARM`.
     ///
     /// Royals are never commanded (the compiler files no command source under a royal type).
-    /// Sweeps, portals, folds and strikes are refused beside a command, so the walk has the
-    /// three arms. The shield on a victim is `sight_filter`'s, which runs over these moves as
-    /// over every other.
+    /// SR5c2 (V1): a commanded piece passes a portal end or a fold as its owner's piece
+    /// would. SR6f (V8): a commanded sweeper sweeps as its owner's would, removing only what
+    /// the command lets it take (`push_commanded_sweeps`). The shield on a victim is
+    /// `sight_filter`'s, which runs over these moves as over every other, but for a sweep's,
+    /// which ends the ray in the walk (`Game::commanded_sweeps`, as SR6g's `sweep_shielded`
+    /// does for every sweep).
     #[cold]
     #[inline(never)]
     pub(super) fn push_foreign(&self, out: &mut Vec<u32>) {
@@ -236,8 +241,8 @@ impl<'t> Game<'t> {
         let slot = t.slot(frame, piece_type, origin);
         let segment_start = out.len();
         // SR3g (P10): a landing on an empty fold may also go through, as the holder's piece's
-        // would (`Game::push_through_as`). A command is refused beside portals, so only a held
-        // neutral meets one; one test for every other game.
+        // would (`Game::push_through_as`); SR5c2 (V1) a commanded piece's as its owner's. One
+        // test for every other game.
         let folds = t.portals.as_deref().is_some_and(|portals| portals.folds.is_some());
         // SR4k (O3): a held piece's capture under `position: "choose"` fans out over its
         // holder's landing squares, as its holder's piece's would. Only a held piece: a
@@ -341,6 +346,18 @@ impl<'t> Game<'t> {
             }
         }
 
+        // SR6f (V8): a commanded piece's sweeps (`push_commanded_sweeps`); a held piece's sweep
+        // is refused (O16). Before the uniqueness pass, which folds a sweep over an empty line
+        // into a slide's word.
+        if t.has_sweep && owner != self.side {
+            let piece = PieceAt {
+                origin, slot, piece_type, player: owner, low, high, origin_unmoved,
+                promoting: false, leaving: false, promo_optional: false, capturable_ep: false,
+                choosing: false,
+            };
+            self.push_commanded_sweeps(out, &piece, &landing, folds);
+        }
+
         // A go-through to a square also reached directly, or through two folds, is one move
         // (`dedup_fold_segment`, as for a player's piece).
         if folds && (choosing || out[segment_start..].iter().any(|&m| move_fold(m) != 0)) {
@@ -349,8 +366,9 @@ impl<'t> Game<'t> {
             dedup_segment(out, segment_start);
         }
 
-        // SR3g (P10): through a momentum end, as the holder's piece would go, landing at the
-        // exit only where this piece may land (`Game::push_transits`).
+        // SR3g (P10): through a momentum end, as the holder's piece would go (SR5c2, V1: a
+        // commanded piece as its owner's), landing at the exit only where this piece may land
+        // (`Game::push_transits`).
         if let Some(portals) = t.portals.as_deref() {
             let at = self.portal_squares(portals);
             self.push_transits(out, portals, &at, origin, slot, piece_type, leaving, Some(landing));
@@ -366,5 +384,86 @@ impl<'t> Game<'t> {
                 out.push(with_foreign(encode_move(origin, origin, MOVE_ROTATE, to as u32)));
             }
         }
+    }
+
+    /// SR6f (V8, `docs/plan-schema-next.md` §2.7, ruled 2026-10-27): the sweeps of a
+    /// commanded piece, walked as its owner's sweep always is (its rays, modes and capture
+    /// list, `rides_from` past its cleared part, a fold go-through as its owner's), with the
+    /// sides it removes the command's: a piece on the ray that `commanded_sweeps` refuses
+    /// (the commander's, a royal, nobody's, a shielded one, or any piece at all without
+    /// `captures_own`) ends the ray and is never a landing. Without `captures_own` a
+    /// commanded sweep is a move over an empty line onto an empty square, the slide's word.
+    /// Its words name a ray and keep one sweep per swept set as the owner's would
+    /// (`Game::keep_sweep`, over this piece's segment, which starts where its sweeps do).
+    #[cold]
+    #[inline(never)]
+    fn push_commanded_sweeps(
+        &self, out: &mut Vec<u32>, piece: &PieceAt, landing: &ForeignLanding, folds: bool,
+    ) {
+        let t = self.t;
+        let PieceAt { origin, slot, piece_type, origin_unmoved, .. } = *piece;
+        let through = folds && t.fold_sweeps;
+        let named = t.sweep_rays || through;
+        let start = out.len();
+        for (ray, entry) in t.sweeps.entries(slot).iter().enumerate() {
+            if entry.requires_unmoved && !origin_unmoved {
+                continue;
+            }
+            let squares = t.sweeps.squares(entry);
+            let modes = t.sweeps.modes(entry);
+            let rides_from = entry.sweep_length();
+            let mut path_holds_piece = false;
+            for index in 0..squares.len() {
+                let target = squares[index] as usize;
+                let occupant = self.board[target];
+                if occupant != 0 && !self.commanded_sweeps(landing, piece_type, target) {
+                    break;
+                }
+                let mode = modes[index];
+                let lands = if occupant == 0 { mode & 1 != 0 } else { mode & 2 != 0 };
+                if lands {
+                    let kind = if path_holds_piece { MOVE_SWEEP } else { MOVE_NORMAL };
+                    let m = encode_move(origin, target, kind, 0);
+                    if kind == MOVE_SWEEP && named {
+                        let word = if t.sweep_rays { with_ray(m, ray) } else { m };
+                        self.keep_sweep(out, start, with_foreign(word), self.board[origin]);
+                    } else {
+                        out.push(with_foreign(m));
+                    }
+                }
+                if occupant == 0 {
+                    if through && mode != 0 && self.fold_on(target) {
+                        self.push_sweep_through(
+                            out, start, piece, ray, index, path_holds_piece, Some(*landing),
+                        );
+                    }
+                } else {
+                    if index >= rides_from {
+                        break;
+                    }
+                    path_holds_piece = true;
+                }
+            }
+        }
+    }
+
+    /// SR6f (V8): whether a commanded sweep of the piece of `piece_type` may remove the piece
+    /// on `square` -- sweep it, or take it on its landing. Only under `captures_own` without
+    /// disarm (`ForeignLanding::takes`), only a piece of its owner's side, never a royal, only
+    /// a type its capture list allows, and never a shielded piece (`Game::sweep_shielded`,
+    /// SR6g: every sweep reads the shield on the squares it passes and lands on). Every other
+    /// piece ends the commanded ray.
+    pub(super) fn commanded_sweeps(
+        &self, landing: &ForeignLanding, piece_type: usize, square: usize,
+    ) -> bool {
+        let t = self.t;
+        let occupant = self.board[square] as u16;
+        let Some((from, to)) = landing.takes else {
+            return false;
+        };
+        if occupant < from || occupant >= to || t.is_royal(t.type_of(occupant as u8)) {
+            return false;
+        }
+        may_take(t, piece_type, occupant) && !self.sweep_shielded(square)
     }
 }

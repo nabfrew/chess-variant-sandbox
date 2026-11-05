@@ -499,22 +499,19 @@ class TestACommandsWords:
     def test_a_command_game_and_a_turncoat_one_are_accepted(self) -> None:
         from test_command import k1, k2
 
-        for spec in (k1(), k2()):
+        # SR5e (V7) lifted a command beside a rest.
+        rest = k1()
+        next(p for p in rest["pieces"] if p["id"] == "N")["rest"] = 1
+        for spec in (k1(), k2(), rest):
             assert plain_problems(validate_spec(spec), spec) == []
 
     def test_each_refusal_of_a_command_is_said_in_the_designers_words(self) -> None:
-        from test_command import KING_COMMAND, KNIGHT_COMMAND, chess, k1, with_sight
+        from test_command import KING_COMMAND, KNIGHT_COMMAND, chess, with_sight
 
-        reach = k1()
-        reach["rules"]["reach"] = {"squares": ["e4"]}
         no_turncoat = with_sight(chess(), "N", {**KNIGHT_COMMAND, "affects": ["B"],
                                                 "captures_own": True})
         next(p for p in no_turncoat["pieces"] if p["id"] == "B")["captures"] = ["K"]
         cases = {
-            "beside a reach": (reach, (
-                "A command ('what it sees' effect 'command') beside the rule 'winning by "
-                "arriving': whether a commanded arrival wins for the mover or the owner would be "
-                "a second rule; leave one out.")),
             "a turncoat beside a freeze": (
                 with_sight(chess(), "N", {**KNIGHT_COMMAND, "effect": "freeze",
                                           "captures_own": True}),

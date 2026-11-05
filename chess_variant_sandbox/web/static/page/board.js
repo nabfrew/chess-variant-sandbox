@@ -1185,7 +1185,8 @@ function portalLegsHtml(last, cell, W, H) {
     return cased + trimmedLine(ax, ay, bx, by, trimFrom, trimTo, cell,
       `stroke="${ink}" stroke-width="${cell * 0.065}" stroke-linecap="round"`);
   };
-  const into = portalWayIn(wrapStep(last.from, last.portal, W, H, allow), last.exitDir, W, H);
+  const into = portalWayIn(wrapStep(last.from, last.portal, W, H, allow), last.exitDir, W, H,
+    last.exitHex);
   return `<g data-legs="${last.portal}" pointer-events="none">${
     leg(into, last.portal, 0.1, 0.45)}${
     leg(wrapStep(last.portalOut, last.to, W, H, allow), last.to, 0.45, 0.3)}</g>`;
@@ -2177,11 +2178,21 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
   const stepOf = (from, to) => wrapStep(from, to, W, H,
     wrapAllow(SESSION.ruleset.wrap, (pieceOf(after[to]) || {}).player));
   const pairs = [];
+  // SR5a (T1): under `explode_on_capture.strikes` a capture that explodes can leave the piece
+  // it took, struck, standing on the capture square: what stands there afterwards is the
+  // other player's, so it is not the capturer arriving, which the blast destroyed.
+  const blastStruck = (from, to) => {
+    const rule = SESSION.ruleset.explosion;
+    if (!rule || !rule.strikes) return false;
+    const now = pieceOf(after[to]), mover = pieceOf(before[from]);
+    return !!(now && mover && now.player !== mover.player);
+  };
 
   // The move the player actually made comes first, so a piece that landed where another
   // just left is matched to its own origin rather than to whatever happens to fit.
   if (last && last.from !== null && last.from !== undefined
-      && gone.includes(last.from) && came.includes(last.to)) {
+      && gone.includes(last.from) && came.includes(last.to)
+      && !blastStruck(last.from, last.to)) {
     pairs.push([last.from, last.to]);
   }
   // Q1074b5: a push, from the engine's account of it (`lastMove.pushed`,
@@ -2337,7 +2348,8 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
     // every blast neighbour all get the explosion timed to the capturer's arrival.
     if (last && last.from !== null && last.from !== undefined
         && gone.includes(last.from) && gone.includes(last.to)
-        && !came.includes(last.to) && explodes(last.from, last.to)) {
+        && (!came.includes(last.to) || blastStruck(last.from, last.to))
+        && explodes(last.from, last.to)) {
       // Animate the capturer travelling from `from` to `to` as a ghost.
       const capturerPiece = pieceOf(before[last.from]);
       if (capturerPiece) {
@@ -2385,7 +2397,8 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
       if (gone.includes(to) && explodes(from, to)) blastCenters.add(to);
     }
     if (last && last.from !== null && last.from !== undefined
-        && gone.includes(last.to) && !came.includes(last.to)
+        && gone.includes(last.to)
+        && (!came.includes(last.to) || blastStruck(last.from, last.to))
         && explodes(last.from, last.to)) {
       blastCenters.add(last.to);
     }
@@ -2481,8 +2494,12 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
 // is worked out but which of the step's two drawings to show; on a hexagon, whose seams
 // are sides, the step stands.
 const PORTAL_SIGNS = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
-function portalWayIn(step, exitDir, W, H) {
-  const sign = PORTAL_SIGNS[exitDir];
+// SR5g (P1): on a hex lattice (`exitHex`) `exitDir` names one of the twelve hex king's
+// steps (`compile.HEX_PORTAL_DIRECTIONS`); these are their axes' signs.
+const HEX_PORTAL_SIGNS = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 1], [-1, 1], [-1, 0],
+  [-1, -1], [0, -1], [1, -1], [1, -1], [1, -1]];
+function portalWayIn(step, exitDir, W, H, hex) {
+  const sign = (hex ? HEX_PORTAL_SIGNS : PORTAL_SIGNS)[exitDir];
   if (!sign || step.files === undefined) return step;
   const round = (s, want, size) => (want && s && Math.sign(s) !== want ? s + want * size : s);
   const files = round(step.files, sign[0], W), ranks = round(step.ranks, sign[1], H);
@@ -2514,7 +2531,7 @@ function portalTrip(svg, node, piece, before, last, cell, W, H, view) {
   const allow = wrapAllow(SESSION.ruleset.wrap, last.player);
   const stepOf = (from, to) => wrapStep(from, to, W, H, allow);
   const [ex, ey] = at(last.portal), [fx, fy] = at(last.from), [tx, ty] = at(last.to);
-  const into = portalWayIn(stepOf(last.from, last.portal), last.exitDir, W, H);
+  const into = portalWayIn(stepOf(last.from, last.portal), last.exitDir, W, H, last.exitHex);
   const arc = pathHops(before, last.from, into, W, H, view);
   const [idx, idy] = stepXY(into, cell, view);
   const [odx, ody] = stepXY(stepOf(last.portalOut, last.to), cell, view);
@@ -4186,7 +4203,7 @@ function exitWords(m) {
   const at = portalOn(m.portal);
   const name = at ? portalName(at.end, portalPairs(SESSION.ruleset.portals)) : 'the portal';
   const square = squareName(m.to % W, Math.floor(m.to / W));
-  const step = portalStep(m.exitDir, FLIPPED);
+  const step = portalStep(m.exitDir, FLIPPED, m.exitHex);
   const words = step ? `${step.words} of ${name}, ${square}` : `beside ${name}, ${square}`;
   return { arrow: step ? step.arrow : '', words: words.charAt(0).toUpperCase() + words.slice(1) };
 }

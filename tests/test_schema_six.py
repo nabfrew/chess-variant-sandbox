@@ -1091,13 +1091,13 @@ def test_a_promotion_chain_may_cycle_where_a_demotion_chain_may_not() -> None:
     assert any("cycles at" in error for error in errors), errors
 
 
-@pytest.mark.parametrize("other", ["explode_on_capture", "drops"])
+@pytest.mark.parametrize("other", ["drops"])
 def test_two_rules_may_not_both_say_what_happens_to_a_taken_piece(other: str) -> None:
-    """An exploding strike would destroy what it just transformed; a strike under drops
-    would put the same piece in a hand *and* leave it standing.
+    """A strike under drops would put the same piece in a hand *and* leave it standing.
 
-    Refusals rather than orderings, because neither ordering is the obvious one and
-    picking one silently is how a plausible wrong game gets played.
+    A refusal rather than an ordering, because neither ordering is the obvious one and
+    picking one silently is how a plausible wrong game gets played. The strike beside a
+    blast was the other case until SR5a ruled its order (`tests/test_blast_strikes.py`).
     """
     extra = {"radius": 1} if other == "explode_on_capture" else {"from_captures": True}
     spec = with_rules(

@@ -740,6 +740,9 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
             # Q1063: a sweep that clears only part of its line is another movement. Added
             # only where it is one, so no stored reading of any other move's words moves.
             attrs = (*attrs, ("sweep_range", sweep_length(move)))
+        if move.get("kind") == "sweep" and move.get("effects") == "path":
+            # SR6a: a sweep that strikes its path is another movement, added only there.
+            attrs = (*attrs, ("effects", "path"))
         if isinstance(move.get("legs"), list):
             # SR1a: a jump blocked on stated legs is another movement than the same jump
             # on its computed leg, so each direction carries its legs.

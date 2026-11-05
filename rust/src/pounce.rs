@@ -42,9 +42,24 @@ use super::phase::PhaseSink;
 /// The phase's effect snapshot (§3.1), read once at its start: the players' pieces under a
 /// shield, which no wild piece takes, and the mover's frozen or disarmed pieces, which attack
 /// nothing (generation 40: read only beside a restraint and an `"attackers"` pouncer).
+/// Generation 84 (SR5f, V11): and the wild pieces a sight binds, read only beside
+/// `Tables::npc_tamed`: a frozen one neither pounces nor steps, a disarmed one does not pounce
+/// and steps onto empty squares only, and a shielded one is attacked by nothing, so an
+/// `"attackers"` pouncer under a shield has no attacker to pounce on.
 pub(super) struct PhaseEffects {
     pub(super) shields: SquareSet,
     restrained: SquareSet,
+    frozen: SquareSet,
+    disarmed: SquareSet,
+    wild_shielded: SquareSet,
+}
+
+impl PhaseEffects {
+    /// Whether the wild piece on `square` may not pounce this phase: frozen or disarmed.
+    #[inline(always)]
+    fn idle(&self, square: usize) -> bool {
+        self.frozen.get(square) || self.disarmed.get(square)
+    }
 }
 
 /// The pouncers of one phase, in the mover's reading order: inline up to 64, spilling past.
@@ -138,7 +153,7 @@ impl<'t> Game<'t> {
     /// square checked against the board (sound inside a filter: a move takes a wild piece off
     /// a square, never puts one on).
     #[inline]
-    fn wild_standing(&self) -> SquareSet {
+    pub(super) fn wild_standing(&self) -> SquareSet {
         let t = self.t;
         let mut standing = self.occupied[WILD];
         for square in self.occupied[WILD].iter() {
@@ -157,7 +172,13 @@ impl<'t> Game<'t> {
     #[inline(never)]
     fn pounce_effects(&self, mover: usize) -> PhaseEffects {
         let t = self.t;
-        let mut effects = PhaseEffects { shields: SquareSet::EMPTY, restrained: SquareSet::EMPTY };
+        let mut effects = PhaseEffects {
+            shields: SquareSet::EMPTY,
+            restrained: SquareSet::EMPTY,
+            frozen: SquareSet::EMPTY,
+            disarmed: SquareSet::EMPTY,
+            wild_shielded: SquareSet::EMPTY,
+        };
         if t.npc_shield {
             for square in 0..t.n_squares {
                 if self.shielded_from_wild(square) {
@@ -170,6 +191,19 @@ impl<'t> Game<'t> {
                 for square in 0..t.n_squares {
                     if self.effects_at(sight, mover, square) & (SIGHT_FREEZE | SIGHT_DISARM) != 0 {
                         effects.restrained.set(square);
+                    }
+                }
+            }
+            if t.npc_tamed {
+                for square in self.wild_standing().iter() {
+                    let bits = self.effects_at(sight, WILD, square);
+                    if bits & SIGHT_FREEZE != 0 {
+                        effects.frozen.set(square);
+                    } else if bits & SIGHT_DISARM != 0 {
+                        effects.disarmed.set(square);
+                    }
+                    if bits & SIGHT_SHIELD != 0 {
+                        effects.wild_shielded.set(square);
                     }
                 }
             }
@@ -313,6 +347,9 @@ impl<'t> Game<'t> {
         let p = self.pounce_tables();
         let value = board[square];
         debug_assert!(value != 0 && t.owner_of(value) == WILD);
+        if effects.wild_shielded.get(square) {
+            return; // generation 84: a shielded pouncer is attacked by nothing
+        }
         let ty = t.type_of(value);
         let reading = &p.reading[mover * p.n_squares..(mover + 1) * p.n_squares];
         for source in t.attackers_of(mover, square) {
@@ -391,14 +428,19 @@ impl<'t> Game<'t> {
 
     /// The step of the wild piece on `square` in a pounce game, on `board`: `npc_step_of`'s
     /// rule with the route-type wait (§3.3), a piece standing on a square whose route is not
-    /// its own type's waiting there (a pouncer off its loop stands).
+    /// its own type's waiting there (a pouncer off its loop stands). Generation 84 (SR5f, V11): a frozen
+    /// piece stands, and a disarmed one steps onto an empty square only.
     #[inline]
-    fn pounce_step_on(&self, board: &[u8; MAX_SQUARES], square: usize, shields: &SquareSet) -> Option<usize> {
+    fn pounce_step_on(&self, board: &[u8; MAX_SQUARES], square: usize, effects: &PhaseEffects) -> Option<usize> {
         let t = self.t;
         let p = self.pounce_tables();
         let value = board[square];
         let next = t.npc_next[square];
-        if next < 0 || next as usize == square || p.piece[square] as isize != t.type_of(value) as isize {
+        if next < 0
+            || next as usize == square
+            || p.piece[square] as isize != t.type_of(value) as isize
+            || effects.frozen.get(square)
+        {
             return None;
         }
         let next = next as usize;
@@ -406,7 +448,7 @@ impl<'t> Game<'t> {
         if standing == 0 {
             return Some(next);
         }
-        if t.halts_wild(standing) || shields.get(next) {
+        if t.halts_wild(standing) || effects.shields.get(next) || effects.disarmed.get(square) {
             return None;
         }
         t.may_capture(t.type_of(value), t.type_of(standing)).then_some(next)
@@ -426,6 +468,9 @@ impl<'t> Game<'t> {
         let splits = !self.pounce_tables().split.is_empty();
         for &square in self.pouncers(live, mover).as_slice() {
             let square = square as usize;
+            if effects.idle(square) {
+                continue;
+            }
             if let Some(split) = self.split_here_if(splits, &self.board, square, mover, &effects, live) {
                 if split.acted() {
                     steppers.clear(square);
@@ -452,7 +497,7 @@ impl<'t> Game<'t> {
             }
         }
         for square in NpcOrder::new(self.t, steppers) {
-            if let Some(next) = self.pounce_step_on(&self.board, square, &effects.shields) {
+            if let Some(next) = self.pounce_step_on(&self.board, square, &effects) {
                 sink.step(self, square, next, PHASE_STEP);
                 if S::TRACKS {
                     live.clear(square);
@@ -547,6 +592,9 @@ impl<'t> Game<'t> {
         let splits = !self.pounce_tables().split.is_empty();
         for &square in self.pouncers(standing, mover).as_slice() {
             let square = square as usize;
+            if effects.idle(square) {
+                continue;
+            }
             if let Some(split) = self.split_here_if(splits, &board, square, mover, &effects, live) {
                 if split.acted() {
                     steppers.clear(square);
@@ -583,7 +631,7 @@ impl<'t> Game<'t> {
             }
         }
         steppers.iter().any(|square| {
-            self.pounce_step_on(&board, square, &effects.shields)
+            self.pounce_step_on(&board, square, &effects)
                 .is_some_and(|next| royal_of_mover(board[next]))
         })
     }

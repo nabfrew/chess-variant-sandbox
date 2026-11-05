@@ -96,7 +96,9 @@ class GameState:
     # Schema 18 (Q786, ``reach.on: "leave"``): the side whose last move took the named
     # piece off one of its goal squares, or -1. Nothing on the board says what the last
     # move was, so ``terminal`` could not read it there and stay a pure function of the
-    # state; -1 for every ruleset without the rule.
+    # state; -1 for every ruleset without the rule. SR5k (O11): beside majority control, an
+    # arrival goal keeps it too, as the side a held piece's arrival just won for, the piece
+    # standing on the goal being nobody's (`Game::held_arrival`).
     #
     # It needs no Zobrist term: a position where it is set is terminal, so no search and
     # no repetition rule ever compares it with another position.

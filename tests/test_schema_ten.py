@@ -1697,7 +1697,7 @@ class TestTheContactTable:
     @pytest.mark.parametrize(
         "other, value, rid",
         [
-            ("explode_on_capture", {"radius": 1}, "T4"),
+            # A blast beside contacts is SR5a's (T4, `tests/test_blast_strikes.py`).
             ("drops", {"from_captures": True}, "T5"),
         ],
     )

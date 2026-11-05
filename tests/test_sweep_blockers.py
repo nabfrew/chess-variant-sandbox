@@ -5,10 +5,14 @@ pass, and the duck beside portals.
   over; a piece it may not capture blocks"*, and nothing captures the duck: it blocks. The probe
   found the core already stops a sweep at the duck, both seats, so the lift is the validator's.
   A duck type that sweeps stays refused (the duck captures nothing).
-* **W10, handed to SR6g.** As W9, a shielded piece may not be captured, so it should block a
-  sweep. The probe found the core sweeps it (the sweep reads the static capture matrix, a
-  shield is read from the board), and lands on it, and reads a sweep over a shielded piece as
-  check: the refusal stays, and the reading is a strict xfail naming SR6g.
+* **W10, handed to SR6g, lifted there.** As W9, a shielded piece may not be captured, so it
+  blocks a sweep. SR2's probe found the core swept it (the sweep read the static capture
+  matrix, a shield is read from the board), landed on it, and read a sweep over a shielded
+  piece as check; SR6g reads the shield off the board in the sweep's walk and its attack test
+  (`Game::sweep_shielded`), so the strict xfails pass on a validated spec. Beside each earlier
+  batch D rule (a path strike or contacts, a blast, a declared ray on a cylinder, a fold, a
+  commanded sweep) the core's list is `tests/sight_oracle.py`'s, whose twin sweeps that would
+  remove a shielded piece are no moves.
 * **K2, handed to SR3d, lifted there.** The ruled reading: the duck is an uncapturable piece to
   every transit and fold go-through. The core refused the pair outright (`the duck and portals
   share the third owner's block`); SR3d removed that refusal and the validator's, and the
@@ -28,12 +32,10 @@ from typing import Any
 import pytest
 
 from chess_variant_sandbox.engine import Engine
-from chess_variant_sandbox.engine import compile as compile_module
-from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_SWEEP, move_type
 from chess_variant_sandbox.engine.state import GameState
-from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import validate_spec
+from tests.sight_oracle import SightOracle, normalise
 
 WIDTH = 6
 KING = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "dihedral8"}
@@ -162,50 +164,243 @@ class TestTheDuckBlocksASweep:
         assert engine.perft(state, 3) == count(state, 3)
 
 
-# --------------------------------------------------------------------------- handed on
+# --------------------------------------------------------------------------- W10, lifted by SR6g
 
 
-def _past_the_validator(monkeypatch: pytest.MonkeyPatch, spec: dict[str, Any]) -> Engine:
-    monkeypatch.setattr(compile_module, "validate_or_raise", lambda spec: None)
-    return Engine(compile_spec(spec))
+WARDEN = {"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
+          "effect": "shield", "whose": "own"}
 
 
-def _shielded(win: str) -> dict[str, Any]:
-    spec = _spec(win=win)
-    spec["pieces"][3] = {"id": "W", "value": 2, "moves": [KING], "sight": [
-        {"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
-         "effect": "shield", "whose": "own"}]}
+def _shielded(win: str = "checkmate", **rules: Any) -> dict[str, Any]:
+    """The broom cupboard with a warden `W` (a king stepper) shielding its own side's pieces
+    next to it, in place of the duck's type."""
+    spec = _spec(win=win, **rules)
+    spec["pieces"][3] = {"id": "W", "value": 2, "moves": [KING], "sight": [dict(WARDEN)]}
     spec["setup"]["placements"].append({"piece": "W", "squares": ["b1"]})
     return spec
 
 
-def test_a_shield_beside_a_sweep_is_still_refused() -> None:
-    assert "W10" in refused_ids(validate_spec(_shielded("checkmate")))
+def _swept(engine: Engine, state: GameState, origin: str) -> dict[int, tuple[int, ...]]:
+    """The sweeps from ``origin``, by target: the squares each removes."""
+    return {
+        (m >> 8) & 0xFF: tuple(sq for sq, _ in engine.spec.sweep_victims(state.board, m))
+        for m in engine.legal_moves(state)
+        if (m & 0xFF) == _sq(origin) and move_type(m) == MOVE_SWEEP
+    }
 
 
-@pytest.mark.xfail(strict=True, reason="W10 is handed to SR6g: the sweep reads the static "
-                   "capture matrix, a shield is read from the board, so a sweep passes a "
-                   "shielded piece and takes it")
+@pytest.mark.parametrize("win", ["checkmate", "royal_capture"])
+def test_a_shield_beside_a_sweep_is_valid(win: str) -> None:
+    assert validate_spec(_shielded(win)) == []
+
+
 @pytest.mark.parametrize("side", [0, 1])
-def test_a_shielded_piece_blocks_a_sweep(monkeypatch: pytest.MonkeyPatch, side: int) -> None:
+def test_a_shielded_piece_blocks_a_sweep(side: int) -> None:
     """An enemy guard on c4 shielded by its warden on d5: the sweeper on c1 may not take it or
-    pass it."""
-    engine = _past_the_validator(monkeypatch, _shielded("checkmate"))
+    pass it; with the warden out of reach it sweeps the guard and runs on."""
+    engine = _engine(_shielded())
     state = _position(engine, {"a1": ("K", side), "f6": ("K", 1 - side), "c1": ("S", side),
                                "c4": ("G", 1 - side), "d5": ("W", 1 - side)}, side)
-    assert not _targets(engine, state, "c1") & {_sq("c4"), _sq("c5"), _sq("c6")}
+    reach = _targets(engine, state, "c1")
+    assert {_sq("c2"), _sq("c3")} <= reach
+    assert not reach & {_sq("c4"), _sq("c5"), _sq("c6")}
+    free = _position(engine, {"a1": ("K", side), "f6": ("K", 1 - side), "c1": ("S", side),
+                              "c4": ("G", 1 - side), "e6": ("W", 1 - side)}, side)
+    assert {_sq("c4"), _sq("c5"), _sq("c6")} <= _targets(engine, free, "c1")
+    assert _swept(engine, free, "c1")[_sq("c6")] == (_sq("c4"),)
 
 
-@pytest.mark.xfail(strict=True, reason="W10 is handed to SR6g: a sweep over a shielded piece "
-                   "reads as check on the royal behind it")
 @pytest.mark.parametrize("side", [0, 1])
-def test_a_shielded_piece_screens_its_royal_from_a_sweep(
-    monkeypatch: pytest.MonkeyPatch, side: int,
-) -> None:
-    engine = _past_the_validator(monkeypatch, _shielded("checkmate"))
+def test_a_shielded_piece_screens_its_royal_from_a_sweep(side: int) -> None:
+    engine = _engine(_shielded())
     state = _position(engine, {"c1": ("K", side), "f6": ("K", 1 - side), "c6": ("S", 1 - side),
                                "c3": ("G", side), "d3": ("W", side), "a6": ("G", 1 - side)}, side)
     assert not engine.in_check(state, side)
+    bare = _position(engine, {"c1": ("K", side), "f6": ("K", 1 - side), "c6": ("S", 1 - side),
+                              "c3": ("G", side), "f3": ("W", side), "a6": ("G", 1 - side)}, side)
+    assert engine.in_check(bare, side)
+
+
+class TestAShieldBlocksASweep:
+    """W10 (`docs/plan-schema-next.md` §2.7, ruled 2026-10-27): as W9, a shielded piece may not
+    be captured, so it blocks a sweep. SR6g reads the shield off the board in the sweep's walk
+    and in its attack test (`Game::sweep_shielded`)."""
+
+    @pytest.mark.parametrize("side", [0, 1])
+    def test_its_own_sides_shielded_piece_blocks_it(self, side: int) -> None:
+        """A sweep clears its own side's pieces too, but not a shielded one: the guard on c3
+        beside its warden on b3 ends the ray."""
+        engine = _engine(_shielded())
+        state = _position(engine, {"a1": ("K", side), "f6": ("K", 1 - side), "c1": ("S", side),
+                                   "c3": ("G", side), "b3": ("W", side)}, side)
+        reach = _targets(engine, state, "c1")
+        assert _sq("c2") in reach
+        assert not reach & {_sq("c3"), _sq("c4"), _sq("c5"), _sq("c6")}
+        bare = _position(engine, {"a1": ("K", side), "f6": ("K", 1 - side), "c1": ("S", side),
+                                  "c3": ("G", side), "a5": ("W", side)}, side)
+        assert _swept(engine, bare, "c1")[_sq("c6")] == (_sq("c3"),)
+
+    @pytest.mark.parametrize("side", [0, 1])
+    def test_the_sweep_takes_what_stands_before_the_shield(self, side: int) -> None:
+        """Guards on c2 (bare) and c4 (shielded from d5): the sweep removes c2 and lands on c3,
+        and goes no further."""
+        engine = _engine(_shielded())
+        state = _position(engine, {"a1": ("K", side), "f6": ("K", 1 - side), "c1": ("S", side),
+                                   "c2": ("G", 1 - side), "c4": ("G", 1 - side),
+                                   "d5": ("W", 1 - side)}, side)
+        assert _swept(engine, state, "c1").get(_sq("c3")) == (_sq("c2"),)
+        assert not _targets(engine, state, "c1") & {_sq("c4"), _sq("c5"), _sq("c6")}
+
+    @pytest.mark.parametrize("side", [0, 1])
+    def test_the_warden_may_not_walk_off_the_screen(self, side: int) -> None:
+        """The check filter reads the shield on the board the move leaves: the warden on d3
+        steps only where it still shields the guard on c3, or onto the file itself."""
+        engine = _engine(_shielded())
+        state = _position(engine, {"c1": ("K", side), "f6": ("K", 1 - side), "c6": ("S", 1 - side),
+                                   "c3": ("G", side), "d3": ("W", side), "a6": ("G", 1 - side)}, side)
+        warden = _targets(engine, state, "d3")
+        assert warden
+        assert warden <= {_sq(s) for s in ("c2", "c4", "d2", "d4")}
+        assert not warden & {_sq(s) for s in ("e2", "e3", "e4")}
+
+    def test_the_text_round_trips(self) -> None:
+        engine = _engine(_shielded())
+        state = _position(engine, {"a1": ("K", 0), "f6": ("K", 1), "c1": ("S", 0),
+                                   "c3": ("G", 1), "c5": ("G", 1), "d6": ("W", 1)})
+        move = next(m for m in engine.legal_moves(state)
+                    if move_type(m) == MOVE_SWEEP and (m >> 8) & 0xFF == _sq("c4"))
+        assert engine.find_move(state, engine.describe_move(state, move)) == move
+        assert not {_sq("c5"), _sq("c6")} & _targets(engine, state, "c1")
+
+
+# ---------------------------------------------- W10 beside the earlier batch D rules, by oracle
+
+
+COMMAND = {"vectors": [[1, 0]], "symmetry": "rotate4", "effect": "command", "whose": "enemy",
+           "captures_own": True}
+
+
+def _walking(**rules: Any) -> dict[str, Any]:
+    """A busier shielded game for the walks: wardens beside the guards, a sweeper each side."""
+    spec = _shielded(**rules)
+    spec["setup"]["placements"] = [
+        {"piece": "K", "squares": ["a1"]}, {"piece": "S", "squares": ["f1"]},
+        {"piece": "W", "squares": ["c1"]}, {"piece": "G", "squares": ["b2", "c2", "e2"]},
+    ]
+    return spec
+
+
+def _pairings() -> dict[str, dict[str, Any]]:
+    """Each earlier batch D rule beside a shield: SR6a's path strike, SR6b's path contacts,
+    SR6c's blast, SR6d's declared ray on a cylinder, SR6e's fold, SR6f's commanded sweep."""
+    games = {
+        "plain": _walking(),
+        "cylinder": _walking(wrap={"files": "both"}),
+        "fold": _walking(portals=[{"orange": "c4", "blue": "e3", "kind": "fold",
+                                   "moves": [{"kind": "leap", "vectors": [[1, 0]],
+                                              "symmetry": "rotate4"}]}]),
+        "blast": _walking(explode_on_capture={"radius": 1}),
+    }
+    strike = _walking(strike={"effect": "demote", "position": "stay", "immune": ["K", "S", "W"],
+                              "chain": [{"from": "G", "to": "W"}]})
+    strike["pieces"][1]["moves"][0]["effects"] = "path"
+    games["path strike"] = strike
+    contacts = _walking(contacts={"position": "stay", "immune": ["K"], "links": [
+        {"mover": "S", "onto": "G", "onto_to": "W"}]})
+    contacts["pieces"][1]["moves"][0]["effects"] = "path"
+    games["path contacts"] = contacts
+    command = _walking()
+    command["pieces"][3]["sight"].append(dict(COMMAND))
+    games["command"] = command
+    return games
+
+
+class _BlastOracle(SightOracle):
+    """The sight oracle for a game with a blast beside the shield. Its twin has no sight, so
+    the twin's blast clears shielded pieces, which SR5b's ruling spares (a shield shields from
+    a blast); the board a move makes is the engine's here, that reading being SR5b's and pinned
+    by `tests/test_shield_from_blast.py` and the blast test below. What this oracle still
+    decides is what W10 changes: which sweeps a shield stops, and what they attack."""
+
+    def after(self, state: GameState, move: int) -> GameState:
+        return self.engine.apply(state, move)
+
+
+def _oracle(game: str) -> SightOracle:
+    spec = _pairings()[game]
+    return _BlastOracle(spec) if "explode_on_capture" in spec["rules"] else SightOracle(spec)
+
+
+def _oracle_walk(oracle: SightOracle, seed: int, plies: int) -> int:
+    """A seeded walk leaning toward sweeps, the core's legal list the oracle's at every ply and
+    the key the full scan's. Returns the plies on which a shield stopped a twin's sweep."""
+    engine = oracle.engine
+    rng = random.Random(seed)
+    state = engine.initial_state()
+    stopped = 0
+    for _ in range(plies):
+        moves = engine.legal_moves(state)
+        assert normalise(moves) == oracle.legal_moves(state), (seed, state.ply)
+        assert state.key == engine._compute_hash(state)
+        if engine.terminal(state, moves) is not None:
+            break
+        effects = oracle.effects(state.board, oracle.fold_exits(state))
+        stopped += any(
+            move_type(m) == MOVE_SWEEP
+            and oracle._sweeps_a_shield(state.board, m, effects, None)
+            for m in oracle.twin.pseudo_legal_moves(state)
+        )
+        sweeps = [m for m in moves if move_type(m) == MOVE_SWEEP]
+        move = rng.choice(sweeps) if sweeps and rng.random() < 0.5 else rng.choice(moves)
+        state = engine.apply(state, move)
+    return stopped
+
+
+@pytest.mark.parametrize("game", sorted(_pairings()))
+def test_each_pairing_is_valid(game: str) -> None:
+    assert validate_spec(_pairings()[game]) == []
+
+
+@pytest.mark.parametrize("game", sorted(_pairings()))
+def test_walks_agree_with_the_oracle(game: str) -> None:
+    oracle = _oracle(game)
+    assert sum(_oracle_walk(oracle, seed, 40) for seed in range(2)) > 0
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("game", sorted(_pairings()))
+def test_longer_walks_agree_with_the_oracle(game: str) -> None:
+    oracle = _oracle(game)
+    assert sum(_oracle_walk(oracle, seed, 120) for seed in range(2, 10)) > 0
+
+
+@pytest.mark.parametrize("side", [0, 1])
+def test_a_sweeps_blast_spares_a_shielded_piece(side: int) -> None:
+    """SR5b beside SR6g: the sweeper on c1 sweeps the guard on c3 and lands on c4 (a blast of a
+    king's step there); of the two enemy guards beside it, the one its warden shields stays."""
+    engine = _engine(_shielded(explode_on_capture={"radius": 1}))
+    state = _position(engine, {"a1": ("K", side), "f6": ("K", 1 - side), "c1": ("S", side),
+                               "c3": ("G", 1 - side), "b5": ("G", 1 - side),
+                               "d5": ("G", 1 - side), "e6": ("W", 1 - side)}, side)
+    move = next(m for m in engine.legal_moves(state)
+                if move_type(m) == MOVE_SWEEP and (m >> 8) & 0xFF == _sq("c4"))
+    after = engine.apply(state, move)
+    assert not after.board[_sq("c3")] and not after.board[_sq("b5")]
+    assert after.board[_sq("d5")]
+
+
+@pytest.mark.parametrize("game", ["plain", "cylinder", "fold"])
+def test_perft_against_an_apply_built_count(game: str) -> None:
+    engine = Engine(_pairings()[game])
+    state = engine.initial_state()
+
+    def count(position: GameState, depth: int) -> int:
+        if depth == 0:
+            return 1
+        return sum(count(engine.apply(position, m), depth - 1)
+                   for m in engine.legal_moves(position))
+
+    assert engine.perft(state, 3) == count(state, 3)
 
 
 def _duck_and_portals(kind: str | None) -> dict[str, Any]:

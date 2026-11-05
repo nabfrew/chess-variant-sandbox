@@ -15,7 +15,8 @@
 //! **Its moves** (`MOVE_DUCK`, the promotion field saying how): off the board or under
 //! `goes: "anywhere"`, every empty square the duck may stand on, ascending; under `"by_moves"`
 //! on the board, its type's frame-0 leap and slide entries from its square onto empty squares
-//! with a clear path, in table order; and if that leaves nothing, the one pass word. So the
+//! with a clear path, in table order; and if that leaves nothing, or (generation 84, SR5f,
+//! V11) a sight freezes the duck where it stands, the one pass word. So the
 //! list is never empty, and a position owing a duck move is never mate or stalemate.
 //!
 //! **Its half** (`make_duck`): the duck written off its square and onto the target through
@@ -58,7 +59,15 @@ impl<'t> Game<'t> {
         let duck = t.duck.as_ref().expect("a duck move without the duck");
         let start = out.len();
         let at = self.duck_square();
+        // Generation 84 (SR5f, V11): a frozen duck on the board has nowhere to go, so it
+        // passes, as a duck with no move does. Asked only where a sight names a wild type.
+        let frozen = at.is_some_and(|square| {
+            t.sight.as_deref().is_some_and(|sight| {
+                sight.tamed && self.effects_at(sight, WILD, square) & SIGHT_FREEZE != 0
+            })
+        });
         match at {
+            Some(_) if frozen => {}
             Some(from) if duck.by_moves => {
                 let slot = t.slot(0, duck.piece_type, from);
                 for entry in t.leaps.entries(slot) {

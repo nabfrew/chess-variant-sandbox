@@ -105,7 +105,7 @@ pub struct Layout {
     /// unchanged; in an alternating game it follows `turn` (no round segment sits between),
     /// a game that rests having no store before it. Every game without a rest is unchanged.
     pub rest: usize,
-    /// `R`, the longest rest (`RestTables::slots`), 0 without a rest.
+    /// `R`, the longest rest (`RestTables::longest`), 0 without a rest.
     pub rest_turns: usize,
     /// `void`: `2 * n_squares`, the void run's two squares (player 0's, then player 1's).
     pub void: usize,
@@ -140,7 +140,7 @@ impl Layout {
         let rounds = sim.is_some();
         let has_initiative = sim.is_some_and(|sim| sim.tie == 1);
         // Q983b: the rest plane in every game that rests, its width the longest rest's.
-        let rest_turns = t.rest.as_deref().map_or(0, |rest| rest.slots);
+        let rest_turns = t.rest.as_deref().map_or(0, |rest| rest.longest);
         let has_rest = rest_turns > 0;
         let initiative = turn + TURN_CAP;
         let rest = initiative + if has_initiative { 2 } else { 0 };
@@ -230,7 +230,7 @@ impl Layout {
             out.push((self.initiative + game.initiative as usize) as u32);
         }
         if self.has_rest {
-            // At most `REST_MAX` a player; each input on once, ascending.
+            // At most `REST_SLOTS` a player; each input on once, ascending.
             let start = out.len();
             for player in 0..2 {
                 for (square, left) in game.resting_of(player) {

@@ -43,11 +43,9 @@ from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
 from chess_variant_sandbox.spec.transform import (
-    set_contacts,
     set_explosion,
     set_npc,
     set_strike,
-    set_wrap,
 )
 from tests.feature_inventory import _schema_thirteen_uses
 
@@ -104,6 +102,22 @@ def _from(engine: Engine, state: Any, origin: str) -> dict[str, int]:
     }
 
 
+def _choosing_contacts(spec: dict[str, Any]) -> None:
+    """A contact table placed `"choose"` (a knight taken by a bishop survives as a pawn on a
+    chosen neighbouring square): W2's narrower row, still refused beside a sweep."""
+    spec["rules"]["contacts"] = {
+        "position": "choose", "immune": ["K"],
+        "landing": {"vectors": [[1, 0]], "symmetry": "rotate4"},
+        "links": [{"mover": "B", "onto": "N", "onto_to": "P"}],
+    }
+
+
+def _blast_beside_a_strike(spec: dict[str, Any]) -> None:
+    """A blast beside a strike that stays: W3's narrower row, still refused beside a sweep."""
+    set_explosion(spec)
+    set_strike(spec, effect="demote", position="stay")
+
+
 class TestTheVersionIsBumped:
     def test_the_schema_version_is_thirteen(self) -> None:
         assert SCHEMA_VERSION >= 13
@@ -131,10 +145,13 @@ class TestTheValidator:
     @pytest.mark.parametrize(
         "key, add, rid",
         [
-            ("strike", lambda spec: set_strike(spec, effect="demote", position="stay"), "W1"),
-            ("contacts", lambda spec: set_contacts(spec, effect="promote"), "W2"),
-            ("explode_on_capture", set_explosion, "W3"),
-            ("wrap", lambda spec: set_wrap(spec, "files"), "W6"),
+            # SR6a lifted W1 but for a chosen square (`tests/test_sweep_strikes.py`).
+            ("strike", lambda spec: set_strike(spec, effect="demote", position="choose"), "W1"),
+            # SR6b lifted W2 but for a chosen square (`tests/test_sweep_contacts.py`).
+            ("contacts", _choosing_contacts, "W2"),
+            # SR6c lifted W3 but beside a strike or contacts (`tests/test_sweep_blast.py`).
+            ("explode_on_capture", _blast_beside_a_strike, "W3"),
+            # SR6d lifted W6 (`wrap`): the word names its ray (`tests/test_sweep_wrap.py`).
         ],
     )
     def test_a_rule_that_cannot_share_a_game_with_a_sweep_is_refused_by_name(
@@ -146,6 +163,22 @@ class TestTheValidator:
         assert spec["rules"].get(key), f"the helper did not write rules.{key}"
         errors = validate_spec(spec)
         assert rid in refused_ids(errors), errors
+
+    def test_a_strike_beside_a_sweep_is_allowed(self, sweeping: dict[str, Any]) -> None:
+        """SR6a lifted W1: the strike acts on the landing, or under `effects: "path"` on every
+        swept piece too (`tests/test_sweep_strikes.py` plays it)."""
+        spec = copy.deepcopy(sweeping)
+        spec["rules"].pop("en_passant")
+        set_strike(spec, effect="demote", position="stay")
+        assert validate_spec(spec) == []
+
+    def test_a_blast_beside_a_sweep_is_allowed(self, sweeping: dict[str, Any]) -> None:
+        """SR6c lifted W3: one blast on the landing, or under `effects: "path"` one on each
+        swept square too (`tests/test_sweep_blast.py` plays it)."""
+        spec = copy.deepcopy(sweeping)
+        spec["rules"].pop("en_passant")
+        set_explosion(spec)
+        assert validate_spec(spec) == []
 
     def test_a_hand_beside_a_sweep_is_allowed(self, sweeping: dict[str, Any]) -> None:
         """SR4b lifted W4: every swept enemy piece goes to the hand

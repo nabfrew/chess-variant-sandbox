@@ -65,6 +65,8 @@ from chess_variant_sandbox.engine.moves import (
     move_landing,
     move_portal,
     move_push,
+    move_ray,
+    move_through,
 )
 from chess_variant_sandbox.engine.state import (
     NO_SQUARE,
@@ -648,7 +650,14 @@ class Engine:
         took = kind in (MOVE_EN_PASSANT, MOVE_SWEEP) or (
             kind != MOVE_CASTLE and state.board[target]
         )
-        text += "x" if took else "-"
+        route = self.sweep_fold_route(state, move)
+        if route is not None:
+            # SR6e (W8): a sweep through a fold is written as a go-through, its way in and its
+            # way out (`_fold_text`'s ``Xa3-c3~xe4``), then what it swept before the fold.
+            text += f"-{_square_name(route[0], spec.width)}~"
+            text += "x" if state.board[target] else ""
+        else:
+            text += "x" if took else "-"
         text += _square_name(target, spec.width)
         if kind == MOVE_SWEEP:
             # Schema 13: the pieces a sweep passed over, which two positions cannot name.
@@ -657,11 +666,19 @@ class Engine:
                 for square, _ in spec.sweep_victims(state.board, move)
             ]
             text += f" (sweeps {', '.join(swept)})"
+        # SR5a (T1, T4): a capture that explodes is the blast's, never a strike's or a link's;
+        # what its strikes left standing is the core's answer, read back (`_blast_text`).
+        blast = self._blast_text(state, move, foreign)
         # What a capture by a strike or a link did (`_strike_text`), appended to the capture.
-        struck_text, promotion_overridden = self._strike_text(state, move, foreign)
-        text += struck_text
-        if spec.strike is not None and state.board[target]:
-            pass  # the capture's strike text, above
+        struck_text, promotion_overridden = (
+            ("", False) if blast is not None else self._strike_text(state, move, foreign)
+        )
+        text += blast if blast is not None else struck_text
+        if kind == MOVE_SWEEP and not foreign:
+            # SR6f (V8): a commanded sweep strikes and meets nothing it swept (SR4h).
+            text += self._swept_struck_text(state, move)
+        if blast is not None or (spec.strike is not None and state.board[target]):
+            pass  # the capture's strike or blast text, above
         elif (
             kind == MOVE_EN_PASSANT
             and spec.strike is not None
@@ -690,6 +707,108 @@ class Engine:
         elif kind == MOVE_EN_PASSANT:
             text += " e.p."
         return text + self._gate_text(state, move)
+
+    def _blast_text(self, state: GameState, move: int, foreign: bool) -> str | None:
+        """SR5a (T1, T4): ``None`` unless the move is a capture whose blast goes off beside a
+        strike or a contact table; then what the blast's strikes left standing
+        (``explode_on_capture.strikes``) as a suffix, `` (struck: P@d3, G@c6)``, or ``""``.
+
+        Whether the blast goes off is the compiled rule's (`ExplosionRule.fires`), as the page
+        reads it; a player's own contact link is a meeting and sets off nothing. What stands
+        afterwards is the core's: the move is played and each square holding a piece it did
+        not hold before is read back, which after a blast is only a struck piece.
+        """
+        spec = self.spec
+        explosion = spec.explosion
+        if explosion is None or spec.strike is None:
+            return None
+        origin, target, kind, _ = decode_move(move)
+        if kind not in (MOVE_NORMAL, MOVE_PROMOTION, MOVE_EN_PASSANT):
+            return None
+        victim_square = state.ep_victim if kind == MOVE_EN_PASSANT else target
+        captured = state.board[victim_square] if victim_square >= 0 else 0
+        if not captured:
+            return None
+        mover_value = state.board[origin]
+        own = spec.owner_of(mover_value) == spec.owner_of(captured)
+        if own and not foreign and spec.strike.own_onto_to:
+            return None
+        if not explosion.fires(spec.type_of(mover_value), spec.type_of(captured)):
+            return None
+        if not explosion.strikes:
+            return ""
+        after = self.apply(state, move).board
+        struck = [
+            f"{spec.piece_ids[spec.type_of(now)]}@{_square_name(square, spec.width)}"
+            for square, (before, now) in enumerate(zip(state.board, after, strict=True))
+            if now and now != before
+        ]
+        return f" (struck: {', '.join(struck)})" if struck else ""
+
+    def _swept_struck_text(self, state: GameState, move: int) -> str:
+        """SR6a (W1): under a sweep's ``effects: "path"``, what its strikes left standing of
+        the pieces it swept, `` (struck: P@d3, G@b1)``, or ``""``. SR6b (W2): beside contacts
+        `` (met: ...)``, and what the mover became (`_swept_mover_text`).
+
+        What stands is the core's: the move is played and each square read back that holds a
+        piece it did not hold before, less the move's own two squares and the square the
+        landing's capture placed its survivor on (which `_strike_text` names).
+        """
+        spec = self.spec
+        strike = spec.strike
+        origin, target, _, _ = decode_move(move)
+        if strike is None or not strike.strikes_path(spec.type_of(state.board[origin])):
+            return ""
+        after = self.apply(state, move).board
+        skip = {origin, target}
+        captured = state.board[target]
+        if captured and strike.position == "home":
+            cell = spec.type_of(state.board[origin]) * strike.n_types + spec.type_of(captured)
+            becomes = strike.onto_to[cell]
+            if becomes >= 0:
+                owner = spec.owner_of(captured)
+                skip.add(strike.rebirth[(owner * spec.n_types + becomes) * spec.n_squares + target])
+        struck = [
+            f"{spec.piece_ids[spec.type_of(now)]}@{_square_name(square, spec.width)}"
+            for square, (before, now) in enumerate(zip(state.board, after, strict=True))
+            if now and now != before and square not in skip
+        ]
+        if strike.spelling == "contacts":
+            # SR6b (W2): a contact table's swept meetings, and the mover's one change when
+            # it came from the path rather than the landing's link (which `_strike_text`
+            # names), read back off the square the mover stands on.
+            return (f" (met: {', '.join(struck)})" if struck else "") + self._swept_mover_text(
+                state, move, after,
+            )
+        return f" (struck: {', '.join(struck)})" if struck else ""
+
+    def _swept_mover_text(self, state: GameState, move: int, after: bytes) -> str:
+        """SR6b (W2): `` /S->T`` when a path sweep's swept meeting changed the mover, or ``""``.
+
+        The landing's link changes the mover first where it names a ``mover_to``
+        (`_strike_text` says so); otherwise the mover stands on its target, or on its origin
+        where the landing's meeting kept it there (``position: "stay"``), as the core put it.
+        """
+        spec = self.spec
+        strike = spec.strike
+        assert strike is not None
+        origin, target, _, _ = decode_move(move)
+        mover = state.board[origin]
+        sweeper = spec.type_of(mover)
+        captured = state.board[target]
+        stays = False
+        if captured:
+            cell = sweeper * strike.n_types + spec.type_of(captured)
+            own = spec.owner_of(captured) == spec.owner_of(mover)
+            onto_table = strike.own_onto_to if own else strike.onto_to
+            mover_table = strike.own_mover_to if own else strike.mover_to
+            if mover_table and mover_table[cell] >= 0:
+                return ""
+            stays = bool(onto_table) and onto_table[cell] >= 0 and strike.position == "stay"
+        now = after[origin if stays else target]
+        if not now or spec.type_of(now) == sweeper:
+            return ""
+        return f" /{spec.piece_ids[sweeper]}->{spec.piece_ids[spec.type_of(now)]}"
 
     def _strike_text(self, state: GameState, move: int, foreign: bool) -> tuple[str, bool]:
         """What a capture onto an occupied target did under a strike or a contact table, as a
@@ -848,6 +967,24 @@ class Engine:
         if way_in is None or way_out is None:
             return None
         return way_in, way_out
+
+    def sweep_fold_route(self, state: GameState, move: int) -> tuple[int, int] | None:
+        """SR6e (W8): ``(way in, way out)`` for a sweep through a fold -- the fold's square on
+        the sweep's ray, which the word names by its ray and step (``move_through``), and the
+        far end, where the move ends -- or ``None`` for any other move. A sweep through a fold
+        over an empty path is a plain go-through, whose route is `fold_route`'s."""
+        origin, target, kind, _ = decode_move(move)
+        if kind != MOVE_SWEEP or not move_through(move):
+            return None
+        spec = self.spec
+        value = state.board[origin]
+        if not value:
+            return None
+        entries = spec.sweeps[spec.frame_at(value)][spec.type_of(value)][origin]
+        ray_index, step = move_ray(move), move_through(move) - 1
+        if ray_index >= len(entries) or step >= len(entries[ray_index][0]):
+            return None
+        return entries[ray_index][0][step], target
 
     def _fold_text(self, state: GameState, move: int, foreign: bool = False) -> str:
         """A move through a fold (schema 24, `docs/archive/plan-portals-2.md` §3R.2): its way in, and

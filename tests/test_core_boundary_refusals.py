@@ -179,7 +179,7 @@ CHESS_ARMS: dict[str, tuple[dict[str, Any] | Edit, str]] = {
     "rest-keys-alone": ({"zobrist_rest": [1]}, r"^rest keys without a rest$"),
     "sight-flags": (
         {"sight_flags": [0]},
-        r"^the sight tables do not fit this ruleset's squares \(or sit beside portals\)$",
+        r"^the sight tables do not fit this ruleset's squares$",
     ),
     "sight-off-the-board": (
         {"sight_flags": [0, 0, 0], "sight_index": [0] * 768 + [1],

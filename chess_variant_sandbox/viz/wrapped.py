@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.engine.compile import (
+    HEX_PORTAL_DIRECTIONS,
     PUSH_CRUSH,
     WILD,
     CompiledSpec,
@@ -269,7 +270,8 @@ def portal_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
     (``portal``, the engine's own `portal_entry`), the end that one leads to, beside which
     it comes out (``portalOut``: the entry end's ``dest`` type, found on the board as the
     entry is), and the direction it comes out in (``exitDir``, an index into
-    ``PORTAL_DIRECTIONS``), which is the compiled exit table read backwards: the direction
+    ``PORTAL_DIRECTIONS``, or on a hex lattice ``HEX_PORTAL_DIRECTIONS`` with ``exitHex``
+    set), which is the compiled exit table read backwards: the direction
     whose step from ``portalOut`` under the mover's wrap permission is the move's own
     target. Squares come with their names. The two-leg trail, the two-beat animation and
     the chooser's words (`docs/archive/plan-portals.md` §4, D6) read these and work out nothing;
@@ -290,13 +292,18 @@ def portal_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
         return None
     target = move_to(move)
     row = portals.exits[state.side_to_move][out]
-    return {
+    transit: dict[str, Any] = {
         "portal": entry,
         "portalName": square_name(entry, spec.width),
         "portalOut": out,
         "portalOutName": square_name(out, spec.width),
         "exitDir": row.index(target) if target in row else None,
     }
+    if len(row) == len(HEX_PORTAL_DIRECTIONS):
+        # SR5g (P1): on a hex lattice ``exitDir`` indexes the twelve hex king's steps
+        # (`compile.HEX_PORTAL_DIRECTIONS`, counter-clockwise from right, 30 degrees apart).
+        transit["exitHex"] = True
+    return transit
 
 
 def sweep_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:

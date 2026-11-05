@@ -446,7 +446,7 @@ impl<'t> Game<'t> {
                 } else {
                     plans[i].origin
                 };
-                rest_key ^= self.rest_after_turn(i, end);
+                rest_key ^= self.rest_after_turn(i, end, i);
             }
         }
 
@@ -944,12 +944,20 @@ impl<'t> Game<'t> {
                 }
             }
         }
+        // SR5b (V2): a shielded piece survives every blast of the round, read once on the
+        // board the captures left, before any of them clears.
+        let shields = if t.sight.as_deref().is_some_and(|sight| sight.has_shield) && !blast.is_empty() {
+            self.shields_among(&blast)
+        } else {
+            SquareSet::EMPTY
+        };
         for square in 0..t.n_squares {
             let value = self.board[square];
             if value == 0 {
                 continue;
             }
-            let hit = centres.get(square) || (blast.get(square) && explosion.clears(t, value));
+            let hit = centres.get(square)
+                || (blast.get(square) && explosion.clears(t, value) && !shields.get(square));
             if hit && t.pays && !centres.get(square) {
                 // SR4f (T8), SR4l (O22): a blast pays for every piece it destroys as taking it
                 // would (a wild piece its route's bounty, an enemy its type's, the captor's own

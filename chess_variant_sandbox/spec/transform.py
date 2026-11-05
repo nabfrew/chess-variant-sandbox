@@ -705,11 +705,30 @@ def settle_inert_rules(spec: dict[str, Any]) -> list[str]:
     gone: list[str] = _settle_leap_legs(listed, rules)
     if settle_push(spec):
         gone.append("push")
+    if settle_blast_strikes(rules):
+        gone.append("strikes")
     while True:
         dropped = _drop_inert(spec, listed, rules)
         if not dropped:
             return gone
         gone.extend(dropped)
+
+
+def settle_blast_strikes(rules: dict[str, Any]) -> bool:
+    """SR5a (T1, T4): take ``explode_on_capture.strikes`` away where the strike can no longer
+    read it (`schema.strike_reads_a_blast`: an edit took the strike away, moved its position
+    off ``stay`` and ``home``, made it a shot, or put contacts beside it), as
+    ``_check_blast_strikes`` would refuse it. A no-op on a spec the validator accepts.
+    Whether it went."""
+    from chess_variant_sandbox.spec.schema import strike_reads_a_blast
+
+    explosion = rules.get("explode_on_capture")
+    if not isinstance(explosion, dict) or explosion.get("strikes", "none") == "none":
+        return False
+    if strike_reads_a_blast(rules):
+        return False
+    del explosion["strikes"]
+    return True
 
 
 def settle_push(spec: dict[str, Any]) -> bool:

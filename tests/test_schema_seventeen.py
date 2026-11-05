@@ -163,13 +163,14 @@ class TestTheValidator:
         spec["rules"]["explode_on_capture"]["immune"] = ["P"]
         assert any("radius 0 reaches nobody" in e for e in validate_spec(spec))
 
-    @pytest.mark.parametrize("other", ["drops", "explode_on_capture"])
+    @pytest.mark.parametrize("other", ["drops"])
     @pytest.mark.parametrize("name", ["rifle", "circe", "andernach"])
     def test_one_rule_says_what_a_capture_leaves(
         self, games: dict[str, dict[str, Any]], name: str, other: str
     ) -> None:
         """Rifle beside a hand is the exception since SR2 (T2): a shot removes its victim,
-        which goes to the hand (`tests/test_removing_strike_hand.py`)."""
+        which goes to the hand (`tests/test_removing_strike_hand.py`). Beside a blast the
+        three are SR5a's (`tests/test_blast_strikes.py`)."""
         spec = copy.deepcopy(games[name])
         spec["rules"][other] = (
             {"from_captures": True} if other == "drops" else {"radius": 1}

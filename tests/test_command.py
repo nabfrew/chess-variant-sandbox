@@ -125,8 +125,7 @@ def test_captures_own_false_is_the_off_value() -> None:
     ("key", "value", "rid"),
     [
         ("simultaneous", {}, "R17"),
-        ("reach", {"squares": {"white": ["e8"], "black": ["e1"]}}, "V3"),
-        ("territory", {"win_at": 40}, "V4"),
+        # V3 and V4 (a reach, a territory) lifted by SR5d: `tests/test_commanded_arrival.py`.
     ],
 )
 def test_the_rules_refused_beside_a_command(key: str, value: Any, rid: str) -> None:
@@ -155,16 +154,21 @@ def test_a_strike_beside_a_command_is_valid_with_or_without_captures_own() -> No
     assert errors_of(spec) == []
 
 
-def test_a_rest_beside_a_command_is_refused() -> None:
+def test_a_rest_beside_a_command_is_valid() -> None:
+    """SR5e (V7): a commanded piece rests on its owner's turns, and a resting piece is moved by
+    neither player (`tests/test_command_beside_rest.py` plays the pair)."""
     spec = k1()
     spec["pieces"][1]["rest"] = 1
-    assert "V7" in refused_ids(errors_of(spec))
+    assert errors_of(spec) == []
 
 
-def test_a_sweep_beside_a_command_is_refused() -> None:
+def test_a_sweep_beside_a_command_is_valid() -> None:
+    """SR6f (V8): a commanded sweep removes only what the command lets it take
+    (`tests/test_command_beside_sweep.py` plays the pair)."""
     spec = k1()
     spec["pieces"][3]["moves"] = [{"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4"}]
-    assert "V8" in refused_ids(errors_of(spec))
+    assert "V8" not in refused_ids(errors_of(spec))
+    assert errors_of(spec) == []
 
 
 def test_captures_own_beside_a_capture_hand_is_valid() -> None:

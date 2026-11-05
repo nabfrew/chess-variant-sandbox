@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from chess_variant_sandbox.engine.compile import SIGHT_COMMAND_OWN, CompiledSpec
+from chess_variant_sandbox.engine.moves import MAX_SWEEP_RAYS, MAX_SWEEP_THROUGH
 
 # A stated ending result, as the integer the core carries: a loss for the side the rule
 # describes, a draw, or a win for them. ``ENDING_RESULTS`` promises all three, so all
@@ -87,13 +88,12 @@ _CORE_KNOWS_NPCS = True
 # The portal pairs `rust_supports` holds shut for a spec that reached the compiler past the
 # validator, each by its refused pairs' ids (`spec/refusals.py`), in the order its message
 # names them. A lift of a row here lifts it in the validator's table too: SR4m lifted P3 and
-# P4 (a strike or contact table, read at the exit as anywhere).
+# P4 (a strike or contact table, read at the exit as anywhere); SR5g lifted P1 (a hex
+# lattice: the exit table twelve wide, its masks twelve bits a mode); SR5h lifted P5 (a blast,
+# centred on the exit, every end's type immune); SR5i lifted P6 (a colouring: the square the
+# move ends on, never an end's own move).
 PORTAL_CORE_HOLDS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("P2",), "rules.npcs"),
-    (("P5",), "rules.explode_on_capture"),
-    (("W8",), "a sweep"),
-    (("P6",), "rules.territory"),
-    (("P1",), "a hex lattice"),
 )
 
 # Schema 10 (Q18): whether ``game.rs`` reads ``explosion_by`` / ``explosion_of``.
@@ -635,6 +635,10 @@ _EXPLOSION_INERT: dict[str, Any] = {
     # -- and every other ruleset with an explosion -- keeps the fingerprint it had.
     "explosion_by": [],
     "explosion_of": [],
+    # SR5a (T1): what a blast's strikes reach, 0 (`"none"`) for every ruleset before it.
+    "explosion_strikes": 0,
+    # SR6c (W3): the sweep switch beside a blast, empty unless a sweep says "path".
+    "explosion_sweep_path": [],
 }
 
 
@@ -669,6 +673,10 @@ def _explosion_fields(spec: CompiledSpec) -> dict[str, Any]:
         "explosion_blast_index": explosion_blast_index,
         "explosion_by": explosion_by,
         "explosion_of": explosion_of,
+        "explosion_strikes": explosion.strikes if explosion is not None else 0,
+        "explosion_sweep_path": (
+            [int(flag) for flag in explosion.sweep_path] if explosion is not None else []
+        ),
     }
 
 
@@ -876,6 +884,8 @@ _STRIKE_INERT: dict[str, Any] = {
     # Schema 17 (Q540). Empty unless the position is `home`, or a type switches sides.
     "strike_rebirth": [],
     "contact_mover_flips": [],
+    # SR6a (W1). Empty unless a sweeper strikes its path (`moves[].effects: "path"`).
+    "strike_sweep_path": [],
 }
 
 
@@ -929,6 +939,8 @@ def _strike_fields(spec: CompiledSpec) -> dict[str, Any]:
         # empty unless the rule uses them -- the inert default again.
         "strike_rebirth": list(strike.rebirth) if strike else [],
         "contact_mover_flips": [int(flip) for flip in strike.mover_flips] if strike else [],
+        # SR6a (W1): the sweep switch, per sweeping type; empty under `"landing"`.
+        "strike_sweep_path": [int(flag) for flag in strike.sweep_path] if strike else [],
     }
 
 
@@ -1255,6 +1267,8 @@ _PORTAL_INERT: dict[str, Any] = {
     # Schema 20 (Q807). Empty unless a portal pair sets ``no_straight_back``.
     "portal_no_back": [],
     "zobrist_portal_bar": [],
+    # SR5i (P7). Empty unless some type has a region.
+    "portal_stand": [],
 }
 
 
@@ -1284,7 +1298,17 @@ def _portal_fields(spec: CompiledSpec) -> dict[str, Any]:
     # Empty unless some pair sets ``no_straight_back``, so no schema 19 game's tables move.
     portal_no_back: list[int] = []
     zobrist_portal_bar: list[int] = []
+    # SR5i (P7): ``[(player * n_types + type) * n_squares + square]``, a type without a
+    # region standing anywhere; empty unless some type has one.
+    portal_stand: list[int] = []
     if portals is not None:
+        if portals.stand:
+            portal_stand = [
+                int(not row or row[square])
+                for per_player in portals.stand
+                for row in per_player
+                for square in range(n_squares)
+            ]
         portal_dest = list(portals.dest)
         portal_group = [-1] * len(portals.dest)
         for piece_type, group in zip(portals.end_types, portals.group_of, strict=True):
@@ -1321,6 +1345,7 @@ def _portal_fields(spec: CompiledSpec) -> dict[str, Any]:
         "attack_dirs": attack_dirs,
         "portal_no_back": portal_no_back,
         "zobrist_portal_bar": zobrist_portal_bar,
+        "portal_stand": portal_stand,
     }
 
 
@@ -1843,20 +1868,36 @@ def rust_supports(spec: CompiledSpec) -> str | None:
         held = _push_holds(spec)
         if held:
             return "pieces[].moves[].push beside " + "; ".join(held)
+    # SR6d (W6): where two sweep rays meet, a sweep's word names its ray in the five-bit tag
+    # (`moves.move_ray`), so no slot may hold more rays than it can name.
+    if spec.sweep_rays and max(
+        len(entries) for frame in spec.sweeps for type_sweeps in frame for entries in type_sweeps
+    ) > MAX_SWEEP_RAYS:
+        return (
+            f"pieces[].moves[] sweep: more than {MAX_SWEEP_RAYS} sweep rays from one square on "
+            "a board where two of them meet, and a move names its ray in five bits"
+        )
+    # SR6e (W8): a sweep through a fold names its ray in the tag and its step on the ray in
+    # the promotion field (`moves.move_through`), in any fold game.
+    if spec.has_sweep and spec.portals is not None and spec.portals.folds is not None:
+        rays = [entries for frame in spec.sweeps for type_sweeps in frame for entries in type_sweeps]
+        widest = max((len(entries) for entries in rays), default=0)
+        longest = max((len(ray) for entries in rays for ray, *_ in entries), default=0)
+        if widest > MAX_SWEEP_RAYS or longest > MAX_SWEEP_THROUGH:
+            return (
+                f"pieces[].moves[] sweep beside folds: more than {MAX_SWEEP_RAYS} sweep rays "
+                f"from one square or a ray longer than {MAX_SWEEP_THROUGH} squares, and a move "
+                "through a fold names its ray and its step in five bits each"
+            )
     # Schema 19 (Q771): the core's portal arm walks a transit as one landing and keeps
     # portals in the third owner's block, so it has no reading for a portal beside a wild
-    # piece (the same block), a blast or a sweep (a second landing rule; a strike, SR4m,
-    # reads the exit as anywhere), a
-    # colouring (which square a transit paints) or a hex lattice (whose six neighbours the
-    # eight-direction exit table does not name). The validator refuses each by name; this
-    # holds a spec that reached the compiler some other way.
+    # piece (the same block); a strike, SR4m, a blast, SR5h, and a colouring, SR5i, read the
+    # exit as anywhere, a sweep, SR6e, ends at a momentum end and goes through a fold; a hex
+    # lattice reads its twelve directions since SR5g. The validator refuses each by name; this holds a spec that
+    # reached the compiler some other way.
     if spec.portals is not None:
         present = {
             "P2": spec.npcs is not None,
-            "P5": spec.explosion is not None,
-            "W8": spec.has_sweep,
-            "P6": spec.territory is not None,
-            "P1": spec.lattice == "hex",
         }
         beside = [name for ids, name in PORTAL_CORE_HOLDS if present[ids[0]]]
         if beside:

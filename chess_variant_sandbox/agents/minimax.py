@@ -40,7 +40,7 @@ from chess_variant_sandbox.agents.objective import objective_for
 from chess_variant_sandbox.agents.objective_options import objective_values as _values
 from chess_variant_sandbox.agents.objective_options import objective_weights as _objective
 from chess_variant_sandbox.engine import Engine, GameState, Outcome
-from chess_variant_sandbox.engine.compile import WILD
+from chess_variant_sandbox.engine.compile import SIGHT_PATH_AURA, WILD
 from chess_variant_sandbox.engine.moves import (
     DUCK_STEP,
     MOVE_CASTLE,
@@ -146,6 +146,23 @@ def mopup_weight(spec: Any, evaluator: object) -> float:
         return 0.0
     return MOPUP_PIECES * _mean_non_royal(
         evaluator.values, spec.royal_types, inexhaustible_types(spec)
+    )
+
+
+def _path_open(spec: Any, board: bytes, entry: int, lifted: int) -> bool:
+    """Whether a sight path ``entry`` is open for `_duck_blocks`: its square empty or the
+    lifted duck's, or (SR5c) an aura's square beside momentum portals (`SIGHT_PATH_AURA`)
+    holding no portal end. Mirrors `agents.rs::duck_blocks`."""
+    square = entry & (SIGHT_PATH_AURA - 1)
+    if board[square] == 0 or square == lifted:
+        return True
+    portals = spec.portals
+    return bool(
+        entry & SIGHT_PATH_AURA
+        and not (
+            portals is not None and spec.owner_of(board[square]) == WILD
+            and portals.is_end(spec.type_of(board[square]))
+        )
     )
 
 
@@ -925,7 +942,7 @@ class MinimaxAgent:
                     if (
                         piece_value == duck_value
                         and (board[start] == 0 or start == lifted)
-                        and all(board[s] == 0 or s == lifted for s in path)
+                        and all(_path_open(spec, board, s, lifted) for s in path)
                     ):
                         blocks.add(start)
         return blocks

@@ -79,13 +79,16 @@ from chess_variant_sandbox.spec.schema import (
     push_rule,
     pushing_ids,
     reach_pieces,
+    sight_affects_wild,
     simultaneous_switch,
     spy_ids,
     strike_is_live,
+    sweep_effects,
     sweep_length,
     takes_royal_ids,
     uses_sweep,
     wild_type_ids,
+    wrap_joins_an_edge,
     wrap_stated,
 )
 
@@ -328,6 +331,11 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     )
     lines.extend(_describe_swept_hand(spec, rules))
     lines.extend(_describe_swept_bounty(spec, rules))
+    lines.extend(_describe_swept_strike(spec, rules))
+    lines.extend(_describe_swept_contacts(spec, rules))
+    lines.extend(_describe_swept_blast(spec, rules))
+    lines.extend(_describe_swept_round(spec, rules))
+    lines.extend(_describe_swept_portals(spec, rules))
     lines.extend(_describe_wild_beside_strike(spec, rules))
     lines.extend(_describe_wild_beside_blast(spec, rules))
     lines.extend(_describe_immunity_while_wild(spec))
@@ -396,6 +404,137 @@ def _describe_swept_bounty(spec: dict[str, Any], rules: dict[str, Any]) -> list[
         "bounty as a capture of it does (a swept wild piece pays its route's bounty to the "
         "mover), and the piece on the landing square pays its own besides."
     ]
+
+
+def _describe_swept_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR6a (W1, `docs/plan-schema-next.md` §2.6, the sweep switch): a sweep beside a strike.
+    Said after the strike's own sentence, which it narrows for each sweeper."""
+    if not uses_sweep(spec) or not strike_is_live(rules.get("strike")):
+        return []
+    path: list[str] = []
+    landing: list[str] = []
+    for piece in spec.get("pieces", []):
+        if not isinstance(piece, dict) or not any(
+            isinstance(m, dict) and m.get("kind") == "sweep" for m in piece.get("moves", [])
+        ):
+            continue
+        name = str(piece.get("name", piece.get("id")))
+        (path if sweep_effects(piece) == "path" else landing).append(name)
+    lines = []
+    if landing:
+        lines.append(
+            f"A sweep by the {', '.join(landing)} removes the pieces it passes over, and the "
+            "strike acts only on a piece it takes on its landing square, as on any capture."
+        )
+    if path:
+        lines.append(
+            f"A sweep by the {', '.join(path)} strikes every piece it passes over as well as "
+            "the one on its landing square: the landing's piece first, as the strike's "
+            "position says, then each swept piece of the other side in the order passed, "
+            "becoming what the strike makes of it where it stood (or reborn on its home square "
+            "under a home strike, if that square is empty by then), and removed where the "
+            "strike makes nothing of it; the mover's own swept pieces are removed."
+        )
+    return lines
+
+
+def _describe_swept_contacts(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR6b (W2, `docs/plan-schema-next.md` §2.6, the sweep switch): a sweep beside a contact
+    table. Said after the table's own sentence, which it narrows for each sweeper."""
+    contacts = rules.get("contacts")
+    if not uses_sweep(spec) or not isinstance(contacts, dict) or not contacts.get("links"):
+        return []
+    path: list[str] = []
+    landing: list[str] = []
+    for piece in spec.get("pieces", []):
+        if not isinstance(piece, dict) or not any(
+            isinstance(m, dict) and m.get("kind") == "sweep" for m in piece.get("moves", [])
+        ):
+            continue
+        name = str(piece.get("name", piece.get("id")))
+        (path if sweep_effects(piece) == "path" else landing).append(name)
+    lines = []
+    if landing:
+        lines.append(
+            f"A sweep by the {', '.join(landing)} removes the pieces it passes over, and a "
+            "contact acts only on a piece it meets on its landing square, as on any capture."
+        )
+    if path:
+        lines.append(
+            f"A sweep by the {', '.join(path)} meets every piece it passes over as well as the "
+            "one on its landing square: the landing's meeting first, as the contact's position "
+            "says, then each swept piece in the order passed, becoming what its link makes of "
+            "it where it stood (a piece of the mover's own side by a link onto its own piece), "
+            "and removed where no link names it. The sweeper changes at most once: as the "
+            "landing's link says if it names what the sweeper becomes, else as the last swept "
+            "meeting that names it."
+        )
+    return lines
+
+
+def _describe_swept_blast(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR6c (W3, `docs/plan-schema-next.md` §2.6, the sweep switch): a sweep beside a blast.
+    Said after the blast's own sentence, which it narrows for each sweeper."""
+    if not uses_sweep(spec) or not rules.get("explode_on_capture"):
+        return []
+    path: list[str] = []
+    landing: list[str] = []
+    for piece in spec.get("pieces", []):
+        if not isinstance(piece, dict) or not any(
+            isinstance(m, dict) and m.get("kind") == "sweep" for m in piece.get("moves", [])
+        ):
+            continue
+        name = str(piece.get("name", piece.get("id")))
+        (path if sweep_effects(piece) == "path" else landing).append(name)
+    lines = []
+    if landing:
+        lines.append(
+            f"A sweep by the {', '.join(landing)} that removes a piece whose capture would "
+            "explode (the ones it passes over, or the one on its landing square, of either "
+            "side) sets off one blast, centred on its landing square, after the sweep; the "
+            "sweeper goes up with it."
+        )
+    if path:
+        lines.append(
+            f"A sweep by the {', '.join(path)} sets off a blast on every square it passes "
+            "over whose piece's capture would explode, and one on its landing square if it "
+            "takes such a piece there; all of them clear together, after the sweep, and the "
+            "sweeper goes up once."
+        )
+    return lines
+
+
+def _describe_swept_round(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR6d (W6, `docs/plan-schema-next.md` §2.6): a sweep on a wrapped board, where two of its
+    lines can reach one square by different ways round."""
+    if not uses_sweep(spec) or not wrap_joins_an_edge(rules.get("wrap")):
+        return []
+    return [
+        "Round the joined edges a sweep can reach one square two ways, passing over different "
+        "pieces: each way is its own move, which says what it sweeps, and two ways that sweep "
+        "the same pieces are one move. Each way gives check, or is blocked, on its own."
+    ]
+
+
+def _describe_swept_portals(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR6e (W8, `docs/plan-schema-next.md` §2.6): a sweep beside portals, which a fold
+    propagates and a momentum end stops."""
+    if not uses_sweep(spec) or not rules.get("portals"):
+        return []
+    kinds = {group["kind"] for group in portal_groups(rules)}
+    lines = []
+    if "momentum" in kinds:
+        lines.append(
+            "A sweep stops short of a momentum portal, which it may not take, and never "
+            "goes through one."
+        )
+    if "fold" in kinds:
+        lines.append(
+            "A sweep that lands on an empty fold may stay there or go through and end on the "
+            "fold it leads to, sweeping the pieces it passed before the fold and nothing past "
+            "the exit; a sweep passing over a fold sweeps the piece standing in it."
+        )
+    return lines
 
 
 def _describe_wild_beside_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
@@ -2124,6 +2263,33 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
             f"A {rule} that reaches a piece nobody owns turns it into what the {rule} says, and "
             f"it stays nobody's{becomes}." + held_line
         )
+    # SR5j (O12): a held piece's blast is the mover's.
+    if rules.get("explode_on_capture") and majority_ids(spec):
+        lines.append(
+            "A held piece's capture explodes as any capture does, and the blast is the "
+            "mover's: a held capture whose blast would destroy the mover's own royal is not "
+            "a move, and one whose blast destroys the other player's royal wins for the mover."
+        )
+    # SR5k (O10, O11): a held piece claims and arrives for the mover.
+    if rules.get("territory") and majority_ids(spec):
+        lines.append(
+            "A held piece claims the square it lands on for the player who moved it."
+        )
+    reach = rules.get("reach")
+    if isinstance(reach, dict) and majority_ids(spec):
+        if reach.get("on") == "leave":
+            lines.append(
+                "A held piece is read by the goal as if the player who moved it owned it: "
+                "taking it off that player's goal wins for that player."
+            )
+        else:
+            lines.append(
+                "A held piece is read by the goal as if the player who moved it owned it: "
+                "moving it onto that player's goal wins for that player"
+                + (", if the other player could not take it there" if reach.get("safe") else "")
+                + "; onto the other player's goal, or standing on a goal afterwards, it "
+                "decides nothing."
+            )
     return lines
 
 
@@ -2274,6 +2440,83 @@ def _describe_sight(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             "A shielded piece cannot be captured"
             + (", and a shielded royal is never in check." if check else ".")
         )
+        # SR6g (W10, ruled 2026-10-27): a shielded piece may not be captured, so it blocks.
+        if uses_sweep(spec):
+            said.append(
+                "A sweep never removes a shielded piece, its own side's included: a shielded "
+                "piece ends a sweep's line, which neither passes nor lands on it, and a sweep "
+                "reaches nothing past it, so a shielded piece screens its royal from a sweep."
+            )
+    # SR5f (V11, V15, ruled 2026-10-27): a sight on a wild piece or the duck, and a nobody's
+    # piece's sight.
+    tamed = {
+        sight.effect for sights in piece_sights(spec).values() for sight in sights
+        if sight_affects_wild(sight, rules)
+    }
+    if tamed:
+        tame = []
+        if "freeze" in tamed:
+            tame.append(
+                "a frozen wild piece neither walks nor pounces (a frozen duck stays where it is)"
+            )
+        if "disarm" in tamed:
+            tame.append(
+                "a disarmed wild piece walks only onto empty squares and never pounces"
+            )
+        if "shield" in tamed:
+            tame.append("a shielded wild piece cannot be taken")
+        said.append(
+            "A sight that names a wild piece binds it too, read when the wild pieces start to "
+            "move: " + "; ".join(tame) + "; a frozen or disarmed wild piece threatens nothing."
+        )
+    if any(piece_sights(spec).get(pid) for pid in nobodys_ids(spec)):
+        said.append(
+            "A piece nobody owns sees as a wild piece does: its sight binds both players' "
+            "pieces alike, whoever holds it."
+        )
+    if rules.get("explode_on_capture"):
+        # SR5b (V2, ruled 2026-10-27): a shield shields from a blast; a frozen or disarmed
+        # piece makes no capture, so sets off none.
+        if "shield" in effects:
+            said.append(
+                "A shielded piece also survives a blast, as a piece of a type the blast spares "
+                "does, so a shielded royal next to a capture is not lost; the shields are read "
+                "on the board the capture leaves, before anything goes, and the capturer always "
+                "goes."
+            )
+        if effects & {"freeze", "disarm"}:
+            said.append("A frozen or disarmed piece makes no capture, so sets off no blast.")
+        if "command" in effects:
+            said.append(
+                "A commanded capture explodes as any capture does, and is the commanding "
+                "player's move: one whose blast would take that player's own royal is not "
+                "allowed."
+            )
+    if rules.get("portals"):
+        # SR5c (V1, ruled 2026-10-27): a fold propagates a sight, a momentum end does not; an
+        # attack through either reads the effects.
+        kinds = {group["kind"] for group in portal_groups(rules)}
+        if "momentum" in kinds:
+            said.append(
+                "A portal end stops a line of sight, ray or aura, as a wall does: the line sees "
+                "nothing at or past it."
+            )
+        if "fold" in kinds:
+            said.append(
+                "A fold is floor to a line of sight, and a line that reaches an empty fold that "
+                "would let the seeing piece in also sees the square of the end it leads to, and "
+                "the piece there, but nothing past it."
+            )
+        through = []
+        if effects & {"freeze", "disarm"}:
+            through.append("a frozen or disarmed piece attacks nothing through one")
+        if "shield" in effects:
+            through.append("a shielded piece is attacked through none")
+        if through:
+            said.append(
+                "An attack through a portal reads the effects as any attack does: "
+                + " and ".join(through) + "."
+            )
     if "command" in effects:
         # Q1007c (`docs/archive/plan-schema-31.md` §3.2-§3.5).
         said.append(
@@ -2285,6 +2528,41 @@ def _describe_sight(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             "offered; it counts as having moved. A royal is never commanded, a frozen piece is "
             "moved by nobody, and a disarmed one may not be made to capture."
         )
+        # SR5d (V3, V4, ruled 2026-10-27): an arrival is a fact about the piece.
+        if rules.get("reach"):
+            said.append(
+                "A commanded piece arrives for its owner: on its owner's goal it wins for its "
+                "owner, on the commanding player's goal it decides nothing (under 'leave', "
+                "taking it off its owner's goal wins for its owner)."
+            )
+        if rules.get("territory"):
+            said.append("A commanded piece claims the square it lands on for its owner.")
+        # SR5c2 (V1's command arm): a passage is a fact about the piece, as an arrival is.
+        if rules.get("portals"):
+            said.append(
+                "A commanded piece goes through a portal as its owner's piece would: whether "
+                "it may go in is its owner's, and it comes out under its owner's edges, "
+                "landing only where a commanded piece may land."
+            )
+        # SR6f (V8, ruled 2026-10-27): a commanded sweep moves as the piece's sweep always does;
+        # which sides it removes follow the command.
+        if uses_sweep(spec):
+            said.append(
+                "A commanded sweeper sweeps as its owner's would, along its own lines, but "
+                "removes only what the command lets it take: without captures_own any piece on "
+                "its line ends the sweep, so a commanded sweep is a move over an empty line onto "
+                "an empty square; with it the sweep removes the pieces of its own side its "
+                "captures allow, never a royal or a shielded piece, and any other piece (the "
+                "commanding player's among them) ends the line and is never landed on. Nothing "
+                "it sweeps is struck or met."
+            )
+        # SR5e (V7, ruled 2026-10-27): a rest is the piece's, counted on its owner's turns.
+        if any(turns > 0 for turns in piece_rests(spec).values()):
+            said.append(
+                "A commanded piece rests after its commanded move as it would after its "
+                "owner's move, counted on its owner's turns, and while a piece rests neither "
+                "player may move it; the lift reads each player's own moves, commands included."
+            )
     if check:
         answers = []
         if effects & {"freeze", "disarm"}:
@@ -3161,6 +3439,14 @@ def _describe_portals(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         "not let a piece in is a solid block to it. A portal is never captured, and moving "
         "one is a move onto an empty square."
     ]
+    if momentum and isinstance(spec.get("board"), dict) and spec["board"].get("lattice") == "hex":
+        # SR5g (P1): the twelve hex king's steps, the nearest by angle.
+        lines.append(
+            "On this hex board a piece comes out along the one of the twelve lines from a "
+            "cell (to its six neighbours and its six diagonals) nearest the way it was "
+            "going: a move along one of those lines carries straight on, and a jump between "
+            "two of them comes out along the nearer."
+        )
     if len(momentum) < len(groups):
         lines.append(
         "A fold is a portal of another kind: it is not a piece, so a piece of either side "
@@ -3189,7 +3475,43 @@ def _describe_portals(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             "on the square the mover left; where the struck piece goes home or is placed by "
             "choice, the capturer stands on the exit."
         )
-    players = ("the first player", "the second player")
+    # SR5h (P5): a blast beside portals centres on the exit; a portal is never captured.
+    if rules.get("explode_on_capture"):
+        folds = any(group.get("kind") == "fold" for group in groups)
+        lines.append(
+            "A capture through a portal"
+            + (" or a fold" if folds else "")
+            + " explodes on the square the move comes out on, not the one it went in by. "
+            "A portal in the blast stands"
+            + (
+                "; a piece standing in a fold in the blast is destroyed, and the fold "
+                "stays."
+                if folds
+                else "."
+            )
+        )
+    folds_here = any(group.get("kind") == "fold" for group in groups)
+    # SR5i (P6): a transit claims the square it ends on, never a portal's own square.
+    if rules.get("territory"):
+        lines.append(
+            "A move through a portal"
+            + (" or a fold" if folds_here else "")
+            + " claims the square it comes out on, never the portal's own square, and "
+            "moving a portal claims nothing."
+        )
+    # SR5i (P7): an exit outside a piece's region is a blocked exit.
+    confined = sorted(
+        str(piece.get("name") or piece.get("id"))
+        for piece in spec.get("pieces", [])
+        if isinstance(piece, dict) and piece.get("region")
+    )
+    if confined:
+        lines.append(
+            "A piece kept to a region (" + ", ".join(confined) + ") comes out of a portal"
+            + (" or a fold" if folds_here else "")
+            + " only on a square of its region: an exit outside it is blocked, as a wall is."
+        )
+    players =("the first player", "the second player")
     for group in groups:
         ends = group["ends"]
         movers = []
@@ -3477,7 +3799,41 @@ def _describe_extra_rules(rules: dict[str, Any], hexy: bool = False) -> list[str
             )
         lines.extend(_drop_restrictions(drops))
     lines.extend(_describe_explosion(rules.get("explode_on_capture"), hexy))
+    lines.extend(_describe_blast_strikes(rules))
     return lines
+
+
+def _describe_blast_strikes(rules: dict[str, Any]) -> list[str]:
+    """SR5a (T1, T4, `docs/plan-schema-next.md` §2.4): a blast beside a strike or a contact
+    table, and what ``explode_on_capture.strikes`` hands the strike."""
+    explosion = rules.get("explode_on_capture")
+    if not isinstance(explosion, dict) or not explosion:
+        return []
+    strike = rules.get("strike") if strike_is_live(rules.get("strike")) else None
+    contacts = rules.get("contacts")
+    if strike is None and not (isinstance(contacts, dict) and contacts.get("links")):
+        return []
+    strikes = explosion.get("strikes", "none")
+    if strike is None or strikes == "none":
+        return [
+            "A capture that explodes is the blast's alone: it strikes nothing and makes no "
+            "contact; only a capture that does not explode is struck or met."
+        ]
+    where = (
+        "sent to its home square if that square is empty" if strike.get("position") == "home"
+        else "left where it stood"
+    )
+    reached = {
+        "target": "the piece taken",
+        "blast": "each piece the blast destroys that the strike does not spare",
+        "both": "the piece taken and each piece the blast destroys that the strike does not spare",
+    }[strikes]
+    return [
+        f"A capture that explodes still strikes {reached}: after the blast has cleared, each "
+        f"becomes what the strike turns it into, {where}; one with no link is removed. "
+        "The capturer is always destroyed and never changes "
+        "sides, and nothing the strike places explodes or is struck again."
+    ]
 
 
 def _gate_squares(gating: dict[str, Any]) -> str:

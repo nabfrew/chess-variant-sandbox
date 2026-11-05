@@ -383,7 +383,10 @@ _RULE_OBJECT_KEYS: dict[str, frozenset[str]] = {
     # `_check_unsupported_rules`, and it refuses them.
     # `blast` is generation 48 (SR1b): a stated shape crosses only where it is the king's
     # step, the one blast Fairy-Stockfish has; `_check_unsupported_rules` refuses the rest.
-    "explode_on_capture": frozenset({"immune", "radius", "by", "of", "blast"}),
+    # `strikes` is SR5a (T1): a value other than "none" compiles only beside a strike
+    # (`ExplosionRule.strikes` is 0 without one), and every compiled strike is refused below,
+    # so the switch never crosses; at "none" it is the blast alone.
+    "explode_on_capture": frozenset({"immune", "radius", "by", "of", "blast", "strikes"}),
     # Schema 6 (Q703). `squares` and `mirror` are read off the compiled walls, which
     # `position.py` writes as `*`; `blocks_leaps` is asked of the compiler by `_check_walls`.
     "obstacles": frozenset({"blocks_leaps", "mirror", "squares"}),
@@ -971,6 +974,11 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             _REFUSED,
             "Q1063: only on a sweep, which `_descriptor_term` refuses by name whatever its "
             "lengths (Betza has no piece that captures what it passes over)",
+        ),
+        "effects": (
+            _REFUSED,
+            "SR6a: the sweep switch, only on a sweep, which `_descriptor_term` refuses by name "
+            "(and every compiled strike is refused already)",
         ),
         "push": (
             _REFUSED,

@@ -286,6 +286,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "drops_either_face",  # Q785
     "drops_gating",  # Q1059a
     "short_sweep_share",  # Q1063
+    "path_sweep_share",  # SR6a
     "bounty_to_loser",  # TC9c
     "simultaneous", "simultaneous_initiative", "simultaneous_impossible", "beats_share",  # Q918a
     "wins_by_leaving",  # Q786
@@ -325,6 +326,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "has_hire", "has_bribe",  # TC6
     "legs_share",  # SR1a
     "explodes_shaped",  # SR1b
+    "explodes_striking_target", "explodes_striking_blast",  # SR5a
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",

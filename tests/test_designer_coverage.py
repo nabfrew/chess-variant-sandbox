@@ -810,9 +810,13 @@ class TestOnlyAHopsFieldsOnAHop:
     @pytest.mark.parametrize("key", sorted(cards.MOVE_KIND_ONLY))
     def test_the_validator_refuses_each_on_every_other_kind(self, key: str) -> None:
         value = {"screen": "own", "screen_range": 1, "path": "zigzag",
-                 "legs": [[[1, 1]]], "sweep_range": 1}[key]
+                 "legs": [[[1, 1]]], "sweep_range": 1, "effects": "path"}[key]
         for kind in schema.MOVE_KINDS:
             spec = _template("skirmish")
+            if key == "effects":
+                # SR6a: the sweep switch says what a strike does to what it sweeps, so it is
+                # drawn beside one (circe, which keeps every piece it strikes).
+                spec["rules"]["strike"] = {"effect": "capture", "position": "home"}
             # A zigzag needs two directions to turn between (T1), so every kind is drawn
             # with the bishop's four, where the path is a slide's to keep; a stated leg
             # (SR1a) needs a jump longer than a step, so legs are drawn on the alfil's.

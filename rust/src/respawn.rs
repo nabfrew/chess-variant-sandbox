@@ -59,7 +59,7 @@ impl<'t> Game<'t> {
     /// **The rule, stated once**: what `half` does this phase on the board as it stands
     /// (after the steps), its clock being `clock` before the phase. Returns the clock after
     /// the phase and the start a piece comes back onto, if one does. `shields` is the
-    /// phase's snapshot of the shielded squares (`Game::wild_shields`), read at its start.
+    /// phase's snapshot of the shielded squares (`Game::wild_sight`), read at its start.
     pub(super) fn respawn_due(
         &self, index: usize, clock: u8, shields: &SquareSet,
     ) -> (u8, Option<usize>) {

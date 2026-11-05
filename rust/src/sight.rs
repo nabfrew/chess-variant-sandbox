@@ -35,7 +35,8 @@ pub const BARRED_DISARM: u8 = 2;
 pub const BARRED_SHIELD: u8 = 3;
 
 /// The answer to `Core.effects`: each square's effect bits (on the piece standing there, for
-/// its owner; 0 on an empty square or a wild piece), how many of the side to move's moves the
+/// its owner; 0 on an empty square, and on a wild piece or the duck unless a sight names its
+/// type, generation 84), how many of the side to move's moves the
 /// filter removed for each reason (freeze, disarm, shield), and whether the side to move's
 /// royal stands under an attack the effects suppressed.
 pub struct EffectsReport {
@@ -51,8 +52,9 @@ pub struct EffectsReport {
 }
 
 impl<'t> Game<'t> {
-    /// The effect bits on `player`'s piece standing on `square`: zero for an empty square, a
-    /// wild piece, or the other player's piece. Reads the board alone, so it is sound inside a
+    /// The effect bits on `player`'s piece standing on `square`: zero for an empty square or
+    /// another owner's piece. `player` is `WILD` (a wild piece or the duck) only where
+    /// `SightTables::tamed` (generation 84). Reads the board alone, so it is sound inside a
     /// legality filter, where the board is mid-experiment.
     #[inline]
     pub(super) fn effects_at(&self, sight: &SightTables, player: usize, square: usize) -> u8 {
@@ -69,36 +71,180 @@ impl<'t> Game<'t> {
             {
                 continue;
             }
-            if sight.path(source).iter().all(|s| self.board[*s as usize] == 0) {
+            if self.sight_path_open(sight, source) {
                 bits |= source.effect;
+            }
+        }
+        if sight.folds {
+            bits |= self.fold_effects_at(sight, player, t.type_of(occupant), square);
+        }
+        bits
+    }
+
+    /// Generation 84 (SR5f, V11, V15): the effect bits on whatever stands on `square`: a
+    /// player's piece for its owner, and, where a sight names a wild type
+    /// (`SightTables::tamed`), a wild piece or the duck (no other nobody's byte has a source
+    /// filed under `WILD`). Zero on an empty square. The one reading of *is this piece
+    /// shielded* for a capture, a blast and an attack.
+    #[inline]
+    pub(super) fn piece_effects(&self, sight: &SightTables, square: usize) -> u8 {
+        let occupant = self.board[square];
+        if occupant == 0 {
+            return 0;
+        }
+        let owner = self.t.owner_of(occupant);
+        if owner < 2 || sight.tamed {
+            self.effects_at(sight, owner, square)
+        } else {
+            0
+        }
+    }
+
+    /// Generation 96 (SR6g, W10): whether the piece on `square` stands shielded, for a sweep:
+    /// a shielded piece may not be captured, so it ends a sweep's ray, as a piece the capture
+    /// matrix refuses does (the sweep is neither offered past it nor onto it, and reaches
+    /// nothing past it for check). Read off the board by `piece_effects`, whoever owns the
+    /// piece: a sweep clears friendly pieces too, and a shield bars every removal. False
+    /// without a shield in the game, so a sweep game without one pays one test.
+    #[inline]
+    pub(super) fn sweep_shielded(&self, square: usize) -> bool {
+        match self.t.sight.as_deref() {
+            Some(sight) if sight.has_shield => {
+                self.piece_effects(sight, square) & SIGHT_SHIELD != 0
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether `source`'s line is open on this board: every square of its path empty, or, for
+    /// an aura's square beside momentum portals (`SIGHT_PATH_AURA`, SR5c), holding no portal
+    /// end. The one reading of a sight's path.
+    #[inline(always)]
+    pub(super) fn sight_path_open(&self, sight: &SightTables, source: &SightSource) -> bool {
+        sight.path(source).iter().all(|&s| {
+            let occupant = self.board[(s & SIGHT_PATH_SQUARE) as usize];
+            occupant == 0 || (s & SIGHT_PATH_AURA != 0 && !self.t.is_portal_end(occupant))
+        })
+    }
+
+    /// SR5c (V1, ruled 2026-10-27: *a fold propagates a sight*): the effect bits on `player`'s
+    /// piece of `piece_type` on `square` that come through a fold. A fold end stands on
+    /// `square`, an end leading to it stands on an empty square, and a line reaches that near
+    /// square (a source onto it, as if the piece stood there: its origin holding its piece,
+    /// its path open) whose piece the near end lets in: the line also sees the far end's square
+    /// and the piece on it, and nothing past it (one fold per line). A piece never sees itself
+    /// through a fold, and a wild piece or the duck goes through none. Asked only where the
+    /// game has folds.
+    #[cold]
+    #[inline(never)]
+    fn fold_effects_at(
+        &self, sight: &SightTables, player: usize, piece_type: usize, square: usize,
+    ) -> u8 {
+        let t = self.t;
+        let Some(portals) = t.portals.as_deref() else {
+            return 0;
+        };
+        let Some(arrival) = self.fold_end_at(portals, square) else {
+            return 0;
+        };
+        let arrival_type = (portals.first_type + arrival) as i8;
+        let mut bits = 0u8;
+        for end in 0..portals.n_ends {
+            let entry = portals.first_type + end;
+            let near = self.fold_at[end];
+            if portals.dest[entry] != arrival_type || near < 0 || self.board[near as usize] != 0 {
+                continue;
+            }
+            for source in sight.sources_of(player, piece_type, near as usize) {
+                let origin = source.origin as usize;
+                if source.effect & !bits == 0
+                    || origin == square
+                    || self.board[origin] != source.piece_value
+                {
+                    continue;
+                }
+                let owner = t.owner_of(source.piece_value);
+                if owner >= 2
+                    || portals.admits[entry][owner] & (1 << t.type_of(source.piece_value)) == 0
+                {
+                    continue;
+                }
+                if self.sight_path_open(sight, source) {
+                    bits |= source.effect;
+                }
             }
         }
         bits
     }
 
-    /// Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): the shielded squares a wild phase reads,
-    /// once, at its start: every route square holding a player's piece under a shield. A
-    /// step or a return only ever lands on a route square, so these are all it can ask
-    /// about. Empty, at one flag test, in every game without a shield beside wild pieces.
+    /// Generation 37 (N2, `docs/archive/plan-npc.md` §4.2): the sight snapshot a wild phase
+    /// reads, once, at its start: every route square holding a player's piece under a shield
+    /// (a step or a return only ever lands on a route square, so these are all it can ask
+    /// about), and (generation 84, SR5f, V11) every wild piece standing frozen or disarmed. A
+    /// frozen wild piece neither walks nor pounces; a disarmed one walks onto empty squares
+    /// only and never pounces. Empty, at one flag test, in every game without a shield or a
+    /// sight on a wild type beside wild pieces (`Tables::npc_sight`).
     #[inline]
-    pub(super) fn wild_shields(&self) -> SquareSet {
-        if !self.t.npc_shield {
-            return SquareSet::EMPTY;
+    pub(super) fn wild_sight(&self) -> WildSight {
+        if !self.t.npc_sight {
+            return WildSight::NONE;
         }
-        self.wild_shields_walk()
+        self.wild_sight_walk()
     }
 
     #[cold]
     #[inline(never)]
-    fn wild_shields_walk(&self) -> SquareSet {
+    fn wild_sight_walk(&self) -> WildSight {
         let t = self.t;
-        let mut shields = SquareSet::EMPTY;
-        for &square in &t.npc_squares {
-            if self.shielded_from_wild(square as usize) {
-                shields.set(square as usize);
+        let mut snapshot = WildSight::NONE;
+        if t.npc_shield {
+            for &square in &t.npc_squares {
+                if self.shielded_from_wild(square as usize) {
+                    snapshot.shields.set(square as usize);
+                }
             }
         }
-        shields
+        if t.npc_tamed {
+            let sight = t.sight.as_deref().expect("a tamed phase without the sight");
+            for square in self.wild_standing().iter() {
+                let bits = self.effects_at(sight, WILD, square);
+                if bits & SIGHT_FREEZE != 0 {
+                    snapshot.frozen.set(square);
+                } else if bits & SIGHT_DISARM != 0 {
+                    snapshot.disarmed.set(square);
+                }
+            }
+        }
+        snapshot
+    }
+
+    /// Generation 84 (SR5f, V11): whether a wild piece that may take what stands on `square`
+    /// (a piece of `victim` type, `usize::MAX` for whatever stands there) steps onto it next
+    /// and is free to: not frozen or disarmed on this board. `attacks_square_as(WILD, ..)`
+    /// with the effects read, as `attacks_in_sight_game` reads a player's; asked only beside
+    /// `Tables::npc_tamed`, after the plain test said yes.
+    #[cold]
+    #[inline(never)]
+    pub(super) fn wild_attacks_free(&self, square: usize, victim: usize) -> bool {
+        let t = self.t;
+        let Some(sight) = t.sight.as_deref() else {
+            return true;
+        };
+        let victim = if victim != usize::MAX || !t.has_capture_matrix {
+            victim
+        } else {
+            let occupant = self.board[square];
+            if occupant == 0 { usize::MAX } else { t.victim_of(occupant) }
+        };
+        t.attackers_of(WILD, square).iter().any(|source| {
+            let origin = source.origin as usize;
+            self.board[origin] == source.piece_value
+                && (!t.has_capture_matrix
+                    || victim == usize::MAX
+                    || t.may_capture(t.type_of(source.piece_value), victim))
+                && self.source_path_clear(WILD, source)
+                && self.effects_at(sight, WILD, origin) & (SIGHT_FREEZE | SIGHT_DISARM) == 0
+        })
     }
 
     /// Whether the piece on `square` is a player's under a shield, which no wild piece takes
@@ -119,6 +265,44 @@ impl<'t> Game<'t> {
         owner < 2 && self.effects_at(sight, owner, square) & SIGHT_SHIELD != 0
     }
 
+    /// SR5b (V2, ruled 2026-10-27: *a shield also shields from a blast*): the squares of the
+    /// blast centred on `target` whose piece a shield spares, as if its type were in
+    /// `explode_on_capture.immune`. Read once, on the board the capture leaves (the capturer
+    /// standing on `target`, nothing cleared yet), so a shield whose source the same blast
+    /// clears still spares: the blast is one event. The capturer always goes, as an immune one
+    /// does. Asked by `make` and the legality filter alike (a round asks `shields_among` of
+    /// its whole blast); empty, at one test, in every game without a shield.
+    #[inline(always)]
+    pub(super) fn blast_shields(&self, explosion: &ExplosionRule, target: usize) -> SquareSet {
+        if !self.t.sight.as_deref().is_some_and(|sight| sight.has_shield) {
+            return SquareSet::EMPTY;
+        }
+        let mut reach = SquareSet::EMPTY;
+        for &square in explosion.reach(target) {
+            reach.set(square);
+        }
+        self.shields_among(&reach)
+    }
+
+    /// SR5b (V2): of `squares`, those holding a player's piece under a shield on this board.
+    /// The one reading of a shield against a blast, for `blast_shields` and a round's
+    /// `blasts`, which read every blast of the round at once.
+    #[cold]
+    #[inline(never)]
+    pub(super) fn shields_among(&self, squares: &SquareSet) -> SquareSet {
+        let t = self.t;
+        let mut shields = SquareSet::EMPTY;
+        let Some(sight) = t.sight.as_deref() else {
+            return shields;
+        };
+        for square in squares.iter() {
+            if self.piece_effects(sight, square) & SIGHT_SHIELD != 0 {
+                shields.set(square);
+            }
+        }
+        shields
+    }
+
     /// Generation 37 (N2): the effect bits on the player's piece on `square` from the wild
     /// pieces' sights alone, read as `effects_at` reads every source. For `Core.effects`.
     fn wild_effects_at(&self, sight: &SightTables, square: usize) -> u8 {
@@ -131,7 +315,7 @@ impl<'t> Game<'t> {
         for source in sight.sources_of(t.owner_of(occupant), t.type_of(occupant), square) {
             if t.owner_of(source.piece_value) == WILD
                 && self.board[source.origin as usize] == source.piece_value
-                && sight.path(source).iter().all(|s| self.board[*s as usize] == 0)
+                && self.sight_path_open(sight, source)
             {
                 bits |= source.effect;
             }
@@ -173,11 +357,8 @@ impl<'t> Game<'t> {
     ) -> bool {
         let t = self.t;
         let occupant = self.board[square];
-        if sight.has_shield && occupant != 0 {
-            let owner = t.owner_of(occupant);
-            if owner < 2 && self.effects_at(sight, owner, square) & SIGHT_SHIELD != 0 {
-                return false;
-            }
+        if sight.has_shield && occupant != 0 && self.piece_effects(sight, square) & SIGHT_SHIELD != 0 {
+            return false;
         }
         let victim = victim.unwrap_or_else(|| {
             if occupant == 0 || !t.has_capture_matrix { usize::MAX } else { t.victim_of(occupant) }
@@ -231,11 +412,11 @@ impl<'t> Game<'t> {
         let mut lines = SquareSet::EMPTY;
         let note = |source: &SightSource, lines: &mut SquareSet| {
             if self.board[source.origin as usize] == source.piece_value
-                && sight.path(source).iter().all(|s| self.board[*s as usize] == 0)
+                && self.sight_path_open(sight, source)
             {
                 lines.set(source.origin as usize);
                 for square in sight.path(source) {
-                    lines.set(*square as usize);
+                    lines.set((square & SIGHT_PATH_SQUARE) as usize);
                 }
             }
         };
@@ -286,13 +467,7 @@ impl<'t> Game<'t> {
             return report;
         };
         for (square, bits) in report.bits.iter_mut().enumerate() {
-            let occupant = self.board[square];
-            if occupant != 0 {
-                let owner = t.owner_of(occupant);
-                if owner < 2 {
-                    *bits = self.effects_at(sight, owner, square);
-                }
-            }
+            *bits = self.piece_effects(sight, square);
         }
         if t.has_npcs {
             report.wild_bits = (0..t.n_squares).map(|square| self.wild_effects_at(sight, square)).collect();
@@ -309,9 +484,16 @@ impl<'t> Game<'t> {
             }
         }
         let player = self.side;
-        report.suppressed = self.royal_squares(player).iter().any(|&royal| {
-            self.attacks_square(1 - player, royal)
-                && !self.attacks_in_sight_game(sight, 1 - player, royal, None)
+        report.suppressed = self.royal_squares(player).iter().any(|&royal| match t.portals.as_deref() {
+            None => {
+                self.attacks_square(1 - player, royal)
+                    && !self.attacks_in_sight_game(sight, 1 - player, royal, None)
+            }
+            // SR5c (V1): an attack through a portal is an attack the effects may suppress.
+            Some(portals) => {
+                self.attacks_through_portals(portals, None, 1 - player, royal, None)
+                    && !self.attacks_through_portals(portals, Some(sight), 1 - player, royal, None)
+            }
         });
         if sight.has_command {
             report.commanded = self
@@ -336,17 +518,43 @@ impl<'t> Game<'t> {
             return Vec::new();
         }
         let mut seen = vec![0u8; t.n_squares];
-        for player in 0..2 {
+        // Generation 84 (SR5f, V11): and the wild pieces and the duck a sight names.
+        for player in 0..if sight.tamed { 3 } else { 2 } {
             for piece_type in 0..t.n_types {
                 for (target, bits) in seen.iter_mut().enumerate() {
                     for source in sight.sources_of(player, piece_type, target) {
                         if source.origin as usize == square
                             && source.piece_value == value
-                            && sight.path(source).iter().all(|s| self.board[*s as usize] == 0)
+                            && self.sight_path_open(sight, source)
                         {
                             *bits |= source.effect;
                         }
                     }
+                }
+            }
+        }
+        // SR5c (V1): a line that sees an empty fold that lets this piece in also sees the
+        // square of the end that fold leads to, and nothing past it.
+        if sight.folds {
+            let portals = t.portals.as_deref().expect("folds without portals");
+            let owner = t.owner_of(value);
+            let direct = seen.clone(); // one fold per line: an exit is no fold's near square
+            for end in 0..portals.n_ends {
+                let near = self.fold_at[end];
+                if near < 0 || self.board[near as usize] != 0 || direct[near as usize] == 0 {
+                    continue;
+                }
+                let entry = portals.first_type + end;
+                if owner >= 2 || portals.admits[entry][owner] & (1 << t.type_of(value)) == 0 {
+                    continue;
+                }
+                let to = portals.dest[entry];
+                if to < 0 {
+                    continue;
+                }
+                let far = self.fold_at[to as usize - portals.first_type];
+                if far >= 0 && far as usize != square {
+                    seen[far as usize] |= direct[near as usize];
                 }
             }
         }
@@ -395,9 +603,7 @@ impl<'a> SightBarring<'a> {
     fn shielded(&mut self, game: &Game<'_>, square: usize) -> bool {
         if !self.asked.get(square) {
             self.asked.set(square);
-            let occupant = game.board[square];
-            let owner = if occupant == 0 { WILD } else { game.t.owner_of(occupant) };
-            if owner < 2 && game.effects_at(self.sight, owner, square) & SIGHT_SHIELD != 0 {
+            if game.piece_effects(self.sight, square) & SIGHT_SHIELD != 0 {
                 self.shielded.set(square);
             }
         }
@@ -407,8 +613,9 @@ impl<'a> SightBarring<'a> {
     /// Why the effects forbid `m` (`BARRED_*`), or 0.
     fn reason(&mut self, game: &Game<'_>, m: u32) -> u8 {
         let kind = move_kind(m);
-        // TC6: a hire or a bribe moves no piece and takes none, so no effect bars it.
-        if enters_play(kind) || kind == MOVE_HIRE {
+        // TC6: a hire or a bribe moves no piece and takes none, so no effect bars it; nor a
+        // fold's own move (SR5c), which may move under a piece and takes nothing.
+        if enters_play(kind) || kind == MOVE_HIRE || kind == MOVE_FOLD {
             return 0;
         }
         let origin = move_from(m);
@@ -428,7 +635,8 @@ impl<'a> SightBarring<'a> {
         }
         let victim = match kind {
             MOVE_EN_PASSANT => game.ep_victim as usize,
-            // A sweep over a piece takes it (shields are refused beside sweeps).
+            // A sweep over a piece takes it. A shielded piece ends the ray in movegen
+            // (SR6g, `Game::sweep_shielded`), so a sweep never passes or lands on one.
             MOVE_SWEEP => {
                 return if self.disarmed.get(origin) { BARRED_DISARM } else { 0 };
             }
@@ -471,4 +679,21 @@ impl<'a> SightBarring<'a> {
         }
         false
     }
+}
+
+/// Generation 84 (SR5f, V11): what a wild phase reads of the sights, once, at its start
+/// (`Game::wild_sight`): the players' pieces under a shield, which no wild piece takes, and
+/// the wild pieces standing frozen (which neither walk nor pounce) or disarmed (which walk
+/// onto empty squares only and never pounce). By square, read on the board the phase starts
+/// from; every wild piece acts once a phase, from its own square, so the snapshot is sound.
+#[derive(Clone, Copy)]
+pub(super) struct WildSight {
+    pub(super) shields: SquareSet,
+    pub(super) frozen: SquareSet,
+    pub(super) disarmed: SquareSet,
+}
+
+impl WildSight {
+    pub(super) const NONE: Self =
+        Self { shields: SquareSet::EMPTY, frozen: SquareSet::EMPTY, disarmed: SquareSet::EMPTY };
 }

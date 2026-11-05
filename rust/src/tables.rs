@@ -36,14 +36,21 @@ pub const MAX_PIECE_TYPES: usize = 24;
 /// how many of one player's pieces can rest at once (one enters a turn, none stays longer).
 /// `spec/schema.py::REST_MAX` is the validator's copy.
 pub const REST_MAX: usize = 4;
+/// SR5e (V7): each player's resting-list slots. A commanded move rests its piece in its
+/// owner's list, so beside a command a player's list holds its own rests and the ones the
+/// opponent's commands began, each at most the longest rest: twice `REST_MAX`.
+pub const REST_SLOTS: usize = 2 * REST_MAX;
 /// Schema 21: the most portal ends a game has, across all its groups, and so how wide
 /// every by-end array is (`Game::fold_at`, `FoldTables::starts`, a transit's ends).
 /// `spec/schema.py::MAX_PORTAL_ENDS` is the validator's copy, pinned equal by a test.
 pub const MAX_PORTAL_ENDS: usize = 8;
-/// Schema 19: the directions a portal's exit table holds per square (the king's step,
-/// `compile.PORTAL_DIRECTIONS`), and so the width of each half of a momentum mask. Not
-/// `MAX_PORTAL_ENDS`: the two eights are equal by coincidence.
+/// Schema 19: the directions a portal's exit table holds per square on the square lattice
+/// (the king's step, `compile.PORTAL_DIRECTIONS`), and so the width of each half of a
+/// momentum mask there. Not `MAX_PORTAL_ENDS`: the two eights are equal by coincidence.
 pub const EXIT_DIRECTIONS: usize = 8;
+/// SR5g (P1): the most a lattice holds, the hex lattice's twelve hex king's steps
+/// (`compile.HEX_PORTAL_DIRECTIONS`). A game's own count is `PortalTables::n_dirs`.
+pub const MAX_EXIT_DIRECTIONS: usize = 12;
 /// TC4 (`docs/plan-turncoat.md` §5.2): the most coins a purse holds; a bounty past it is lost.
 /// `spec/schema.py::PURSE_MAX` is the validator's copy, and it bounds the purse's keys.
 pub const PURSE_MAX: u16 = 99;
@@ -186,6 +193,12 @@ pub const SWEEP_LENGTH_SHIFT: u8 = 2;
 /// |       |           | `MOVE_NORMAL`, `EN_PASSANT`, `PROMOTION` or `CASTLE` word        |
 /// | 25-29 | push      | Q1074b2: `MOVE_PUSH`: the push direction's id (`with_push`, <    |
 /// |       |           | 32; `bridge.rust_supports` refuses a game with more)             |
+/// | 25-29 | ray       | SR6d: `MOVE_SWEEP` where two rays reach one target               |
+/// |       |           | (`Tables::sweep_rays`): the ray's index among the slot's sweep   |
+/// |       |           | entries (`with_ray`, < `MAX_SWEEP_RAYS`); 0 elsewhere. SR6e: on  |
+/// |       |           | a sweep through a fold, in any game                              |
+/// | 20-24 | through   | SR6e: a `MOVE_SWEEP` through a fold: the near end's index on the |
+/// |       |           | ray + 1 (`with_through`, < `MAX_SWEEP_THROUGH`); 0 a direct sweep|
 /// | 30    | foreign   | a move of a piece the mover does not own (`with_foreign`)        |
 /// | 31    | gate_rook | Q1059a: a gating castle places on the rook's origin, not the     |
 /// |       |           | king's (`with_gate`); 0 on every other word                      |
@@ -196,27 +209,31 @@ pub const SWEEP_LENGTH_SHIFT: u8 = 2;
 /// the gate alone. A castle has two vacated squares, and bit 31 says which one the piece
 /// enters on; it is the word's last free bit.
 ///
-/// **Bits 25 to 30, the extension, hold at most one field today.** Landing, portal and fold
-/// share bits 25-29 and are told apart by the rules and the kind: SR4m (P3) lifted a strike
-/// beside portals, and a capture through an end or a fold that places a survivor under
-/// `position: "choose"` carries its landing there and names no end (`Game::fans_out`; two
-/// ways to one exit with one landing are one move); every other transit and go-through
-/// names its end, and every other capture's landing is 0; foreign has its own bit, but the validator refuses every rule pair that would set
-/// it beside a tag (a sight beside portals, a commanded capture beside a strike). So every
-/// encoder `debug_assert`s the whole extension is empty, which is what catches the first lifted
-/// refusal (SR5c's commanded fold transit sets foreign *and* fold): that task decides whether
-/// its word is legal, and narrows the assertion to the field it writes if so. Readers mask
-/// their own field only; `move_extended` asks whether anything rides there.
+/// **Bits 25 to 30, the extension: one tag field, and the foreign bit beside it.** Landing,
+/// portal and fold share bits 25-29 and are told apart by the rules and the kind: SR4m (P3)
+/// lifted a strike beside portals, and a capture through an end or a fold that places a
+/// survivor under `position: "choose"` carries its landing there and names no end
+/// (`Game::fans_out`; two ways to one exit with one landing are one move); every other transit
+/// and go-through names its end, and every other capture's landing is 0. Foreign has its own
+/// bit and rides beside a portal end or a fold end: SR3g (P10) a held piece's transit or
+/// go-through, SR5c2 (V1) a commanded piece's, and SR4k a held piece's choosing landing. So
+/// the tag encoders (`with_tag`) assert only that the tag field and bit 31 are empty, and
+/// `with_foreign` only that the foreign bit and bit 31 are, and the two compose in either
+/// order; a second tag on one word still trips its encoder. Readers mask their own field
+/// only; `move_extended` asks whether anything rides there.
 ///
-/// **What the schema plan's next fields would take.** SR6d (W6, a declared sweep ray): the
-/// ray's index among the slot's sweep entries rides on a `MOVE_SWEEP` word in bits 25-29 (a
-/// sweep is refused beside a strike and portals, so neither landing nor portal can be there;
-/// fewer than 32 rays, which SR6d must bound). SR8b (W7, a promoting sweep): the promoted type
-/// in bits 20-24, which a `MOVE_SWEEP` word leaves free, as `MOVE_PORTAL`'s promotion does
-/// (type + 1, 0 none). The two fit together, and beside foreign (SR6f's commanded sweep, bit
-/// 30). **What does not fit:** a declared ray *and* a fold end on one word (a sweep through a
-/// fold, SR6e, on a wrapped board): both want bits 25-29, and bit 31 alone is room for
-/// neither; that pair needs a refusal or a wider word.
+/// **What the schema plan's next fields would take.** SR6d (W6) put the declared sweep ray
+/// on a `MOVE_SWEEP` word in bits 25-29 (a sweep is refused beside a chosen landing, and
+/// gating tags no sweep, so nothing else is there). SR6e (W8) answered the pair of a ray and
+/// a fold end: **a sweep through a fold names no end.** Its word is a `MOVE_SWEEP` to the far
+/// square with its ray in the tag (always, in any game) and its fold step in bits 20-24
+/// (`with_through`: the near end's index on the ray plus one, 0 for a direct sweep, below
+/// `MAX_SWEEP_THROUGH`), which a sweep word leaves free since a sweeper never promotes. The
+/// ray and the step locate the near end in the table, so the path is the table's and the
+/// word reads without the position; the end is whichever fold stands there. SR8b (W7, a
+/// promoting sweep) wanted bits 20-24 for the promoted type: it fits beside the ray and
+/// beside foreign (SR6f's commanded sweep, bit 30), but not beside a fold step, so a
+/// promoting sweeper beside folds is SR8b's to refuse or widen.
 pub const MOVE_ORIGIN_SHIFT: u32 = 0;
 pub const MOVE_ORIGIN_BITS: u32 = 8;
 pub const MOVE_TARGET_SHIFT: u32 = 8;
@@ -227,6 +244,12 @@ pub const MOVE_PROMOTION_SHIFT: u32 = 20;
 pub const MOVE_PROMOTION_BITS: u32 = 5;
 /// Bits 25-29: a strike's landing, a portal's entered end, or a fold end (one at a time).
 pub const MOVE_TAG_SHIFT: u32 = 25;
+/// SR6d: the most sweep rays one slot may hold where the word names its ray (indices 0 to
+/// 31, the tag's five bits).
+pub const MAX_SWEEP_RAYS: usize = 32;
+/// SR6e: the longest sweep ray a fold game may hold, so a fold step's index plus one fits the
+/// promotion field's five bits (`with_through`).
+pub const MAX_SWEEP_THROUGH: usize = 31;
 pub const MOVE_TAG_BITS: u32 = 5;
 pub const MOVE_FOREIGN_SHIFT: u32 = 30;
 /// Q1059a: bit 31, a gating castle's piece entering on the rook's origin.
@@ -241,16 +264,18 @@ pub const MOVE_EXTENSION_MASK: u32 = !0 << MOVE_TAG_SHIFT;
 pub const MOVE_BASE_MASK: u32 = !MOVE_EXTENSION_MASK;
 /// The field map as `(name, shift, width)`, for `lib.rs` to export and a test to pin
 /// `engine/moves.py`'s copy to. Landing, portal and fold are the one tag field's names.
-pub const MOVE_FIELDS: [(&str, u32, u32); 11] = [
+pub const MOVE_FIELDS: [(&str, u32, u32); 13] = [
     ("origin", MOVE_ORIGIN_SHIFT, MOVE_ORIGIN_BITS),
     ("target", MOVE_TARGET_SHIFT, MOVE_TARGET_BITS),
     ("kind", MOVE_KIND_SHIFT, MOVE_KIND_BITS),
     ("promotion", MOVE_PROMOTION_SHIFT, MOVE_PROMOTION_BITS),
+    ("through", MOVE_PROMOTION_SHIFT, MOVE_PROMOTION_BITS),
     ("landing", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
     ("portal", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
     ("fold", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
     ("gate", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
     ("push", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
+    ("ray", MOVE_TAG_SHIFT, MOVE_TAG_BITS),
     ("foreign", MOVE_FOREIGN_SHIFT, 1),
     ("gate_rook", MOVE_GATE_ROOK_SHIFT, 1),
 ];
@@ -311,14 +336,14 @@ fn move_tag(m: u32) -> usize {
     ((m & MOVE_TAG_MASK) >> MOVE_TAG_SHIFT) as usize
 }
 
-/// `m` with `value` in the tag field, which must fit; the extension must be empty (the field
-/// map: one field at a time, until a lifted refusal decides otherwise).
+/// `m` with `value` in the tag field, which must fit; the tag field and bit 31 must be empty
+/// (the field map: one tag at a time, the foreign bit beside it, SR5c2).
 #[inline(always)]
 fn with_tag(m: u32, value: usize, field: &str) -> u32 {
     debug_assert!(value < 1 << MOVE_TAG_BITS, "a {field} of {value} past the move word's tag field");
     debug_assert!(
-        m & MOVE_EXTENSION_MASK == 0,
-        "a {field} written onto a move word whose bits 25-31 are taken: {m:#010x}"
+        m & (MOVE_TAG_MASK | MOVE_GATE_ROOK) == 0,
+        "a {field} written onto a move word whose tag or bit 31 is taken: {m:#010x}"
     );
     m | ((value as u32) << MOVE_TAG_SHIFT)
 }
@@ -371,6 +396,33 @@ pub fn move_gate(m: u32) -> usize {
 }
 
 /// Q1074b2: a `MOVE_PUSH`'s direction id (`PushTables::next`'s row).
+/// SR6d (W6): a `MOVE_SWEEP`'s ray, its index among the slot's sweep entries, in the tag;
+/// written only where `Tables::sweep_rays` (two rays reach one target), 0 elsewhere.
+#[inline(always)]
+pub fn move_ray(m: u32) -> usize {
+    move_tag(m)
+}
+
+#[inline(always)]
+pub fn with_ray(m: u32, ray: usize) -> u32 {
+    with_tag(m, ray, "sweep ray")
+}
+
+/// SR6e (W8): a `MOVE_SWEEP`'s fold step, the promotion field read as the index on its ray of
+/// the fold it went through plus one; 0 for a direct sweep. A sweeper never promotes.
+#[inline(always)]
+pub fn move_through(m: u32) -> usize {
+    move_promotion(m) as usize
+}
+
+/// `m`, a sweep naming its ray, going through the fold on its ray's `index`-th square.
+#[inline(always)]
+pub fn with_through(m: u32, index: usize) -> u32 {
+    debug_assert!(index + 1 < 1 << MOVE_PROMOTION_BITS, "a fold step of {index} past the field");
+    debug_assert!(move_promotion(m) == 0, "a fold step written onto a promoting word: {m:#010x}");
+    m | (((index + 1) as u32) << MOVE_PROMOTION_SHIFT)
+}
+
 #[inline(always)]
 pub fn move_push(m: u32) -> usize {
     move_tag(m)
@@ -415,8 +467,8 @@ pub fn move_foreign(m: u32) -> bool {
 #[inline(always)]
 pub fn with_foreign(m: u32) -> u32 {
     debug_assert!(
-        m & MOVE_EXTENSION_MASK == 0,
-        "the foreign bit written onto a move word whose bits 25-31 are taken: {m:#010x}"
+        m & (MOVE_FOREIGN | MOVE_GATE_ROOK) == 0,
+        "the foreign bit written onto a move word whose foreign bit or bit 31 is taken: {m:#010x}"
     );
     m | MOVE_FOREIGN
 }
@@ -665,6 +717,50 @@ impl EntryTable {
         &self.modes[lo..lo + entry.len as usize]
     }
 
+    /// SR6d (W6): whether two entries of one slot reach one square along different paths --
+    /// two rays round a seam -- so a sweep's word must name its ray (`Tables::sweep_rays`).
+    /// Two entries along one vector that differ only in their length (Q1063) share every
+    /// prefix, and reach no square two ways. A walk per pair of a slot's entries, with each
+    /// square's index on the first ray in `at` (`u32::MAX` off it); run once, at load.
+    fn reaches_one_square_two_ways(&self, n_squares: usize) -> bool {
+        let mut at = vec![u32::MAX; n_squares];
+        for slot in 0..self.slots().saturating_sub(1) {
+            let entries = self.entries(slot);
+            for (i, first) in entries.iter().enumerate() {
+                let one = self.squares(first);
+                for (index, &square) in one.iter().enumerate() {
+                    at[square as usize] = index as u32;
+                }
+                let split = entries[i + 1..].iter().any(|second| {
+                    let two = self.squares(second);
+                    // The two rays agree on their first `common` squares.
+                    let common = one.iter().zip(two).take_while(|(a, b)| a == b).count();
+                    two.iter().enumerate().any(|(index, &square)| {
+                        let on_first = at[square as usize];
+                        on_first != u32::MAX && (on_first as usize != index || index > common)
+                    })
+                });
+                for &square in one {
+                    at[square as usize] = u32::MAX;
+                }
+                if split {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// SR6d: the most entries any one slot holds, which bounds a sweep's ray index.
+    fn widest_slot(&self) -> usize {
+        (0..self.slots().saturating_sub(1)).map(|slot| self.entries(slot).len()).max().unwrap_or(0)
+    }
+
+    /// SR6e: the most squares any one entry holds, which bounds a sweep's fold step.
+    fn longest_entry(&self) -> usize {
+        self.refs.iter().map(|entry| entry.len as usize).max().unwrap_or(0)
+    }
+
     fn build(index: Vec<u32>, packed: Vec<u32>, squares: Vec<u16>, modes: Vec<u8>) -> Self {
         let refs = packed
             .chunks_exact(5)
@@ -738,14 +834,22 @@ pub struct PortalTables {
     pub admits: [[u32; 2]; MAX_PIECE_TYPES],
     /// `movers[type]` -> a bit per player who may move this end.
     pub movers: [u8; MAX_PIECE_TYPES],
-    /// `[(player * n_squares + square) * EXIT_DIRECTIONS + direction]` -> the square one king's step away
+    /// `[(player * n_squares + square) * n_dirs + direction]` -> the square one king's step away
     /// under that player's wrap permission, or -1.
     pub exits: Vec<i16>,
-    /// The momentum masks, parallel to each movement table's squares: bits 0-7 the
-    /// directions a move-mode landing there was reached in, bits 8-15 a capture-mode one.
-    pub leap_dirs: Vec<u16>,
-    pub slide_dirs: Vec<u16>,
-    pub hop_dirs: Vec<u16>,
+    /// SR5g (P1): the lattice's direction count, the exit table's stride and the width of
+    /// each half of a momentum mask: 8 on the square lattice, 12 on a hex lattice.
+    pub n_dirs: usize,
+    /// The momentum masks, parallel to each movement table's squares: bits `0..n_dirs` the
+    /// directions a move-mode landing there was reached in, bits `n_dirs..2 * n_dirs` a
+    /// capture-mode one (sixteen bits on the square lattice, 24 on a hex one).
+    pub leap_dirs: Vec<u32>,
+    pub slide_dirs: Vec<u32>,
+    pub hop_dirs: Vec<u32>,
+    /// SR5g (P1): on a hex lattice, each attack source's capture directions, in the attack
+    /// table's order (`Tables::attack_start`): twelve bits, which `AttackSource::dirs`'s
+    /// padding byte cannot hold. Empty on the square lattice, which reads that byte.
+    pub wide_dirs: Vec<u16>,
     /// Schema 20 (Q807): `no_back[type]` -> once this end has moved, it may not move
     /// straight back onto the square it left on the very next move (`no_straight_back`).
     pub no_back: [bool; MAX_PIECE_TYPES],
@@ -760,6 +864,23 @@ pub struct PortalTables {
     pub n_momentum: usize,
     /// Schema 22: the fold tables, or `None` where no group is a fold.
     pub folds: Option<FoldTables>,
+    /// SR5i (P7): `[(player * n_types + type) * n_squares + square]` -> whether a piece of
+    /// that type, moving as that player's, may stand there (its `region`, reflected for the
+    /// second player). A transit's exit and a go-through's far square outside it are a
+    /// blocked exit, as a wall is. Empty unless some type has a region.
+    pub stand: Vec<bool>,
+    /// The stride `stand` is read with: the tables' `n_types` and `n_squares`.
+    pub stand_types: usize,
+    pub stand_squares: usize,
+}
+
+impl PortalTables {
+    /// SR5i (P7): whether `player`'s piece of `piece_type` may come out on `square`.
+    #[inline(always)]
+    pub fn may_stand(&self, player: usize, piece_type: usize, square: usize) -> bool {
+        self.stand.is_empty()
+            || self.stand[(player * self.stand_types + piece_type) * self.stand_squares + square]
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -809,7 +930,23 @@ pub struct ExplosionRule {
     /// reaches here.
     pub by_types: Vec<bool>,
     pub of_types: Vec<bool>,
+    /// SR5a (T1, `docs/plan-schema-next.md` §2.4): `explode_on_capture.strikes`, which of an
+    /// exploding capture's pieces the strike rule reaches: [`BLAST_STRIKES_TARGET`] (the
+    /// piece taken), [`BLAST_STRIKES_VICTIMS`] (each piece the blast clears), both, or 0
+    /// (`"none"`, the default and every ruleset before it: an exploding capture strikes
+    /// nothing). Nonzero only beside a strike placed `stay` or `home` (the validator).
+    pub strikes: u8,
+    /// SR6c (W3, `docs/plan-schema-next.md` §2.6, the sweep switch): `sweep_path[mover]`,
+    /// whether a sweep by that type sets off a blast on each swept square whose piece passes
+    /// `fires` (`effects: "path"`). Empty unless some sweeper says so: a sweep then makes one
+    /// blast, on its landing (`"landing"`).
+    pub sweep_path: Vec<bool>,
 }
+
+/// SR5a: `ExplosionRule::strikes`' bit for the piece taken.
+pub const BLAST_STRIKES_TARGET: u8 = 1;
+/// SR5a: `ExplosionRule::strikes`' bit for the blast's victims.
+pub const BLAST_STRIKES_VICTIMS: u8 = 2;
 
 impl ExplosionRule {
     /// Whether a capture of `victim` by `capturer` sets the blast off.
@@ -836,6 +973,12 @@ impl ExplosionRule {
     #[inline]
     pub fn clears(&self, t: &Tables, value: u8) -> bool {
         value != 0 && !self.immune_types[t.type_of(value)]
+    }
+
+    /// SR6c (W3): whether a sweep by `mover_type` blasts each swept square it may.
+    #[inline]
+    pub fn blasts_path(&self, mover_type: usize) -> bool {
+        !self.sweep_path.is_empty() && self.sweep_path[mover_type]
     }
 }
 
@@ -911,6 +1054,10 @@ pub struct StrikeRule {
     /// Schema 17 (Q540): `mover_flips[mover * n_types + victim]` -- the attacker changes
     /// sides (Andernach). Empty when no type does, so every earlier rule reads nothing.
     pub mover_flips: Vec<bool>,
+    /// SR6a (W1, `docs/plan-schema-next.md` §2.6, the sweep switch): `sweep_path[mover]`,
+    /// whether a sweep by that type strikes each swept piece (`effects: "path"`). Empty
+    /// unless some sweeper says so, so a sweep strikes only its landing (`"landing"`).
+    pub sweep_path: Vec<bool>,
 }
 
 /// Schema 17 (Q540): a `to` entry that removes the victim and leaves the attacker on its
@@ -928,6 +1075,12 @@ impl StrikeRule {
     #[inline]
     pub fn flips(&self, cell: usize) -> bool {
         !self.mover_flips.is_empty() && self.mover_flips[cell]
+    }
+
+    /// SR6a (W1): whether a sweep by `mover_type` strikes the pieces it sweeps.
+    #[inline]
+    pub fn strikes_path(&self, mover_type: usize) -> bool {
+        !self.sweep_path.is_empty() && self.sweep_path[mover_type]
     }
 
     /// The squares a piece struck on `square` by `player` may be placed on, ascending.
@@ -1219,10 +1372,18 @@ pub struct RestTables {
     pub turns: Vec<u8>,
     /// `[((left - 1) * 2 + player) * n_squares + square]`: XORed in for each resting piece.
     pub zobrist: Vec<u64>,
-    /// The longest rest, and so how many of a player's `REST_MAX` slots can ever be live:
-    /// a player enters at most one piece a turn and each rests at most this many of its
-    /// turns, and an entry takes the first free slot. The core walks only these.
+    /// How many of a player's `REST_SLOTS` slots can ever be live: the longest rest, as a
+    /// player enters at most one piece a turn and each rests at most this many of its turns
+    /// and an entry takes the first free slot; twice that beside a command (SR5e, V7), whose
+    /// moves enter the commanded piece in its owner's list, one more a turn of the opponent's.
+    /// The core walks only these.
     pub slots: usize,
+    /// The longest rest a type declares (`R`), and so the most turns left an entry can hold.
+    pub longest: usize,
+    /// SR5e (V7): a command beside the rest. A resting piece is moved by neither player, so
+    /// the filter drops the side to move's moves from both lists' squares, and a commanded
+    /// move enters its piece in its owner's list.
+    pub commanded: bool,
 }
 
 impl RestTables {
@@ -1582,11 +1743,19 @@ pub const SIGHT_COMMAND: u8 = 8;
 /// Q1007c: a commanded move may also take the piece's own side's non-royal pieces
 /// (`captures_own`); never set without `SIGHT_COMMAND` on the same source.
 pub const SIGHT_COMMAND_OWN: u8 = 16;
+/// SR5c (V1, ruled 2026-10-27: *a momentum end stops a sight as a wall does*): a sight path
+/// entry with this bit set is an aura's square between its source and the square it sees, in
+/// a game with momentum portals. An aura sees past pieces, so the square is open unless a
+/// portal end stands on it; a ray's path entries never carry the bit (any byte closes them).
+/// The compiler writes it (`compile.SIGHT_PATH_AURA`), and only beside portals.
+pub const SIGHT_PATH_AURA: u16 = 0x8000;
+/// The square of a sight path entry, the aura bit masked off.
+pub const SIGHT_PATH_SQUARE: u16 = SIGHT_PATH_AURA - 1;
 /// TC1 (`docs/plan-turncoat.md` §3.3; Q1007c's `MOVE_COMMANDED`, renamed): bit 30 of a move
 /// word marks a **foreign** move -- the side to move moving a piece that is not its own (today
-/// a commanded one, the opponent's). Bits 25 to 29 (the tag: a strike's landing, a portal
-/// end or a fold) are refused beside it, so in a command game this bit is the only one set
-/// past the promotion (the field map, beside `encode_move`). It also keeps a foreign move
+/// a commanded one, the opponent's, or a held neutral). It may ride beside a portal end or a
+/// fold end in bits 25 to 29 (SR3g's held transit, SR5c2's commanded one; the field map,
+/// beside `encode_move`). It also keeps a foreign move
 /// from opening an en passant window (`make` opens one only where `move_extended` is false).
 /// Every foreign move comes from `Game::push_foreign`, through `with_foreign`.
 pub const MOVE_FOREIGN: u32 = 1 << MOVE_FOREIGN_SHIFT;
@@ -1610,6 +1779,13 @@ pub struct SightTables {
     /// Q1007c: whether any sight commands. Only then does the generator walk the opponent's
     /// pieces for commanded moves (`Game::push_foreign`).
     pub has_command: bool,
+    /// SR5c (V1): whether the game has folds. Only then does `Game::effects_at` read a fold's
+    /// exit (a line reaching an empty fold also sees the square of the end it leads to).
+    pub folds: bool,
+    /// Generation 84 (SR5f, V11, `docs/plan-schema-next.md` §2.7): whether a sight names a
+    /// wild type or the duck, so `index` holds a third block (`WILD`'s) of the sources that
+    /// bind a wild piece or the duck. Only then may `sources_of` be asked for `WILD`.
+    pub tamed: bool,
     /// `n_types * n_squares`, the stride of a player's block in `index`.
     block: usize,
     n_squares: usize,
@@ -1733,6 +1909,15 @@ pub struct Tables {
     /// unless `has_sweep`.
     pub sweeps: EntryTable,
     pub has_sweep: bool,
+    /// SR6d (W6, `docs/plan-schema-next.md` §2.6): two of some slot's sweep rays reach one
+    /// square along different paths (a wrapped board), so every `MOVE_SWEEP` word carries its
+    /// ray's index among the slot's sweep entries in the tag (`with_ray`), and `sweep_path`
+    /// reads that entry. Derived from `sweeps` at load (nothing crosses); false in every game
+    /// without such a pair, whose sweep words carry no ray and whose path is the first ray's.
+    pub sweep_rays: bool,
+    /// SR6e (W8): a sweep beside folds, so a sweep may go through one (`with_through`, its
+    /// ray named in any game). Derived at load; false in every game without both.
+    pub fold_sweeps: bool,
 
     /// Every square on this board, as a set. What an "empty squares" query masks the
     /// complement of an occupancy with, so the bits past `n_squares` never read as
@@ -1857,6 +2042,12 @@ pub struct Tables {
     /// `reach.leaves`, hoisted: the one flag `make` asks on every move, so a ruleset
     /// without the rule pays one load for it rather than an `Option` and a field.
     pub reach_leaves: bool,
+    /// SR5k (`docs/plan-schema-next.md` §2.11 O11): an arrival goal beside majority control,
+    /// where a held piece's arrival is read for the mover off the move, not the board (the
+    /// piece standing there is nobody's): `make` writes it into `Game::goal_left_by`.
+    pub reach_held: bool,
+    /// `reach_leaves || reach_held`: whether `make` keeps `Game::goal_left_by` and its log.
+    pub goal_event: bool,
     /// `[player * n_types * n_squares + piece_type * n_squares + square]` -> how many
     /// moves that piece needs, on an empty board, to reach a square a `reach` rule wins
     /// on. `GOAL_UNREACHABLE` where it cannot. Empty when there is no reach rule.
@@ -1936,6 +2127,13 @@ pub struct Tables {
     /// in its way is shielded (**a wild piece never takes a shielded piece**). Derived here
     /// from the sight's flags and `has_npcs`, so nothing new crosses the boundary.
     pub npc_shield: bool,
+    /// Generation 84 (SR5f, V11): whether a sight names a wild type and wild pieces walk
+    /// (`SightTables::tamed` and `has_npcs`). Only then does the phase read which wild pieces
+    /// stand frozen or disarmed at its start, and a wild threat whether its piece is free.
+    pub npc_tamed: bool,
+    /// `npc_shield || npc_tamed`: whether the phase reads a sight snapshot at its start
+    /// (`Game::wild_sight`). Every other game walks the phase it walked before.
+    pub npc_sight: bool,
 
     /// Schema 19: the portal tables, or `None` for every game without portals.
     pub portals: Option<Box<PortalTables>>,
@@ -2272,6 +2470,13 @@ impl Tables {
         &self.attack_sources[lo..hi]
     }
 
+    /// SR5g: where `attackers_of(player, square)` starts in the whole attack table, so a
+    /// table parallel to it (`PortalTables::wide_dirs`) is read at the same source.
+    #[inline(always)]
+    pub fn attack_start(&self, player: usize, square: usize) -> usize {
+        self.attack_index[player * self.n_squares + square] as usize
+    }
+
     #[inline(always)]
     pub fn attack_path(&self, source: &AttackSource) -> &[u16] {
         let lo = source.path_start as usize;
@@ -2285,17 +2490,36 @@ impl Tables {
         &self.attack_path_modes[lo..lo + source.path_len as usize]
     }
 
-    /// Schema 13: the squares a sweep by `moving` from `origin` to `target` passes over,
-    /// in ray order, or nothing when no sweep of that piece reaches `target`.
+    /// Schema 13: the squares the sweep `m` by `moving` passes over, in ray order, or
+    /// nothing when no sweep of that piece reaches its target.
     ///
-    /// A scan of the slot's few sweep entries rather than a per-pair table. One ray
-    /// reaches one target from one origin, because `wrap` is refused beside a sweep.
+    /// SR6d (W6): where two rays of a slot reach one target (`sweep_rays`), the word names
+    /// its ray (`move_ray`) and the path is that entry's. Elsewhere one ray reaches one
+    /// target from one origin, and the path is a scan of the slot's few sweep entries for
+    /// it: the words every stored record holds, which carry no ray.
     /// Private: what a played sweep removes is `sweep_victims`' answer, not the path's.
-    fn sweep_path(&self, moving: u8, origin: usize, target: usize) -> &[u16] {
+    ///
+    /// SR6e (W8): a sweep through a fold (`move_through` non-zero) names its ray in any game,
+    /// and its path is that ray's squares before the fold; the target is the far end.
+    pub(crate) fn sweep_path(&self, m: u32, moving: u8) -> &[u16] {
         if !self.has_sweep || moving == 0 {
             return &[];
         }
+        let (origin, target) = (move_from(m), move_to(m));
         let slot = self.slot(self.frame_of_value(moving), self.type_of(moving), origin);
+        let through = move_through(m);
+        if through != 0 {
+            return match self.sweeps.entries(slot).get(move_ray(m)) {
+                Some(entry) => {
+                    let squares = self.sweeps.squares(entry);
+                    &squares[..(through - 1).min(squares.len())]
+                }
+                None => &[],
+            };
+        }
+        if self.sweep_rays {
+            return self.ray_path(slot, move_ray(m), target);
+        }
         for entry in self.sweeps.entries(slot) {
             let squares = self.sweeps.squares(entry);
             if let Some(index) = squares.iter().position(|square| *square as usize == target) {
@@ -2320,8 +2544,22 @@ impl Tables {
     /// clear each victim as it is named: the path's squares are distinct and hold neither
     /// end of the move, so clearing one never changes the next answer.
     #[inline]
-    pub fn sweep_victims(&self, moving: u8, origin: usize, target: usize) -> SweepVictims<'_> {
-        SweepVictims { path: self.sweep_path(moving, origin, target).iter() }
+    pub fn sweep_victims(&self, m: u32, moving: u8) -> SweepVictims<'_> {
+        SweepVictims { path: self.sweep_path(m, moving).iter() }
+    }
+
+    /// SR6d: the path of ray `ray` of `slot` up to `target`, nothing where it does not
+    /// reach it. `push_sweeps` asks it of the rays it has walked.
+    #[inline]
+    pub fn ray_path(&self, slot: usize, ray: usize, target: usize) -> &[u16] {
+        let Some(entry) = self.sweeps.entries(slot).get(ray) else {
+            return &[];
+        };
+        let squares = self.sweeps.squares(entry);
+        match squares.iter().position(|square| *square as usize == target) {
+            Some(index) => &squares[..index],
+            None => &[],
+        }
     }
 
     #[inline(always)]
@@ -2725,6 +2963,18 @@ impl Tables {
         let bare_royal = Self::bare_royal_rule(source)?;
         let explosion = Self::explosion_rule(source, n_squares)?;
         let strike = Self::strike_rule(source, n_types, n_squares)?;
+        // SR5a (T1): a blast that strikes places what it strikes without the capturer, which
+        // the blast destroys, so only where a strike places a piece alone (`stay`, `home`).
+        // Tables that say otherwise are refused here rather than played.
+        if explosion.as_ref().is_some_and(|rule| rule.strikes != 0)
+            && !strike.as_ref().is_some_and(|rule| {
+                matches!(rule.position, StrikePosition::Stay | StrikePosition::Home)
+            })
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a blast that strikes without a strike placed 'stay' or 'home'",
+            ));
+        }
         let mut drops = Self::drop_rule(source, n_types, n_squares)?;
         let (goal_distance, goal_diameter, goal_distance_each) = Self::goal_distances(source)?;
         let (feature_rank, feature_rank_span, feature_centre) =
@@ -2780,6 +3030,8 @@ impl Tables {
             screen_types: Self::screen_types(source, n_types, &value_type)?,
             sweeps: Self::entry_table(source, [keys::SWEEP_INDEX, keys::SWEEP_REFS, keys::SWEEP_SQUARES, keys::SWEEP_MODES])?,
             has_sweep: field(source, keys::HAS_SWEEP)?,
+            sweep_rays: false,
+            fold_sweeps: false,
             attack_index: field(source, keys::ATTACK_INDEX)?,
             attack_sources,
             attack_paths: field(source, keys::ATTACK_PATHS)?,
@@ -2816,6 +3068,8 @@ impl Tables {
             strike,
             drops,
             reach_leaves: reach.as_ref().is_some_and(|rule| rule.leaves),
+            reach_held: majority.is_some() && reach.as_ref().is_some_and(|rule| !rule.leaves),
+            goal_event: reach.is_some() && (majority.is_some() || reach.as_ref().is_some_and(|rule| rule.leaves)),
             reach,
             goal_distance,
             goal_diameter,
@@ -2837,6 +3091,8 @@ impl Tables {
             purse: None,
             npc_queues: false,
             npc_shield: false,
+            npc_tamed: false,
+            npc_sight: false,
             portals: None,
             simultaneous: None,
             spy: None,
@@ -2886,7 +3142,17 @@ impl Tables {
         tables.rest = Self::rest_rule(&tables, source)?;
         tables.push = Self::push_rule(&tables, source)?;
         tables.sight = Self::sight_rule(&tables, source)?;
+        // SR5e (V7): beside a command a player's list also holds the pieces the opponent's
+        // commands rested, so it takes twice the slots, and the filter reads both lists.
+        if tables.sight.as_ref().is_some_and(|sight| sight.has_command) {
+            if let Some(rest) = tables.rest.as_deref_mut() {
+                rest.slots = 2 * rest.longest;
+                rest.commanded = true;
+            }
+        }
         tables.npc_shield = tables.has_npcs && tables.sight.as_ref().is_some_and(|sight| sight.has_shield);
+        tables.npc_tamed = tables.has_npcs && tables.sight.as_ref().is_some_and(|sight| sight.tamed);
+        tables.npc_sight = tables.npc_shield || tables.npc_tamed;
         tables.spy = Self::spy_rule(&tables, source)?;
 
         // TC4: a round pays its bounties into the tally alone (`rounds.rs`), so a purse is
@@ -2897,6 +3163,29 @@ impl Tables {
             ));
         }
         tables.hop_lines = tables.build_hop_lines();
+        if tables.has_sweep {
+            tables.sweep_rays = tables.sweeps.reaches_one_square_two_ways(tables.n_squares);
+            // SR6d: a ray's index rides in the five-bit tag; `bridge.rust_supports` refuses
+            // a game with more rays to name.
+            let widest = tables.sweeps.widest_slot();
+            if tables.sweep_rays && widest > MAX_SWEEP_RAYS {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "a sweeper with {widest} rays from one square on a board where two of them \
+                     meet; the move word names at most {MAX_SWEEP_RAYS}",
+                )));
+            }
+            // SR6e: a sweep through a fold names its ray and its step on it in any game.
+            tables.fold_sweeps =
+                tables.portals.as_deref().is_some_and(|portals| portals.folds.is_some());
+            let longest = tables.sweeps.longest_entry();
+            if tables.fold_sweeps && (widest > MAX_SWEEP_RAYS || longest > MAX_SWEEP_THROUGH) {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "a sweeper beside folds with {widest} rays from one square or a ray of \
+                     {longest} squares; the move word names at most {MAX_SWEEP_RAYS} rays of \
+                     {MAX_SWEEP_THROUGH} squares",
+                )));
+            }
+        }
         Ok(tables)
     }
 }
@@ -2949,8 +3238,10 @@ impl Tables {
         let packed_sources: Vec<u32> = field(source, keys::ATTACK_SRCS)?;
         // Schema 13: one byte per source, or empty when nothing sweeps.
         let attack_sweep: Vec<u8> = field(source, keys::ATTACK_SWEEP)?;
-        // Schema 19: one byte per source, or empty when there are no portals.
-        let attack_dirs: Vec<u8> = field(source, keys::ATTACK_DIRS)?;
+        // Schema 19: one byte per source, or empty when there are no portals. SR5g: on a hex
+        // lattice twelve bits, kept whole by `PortalTables::wide_dirs`; the byte here then
+        // holds the low eight, which nothing reads.
+        let attack_dirs: Vec<u16> = field(source, keys::ATTACK_DIRS)?;
         let attack_sources: Vec<AttackSource> = packed_sources
             .chunks_exact(8)
             .enumerate()
@@ -2964,7 +3255,7 @@ impl Tables {
                 prefix_len: chunk[6],
                 screen_owner: chunk[7] as u8,
                 sweep: attack_sweep.get(index).copied().unwrap_or(0),
-                dirs: attack_dirs.get(index).copied().unwrap_or(0),
+                dirs: attack_dirs.get(index).map_or(0, |bits| (*bits & 0xff) as u8),
             })
             .collect();
         if !attack_dirs.is_empty() && attack_dirs.len() != attack_sources.len() {
@@ -3180,11 +3471,33 @@ impl Tables {
                 ));
             }
         }
+        // SR5h (P5, `docs/plan-schema-next.md` §2.10, ruled 2026-10-28): a portal end in a
+        // blast stands; a portal is never captured. The compiler states it by putting every
+        // end's type (a type with a group) in the immune set (`_compile_explosion`); tables
+        // that say otherwise are refused here rather than played. A blast centres on the
+        // capture square, which through a portal is the exit (the move's target), so `make`,
+        // the filter and the round read it with no other change; a fold stands on no board
+        // byte, so the piece standing in one goes and the fold stays.
+        let portal_group: Vec<i32> = field(source, keys::PORTAL_GROUP)?;
+        if portal_group.iter().enumerate().any(|(end, group)| {
+            *group >= 0 && immune_raw.get(end).is_none_or(|v| *v == 0)
+        }) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a blast that clears a portal end; every end is immune",
+            ));
+        }
+        // SR6c (W3): the sweep switch, per sweeping type, empty unless a sweep says "path".
+        let sweep_path_raw: Vec<u8> = field(source, keys::EXPLOSION_SWEEP_PATH)?;
+        if !sweep_path_raw.is_empty() && sweep_path_raw.len() != immune_raw.len() {
+            return Err(unknown("explosion sweep path length", &sweep_path_raw.len().to_string()));
+        }
         Ok(Some(ExplosionRule {
+            sweep_path: sweep_path_raw.iter().map(|v| *v != 0).collect(),
             immune_types: immune_raw.iter().map(|v| *v != 0).collect(),
             blast,
             by_types: by_raw.iter().map(|v| *v != 0).collect(),
             of_types: of_raw.iter().map(|v| *v != 0).collect(),
+            strikes: field(source, keys::EXPLOSION_STRIKES)?,
         }))
     }
 
@@ -3253,6 +3566,12 @@ impl Tables {
             return Err(unknown("contact mover flips length", &flips_raw.len().to_string()));
         }
         let mover_flips: Vec<bool> = flips_raw.iter().map(|v| *v != 0).collect();
+        // SR6a (W1): the sweep switch, per sweeping type, empty unless a sweep says "path".
+        let sweep_path_raw: Vec<u8> = field(source, keys::STRIKE_SWEEP_PATH)?;
+        if !sweep_path_raw.is_empty() && sweep_path_raw.len() != n_types {
+            return Err(unknown("strike sweep path length", &sweep_path_raw.len().to_string()));
+        }
+        let sweep_path: Vec<bool> = sweep_path_raw.iter().map(|v| *v != 0).collect();
         let own_to: Vec<i32> = field(source, keys::CONTACT_OWN_ONTO_TO)?;
         let own_mover_to: Vec<i32> = field(source, keys::CONTACT_OWN_MOVER_TO)?;
         let own_link = own_to
@@ -3273,6 +3592,7 @@ impl Tables {
             landing_stride: n_squares,
             rebirth,
             mover_flips,
+            sweep_path,
         }))
     }
 
@@ -4197,7 +4517,13 @@ impl Tables {
                 "the rest tables do not fit this ruleset's types and squares",
             ));
         }
-        Ok(Some(Box::new(RestTables { turns: piece_rest, zobrist: zobrist_rest, slots: max })))
+        Ok(Some(Box::new(RestTables {
+            turns: piece_rest,
+            zobrist: zobrist_rest,
+            slots: max,
+            longest: max,
+            commanded: false,
+        })))
     }
 
     /// The push rule (Q1074b2): every table empty unless some move pushes. Read after the
@@ -4283,7 +4609,7 @@ impl Tables {
     }
 
     /// Lines of sight (schema 30, Q999a; generation 31's command): all four tables empty
-    /// unless a type sees. Read after the portals, beside which a sight is refused.
+    /// unless a type sees. Read after the portals, whose folds it notes (SR5c, V1).
     fn sight_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<SightTables>>> {
         let sight_index: Vec<u32> = field(source, keys::SIGHT_INDEX)?;
         let sight_srcs: Vec<u32> = field(source, keys::SIGHT_SRCS)?;
@@ -4310,7 +4636,8 @@ impl Tables {
             .collect();
         let fits = sight_flags.len() == 3
             && sight_srcs.len().is_multiple_of(5)
-            && sight_index.len() == 2 * tables.n_types * tables.n_squares + 1
+            && (sight_index.len() == 2 * tables.n_types * tables.n_squares + 1
+                || sight_index.len() == 3 * tables.n_types * tables.n_squares + 1)
             && sight_index.last().copied() == Some(sources.len() as u32)
             && sources.iter().all(|s| {
                 (s.origin as usize) < tables.n_squares
@@ -4320,14 +4647,20 @@ impl Tables {
                             && (s.effect == SIGHT_COMMAND
                                 || s.effect == SIGHT_COMMAND | SIGHT_COMMAND_OWN)))
             })
-            && sight_paths.iter().all(|square| (*square as usize) < tables.n_squares)
-            && tables.portals.is_none();
+            && sight_paths.iter().all(|square| {
+                ((square & SIGHT_PATH_SQUARE) as usize) < tables.n_squares
+                    && (square & SIGHT_PATH_AURA == 0 || tables.portals.is_some())
+            });
         if !fits {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "the sight tables do not fit this ruleset's squares (or sit beside portals)",
+                "the sight tables do not fit this ruleset's squares",
             ));
         }
+        // Generation 84 (SR5f, V11): a third block of sources, the wild pieces' and the
+        // duck's, crosses only where a sight names a wild type.
+        let tamed = sight_index.len() == 3 * tables.n_types * tables.n_squares + 1;
         Ok(Some(Box::new(SightTables {
+            tamed,
             index: sight_index,
             sources,
             paths: sight_paths,
@@ -4335,6 +4668,7 @@ impl Tables {
             bears_on_check: sight_flags[1] != 0,
             has_restraint: sight_flags[2] != 0,
             has_command: sight_command,
+            folds: tables.portals.as_deref().is_some_and(|portals| portals.folds.is_some()),
             block: tables.n_types * tables.n_squares,
             n_squares: tables.n_squares,
         })))
@@ -4593,12 +4927,25 @@ impl Tables {
             .into_iter()
             .map(|square| square as i16)
             .collect();
-        if exits.len() != 2 * tables.n_squares * EXIT_DIRECTIONS {
+        // SR5g: eight directions a square, or twelve on a hex lattice.
+        let n_dirs = [EXIT_DIRECTIONS, MAX_EXIT_DIRECTIONS]
+            .into_iter()
+            .find(|width| exits.len() == 2 * tables.n_squares * width);
+        let Some(n_dirs) = n_dirs else {
             return fail(format!("portal_exits holds {} entries", exits.len()));
+        };
+        let leap_dirs: Vec<u32> = field(source, keys::LEAP_DIRS)?;
+        let slide_dirs: Vec<u32> = field(source, keys::SLIDE_DIRS)?;
+        let hop_dirs: Vec<u32> = field(source, keys::HOP_DIRS)?;
+        let limit = 1u64 << (2 * n_dirs);
+        if [&leap_dirs, &slide_dirs, &hop_dirs]
+            .iter()
+            .any(|dirs| dirs.iter().any(|bits| u64::from(*bits) >= limit))
+        {
+            return fail(format!("a momentum mask sets a bit past {} directions", n_dirs));
         }
-        let leap_dirs: Vec<u16> = field(source, keys::LEAP_DIRS)?;
-        let slide_dirs: Vec<u16> = field(source, keys::SLIDE_DIRS)?;
-        let hop_dirs: Vec<u16> = field(source, keys::HOP_DIRS)?;
+        let attack_dirs: Vec<u16> = field(source, keys::ATTACK_DIRS)?;
+        let wide_dirs = if n_dirs == EXIT_DIRECTIONS { Vec::new() } else { attack_dirs };
         // Schema 20: empty unless some pair sets `no_straight_back`.
         let no_back_raw: Vec<u8> = field(source, keys::PORTAL_NO_BACK)?;
         let zobrist_bar: Vec<u64> = field(source, keys::ZOBRIST_PORTAL_BAR)?;
@@ -4626,6 +4973,14 @@ impl Tables {
                 ));
             }
         }
+        // SR5i (P7): empty unless some type has a region.
+        let stand: Vec<bool> = field::<Vec<u8>>(source, keys::PORTAL_STAND)?
+            .into_iter()
+            .map(|flag| flag != 0)
+            .collect();
+        if !stand.is_empty() && stand.len() != 2 * n_types * tables.n_squares {
+            return fail(format!("portal_stand holds {} entries", stand.len()));
+        }
         let folds = Self::fold_tables(source, tables, first_type, ends.len())?;
         let n_momentum = match folds.as_ref() {
             Some(found) => found.starts.iter().take(ends.len()).filter(|s| **s < 0).count(),
@@ -4640,12 +4995,17 @@ impl Tables {
             admits,
             movers,
             exits,
+            n_dirs,
             leap_dirs,
             slide_dirs,
             hop_dirs,
+            wide_dirs,
             no_back,
             has_no_back,
             zobrist_bar,
+            stand,
+            stand_types: n_types,
+            stand_squares: tables.n_squares,
         })
     }
 }
@@ -4658,16 +5018,23 @@ fn unknown(what: &str, value: &str) -> PyErr {
 mod tests {
     use super::*;
 
-    /// CS2: the field map's fields tile the word without overlap, but for the tag's five
-    /// names, which share bits 25-29 by design (Q1074b2's push direction the fifth).
+    /// CS2: the field map's fields tile the word without overlap, but for the tag's six
+    /// names, which share bits 25-29 by design (Q1074b2's push direction the fifth, SR6d's
+    /// sweep ray the sixth), and SR6e's fold step, which shares the promotion field's bits
+    /// (a sweeper never promotes).
     /// Q1059a's `gate_rook` took bit 31, the last free one, so the fields now fill the word.
     #[test]
     fn the_move_word_fields_tile_the_word() {
         let mut seen = 0u32;
+        let promotion = ((1u32 << MOVE_PROMOTION_BITS) - 1) << MOVE_PROMOTION_SHIFT;
         for &(name, shift, width) in MOVE_FIELDS.iter() {
             let mask = (((1u64 << width) - 1) as u32) << shift;
-            if name == "portal" || name == "fold" || name == "gate" || name == "push" {
+            if matches!(name, "portal" | "fold" | "gate" | "push" | "ray") {
                 assert_eq!(mask, MOVE_TAG_MASK, "{name}");
+                continue;
+            }
+            if name == "through" {
+                assert_eq!(mask, promotion, "{name}");
                 continue;
             }
             assert_eq!(seen & mask, 0, "{name} overlaps an earlier field");
@@ -4717,24 +5084,34 @@ mod tests {
         );
     }
 
-    /// CS2's acceptance: a commanded move through a fold (SR5c's V1, refused today) sets the
-    /// foreign bit and a fold end on one word, and the encoder says so. Built by hand, since
-    /// no game generates it.
+    /// SR5c2 (V1): a commanded move through a fold or a momentum end sets the foreign bit and
+    /// an end on one word (CS2 asked the first lifted refusal to decide; it is legal), and the
+    /// two encoders compose in either order, each field reading back alone.
     #[test]
-    #[cfg(debug_assertions)]
-    #[should_panic(expected = "bits 25-31 are taken")]
-    fn a_commanded_fold_transit_trips_the_field_map() {
-        let commanded = with_foreign(encode_move(3, 40, MOVE_NORMAL, 0));
-        let _ = with_fold(commanded, 2);
+    fn a_commanded_transit_carries_the_foreign_bit_beside_its_end() {
+        let base = encode_move(3, 40, MOVE_NORMAL, 0);
+        let through = with_foreign(with_fold(base, 2));
+        assert_eq!(through, with_fold(with_foreign(base), 2));
+        assert!(move_foreign(through) && move_fold(through) == 2 && through & MOVE_BASE_MASK == base);
+        let transit = with_foreign(with_portal(encode_move(3, 40, MOVE_PORTAL, 0), 7));
+        assert!(move_foreign(transit) && move_tag(transit) == 7);
     }
 
-    /// The same word the other way round: a fold go-through, then commanded.
+    /// A second tag on one word still trips the field map.
     #[test]
     #[cfg(debug_assertions)]
-    #[should_panic(expected = "bits 25-31 are taken")]
-    fn a_fold_transit_commanded_trips_the_field_map() {
-        let through = with_fold(encode_move(3, 40, MOVE_NORMAL, 0), 2);
-        let _ = with_foreign(through);
+    #[should_panic(expected = "tag or bit 31 is taken")]
+    fn a_second_tag_trips_the_field_map() {
+        let commanded = with_foreign(with_fold(encode_move(3, 40, MOVE_NORMAL, 0), 2));
+        let _ = with_portal(commanded, 1);
+    }
+
+    /// The foreign bit twice is a bug in the generator.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "foreign bit or bit 31 is taken")]
+    fn the_foreign_bit_twice_trips_the_field_map() {
+        let _ = with_foreign(with_foreign(encode_move(3, 40, MOVE_NORMAL, 0)));
     }
 
     /// A tag past its five bits would spill into the foreign bit.
@@ -4847,7 +5224,7 @@ impl PortalTables {
     /// The square one king's step from `square` in `direction`, for `player`, or -1.
     #[inline(always)]
     pub fn exit(&self, n_squares: usize, player: usize, square: usize, direction: usize) -> i16 {
-        self.exits[(player * n_squares + square) * EXIT_DIRECTIONS + direction]
+        self.exits[(player * n_squares + square) * self.n_dirs + direction]
     }
 }
 
@@ -4967,6 +5344,8 @@ pub mod keys {
         EXPLOSION_BY => "explosion_by",
         EXPLOSION_IMMUNE => "explosion_immune",
         EXPLOSION_OF => "explosion_of",
+        EXPLOSION_STRIKES => "explosion_strikes",
+        EXPLOSION_SWEEP_PATH => "explosion_sweep_path",
         EXTINCTION_ANY_PIECE => "extinction_any_piece",
         EXTINCTION_MIN_COUNT => "extinction_min_count",
         EXTINCTION_PER_TYPE => "extinction_per_type",
@@ -5052,6 +5431,7 @@ pub mod keys {
         PORTAL_KIND => "portal_kind",
         PORTAL_MOVERS => "portal_movers",
         PORTAL_NO_BACK => "portal_no_back",
+        PORTAL_STAND => "portal_stand",
         PROMO_ON_LEAVING => "promo_on_leaving",
         PROMO_ONLY_LOST => "promo_only_lost",
         PROMO_OPENING => "promo_opening",
@@ -5081,6 +5461,7 @@ pub mod keys {
         STRIKE_LANDING_INDEX => "strike_landing_index",
         STRIKE_POSITION => "strike_position",
         STRIKE_REBIRTH => "strike_rebirth",
+        STRIKE_SWEEP_PATH => "strike_sweep_path",
         STRIKE_TO => "strike_to",
         SWEEP_INDEX => "sweep_index",
         SWEEP_MODES => "sweep_modes",

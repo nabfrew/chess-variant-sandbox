@@ -23,6 +23,7 @@ from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.schema import (
     CONTACT_LINK_OFF_VALUES,
     DUCK_OFF_VALUES,
+    EXPLODE_OFF_VALUES,
     MOVE_OFF_VALUES,
     NPC_OFF_VALUES,
     PIECE_OFF_VALUES,
@@ -107,6 +108,14 @@ def _no_push(spec: dict[str, Any]) -> None:
             move.setdefault("push", False)
 
 
+def _landing(spec: dict[str, Any]) -> None:
+    """SR6a: a sweep's ``effects: "landing"``, the sweep switch's default."""
+    for piece in spec["pieces"]:
+        for move in piece.get("moves", []):
+            if move.get("kind") == "sweep":
+                move.setdefault("effects", "landing")
+
+
 def _push_rule(key: str, value: Any) -> Callable[[dict[str, Any]], None]:
     """Q1074b1: ``rules.push`` at its defaults is the rule's absence, pushing or not."""
     def write(spec: dict[str, Any]) -> None:
@@ -120,6 +129,10 @@ def _bribe(spec: dict[str, Any]) -> None:
 
 def _bounty_to(spec: dict[str, Any]) -> None:
     spec["rules"]["purse"]["bounty_to"] = "taker"
+
+
+def _strikes(spec: dict[str, Any]) -> None:
+    spec["rules"]["explode_on_capture"]["strikes"] = "none"
 
 
 # (where it is written, the game it is written on, the edit). Every off value of every place.
@@ -143,6 +156,7 @@ CASES = [
     ("rules.contacts.links[].own", "archive/einstein.json", _own),
     ("pieces[].moves[].path", "rulesets/chess.json", _straight),
     ("pieces[].moves[].push", "rulesets/chess.json", _no_push),
+    ("pieces[].moves[].effects", "archive/chess-sweeping-bishops.json", _landing),
     ("rules.push.chain", "rulesets/chess.json", _push_rule("chain", "one")),
     ("rules.push.edge", "rulesets/chess.json", _push_rule("edge", "removes")),
     ("rules.push.walls", "rulesets/chess.json", _push_rule("walls", "block")),
@@ -152,6 +166,7 @@ CASES = [
     ("rules.duck.goes", "tests/_duck_chess.json", _goes),
     ("rules.purse.bribe", "tests/_purse_market.json", _bribe),
     ("rules.purse.bounty_to", "tests/_purse_market.json", _bounty_to),
+    ("rules.explode_on_capture.strikes", "rulesets/atomic.json", _strikes),
 ]
 
 
@@ -166,6 +181,7 @@ def test_every_off_value_has_a_case() -> None:
         **{f"rules.npcs[].{key}": 1 for key in NPC_OFF_VALUES},
         **{f"rules.duck.{key}": 1 for key in DUCK_OFF_VALUES},
         **{f"rules.purse.{key}": 1 for key in PURSE_OFF_VALUES},
+        **{f"rules.explode_on_capture.{key}": 1 for key in EXPLODE_OFF_VALUES},
         **{f"rules.push.{key}": 1 for key in PUSH_OFF_VALUES},
     }
     assert set(named) == {where for where, _, _ in CASES}

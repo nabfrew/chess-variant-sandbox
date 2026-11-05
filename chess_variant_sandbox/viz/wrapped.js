@@ -2507,10 +2507,20 @@ const PORTAL_STEP_WORDS = ['right', 'up and right', 'up', 'up and left', 'left',
   'down and left', 'down', 'down and right'];
 const PORTAL_STEP_ARROWS = ['→', '↗', '↑', '↖', '←', '↙',
   '↓', '↘'];
-function portalStep(direction, flipped) {
-  if (typeof direction !== 'number' || !(direction >= 0 && direction < 8)) return null;
-  const seen = flipped ? (direction + 4) % 8 : direction;
-  return { words: PORTAL_STEP_WORDS[seen], arrow: PORTAL_STEP_ARROWS[seen] };
+// SR5g (P1): on a hex lattice (`exitHex`) the twelve hex king's steps, right then round
+// anticlockwise 30 degrees at a time (`compile.HEX_PORTAL_DIRECTIONS`), as the hex board
+// is drawn: the plane's own angles, the whole turned half round when the board is. An
+// arrow only where one of the eight points that way.
+const HEX_STEP_WORDS = ['right', 'right and a little up', 'up and right', 'up', 'up and left',
+  'left and a little up', 'left', 'left and a little down', 'down and left', 'down',
+  'down and right', 'right and a little down'];
+const HEX_STEP_ARROWS = ['→', '', '↗', '↑', '↖', '', '←', '', '↙', '↓', '↘', ''];
+function portalStep(direction, flipped, hex) {
+  const n = hex ? 12 : 8;
+  if (typeof direction !== 'number' || !(direction >= 0 && direction < n)) return null;
+  const seen = flipped ? (direction + n / 2) % n : direction;
+  return hex ? { words: HEX_STEP_WORDS[seen], arrow: HEX_STEP_ARROWS[seen] }
+    : { words: PORTAL_STEP_WORDS[seen], arrow: PORTAL_STEP_ARROWS[seen] };
 }
 
 // What a portal is called in a sentence: by its number where the game has several pairs.

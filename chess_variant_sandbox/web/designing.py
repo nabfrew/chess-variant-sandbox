@@ -564,8 +564,8 @@ _SIGHTS_PROBLEM = re.compile(r"^(?:pieces\[\]\.sight\b|a shield \(pieces\[\]\.si
 def sight_problems(problems: list[str], spec: Any, sides: Any = None) -> list[list[str]]:
     """The draft's refusals that are about lines of sight, piece by piece, in the designer's
     words (`plain_problem`), for each piece's sight rows (schema 30, Q999c, §4.7): those that
-    name the piece's own sights, and those about every sight in the game (one beside portals,
-    a blast, a sweep or wild pieces), which go under every piece that has a line of sight.
+    name the piece's own sights, and those about every sight in the game (a shield beside a
+    sweep), which go under every piece that has a line of sight.
     The verdict lists them all as well; this is where they are said beside the rows."""
     pieces = spec.get("pieces") if isinstance(spec, dict) else None
     if not isinstance(pieces, list):

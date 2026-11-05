@@ -116,16 +116,24 @@ MOVE_FIELDS: dict[str, tuple[int, int]] = {
     "target": (8, 8),
     "kind": (16, 4),
     "promotion": (20, 5),
+    "through": (20, 5),
     "landing": (25, 5),
     "portal": (25, 5),
     "fold": (25, 5),
     "gate": (25, 5),
     "push": (25, 5),
+    "ray": (25, 5),
     "foreign": (30, 1),
     "gate_rook": (31, 1),
 }
 _TAG_SHIFT, _TAG_BITS = MOVE_FIELDS["landing"]
 _TAG_MASK = (1 << _TAG_BITS) - 1
+# SR6d: the most sweep rays one slot may hold where a sweep's word names its ray (indices 0 to
+# 31, the tag's five bits); `rust/src/tables.rs::MAX_SWEEP_RAYS` is the core's copy.
+MAX_SWEEP_RAYS = 1 << _TAG_BITS
+# SR6e: the longest sweep ray a fold game may hold, so a sweep through a fold names its step
+# on the ray plus one in the promotion field's five bits; `tables.rs::MAX_SWEEP_THROUGH`.
+MAX_SWEEP_THROUGH = (1 << MOVE_FIELDS["through"][1]) - 1
 
 
 def encode_move(
@@ -158,6 +166,12 @@ def encode_move(
                       square it vacates, plus one (0 none); on a ``MOVE_NORMAL``,
                       ``MOVE_EN_PASSANT``, ``MOVE_PROMOTION`` or ``MOVE_CASTLE``
     25-29  push       Q1074b2: ``MOVE_PUSH``: the push direction's id (< 32)
+    25-29  ray        SR6d: ``MOVE_SWEEP`` where two rays of a piece reach one target
+                      (``CompiledSpec.sweep_rays``): the ray's index among the slot's
+                      sweep entries (< 32); 0 elsewhere. SR6e: on every sweep
+                      through a fold, in any game
+    20-24  through    SR6e: ``MOVE_SWEEP`` through a fold: the near end's index on
+                      the ray + 1 (< ``MAX_SWEEP_THROUGH``); 0 a direct sweep
     30     foreign    a move of a piece the mover does not own (``MOVE_FOREIGN``)
     31     gate_rook  Q1059a: a gating castle places on the rook's origin
     =====  =========  ==========================================================
@@ -165,9 +179,11 @@ def encode_move(
     Bits 25 to 30 hold at most one field today: the four tags share their bits and are
     told apart by the rules and the kind, and the validator refuses every pair that would
     set the foreign bit beside a tag (the core's encoders assert it). Each accessor below
-    reads its own field only. SR6d's declared sweep ray would take the tag on a
-    ``MOVE_SWEEP`` word and SR8b's promoting sweep the promotion field: they fit together,
-    and beside the foreign bit. A ray and a fold end on one word do not fit.
+    reads its own field only. SR6d's declared sweep ray takes the tag on a ``MOVE_SWEEP``
+    word, and SR6e's sweep through a fold its step on the ray in the promotion field (a
+    sweeper never promotes): the ray and the step locate the fold, so the word names no fold
+    end and reads without the position. SR8b's promoting sweep would want the promotion field
+    too: it fits beside the ray and the foreign bit, not beside a fold step.
     """
     return (
         origin
@@ -220,6 +236,18 @@ def move_push(move: int) -> int:
     """Q1074b2: the tag read as a ``MOVE_PUSH``'s direction id (a row of
     ``compile.PushRule.next``)."""
     return (move >> _TAG_SHIFT) & _TAG_MASK
+
+
+def move_ray(move: int) -> int:
+    """SR6d (W6): the tag read as a ``MOVE_SWEEP``'s ray, its index among the slot's sweep
+    entries. Written only where ``CompiledSpec.sweep_rays``; 0 on every other sweep."""
+    return (move >> _TAG_SHIFT) & _TAG_MASK
+
+
+def move_through(move: int) -> int:
+    """SR6e (W8): a ``MOVE_SWEEP``'s fold step, the promotion field read as the index on its
+    ray of the fold it went through plus one; 0 for a direct sweep."""
+    return (move >> 20) & 0x1F
 
 
 def move_gate_rook(move: int) -> bool:

@@ -112,6 +112,16 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "them it moves on like a slide, as far as it may move, stopped by any piece. Left out, "
         "it clears all the way.",
     ),
+    "pieces.moves.effects": (
+        "what a strike or blast does to what it sweeps",
+        "For a sweep only, beside a strike, contacts or exploding captures. On its landing "
+        "square only, the usual choice: the pieces it passes over are removed, and the strike "
+        "acts on the piece it lands on (an explosion goes off once, on the landing square). On "
+        "its whole path: every piece it passes over is struck too, where it stood (or sent home "
+        "under a home strike); beside contacts each meets the sweeper by its link, and the "
+        "sweeper changes at most once; beside explosions one goes off on every square it "
+        "passes whose piece's capture explodes. Every sweep of one piece says the same.",
+    ),
     "pieces.moves.screen": (
         "whose piece it jumps",
         "For a hop only: whose piece it may jump over. 'any' is the xiangqi cannon, and the "
@@ -863,6 +873,13 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     "rules.explode_on_capture.immune": ("pieces that survive it", None),
     "rules.explode_on_capture.by": ("only when taken by", None),
     "rules.explode_on_capture.of": ("only when taking", None),
+    "rules.explode_on_capture.strikes": (
+        "what it still turns",
+        "Beside a capture that turns pieces into others: whether a capture that explodes "
+        "still turns the piece it took, the pieces its blast destroys, both, or nothing (the "
+        "usual way). A turned piece stands where it was, or goes home if taken pieces go "
+        "home; one with nothing to turn into is gone. The taker always goes.",
+    ),
     "rules.explode_on_capture.blast": (
         "the blast's shape",
         "Instead of how far it reaches: the squares the blast takes, as steps from the "

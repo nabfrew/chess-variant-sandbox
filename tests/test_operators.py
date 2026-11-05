@@ -102,7 +102,12 @@ _NUMBER_WORDS = {
     65: "sixty_five", 66: "sixty_six", 67: "sixty_seven", 68: "sixty_eight",
     69: "sixty_nine", 70: "seventy", 71: "seventy_one", 72: "seventy_two",
     73: "seventy_three", 74: "seventy_four", 75: "seventy_five",
-    76: "seventy_six", 77: "seventy_seven",
+    76: "seventy_six", 77: "seventy_seven", 78: "seventy_eight",
+    79: "seventy_nine", 80: "eighty", 81: "eighty_one", 82: "eighty_two",
+    83: "eighty_three", 84: "eighty_four", 85: "eighty_five", 86: "eighty_six",
+    87: "eighty_seven", 88: "eighty_eight", 89: "eighty_nine", 90: "ninety",
+    91: "ninety_one", 92: "ninety_two", 93: "ninety_three", 94: "ninety_four",
+    95: "ninety_five", 96: "ninety_six",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -409,6 +414,9 @@ class TestMutation:
         parents.append(_parent_push())
         # Q1074bo's `crush-on-the-walls` needs walls beside a push: sumo chess with walls.
         parents.append(_parent_push_crush())
+        # SR6a2's `strike-the-path` switches a sweep a striking game already has, and no
+        # stored game sweeps beside a strike until SR6s1: the striking bishops stand in.
+        parents.append(_parent_striking_sweep())
 
         def fires(operator) -> bool:
             return any(
@@ -2058,7 +2066,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 77
+_FEATURES_ARE_FOR_SCHEMA = 96
 
 
 @dataclass(frozen=True)
@@ -2866,6 +2874,304 @@ def _parent_wormhole_linked() -> dict:
     return spec
 
 
+def _parent_circe_blast() -> dict:
+    """Chess beside circe and a blast set off by the queen's captures alone (SR5a, T1): every
+    other capture sends its piece home, the queen's explodes and strikes nothing."""
+    spec = _chess()
+    spec["rules"]["strike"] = {"effect": "capture", "position": "home", "immune": ["K"]}
+    spec["rules"]["explode_on_capture"] = {"radius": 1, "immune": ["K"], "by": ["Q"]}
+    return spec
+
+
+def _parent_circe_blast_strikes() -> dict:
+    """`_parent_circe_blast` with the switch (SR5a, T1): the queen's blast sends home the piece
+    it took and every piece it destroys."""
+    spec = _parent_circe_blast()
+    spec["rules"]["explode_on_capture"]["strikes"] = "both"
+    return spec
+
+
+def _parent_contacts_blast() -> dict:
+    """Chess beside a contact and a blast set off by the queen's captures alone (SR5a, T4): a
+    knight meeting a pawn turns it into a bishop; the queen's capture explodes and makes no
+    contact."""
+    spec = _chess()
+    spec["rules"]["contacts"] = {
+        "position": "stay", "immune": ["K"],
+        "links": [{"mover": "N", "onto": "P", "onto_to": "B"}],
+    }
+    spec["rules"]["explode_on_capture"] = {"radius": 1, "immune": ["K"], "by": ["Q"]}
+    return spec
+
+
+def _has_a_strike(spec: dict) -> bool:
+    """A game with a strike, contacts or a blast: where the other of the pair enters."""
+    rules = spec.get("rules") or {}
+    return bool(rules.get("strike") or rules.get("contacts") or rules.get("explode_on_capture"))
+
+
+def _parent_shielded_blast() -> dict:
+    """Chess beside a blast that spares pawns, the king shielding its own pieces a king's step
+    away (SR5b, V2): a shielded piece survives a blast, so a king's neighbours outlive a
+    capture beside them, and the king itself is never lost to one."""
+    spec = _chess()
+    spec["rules"]["explode_on_capture"] = {"radius": 1, "immune": ["P"]}
+    for piece in spec["pieces"]:
+        if piece["id"] == "K":
+            piece["sight"] = [{
+                "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
+                "effect": "shield", "whose": "own",
+            }]
+    return spec
+
+
+def _has_a_blast_or_sight(spec: dict) -> bool:
+    """A game with a blast or a line of sight: where the other of the pair enters."""
+    rules = spec.get("rules") or {}
+    return bool(rules.get("explode_on_capture")) or any(
+        piece.get("sight") for piece in spec.get("pieces") or [] if isinstance(piece, dict)
+    )
+
+
+def _parent_sight_beside_folds() -> dict:
+    """Chess with a fold pair on a3 and h6, the king shielding its own pieces a king's step
+    away (SR5c, V1): a line that reaches the empty fold also sees the far end's square."""
+    spec = _chess()
+    spec["rules"]["portals"] = [{"orange": "a3", "blue": "h6", "kind": "fold"}]
+    for piece in spec["pieces"]:
+        if piece["id"] == "K":
+            piece["sight"] = [{
+                "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
+                "effect": "shield", "whose": "own",
+            }]
+    return spec
+
+
+def _has_doors_or_sight(spec: dict) -> bool:
+    """A game with portals or a line of sight: where the other of the pair enters."""
+    rules = spec.get("rules") or {}
+    return bool(rules.get("portals")) or any(
+        piece.get("sight") for piece in spec.get("pieces") or [] if isinstance(piece, dict)
+    )
+
+
+_PREACH = {"vectors": [[1, 1]], "symmetry": "rotate4", "effect": "command", "whose": "enemy"}
+
+
+def _preaching_bishops(spec: dict) -> dict:
+    """``spec`` with its bishops commanding the first enemy piece on each diagonal."""
+    for piece in spec["pieces"]:
+        if piece["id"] == "B":
+            piece["sight"] = [dict(_PREACH)]
+    return spec
+
+
+def _parent_commanded_goal() -> dict:
+    """Chess with preaching bishops and a goal for the knights on the far side's centre (SR5d,
+    V3): a commanded knight arrives for its owner."""
+    spec = _preaching_bishops(_chess())
+    spec["rules"]["reach"] = {"piece": "N", "squares": ["d6", "e6"], "mirror": True}
+    return spec
+
+
+def _parent_commanded_claim() -> dict:
+    """Chess with preaching bishops and a territory (SR5d, V4): a commanded move claims for the
+    piece's owner."""
+    spec = _preaching_bishops(_chess())
+    spec["rules"]["territory"] = {"mode": "permanent", "win_at": 40}
+    return spec
+
+
+def _parent_preaching_through_portals() -> dict:
+    """Chess with preaching bishops and a fold pair on a3 and h6 (SR5c2, V1's command arm): a
+    commanded piece goes through a portal as its owner's would."""
+    spec = _preaching_bishops(_chess())
+    spec["rules"]["portals"] = [{"orange": "a3", "blue": "h6", "kind": "fold"}]
+    return spec
+
+
+def _parent_preaching_and_weary() -> dict:
+    """Chess with preaching bishops and a queen that rests a turn after it moves (SR5e, V7): a
+    commanded piece rests on its owner's turns, and a resting piece is moved by neither."""
+    spec = _preaching_bishops(_chess())
+    for piece in spec["pieces"]:
+        if piece["id"] == "Q":
+            piece["rest"] = 1
+    return spec
+
+
+def _parent_tamed_wolves() -> dict:
+    """*Wolves* with a king's ring that freezes its wolves (SR5f, V11): a sight that names a wild
+    type, under whose 'any'."""
+    spec = load_spec(ARCHIVE / "wolves.json")
+    wild = sorted({npc["piece"] for npc in spec["rules"]["npcs"]})
+    tamer = next(
+        piece for piece in spec["pieces"]
+        if piece["id"] not in wild and not piece.get("royal") and piece.get("moves")
+    )
+    tamer["sight"] = [{
+        "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
+        "effect": "freeze", "whose": "any", "affects": wild,
+    }]
+    return spec
+
+
+def _parent_watching_statue() -> dict:
+    """Chess with a statue placed for nobody on d4 whose ring freezes both players' pieces
+    beside it (SR5f, V15): a nobody's piece sees as a wild piece does."""
+    spec = _chess()
+    spec["pieces"].append({
+        "id": "S", "name": "statue", "value": 1, "moves": [],
+        "sight": [{"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
+                   "effect": "freeze", "whose": "any"}],
+    })
+    spec["setup"]["placements"].append({"piece": "S", "player": "nobody", "squares": ["d4"]})
+    return spec
+
+
+def _parent_hex_portals() -> dict:
+    """Glinski's hexagon with one pair of portals on d6 and h6, each the other's half turn
+    (SR5g, P1): a transit comes out along the nearest of the hex's twelve lines."""
+    spec = load_spec(ARCHIVE / "hex-glinski-hexagon.json")
+    spec["rules"]["portals"] = [{"orange": "d6", "blue": "h6"}]
+    return spec
+
+
+def _parent_blasted_wormhole() -> dict:
+    """The wormhole with a king's-step blast (SR5h, P5): a capture through a door explodes
+    on the exit, and a portal end in the blast stands."""
+    spec = load_spec(ARCHIVE / "wormhole.json")
+    spec["rules"]["explode_on_capture"] = {"radius": 1}
+    return spec
+
+
+def _parent_blasted_crowd() -> dict:
+    """`archive/the-crowd.json` with a king's-step blast (SR5j, O12): a held condottiere's
+    blast is the mover's."""
+    spec = load_spec(ARCHIVE / "the-crowd.json")
+    spec["rules"]["explode_on_capture"] = {"radius": 1}
+    return spec
+
+
+def _parent_claimed_wormhole() -> dict:
+    """The wormhole with a repainting territory (SR5i, P6): a transit claims its exit, never
+    a portal's square."""
+    spec = load_spec(ARCHIVE / "wormhole.json")
+    spec["rules"]["territory"] = {"mode": "repaint"}
+    return spec
+
+
+def _parent_confined_wormhole() -> dict:
+    """The wormhole with each king kept to its own two ranks (SR5i, P7): an exit outside a
+    piece's region is a blocked exit."""
+    spec = load_spec(ARCHIVE / "wormhole.json")
+    for piece in spec["pieces"]:
+        if piece["id"] == "K":
+            piece["region"] = [f"{file}{rank}" for file in "abcde" for rank in (1, 2)]
+    return spec
+
+
+def _parent_claimed_crowd() -> dict:
+    """`archive/the-crowd.json` with a repainting territory (SR5k, O10): a held move claims
+    for the mover."""
+    spec = load_spec(ARCHIVE / "the-crowd.json")
+    spec["rules"]["territory"] = {"mode": "repaint"}
+    return spec
+
+
+def _parent_racing_crowd() -> dict:
+    """`archive/the-crowd.json` with a goal on the two centre squares of the far rank for any
+    piece (SR5k, O11): a held arrival wins for the mover."""
+    spec = load_spec(ARCHIVE / "the-crowd.json")
+    board = spec["board"]
+    width, height = board["width"], board["height"]
+    files = "abcdefghijklmnop"
+    centre = [f"{files[width // 2 - 1]}{height}", f"{files[width // 2]}{height}"]
+    spec["rules"]["reach"] = {"squares": centre}
+    return spec
+
+
+def _parent_striking_sweep() -> dict:
+    """`archive/chess-sweeping-bishops.json` with `set_strike`'s demoting chain (SR6a, W1): the
+    strike acts on a sweep's landing."""
+    spec = load_spec(ARCHIVE / "chess-sweeping-bishops.json")
+    transform.set_strike(spec)
+    return spec
+
+
+def _parent_commanded_sweep() -> dict:
+    """`archive/chess-sweeping-bishops.json` whose bishops command the enemy's (SR6f, V8): a
+    commanded sweeping bishop sweeps its own side's pieces under `captures_own`."""
+    spec = load_spec(ARCHIVE / "chess-sweeping-bishops.json")
+    bishop = next(piece for piece in spec["pieces"] if piece["id"] == "B")
+    bishop["sight"] = [{
+        "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "effect": "command",
+        "whose": "enemy", "affects": ["B"], "through": True, "captures_own": True,
+    }]
+    return spec
+
+
+def _parent_shielded_sweep() -> dict:
+    """`archive/chess-sweeping-bishops.json` whose kings shield their own side's pieces next to
+    them (SR6g, W10): a shielded piece ends a sweeping bishop's ray."""
+    spec = load_spec(ARCHIVE / "chess-sweeping-bishops.json")
+    king = next(piece for piece in spec["pieces"] if piece["id"] == "K")
+    king["sight"] = [{
+        "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1, "effect": "shield",
+        "whose": "own",
+    }]
+    return spec
+
+
+def _has_a_region(spec: dict) -> bool:
+    """A game with a piece kept to a region: where portals enter beside one."""
+    return any(isinstance(piece, dict) and piece.get("region") for piece in spec.get("pieces", []))
+
+
+def _is_hex(spec: dict) -> bool:
+    """A game on a hex lattice: where portals on one enter."""
+    return (spec.get("board") or {}).get("lattice") == "hex"
+
+
+def _has_wild_or_nobodys(spec: dict) -> bool:
+    """A game with wild pieces, the duck or a piece placed for nobody: where a sight on one enters."""
+    rules = spec.get("rules") or {}
+    return bool(rules.get("npcs") or rules.get("duck")) or any(
+        isinstance(placement, dict) and placement.get("player") == "nobody"
+        for placement in (spec.get("setup") or {}).get("placements") or []
+    )
+
+
+def _has_rest_or_command(spec: dict) -> bool:
+    """A game with a rest or a command: where the other of the pair enters."""
+    return any(
+        isinstance(piece, dict) and piece.get("rest") for piece in spec.get("pieces") or []
+    ) or any(
+        isinstance(sight, dict) and sight.get("effect") == "command"
+        for piece in spec.get("pieces") or [] if isinstance(piece, dict)
+        for sight in piece.get("sight") or []
+    )
+
+
+def _has_doors_or_command(spec: dict) -> bool:
+    """A game with portals or a command: where the other of the pair enters."""
+    return bool((spec.get("rules") or {}).get("portals")) or any(
+        isinstance(sight, dict) and sight.get("effect") == "command"
+        for piece in spec.get("pieces") or [] if isinstance(piece, dict)
+        for sight in piece.get("sight") or []
+    )
+
+
+def _has_command_goal_or_claim(spec: dict) -> bool:
+    """A game with a command, a goal or a territory: where the other of the pair enters."""
+    rules = spec.get("rules") or {}
+    return bool(rules.get("reach") or rules.get("territory")) or any(
+        isinstance(sight, dict) and sight.get("effect") == "command"
+        for piece in spec.get("pieces") or [] if isinstance(piece, dict)
+        for sight in piece.get("sight") or []
+    )
+
+
 def _has_doors(spec: dict) -> bool:
     """A game with portals: where a strike or contacts enters beside them."""
     return bool((spec.get("rules") or {}).get("portals"))
@@ -3473,14 +3779,133 @@ def _parent_riders_in_hand() -> dict:
 # `open-a-portal` puts portals beside either; each leaves by taking its own rule away. Generation
 # 76's row (SR4l) retired with the generation, its showcase still owed
 # (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` and `open-a-market` still cross it.
+#
+# Generation 78 (SR5a, `docs/plan-schema-next.md` §2.4 T1, T4): three names, a strike and contacts
+# beside a blast (two lifted refusals) and the switch `explode_on_capture.strikes`.
+# `set-the-blast` enters each: a blast narrowed to one capturer beside a strike or contacts, and
+# the switch beside a strike placed `stay` or `home`; it leaves the switch by taking it away and
+# the pairs by taking the blast away. Generation 77's rows (SR4m) retired with the generation,
+# their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `soften-the-capture`,
+# `leave-something-behind`, `become-what-you-take`, `merge-your-own` and `open-a-portal` still
+# cross them.
+#
+# Generation 79 (SR5b, `docs/plan-schema-next.md` §2.7 V2): one name, a line of sight beside a
+# blast, a lifted refusal. `set-the-blast` enters it on a game with a sight and `cast-a-gaze` on
+# a game with a blast; each leaves by taking its own rule away. Generation 78's rows (SR5a)
+# retired with the generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# `set-the-blast` still crosses them.
+#
+# Generation 80 (SR5c, `docs/plan-schema-next.md` §2.7 V1): one name, a line of sight beside
+# portals, a lifted refusal (a command beside portals stays refused). `open-a-portal` enters it
+# on a game with a sight and `cast-a-gaze` on a game with portals; each leaves by taking its own
+# rule away. Generation 79's row (SR5b) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` and `cast-a-gaze` still cross it.
+#
+# Generation 81 (SR5d, `docs/plan-schema-next.md` §2.7 V3, V4): two names, a command beside a
+# goal and beside a territory, two lifted refusals. `cast-a-gaze` enters each on a game with the
+# rule, and the goal's and territory's own operators on a game with a command; each leaves by
+# taking its own rule away. Generation 80's row (SR5c) retired with the generation, its showcase
+# still owed (`_NO_SHOWCASE_ON_PURPOSE`); `open-a-portal` and `cast-a-gaze` still cross it.
+#
+# Generation 82 (SR5c2, `docs/plan-schema-next.md` §2.7 V1, its command arm): one name, a command
+# beside portals, a lifted refusal. `open-a-portal` enters it on a game with a command and
+# `cast-a-gaze` on a game with portals; each leaves by taking its own rule away. Generation 81's
+# rows (SR5d) retired with the generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# `cast-a-gaze` and the goal's and territory's own operators still cross them.
+#
+# Generation 83 (SR5e, `docs/plan-schema-next.md` §2.7 V7): one name, a command beside a rest, a
+# lifted refusal. `tire-a-piece` enters it on a game with a command and `cast-a-gaze` on a game
+# with a rest; each leaves by taking its own rule away. Generation 82's row (SR5c2) retired with
+# the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `open-a-portal` and
+# `cast-a-gaze` still cross it.
+#
+# Generation 84 (SR5f, `docs/plan-schema-next.md` §2.7 V11, V15): two names, a sight on a wild
+# piece or the duck and a sight on a nobody's piece, lifted refusals. `cast-a-gaze` enters both
+# (naming the wild types at even odds; `whose: "any"` on a nobody's type) and `blind-a-piece`
+# leaves both. Generation 83's row (SR5e) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `tire-a-piece` and `cast-a-gaze` still cross it.
+#
+# Generation 85 (SR5g, `docs/plan-schema-next.md` §2.10 P1): one name, portals on a hex
+# lattice, a lifted refusal. `open-a-portal` enters it on a hex game (a pair on two cells that
+# are each other's image) and leaves it by taking every portal away. Generation 84's rows
+# (SR5f) retired with the generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# `cast-a-gaze` and `blind-a-piece` still cross them.
+#
+# Generation 86 (SR5h, `docs/plan-schema-next.md` §2.10 P5): one name, a blast beside portals,
+# a lifted refusal. `set-the-blast` enters it on a game with portals and `open-a-portal` on a
+# game with a blast; each leaves by taking its own rule away. Generation 85's row (SR5g)
+# retired with the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# `open-a-portal` still crosses it.
+#
+# Generation 87 (SR5j, `docs/plan-schema-next.md` §2.11 O12): one name, a blast beside majority
+# control, a lifted refusal. `set-the-blast` enters it on a game with a held piece and
+# `gather-a-crowd` on a game with a blast; each leaves by taking its own rule away. Generation
+# 86's row (SR5h) retired with the generation, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` and `open-a-portal` still cross it.
+#
+# Generation 88 (SR5i, `docs/plan-schema-next.md` §2.10 P6, P7): two names, territory and a
+# region beside portals, two lifted refusals. `claim-the-ground` enters the first on a game
+# with portals and `open-a-portal` on a game with a territory; `open-a-portal` enters the
+# second on a game with a region; each leaves by taking a rule away. Generation 87's row
+# (SR5j) retired with the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# `set-the-blast` and `gather-a-crowd` still cross it.
+#
+# Generation 89 (SR5k, `docs/plan-schema-next.md` §2.11 O10, O11): two names, territory and a
+# goal beside majority control, two lifted refusals. `claim-the-ground` and the goal's operator
+# enter them on a game with a held piece, `gather-a-crowd` on a game with either rule; each
+# leaves by taking a rule away. Generation 88's rows (SR5i) retired with the generation, their
+# showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `claim-the-ground` and `open-a-portal` still
+# cross them.
+#
+# Generation 90 (SR6a, `docs/plan-schema-next.md` §2.6 W1): two names, a sweep beside a strike
+# (a lifted refusal) and the sweep switch at `"path"`. The first is entered as any strike or
+# sweep is (`soften-the-capture` on a sweeping game, `sweep-a-slider` on a striking one); SR6a2's
+# `strike-the-path` enters and leaves the second, and `still-a-piece` leaves it too.
+# `sweep-a-slider`'s way back to a slide drops `effects`, `soften-the-capture` writes no
+# `choose` beside a sweep (W1's narrower row), and a strike taken from under a path sweep takes
+# the switch with it (`operators._settle_sweep_effects`).
+# Generation 89's rows (SR5k) retired with the generation, their showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`); `claim-the-ground` and `gather-a-crowd` still cross them.
+#
+# Generation 91 (SR6b, §2.6 W2): two names, a sweep beside contacts and the switch at `"path"`
+# beside them. Registered in the inventory by SR6b, whose areas left this file out, and
+# raised here with generation 92 (SR6c): `become-what-you-take` and `merge-your-own` write a
+# table beside a sweep (W2's narrower row: never a chosen square), `strike-the-path` enters
+# and leaves the switch beside contacts. Generation 90's and 91's rows retire with
+# generation 92, their showcases still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 92 (SR6c, §2.6 W3): two names, a sweep beside a blast (a lifted refusal) and the
+# switch at `"path"` beside one. The first is entered as any blast or sweep is (`set-the-blast`
+# on a sweeping game, `sweep-a-slider` on an exploding one, neither beside a strike or contacts,
+# W3's narrower row); `strike-the-path` enters and leaves the second, and a blast narrowed past
+# the sweeper takes the switch with it (`operators._settle_sweep_effects`). Generation 92's rows
+# retire with generation 93, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 93 (SR6d, §2.6 W6): one name, a sweep on a wrapped board (a lifted refusal; where
+# two rays reach one target the word names its ray). `join-the-edges` enters it on a sweeping
+# game and leaves it, and `sweep-a-slider` enters it on a wrapped one. Its row retires with
+# generation 94, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 94 (SR6e, §2.6 W8): one name, a sweep beside portals (a lifted refusal; a fold
+# propagates a sweep and a momentum end ends its ray). `open-a-portal` enters it on a sweeping
+# game and takes it away, and `sweep-a-slider` enters it beside portals (it declined there
+# until now). Its row retires with generation 95, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 95 (SR6f, §2.7 V8): one name, a command beside a sweep (a lifted refusal; a
+# commanded sweep removes only what the command lets it take). `cast-a-gaze` enters it on a
+# sweeping game and `sweep-a-slider` beside a command (it declined there until now);
+# `blind-a-piece` and `sweep-a-slider`'s way back leave it. Its row retires with generation
+# 96, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 96 (SR6g, §2.7 W10): one name, a shield beside a sweep (a lifted refusal; a
+# shielded piece ends a sweep's ray). `cast-a-gaze` enters it on a sweeping game (it drew no
+# shield there until now) and `sweep-a-slider` beside a shield (it declined there until now);
+# `blind-a-piece` and `sweep-a-slider`'s way back leave it.
 _FEATURES: dict[str, _Feature] = {
-    "SR4m a strike beside portals": _Feature(
-        None, frozenset({"rules.portals.strike"}), True,
-        "wormhole+rifle", _parent_wormhole_struck, likely=_has_doors,
-    ),
-    "SR4m contacts beside portals": _Feature(
-        None, frozenset({"rules.portals.contacts"}), True,
-        "wormhole+contacts", _parent_wormhole_linked, likely=_has_doors,
+    "SR6g a shield beside a sweep": _Feature(
+        None, frozenset({"pieces.sight.shield.sweep"}), True,
+        "chess-sweeping-bishops+shield", _parent_shielded_sweep, likely=uses_sweep,
     ),
 }
 
@@ -3493,14 +3918,47 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
 _SHOWCASE_OWED: dict[str, str] = {
-    # Generation 77 (SR4m): a strike and contacts beside portals, owed by SR4s13 (a shot through
-    # a portal, `docs/plan-schema-next.md` §3.2), usable after SR4r replays batch B.
-    "SR4m a strike beside portals": (
-        "owed by SR4s13, a shot through a portal (docs/plan-schema-next.md §3.2)"
+    # Generation 96 (SR6g): a shield beside a sweep, owed by SR6s7 (a sweep stopped by a
+    # shield, `docs/plan-schema-next.md` §3.2), usable after SR6r.
+    "SR6g a shield beside a sweep": (
+        "owed by SR6s7, a sweep stopped by a shield (docs/plan-schema-next.md §3.2)"
     ),
-    "SR4m contacts beside portals": (
-        "owed by SR4s13, a shot through a portal (docs/plan-schema-next.md §3.2)"
-    ),
+    # Generation 95's name (SR6f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6g retired its
+    # `_FEATURES` row, still owed by SR6s6.
+    # Generation 94's name (SR6e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6f retired its
+    # `_FEATURES` row, still owed by SR6s5.
+    # Generation 93's name (SR6d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6e retired its
+    # `_FEATURES` row, still owed by SR6s4.
+    # Generation 92's names (SR6c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6d retired their
+    # `_FEATURES` rows, still owed by SR6s3.
+    # Generation 90's names (SR6a) and 91's (SR6b) went to `_NO_SHOWCASE_ON_PURPOSE` when
+    # SR6c retired their `_FEATURES` rows, still owed by SR6s1 and SR6s2.
+    # Generation 89's names (SR5k) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6a retired their
+    # `_FEATURES` rows, still owed by SR5s9.
+    # Generation 88's names (SR5i) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5k retired their
+    # `_FEATURES` rows, still owed by SR5s12.
+    # Generation 87's name (SR5j) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5i retired its
+    # `_FEATURES` row, still owed by SR5s11.
+    # Generation 86's name (SR5h) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5j retired its
+    # `_FEATURES` row, still owed by SR5s8.
+    # Generation 85's name (SR5g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5h retired its
+    # `_FEATURES` row, still owed by SR5s7.
+    # Generation 84's names (SR5f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5g retired their
+    # `_FEATURES` rows, still owed by SR5s6.
+    # Generation 83's name (SR5e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5f retired its
+    # `_FEATURES` row, still owed by SR5s5.
+    # Generation 82's name (SR5c2) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5e retired its
+    # `_FEATURES` row, still owed by SR5s10.
+    # Generation 81's names (SR5d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5c2 retired their
+    # `_FEATURES` rows, still owed by SR5s4.
+    # Generation 80's name (SR5c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5d retired its
+    # `_FEATURES` row, still owed by SR5s3.
+    # Generation 79's name (SR5b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5c retired its
+    # `_FEATURES` row, still owed by SR5s2.
+    # Generation 78's names (SR5a) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5b retired their
+    # `_FEATURES` rows, still owed by SR5s1.
+    # Generation 77's names (SR4m) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5a retired their
+    # `_FEATURES` rows, still owed by SR4s13.
     # Generation 76's name (SR4l) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4m retired its
     # `_FEATURES` row, still owed by SR4s12.
     # Generation 75's names (SR4k) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4l retired their
@@ -3745,6 +4203,30 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     75: frozenset({"rules.strike.nobodys", "rules.contacts.nobodys"}),
     76: frozenset({"rules.purse.explode_on_capture"}),
     77: frozenset({"rules.portals.strike", "rules.portals.contacts"}),
+    78: frozenset({
+        "rules.explode_on_capture.strike", "rules.explode_on_capture.contacts",
+        "rules.explode_on_capture.strikes",
+    }),
+    79: frozenset({"pieces.sight.explode_on_capture"}),
+    80: frozenset({"pieces.sight.portals"}),
+    81: frozenset({"pieces.sight.command.reach", "pieces.sight.command.territory"}),
+    82: frozenset({"pieces.sight.command.portals"}),
+    83: frozenset({"pieces.sight.command.rest"}),
+    84: frozenset({"pieces.sight.wild", "pieces.sight.nobodys"}),
+    85: frozenset({"rules.portals.hex"}),
+    86: frozenset({"rules.portals.explode_on_capture"}),
+    87: frozenset({"pieces.control.majority.explode_on_capture"}),
+    88: frozenset({"rules.portals.territory", "rules.portals.region"}),
+    89: frozenset({"pieces.control.majority.territory", "pieces.control.majority.reach"}),
+    90: frozenset({"rules.strike.sweep", "pieces.moves.sweep.effects"}),
+    91: frozenset({"rules.contacts.sweep", "pieces.moves.sweep.effects.contacts"}),
+    92: frozenset({
+        "rules.explode_on_capture.sweep", "pieces.moves.sweep.effects.explode_on_capture",
+    }),
+    93: frozenset({"rules.wrap.sweep"}),
+    94: frozenset({"rules.portals.sweep"}),
+    95: frozenset({"pieces.sight.command.sweep"}),
+    96: frozenset({"pieces.sight.shield.sweep"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -3753,6 +4235,151 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 95's name (SR6f), owed in `_SHOWCASE_OWED` until generation 96 (SR6g) retired
+    # its `_FEATURES` row. Still owed by SR6s6 (`docs/plan-schema-next.md` §3.2), a commanded
+    # sweeper; the entry goes the day it lands.
+    "schema 95: pieces.sight.command.sweep": (
+        "owed by SR6s6, a commanded sweeper (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 94's name (SR6e), owed in `_SHOWCASE_OWED` until generation 95 (SR6f) retired
+    # its `_FEATURES` row. Still owed by SR6s5 (`docs/plan-schema-next.md` §3.2), a sweep
+    # through a fold; the entry goes the day it lands.
+    "schema 94: rules.portals.sweep": (
+        "owed by SR6s5, a sweep through a fold (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 93's name (SR6d), owed in `_SHOWCASE_OWED` until generation 94 (SR6e) retired
+    # its `_FEATURES` row. Still owed by SR6s4 (`docs/plan-schema-next.md` §3.2), a sweeper on a
+    # cylinder; the entry goes the day it lands.
+    "schema 93: rules.wrap.sweep": (
+        "owed by SR6s4, a sweeper on a cylinder (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 92's names (SR6c), owed in `_SHOWCASE_OWED` until generation 93 (SR6d) retired
+    # their `_FEATURES` rows. Still owed by SR6s3 (`docs/plan-schema-next.md` §3.2), a sweep
+    # that explodes; the entries go the day it lands.
+    "schema 92: rules.explode_on_capture.sweep": (
+        "owed by SR6s3, a sweep that explodes (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 92: pieces.moves.sweep.effects.explode_on_capture": (
+        "owed by SR6s3, a sweep that explodes (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 91's names (SR6b), registered in the inventory by SR6b and retired with
+    # generation 92 (SR6c) on the day `LAST_BUMP` reached them. Still owed by SR6s2
+    # (`docs/plan-schema-next.md` §3.2), a sweep that meets its path; the entries go the day it
+    # lands.
+    "schema 91: rules.contacts.sweep": (
+        "owed by SR6s2, a sweep that meets its path (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 91: pieces.moves.sweep.effects.contacts": (
+        "owed by SR6s2, a sweep that meets its path (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 90's names (SR6a), owed in `_SHOWCASE_OWED` until generation 92 (SR6c) retired
+    # their `_FEATURES` rows. Still owed by SR6s1 (`docs/plan-schema-next.md` §3.2), a sweep
+    # that strikes its path; the entries go the day it lands.
+    "schema 90: rules.strike.sweep": (
+        "owed by SR6s1, a sweep that strikes its path (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 90: pieces.moves.sweep.effects": (
+        "owed by SR6s1, a sweep that strikes its path (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 89's names (SR5k), owed in `_SHOWCASE_OWED` until generation 90 (SR6a) retired
+    # their `_FEATURES` rows. Still owed by SR5s9 (`docs/plan-schema-next.md` §3.2), a neutral
+    # runner or claim; the entries go the day it lands.
+    "schema 89: pieces.control.majority.territory": (
+        "owed by SR5s9, a neutral runner or claim (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 89: pieces.control.majority.reach": (
+        "owed by SR5s9, a neutral runner or claim (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 88's names (SR5i), owed in `_SHOWCASE_OWED` until generation 89 (SR5k) retired
+    # their `_FEATURES` rows. Still owed by SR5s12 (`docs/plan-schema-next.md` §3.2), a claim or
+    # a region through a portal; the entries go the day it lands.
+    "schema 88: rules.portals.territory": (
+        "owed by SR5s12, a claim or a region through a portal (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 88: rules.portals.region": (
+        "owed by SR5s12, a claim or a region through a portal (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 87's name (SR5j), owed in `_SHOWCASE_OWED` until generation 88 (SR5i) retired
+    # its `_FEATURES` row. Still owed by SR5s11 (`docs/plan-schema-next.md` §3.2), a held
+    # piece's blast; the entry goes the day it lands.
+    "schema 87: pieces.control.majority.explode_on_capture": (
+        "owed by SR5s11, a held piece's blast (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 86's name (SR5h), owed in `_SHOWCASE_OWED` until generation 87 (SR5j) retired
+    # its `_FEATURES` row. Still owed by SR5s8 (`docs/plan-schema-next.md` §3.2), a blast at a
+    # portal's exit; the entry goes the day it lands.
+    "schema 86: rules.portals.explode_on_capture": (
+        "owed by SR5s8, a blast at a portal's exit (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 85's name (SR5g), owed in `_SHOWCASE_OWED` until generation 86 (SR5h) retired
+    # its `_FEATURES` row. Still owed by SR5s7 (`docs/plan-schema-next.md` §3.2), portals on a
+    # hex board; the entry goes the day it lands.
+    "schema 85: rules.portals.hex": (
+        "owed by SR5s7, portals on a hex board (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 84's names (SR5f), owed in `_SHOWCASE_OWED` until generation 85 (SR5g) retired
+    # their `_FEATURES` rows. Still owed by SR5s6 (`docs/plan-schema-next.md` §3.2), a tamed
+    # wild piece; each entry goes the day it lands.
+    "schema 84: pieces.sight.wild": (
+        "owed by SR5s6, a tamed wild piece (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 84: pieces.sight.nobodys": (
+        "owed by SR5s6, a tamed wild piece (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 83's name (SR5e), owed in `_SHOWCASE_OWED` until generation 84 (SR5f) retired
+    # its `_FEATURES` row. Still owed by SR5s5 (`docs/plan-schema-next.md` §3.2), a commanded
+    # piece that rests; the entry goes the day it lands.
+    "schema 83: pieces.sight.command.rest": (
+        "owed by SR5s5, a commanded piece that rests (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 82's name (SR5c2), owed in `_SHOWCASE_OWED` until generation 83 (SR5e) retired
+    # its `_FEATURES` row. Still owed by SR5s10 (`docs/plan-schema-next.md` §3.2), a command
+    # through a portal; the entry goes the day it lands.
+    "schema 82: pieces.sight.command.portals": (
+        "owed by SR5s10, a command through a portal (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 81's names (SR5d), owed in `_SHOWCASE_OWED` until generation 82 (SR5c2) retired
+    # their `_FEATURES` rows. Still owed by SR5s4 (`docs/plan-schema-next.md` §3.2), a commanded
+    # runner or claim; each entry goes the day it lands.
+    "schema 81: pieces.sight.command.reach": (
+        "owed by SR5s4, a commanded runner or claim (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 81: pieces.sight.command.territory": (
+        "owed by SR5s4, a commanded runner or claim (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 80's name (SR5c), owed in `_SHOWCASE_OWED` until generation 81 (SR5d) retired
+    # its `_FEATURES` row. Still owed by SR5s3 (`docs/plan-schema-next.md` §3.2), sight through a
+    # fold; the entry goes the day it lands.
+    "schema 80: pieces.sight.portals": (
+        "owed by SR5s3, sight through a fold (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 79's name (SR5b), owed in `_SHOWCASE_OWED` until generation 80 (SR5c) retired
+    # its `_FEATURES` row. Still owed by SR5s2 (`docs/plan-schema-next.md` §3.2), a shield
+    # against a blast; the entry goes the day it lands.
+    "schema 79: pieces.sight.explode_on_capture": (
+        "owed by SR5s2, a shield against a blast (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 78's names (SR5a), owed in `_SHOWCASE_OWED` until generation 79 (SR5b) retired
+    # their `_FEATURES` rows. Still owed by SR5s1 (`docs/plan-schema-next.md` §3.2), the blast's
+    # strike switch; each entry goes the day it lands.
+    "schema 78: rules.explode_on_capture.strike": (
+        "owed by SR5s1, the blast's strike switch (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 78: rules.explode_on_capture.contacts": (
+        "owed by SR5s1, the blast's strike switch (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 78: rules.explode_on_capture.strikes": (
+        "owed by SR5s1, the blast's strike switch (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 77's names (SR4m), owed in `_SHOWCASE_OWED` until generation 78 (SR5a) retired
+    # their `_FEATURES` rows. Still owed by SR4s13 (`docs/plan-schema-next.md` §3.2), a shot
+    # through a portal; each entry goes the day it lands.
+    "schema 77: rules.portals.strike": (
+        "owed by SR4s13, a shot through a portal (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 77: rules.portals.contacts": (
+        "owed by SR4s13, a shot through a portal (docs/plan-schema-next.md §3.2)"
+    ),
     # Generation 76's name (SR4l), owed in `_SHOWCASE_OWED` until generation 77 (SR4m) retired
     # its `_FEATURES` row. Still owed by SR4s12 (`docs/plan-schema-next.md` §3.2), a blast that
     # pays; the entry goes the day it lands.
@@ -4130,6 +4757,10 @@ def _feature_parents() -> dict[str, dict]:
 # `open-a-portal` both ways, so the tables are empty again. Generation 50's three (SR2:
 # majority and a purse in a long turn, a pouncing path, each two edits from any stored game)
 # retired with its `_FEATURES` rows (SR2b).
+#
+# SR6a added one, retired with generation 90's `_FEATURES` rows (SR6c), and SR6c its like
+# (the switch beside a blast, two edits from any stored game), retired with generation 92's
+# rows (SR6d). Generation 93's one name is one edit from a stored game both ways.
 _CANNOT_ENTER: dict[str, str] = {}
 _CANNOT_LEAVE: dict[str, str] = {}
 
@@ -5163,7 +5794,7 @@ _PINNED_SCALES: dict[str, float] = {
     "area": 100.0, "aspect": 1.0, "piece_types": 8.0, "army": 40.0, "rule_mass": 90.0,
     "special_rules": 6.0, "vectors_per_piece": 8.0, "slide_share": 1.0, "leap_share": 1.0,
     "hop_share": 1.0, "sweep_share": 1.0,
-    "short_sweep_share": 1.0, "royal_types": 2.0, "royal_step": 2.0,
+    "short_sweep_share": 1.0, "path_sweep_share": 1.0, "royal_types": 2.0, "royal_step": 2.0,
     "royal_slides": 1.0, "move_orthogonal_share": 1.0, "capture_orthogonal_share": 1.0,
     "mean_step": 3.0, "has_promotion": 1.0, "has_drops": 1.0, "has_stock": 1.0,
     "stock_is_endless": 1.0, "stock_is_uneven": 1.0, "drops_placement": 1.0,
@@ -5202,6 +5833,7 @@ _PINNED_SCALES: dict[str, float] = {
     "legs_share": 1.0,
     "typed_screen_share": 1.0,  # SR3c
     "explodes_shaped": 1.0,
+    "explodes_striking_target": 1.0, "explodes_striking_blast": 1.0,  # SR5a
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
     "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
     "beats_share": 1.0, "simultaneous_swap_collides": 1.0, "simultaneous_both_score": 1.0,
@@ -5290,14 +5922,16 @@ class TestDistanceIsPinnedToTheNumber:
         a bare-royal rule leaves that draw inert and would be a second difference: 0.0098;
         136 since Q1074b5's ten push features: 0.0091; 138 since Q1074bo's `push_no_back` and
         `push_walls_crush`: 0.0089; 139 since Q1077's `majority_takes_royal`: 0.0088; 140 since
-        SR3b's `stock_is_uneven`: 0.0087; 141 since SR3c's `typed_screen_share`: 0.0087."""
+        SR3b's `stock_is_uneven`: 0.0087; 141 since SR3c's `typed_screen_share`: 0.0087; 143
+        since SR5a's `explodes_striking_target` and `explodes_striking_blast`: 0.0086; 144 since
+        SR6a's `path_sweep_share`: 0.0085."""
         chess = _chess()
         chess["rules"].pop("insufficient_material")
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0087
+        assert distance(chess, twin) == 0.0085
 
 
 def _one_leap_beside_a_stone() -> dict:

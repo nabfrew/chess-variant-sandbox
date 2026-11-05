@@ -296,11 +296,12 @@ class TestRefusals:
         spec["pieces"][4]["sight"][0]["vectors"] = [[0, 1], [0, -1]]
         assert validate_spec(spec) == []
 
-    def test_an_affects_naming_a_wild_type_stays_refused(self) -> None:
+    def test_an_affects_naming_a_wild_type_is_allowed_since_sr5f(self) -> None:
+        """SR5f (V11) lifted the refusal: a sight may name a wild type, under whose 'any'
+        (`tests/test_sight_on_wild.py` holds the rest)."""
         spec = _spec([{"piece": "W", "route": ["b5"]}], wolf_sight="freeze")
         spec["pieces"][4]["sight"][0]["affects"] = ["W"]
-        assert any("a wild piece (rules.npcs), which nothing affects" in e
-                   for e in validate_spec(spec))
+        assert validate_spec(spec) == []
 
     def test_a_shield_beside_wild_pieces_is_allowed(self) -> None:
         assert validate_spec(_spec([{"piece": "W", "route": ["a3", "b3"]}])) == []

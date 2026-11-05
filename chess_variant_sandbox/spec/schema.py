@@ -794,7 +794,13 @@ _MOVE_KEYS = {
     "screen_range", "screen", "path", "legs", "sweep_range",
     # Q1074b2 (`docs/plan-push.md` §1.2): the move pushes the piece it lands on.
     "push",
+    # SR6a (`docs/plan-schema-next.md` §2.6, the sweep switch): which of a sweep's removals
+    # the on-capture rules act on.
+    "effects",
 }
+# SR6a: a sweep's `effects`, the landing's capture alone (the default and off value) or every
+# swept piece too.
+SWEEP_EFFECTS = ("landing", "path")
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
     "id", "name", "royal", "value", "moves", "region", "promoted_from", "captures",
@@ -1126,7 +1132,10 @@ MAX_STOCK = 32
 # ``by`` and ``of`` are schema 10 (Q18): *whose* capture explodes and *what* has to be
 # taken for it to. Absent means every type, which is atomic chess and is what makes the
 # pair inert on every spec written before them. See ``_validate_explosion``.
-_EXPLODE_KEYS = {"radius", "immune", "by", "of", "blast"}
+_EXPLODE_KEYS = {"radius", "immune", "by", "of", "blast", "strikes"}
+# SR5a (T1, `docs/plan-schema-next.md` §2.4): which of an exploding capture's pieces the strike
+# reaches. ``"none"`` is the off value (`EXPLODE_OFF_VALUES`).
+BLAST_STRIKE_VALUES = ("none", "target", "blast", "both")
 # ``blast`` is generation 48 (SR1b, `docs/plan-schema-next.md` §1 rank 2): the blast's shape
 # stated as a vector set read from the capture square, in place of ``radius``'s box.
 _BLAST_KEYS = {"vectors", "symmetry"}
@@ -1232,7 +1241,9 @@ PORTAL_OFF_VALUES: dict[str, Any] = {"kind": "momentum"}
 CONTACT_LINK_OFF_VALUES: dict[str, Any] = {"own": False}
 # T1: a move descriptor's (a piece's, or a portal group's).
 # Q1074b1: ``push: false`` is a move that takes on an occupied landing, as every move did.
-MOVE_OFF_VALUES: dict[str, Any] = {"path": "straight", "push": False}
+# SR6a: a sweep's ``effects: "landing"`` is the sweep whose on-capture rules read its landing
+# alone, as every sweep did before the key.
+MOVE_OFF_VALUES: dict[str, Any] = {"path": "straight", "push": False, "effects": "landing"}
 # N1: a wild-piece entry's (``rules.npcs[]``): ``respawn: 0`` is a piece that, once taken, is gone.
 # N5: ``turns_back: false`` is a route walked as a cycle, as every route was before the key.
 NPC_OFF_VALUES: dict[str, Any] = {"respawn": 0, "turns_back": False}
@@ -1241,6 +1252,8 @@ DUCK_OFF_VALUES: dict[str, Any] = {"goes": "anywhere"}
 # TC6: ``rules.purse``'s: ``bribe: false`` is a purse that never buys an enemy piece.
 # TC9c: ``bounty_to: "taker"`` is a bounty paid to the player whose move took the piece.
 PURSE_OFF_VALUES: dict[str, Any] = {"bribe": False, "bounty_to": "taker"}
+# SR5a (T1): ``strikes: "none"`` is a blast that strikes nothing, every blast before it.
+EXPLODE_OFF_VALUES: dict[str, Any] = {"strikes": "none"}
 
 # TC4 (`docs/plan-turncoat.md` §5.1, §5.2): the largest bounty a type may carry, and the most
 # coins a purse may hold (`rust/src/tables.rs::PURSE_MAX`), which bounds the purse's keys.
@@ -1592,19 +1605,44 @@ def sight_affected_ids(
 ) -> list[str]:
     """The ids a sight's effect can touch: its ``affects``, or every declared type that is
     neither wild nor a portal end (§2.3). A command never touches a royal (Q1007c,
-    `docs/archive/plan-schema-31.md` §3.4), so ``royal`` (the royal ids) is left out of a command's."""
+    `docs/archive/plan-schema-31.md` §3.4), so ``royal`` (the royal ids) is left out of a command's.
+
+    Generation 84 (SR5f, V11): an ``affects`` that names a wild type or the duck keeps it
+    (the validator lets only freeze, disarm and shield name one, under ``whose`` ``"any"``),
+    so a wild piece is touched only where a sight names its type; a sight without
+    ``affects`` touches none, as before."""
     blank = _never_moved(rules)
     if sight.effect == "command":
         blank = blank | set(royal)
     if sight.affects is not None:
+        if sight.effect != "command":
+            return list(sight.affects)
         return [pid for pid in sight.affects if pid not in blank]
     return [pid for pid in declared if pid not in blank]
+
+
+def sight_affects_wild(sight: Sight, rules: Any) -> list[str]:
+    """Generation 84 (SR5f, V11): the wild types and the duck this sight touches: those its
+    ``affects`` names, under ``whose`` ``"any"`` and an effect other than a command; empty
+    otherwise. The one reading of *a sight on a wild piece*, for the validator and the
+    compiler."""
+    if sight.effect == "command" or sight.whose != "any" or sight.affects is None:
+        return []
+    wild = _never_moved(rules)
+    return [pid for pid in sight.affects if pid in wild]
 
 
 def _piece_can_capture(piece: dict[str, Any], declared: set[str]) -> bool:
     """Whether a piece type has any capture: a move that may land on a piece (or a sweep),
     and a capture matrix that lets it take something."""
     return _capture_is_possible([piece], declared)
+
+
+def _wild_can_eat(piece: dict[str, Any], declared: set[str]) -> bool:
+    """Generation 84 (SR5f): whether a wild type eats anything: its route step or pounce takes
+    what its ``captures`` allow (absent: everything), so only ``captures: []`` eats nothing."""
+    allowed = piece.get("captures")
+    return not isinstance(allowed, list) or any(pid in declared for pid in allowed)
 
 
 def _piece_can_be_captured(pid: str, pieces: list[Any]) -> bool:
@@ -1645,20 +1683,25 @@ def sight_can_bind(spec: dict[str, Any], source: str, sight: Sight) -> str | Non
         sides = {"enemy": (1 - owner,), "own": (owner,), "any": (0, 1)}[sight.whose]
         for side in sides:
             reachable |= affected & held[side]
-    if source in _never_moved(rules):
+    if source in _never_moved(rules) or source in nobodys_ids(spec):
         # Generation 37: a wild piece is on the board for neither side, and its sight (whose
-        # 'any') touches both players' pieces.
+        # 'any') touches both players' pieces. Generation 84 (SR5f, V15): so does a nobody's.
         reachable |= affected & (held[0] | held[1])
-    if not reachable:
+    # Generation 84 (SR5f, V11): the wild types and the duck it names, which a wild piece
+    # walks (it moves, and eats what its `captures` allow) and a player may take.
+    wild = set(sight_affects_wild(sight, rules))
+    if not reachable and not wild:
         return "no type it affects is ever held by the side it affects"
-    if sight.effect == "freeze" and not any(_listed(by_id[pid].get("moves")) for pid in reachable):
+    if sight.effect == "freeze" and not wild and not any(
+        _listed(by_id[pid].get("moves")) for pid in reachable
+    ):
         return "a freeze on types that have no move"
     if sight.effect == "disarm" and not any(
         _piece_can_capture(by_id[pid], declared) for pid in reachable
-    ):
+    ) and not any(_wild_can_eat(by_id[pid], declared) for pid in wild):
         return "a disarm on types that can capture nothing"
     if sight.effect == "shield" and not any(
-        _piece_can_be_captured(pid, pieces) for pid in reachable
+        _piece_can_be_captured(pid, pieces) for pid in reachable | wild
     ):
         return "a shield on types that nothing can capture"
     if sight.effect == "command" and not any(
@@ -1728,11 +1771,11 @@ def _check_sight_coherence(
     setup = spec.get("setup")
     orientation = str(setup.get("orientation", "mirror")) if isinstance(setup, dict) else "mirror"
     wild = _never_moved(rules)
+    nobodys = nobodys_ids(spec)
     royal = {
         piece["id"] for piece in pieces
         if isinstance(piece, dict) and isinstance(piece.get("id"), str) and piece.get("royal") is True
     }
-    shields = False
     commands = False
     for index, piece in written:
         where = f"pieces[{index}].sight"
@@ -1745,9 +1788,14 @@ def _check_sight_coherence(
                 f"{where} holds {len(sight)} lines of sight; a type may have at most {SIGHT_MAX}"
             )
         pid = piece.get("id")
-        on_wild = pid in wild
+        # Generation 84 (SR5f, V15): a piece nobody owns sees as a wild piece does.
+        on_wild = pid in wild or pid in nobodys
         # Generation 42: the duck sees as a wild piece does, and is named as itself.
-        noun = "the duck (rules.duck)" if pid == duck_piece(rules) else "a wild piece (rules.npcs)"
+        noun = (
+            "the duck (rules.duck)" if pid == duck_piece(rules)
+            else "a wild piece (rules.npcs)" if pid in wild
+            else "a piece nobody owns (placed for nobody)"
+        )
         for number, entry in enumerate(sight):
             loc = f"{where}[{number}]"
             if not isinstance(entry, dict):
@@ -1758,7 +1806,6 @@ def _check_sight_coherence(
             effect = entry.get("effect")
             if "effect" in entry and effect not in SIGHT_EFFECTS:
                 errors.append(f"{loc}.effect must be one of {SIGHT_EFFECTS}, got {effect!r}")
-            shields |= effect == "shield"
             commands |= effect == "command"
             if "captures_own" in entry:
                 if not isinstance(entry["captures_own"], bool):
@@ -1805,12 +1852,30 @@ def _check_sight_coherence(
                         if not isinstance(named, str) or named not in declared:
                             errors.append(f"{loc}.affects entry {named!r} is not a declared piece")
                         elif named in wild:
-                            errors.append(
-                                f"{loc}.affects names {named!r}, "
-                                + ("the duck (rules.duck)" if named == duck_piece(rules) else "a wild piece (rules.npcs)")
-                                + ", which "
-                                "nothing affects"
+                            # Generation 84 (SR5f, V11): a sight may freeze, disarm or shield
+                            # a wild piece, and freeze the duck, by naming its type, under
+                            # whose 'any' alone (it has no side); a command on either stays
+                            # refused (V13), and a shield or disarm on the duck never binds.
+                            wild_noun = (
+                                "the duck (rules.duck)" if named == duck_piece(rules)
+                                else "a wild piece (rules.npcs)"
                             )
+                            if effect == "command":
+                                errors.append(
+                                    f"{loc}.affects names {named!r}, {wild_noun}: nobody "
+                                    "commands for it, so a command never touches it; leave it out"
+                                )
+                            elif whose in ("enemy", "own"):
+                                errors.append(
+                                    f"{loc}.affects names {named!r}, {wild_noun}, which has "
+                                    f"no side, under whose {whose!r}: only whose 'any' reaches it"
+                                )
+                            elif named == duck_piece(rules) and effect in ("shield", "disarm"):
+                                errors.append(
+                                    f"{loc}.affects names {named!r}, {wild_noun}, under a "
+                                    f"{effect}: nothing takes the duck and it takes nothing, so "
+                                    "the effect never binds it; only a freeze does (it passes)"
+                                )
                         elif named in royal and effect == "command":
                             errors.append(
                                 f"{loc}.affects names {named!r}, a royal: a royal cannot be "
@@ -1823,23 +1888,40 @@ def _check_sight_coherence(
                 why = sight_can_bind(spec, pid, read)
                 if why is not None:
                     errors.append(f"{loc} affects nothing that could be there: {why}")
-    if rules.get("portals"):
-        errors.append(refusal("V1"))
-    if rules.get("explode_on_capture"):
-        errors.append(refusal("V2"))
-    if shields and uses_sweep(spec):
-        errors.append(refusal("W10"))
+    # SR5c (V1, ruled 2026-10-27) lifted portals for freeze, disarm and shield: a momentum end
+    # stops a line, a fold lets it see the far end's square, an attack through either reads the
+    # effects. SR5c2 lifted the command arm: a commanded piece passes a portal as its owner's
+    # piece would (the owner's `enter`, `passage` and `carries`, and its exit read by the
+    # owner's wrap), landing at the exit only where a commanded piece may land.
+    # SR5b (V2, ruled 2026-10-27) lifted the blast: a shield spares from a blast as from a
+    # capture, and a frozen or disarmed piece makes no capture, so sets off none.
+    # SR6g (W10, ruled 2026-10-27) lifted the shield beside a sweep: a shielded piece may not be
+    # captured, so it ends a sweep's ray as any piece the sweep may not take does, read off the
+    # board (`Game::sweep_shielded`).
     if commands:
         _check_command_beside(spec, pieces, rules, errors)
 
 
 # Q1007c (`docs/archive/plan-schema-31.md` §3.6): each rule refused beside a command, by its
 # refused pair's id (`spec/refusals.py`).
-_COMMAND_REFUSED_RULES = {"simultaneous": "R17", "reach": "V3", "territory": "V4"}
+_COMMAND_REFUSED_RULES = {"simultaneous": "R17"}
+
+# Generation 81 (SR5d, V3, V4, `docs/plan-schema-next.md` §2.7): a commanded piece arrives, leaves
+# a goal and claims territory for its owner (`Game::arrival_owner`), so a reach and a territory
+# are no longer refused beside a command.
 
 # Generation 72 (SR4h, V5, V6, V9, `docs/plan-schema-next.md` §2.4): a commanded own-side
 # capture (``captures_own``) is an ordinary removal beside a strike or contacts, and fills the
 # commander's hand, so nothing about it is refused here any more.
+
+# Generation 83 (SR5e, V7, `docs/plan-schema-next.md` §2.7): a command beside `pieces[].rest`
+# is no longer refused. A commanded move rests its piece as its owner's move would, counted on
+# its owner's turns, and a resting piece is moved by neither player.
+
+# Generation 95 (SR6f, V8, `docs/plan-schema-next.md` §2.7): a command beside a sweep is no
+# longer refused. A commanded sweep moves as its owner's sweep does; without `captures_own`
+# any piece on its line ends the ray, and with it the ray sweeps the owner's non-royal,
+# unshielded pieces its captures allow and ends at any other.
 
 
 def _check_command_beside(
@@ -1852,10 +1934,6 @@ def _check_command_beside(
         value = rules.get(key)
         if value is not None and value is not False and (key != "strike" or strike_is_live(value)):
             errors.append(refusal(rid))
-    if has_rests(pieces):
-        errors.append(refusal("V7"))
-    if uses_sweep(spec):
-        errors.append(refusal("V8"))
 
 
 def has_speeds(spec_or_pieces: Any) -> bool:
@@ -3183,6 +3261,93 @@ def sweep_range_stated_off(move: Any) -> bool:
     )
 
 
+def sweep_effects(piece: Any) -> str:
+    """SR6a (W1, `docs/plan-schema-next.md` §2.6): a piece's sweep switch, ``"path"`` where
+    any of its sweeps says so, else ``"landing"`` (the default and off value). The one reader
+    of ``moves[].effects``, shared by the validator, the compiler and every surface; the
+    validator refuses a piece whose sweeps disagree, so one value per piece is exact."""
+    moves = piece.get("moves") if isinstance(piece, dict) else None
+    if not isinstance(moves, list):
+        return "landing"
+    return "path" if any(
+        isinstance(move, dict) and move.get("kind") == "sweep" and move.get("effects") == "path"
+        for move in moves
+    ) else "landing"
+
+
+def strike_strikes_sweeper(rules: Any, sweeper: str) -> bool:
+    """SR6a (W1): whether ``rules.strike`` strikes some piece a sweep by ``sweeper`` takes:
+    live, ``by`` absent or naming it, and keeping some victim (a chain link from a type not
+    in ``immune``, or circe's rebirth under ``effect: "capture"``). The spelling-level
+    reading of the compiler's ``strikes_path``; where it is false, ``effects: "path"`` would
+    remove each swept piece as ``"landing"`` does, and is refused as inert."""
+    if not isinstance(rules, dict):
+        return False
+    strike = rules.get("strike")
+    if not strike_is_live(strike) or not isinstance(strike, dict):
+        return False
+    by = strike.get("by")
+    if isinstance(by, list) and sweeper not in by:
+        return False
+    stated_immune = strike.get("immune")
+    immune: list[Any] = stated_immune if isinstance(stated_immune, list) else []
+    if strike.get("effect", "capture") == "capture":
+        return strike.get("position", "advance") == "home"
+    stated_chain = strike.get("chain")
+    chain: list[Any] = stated_chain if isinstance(stated_chain, list) else []
+    return any(
+        isinstance(link, dict) and link.get("from") not in immune for link in chain
+    )
+
+
+def contacts_meet_sweeper(rules: Any, sweeper: str) -> bool:
+    """SR6b (W2): whether ``rules.contacts`` has a link a sweep by ``sweeper`` can meet a
+    swept piece by: ``mover`` is the sweeper, and the link is ``own`` or onto a type not in
+    ``immune``. The spelling-level reading of the compiler's ``strikes_path`` for a contact
+    table (a link always changes the target or the mover, `_validate_contacts_shape`); where
+    it is false, ``effects: "path"`` would remove each swept piece as ``"landing"`` does."""
+    if not isinstance(rules, dict) or not isinstance(rules.get("contacts"), dict):
+        return False
+    contacts = rules["contacts"]
+    stated_immune = contacts.get("immune")
+    immune: list[Any] = stated_immune if isinstance(stated_immune, list) else []
+    links = contacts.get("links")
+    return isinstance(links, list) and any(
+        isinstance(link, dict)
+        and link.get("mover") == sweeper
+        and (link.get("own") is True or link.get("onto") not in immune)
+        for link in links
+    )
+
+
+def blast_meets_sweeper(rules: Any, sweeper: str) -> bool:
+    """SR6c (W3): whether ``rules.explode_on_capture`` can be set off by a sweep by
+    ``sweeper``: stated, ``by`` absent or naming it, and ``of`` not empty. The spelling-level
+    reading of the compiler's ``blasts_path``; where it is false, ``effects: "path"`` would
+    set off no blast, as ``"landing"`` sets off none, and is refused as inert."""
+    if not isinstance(rules, dict):
+        return False
+    explosion = rules.get("explode_on_capture")
+    if not explosion:
+        return False
+    if not isinstance(explosion, dict):
+        return True
+    by, of = explosion.get("by"), explosion.get("of")
+    if isinstance(by, list) and sweeper not in by:
+        return False
+    return not (isinstance(of, list) and not of)
+
+
+def sweep_blast_beside_strike(rules: Any) -> bool:
+    """SR6c (W3): whether a blast shares the game with a live strike or a contact table
+    with links, the pair the sweep switch does not order beside a sweep (`sweep_conflicts`)."""
+    if not isinstance(rules, dict) or not rules.get("explode_on_capture"):
+        return False
+    return strike_is_live(rules.get("strike")) or (
+        isinstance(rules.get("contacts"), dict) and bool(rules["contacts"].get("links"))
+    )
+
+
 def uses_sweep(spec: dict[str, Any]) -> bool:
     """Whether any piece in this spec has a ``sweep`` descriptor.
 
@@ -3211,34 +3376,42 @@ def promoting_piece_ids(rules: Any) -> set[str]:
 
 
 # The rules a sweep may not share a game with (Q21), each by its refused pair's id
-# (`spec/refusals.py`, which holds why).
+# (`spec/refusals.py`, which holds why). SR6a narrowed W1 to a strike placed `"choose"`,
+# SR6b W2 to a contact table placed `"choose"`, SR6c W3 to a blast beside a strike or contacts;
+# SR6d lifted W6 (`wrap`): a move word names its ray where two rays reach one target.
 _SWEEP_EXCLUDES: tuple[tuple[str, str], ...] = (
     ("strike", "W1"),
     ("contacts", "W2"),
     ("explode_on_capture", "W3"),
-    ("wrap", "W6"),
 )
 
 
 def sweep_conflicts(rules: Any) -> list[str]:
     """The rule keys in ``rules`` that are refused beside a sweep, in declaration order.
 
-    Read as the rule means it, not by the key's presence: an inert strike, an empty contact
-    table and a wrap with every edge ``"none"`` compile to nothing and refuse nothing.
+    Read as the rule means it, not by the key's presence: an inert strike and an empty
+    contact table compile to nothing and refuse nothing.
     """
     if not isinstance(rules, dict):
         return []
     active = {
-        "strike": strike_is_live(rules.get("strike")),
+        # SR6a (W1, the sweep switch): only a strike placed on a chosen square is refused.
+        "strike": strike_is_live(rules.get("strike"))
+        and isinstance(rules.get("strike"), dict)
+        and rules["strike"].get("position") == "choose",
+        # SR6b (W2, the sweep switch): only a contact table placed on a chosen square.
         "contacts": isinstance(rules.get("contacts"), dict)
-        and bool(rules["contacts"].get("links")),
-        "explode_on_capture": bool(rules.get("explode_on_capture")),
-        "wrap": _wrap_joins_an_edge(rules.get("wrap")),
+        and bool(rules["contacts"].get("links"))
+        and rules["contacts"].get("position") == "choose",
+        # SR6c (W3, the sweep switch): only a blast beside a live strike or contacts.
+        "explode_on_capture": sweep_blast_beside_strike(rules),
     }
     return [key for key, _ in _SWEEP_EXCLUDES if active[key]]
 
 
-def _wrap_joins_an_edge(wrap: Any) -> bool:
+def wrap_joins_an_edge(wrap: Any) -> bool:
+    """Whether ``rules.wrap`` joins any edge, read from either shape's keys (SR6d: `describe`
+    says a sweep's two ways round by it)."""
     # Both shapes' keys: a valid spec states only its own shape's, so the union is exact,
     # and a caller holding `rules` alone need not be handed the board.
     return any(
@@ -3254,7 +3427,11 @@ def _check_sweep_coherence(
 ) -> None:
     """The five refusals a sweep carries (Q21; `drops`, W4, lifted by SR4b: every swept
     piece the mover does not own goes to its hand, a swept friendly piece to none; `npcs`,
-    W5, lifted by SR4c: every swept wild piece pays its bounty to the mover).
+    W5, lifted by SR4c: every swept wild piece pays its bounty to the mover; `strike`, W1,
+    lifted by SR6a but for a chosen square: the sweep switch, `moves[].effects`, says whether
+    the strike acts on the landing alone or on every swept piece; `contacts`, W2, lifted by
+    SR6b but for a chosen square, as W1; `explode_on_capture`, W3, lifted by SR6c but beside
+    a strike or contacts: one blast on the landing, or one more on each swept square).
 
     Four rules say what a taken piece becomes or how a move is named, and a sweep takes
     several pieces along a path a move word does not carry. The fifth keeps a sweeper from
@@ -3274,12 +3451,81 @@ def _check_sweep_coherence(
     rid = dict(_SWEEP_EXCLUDES)
     for key in sweep_conflicts(rules):
         errors.append(refusal(rid[key]))
+    _check_sweep_effects(pieces, rules, errors)
     for pid in sorted(str(p) for p in promoting_piece_ids(rules) & sweepers):
         errors.append(
             f"rules.promotion makes {pid!r} a promoting piece, and it sweeps; a move is a "
             "promotion or a sweep, never both, so a sweeper may not promote (promoting "
             "into one is fine)"
         )
+
+
+def _check_sweep_effects(
+    pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """SR6a (W1, `docs/plan-schema-next.md` §2.6): the sweep switch states a rule.
+
+    ``effects: "path"`` is read per piece (`sweep_effects`), so a piece's sweeps must agree
+    on it; it is inert, and refused, without a strike, contacts or a blast for it to act on,
+    and beside a strike that strikes nothing this sweeper takes (`strike_strikes_sweeper`).
+    SR6b (W2): beside contacts, refused where no link names this sweeper as its mover
+    (`contacts_meet_sweeper`). SR6c (W3): beside a blast, refused where no capture by this
+    sweeper sets it off (`blast_meets_sweeper`).
+    """
+    for piece in pieces:
+        if not isinstance(piece, dict) or not isinstance(piece.get("moves"), list):
+            continue
+        sweeps = [m for m in piece["moves"] if isinstance(m, dict) and m.get("kind") == "sweep"]
+        values = {m.get("effects", "landing") for m in sweeps}
+        if not sweeps or "path" not in values:
+            continue
+        pid = piece.get("id")
+        if len(values) > 1:
+            errors.append(
+                f"pieces[{pid!r}]'s sweeps disagree on effects: a piece's sweeps share one "
+                "switch, so write effects 'path' on every sweep of it or on none"
+            )
+            continue
+        live = strike_is_live(rules.get("strike")) or bool(rules.get("explode_on_capture")) or (
+            isinstance(rules.get("contacts"), dict) and bool(rules["contacts"].get("links"))
+        )
+        if not live:
+            errors.append(
+                f"pieces[{pid!r}] sweeps with effects 'path', which says what rules.strike, "
+                "rules.contacts or rules.explode_on_capture does to each swept piece, and "
+                "the game has none of them; leave effects out"
+            )
+        elif (
+            strike_is_live(rules.get("strike"))
+            and isinstance(pid, str)
+            and not strike_strikes_sweeper(rules, pid)
+        ):
+            errors.append(
+                f"pieces[{pid!r}] sweeps with effects 'path', but rules.strike strikes "
+                "nothing it sweeps (it is outside strike.by, or the strike keeps no victim), "
+                "so every swept piece is removed as under 'landing'; leave effects out"
+            )
+        elif (
+            isinstance(rules.get("contacts"), dict)
+            and bool(rules["contacts"].get("links"))
+            and isinstance(pid, str)
+            and not contacts_meet_sweeper(rules, pid)
+        ):
+            errors.append(
+                f"pieces[{pid!r}] sweeps with effects 'path', but no link of rules.contacts "
+                "names it as the mover (or every link it has is onto an immune piece), so "
+                "every swept piece is removed as under 'landing'; leave effects out"
+            )
+        elif (
+            rules.get("explode_on_capture")
+            and isinstance(pid, str)
+            and not blast_meets_sweeper(rules, pid)
+        ):
+            errors.append(
+                f"pieces[{pid!r}] sweeps with effects 'path', but rules.explode_on_capture "
+                "is set off by no capture of it (it is outside explode_on_capture.by), so "
+                "it blasts nowhere, as under 'landing'; leave effects out"
+            )
 
 
 def royalty_can_multiply(spec: dict[str, Any]) -> bool:
@@ -3823,6 +4069,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_blast_coherence(spec, rules, errors)
     _check_strike_coherence(pieces, rules, errors)
     _check_contact_coherence(pieces, rules, errors)
+    _check_blast_strikes(pieces, rules, errors)
     _check_sweep_coherence(pieces, rules, errors)
     _check_npc_coherence(spec, pieces, rules, errors)
     _check_duck_coherence(spec, pieces, rules, errors)
@@ -4145,6 +4392,118 @@ def blast_directions(blast: Any) -> set[tuple[int, int]]:
         ):
             directions |= expand_symmetry((vector[0], vector[1]), symmetry)
     return directions
+
+
+def blast_strikes(rules: dict[str, Any]) -> str:
+    """SR5a (T1): ``rules.explode_on_capture.strikes`` as written, ``"none"`` when absent."""
+    explosion = rules.get("explode_on_capture")
+    if not isinstance(explosion, dict):
+        return "none"
+    value = explosion.get("strikes", "none")
+    return value if isinstance(value, str) else "none"
+
+
+def _check_blast_strikes(
+    pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """SR5a (T1, T4, `docs/plan-schema-next.md` §2.4): a strike or a contact table beside a
+    blast, as ruled 2026-10-27.
+
+    A capture that explodes is the blast's: it makes no contact and strikes nothing but what
+    ``explode_on_capture.strikes`` hands the strike after the blast has cleared (``"target"``,
+    ``"blast"``, ``"both"``). A value other than ``"none"`` needs a live strike placed
+    ``stay`` or ``home``, refused beside the other positions (T1), as inert under effect
+    ``capture`` placed ``stay`` (T1), and beside contacts (T4). A choosing strike or contact
+    and a game in rounds stay refused beside any blast (T1, T4). Under ``"none"`` a blast
+    that fires on every capture leaves the strike, or a contact table with no own link,
+    nothing to act on, and is refused as a rule that never fires.
+    """
+    explosion = rules.get("explode_on_capture")
+    if not isinstance(explosion, dict):
+        return
+    strike = rules.get("strike")
+    live_strike = strike_is_live(strike)
+    contacts = rules.get("contacts")
+    has_contacts = (
+        isinstance(contacts, dict) and isinstance(contacts.get("links"), list)
+        and bool(contacts["links"])
+    )
+    strikes = explosion.get("strikes", "none")
+    if strikes not in BLAST_STRIKE_VALUES:
+        return  # `_validate_explosion`'s
+    if strikes != "none":
+        if has_contacts:
+            errors.append(refusal("T4", "rules.explode_on_capture.strikes"))
+        if not live_strike:
+            if not has_contacts:
+                errors.append(
+                    f"rules.explode_on_capture.strikes {strikes!r} with no rules.strike "
+                    "strikes nothing; give a strike, or leave it 'none'"
+                )
+        else:
+            assert isinstance(strike, dict)
+            position = strike.get("position", "advance")
+            if position not in ("stay", "home"):
+                errors.append(refusal(
+                    "T1", 'rules.strike.position (not "stay" or "home")'
+                ))
+            elif position == "stay" and strike.get("effect", "capture") == "capture":
+                errors.append(refusal(
+                    "T1", 'rules.strike (effect "capture", position "stay")'
+                ))
+    if live_strike:
+        assert isinstance(strike, dict)
+        if strike.get("position") == "choose":
+            errors.append(refusal("T1", "rules.explode_on_capture"))
+        if rules.get("simultaneous") is not None:
+            errors.append(refusal("T1", "rules.strike"))
+    if has_contacts:
+        assert isinstance(contacts, dict)
+        if contacts.get("position") == "choose":
+            errors.append(refusal("T4", "rules.explode_on_capture"))
+        if rules.get("simultaneous") is not None:
+            errors.append(refusal("T4", "rules.contacts"))
+    if strikes == "none" and _blast_fires_on_every_capture(pieces, explosion):
+        if live_strike:
+            errors.append(
+                "rules.strike beside a blast that fires on every capture "
+                "(rules.explode_on_capture with no by or of) and strikes 'none': every "
+                "capture explodes and is struck by nothing, so the strike never acts; set "
+                "explode_on_capture.strikes or narrow its by or of"
+            )
+        if isinstance(contacts, dict) and has_contacts and not any(
+            isinstance(link, dict) and link.get("own") for link in contacts["links"]
+        ):
+            errors.append(
+                "rules.contacts beside a blast that fires on every capture "
+                "(rules.explode_on_capture with no by or of): a capture that explodes makes "
+                "no contact, so no link is ever met; narrow its by or of"
+            )
+
+
+def strike_reads_a_blast(rules: dict[str, Any]) -> bool:
+    """SR5a (T1): whether ``explode_on_capture.strikes`` may be other than ``"none"`` beside
+    these rules: a live strike placed ``stay`` or ``home`` (not a shot, effect ``capture``
+    placed ``stay``, which only removes), and no contact table."""
+    strike = rules.get("strike")
+    contacts = rules.get("contacts")
+    if not strike_is_live(strike) or (isinstance(contacts, dict) and contacts.get("links")):
+        return False
+    assert isinstance(strike, dict)
+    position = strike.get("position", "advance")
+    if position == "home":
+        return True
+    return position == "stay" and strike.get("effect", "capture") != "capture"
+
+
+def _blast_fires_on_every_capture(pieces: list[Any], explosion: dict[str, Any]) -> bool:
+    """Whether ``by`` and ``of`` each leave out no declared piece (absent is every piece)."""
+    ids = {piece.get("id") for piece in pieces if isinstance(piece, dict)}
+    for key in ("by", "of"):
+        listed = explosion.get(key)
+        if isinstance(listed, list) and not ids <= set(listed):
+            return False
+    return True
 
 
 def _check_blast_coherence(
@@ -4549,8 +4908,7 @@ def _check_strike_coherence(
     # silently is how a plausible wrong game gets played. SR2 (`docs/plan-schema-next.md`
     # §2.4 T2) lifted the strike that only removes (``strike_only_removes``: a shot): its
     # victim leaves the board and goes to the hand as any capture's does.
-    if rules.get("explode_on_capture"):
-        errors.append(refusal("T1"))
+    # SR5a (T1) lifted the strike beside a blast: `_check_blast_strikes` reads the pair.
     if rules.get("drops") and not strike_only_removes(strike):
         errors.append(refusal("T2"))
 
@@ -4700,8 +5058,7 @@ def _check_contact_coherence(
     if rules.get("strike"):
         errors.append(refusal("T3"))
     # SR4e lifted T6 (`npcs`): a contact never reaches a wild piece (`_check_npc_coherence`).
-    if rules.get("explode_on_capture"):
-        errors.append(refusal("T4"))
+    # SR5a (T4) lifted contacts beside a blast: `_check_blast_strikes` reads the pair.
     # SR2 (`docs/plan-schema-next.md` §2.4 T5): a link with no ``onto_to`` removes its target,
     # which goes to the hand as any capture's does; a link that keeps it stays refused.
     if rules.get("drops") and not contacts_only_remove(contacts):
@@ -6718,6 +7075,16 @@ def _validate_moves(
                     f"({rng}): a sweep clears no further than it moves"
                 )
 
+        # SR6a (W1, the sweep switch): which of a sweep's removals `strike`, `contacts`
+        # (SR6b) and, once SR6c lands, a blast act on. Whether it states a rule is read in
+        # `_check_sweep_coherence`, where the rules are.
+        if "effects" in move:
+            effects = move["effects"]
+            if not isinstance(effects, str) or effects not in SWEEP_EFFECTS:
+                errors.append(f"{loc}.effects must be one of {list(SWEEP_EFFECTS)}")
+            elif kind != "sweep" and effects != "landing":
+                errors.append(f"{loc}.effects only applies to a sweep, not to a {kind!r}")
+
         _validate_vectors(move.get("vectors"), loc, errors)
         _validate_condition(move.get("condition"), loc, width, height, errors)
         errors.extend(path_refusals(move, loc, hex_lattice))
@@ -7127,7 +7494,7 @@ def _validate_rules(
     _validate_npcs(rules.get("npcs"), piece_ids, width, height, errors, rules)
     _validate_duck(rules.get("duck"), piece_ids, width, height, errors)
     _validate_purse(rules.get("purse"), piece_ids, width, height, errors)
-    _validate_portals(rules.get("portals"), width, height, errors)
+    _validate_portals(rules.get("portals"), width, height, errors, hex_lattice)
     _validate_territory(rules.get("territory"), width, height, errors)
     _validate_scoring(
         rules.get("scoring"), width, height, errors, bool(rules.get("territory"))
@@ -7247,6 +7614,12 @@ def _validate_explosion(explosion: Any, piece_ids: list[str], errors: list[str])
         errors.append(
             "rules.explode_on_capture.immune protects pieces standing next to a blast, and "
             "a blast of radius 0 reaches nobody next to it; leave immune out"
+        )
+
+    if "strikes" in explosion and explosion["strikes"] not in BLAST_STRIKE_VALUES:
+        errors.append(
+            f"rules.explode_on_capture.strikes must be one of {BLAST_STRIKE_VALUES}, "
+            f"got {explosion['strikes']!r}"
         )
 
     for key in ("immune", "by", "of"):
@@ -8117,6 +8490,7 @@ def _validate_portals(
     width: int,
     height: int,
     errors: list[str],
+    hex_lattice: bool = False,
 ) -> None:
     """The shape of ``rules.portals`` (schemas 19 and 21): groups, each a pair or a map.
 
@@ -8155,7 +8529,7 @@ def _validate_portals(
                 f"{loc}.moves and leave the stand-in out of pieces. "
                 "`python -m chess_variant_sandbox.spec.spelling FILE` converts a file"
             )
-        _validate_portal_moves(group, loc, width, height, errors)
+        _validate_portal_moves(group, loc, width, height, errors, hex_lattice)
         if "no_straight_back" in group and not isinstance(group["no_straight_back"], bool):
             errors.append(f"{loc}.no_straight_back must be true or false")
         if "kind" in group and group["kind"] not in PORTAL_KINDS:
@@ -8168,6 +8542,7 @@ def _validate_portals(
 
 def _validate_portal_moves(
     group: dict[str, Any], loc: str, width: int, height: int, errors: list[str],
+    hex_lattice: bool = False,
 ) -> None:
     """A group's ``moves`` (spelling 31): a piece's move list, read as `portal_moves` reads
     it (``mode`` left out is ``"move"``), and only what a portal may do with it.
@@ -8185,7 +8560,7 @@ def _validate_portal_moves(
         return
     if not moves:
         return
-    _validate_moves(portal_moves(moves), loc, width, height, errors)
+    _validate_moves(portal_moves(moves), loc, width, height, errors, hex_lattice)
     for index, move in enumerate(moves):
         if not isinstance(move, dict):
             continue
@@ -8396,10 +8771,12 @@ def _check_portal_coherence(
 
     The rules refused beside it in the first build are each a reading nobody has asked for:
     a hex lattice (a sign does not name one of six neighbours), wild pieces (a route is a
-    static table and a portal moves), a sweep, an explosion (what a capture leaves behind at
-    an exit is a second landing rule), territory (which square a transit paints), and a
-    confined piece (a region an exit could leave). SR4m (P3, P4) lifted a strike and contacts:
-    the exit, or a fold's far square, is the capture square, read as anywhere.
+    static table and a portal moves), a sweep, territory (which square a transit paints), and
+    a confined piece (a region an exit could leave). SR4m (P3, P4) lifted a strike and
+    contacts: the exit, or a fold's far square, is the capture square, read as anywhere. SR5h
+    (P5) lifted a blast: it centres on the exit, and a portal end in it stands. SR5i lifted
+    territory (P6: a transit claims the square it ends on, never an end's) and a region (P7:
+    an exit outside the mover's region is a blocked exit, no move, as a wall is).
     """
     if "portals" not in rules or not isinstance(rules.get("portals"), list):
         return
@@ -8412,27 +8789,20 @@ def _check_portal_coherence(
     setup: dict[str, Any] = spec["setup"] if isinstance(spec.get("setup"), dict) else {}
     orientation = str(setup.get("orientation", "mirror"))
 
-    if isinstance(board, dict) and board.get("lattice") == "hex":
-        errors.append(refusal("P1"))
-    for key, rid in (
-        ("npcs", "P2"), ("explode_on_capture", "P5"), ("territory", "P6"),
-    ):
-        if key in rules:
-            errors.append(refusal(rid))
-    if uses_sweep(spec):
-        errors.append(refusal("W8"))
+    # SR5g lifted P1: a hex lattice's transit comes out along the nearest of its twelve lines.
+    # SR5h lifted P5: a blast centres on the exit, and every portal end in it stands.
+    # SR5i lifted P6 (a transit claims its exit, never an end's square) and P7 (an exit
+    # outside the mover's region is a blocked exit, no move, as a wall is).
+    if "npcs" in rules:
+        errors.append(refusal("P2"))
+    # SR6e lifted W8: a sweep's landing on an empty fold may go through (sweeping only before
+    # the fold), a piece standing in a fold is swept as anywhere, and a momentum end ends the ray.
 
     declared = {
         piece["id"]: piece
         for piece in pieces
         if isinstance(piece, dict) and isinstance(piece.get("id"), str)
     }
-    for pid, piece in declared.items():
-        if "region" in piece:
-            errors.append(
-                f"piece {pid!r} has a region, which rules.portals refuses in this schema: an "
-                "exit could put the piece outside it"
-            )
     clashing = sorted(set(portal_end_ids(groups)) & set(declared))
     if clashing:
         errors.append(
@@ -8646,7 +9016,7 @@ def _check_portal_bar_can_bind(
             f"only ({each}); drop it, or let both players move an end"
         )
         return
-    if _wrap_joins_an_edge(rules.get("wrap")) or any(g["kind"] == "fold" for g in groups):
+    if wrap_joins_an_edge(rules.get("wrap")) or any(g["kind"] == "fold" for g in groups):
         return
     directions: set[tuple[int, int]] = set()
     for move in group["moves"]:
@@ -8972,8 +9342,8 @@ def _check_neutral_coherence(
             errors.append(f"{where}: a wild type walks its route, it does not stand for nobody")
         if _stated_on(piece, "rest"):
             errors.append(f"{where}: a piece nobody owns has no turn to rest after")
-        if _stated_on(piece, "sight"):
-            errors.append(f"{where}: a nobody's piece's sight would bind nobody, a second rule")
+        # Generation 84 (SR5f, V15): a nobody's piece's sight reads as a wild piece's
+        # (`_check_sight_coherence`: whose 'any', no command, alike for both players).
     for index, placement in enumerate(_listed(setup.get("placements"))):
         if is_nobodys(placement) and "facing" in placement:
             errors.append(
@@ -8995,9 +9365,9 @@ def _check_neutral_coherence(
     majority = majority_ids(spec)
     if not majority:
         return
-    for key, rid in (("territory", "O10"), ("reach", "O11"), ("explode_on_capture", "O12")):
-        if key in rules:
-            errors.append(refusal(rid))
+    # SR5j lifted O12: a held piece's blast is the mover's (the legality filter's royal).
+    # SR5k lifted O10 and O11: a held move claims territory for the mover, and a held
+    # arrival is read by the goal's own rule (`on`, `safe`, `piece`) as if the mover owned it.
     # SR2 (`docs/plan-schema-next.md` §2.2 L5) lifted the long turn: the holder is read
     # off the board at the start of each move, which movegen does per move anyway.
     for pid in sorted(majority):

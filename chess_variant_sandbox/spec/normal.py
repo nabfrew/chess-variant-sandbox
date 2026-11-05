@@ -42,6 +42,7 @@ from chess_variant_sandbox.spec.schema import (
     CONTACT_LINK_OFF_VALUES,
     DEFAULT_RANGE,
     DUCK_OFF_VALUES,
+    EXPLODE_OFF_VALUES,
     MOVE_OFF_VALUES,
     NPC_OFF_VALUES,
     PIECE_OFF_VALUES,
@@ -249,6 +250,9 @@ def drop_off_values(spec: dict[str, Any]) -> None:
         _drop_off(rules["duck"], DUCK_OFF_VALUES)
     if isinstance(rules.get("purse"), dict):
         _drop_off(rules["purse"], PURSE_OFF_VALUES)
+    # SR5a (T1): a blast that strikes nothing is every blast before the switch.
+    if isinstance(rules.get("explode_on_capture"), dict):
+        _drop_off(rules["explode_on_capture"], EXPLODE_OFF_VALUES)
     # Q1074b1: ``rules.push`` at every default is the rule's absence (a push game reads it so).
     if isinstance(rules.get("push"), dict):
         _drop_off(rules["push"], PUSH_OFF_VALUES)

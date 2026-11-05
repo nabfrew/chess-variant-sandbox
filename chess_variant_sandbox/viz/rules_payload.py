@@ -117,6 +117,9 @@ def explosion_payload(spec: Any) -> dict[str, Any] | None:
         "immune": [t in ex.immune_types for t in range(n_types)],
         "by": selection(ex.by_types),
         "of": selection(ex.of_types),
+        # SR5a (T1): what the blast's strikes reach, 0 for none (the compiled bits); the page
+        # reads only whether a struck piece may stand where the capturer died.
+        "strikes": ex.strikes,
     }
 
 

@@ -24,6 +24,7 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine import compile as compile_module
 from chess_variant_sandbox.engine.bridge import _first_disagreement, _where, rust_supports
 from chess_variant_sandbox.engine.compile import UNREACHABLE, compile_spec
+from chess_variant_sandbox.engine.moves import MOVE_SWEEP, encode_move
 from chess_variant_sandbox.spec import validate_spec
 from chess_variant_sandbox.spec.schema import MAX_LANDING_CANDIDATES, SpecError
 
@@ -250,9 +251,9 @@ class TestSweepsAndHops:
         ]))
         board = bytes(compiled.initial_board)
         a1, c1, e1 = 0, 2, 4
-        assert compiled.sweep_path(board, a1, e1) == (1, 2, 3)
-        assert compiled.sweep_path(board, c1, e1) == ()
-        assert compiled.sweep_path(board, 1, e1) == ()
+        assert compiled.sweep_path(board, encode_move(a1, e1, MOVE_SWEEP)) == (1, 2, 3)
+        assert compiled.sweep_path(board, encode_move(c1, e1, MOVE_SWEEP)) == ()
+        assert compiled.sweep_path(board, encode_move(1, e1, MOVE_SWEEP)) == ()
 
     def test_a_hop_still_needs_its_screen_in_a_game_that_also_sweeps(self) -> None:
         spec = _probe(

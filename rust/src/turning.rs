@@ -25,6 +25,7 @@
 //! turn at an end is part of the walk and logs as a step.
 
 use super::*;
+use super::sight::WildSight;
 use super::phase::PhaseSink;
 
 /// What one turning-back piece does in a phase: where it ends (`to`, its own square when it
@@ -38,27 +39,35 @@ pub(super) struct TurnStep {
 
 impl<'t> Game<'t> {
     /// Whether the wild piece `value` may step onto `target`: empty, or a player's piece its
-    /// type may capture that `shields` (the phase's snapshot) does not cover.
+    /// type may capture that `shields` (the phase's snapshot) does not cover, unless it is
+    /// `disarmed` (generation 84: it walks onto empty squares only).
     #[inline]
-    fn wild_may_enter(&self, value: u8, target: usize, shields: &SquareSet) -> bool {
+    fn wild_may_enter(&self, value: u8, target: usize, shields: &SquareSet, disarmed: bool) -> bool {
         let t = self.t;
         let standing = self.board[target];
         if standing == 0 {
             return true;
         }
-        if t.halts_wild(standing) || shields.get(target) {
+        if disarmed || t.halts_wild(standing) || shields.get(target) {
             return false;
         }
         t.may_capture(t.type_of(value), t.type_of(standing))
     }
 
     /// **The rule, stated once**, for the piece on line square `square` facing back (`back`)
-    /// or forward, on the board as the earlier steps of the phase left it.
-    pub(super) fn turn_step(&self, square: usize, back: bool, shields: &SquareSet) -> TurnStep {
+    /// or forward, on the board as the earlier steps of the phase left it. Generation 84
+    /// (SR5f, V11): a piece the snapshot holds frozen waits as it faces, never turning; one it
+    /// holds disarmed reads every piece in its way as a block.
+    pub(super) fn turn_step(&self, square: usize, back: bool, sight: &WildSight) -> TurnStep {
         let t = self.t;
         let lines = t.npc_lines.as_deref().expect("turn_step without a line");
         let value = self.board[square];
         debug_assert!(value != 0 && t.owner_of(value) == WILD && lines.squares.get(square));
+        if sight.frozen.get(square) {
+            return TurnStep { to: square, back, turned: false };
+        }
+        let shields = &sight.shields;
+        let disarmed = sight.disarmed.get(square);
         let landed = |to: usize, back: bool, turned: bool| {
             // Landing on an end turns the piece into its line.
             let back = if lines.ahead(&t.npc_next, to, back).is_none() { !back } else { back };
@@ -67,19 +76,19 @@ impl<'t> Game<'t> {
         let Some(ahead) = lines.ahead(&t.npc_next, square, back) else {
             // Facing off an end (a position built by hand): the end turns it first.
             return match lines.ahead(&t.npc_next, square, !back) {
-                Some(other) if self.wild_may_enter(value, other, shields) => {
+                Some(other) if self.wild_may_enter(value, other, shields, disarmed) => {
                     landed(other, !back, false)
                 }
                 _ => TurnStep { to: square, back: !back, turned: false },
             };
         };
-        if self.wild_may_enter(value, ahead, shields) {
+        if self.wild_may_enter(value, ahead, shields, disarmed) {
             return landed(ahead, back, false);
         }
         match lines.ahead(&t.npc_next, square, !back) {
             // On an end, blocked: nothing the other way, so it waits facing in.
             None => TurnStep { to: square, back, turned: false },
-            Some(other) if self.wild_may_enter(value, other, shields) => landed(other, !back, true),
+            Some(other) if self.wild_may_enter(value, other, shields, disarmed) => landed(other, !back, true),
             Some(_) => TurnStep { to: square, back: !back, turned: true },
         }
     }
@@ -119,12 +128,12 @@ impl<'t> Game<'t> {
     /// steps of the same phase leave it. A step that turned round at a block is a
     /// `PHASE_TURN`, and so is a turned wait (`PhaseSink::wait_turned`).
     #[inline(always)]
-    pub(super) fn line_steps<S: PhaseSink>(&mut self, sink: &mut S, shields: &SquareSet) {
+    pub(super) fn line_steps<S: PhaseSink>(&mut self, sink: &mut S, sight: &WildSight) {
         let t = self.t;
         let lines = t.npc_lines.as_deref().expect("line_steps without a line");
         for square in self.npc_step_order() {
             let (next, kind) = if lines.squares.get(square) {
-                let step = self.turn_step(square, sink.heading(self, square), shields);
+                let step = self.turn_step(square, sink.heading(self, square), sight);
                 sink.turn(self, square, step);
                 if step.to == square {
                     if step.turned {
@@ -134,7 +143,7 @@ impl<'t> Game<'t> {
                 }
                 (step.to, if step.turned { PHASE_TURN } else { PHASE_STEP })
             } else {
-                match self.npc_step_of::<true>(square, shields) {
+                match self.npc_step_of::<true>(square, sight) {
                     Some(next) => (next, PHASE_STEP),
                     None => continue,
                 }
@@ -146,9 +155,9 @@ impl<'t> Game<'t> {
     /// The whole phase of a game with a line: the shields read once, the steps, the returns.
     #[inline(always)]
     fn line_phase<S: PhaseSink>(&mut self, sink: &mut S) {
-        let shields = self.wild_shields();
-        self.line_steps(sink, &shields);
-        self.respawn_walk(sink, &shields);
+        let sight = self.wild_sight();
+        self.line_steps(sink, &sight);
+        self.respawn_walk(sink, &sight);
     }
 
     /// The phase, played for real, in a game with a line: a taken piece's heading dropped

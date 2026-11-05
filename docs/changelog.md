@@ -12,6 +12,16 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-05
+
+### Portals and sweeps reach more rules
+
+Two more families of rules can now be combined in one game. Portals work beside territory, beside pieces that may
+only stay in one region of the board, and beside pieces nobody owns. Sweeping pieces, which clear every piece along
+their path, can now also strike, push by contact, set off explosions along the way, cross a board's wrapped edges
+and folds, be moved by a commander, and be stopped by shields. Every game in the library was checked again under the
+new rules, and no score changed.
+
 ## 2026-11-04
 
 ### More rules work together

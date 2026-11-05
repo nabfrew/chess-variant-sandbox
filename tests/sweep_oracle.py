@@ -10,7 +10,15 @@ and squares worked out by file and rank, never through a compiled table or the c
 plays the chess-shaped test specs only (leaps, straight slides and sweeps; a mirrored
 setup; a pawn's first-rank double step, its capture leap, en passant and promotion on the
 last rank; castling two steps with the outermost rook), which is why its users' names say
-chess. Check is a capture's definition: a royal is in check when some pseudo-legal move of
+chess. SR6d (W6): a cylinder too (``rules.wrap.files: "both"``), where a file steps round the
+seam and a ray ends on a square it has visited, its origin included; there two rays can reach
+one target, and two moves are one exactly when they take the same squares. SR6e (W8): folds
+that stand still (``folds``, each end's square to the square of the end it leads to; every
+piece of either side may go in), where a landing on an empty fold may also go through: the
+same step judged on the far square (empty under a move mode, the other side's piece under a
+capture mode, never the origin), a sweep taking only what it passed before the fold and never
+landing on a square it sweeps; a piece standing in a fold is swept as anywhere, and a fold is
+floor to everything else. Check is a capture's definition: a royal is in check when some pseudo-legal move of
 the other side would take it, as a landing or as a piece swept. A move that leaves the
 mover's own royal in check, or sweeps it away, is illegal. CLAUDE.md rule 3 allows it: it
 is a declared test oracle.
@@ -54,8 +62,9 @@ class Position:
 
 
 class Oracle:
-    def __init__(self, spec: dict[str, Any]) -> None:
+    def __init__(self, spec: dict[str, Any], folds: dict[int, int] | None = None) -> None:
         self.spec = spec
+        self.folds = dict(folds or {})
         self.width = spec["board"]["width"]
         self.height = spec["board"]["height"]
         self.ids = [piece["id"] for piece in spec["pieces"]]
@@ -68,6 +77,9 @@ class Oracle:
         self.castle_king = self.ids.index(castling["king"]) if castling else -1
         self.castle_rook = self.ids.index(castling["rook"]) if castling else -1
         self.en_passant = bool(rules.get("en_passant"))
+        wrap = rules.get("wrap") or {}
+        assert set(wrap) <= {"files"} and wrap.get("files", "both") == "both", wrap
+        self.wrap_files = bool(wrap)
         for piece in spec["pieces"]:
             for move in piece["moves"]:
                 assert move["kind"] in ("leap", "slide", "sweep"), move
@@ -78,6 +90,8 @@ class Oracle:
 
     def _step(self, square: int, dx: int, dy: int) -> int | None:
         file, rank = square % self.width + dx, square // self.width + dy
+        if self.wrap_files:
+            file %= self.width
         if 0 <= file < self.width and 0 <= rank < self.height:
             return rank * self.width + file
         return None
@@ -113,6 +127,8 @@ class Oracle:
                         if target is None:
                             continue
                         other = pos.board[target]
+                        if other is None:
+                            self._through(pos, origin, side, target, quiet, takes, (), out)
                         if other is None and quiet:
                             out.append(((origin, target, -1, "plain"), ()))
                         elif other is not None and other[0] != side and takes:
@@ -128,14 +144,19 @@ class Oracle:
                     clears = 0
                     if kind == "sweep":
                         clears = move.get("sweep_range", 0) or reach
-                    square, passed = origin, []
+                    square, passed, visited = origin, [], {origin}
                     for step in range(1, reach + 1):
                         nxt = self._step(square, dx, dy)
-                        if nxt is None:
+                        if nxt is None or nxt in visited:
                             break
+                        visited.add(nxt)
                         square = nxt
                         other = pos.board[square]
                         if step >= least:
+                            if other is None:
+                                self._through(
+                                    pos, origin, side, square, quiet, takes, tuple(passed), out,
+                                )
                             if other is None and quiet:
                                 out.append(((origin, square, -1, "plain"), tuple(passed)))
                             elif other is not None and other[0] != side and takes:
@@ -147,6 +168,21 @@ class Oracle:
                                 break
                             passed.append(square)
         return self._promote(pos, out)
+
+    def _through(
+        self, pos: Position, origin: int, side: int, square: int, quiet: bool, takes: bool,
+        passed: tuple[int, ...], out: list[tuple[Move, tuple[int, ...]]],
+    ) -> None:
+        """SR6e: a landing step onto the empty fold on ``square`` going through to its far end,
+        taking ``passed`` (a sweep's pieces before the fold) and what it lands on."""
+        far = self.folds.get(square)
+        if far is None or far == origin or far in passed:
+            return
+        other = pos.board[far]
+        if other is None and quiet:
+            out.append(((origin, far, -1, "plain"), passed))
+        elif other is not None and other[0] != side and takes:
+            out.append(((origin, far, -1, "plain"), (*passed, far)))
 
     def _promote(
         self, pos: Position, moves: list[tuple[Move, tuple[int, ...]]]
@@ -249,6 +285,18 @@ class Oracle:
                 out.append(move)
         return out
 
+    def legal_taken(self, pos: Position) -> list[tuple[Move, frozenset[int]]]:
+        """Every legal move with the squares it takes from, once each: on a cylinder two
+        rays to one target are two moves where they take different squares, one where they
+        take the same (SR6d)."""
+        out: list[tuple[Move, frozenset[int]]] = []
+        candidates = [*self.pseudo(pos, pos.side), *((m, ()) for m in self.castles(pos))]
+        for move, taken in candidates:
+            key = (move, frozenset(taken))
+            if key not in out and not self.in_check(self.make(pos, move, taken), pos.side):
+                out.append(key)
+        return out
+
     def play(self, pos: Position, move: Move) -> Position:
         for candidate, taken in self.pseudo(pos, pos.side):
             if candidate == move:
@@ -256,10 +304,12 @@ class Oracle:
         return self.make(pos, move)
 
     def perft(self, pos: Position, depth: int) -> int:
-        moves = self.legal(pos)
+        moves = self.legal_taken(pos)
         if depth == 1:
             return len(moves)
-        return sum(self.perft(self.play(pos, move), depth - 1) for move in moves)
+        return sum(
+            self.perft(self.make(pos, move, tuple(taken)), depth - 1) for move, taken in moves
+        )
 
 
 def position_of(board: bytes, side: int, unmoved: int, n_types: int,

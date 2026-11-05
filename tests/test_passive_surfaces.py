@@ -273,10 +273,16 @@ def test_cast_a_gaze_gives_a_type_its_own_capture_geometry() -> None:
     assert effects == {"freeze", "disarm", "shield", "command"}
 
 
-def test_cast_a_gaze_casts_nothing_beside_portals_or_an_explosion() -> None:
+def test_cast_a_gaze_casts_beside_an_explosion_since_sr5b() -> None:
+    """SR5b (V2) lifted the sight beside a blast: every gaze cast on atomic validates."""
     atomic = load_spec(ROOT / "rulesets" / "atomic.json")
+    cast = 0
     for seed in range(6):
-        assert _operator("cast-a-gaze").apply(copy.deepcopy(atomic), random.Random(seed)) is None
+        child = copy.deepcopy(atomic)
+        if _operator("cast-a-gaze").apply(child, random.Random(seed)) is not None:
+            cast += 1
+            assert validate_spec(child) == [], (seed, validate_spec(child))
+    assert cast
 
 
 def test_blind_a_piece_and_widen_a_gaze_cross_back() -> None:
@@ -296,7 +302,8 @@ def test_blind_a_piece_and_widen_a_gaze_cross_back() -> None:
 
 
 def test_an_operator_that_would_be_refused_beside_a_sight_declines() -> None:
-    """A blast is refused beside any sight, and a sweep or a wild piece beside a shield."""
+    """A sweep or a wild piece is refused beside a shield (a blast beside a sight is allowed
+    since SR5b); whatever each operator makes validates."""
     spec = _chess(K=[SHIELDING_KING])
     for name in ("set-the-blast", "sweep-a-slider", "set-a-patrol"):
         for seed in range(6):

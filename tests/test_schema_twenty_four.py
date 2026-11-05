@@ -631,10 +631,12 @@ class TestTheRevisedFoldRules:
         # A fold stands on no square of the board byte: e2 holds the pawn.
         assert compiled.piece_ids[compiled.type_of(compiled.initial_board[12])] == "P"
 
-    def test_10_the_refusals_beside_portals_hold_for_folds(self) -> None:
+    def test_10_the_lifts_beside_portals_hold_for_folds(self) -> None:
+        # P5 (a blast) lifted by SR5h and P6 (territory) by SR5i, for momentum ends and folds
+        # alike (`tests/test_portal_exit_claims.py`).
         spec = fold_pair()
-        spec["rules"]["explode_on_capture"] = {"radius": 1}
-        assert "P5" in refused_ids(validate_spec(spec))
+        spec["rules"]["territory"] = {"mode": "permanent"}
+        assert "P6" not in refused_ids(validate_spec(spec))
 
     def test_a_duplicate_collapses_to_the_direct_move(self) -> None:
         """Along the third rank the rook reaches d3 straight and through b3: one move, the

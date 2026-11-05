@@ -22,13 +22,16 @@ import json
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from math import gcd
+from functools import partial
+from math import atan2, degrees, gcd
 from typing import Any
 
 from chess_variant_sandbox.engine.moves import (
     MOVE_PUSH,
     MOVE_SWEEP,
     move_from,
+    move_ray,
+    move_through,
     move_to,
     move_type,
 )
@@ -45,6 +48,7 @@ from chess_variant_sandbox.spec.schema import (
     STOCK_UNLIMITED,
     WRAP_PAIRS,
     SpecError,
+    _in_the_plane,
     absent_squares,
     beats_of,
     blast_directions,
@@ -100,9 +104,11 @@ from chess_variant_sandbox.spec.schema import (
     reflect_square,
     screen_names_types,
     sight_affected_ids,
+    sight_affects_wild,
     simultaneous_switch,
     spy_ids,
     strike_is_live,
+    sweep_effects,
     sweep_length,
     takes_royal_ids,
     turning_order,
@@ -555,6 +561,14 @@ class StrikeRule:
     # sides (``strike.switches_sides``, Andernach). Empty when no type switches, which is
     # every rule before schema 17, so the boundary sends nothing new for them.
     mover_flips: tuple[bool, ...] = ()
+    # SR6a (W1, the sweep switch): ``sweep_path[mover]`` -- a sweep by that type strikes each
+    # piece it sweeps (``moves[].effects: "path"``), in path order after its landing. Empty
+    # unless some sweeper strikes its path, so every earlier rule sends nothing new.
+    sweep_path: tuple[bool, ...] = ()
+
+    def strikes_path(self, mover: int) -> bool:
+        """SR6a: whether a sweep by ``mover`` strikes the pieces it sweeps."""
+        return bool(self.sweep_path) and self.sweep_path[mover]
 
     @property
     def meets_own(self) -> bool:
@@ -596,6 +610,18 @@ class StrikeRule:
         return row
 
 
+# SR5a (T1, `docs/plan-schema-next.md` §2.4): ``explode_on_capture.strikes`` as the core's
+# bits (`tables.rs` ``BLAST_STRIKES_TARGET``, ``BLAST_STRIKES_VICTIMS``).
+BLAST_STRIKES_TARGET = 1
+BLAST_STRIKES_VICTIMS = 2
+BLAST_STRIKES: dict[str, int] = {
+    "none": 0,
+    "target": BLAST_STRIKES_TARGET,
+    "blast": BLAST_STRIKES_VICTIMS,
+    "both": BLAST_STRIKES_TARGET | BLAST_STRIKES_VICTIMS,
+}
+
+
 @dataclass(frozen=True)
 class ExplosionRule:
     """A capture that destroys its own neighbourhood.
@@ -622,11 +648,31 @@ class ExplosionRule:
     blast: tuple[tuple[int, ...], ...]
     by_types: frozenset[int] | None = None
     of_types: frozenset[int] | None = None
+    # SR5a (T1): ``explode_on_capture.strikes`` as bits, ``BLAST_STRIKES_TARGET`` (the piece
+    # taken) and ``BLAST_STRIKES_VICTIMS`` (the blast's victims); 0 is ``"none"``, the
+    # default, and also wherever the strike compiles to nothing.
+    strikes: int = 0
+    # SR6c (W3, the sweep switch): ``sweep_path[mover]`` -- a sweep by that type sets off a
+    # blast on each swept square whose piece passes ``fires`` (``effects: "path"``). Empty
+    # unless some sweeper's flag is set: a sweep then makes one blast, on its landing.
+    sweep_path: tuple[bool, ...] = ()
+
+    def blasts_path(self, mover: int) -> bool:
+        """SR6c (W3): whether a sweep by ``mover`` blasts each swept square it may."""
+        return bool(self.sweep_path) and self.sweep_path[mover]
 
     @property
     def fires_on_every_capture(self) -> bool:
         """Whether this is atomic's explosion: any capturer, any victim."""
         return self.by_types is None and self.of_types is None
+
+    def fires(self, capturer: int, victim: int) -> bool:
+        """Whether a capture of a ``victim`` type by a ``capturer`` type sets the blast off
+        (``by``, ``of``): the core's ``ExplosionRule::fires``, for the readers that describe
+        a move (its text, the page), never to play one."""
+        return (self.by_types is None or capturer in self.by_types) and (
+            self.of_types is None or victim in self.of_types
+        )
 
 
 @dataclass(frozen=True)
@@ -1203,19 +1249,66 @@ PORTAL_DIRECTIONS: tuple[tuple[int, int], ...] = (
 # transit is judged where the piece comes out -- a pawn's push may come out only onto an
 # empty square and its diagonal only onto a piece it may take.
 MOMENTUM_CAPTURE_SHIFT = 8
+# SR5g (P1): on a hex lattice the twelve hex king's steps, six neighbours across an edge and
+# six diagonals through a corner, in order of their angle in the plane (`_in_the_plane`),
+# counter-clockwise from (1, 0): direction ``d`` points ``30 * d`` degrees round. A move
+# comes out along the one of them nearest the angle it travelled; the masks are twelve bits
+# per mode there (bit ``12 + d`` a capture-mode one), and the exit table twelve wide.
+HEX_PORTAL_DIRECTIONS: tuple[tuple[int, int], ...] = (
+    (1, 0), (1, 1), (0, 1), (-1, 2), (-1, 1), (-2, 1),
+    (-1, 0), (-1, -1), (0, -1), (1, -2), (1, -1), (2, -1),
+)
 
 
-def momentum_bits(step_x: int, step_y: int, mode: int) -> int:
-    """The momentum mask of one landing reached by a step of this sign, under ``mode``."""
-    sign = ((step_x > 0) - (step_x < 0), (step_y > 0) - (step_y < 0))
-    if sign == (0, 0):
+def portal_directions(hex_lattice: bool) -> tuple[tuple[int, int], ...]:
+    """The directions a transit can come out in, on this lattice, in bit order."""
+    return HEX_PORTAL_DIRECTIONS if hex_lattice else PORTAL_DIRECTIONS
+
+
+def momentum_shift(hex_lattice: bool) -> int:
+    """Where a momentum mask's capture-mode bits start: the lattice's direction count."""
+    return len(portal_directions(hex_lattice))
+
+
+def hex_line_offset(step_x: int, step_y: int) -> tuple[int, float]:
+    """SR5g (P1): the hex direction nearest an axial vector's angle in the plane, and how
+    far its angle lies from that direction's, in twelfths of a turn (in [0, 0.5]).
+
+    No lattice vector lies exactly between two of the twelve (15 degrees off one): the
+    plane's ``y`` carries a root 3 the integers never cancel, so the offset never reaches
+    one half. `tests/test_hex_portals.py` asserts it over every vector up to the move bound;
+    `portal_direction` asserts it rather than breaking a tie.
+    """
+    x, y = _in_the_plane((step_x, step_y), True)
+    twelfths = (degrees(atan2(y, x)) % 360) / 30
+    nearest = round(twelfths)
+    return nearest % 12, abs(twelfths - nearest)
+
+
+def portal_direction(step_x: int, step_y: int, hex_lattice: bool = False) -> int:
+    """The direction a piece that travelled ``(step_x, step_y)`` comes out of a portal in.
+
+    On the square lattice the vector's sign (`docs/archive/plan-portals.md` §2.2); on a hex
+    lattice (SR5g, P1) the hex king's step nearest its angle in the plane, so a move along
+    one of the twelve lines continues it and the hex knight comes out diagonally.
+    """
+    if hex_lattice:
+        direction, offset = hex_line_offset(step_x, step_y)
+        assert offset < 0.5 - 1e-9, f"({step_x}, {step_y}) lies between two hex lines"
+        return direction
+    return PORTAL_DIRECTIONS.index(((step_x > 0) - (step_x < 0), (step_y > 0) - (step_y < 0)))
+
+
+def momentum_bits(step_x: int, step_y: int, mode: int, hex_lattice: bool = False) -> int:
+    """The momentum mask of one landing reached by this step, under ``mode``."""
+    if step_x == 0 and step_y == 0:
         return 0
-    direction = PORTAL_DIRECTIONS.index(sign)
+    direction = portal_direction(step_x, step_y, hex_lattice)
     bits = 0
     if mode & MODE_MOVE:
         bits |= 1 << direction
     if mode & MODE_CAPTURE:
-        bits |= 1 << (MOMENTUM_CAPTURE_SHIFT + direction)
+        bits |= 1 << (momentum_shift(hex_lattice) + direction)
     return bits
 
 
@@ -1282,6 +1375,19 @@ class PortalRule:
     # -- and the fold tables (`FoldRule`), ``None`` where no group is a fold.
     kinds: tuple[str, ...] = ()
     folds: FoldRule | None = None
+    # SR5i (`docs/plan-schema-next.md` §2.10 P7): ``stand[player][type][square]``, whether a
+    # piece of that type moving as that player's may come out there (its ``region``, the
+    # second player's reflected): a transit's exit or a go-through's far square outside it
+    # is a blocked exit, no move, as a wall is. ``()`` whole unless some type has a region,
+    # and ``()`` for a type without one, so no game without a region moves.
+    stand: tuple[tuple[tuple[bool, ...], ...], ...] = ()
+
+    def may_stand(self, player: int, piece_type: int, square: int) -> bool:
+        """Whether ``player``'s piece of ``piece_type`` may come out on ``square`` (SR5i)."""
+        if not self.stand:
+            return True
+        row = self.stand[player][piece_type]
+        return not row or row[square]
 
     def is_end(self, piece_type: int) -> bool:
         return piece_type in self.end_types
@@ -1642,6 +1748,12 @@ SIGHT_SHIELD = 4
 # ``SIGHT_COMMAND`` alone or with ``SIGHT_COMMAND_OWN``.
 SIGHT_COMMAND = 8
 SIGHT_COMMAND_OWN = 16
+# SR5c (V1, ruled 2026-10-27: *a momentum end stops a sight as a wall does*): a sight path
+# entry with this bit set is an aura's square between its source and the square it sees, in a
+# game with momentum portals: open unless a portal end stands there (an aura sees past
+# pieces). The core's `SIGHT_PATH_AURA`; a ray's path never carries it, and no game without
+# a momentum end writes it, so every other game's tables are unmoved.
+SIGHT_PATH_AURA = 1 << 15
 SIGHT_BITS = {
     "freeze": SIGHT_FREEZE, "disarm": SIGHT_DISARM, "shield": SIGHT_SHIELD,
     "command": SIGHT_COMMAND,
@@ -1652,7 +1764,8 @@ SIGHT_BITS = {
 # type and the square seen. The source's piece stands on ``origin`` (the byte equal to
 # ``piece_value``) and every square of ``path`` is empty: then the effect binds. A ray's path
 # is the squares between the source and the seen square, those nearer than ``min_range``
-# included; an aura's is empty.
+# included; an aura's is empty, or beside momentum portals its squares marked
+# `SIGHT_PATH_AURA` (SR5c), which only a portal end closes.
 SightSource = tuple[int, int, int, tuple[int, ...]]
 # One forward line: ``(entry number, squares, seen)``, ``seen[i]`` false for a square nearer
 # than ``min_range`` (not seen, but it still stops a ray).
@@ -1662,12 +1775,15 @@ SightLine = tuple[int, tuple[int, ...], tuple[bool, ...]]
 @dataclass(frozen=True)
 class SightEntry:
     """One compiled line of sight of a type: its effect's bit, ``whose`` as written, the
-    affected types as a mask over declared types, and whether it is an aura."""
+    affected types as a mask over declared types, and whether it is an aura. ``tame``
+    (generation 84, SR5f, V11) is the mask of the wild types and the duck it names
+    (`schema.sight_affects_wild`), 0 for a sight that names none."""
 
     effect: int
     whose: str
     affects: int
     through: bool
+    tame: int = 0
 
 
 @dataclass(frozen=True)
@@ -1685,7 +1801,8 @@ class SightRule:
       (`Game::effects_at`): every source whose effect could bind ``player``'s piece of
       ``piece_type`` standing on ``square``. Filed by the affected type, so a walk reads only
       the sources that affect what stands there (Q999a's benches: Madrasi's sights each affect
-      one type).
+      one type). Generation 84 (SR5f, V11): a third block, ``sources[WILD]``, the sources
+      that bind a wild piece or the duck, only where a sight names a wild type (``tamed``).
     * ``has_shield`` -- whether any sight shields.
     * ``has_restraint`` -- whether any sight freezes or disarms.
     * ``has_command`` -- whether any sight commands (Q1007c): the core then walks the
@@ -1705,6 +1822,25 @@ class SightRule:
     bears_on_check: bool
     has_command: bool = False
 
+    @property
+    def tamed(self) -> bool:
+        """Generation 84 (SR5f, V11): whether a sight names a wild type or the duck, so the
+        sources hold a third block, ``WILD``'s."""
+        return len(self.sources) > 2
+
+
+def _sight_path(
+    ray: tuple[int, ...], index: int, through: bool, momentum: bool
+) -> tuple[int, ...]:
+    """The path a source seeing ``ray[index]`` needs open: a ray's squares before it, empty;
+    an aura's none, or, beside momentum portals (SR5c), its squares before it marked
+    `SIGHT_PATH_AURA`, which only a portal end closes."""
+    if not through:
+        return ray[:index]
+    if momentum:
+        return tuple(square | SIGHT_PATH_AURA for square in ray[:index])
+    return ()
+
 
 def _compile_sights(
     spec: dict[str, Any],
@@ -1723,6 +1859,7 @@ def _compile_sights(
     radius: int,
     royal_types: tuple[int, ...],
     multi_royal: bool,
+    momentum: bool = False,
 ) -> SightRule | None:
     """`SightRule` for a spec whose types declare a sight, ``None`` otherwise (§3.1's inert
     default: no table, and the core never enters a sight branch).
@@ -1730,7 +1867,13 @@ def _compile_sights(
     A sight's squares are those a slide of its geometry lands on (§2.2), so each entry is
     compiled as a one-descriptor slide by `_compile_square_full`, which decides every step
     (walls, the edge, absent cells, wrap and the hex lattice); a wrapped line stops on a square
-    already visited, so a piece never sees itself."""
+    already visited, so a piece never sees itself.
+
+    SR5c (V1): beside ``momentum`` portals an aura's path is the squares between its source and
+    the square it sees, each marked `SIGHT_PATH_AURA`, so a portal end standing on one stops it
+    as a wall would (a ray's path stops it already: an end is a board byte). A fold is floor to
+    a sight; what a line sees through one is the core's (`Game::effects_at`), since a fold
+    stands on no board byte."""
     sights = piece_sights(spec)
     if not sights:
         return None
@@ -1738,22 +1881,33 @@ def _compile_sights(
     declared = [piece["id"] for piece in spec["pieces"]]
     royal_ids = {pieces[royal]["id"] for royal in royal_types}
     entries: list[tuple[SightEntry, ...]] = []
+    # Generation 84 (SR5f, V11): per entry, the wild types and the duck it names
+    # (`sight_affects_wild`), which the sources file under a third side, `WILD`, only where
+    # some entry names one, so no other game's tables move.
+    tames: list[tuple[int, ...]] = []
     for piece in pieces:
         row: list[SightEntry] = []
+        tame_row: list[int] = []
         for sight in sights.get(piece["id"], ()):
             mask = 0
             for pid in sight_affected_ids(sight, declared, rules, royal_ids):
                 mask |= 1 << index_of[pid]
+            tame = 0
+            for pid in sight_affects_wild(sight, rules):
+                tame |= 1 << index_of[pid]
             effect = SIGHT_BITS[sight.effect]
             if sight.captures_own:
                 effect |= SIGHT_COMMAND_OWN
-            row.append(SightEntry(effect, sight.whose, mask, sight.through))
+            row.append(SightEntry(effect, sight.whose, mask, sight.through, tame))
+            tame_row.append(tame)
         entries.append(tuple(row))
+        tames.append(tuple(tame_row))
+    tamed = any(any(row) for row in tames)
 
     n_frames = 2 * n_facings
     lines: list[list[list[tuple[SightLine, ...]]]] = []
     sources: list[list[list[list[SightSource]]]] = [
-        [[[] for _ in range(n_squares)] for _ in range(n_types)] for _ in range(2)
+        [[[] for _ in range(n_squares)] for _ in range(n_types)] for _ in range(3 if tamed else 2)
     ]
     for frame in range(n_frames):
         player, facing = divmod(frame, n_facings)
@@ -1791,13 +1945,19 @@ def _compile_sights(
                     for index, square in enumerate(ray):
                         if not seen[index]:
                             continue
-                        path = () if entry.through else ray[:index]
+                        path = _sight_path(ray, index, entry.through, momentum)
                         for side in affected:
                             for victim in range(n_types):
                                 if entry.affects >> victim & 1:
                                     sources[side][victim][square].append(
                                         (origin, piece_value, entry.effect, path)
                                     )
+                        tame = tames[piece_type][number]
+                        for victim in range(n_types):
+                            if tame >> victim & 1:
+                                sources[WILD][victim][square].append(
+                                    (origin, piece_value, entry.effect, path)
+                                )
             frame_lines.append(type_lines)
         lines.append(frame_lines)
 
@@ -1817,6 +1977,9 @@ def _compile_sights(
     listed_duck = rules.get("duck") if isinstance(rules, dict) else None
     if isinstance(listed_duck, dict):
         wild_ids.add(listed_duck.get("piece"))
+    # Generation 84 (SR5f, V15): a piece nobody owns stands in the same block at facing 0
+    # and sees as a wild piece does.
+    wild_ids |= nobodys_ids(spec)
     wild_seeing = [
         piece_type for piece_type, piece in enumerate(pieces)
         if piece["id"] in wild_ids and sights.get(piece["id"])
@@ -1848,13 +2011,19 @@ def _compile_sights(
                     for index, square in enumerate(ray):
                         if not seen[index]:
                             continue
-                        path = () if entry.through else ray[:index]
+                        path = _sight_path(ray, index, entry.through, momentum)
                         for side in (0, 1):
                             for victim in range(n_types):
                                 if entry.affects >> victim & 1:
                                     sources[side][victim][square].append(
                                         (origin, piece_value, entry.effect, path)
                                     )
+                        tame = tames[piece_type][number]
+                        for victim in range(n_types):
+                            if tame >> victim & 1:
+                                sources[WILD][victim][square].append(
+                                    (origin, piece_value, entry.effect, path)
+                                )
         lines.append(wild_lines)
 
     royal_mask = 0
@@ -2200,6 +2369,10 @@ class CompiledSpec:
     # Schema 13: whether any piece sweeps. False keeps every boundary key of the fourth
     # table empty, which is what keeps earlier rulesets' fingerprints where they were.
     has_sweep: bool = False
+    # SR6d (W6): two sweep rays of one slot reach one square along different paths (round a
+    # seam), so a ``MOVE_SWEEP`` word names its ray (``moves.move_ray``); `_reaches_one_square_
+    # two_ways`. Crosses nothing: `Tables::sweep_rays` derives the same answer at load.
+    sweep_rays: bool = False
 
     # Q281a2 (unreachable until the gate, `docs/reference/hex-build-plan.md` *Q281a2*):
     # a hexagon's frame cells folded into ``obstacles`` above, kept apart too so the
@@ -2310,17 +2483,32 @@ class CompiledSpec:
             return False
         return not self.facing_turns or self.facing_turns[piece_type]
 
-    def sweep_path(self, board: bytes, origin: int, target: int) -> tuple[int, ...]:
-        """The squares a sweep from ``origin`` to ``target`` passes over, in ray order.
+    def sweep_path(self, board: bytes, move: int) -> tuple[int, ...]:
+        """The squares the sweep ``move`` passes over, in ray order.
 
-        Read off the fourth table for the piece standing on ``origin``, as
-        `Tables::sweep_path` reads it in the core. Empty when none of its sweeps reaches
-        ``target``: one ray reaches one target, because ``wrap`` is refused beside a sweep.
+        Read off the fourth table for the piece standing on its origin, as
+        `Tables::sweep_path` reads it in the core: the ray the word names where
+        ``sweep_rays`` (SR6d), else the first ray that reaches its target (one does, where
+        no two rays meet). Empty when that ray does not reach the target.
+
+        SR6e (W8): a sweep through a fold (``move_through``) names its ray in any game, and
+        its path is that ray's squares before the fold; its target is the far end.
         """
+        origin, target = move_from(move), move_to(move)
         value = board[origin]
         if not self.has_sweep or not value:
             return ()
-        for ray, *_ in self.sweeps[self.frame_at(value)][self.type_of(value)][origin]:
+        entries = self.sweeps[self.frame_at(value)][self.type_of(value)][origin]
+        through = move_through(move)
+        if through:
+            ray_index = move_ray(move)
+            if ray_index >= len(entries):
+                return ()
+            return tuple(entries[ray_index][0][: through - 1])
+        if self.sweep_rays:
+            ray_index = move_ray(move)
+            entries = entries[ray_index : ray_index + 1]
+        for ray, *_ in entries:
             if target in ray:
                 return ray[: ray.index(target)]
         return ()
@@ -2338,7 +2526,7 @@ class CompiledSpec:
             return ()
         return tuple(
             (square, board[square])
-            for square in self.sweep_path(board, move_from(move), move_to(move))
+            for square in self.sweep_path(board, move)
             if board[square]
         )
 
@@ -2631,11 +2819,13 @@ def _compile_frames(
     has_portals: bool,
     share: _Frames | None,
     push: bool = False,
+    hex_lattice: bool = False,
 ) -> _Frames | None:
     """Every piece's entries on every square, one pass per *frame*.
 
     A frame is (player, facing) flattened player-major, so with nothing facing it is the
-    player and this runs twice, exactly as it did before frames had a name.
+    player and this runs twice, exactly as it did before frames had a name. ``hex_lattice``
+    reads the momentum masks in the hex lattice's twelve directions (SR5g).
 
     ``share`` is another spec's frames (`compile_two_readings`). Where its inputs equal
     these, the first player's frames are taken from it, and the second player's are
@@ -2645,7 +2835,7 @@ def _compile_frames(
     """
     inputs = (
         pieces, n_facings, width, height, wrap, obstacles, blocks_leaps, radius,
-        has_portals, push,
+        has_portals, push, hex_lattice,
     )
     shared = share if share is not None and share.inputs == inputs else None
     frames = _Frames(inputs, [], [], [], [], [], [], [], [], [])
@@ -2687,6 +2877,7 @@ def _compile_frames(
                     radius,
                     momentum=has_portals,
                     push_out=push_at,
+                    hex_lattice=hex_lattice and has_portals,
                 )
                 type_push.append(push_at[0] if push_at else ((), (), ()))
                 type_leaps.append(built[0])
@@ -2793,6 +2984,7 @@ def _compile(
         ),
         n_facings, n_squares, width, height, orientation, wrap, obstacles,
         blocks_leaps, radius, has_portals, share, push=has_push,
+        hex_lattice=board_spec.get("lattice", "square") == "hex",
     )
     if frames is None:
         return None, None
@@ -2890,6 +3082,8 @@ def _compile(
     )
     if strike is None:
         strike = _compile_contacts(rules.get("contacts"), index_of, n_types, landing, wild=wild)
+    if strike is not None:
+        strike = _settle_sweep_path(strike, pieces, index_of)
     drops = _compile_drops(
         rules.get("drops"), index_of, n_types, width, height, orientation, obstacles,
         pieces,
@@ -2912,6 +3106,7 @@ def _compile(
         facing_axes=facing_axes,
         kinds_out=attack_kinds,
         held_takers=neutrals.takes_royal if neutrals is not None else (),
+        capture_shift=momentum_shift(board_spec.get("lattice", "square") == "hex"),
     )
     one_way_types = _one_way_types(
         leaps,
@@ -2933,11 +3128,15 @@ def _compile(
             (leap_dirs, slide_dirs, hop_dirs), attack_dirs or [], zob_bar,
             piece_ids[:declared_types],
             tuple(piece["id"] for piece in movement),
+            hex_lattice=board_spec.get("lattice", "square") == "hex", radius=radius,
         )
         if has_folds:
             portals = replace(portals, folds=FoldRule(
                 starts=_fold_starts(rules, width, height), zobrist=zob_fold,
             ))
+        stand = _portal_stand(pieces, width, height, orientation)
+        if stand:
+            portals = replace(portals, stand=stand)
         # Any type that can go in by a portal can come back to a square it left -- a pawn
         # through a pair that runs down the board -- so no type some end admits is one-way
         # (`docs/archive/plan-portals.md` §2.6). Without this a pawn move would clear the
@@ -2965,6 +3164,7 @@ def _compile(
             for type_sweeps in frame_sweeps
             for entries in type_sweeps
         ),
+        sweep_rays=_reaches_one_square_two_ways(sweeps),
         width=width,
         height=height,
         lattice=board_spec.get("lattice", "square"),
@@ -3047,9 +3247,12 @@ def _compile(
             bool(rules.get("promote_on_entry", False)), promotions, n_types, width, height
         ),
         drops=drops,
-        explosion=_compile_explosion(
-            rules.get("explode_on_capture"), index_of, width, height, wrap, obstacles, radius,
-            duck_piece(rules),
+        explosion=_settle_sweep_blast(
+            _compile_explosion(
+                rules.get("explode_on_capture"), index_of, width, height, wrap, obstacles,
+                radius, duck_piece(rules), strike, frozenset(range(declared_types, n_types)),
+            ),
+            pieces, index_of, n_types,
         ),
         must_capture=bool(rules.get("must_capture", False)),
         forbid_immobility=bool(rules.get("forbid_immobility", False)),
@@ -3101,6 +3304,9 @@ def _compile(
         sight=_compile_sights(
             spec, pieces, index_of, n_types, n_facings, facing_axes, n_squares, width, height,
             orientation, wrap, obstacles, blocks_leaps, radius, royal_types, multi_royal,
+            momentum=has_portals and not all(
+                group["kind"] == "fold" for group in portal_groups(rules)
+            ),
         ),
         pounce=_compile_pounce(
             rules, index_of, tuple(float(p.get("value", 1)) for p in pieces), attack_sources,
@@ -3519,6 +3725,7 @@ def _compile_square_full(
     radius: int = 0,
     momentum: bool = False,
     push_out: list[PushSteps] | None = None,
+    hex_lattice: bool = False,
 ) -> tuple[_Built, tuple[_Momentum, _Momentum, _Momentum]]:
     """Build the four entry lists for one piece type standing on one square.
 
@@ -3527,7 +3734,8 @@ def _compile_square_full(
     (`momentum_bits`): the direction a piece comes out of a portal in. It then leaves the
     overlap resolution out (`_resolve_overlaps`), so every landing keeps the direction it
     was reached by and the runtime uniqueness pass folds the duplicates instead: on a seam
-    a leap and a slide can reach one square from opposite sides.
+    a leap and a slide can reach one square from opposite sides. ``hex_lattice`` (SR5g, P1)
+    reads each direction as the hex king's step nearest its angle (`portal_direction`).
 
     ``push_out`` (Q1074b1, a push game) receives the step a pushed piece takes from every
     landing (`PushSteps`, parallel to the leaps, slides and hops returned), in the board's
@@ -3665,7 +3873,7 @@ def _compile_square_full(
             ):
                 turning_entries.append((squares, path_modes, requires_unmoved))
                 turning_momentum.append(tuple(
-                    momentum_bits(*steps[index], m) if m else 0
+                    momentum_bits(*steps[index], m, hex_lattice) if m else 0
                     for index, m in zip(used, path_modes, strict=True)
                 ))
             continue
@@ -3728,7 +3936,9 @@ def _compile_square_full(
                     )
                 if momentum:
                     signs = leap_momentum.setdefault(requires_unmoved, {})
-                    signs[target] = signs.get(target, 0) | momentum_bits(step_x, step_y, mode)
+                    signs[target] = signs.get(target, 0) | momentum_bits(
+                        step_x, step_y, mode, hex_lattice,
+                    )
                 continue
 
             if kind == "lame":
@@ -3749,9 +3959,10 @@ def _compile_square_full(
                     lame_push.append(tuple(
                         lame_step if at_mode & MODE_PUSH else None for at_mode in path_modes
                     ))
-                    lame_momentum.append(
-                        tuple(momentum_bits(step_x, step_y, m) if m else 0 for m in path_modes)
-                    )
+                    lame_momentum.append(tuple(
+                        momentum_bits(step_x, step_y, m, hex_lattice) if m else 0
+                        for m in path_modes
+                    ))
                 continue
 
             # Q1063: a sweep's slot for the screen range holds its sweep length (0 for a
@@ -3845,7 +4056,7 @@ def _compile_square_full(
         )
         if not any(entry[1]):
             continue
-        ray_signs = tuple(momentum_bits(step_x, step_y, mode) for mode in entry[1])
+        ray_signs = tuple(momentum_bits(step_x, step_y, mode, hex_lattice) for mode in entry[1])
         ray_steps = tuple(
             ray_push.get(key, {}).get(index) if mode & MODE_PUSH else None
             for index, mode in enumerate(entry[1])
@@ -4135,6 +4346,25 @@ def _resolve_overlaps(
     return tuple(leaps), tuple(slides), tuple(hops), tuple(sweeps)
 
 
+def _reaches_one_square_two_ways(sweeps: list[list[list[tuple[SweepEntry, ...]]]]) -> bool:
+    """SR6d (W6): whether two sweep rays of one slot reach one square along different paths.
+
+    `Tables::sweep_rays` derives the same answer from the same table at load. Two rays along
+    one vector that differ only in their length (Q1063) share every prefix, and reach no
+    square two ways.
+    """
+    for frame in sweeps:
+        for type_sweeps in frame:
+            for entries in type_sweeps:
+                paths: dict[int, tuple[int, ...]] = {}
+                for ray, *_ in entries:
+                    for index, square in enumerate(ray):
+                        path = tuple(ray[:index])
+                        if paths.setdefault(square, path) != path:
+                            return True
+    return False
+
+
 def _needs_runtime_dedup(
     leaps: tuple[Entry, ...],
     slides: tuple[Entry, ...],
@@ -4199,6 +4429,7 @@ def _build_attack_sources(
     facing_axes: tuple[int, ...] = (),
     kinds_out: list[list[list[int]]] | None = None,
     held_takers: tuple[int, ...] = (),
+    capture_shift: int = MOMENTUM_CAPTURE_SHIFT,
 ) -> tuple[tuple[tuple[AttackSource, ...], ...], ...]:
     """Invert the move tables into "who could attack this square?".
 
@@ -4243,7 +4474,7 @@ def _build_attack_sources(
         player: int, target: int, source: AttackSource, sign: int = 0, mode: int = MODE_CAPTURE
     ) -> None:
         table[player][target].append(source)
-        dirs[player][target].append(sign >> MOMENTUM_CAPTURE_SHIFT)
+        dirs[player][target].append(sign >> capture_shift)
         kinds[player][target].append(
             (ATTACK_BY_CAPTURE if mode & MODE_CAPTURE else 0)
             | (ATTACK_BY_PUSH if mode & MODE_PUSH_ENEMY else 0)
@@ -5615,6 +5846,8 @@ def _compile_explosion(
     obstacles: frozenset[int] = frozenset(),
     hex_radius: int = 0,
     duck: str | None = None,
+    strike: StrikeRule | None = None,
+    portal_ends: frozenset[int] = frozenset(),
 ) -> ExplosionRule | None:
     if not explosion:
         return None
@@ -5678,11 +5911,19 @@ def _compile_explosion(
     immune = {index_of[p] for p in explosion.get("immune", [])}
     if duck is not None:
         immune.add(index_of[duck])
+    # SR5h (P5, ruled 2026-10-28): a portal end in a blast stands, since a portal is never
+    # captured. A momentum end is a board byte, so its type joins the immune set as the
+    # duck's does; a fold stands on no byte, so the piece standing in it goes and it stays.
+    # Every end's type, folds' too, so the core can check the set whole (`portal_tables`).
+    immune |= portal_ends
     return ExplosionRule(
         immune_types=frozenset(immune),
         blast=tuple(blast),
         by_types=by,
         of_types=of,
+        # SR5a (T1): what the strike reaches of an exploding capture; nothing where no strike
+        # compiled (the validator refuses a value but "none" without a live strike).
+        strikes=BLAST_STRIKES[explosion.get("strikes", "none")] if strike is not None else 0,
     )
 
 
@@ -5830,6 +6071,63 @@ def _compile_strike(
             rebirth=_compile_rebirth(board, width, n_facings, hex_lattice, n_types, nobodys),
         )
     return rule
+
+
+def _settle_sweep_path(
+    strike: StrikeRule, pieces: Sequence[Any], index_of: dict[str, int],
+) -> StrikeRule:
+    """SR6a (W1, `docs/plan-schema-next.md` §2.6): the sweep switch read into the strike.
+
+    A type's flag is set where its sweeps say ``effects: "path"`` (`schema.sweep_effects`,
+    one value per piece) and its row of the table strikes something (a link, or circe's
+    rebirth): a sweep whose every swept piece would be removed anyway is the game under
+    ``"landing"`` and compiles to it. Empty unless some type's flag is set.
+
+    SR6b (W2): a contact table's row counts its four arrays, since a swept meeting may keep
+    its target (``onto_to``, an enemy's or by an ``own`` link) or change the mover
+    (``mover_to``, applied once).
+    """
+    n = strike.n_types
+    flags = [False] * n
+    for piece in pieces:
+        pid = piece.get("id") if isinstance(piece, dict) else None
+        if pid not in index_of or sweep_effects(piece) != "path":
+            continue
+        mover = index_of[pid]
+        row = slice(mover * n, (mover + 1) * n)
+        flags[mover] = any(
+            target >= 0
+            for table in (strike.onto_to, strike.mover_to, strike.own_onto_to, strike.own_mover_to)
+            for target in table[row]
+        )
+    if not any(flags):
+        return strike
+    return replace(strike, sweep_path=tuple(flags))
+
+
+def _settle_sweep_blast(
+    explosion: ExplosionRule | None, pieces: Sequence[Any], index_of: dict[str, int],
+    n_types: int,
+) -> ExplosionRule | None:
+    """SR6c (W3, `docs/plan-schema-next.md` §2.6): the sweep switch read into the blast.
+
+    A type's flag is set where its sweeps say ``effects: "path"`` (`schema.sweep_effects`)
+    and its captures can set the blast off (``by`` absent or naming it): a sweeper outside
+    ``by`` sets off no blast under either value, and compiles to ``"landing"``. Empty unless
+    some type's flag is set.
+    """
+    if explosion is None:
+        return None
+    flags = [False] * n_types
+    for piece in pieces:
+        pid = piece.get("id") if isinstance(piece, dict) else None
+        if pid not in index_of or sweep_effects(piece) != "path":
+            continue
+        mover = index_of[pid]
+        flags[mover] = explosion.by_types is None or mover in explosion.by_types
+    if not any(flags):
+        return explosion
+    return replace(explosion, sweep_path=tuple(flags))
 
 
 def _compile_rebirth(
@@ -6042,32 +6340,67 @@ def _apply_portal_immunity(
     )
 
 
+def _leaves_for(wrap: WrapRule, player: int, side: str) -> bool:
+    """``wrap.may_leave`` for one player, as `_land`'s ``permitted`` takes it."""
+    return wrap.may_leave(side, player)
+
+
 def _portal_exits(
-    width: int, height: int, wrap: WrapRule | None, obstacles: frozenset[int]
+    width: int, height: int, wrap: WrapRule | None, obstacles: frozenset[int],
+    hex_lattice: bool = False, radius: int = 0,
 ) -> tuple[tuple[tuple[int, ...], ...], ...]:
     """``[player][square][direction]`` -> the square one king's step away, or -1.
 
     Through `_land`, the one place a step is landed, under each player's own wrap
-    permission (a move reads the mover's): off the board or onto a wall is -1. Portals are
-    refused on a hexagon, so this is the grid reading.
+    permission (a move reads the mover's): off the board or onto a wall (or a hexagon's
+    absent cell, among the obstacles) is -1. The directions are the lattice's
+    (`portal_directions`): the square's eight, or on a hex lattice (SR5g, P1) the twelve hex
+    king's steps, landed on a hexagon through its seams as a move is (``radius``).
     """
     exits: list[tuple[tuple[int, ...], ...]] = []
     for player in (0, 1):
         low_file, high_file = wrap.files[player] if wrap else (False, False)
         low_rank, high_rank = wrap.ranks[player] if wrap else (False, False)
+        permitted: Callable[[str], bool] | None = None
+        if radius and wrap is not None:
+            permitted = partial(_leaves_for, wrap, player)
         per_square: list[tuple[int, ...]] = []
         for square in range(width * height):
             file, rank = square % width, square // width
             row: list[int] = []
-            for step_x, step_y in PORTAL_DIRECTIONS:
+            for step_x, step_y in portal_directions(hex_lattice):
                 landed = _land(
                     file + step_x, rank + step_y, width, height,
-                    low_file, high_file, low_rank, high_rank,
+                    low_file, high_file, low_rank, high_rank, radius, permitted,
                 )
                 row.append(-1 if landed is None or landed in obstacles else landed)
             per_square.append(tuple(row))
         exits.append(tuple(per_square))
     return tuple(exits)
+
+
+def _portal_stand(
+    pieces: list[dict[str, Any]], width: int, height: int, orientation: str
+) -> tuple[tuple[tuple[bool, ...], ...], ...]:
+    """SR5i (P7): `PortalRule.stand`, each type's region per player as a square mask.
+
+    ``()`` for a type without a region, and ``()`` whole when no type has one. The region is
+    `_region_squares`', the one the movement tables confine a landing to, so an exit reads
+    the region exactly as an ordinary landing does.
+    """
+    if not any(piece.get("region") for piece in pieces):
+        return ()
+    n_squares = width * height
+    return tuple(
+        tuple(
+            () if confine is None else tuple(square in confine for square in range(n_squares))
+            for piece in pieces
+            for confine in [
+                _region_squares(piece.get("region"), player, width, height, orientation)
+            ]
+        )
+        for player in range(2)
+    )
 
 
 def _compile_portals(
@@ -6083,6 +6416,8 @@ def _compile_portals(
     zobrist_bar: tuple[int, ...] = (),
     declared_ids: tuple[str, ...] = (),
     movement_ids: tuple[str, ...] = (),
+    hex_lattice: bool = False,
+    radius: int = 0,
 ) -> PortalRule:
     """``rules.portals`` resolved into the tables `PortalRule` describes.
 
@@ -6142,7 +6477,7 @@ def _compile_portals(
         admits=tuple(admits),
         carried=tuple(carried),
         movers=tuple(movers),
-        exits=_portal_exits(width, height, wrap, obstacles),
+        exits=_portal_exits(width, height, wrap, obstacles, hex_lattice, radius),
         leap_dirs=_freeze(leap_dirs),
         slide_dirs=_freeze(slide_dirs),
         hop_dirs=_freeze(hop_dirs),

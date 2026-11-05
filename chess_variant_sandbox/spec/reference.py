@@ -190,6 +190,7 @@ DEFAULTS: dict[str, str] = {
     "pieces[].moves[].screen_range": "`0`",
     "pieces[].moves[].sweep_range": "the move's `range`: the sweep clears every square it moves over",
     "pieces[].moves[].path": "`\"straight\"`, every step the same direction",
+    "pieces[].moves[].effects": "`\"landing\"`: a strike or a contact acts on the landing square's capture alone, and a blast goes off once, on the landing square",
     "pieces[].moves[].legs": "absent: a lame is blocked on one computed square, a step along "
     "its longer axis or an even diagonal's midpoint",
     "pieces[].moves[].condition.first_move": "`false`",

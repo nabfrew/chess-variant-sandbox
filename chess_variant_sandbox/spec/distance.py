@@ -101,6 +101,9 @@ _SCALES: dict[str, float] = {
     # Q1063. A sweep that clears only its first steps and slides on past them; without this
     # it and the sweep that clears its whole line read as one game.
     "short_sweep_share": 1.0,
+    # SR6a (W1). A sweep that strikes its whole path (`effects: "path"`); without this it and
+    # the sweep that strikes its landing alone read as one game.
+    "path_sweep_share": 1.0,
     # Q1007a (`docs/archive/plan-schema-31.md` §2.5). A lame move with a `range` other than 1 rides,
     # jump after jump; without this a lame rider and the single lame leap it was written from
     # read as one game (every other count is equal), and the loop would skip the tournament.
@@ -245,6 +248,10 @@ _SCALES: dict[str, float] = {
     # SR1b (`docs/plan-schema-next.md` §1 rank 2): a blast of a stated shape (a cross, a
     # file) is not atomic's box; without this the two would read as distance zero.
     "explodes_shaped": 1.0,
+    # SR5a (T1): a blast that strikes the piece taken, or its victims, beside a strike; without
+    # these a switch at "target" and at "blast" would read as distance zero from "none".
+    "explodes_striking_target": 1.0,
+    "explodes_striking_blast": 1.0,
     # Two, for the same reason the strike has three. A rule with a cost but no feature
     # collides with every other rule of the same cost, and two specs then report distance
     # zero -- which makes the loop skip a tournament it should have run. `turns_freely`
@@ -529,6 +536,11 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         "short_sweep_share": sum(
             1 for piece in pieces for move in piece.get("moves", []) or []
             if sweep_length(move)
+        ) / total_moves,
+        "path_sweep_share": sum(
+            1 for piece in pieces for move in piece.get("moves", []) or []
+            if isinstance(move, dict) and move.get("kind") == "sweep"
+            and move.get("effects") == "path"
         ) / total_moves,
         "legs_share": sum(
             1 for piece in pieces for move in piece.get("moves", []) or []
@@ -1183,7 +1195,8 @@ def _explosion_features(explosion: Any) -> dict[str, float]:
     """
     absent = {
         "explodes": 0.0, "explodes_selectively": 0.0, "explodes_alone": 0.0,
-        "explodes_shaped": 0.0,
+        "explodes_shaped": 0.0, "explodes_striking_target": 0.0,
+        "explodes_striking_blast": 0.0,
     }
     if not isinstance(explosion, dict) or not explosion:
         return absent
@@ -1200,6 +1213,10 @@ def _explosion_features(explosion: Any) -> dict[str, float]:
         "explodes_selectively": 1.0 if narrowed else 0.0,
         "explodes_alone": 1.0 if explosion.get("radius", 1) == 0 else 0.0,
         "explodes_shaped": 1.0 if "blast" in explosion else 0.0,
+        "explodes_striking_target": (
+            1.0 if explosion.get("strikes") in ("target", "both") else 0.0
+        ),
+        "explodes_striking_blast": 1.0 if explosion.get("strikes") in ("blast", "both") else 0.0,
     }
 
 

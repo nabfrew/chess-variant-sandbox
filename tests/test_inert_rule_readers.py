@@ -55,7 +55,7 @@ CLAUSES: dict[int, tuple[str, frozenset[str]]] = {
     3: ("must_capture where nothing can be taken", frozenset({"must_capture"})),
     4: ("explode_on_capture where nothing can be taken", frozenset({
         "has_explosion", "explosion_immune", "explosion_blast", "explosion_blast_index",
-        "explosion_by", "explosion_of",
+        "explosion_by", "explosion_of", "explosion_strikes", "explosion_sweep_path",
     })),
     5: ("drops where nothing can be taken", frozenset({
         "has_drops", "drops_from_captures", "drops_regions", "drops_no_doubled",
@@ -97,6 +97,8 @@ MEMBERS: dict[str, frozenset[str]] = {
     "explosion_blast_index": frozenset({"explosion"}),
     "explosion_by": frozenset({"explosion"}),
     "explosion_of": frozenset({"explosion"}),
+    "explosion_strikes": frozenset({"explosion"}),
+    "explosion_sweep_path": frozenset({"explosion"}),
     "has_drops": frozenset({"drops"}),
     "drops_from_captures": frozenset({"drops"}),
     "drops_regions": frozenset({"drops"}),
@@ -156,6 +158,10 @@ READERS: dict[str, dict[str, str]] = {
     "explosion": {
         "game.rs::write_blast": "`make`'s phase (CS8): the blast, behind `captured != 0`, which no move reaches when "
         "nothing can be taken",
+        "game.rs::blast_sets_off": "SR5a: whether a capture explodes, behind `captured != 0`, which "
+        "no move reaches when nothing can be taken",
+        "game.rs::blast_strikes": "SR5a: a blast's struck pieces, reached only from a blast, so "
+        "only from a capture",
         "game.rs::leaves_royal_attacked": "the blast in the legality filter, behind an "
         "occupied target, and who is capturing; neither exists without a capture",
         "game.rs::generate_checked": "refuses the pin shortcut; the same verdict by the slower "
@@ -164,7 +170,19 @@ READERS: dict[str, dict[str, str]] = {
         "**Evaluator, not rules**: with no capture the term's premise is gone anyway; "
         "re-read this site if case 4 is ever re-proven",
         "rounds.rs::blasts": "schema 26's blast (§4 step 6), over the round's captures, of "
-        "which there are none when nothing can be taken",    },
+        "which there are none when nothing can be taken",
+        "game.rs::write_board": "SR6c: sends a `MOVE_SWEEP` to the sweep's blasts; a sweep is "
+        "`MOVE_SWEEP` only where its path held a piece the sweeper may capture (one it may not "
+        "blocks), so no such move exists when nothing can be taken",
+        "game.rs::write_sweep_blast": "SR6c: a sweep's blasts, reached only from a `MOVE_SWEEP`, "
+        "so only from a capture",
+        "game.rs::sweep_blast_centres": "SR6c: where a sweep's blasts go, asked only of a "
+        "`MOVE_SWEEP`, so only of a capture",
+        "game.rs::play_move_for_filter": "SR6c: the filter's sweep blast, inside the "
+        "`MOVE_SWEEP` arm, so only after a capture",
+        "game.rs::sweep_blast_for_filter": "SR6c: the filter's sweep blast, reached only from "
+        "a `MOVE_SWEEP`, so only from a capture",
+    },
     # -- cases 5 and 6.
     "drops": {
         "game.rs::initial": "the opening hands: empty, since the refusals need no stock",
@@ -289,6 +307,9 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::write_goal_left": "`make`'s phase (CS8), schema 18f (Q786): whether the move took the named piece off a goal "
         "square, read only under `reach_leaves`, from the mover as it set out, so a piece "
         "that never stands never leaves",
+        "game.rs::held_arrival": "`make`'s phase, SR5k (O11): whether a held piece's move "
+        "arrived on the mover's goal, read only under `reach_held`, of the type standing on the "
+        "target after the move, so a piece that never stands never arrives",
         "rounds.rs::goal_left": "schema 26's leaving test, `make`'s, per player (schema 28 "
         "asks it after a faster move too)",
         "rounds.rs::round_goal_ending": "schema 26's arm: the named piece on a "
@@ -386,6 +407,12 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::write_gate": "`make`'s phase (CS8): a gated piece's value, reached only "
         "under `drops.gating`",
         "game.rs::strike_writes": "the value a struck piece becomes where it lands",
+        "game.rs::blast_strikes": "SR5a: the value a piece a blast struck becomes where it "
+        "stands",
+        "game.rs::sweep_strikes": "SR6a: the value a piece a sweep struck becomes where it "
+        "stands, behind `StrikeRule::strikes_path`",
+        "game.rs::sweep_mover_change": "SR6b: the value a sweeper becomes by a swept contact's "
+        "`mover_to`, behind `StrikeRule::strikes_path`",
         "game.rs::play_move_for_filter": "the same write in the legality filter",
         "game.rs::restrict": "the immobility filter, asking of a dropped piece as it "
         "stands after arrival",

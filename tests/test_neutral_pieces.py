@@ -409,13 +409,19 @@ class TestRefusals:
         spec = _spec(**{key: value})
         _refused_pair(spec, rid)
 
-    @pytest.mark.parametrize("key, value, rid", [
-        ("territory", {"repaint": True}, "O10"),
-        ("reach", {"piece": "K", "squares": ["f6"]}, "O11"),
-        ("explode_on_capture", True, "O12"),
+    @pytest.mark.parametrize("key, value", [
+        ("territory", {"mode": "repaint"}),
+        ("reach", {"piece": "K", "squares": ["f6"]}),
     ])
-    def test_majority_beside(self, key, value, rid):
-        _refused_pair(_spec(**{key: value}), rid)
+    def test_a_territory_and_a_goal_are_lifted(self, key, value):
+        """SR5k (`docs/plan-schema-next.md` O10, O11): a held piece claims and arrives for the
+        mover; `tests/test_held_claim_and_goal.py` holds the core to it."""
+        assert validate_spec(_spec(**{key: value})) == []
+
+    def test_a_blast_is_lifted(self):
+        """SR5j (`docs/plan-schema-next.md` O12): a held piece's blast is the mover's;
+        `tests/test_held_blast.py` holds the core to it."""
+        assert validate_spec(_spec(explode_on_capture={"radius": 1})) == []
 
     def test_a_long_turn_is_lifted(self):
         """SR2 (`docs/plan-schema-next.md` L5): the holder is read at each move's start;

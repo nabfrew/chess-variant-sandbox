@@ -182,9 +182,13 @@ _REFUSALS = [
     ("an end off the board",
      lambda s: s["rules"]["portals"][0].update(blue="z9"),
      "Pair 1's second end isn't on a square of this board (z9). Put it on an empty square."),
+    # Territory went with SR5i (P6); wild pieces (P2) are still refused beside portals.
     ("beside a refused rule",
-     lambda s: s["rules"].update(explode_on_capture={"radius": 1}),
-     "Portals can't be used together with the rule 'captures that explode' yet. Take off one "
+     lambda s: (s["pieces"].append(
+         {"id": "W", "name": "wolf", "value": 1,
+          "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}),
+         s["rules"].update(npcs=[{"piece": "W", "route": ["a3", "b3", "c3"]}])),
+     "Portals can't be used together with the rule 'wild pieces' yet. Take off one "
      "of them."),
     ("a bar on going straight back with nobody to move the pair",
      lambda s: s["rules"]["portals"][0].update(no_straight_back=True),

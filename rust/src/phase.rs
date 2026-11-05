@@ -15,6 +15,7 @@
 //! the same sinks: a turn's heading, a turned wait and a split's copy are sink methods too.
 
 use super::*;
+use super::sight::WildSight;
 use super::turning::TurnStep;
 
 /// Where one phase's writes go: `Live` (`make`), `Filter` (a legality filter) and `Coming`
@@ -267,10 +268,10 @@ impl<'t> Game<'t> {
     /// walked into `sink`, on the board as the earlier steps of the same phase leave it.
     #[inline(always)]
     pub(super) fn wild_steps<S: PhaseSink, I: Iterator<Item = usize>, const SHIELDS: bool>(
-        &mut self, sink: &mut S, order: I, shields: &SquareSet,
+        &mut self, sink: &mut S, order: I, sight: &WildSight,
     ) {
         for square in order {
-            let Some(next) = self.npc_step_of::<SHIELDS>(square, shields) else {
+            let Some(next) = self.npc_step_of::<SHIELDS>(square, sight) else {
                 continue;
             };
             sink.step(self, square, next, PHASE_STEP);
@@ -281,14 +282,14 @@ impl<'t> Game<'t> {
     /// clock moved on by `respawn_due`, and its piece put back where the rule says. Nothing
     /// in a game without the rule.
     #[inline(always)]
-    pub(super) fn respawn_walk<S: PhaseSink>(&mut self, sink: &mut S, shields: &SquareSet) {
+    pub(super) fn respawn_walk<S: PhaseSink>(&mut self, sink: &mut S, sight: &WildSight) {
         let t = self.t;
         let Some(rule) = t.respawn.as_deref() else {
             return;
         };
         for index in 0..rule.halves.len() {
             let before = sink.clock(self, index);
-            let (after, start) = self.respawn_due(index, before, shields);
+            let (after, start) = self.respawn_due(index, before, &sight.shields);
             sink.set_clock(self, rule, index, before, after);
             if let Some(start) = start {
                 sink.put_back(self, start, rule.halves[index].value);
@@ -297,20 +298,20 @@ impl<'t> Game<'t> {
     }
 
     /// The whole phase of a game with neither a line nor a pounce: the steps, then the
-    /// returns. `SHIELDS` is `Tables::npc_shield` as a constant (the shields read once, at
-    /// the phase's start); the order is `npc_step_order` only under `Tables::npc_queues`,
+    /// returns. `SHIELDS` is `Tables::npc_sight` as a constant (the shields, and since
+    /// generation 84 the frozen and disarmed wild pieces, read once, at the phase's start); the order is `npc_step_order` only under `Tables::npc_queues`,
     /// and the ascending walk of `npc_here` otherwise (Q850: walking `NpcOrder` everywhere
     /// cost *wolves*' perft 10%), each its own monomorph.
     #[inline(always)]
     pub(super) fn wild_phase<S: PhaseSink, const SHIELDS: bool>(&mut self, sink: &mut S) {
-        let shields = if SHIELDS { self.wild_shields() } else { SquareSet::EMPTY };
+        let sight = if SHIELDS { self.wild_sight() } else { WildSight::NONE };
         if self.t.npc_queues {
             let order = self.npc_step_order();
-            self.wild_steps::<S, _, SHIELDS>(sink, order, &shields);
+            self.wild_steps::<S, _, SHIELDS>(sink, order, &sight);
         } else {
             let order = self.npc_here().iter();
-            self.wild_steps::<S, _, SHIELDS>(sink, order, &shields);
+            self.wild_steps::<S, _, SHIELDS>(sink, order, &sight);
         }
-        self.respawn_walk(sink, &shields);
+        self.respawn_walk(sink, &sight);
     }
 }

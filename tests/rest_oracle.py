@@ -20,6 +20,11 @@ A position's rest is ``((square, turns left), ...)`` per player, by square
 (`GameState.rest`). The oracle's own lists carry each entry's code too, ``(square, left,
 code)``, read off the board the entry began on; every update drops an entry whose square no
 longer holds its code, so between moves the code is always the board's.
+
+Beside a command (SR5e, `docs/plan-schema-next.md` §2.7 row V7, as ruled 2026-10-27): a
+commanded move enters its piece in its **owner's** list, counted on the owner's turns, and a
+resting piece of either list is offered to neither player, so the lift reads the player's every
+offer, commands included.
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_ROTATE,
     MOVE_SWEEP,
     decode_move,
+    move_foreign,
 )
 from chess_variant_sandbox.engine.state import GameState
 
@@ -65,22 +71,27 @@ def as_rest(lists: Lists) -> tuple[tuple[tuple[int, int], ...], tuple[tuple[int,
     )
 
 
-def after_turn(engine: Engine, lists: Lists, board: bytes, player: int, end: int | None) -> Lists:
+def after_turn(
+    engine: Engine, lists: Lists, board: bytes, player: int, end: int | None,
+    owner: int | None = None,
+) -> Lists:
     """§3.2-§3.4: the end of ``player``'s turn on ``board`` (the board the turn left). Count
     ``player``'s entries down (an entry at 0 leaves), drop every entry of either player whose
-    square no longer holds its code, then enter the piece standing on ``end`` if it is
-    ``player``'s and its type (the type it is now) rests, replacing any entry on that square."""
+    square no longer holds its code, then enter the piece standing on ``end`` in ``owner``'s
+    list (``player``'s unless a command moved the piece: SR5e, its owner's) if it is
+    ``owner``'s and its type (the type it is now) rests, replacing any entry on that square."""
     spec = engine.spec
+    owner = player if owner is None else owner
     counted = [list(lists[0]), list(lists[1])]
     counted[player] = [(square, left - 1, code) for square, left, code in counted[player] if left > 1]
     kept = [[entry for entry in counted[owner] if board[entry[0]] == entry[2]] for owner in (0, 1)]
     if end is not None:
         value = board[end]
-        if value and spec.owner_of(value) == player:
+        if value and spec.owner_of(value) == owner:
             turns = spec.rest[spec.type_of(value)] if spec.rest else 0
             if turns:
-                kept[player] = [entry for entry in kept[player] if entry[0] != end]
-                kept[player].append((end, turns, value))
+                kept[owner] = [entry for entry in kept[owner] if entry[0] != end]
+                kept[owner].append((end, turns, value))
     return kept[0], kept[1]
 
 
@@ -110,6 +121,21 @@ def _takes(move: int, board: bytes) -> bool:
     return kind in (MOVE_EN_PASSANT, MOVE_SWEEP) or (
         kind in (MOVE_NORMAL, MOVE_PROMOTION, MOVE_PORTAL) and board[target] != 0
     )
+
+
+def commands(engine: Engine) -> bool:
+    """Whether a sight commands (SR5e): then a resting piece is moved by neither player."""
+    sight = engine.spec.sight
+    return sight is not None and sight.has_command
+
+
+def resting_squares(engine: Engine, state: GameState, mover: int) -> set[int]:
+    """The squares whose pieces ``mover`` may not move: its own resting pieces, and beside a
+    command the opponent's too (SR5e)."""
+    squares = {square for square, _ in state.rest[mover]}
+    if commands(engine):
+        squares |= {square for square, _ in state.rest[1 - mover]}
+    return squares
 
 
 def _source(engine: Engine) -> dict[str, Any]:
@@ -153,7 +179,7 @@ def legal(engine: Engine, state: GameState, player: int | None = None) -> list[i
     else:
         mover = player
         base = base_engine.legal_moves_for(stripped, player)
-    resting = {square for square, _ in state.rest[mover]}
+    resting = resting_squares(engine, state, mover)
 
     def rests(move: int) -> bool:
         origin, _, kind, _ = decode_move(move)
@@ -172,7 +198,7 @@ def legal(engine: Engine, state: GameState, player: int | None = None) -> list[i
 def lifted(engine: Engine, state: GameState, player: int | None = None) -> bool:
     """Whether the rest was lifted here: a piece rests and the list offers one of its moves."""
     mover = state.side_to_move if player is None else player
-    resting = {square for square, _ in state.rest[mover]}
+    resting = resting_squares(engine, state, mover)
     return any(
         decode_move(move)[0] in resting and decode_move(move)[2] not in (MOVE_DROP, MOVE_FOLD)
         for move in legal(engine, state, player)
@@ -183,8 +209,15 @@ def apply(engine: Engine, state: GameState, move: int) -> tuple[GameState, Lists
     """An alternating move: the core's position, and the rest lists the oracle says it must
     carry (the caller compares ``as_rest`` of them with the position's)."""
     after = engine.apply(state, move)
+    mover = state.side_to_move
+    owner = mover
+    if move_foreign(move):
+        # SR5e: a commanded piece rests in its owner's list; a held piece, nobody's, reads as
+        # the mover's (and so enters no list, being the mover's in none).
+        found = engine.spec.owner_of(state.board[decode_move(move)[0]])
+        owner = found if found in (0, 1) else mover
     lists = after_turn(
-        engine, lists_of(state), after.board, state.side_to_move,
-        end_of_move(engine, state, after, move),
+        engine, lists_of(state), after.board, mover,
+        end_of_move(engine, state, after, move), owner,
     )
     return after, lists

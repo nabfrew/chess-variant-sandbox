@@ -246,19 +246,24 @@ class TestWhatTheValidatorRefuses:
         spec["rules"]["portals"].append({"orange": "b3", "blue": "c3"})
         _refusal(spec, "two portals on one square")
 
-    @pytest.mark.parametrize("rule, value, rid", [
-        ("territory", {"mode": "permanent"}, "P6"),
-        ("explode_on_capture", {"radius": 1}, "P5"),
-    ])
-    def test_rules_refused_beside_portals(self, rule: str, value: Any, rid: str) -> None:
+    def test_a_territory_is_no_longer_refused(self) -> None:
+        # SR5i lifted P6 (`tests/test_portal_exit_claims.py`): a transit claims its exit.
         spec = wormhole()
-        spec["rules"][rule] = value
-        assert rid in refused_ids(validate_spec(spec))
+        spec["rules"]["territory"] = {"mode": "permanent"}
+        assert validate_spec(spec) == []
 
-    def test_a_hex_lattice_is_refused(self) -> None:
+    def test_a_blast_is_no_longer_refused(self) -> None:
+        # SR5h lifted P5 (`tests/test_blast_at_exit.py`): the blast centres on the exit.
+        spec = wormhole()
+        spec["rules"]["explode_on_capture"] = {"radius": 1}
+        assert validate_spec(spec) == []
+
+    def test_a_hex_lattice_is_no_longer_refused(self) -> None:
+        # SR5g lifted P1 (`tests/test_hex_portals.py`): this square spec's other hex
+        # refusals stand, the portals' is gone.
         spec = wormhole()
         spec["board"]["lattice"] = "hex"
-        assert "P1" in refused_ids(validate_spec(spec))
+        assert "P1" not in refused_ids(validate_spec(spec))
 
     def test_a_piece_may_not_take_the_name_of_an_end(self) -> None:
         spec = wormhole()

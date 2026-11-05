@@ -68,22 +68,23 @@ from chess_variant_sandbox.spec.schema import (
     _sight_entry,
     absent_squares,
     beats_of,
+    blast_meets_sweeper,
     castling_spans,
+    contacts_meet_sweeper,
     contacts_only_remove,
     duck_piece,
     en_passant_can_fire,
     format_square,
     has_equal_speed_opponent,
     has_rests,
-    has_sights,
     has_speeds,
     hire_ids,
     insufficient_material_live,
     is_nobodys,
     is_simultaneous,
-    majority_ids,
     move_push,
     neutral_ids,
+    nobodys_ids,
     npc_pounce,
     npc_respawn,
     npc_split,
@@ -123,8 +124,11 @@ from chess_variant_sandbox.spec.schema import (
     strike_is_live,
     strike_lists_naming,
     strike_only_removes,
+    strike_reads_a_blast,
+    strike_strikes_sweeper,
     strikers,
     sweep_conflicts,
+    sweep_effects,
     sweep_length,
     turn_is_long,
     uses_sweep,
@@ -200,7 +204,7 @@ class Operator:
         summary = self.edit(spec, rng)
         if summary is None:
             return None
-        gone = settle_inert_rules(spec)
+        gone = settle_inert_rules(spec) + _settle_sweep_effects(spec)
         if not gone:
             return summary
         words = [_gone_words(key) for key in gone]
@@ -211,6 +215,7 @@ class Operator:
 # How `Operator.apply` names a rule `settle_inert_rules` took away, in a player's words.
 _GONE_WORDS = {
     "push": "the push's rule",
+    "strikes": "the blast's strikes",
     "must_capture": "compulsory capture",
     "explode_on_capture": "the explosion",
     "drops": "the hand",
@@ -233,6 +238,42 @@ _GONE_WORDS = {
 }
 
 
+def _settle_sweep_effects(spec: dict[str, Any]) -> list[str]:
+    """Drop a sweep switch (``moves[].effects: "path"``, SR6a) the validator would refuse as
+    inert, and name each piece it went from as ``"effects:<id>"``.
+
+    `transform.settle_inert_rules`' repair for one more clause, held here beside it because
+    SR6a2 owned `loop/` and not `spec/`: an edit that takes the strike away, narrows its
+    ``by`` past a sweeper or empties its chain leaves ``"path"`` with nothing to strike
+    (`schema._check_sweep_effects`), and the switch goes with what it read. It asks the
+    validator's own predicates, so on a spec the validator accepts it is a no-op.
+
+    SR6b, SR6c: beside contacts or a blast the switch stays where a link names the sweeper
+    (`contacts_meet_sweeper`) or its captures set the blast off (`blast_meets_sweeper`). A
+    sweep game holds at most one of the three rules (W3), so any one meeting is the
+    validator's whole test.
+    """
+    rules = spec.get("rules")
+    if not isinstance(rules, dict):
+        rules = {}
+    gone: list[str] = []
+    for piece in pieces(spec):
+        if sweep_effects(piece) != "path":
+            continue
+        pid = piece.get("id")
+        if isinstance(pid, str) and (
+            strike_strikes_sweeper(rules, pid)
+            or contacts_meet_sweeper(rules, pid)
+            or blast_meets_sweeper(rules, pid)
+        ):
+            continue
+        for move in piece.get("moves") or []:
+            if isinstance(move, dict):
+                move.pop("effects", None)
+        gone.append(f"effects:{pid}")
+    return gone
+
+
 def _gone_words(key: str) -> str:
     """One key `settle_inert_rules` returned, in a player's words."""
     if key.startswith("promotion:"):
@@ -247,16 +288,11 @@ def _gone_words(key: str) -> str:
         return f"the {key.split(':', 1)[1]}'s rest"
     if key.startswith("sight:"):
         return f"a line of sight of the {key.split(':', 1)[1]}"
+    if key.startswith("effects:"):
+        return f"the {key.split(':', 1)[1]}'s strike on every piece it sweeps"
     if key.startswith("carries:"):
         return f"the filter on the portal at {key.split(':', 1)[1]}"
     return _GONE_WORDS.get(key, key.replace("_", " "))
-
-
-def _has_portals(spec: dict[str, Any]) -> bool:
-    """Schema 19: whether the spec has portals, beside which the validator refuses an
-    explosion, a colouring, a sweep and a wild piece -- so an operator that would add one of
-    those is not offered there (a strike and a contact table are allowed since SR4m)."""
-    return bool((spec.get("rules") or {}).get("portals"))
 
 
 def _portal_squares(spec: dict[str, Any]) -> set[str]:
@@ -1165,11 +1201,8 @@ def _win_by_arrival(spec: dict[str, Any], rng: random.Random) -> str | None:
     not settle the stamp, so twelve schema-1 parents lost every child to `rules uses
     reach, added in schema 2`. 72 of 282 in the sweep.
     """
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
-    if majority_ids(spec):
-        return None
-    if _commands(spec):
-        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
+    # Beside majority control since SR5k (O11): a held piece arrives for the mover.
+    # Beside a command since SR5d (V3): a commanded piece arrives for its owner.
     rules = spec.setdefault("rules", {})
     if rules.get("reach"):
         rules.pop("reach", None)
@@ -1364,13 +1397,9 @@ def _claim_the_ground(spec: dict[str, Any], rng: random.Random) -> str | None:
     with nothing to count is a spec the validator rejects by name -- and an operator
     that produced one would spend a draw on a candidate that could never be played.
     """
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
-    if majority_ids(spec):
-        return None
-    if _commands(spec):
-        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
-    if _has_portals(spec):
-        return None  # refused beside portals (schema 19)
+    # Beside majority control since SR5k (O10): a held move claims for the mover.
+    # Beside a command since SR5d (V4): a commanded move claims for the piece's owner.
+    # Beside portals since SR5i (P6): a transit claims its exit, never a portal's square.
     rules = spec.setdefault("rules", {})
     if rules.get("territory"):
         strip_rule(spec, "territory")
@@ -1439,8 +1468,8 @@ def _join_the_edges(spec: dict[str, Any], rng: random.Random) -> str | None:
     if rules.get("wrap"):
         strip_rule(spec, "wrap")
         return "the board has edges again"
-    if uses_sweep(spec):
-        return None  # round a seam a sweep could reach one square by two paths
+    # SR6d (W6): a sweep beside a seam is allowed; where two of its rays reach one square,
+    # each is its own move, named by its ray.
     if (spec.get("board") or {}).get("shape") == "hexagon":
         clear = _clear_pairs(spec)
         if not clear:
@@ -1615,16 +1644,15 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
             return placed
         strip_rule(spec, "strike")
         return "a captured piece is simply removed again"
-    if (
-        rules.get("explode_on_capture")
-        or rules.get("drops")
-        or rules.get("contacts")
-        or uses_sweep(spec)
-    ):
+    if rules.get("explode_on_capture") or rules.get("drops") or rules.get("contacts"):
         # Two rules cannot both say what happens to a taken piece. `contacts` arrived as the
         # fourth (Q108) -- a strike beside a contact table is refused as *two spellings of
         # one rule*. `npcs` was the third until SR4e (T7): a strike leaves every wild type
-        # alone, and `set_strike`'s chain (`_rungs`) never names one.
+        # alone, and `set_strike`'s chain (`_rungs`) never names one. A sweep was the fifth
+        # until SR6a (W1): a strike that stays acts on the sweep's landing, and only a chosen
+        # square is refused beside one, which `set_strike` never writes. Taking the strike
+        # away from under a sweep that strikes its path takes the switch with it
+        # (`_settle_sweep_effects`).
         return None
     if is_simultaneous(rules):
         return None  # schema 26: a strike that stays is refused beside rounds
@@ -1681,10 +1709,9 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
         strip_rule(spec, "contacts")
         return "taking a piece leaves the taker as it was again"
     # SR4e (T6): contacts beside wild pieces are allowed; `set_contacts` never names a wild type.
-    if (
-        rules.get("strike") or rules.get("explode_on_capture") or rules.get("drops")
-        or uses_sweep(spec)
-    ):
+    # SR6b (W2): a table beside a sweep is allowed, met on the sweep's landing; `set_contacts`
+    # places it `advance`, never on a chosen square (W2's narrower row).
+    if rules.get("strike") or rules.get("explode_on_capture") or rules.get("drops"):
         return None  # two rules cannot both say what happens to a taken piece
     before = rules.get("contacts")
     if spy_ids(spec):
@@ -1794,6 +1821,8 @@ def _place_the_survivor(spec: dict[str, Any], key: str, rng: random.Random) -> s
         return "a struck piece that survives stays where it stood again"
     if rule.get("position") not in ("stay", "swap") or not keeps_a_survivor(spec, key):
         return None
+    if uses_sweep(spec):
+        return None  # W1's narrower row: a chosen square is refused beside a sweep (SR6a)
     set_landing(spec, key)
     where = (
         "any empty cell next to where it stood"
@@ -1864,8 +1893,8 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
         rules.get("strike") or rules.get("explode_on_capture") or rules.get("drops")
     ):
         return None  # two rules cannot both say what happens to a taken piece
-    if uses_sweep(spec):
-        return None  # a contact table is refused beside a sweep
+    # SR6b (W2): an own link beside a sweep is allowed (a sweep may land on its own piece
+    # through it); `set_own_link` places a new table `advance`, never on a chosen square.
     if push_bars(spec, "contacts"):
         return None  # X2: a contact table is refused beside a push (Q1074bg1)
     candidates = merge_links(spec)
@@ -1991,13 +2020,10 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
     """
     if push_bars(spec, "explode_on_capture"):
         return None  # Q1074b5: `rules.explode_on_capture` is refused beside a push (§3.14)
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside majority control.
-    if majority_ids(spec):
-        return None
+    # SR5j (O12) lifted majority control: a held piece's blast is the mover's.
     # SR4l (O22) lifted the purse: a blast pays the mover every enemy victim's bounty.
     # A blast beside the duck is allowed since SR3e (K3): it leaves the duck standing.
-    if _has_portals(spec):
-        return None  # refused beside portals (schema 19)
+    # SR5h (P5) lifted portals: the blast centres on the exit, and a portal end in it stands.
     drops = (spec.get("rules") or {}).get("drops")
     if isinstance(drops, dict) and "gating" in drops:
         return None  # Q1059a: refused beside gating (a blast may clear the gated square)
@@ -2005,9 +2031,19 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
 
     rules = spec.setdefault("rules", {})
     explosion = rules.get("explode_on_capture")
+    # SR5a (T1, T4): a strike or contacts beside a blast. Under `strikes: "none"` a blast on
+    # every capture leaves them nothing to act on (refused), so beside one the blast stays
+    # narrowed; the switch is drawn only where a strike may read it.
+    taken = _takes_a_struck_rule(rules)
     if isinstance(explosion, dict) and explosion:
+        if explosion.get("strikes", "none") != "none":
+            explosion.pop("strikes")
+            return "a capture that explodes strikes nothing again: the blast takes it all"
+        if strike_reads_a_blast(rules) and rng.random() < 0.5:
+            explosion["strikes"] = rng.choice(("target", "blast", "both"))
+            return _BLAST_STRIKES_WORDS[explosion["strikes"]]
         narrowed = [key for key in ("by", "of") if key in explosion]
-        if narrowed and rng.random() < 0.5:
+        if narrowed and not taken and rng.random() < 0.5:
             for key in narrowed:
                 explosion.pop(key)
             return "every capture explodes again, whoever makes it and whatever it takes"
@@ -2025,21 +2061,69 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
         strip_rule(spec, "explode_on_capture")
         return "a capture no longer takes its neighbours with it"
 
-    if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
-        return None  # two rules cannot both say what happens to a taken piece
+    # SR6c (W3): a blast beside a sweep is allowed (one blast on the landing, `effects: "path"`
+    # one on each swept square), but not beside a sweep and a strike or contacts.
+    if uses_sweep(spec) and taken:
+        return None  # W3's narrower row: nobody has ordered a sweep's blasts and strikes
+    if taken and (_chooses_a_square(rules) or is_simultaneous(rules)):
+        return None  # T1, T4: a choosing strike or contact, or rounds, beside a blast
     # A blast beside wild pieces is allowed since SR4f (T8): a wild eat does not explode, and a
     # wild piece the blast destroys pays its bounty to the mover.
     # A blast beside a hand that drops either face is allowed since SR2 (H6): its victims
     # enter no hand.
     if not capture_is_possible(spec):
         return None  # a blast where nothing is taken is refused (inert-rule case 4, Q110)
-    if has_sights(spec):
-        return None  # schema 30: a blast is refused beside a line of sight
+    # A blast beside a line of sight is allowed since SR5b (V2): a shield spares from it.
     set_explosion(spec)
+    if strike_reads_a_blast(rules) and rng.random() < 0.5:
+        # SR5a (T1): a blast on every capture beside a strike that places a piece alone, the
+        # strike reaching what the blast takes.
+        value = rng.choice(("target", "blast", "both"))
+        rules["explode_on_capture"]["strikes"] = value
+        return f"every capture now explodes, and {_BLAST_STRIKES_WORDS[value]}"
+    if taken:
+        # SR5a (T1, T4): beside a strike or contacts only one piece's captures explode, so
+        # every other capture is still struck or met.
+        duck = duck_piece(rules)
+        candidates = [piece for piece in _non_royal(spec) if piece.get("id") != duck]
+        if not candidates:
+            rules.pop("explode_on_capture")
+            return None
+        piece = rng.choice(candidates)
+        rules["explode_on_capture"]["by"] = [str(piece["id"])]
+        return (
+            f"a capture by the {piece.get('name', piece['id'])} now destroys everything "
+            "standing next to it, and strikes nothing"
+        )
     return (
         "a capture now destroys everything standing next to the square it happened on, "
         "so trades take the neighbourhood with them"
     )
+
+
+_BLAST_STRIKES_WORDS = {
+    "target": "a capture that explodes still strikes the piece it took, which survives its blast",
+    "blast": "a blast now strikes the pieces it reaches instead of only destroying them",
+    "both": "a capture that explodes strikes the piece it took and every piece its blast reaches",
+}
+
+
+def _takes_a_struck_rule(rules: dict[str, Any]) -> bool:
+    """SR5a: whether a live strike or a contact table says what a capture leaves."""
+    contacts = rules.get("contacts")
+    return strike_is_live(rules.get("strike")) or (
+        isinstance(contacts, dict) and bool(contacts.get("links"))
+    )
+
+
+def _chooses_a_square(rules: dict[str, Any]) -> bool:
+    """SR5a (T1, T4): a strike or contact placed `choose`, refused beside a blast."""
+    return any(
+        isinstance(rules.get(key), dict) and rules[key].get("position") == "choose"
+        for key in ("strike", "contacts")
+    )
+
+
 
 
 def _turn_to_face(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -2362,7 +2446,7 @@ def _tire_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     `docs/plan-rest.md` §5.7), in any game, alternating or in rounds. A type that never rests
     is made to rest 1; one that rests is moved a turn up or down (0 takes the key away, and
     none goes past `REST_MAX`). Each child must pass the validator, so a game of long turns,
-    where a rest is refused, gets none."""
+    where a rest is refused, gets none; a game with a command gets one since SR5e (V7)."""
     if turn_is_long(spec.get("rules")):
         return None
     candidates = _restable(spec)
@@ -2396,16 +2480,17 @@ _GAZE_WHOSE = {"freeze": "enemy", "disarm": "enemy", "shield": "own", "command":
 
 
 def _shields(spec: dict[str, Any]) -> bool:
-    """Whether a line of sight shields (schema 30), beside which a sweep and a wild piece are
-    refused."""
+    """Whether a line of sight shields (schema 30), which `set-a-patrol` reads before adding a
+    wild piece (a shield beside a sweep is allowed since SR6g, W10: a shielded piece ends a
+    sweep's ray)."""
     return any(
         sight.effect == "shield" for sights in piece_sights(spec).values() for sight in sights
     )
 
 
 def _commands(spec: dict[str, Any]) -> bool:
-    """Whether a line of sight commands (Q1007c), beside which rounds, a reach, a territory, a
-    rest and a sweep are refused (`docs/archive/plan-schema-31.md` §3.6)."""
+    """Whether a line of sight commands (Q1007c), beside which rounds, a
+    rest and a sweep are refused (a reach and a territory lifted by SR5d) (`docs/archive/plan-schema-31.md` §3.6)."""
     return any(
         sight.effect == "command" for sights in piece_sights(spec).values() for sight in sights
     )
@@ -2473,16 +2558,26 @@ def _cast_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
     `docs/archive/plan-passive.md` §4.3): a slide-like reading of one of its capture-capable moves,
     a ray, with an effect drawn from the four -- `enemy` for a freeze, a disarm or a command
     (Q1007c), `own` for a shield -- touching every type but, for a command, the royals. Each child must pass the validator, so a type whose
-    gaze could never bind is passed over, a shield is not drawn beside a sweep, and nothing
-    is drawn beside portals or an explosion, where a sight is refused. A shield beside wild
-    pieces is allowed since generation 37 (a wild piece never takes a shielded piece)."""
-    found = spec.get("rules")
-    rules: dict[str, Any] = found if isinstance(found, dict) else {}
-    if rules.get("portals") or rules.get("explode_on_capture"):
-        return None
+    gaze could never bind is passed over. A shield beside wild pieces is allowed
+    since generation 37 (a wild piece never takes a shielded piece), any sight beside an
+    explosion since SR5b (V2: a shielded piece survives a blast), and a freeze, a disarm or a
+    shield beside portals since SR5c (V1: a momentum end stops a line, a fold lets it see the
+    far end's square), a command beside a reach or a territory since SR5d (V3, V4: a
+    commanded piece arrives and claims for its owner), a command beside portals since
+    SR5c2 (V1: a commanded piece passes a portal as its owner's piece would), a command
+    beside a rest since SR5e (V7: a commanded piece rests on its owner's turns), and a command
+    beside a sweep since SR6f (V8: a commanded sweep removes only what the command lets it
+    take), and a shield beside a sweep since SR6g (W10: a shielded piece ends a sweep's ray).
+
+    Since SR5f (generation 84): a sight on a type placed for nobody says `whose: "any"` (V15:
+    it sees as a wild piece does, alike for both), and in a game with wild pieces or the duck
+    a freeze, a disarm or a shield names them at even odds (V11: `affects` their types,
+    `whose: "any"`; the duck takes a freeze only)."""
     effects = list(SIGHT_EFFECTS)
-    if uses_sweep(spec):
-        effects.remove("shield")
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    wild = sorted(str(pid) for pid in wild_type_ids(rules))
+    duck = duck_piece(rules)
+    nobodys = nobodys_ids(spec)
     candidates = [
         piece for piece in _gazers(spec)
         if len(piece.get("sight") or []) < SIGHT_MAX
@@ -2495,6 +2590,12 @@ def _cast_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
         ]
         for effect in rng.sample(effects, len(effects)):
             entry = {**rng.choice(gazes), "effect": effect, "whose": _GAZE_WHOSE[effect]}
+            if piece["id"] in nobodys:
+                entry["whose"] = "any"
+            tame = wild + ([duck] if duck is not None and effect == "freeze" else [])
+            if tame and effect != "command" and rng.random() < 0.5:
+                entry["whose"] = "any"
+                entry["affects"] = tame
             # A gaze longer than a step is a ray or an aura, which sees past pieces, at even
             # odds, so a game can enter `through` in one edit as well as by `widen-a-gaze`.
             if entry.get("range", 0) != 1 and rng.random() < 0.5:
@@ -3304,6 +3405,15 @@ def _win_by_leaving(spec: dict[str, Any], rng: random.Random) -> str | None:
 # A group's move when somebody first may move its ends: one step any way, onto an empty
 # square (a group's move omits ``mode``, which means ``"move"`` there; spelling 31).
 _PORTAL_STEP = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}
+# SR5g (P1): on a hex board the twelve hex king's steps, which turn by the hexagon's own
+# symmetry (the square's rotate4 is refused there).
+_HEX_PORTAL_STEP = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate6"}
+
+
+def _portal_step(spec: dict[str, Any]) -> dict[str, Any]:
+    """The step a portal group moves by on this spec's lattice: a king's step either way."""
+    hexy = (spec.get("board") or {}).get("lattice") == "hex"
+    return copy.deepcopy(_HEX_PORTAL_STEP if hexy else _PORTAL_STEP)
 
 
 def _has_movers(group: dict[str, Any]) -> bool:
@@ -3360,7 +3470,7 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
                 said = f"nobody may move portal pair {number} any more"
             else:
                 _give_movers(pair)
-                pair["moves"] = pair.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
+                pair["moves"] = pair.get("moves") or [_portal_step(spec)]
                 said = (
                     f"either player may now spend a turn moving a portal of pair {number} "
                     "one step onto an empty square"
@@ -3390,7 +3500,7 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
                 )
                 if not _has_movers(pair):
                     _give_movers(pair)
-                    pair["moves"] = pair.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
+                    pair["moves"] = pair.get("moves") or [_portal_step(spec)]
                     said = (
                         f"either player may now spend a turn moving a portal of pair "
                         f"{number} one step onto an empty square, but not straight back on "
@@ -3401,8 +3511,8 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
             said = "the portals are gone"
     else:
         board = trial.get("board", {})
-        if board.get("lattice") == "hex" or any("region" in p for p in pieces(trial)):
-            return None
+        # SR5g lifted P1: a hex board takes portals too (the pair steps as a hex king).
+        # SR5i lifted P7: a piece with a region comes out only inside it.
         width, height = int(board.get("width", 8)), int(board.get("height", 8))
         setup = trial.get("setup", {})
         orientation = str(setup.get("orientation", "mirror"))
@@ -3431,7 +3541,7 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
             return format_square(square % width, square // width)
 
         pair = {
-            "moves": [copy.deepcopy(_PORTAL_STEP)],
+            "moves": [_portal_step(spec)],
             "orange": name_of(orange), "blue": name_of(blue),
         }
         said = (
@@ -3935,10 +4045,10 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     # A player's sweep sits beside the duck since SR2 (W9: the duck blocks it); the duck's
     # own type never sweeps, and is never offered below.
     duck = duck_piece(spec.get("rules"))
-    if _commands(spec):
-        return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
-    if _has_portals(spec):
-        return None  # refused beside portals (schema 19)
+    # SR6f (V8): a sweep beside a command is allowed; a commanded sweep removes only what the
+    # command lets it take, and any other piece ends its ray.
+    # SR6e (W8): a sweep beside portals is allowed; a fold propagates it and a momentum end
+    # ends its ray.
     if is_simultaneous(spec) and not _movers(spec, "sweep"):
         return None  # schema 26: a sweep is refused beside rounds
     sweeps = _movers(spec, "sweep")
@@ -3946,12 +4056,12 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
         piece, move = rng.choice(sweeps)
         move["kind"] = "slide"
         move.pop("sweep_range", None)  # Q1063: a slide clears nothing
+        move.pop("effects", None)  # SR6a: the sweep switch is refused off a sweep
         return (
             f"the {piece.get('name', piece['id'])} slides again and stops at the first "
             "piece in its way"
         )
-    if _shields(spec):
-        return None  # schema 30: a sweep is refused beside a shield
+    # SR6g (W10): a sweep beside a shield is allowed; a shielded piece ends its ray.
     rules = spec.get("rules", {})
     if sweep_conflicts(rules):
         return None
@@ -3964,12 +4074,77 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     if not movers:
         return None
     piece, move = rng.choice(movers)
+    switch = sweep_effects(piece)
     move["kind"] = "sweep"
     move.pop("path", None)  # T1: a sweep removes what lies on a line
+    if switch == "path":
+        move["effects"] = "path"  # SR6a: a piece's sweeps share one switch
     return (
         f"the {piece.get('name', piece['id'])} sweeps: it jumps to any square on its lines "
         "and removes every piece it passes over, its own included"
     )
+
+
+def _strike_the_path(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make one sweeper's strike, contacts or blast act on every piece it sweeps, or on its
+    landing alone again (SR6a's sweep switch, ``moves[].effects``, which no other operator
+    writes).
+
+    The switch is a piece's: every sweep of it is written alike, as the validator refuses a
+    piece whose sweeps disagree. Entering is offered only to a sweeper the game's rule meets
+    (the validator's own predicates: `schema.strike_strikes_sweeper`, SR6b's
+    `contacts_meet_sweeper`, SR6c's `blast_meets_sweeper`), since anywhere else ``"path"``
+    acts on each swept piece as ``"landing"`` does and is refused as inert. A sweep game
+    holds at most one of the three (W3), so the words name that one.
+    """
+    stated = spec.get("rules")
+    rules: dict[str, Any] = stated if isinstance(stated, dict) else {}
+    sweepers = [
+        piece for piece in pieces(spec)
+        if any(isinstance(m, dict) and m.get("kind") == "sweep" for m in piece.get("moves") or [])
+    ]
+    if not sweepers:
+        return None
+    on = [piece for piece in sweepers if sweep_effects(piece) == "path"]
+    off = [
+        piece for piece in sweepers
+        if sweep_effects(piece) != "path" and (
+            strike_strikes_sweeper(rules, piece["id"])
+            or contacts_meet_sweeper(rules, piece["id"])
+            or blast_meets_sweeper(rules, piece["id"])
+        )
+    ]
+    choices = [(piece, False) for piece in on] + [(piece, True) for piece in off]
+    if not choices:
+        return None
+    piece, entering = rng.choice(choices)
+    name = piece.get("name", piece["id"])
+    for move in piece["moves"]:
+        if isinstance(move, dict) and move.get("kind") == "sweep":
+            if entering:
+                move["effects"] = "path"
+            else:
+                move.pop("effects", None)
+    if strike_is_live(rules.get("strike")):
+        if entering:
+            return (
+                f"the {name}'s sweep strikes every piece it passes over, in path order, as a "
+                "capture on its landing is struck"
+            )
+        return f"the {name}'s sweep strikes only the piece on its landing again, and removes the others"
+    if rules.get("explode_on_capture"):
+        if entering:
+            return (
+                f"the {name}'s sweep sets off a blast on every square it passes over whose "
+                "piece's capture explodes, all of them together"
+            )
+        return f"the {name}'s sweep sets off one blast again, on its landing square"
+    if entering:
+        return (
+            f"the {name}'s sweep meets every piece it passes over by its link, in path order, "
+            "as it meets the piece on its landing"
+        )
+    return f"the {name}'s sweep meets only the piece on its landing again, and removes the others"
 
 
 def _shorten_the_sweep(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -4369,9 +4544,9 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
     placements, and a type nothing else places); majority control is given to one standing
     type or taken from every type; a majority type's neighbours swap between the king's
     step and the orthogonal four; or (Q1077) a majority type's ``takes_royal`` is switched,
-    so its held pieces give check or no longer. The validator decides the rest (rounds, and
-    beside majority a territory, a goal, a blast; wild pieces and the duck are allowed since
-    SR3f, portals since SR3g, a strike and contacts since SR4k).
+    so its held pieces give check or no longer. The validator decides the rest (rounds;
+    wild pieces and the duck are allowed since SR3f, portals since SR3g, a strike and contacts
+    since SR4k, a blast since SR5j, a territory and a goal since SR5k).
     """
     trial = copy.deepcopy(spec)
     placed = neutral_ids(spec)
@@ -5415,6 +5590,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("break-the-tie", _break_the_tie),
     Operator("sweep-a-slider", _sweep_a_slider),
     Operator("shorten-the-sweep", _shorten_the_sweep),
+    Operator("strike-the-path", _strike_the_path),
     Operator("curb-the-chase", _curb_the_chase),
     Operator("plant-a-spy", _plant_a_spy),
     Operator("set-a-speed", _set_a_speed),

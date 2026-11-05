@@ -38,6 +38,7 @@ from chess_variant_sandbox.spec.schema import (
     majority_ids,
     move_push,
     neutral_ids,
+    nobodys_ids,
     npc_pounce,
     npc_respawn,
     npc_split,
@@ -52,16 +53,19 @@ from chess_variant_sandbox.spec.schema import (
     purse_rule,
     push_rule,
     reach_pieces,
+    sight_affects_wild,
     strike_is_live,
+    sweep_effects,
     sweep_range_stated_off,
     takes_royal_ids,
     turn_is_long,
     uses_sweep,
     wild_type_ids,
+    wrap_joins_an_edge,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 77
+LAST_BUMP = 96
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -1708,6 +1712,364 @@ def _schema_seventy_seven_uses(spec: dict[str, Any]) -> set[str]:
     return found
 
 
+def _schema_seventy_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 78 added, by name (SR5a,
+    `docs/plan-schema-next.md` §2.4 rows T1, T4; numbered by order of landing, bumping no
+    version). Two lifted refusals and one key, each beside `explode_on_capture`:
+
+    * ``rules.explode_on_capture.strike`` -- a live strike beside a blast: a capture that
+      explodes is the blast's, every other is struck;
+    * ``rules.explode_on_capture.contacts`` -- contacts beside a blast: a capture that explodes
+      makes no contact;
+    * ``rules.explode_on_capture.strikes`` -- the switch at a value other than ``"none"``:
+      the strike reaches the piece taken, the blast's victims or both, after the blast.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    explosion = rules.get("explode_on_capture")
+    if not isinstance(explosion, dict) or not explosion:
+        return set()
+    found: set[str] = set()
+    if strike_is_live(rules.get("strike")):
+        found.add("rules.explode_on_capture.strike")
+        if explosion.get("strikes", "none") != "none":
+            found.add("rules.explode_on_capture.strikes")
+    contacts = rules.get("contacts")
+    if isinstance(contacts, dict) and contacts.get("links"):
+        found.add("rules.explode_on_capture.contacts")
+    return found
+
+
+def _schema_seventy_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 79 added, by name (SR5b,
+    `docs/plan-schema-next.md` §2.7 row V2; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``pieces.sight.explode_on_capture`` -- a line of sight beside a blast: a shielded piece
+      survives a blast as if its type were immune, a frozen or disarmed piece sets off none
+      (it makes no capture), and a commanded capture whose blast would take the commander's
+      royal is not a move.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if rules.get("explode_on_capture") and piece_sights(spec):
+        return {"pieces.sight.explode_on_capture"}
+    return set()
+
+
+def _schema_eighty_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 80 added, by name (SR5c,
+    `docs/plan-schema-next.md` §2.7 row V1; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``pieces.sight.portals`` -- a line of sight (freeze, disarm or shield) beside portals: a
+      momentum end stops a ray or an aura as a wall does, a line reaching an empty fold that
+      lets its piece in also sees the far end's square, and an attack through either kind
+      reads the effects. A command beside portals stayed refused until generation 82.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if rules.get("portals") and piece_sights(spec):
+        return {"pieces.sight.portals"}
+    return set()
+
+
+def _schema_eighty_one_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 81 added, by name (SR5d,
+    `docs/plan-schema-next.md` §2.7 rows V3, V4; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key:
+
+    * ``pieces.sight.command.reach`` -- a command beside a goal: a commanded piece arrives (or,
+      under ``on: "leave"``, leaves) for its owner, so it wins on its owner's goal and decides
+      nothing on the commander's.
+    * ``pieces.sight.command.territory`` -- a command beside territory: a commanded move claims
+      the square it lands on for the piece's owner.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    commands = any(
+        sight.effect == "command" for sights in piece_sights(spec).values() for sight in sights
+    )
+    if not commands:
+        return set()
+    found = set()
+    if rules.get("reach"):
+        found.add("pieces.sight.command.reach")
+    if rules.get("territory"):
+        found.add("pieces.sight.command.territory")
+    return found
+
+
+def _schema_eighty_two_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 82 added, by name (SR5c2,
+    `docs/plan-schema-next.md` §2.7 row V1, its command arm; numbered by order of landing,
+    bumping no version). One lifted refusal, no key:
+
+    * ``pieces.sight.command.portals`` -- a command beside portals: a commanded piece goes
+      through a momentum end or a fold as its owner's piece would (the owner's ``enter`` and
+      ``carries``, its exit under the owner's wrap), landing at the exit only where a commanded
+      piece may land.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    commands = any(
+        sight.effect == "command" for sights in piece_sights(spec).values() for sight in sights
+    )
+    if commands and rules.get("portals"):
+        return {"pieces.sight.command.portals"}
+    return set()
+
+
+def _schema_eighty_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 83 added, by name (SR5e,
+    `docs/plan-schema-next.md` §2.7 row V7; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``pieces.sight.command.rest`` -- a command beside ``pieces[].rest``: a commanded move
+      rests its piece as its owner's move would, counted on its owner's turns; while a piece
+      rests neither player may move it, and the lift reads each player's own offers, commands
+      included.
+    """
+    commands = any(
+        sight.effect == "command" for sights in piece_sights(spec).values() for sight in sights
+    )
+    if commands and has_rests(spec):
+        return {"pieces.sight.command.rest"}
+    return set()
+
+
+def _schema_eighty_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 84 added, by name (SR5f,
+    `docs/plan-schema-next.md` §2.7 rows V11, V15; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key:
+
+    * ``pieces.sight.wild`` -- a sight whose ``affects`` names a wild type or the duck (V11):
+      a frozen wild piece neither walks nor pounces, a disarmed one walks onto empty squares
+      only, a shielded one is taken by nobody, and a frozen duck passes.
+    * ``pieces.sight.nobodys`` -- a sight on a type a piece nobody owns can be (V15): it sees
+      as a wild piece does, ``whose: "any"``, alike for both players.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    used: set[str] = set()
+    sights = piece_sights(spec)
+    if any(sight_affects_wild(sight, rules) for found in sights.values() for sight in found):
+        used.add("pieces.sight.wild")
+    if any(sights.get(pid) for pid in nobodys_ids(spec)):
+        used.add("pieces.sight.nobodys")
+    return used
+
+
+def _schema_eighty_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 85 added, by name (SR5g,
+    `docs/plan-schema-next.md` §2.10 row P1; numbered by order of landing, bumping no
+    version). One lifted refusal, no key:
+
+    * ``rules.portals.hex`` -- portals on a hex lattice: a transit comes out one hex king's
+      step beyond the exit end, along the one of the twelve nearest the angle it travelled;
+      a fold needs no direction and lifts with it.
+    """
+    board = spec.get("board") if isinstance(spec.get("board"), dict) else {}
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    if board.get("lattice") == "hex" and rules.get("portals"):
+        return {"rules.portals.hex"}
+    return set()
+
+
+def _schema_eighty_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 86 added, by name (SR5h,
+    `docs/plan-schema-next.md` §2.10 row P5; numbered by order of landing, bumping no
+    version). One lifted refusal, no key:
+
+    * ``rules.portals.explode_on_capture`` -- a blast beside portals: it centres on the exit
+      (a fold's far square), where the capture happened; a portal end in it stands, and a fold
+      in it loses the piece standing in it and stays.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    if rules.get("portals") and rules.get("explode_on_capture"):
+        return {"rules.portals.explode_on_capture"}
+    return set()
+
+
+def _schema_eighty_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 87 added, by name (SR5j,
+    `docs/plan-schema-next.md` §2.11 row O12; numbered by order of landing, bumping no
+    version). One lifted refusal, no key:
+
+    * ``pieces.control.majority.explode_on_capture`` -- a blast beside majority control: a held
+      piece's blast is the mover's, so one that would take the mover's royal is illegal as any,
+      and one that takes the other player's royal wins for the mover.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    if rules.get("explode_on_capture") and majority_ids(spec):
+        return {"pieces.control.majority.explode_on_capture"}
+    return set()
+
+
+def _schema_eighty_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 88 added, by name (SR5i,
+    `docs/plan-schema-next.md` §2.10 rows P6, P7; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key:
+
+    * ``rules.portals.territory`` -- territory beside portals: a transit claims the square it
+      ends on (the exit, a fold's far square), never a portal end's, and a portal's own move
+      claims nothing;
+    * ``rules.portals.region`` -- a piece with a region beside portals: an exit outside the
+      mover's region is a blocked exit, no move, as a wall is.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    if not rules.get("portals"):
+        return set()
+    found = set()
+    if rules.get("territory"):
+        found.add("rules.portals.territory")
+    pieces = spec.get("pieces") if isinstance(spec.get("pieces"), list) else []
+    if any(isinstance(piece, dict) and piece.get("region") for piece in pieces):
+        found.add("rules.portals.region")
+    return found
+
+
+def _schema_eighty_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 89 added, by name (SR5k,
+    `docs/plan-schema-next.md` §2.11 rows O10, O11; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key:
+
+    * ``pieces.control.majority.territory`` -- territory beside majority control: a held move
+      claims the square it lands on for the player who moved it;
+    * ``pieces.control.majority.reach`` -- a goal beside majority control: a held arrival (or,
+      under ``on: "leave"``, departure) is read by the goal's own rule as if the mover owned the
+      piece, so onto the mover's goal it wins for the mover.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    if not majority_ids(spec):
+        return set()
+    found = set()
+    if rules.get("territory"):
+        found.add("pieces.control.majority.territory")
+    if rules.get("reach"):
+        found.add("pieces.control.majority.reach")
+    return found
+
+
+def _schema_ninety_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 90 added, by name (SR6a,
+    `docs/plan-schema-next.md` §2.6 row W1; numbered by order of landing, bumping no version).
+    A lifted refusal and one key:
+
+    * ``rules.strike.sweep`` -- a sweep beside a live strike: the strike acts on the landing's
+      capture, as on any capture;
+    * ``pieces.moves.sweep.effects`` -- the sweep switch at ``"path"`` beside a strike: every
+      swept piece is struck too, in path order after the landing.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    if not uses_sweep(spec) or not strike_is_live(rules.get("strike")):
+        return set()
+    found = {"rules.strike.sweep"}
+    if any(sweep_effects(piece) == "path" for piece in spec.get("pieces", [])):
+        found.add("pieces.moves.sweep.effects")
+    return found
+
+
+def _schema_ninety_one_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 91 added, by name (SR6b,
+    `docs/plan-schema-next.md` §2.6 row W2; numbered by order of landing, bumping no version).
+    A lifted refusal and one reading of an existing key:
+
+    * ``rules.contacts.sweep`` -- a sweep beside a contact table with links: the contact acts on
+      the landing's capture, as on any capture;
+    * ``pieces.moves.sweep.effects.contacts`` -- the sweep switch at ``"path"`` beside contacts:
+      every swept piece meets the mover by its link, and the mover's ``mover_to`` applies once.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    contacts = rules.get("contacts")
+    if not uses_sweep(spec) or not isinstance(contacts, dict) or not contacts.get("links"):
+        return set()
+    found = {"rules.contacts.sweep"}
+    if any(sweep_effects(piece) == "path" for piece in spec.get("pieces", [])):
+        found.add("pieces.moves.sweep.effects.contacts")
+    return found
+
+
+def _schema_ninety_two_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 92 added, by name (SR6c,
+    `docs/plan-schema-next.md` §2.6 row W3; numbered by order of landing, bumping no version).
+    A lifted refusal and one reading of an existing key:
+
+    * ``rules.explode_on_capture.sweep`` -- a sweep beside a blast: one blast, centred on the
+      landing, when the sweep removed a piece whose capture explodes;
+    * ``pieces.moves.sweep.effects.explode_on_capture`` -- the sweep switch at ``"path"`` beside
+      a blast: one blast on each swept square whose piece's capture explodes, cleared together.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    if not uses_sweep(spec) or not rules.get("explode_on_capture"):
+        return set()
+    found = {"rules.explode_on_capture.sweep"}
+    if any(sweep_effects(piece) == "path" for piece in spec.get("pieces", [])):
+        found.add("pieces.moves.sweep.effects.explode_on_capture")
+    return found
+
+
+def _schema_ninety_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 93 added, by name (SR6d,
+    `docs/plan-schema-next.md` §2.6 row W6; numbered by order of landing, bumping no version).
+    A lifted refusal:
+
+    * ``rules.wrap.sweep`` -- a sweep on a wrapped board: where two of a piece's rays reach
+      one square, each is its own move, its word naming its ray.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    if not uses_sweep(spec) or not wrap_joins_an_edge(rules.get("wrap")):
+        return set()
+    return {"rules.wrap.sweep"}
+
+
+def _schema_ninety_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 94 added, by name (SR6e,
+    `docs/plan-schema-next.md` §2.6 row W8; numbered by order of landing, bumping no version).
+    A lifted refusal:
+
+    * ``rules.portals.sweep`` -- a sweep beside portals: a momentum end ends its ray, and a
+      landing on an empty fold may go through, sweeping only before the fold.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    if not uses_sweep(spec) or not rules.get("portals"):
+        return set()
+    return {"rules.portals.sweep"}
+
+
+def _schema_ninety_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 95 added, by name (SR6f,
+    `docs/plan-schema-next.md` §2.7 row V8; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``pieces.sight.command.sweep`` -- a command beside a sweep move: a commanded sweep moves
+      as its owner's sweep does, over an empty line without ``captures_own``, and with it
+      sweeping its own side's non-royal, unshielded pieces its captures allow.
+    """
+    commands = any(
+        sight.effect == "command" for sights in piece_sights(spec).values() for sight in sights
+    )
+    if commands and uses_sweep(spec):
+        return {"pieces.sight.command.sweep"}
+    return set()
+
+
+def _schema_ninety_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 96 added, by name (SR6g,
+    `docs/plan-schema-next.md` §2.7 row W10; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``pieces.sight.shield.sweep`` -- a shield beside a sweep move: a shielded piece may not
+      be captured, so it ends a sweep's ray (never passed, never landed on, of either side,
+      and no check past it), read off the board.
+    """
+    shields = any(
+        sight.effect == "shield" for sights in piece_sights(spec).values() for sight in sights
+    )
+    if shields and uses_sweep(spec):
+        return {"pieces.sight.shield.sweep"}
+    return set()
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -1778,4 +2140,23 @@ _COLLECTORS = {
     75: _schema_seventy_five_uses,
     76: _schema_seventy_six_uses,
     77: _schema_seventy_seven_uses,
+    78: _schema_seventy_eight_uses,
+    79: _schema_seventy_nine_uses,
+    80: _schema_eighty_uses,
+    81: _schema_eighty_one_uses,
+    82: _schema_eighty_two_uses,
+    83: _schema_eighty_three_uses,
+    84: _schema_eighty_four_uses,
+    85: _schema_eighty_five_uses,
+    86: _schema_eighty_six_uses,
+    87: _schema_eighty_seven_uses,
+    88: _schema_eighty_eight_uses,
+    89: _schema_eighty_nine_uses,
+    90: _schema_ninety_uses,
+    91: _schema_ninety_one_uses,
+    92: _schema_ninety_two_uses,
+    93: _schema_ninety_three_uses,
+    94: _schema_ninety_four_uses,
+    95: _schema_ninety_five_uses,
+    96: _schema_ninety_six_uses,
 }

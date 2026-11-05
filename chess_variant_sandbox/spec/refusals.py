@@ -18,7 +18,8 @@ stay inline in `schema.py`.
 
 Kept rows only: what SR2 and SR2b lifted (L5, L6, T2 and T5 in part, H1, H2, H6, W9, N20,
 V5 and V6 in part) and the core lifts of SR3d (K2), SR3e (K3), SR3f (O1, O2), SR3g (P9,
-P10), SR4b (W4), SR4c (W5), SR4d (H11), SR4e (T6, T7), SR4f (T8), SR4h (V5, V6, V9), SR4i (T9) and SR4j (T10) is not here, or is here as the
+P10), SR4b (W4), SR4c (W5), SR4d (H11), SR4e (T6, T7), SR4f (T8), SR4h (V5, V6, V9), SR4i (T9), SR4j (T10), SR5a (T1, T4),
+SR5b (V2), SR5c and SR5c2 (V1), SR5d (V3, V4), SR5g (P1), SR5h (P5), SR5i (P6, P7), SR5j (O12), SR5k (O10, O11), SR6a (W1), SR6b (W2), SR6c (W3), SR6d (W6) is not here, or is here as the
 narrower case still refused.
 """
 
@@ -41,15 +42,10 @@ _SWEEP = "pieces[].moves[].kind: \"sweep\""
 _LONG_TURN = "rules.turn (moves or ramp over 1)"
 _COMMAND = "pieces[].sight effect \"command\""
 _NOBODY = "setup.placements player \"nobody\""
-_MAJORITY = "pieces[].control: \"majority\""
 
 
 def _rounds(rid: str, second: str, what: str, why: str) -> Refusal:
     return Refusal(rid, "rules.simultaneous", second, f"rules.simultaneous beside {what}: {why}")
-
-
-def _sweep(rid: str, key: str, why: str) -> Refusal:
-    return Refusal(rid, _SWEEP, f"rules.{key}", f"rules.{key} is refused beside a piece that sweeps: {why}")
 
 
 def _command(rid: str, key: str, why: str) -> Refusal:
@@ -76,15 +72,10 @@ def _nobody(rid: str, key: str, why: str) -> Refusal:
     return Refusal(rid, _NOBODY, f"rules.{key}", f"a placement for nobody is refused beside rules.{key}: {why}")
 
 
-def _majority(rid: str, key: str, why: str) -> Refusal:
-    return Refusal(rid, _MAJORITY, f"rules.{key}", f"majority control is refused beside rules.{key}: {why}")
-
-
 def _purse(rid: str, key: str, why: str) -> Refusal:
     return Refusal(rid, "rules.purse", f"rules.{key}", f"rules.purse is refused beside rules.{key}: {why}")
 
 
-_TAKEN_BY_CONTACT = "an explosion destroys what a contact just transformed"
 _NO_CHECK_AT_ONCE = "there is no check when both players move at once"
 
 REFUSALS: tuple[Refusal, ...] = (
@@ -160,10 +151,30 @@ REFUSALS: tuple[Refusal, ...] = (
     _nobody("R18", "simultaneous", "a round's collisions were not written for a piece nobody owns"),
     _purse("R19", "simultaneous", "two buyers in one round is a rule not written"),
     # §2.4 What a taken piece becomes.
+    # SR5a (T1, ruled 2026-10-27: a switch, `explode_on_capture.strikes`) lifted the pair;
+    # what stays refused is the switch where it cannot be read, and the pair where its
+    # order is a rule not written.
     Refusal(
-        "T1", "rules.strike", "rules.explode_on_capture",
-        "rules.strike and rules.explode_on_capture both say what happens to a taken "
-        "piece; an explosion destroys what a strike just transformed",
+        "T1", "rules.explode_on_capture.strikes", 'rules.strike.position (not "stay" or "home")',
+        "rules.explode_on_capture.strikes other than 'none' needs rules.strike.position "
+        "'stay' or 'home': the blast destroys the capturer, and only those two place a "
+        "struck piece without it",
+    ),
+    Refusal(
+        "T1", "rules.explode_on_capture.strikes", 'rules.strike (effect "capture", position "stay")',
+        "rules.explode_on_capture.strikes other than 'none' beside a strike of effect "
+        "'capture' placed 'stay' (rifle): such a strike only removes, as the blast already "
+        "does, so the switch changes nothing; leave it out",
+    ),
+    Refusal(
+        "T1", 'rules.strike.position: "choose"', "rules.explode_on_capture",
+        "rules.strike.position 'choose' beside rules.explode_on_capture: a capture that "
+        "explodes strikes nothing a chosen square could hold, so the chosen square would "
+        "be a second move to the same position",
+    ),
+    _rounds(
+        "T1", "rules.strike", "rules.strike beside rules.explode_on_capture",
+        "the order of a round's strikes and blasts is a rule not written",
     ),
     Refusal(
         "T2", "rules.strike (keeping its victim)", "rules.drops",
@@ -177,10 +188,23 @@ REFUSALS: tuple[Refusal, ...] = (
         "rules.contacts and rules.strike are two spellings of one rule; a strike is "
         "a contact table with no mover column, so write one or the other",
     ),
+    # SR5a (T4, ruled 2026-10-27 as T1's default): a capture that explodes makes no contact;
+    # the switch beside contacts, a choosing contact and rounds stay refused.
     Refusal(
-        "T4", "rules.contacts", "rules.explode_on_capture",
-        "rules.contacts and rules.explode_on_capture both say what happens to a taken "
-        f"piece; {_TAKEN_BY_CONTACT}",
+        "T4", "rules.contacts", "rules.explode_on_capture.strikes",
+        "rules.explode_on_capture.strikes other than 'none' beside rules.contacts: a capture "
+        "that explodes makes no contact, so the switch would strike with a table whose "
+        "links are about the capturer too; leave it 'none'",
+    ),
+    Refusal(
+        "T4", 'rules.contacts.position: "choose"', "rules.explode_on_capture",
+        "rules.contacts.position 'choose' beside rules.explode_on_capture: a capture that "
+        "explodes makes no contact a chosen square could hold, so the chosen square would "
+        "be a second move to the same position",
+    ),
+    _rounds(
+        "T4", "rules.contacts", "rules.contacts beside rules.explode_on_capture",
+        "the order of a round's contacts and blasts is a rule not written",
     ),
     Refusal(
         "T5", "rules.contacts (a link keeping its target)", "rules.drops",
@@ -203,85 +227,69 @@ REFUSALS: tuple[Refusal, ...] = (
         "answers; drop one of the two",
     ),
     # §2.6 Sweeps, in `_check_sweep_coherence`'s order. W7 (it names the piece) stays inline.
-    _sweep(
-        "W1", "strike",
-        "a strike says what one taken piece becomes, a sweep takes several, and "
-        "ordering the two would choose a game silently",
-    ),
-    _sweep(
-        "W2", "contacts",
-        "a contact says what one taken piece becomes, a sweep takes several, and "
-        "ordering the two would choose a game silently",
-    ),
-    _sweep(
-        "W3", "explode_on_capture",
-        "two multi-square clears on one move would be undone in an order nobody stated",
-    ),
-    _sweep(
-        "W6", "wrap",
-        "round a seam two rays can reach one square by two paths, and a move names only its target",
-    ),
+    # W1 lifted by SR6a (the sweep switch, `moves[].effects`) but for a chosen square.
     Refusal(
-        "W8", "rules.portals", _SWEEP,
-        "rules.portals is refused beside a 'sweep' move: what a sweep through a portal "
-        "removes is not settled",
+        "W1", _SWEEP, 'rules.strike.position: "choose"',
+        "rules.strike.position 'choose' is refused beside a piece that sweeps: a sweep's "
+        "move names no landing square for the struck piece, so the choice would be a "
+        "second rule; place it 'stay', 'swap' or 'home'",
     ),
+    # W2 lifted by SR6b (the sweep switch beside contacts) but for a chosen square.
     Refusal(
-        "W10", "pieces[].sight effect \"shield\"", _SWEEP,
-        "a shield (pieces[].sight effect 'shield') beside a sweep move: whether a sweep "
-        "passing over a shielded piece removes it or is stopped by it would be a second "
-        "rule; leave one out",
+        "W2", _SWEEP, 'rules.contacts.position: "choose"',
+        "rules.contacts.position 'choose' is refused beside a piece that sweeps: a sweep's "
+        "move names no landing square for the piece its contact keeps, so the choice would "
+        "be a second rule; place it 'stay' or 'swap'",
     ),
+    # W3 lifted by SR6c (the sweep switch beside a blast) but beside a strike or contacts.
+    Refusal(
+        "W3", _SWEEP, "rules.explode_on_capture beside rules.strike or rules.contacts",
+        "rules.explode_on_capture beside rules.strike or rules.contacts is refused beside a "
+        "piece that sweeps: explode_on_capture.strikes orders a capture's blast and strike, "
+        "not a sweep's, so the order of a sweep's blasts and its strikes or contacts would "
+        "be a second rule; leave one of them out",
+    ),
+    # W6 (a sweep beside wrap) lifted by SR6d: where two rays of a piece reach one target, the
+    # move word names its ray (`moves.move_ray`), and the text tells them apart by what each sweeps.
+    # W8 (a sweep beside portals) lifted by SR6e: a fold propagates a sweep (its landing on an
+    # empty fold may go through, sweeping only before it), and a momentum end ends the ray.
+    # W10 (a shield beside a sweep) lifted by SR6g: a shielded piece may not be captured, so it
+    # ends a sweep's ray (never passed, never landed on, and no check past it), read off the board.
     # §2.7 Lines of sight. V10 to V15 name a piece or a location and stay inline.
-    Refusal(
-        "V1", "pieces[].sight", "rules.portals",
-        "pieces[].sight beside rules.portals: an attack through a portal would need the "
-        "sight's reading of attack too, and a sight through a portal a rule of its own; "
-        "leave one out",
-    ),
-    Refusal(
-        "V2", "pieces[].sight", "rules.explode_on_capture",
-        "pieces[].sight beside rules.explode_on_capture: what a blast does to a shielded "
-        "piece, and how its legality reads a frozen attacker, are rules of their own; leave "
-        "one out",
-    ),
-    _command("V3", "reach", "whether a commanded arrival wins for the mover or the owner would be a second rule"),
-    _command(
-        "V4", "territory",
-        "whether a commanded arrival paints for the mover or the owner would be a second rule",
-    ),
-    Refusal(
-        "V7", _COMMAND, "pieces[].rest",
-        "a command (pieces[].sight effect 'command') beside pieces[].rest: whose turns a "
-        "commanded piece's rest counts would be a second rule; leave one out",
-    ),
-    Refusal(
-        "V8", _COMMAND, _SWEEP,
-        "a command (pieces[].sight effect 'command') beside a sweep move: what a commanded "
-        "sweep clears would be a second rule; leave one out",
-    ),
+    # V1 (a sight beside portals) lifted by SR5c for freeze, disarm and shield: a momentum end
+    # stops a line as a wall does, a fold lets it see the far end's square, and an attack
+    # through either reads the effects. SR5c2 lifted the command: a commanded piece passes a
+    # portal as its owner's piece would.
+    # V2 (a sight beside a blast) lifted by SR5b: a shielded piece survives a blast as if
+    # immune to it, and a frozen or disarmed piece makes no capture, so sets off none.
+    # V3, V4 (a command beside reach, territory) lifted by SR5d: a commanded piece arrives,
+    # leaves a goal and claims for its owner.
+    # V7 (a command beside rest) lifted by SR5e: a commanded move rests its piece on its
+    # owner's turns, and a resting piece is moved by neither player.
+    # V8 (a command beside a sweep) lifted by SR6f: a commanded sweep moves as its owner's
+    # sweep does, and removes only its owner's non-royal, unshielded pieces its captures allow,
+    # under `captures_own`; any other piece ends the ray.
     # §2.9 The duck. K4 (it names the clock) and K5 to K11 (one rule's own shape) stay inline.
     _duck_check("rules.win", '"win": "checkmate"'),
     _duck_check("rules.forbid_check", '"forbid_check": true'),
     _duck_check("rules.check_limit", "rules.check_limit"),
-    # §2.10 Portals. P7, P8 and P11 to P15 name a piece, a move or an index and stay inline.
-    Refusal(
-        "P1", "rules.portals", 'board.lattice: "hex"',
-        "rules.portals is refused on a hex lattice in this schema: the direction a piece "
-        "comes out in is read from the sign of its vector, which on six neighbours does "
-        "not name one of them",
-    ),
+    # §2.10 Portals. P8 and P11 to P15 name a piece, a move or an index and stay inline.
+    # P1 (portals on a hex lattice) lifted by SR5g: a transit comes out one hex king's step
+    # beyond the exit end, along the one of the twelve nearest the angle it travelled.
     _portals("P2", "npcs", "a wild piece walks a fixed route and a portal moves"),
     # P3 and P4 (a strike, contacts) lifted by SR4m: the exit is the capture square, read as
     # anywhere (rifle leaves the mover where it was, swap puts the struck piece there).
-    _portals("P5", "explode_on_capture", "a blast beside an exit is a second landing rule"),
-    _portals("P6", "territory", "which square a transit colours is not settled"),
+    # P5 (a blast) lifted by SR5h: the blast centres on the exit, where the capture happened;
+    # a portal end in it stands, and a fold in it loses the piece standing in it and stays.
+    # P6 (territory) lifted by SR5i: a transit claims the square it ends on, its exit, and
+    # never a portal end's; a momentum end's own move claims nothing.
     # §2.11 Pieces nobody owns, the purse, bounties and prices, in the validator's order.
     # O3 and O4 (a strike, contacts) lifted by SR4k: a struck or linked nobody's piece stays
     # nobody's, and a held piece strikes as its holder's piece would.
-    _majority("O10", "territory", "who claims a square a nobody's piece steps on is a second rule"),
-    _majority("O11", "reach", "whether a nobody's piece reaching a goal wins is a second rule"),
-    _majority("O12", "explode_on_capture", "who a held piece's blast is charged to is a second rule"),
+    # O10, O11 (territory, reach) lifted by SR5k: a held move claims for the mover, and a held
+    # arrival (or departure) is read by the goal's own rule as if the mover owned the piece.
+    # O12 (a blast) lifted by SR5j: a held piece's blast is the mover's, so one that would take
+    # the mover's royal is illegal as any, and one that takes the other royal wins for the mover.
     # O22 (the purse beside a blast) lifted by SR4l: the mover is paid every enemy victim's
     # bounty, nothing for its own.
     # §2.14 Lattice and shape. X2 to X4, X7 and X9 to X11, X13 name a location or a value.

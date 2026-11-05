@@ -212,12 +212,17 @@ def test_an_off_value_is_the_sight_left_out() -> None:
     assert validate_spec(with_sight(dict(QUEEN_FREEZE, through=False))) == validate_spec(ray)
 
 
-def test_a_sight_is_refused_beside_portals_and_explosions() -> None:
+def test_a_sight_is_allowed_beside_portals_and_explosions() -> None:
+    """SR5b lifted V2 (`tests/test_shield_from_blast.py` plays it), SR5c lifted V1 for every
+    effect but a command (`tests/test_sight_beside_portals.py` plays it) and SR5c2 its command
+    arm (`tests/test_command_beside_portals.py`)."""
     atomic = load("rulesets/atomic.json")
-    refused_pair(chess_with(base=atomic, sights={"Q": [QUEEN_FREEZE]}), "V2")
+    assert validate_spec(chess_with(base=atomic, sights={"Q": [QUEEN_FREEZE]})) == []
     wormhole = load("archive/wormhole.json")
     pid = next(p["id"] for p in wormhole["pieces"] if p.get("moves"))
-    refused_pair(chess_with(base=wormhole, sights={pid: [QUEEN_FREEZE]}), "V1")
+    assert validate_spec(chess_with(base=wormhole, sights={pid: [QUEEN_FREEZE]})) == []
+    command = dict(QUEEN_FREEZE, effect="command")
+    assert validate_spec(chess_with(base=wormhole, sights={pid: [command]})) == []
 
 
 def test_a_shield_beside_wild_pieces_and_a_wild_piece_seeing_both_sides() -> None:
@@ -236,15 +241,20 @@ def test_a_shield_beside_wild_pieces_and_a_wild_piece_seeing_both_sides() -> Non
     )) == []
     freeze_tame = chess_with(base=wolves, sights={tame: [FREEZE_BESIDE]})
     assert not any("sight" in error for error in validate_spec(freeze_tame))
+    # SR5f (V11): an affects may name a wild type, under whose 'any' alone.
     refused(chess_with(base=wolves, sights={tame: [dict(FREEZE_BESIDE, affects=sorted(wild))]}),
-            "a wild piece (rules.npcs), which nothing affects")
+            "which has no side, under whose 'enemy': only whose 'any' reaches it")
+    assert validate_spec(chess_with(
+        base=wolves, sights={tame: [dict(FREEZE_BESIDE, whose="any", affects=sorted(wild))]}
+    )) == []
 
 
-def test_a_shield_is_refused_beside_a_sweep() -> None:
+def test_a_shield_beside_a_sweep_is_valid() -> None:
+    """W10, lifted by SR6g: a shielded piece ends a sweep's ray (`tests/test_sweep_blockers.py`)."""
     spec = chess_with(sights={"K": [dict(KING_STEP, effect="shield", whose="own")]})
     rook = next(p for p in spec["pieces"] if p["id"] == "R")
     rook["moves"].append({"kind": "sweep", "vectors": [[1, 1]], "symmetry": "rotate4"})
-    refused_pair(spec, "W10")
+    assert validate_spec(spec) == []
 
 
 def _small(**sight: Any) -> dict[str, Any]:

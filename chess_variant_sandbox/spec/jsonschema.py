@@ -25,6 +25,7 @@ from typing import Any
 
 from chess_variant_sandbox.spec.schema import (
     BARE_ROYAL_HOLDER,
+    BLAST_STRIKE_VALUES,
     BOUNTY_MAX,
     CONTACT_POSITIONS,
     ENDING_RESULTS,
@@ -65,6 +66,7 @@ from chess_variant_sandbox.spec.schema import (
     STRENGTH_MAX,
     STRIKE_EFFECTS,
     STRIKE_POSITIONS,
+    SWEEP_EFFECTS,
     SYMMETRIES,
     TERRITORY_MODES,
     WEIGHT_MAX,
@@ -133,7 +135,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "one-square vector has no square to be blocked on and is refused: use a "
                     "leap or a range-1 slide. Its legs may be stated instead (legs). "
                     "sweep: jump to any square along the line, removing every piece "
-                    "passed over, friendly included; a piece it may not capture blocks, "
+                    "passed over, friendly included; a piece it may not capture blocks, a "
+                    "shielded piece (pieces[].sight effect shield) among them, "
                     "and a sweep that could pass over the enemy royal is check. Beside a "
                     "hand that fills from captures (rules.drops) every swept piece but the "
                     "mover's own goes to the mover's hand, as a taken piece does; a swept "
@@ -141,7 +144,20 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "pays its bounty as a capture of it does (a wild piece its route's, to "
                     "the mover). With a "
                     "sweep_range shorter than its range it clears only that far, and rides "
-                    "on past it as a slide."
+                    "on past it as a slide. Beside rules.strike the strike acts on the "
+                    "capture on its landing square alone, or under effects path on every "
+                    "swept piece too (a strike placed choose is refused beside a sweep); "
+                    "beside rules.contacts the same, each swept piece meeting the mover by "
+                    "its link (a contact placed choose is refused beside a sweep). On a "
+                    "wrapped board (rules.wrap) a sweep reaching one square two ways round "
+                    "is two moves, each sweeping its own way, and one where both sweep the "
+                    "same pieces. Beside rules.portals a momentum end stops a sweep, and a "
+                    "landing on an empty fold may go through to the fold it leads to, "
+                    "sweeping only the pieces before the fold. A commanded sweeper (a "
+                    "command sight) sweeps as its owner's would but removes only what the "
+                    "command lets it take: without captures_own any piece ends its line; "
+                    "with it, its own side's pieces its captures allow, never a royal or a "
+                    "shielded piece, and any other piece ends the line."
                 ),
             },
             "vectors": {"type": "array", "items": vector, "minItems": 1},
@@ -252,6 +268,32 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "clears three squares and then slides on without limit). Omitted, it "
                     "equals range: the sweep clears every square it moves over. It may not "
                     "exceed range (0 means unlimited, so only beside an unlimited range)."
+                ),
+            },
+            # SR6a (`docs/plan-schema-next.md` §2.6): the sweep switch.
+            "effects": {
+                "type": "string",
+                "enum": list(SWEEP_EFFECTS),
+                "description": (
+                    "For sweeps only, which of the sweep's removals rules.strike, "
+                    "rules.contacts or rules.explode_on_capture acts on. "
+                    "landing (the default): the capture on its landing square alone, as on "
+                    "any capture; the swept pieces are removed. path: every swept piece is "
+                    "struck too, in path order after the landing: each follows its chain "
+                    "link where it stands (or goes home under position home), with no link "
+                    "it is removed; the strike's position governs only the landing's piece, "
+                    "and strike.by must name the sweeper. Beside contacts each swept piece "
+                    "meets the mover by its link where it stands (onto_to; a friendly one "
+                    "by an own link; no link, removed), and the mover's mover_to applies "
+                    "once: the landing's link's if it names one, else the last swept "
+                    "meeting's that does. Beside explode_on_capture, landing makes one "
+                    "blast, centred on the landing square, when the sweep removed a piece "
+                    "whose capture explodes (swept or taken on landing); path makes one on "
+                    "each swept square whose piece's capture explodes, and one on the "
+                    "landing if its capture does, all cleared together, the sweeper "
+                    "destroyed once. Every sweep of one piece says the "
+                    "same; path needs a strike that strikes what the piece sweeps, a "
+                    "contact link whose mover is the piece, or a blast its captures set off."
                 ),
             },
             # SR3c (`docs/plan-schema-next.md` §1 rank 7): an owner word or a list of ids.
@@ -431,7 +473,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "description": (
                     "The piece ids it touches; omit it for every type. It may name this "
                     "piece's own type (Madrasi: a queen freezes the enemy queen). Never an "
-                    "empty list or a wild piece."
+                    "empty list. Omitted, it touches no wild piece; it may name a wild type "
+                    "(or the duck, for a freeze) under whose 'any', never for a command."
                 ),
             },
             "through": {
@@ -578,9 +621,12 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "check (which must be answered) and can be captured; captured, moved off "
                     "its square or changed by the other player, it rests no more. When every "
                     "move a player has is a resting piece's, the rest is lifted for that "
-                    "turn, so the rest never leaves a player without a move. Never on a "
-                    "wild piece, and not beside a turn of more than one move "
-                    "(rules.turn moves or ramp)."
+                    "turn, so the rest never leaves a player without a move. Beside a "
+                    "command sight a commanded move rests the piece as its owner's move "
+                    "would, counted on its owner's turns, and while a piece rests neither "
+                    "player may move it (the lift reads each player's own moves, commands "
+                    "included). Never on a wild piece, and not beside a turn of more than one "
+                    "move (rules.turn moves or ramp)."
                 ),
             },
             "sight": {
@@ -609,15 +655,38 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "same for both players (a symmetry such as rotate4 or dihedral8); it "
                     "freezes, disarms or shields both players' pieces alike. A wild piece "
                     "never takes a shielded piece: its step onto one waits, and it comes back "
-                    "only onto a start no shield covers. Refused beside "
-                    "rules.portals and rules.explode_on_capture, a shield is refused beside a "
-                    "sweep move, and a sight that can never bind (no "
+                    "only onto a start no shield covers. A piece placed for nobody sees as a "
+                    "wild piece does, under the same three limits. A sight whose affects names "
+                    "a wild type, under whose 'any', binds those wild pieces too, read when "
+                    "they start to move: a frozen one neither walks nor pounces, a disarmed "
+                    "one walks only onto empty squares and never pounces, a shielded one "
+                    "cannot be taken, and a frozen or disarmed one threatens nothing; the duck "
+                    "may be named only by a freeze, and a frozen duck passes. Beside "
+                    "rules.explode_on_capture a "
+                    "shielded piece survives a blast as a piece of an immune type does (a "
+                    "shielded royal next to a capture is not lost), the shield read on the "
+                    "board the capture leaves, before anything goes; a frozen or disarmed "
+                    "piece makes no capture, so sets off no blast. Beside rules.portals a "
+                    "momentum end stops a line, ray or aura, as a wall does (it sees nothing "
+                    "at or past the end); a fold is floor to it, and a line reaching an empty "
+                    "fold that lets the seeing piece in also sees the square of the end that "
+                    "fold leads to, and the piece there, but nothing past it; an attack "
+                    "through either kind reads the effects as any attack does. A shielded "
+                    "piece ends a sweep's line, as any piece the sweep may not take does, "
+                    "its own side's included. A sight that can never bind (no "
                     "type it affects is ever held by the side it affects, a freeze on types "
                     "with no move, a disarm on types that capture nothing, a shield on types "
                     "nothing can capture, a command on types with no move) is refused. A "
                     "command never touches a royal (an affects naming one is refused) and is "
-                    "refused beside rules.simultaneous, rules.reach, rules.territory, "
-                    "pieces[].rest and a sweep move; beside rules.strike or rules.contacts "
+                    "refused beside rules.simultaneous and a sweep move. Beside "
+                    "pieces[].rest a commanded move rests the piece on its owner's turns, "
+                    "and a resting piece is moved by neither player. "
+                    "Beside rules.portals a commanded piece goes through a portal as its "
+                    "owner's piece would (the owner's passage and carries, its exit under the "
+                    "owner's wrap), landing at the exit only where a commanded piece may land. "
+                    "A commanded piece arrives for its owner: on its owner's "
+                    "rules.reach goal it wins for its owner (leaving one, under 'leave'), and "
+                    "on rules.territory it claims for its owner. Beside rules.strike or rules.contacts "
                     "a commanded capture of its own side (captures_own) is an ordinary "
                     "removal: nothing is struck, no link is read, no side changes."
                 ),
@@ -672,9 +741,15 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "promotion, owner-named screen, sweep, or a move whose symmetry does not "
                     "cover both), and some placement must put it in nobody's block, or a "
                     "strike or contact must make a piece nobody owns into it. Never on "
-                    "a royal or a wild piece. Refused beside rules.territory, rules.reach "
-                    "and rules.explode_on_capture. In a turn of several moves the holder is "
-                    "read afresh at the start of each move."
+                    "a royal or a wild piece. Beside rules.territory a held move claims the "
+                    "square it lands on for the player who moved it; beside rules.reach a "
+                    "held arrival is read by the goal's own rule (piece, on, safe) as if the "
+                    "mover owned the piece, so onto the mover's goal it wins for the mover "
+                    "and onto the other's, or standing there afterwards, decides nothing. "
+                    "Beside rules.explode_on_capture a held piece's blast is the "
+                    "mover's: one that would destroy the mover's royal is no move, and one "
+                    "that destroys the other player's wins for the mover. In a turn of "
+                    "several moves the holder is read afresh at the start of each move."
                 ),
             },
             # Q1077 (`docs/plan-turncoat.md` §4.7).
@@ -1677,7 +1752,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "portal end that lets it in does not stop there: it comes out of the "
                     "end that one leads to, one king's step beyond it in the direction it "
                     "was travelling (right-and-up by any amounts comes out diagonally up "
-                    "and right), and its move ends there -- capturing, promoting or winning "
+                    "and right; on a hex lattice along the nearest of the twelve hex king's "
+                    "steps, so a hex line continues and the hex knight comes out "
+                    "diagonally), and its move ends there -- capturing, promoting or winning "
                     "there as usual. A blocked exit (off the board, a wall, its own piece, a "
                     "piece it may not take, another portal, or its own square) is no move. "
                     "An end that does not let a piece in is an uncapturable obstacle to it. "
@@ -1686,8 +1763,16 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "comes out on (a fold's far square) is the capture square, read as "
                     "anywhere: a strike that stays leaves the mover where it set out, a swap "
                     "puts the struck piece on that square, home and choose move the mover to "
-                    "the exit. Not usable on a hex lattice or beside npcs, "
-                    "explode_on_capture, territory, a sweep, or a piece region."
+                    "the exit. Beside explode_on_capture the blast centres on that square; "
+                    "a portal end in it stands, and a fold in it loses the piece standing in "
+                    "it and stays. Beside territory a move through a portal claims the "
+                    "square it ends on (the exit, or a fold's far square), never a portal "
+                    "end's, and moving a portal claims nothing. A piece with a region comes "
+                    "out only on a square of its region: an exit outside it is blocked, no "
+                    "move, as a wall is (and, as for any landing, it goes in only by an end "
+                    "standing in its region). Beside a sweep a momentum end stops it, and a "
+                    "landing on an empty fold may go through, sweeping only before the fold. "
+                    "Not usable beside npcs."
                 ),
             },
             "purse": _object(
@@ -2254,6 +2339,25 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "The only captured pieces whose being taken explodes. Leave "
                             "it out and taking anything does. An empty list is no rule "
                             "at all."
+                        ),
+                    },
+                    # SR5a (T1): which of an exploding capture's pieces rules.strike reaches.
+                    "strikes": {
+                        "type": "string",
+                        "enum": list(BLAST_STRIKE_VALUES),
+                        "description": (
+                            "Beside rules.strike, which pieces of a capture that explodes "
+                            "the strike reaches, after the blast has cleared: 'none' (the "
+                            "default; the capture strikes nothing, it explodes), 'target' "
+                            "(the piece taken is struck: it follows its chain link and "
+                            "stands on the capture square, or goes home under position "
+                            "'home'), 'blast' (each piece the blast destroys that is not "
+                            "immune to the strike is struck where it stood, or sent home), "
+                            "or 'both'. A piece with no link is removed; the capturer is "
+                            "always destroyed and never changes sides. Other than 'none' "
+                            "it needs rules.strike.position 'stay' or 'home' (not effect "
+                            "'capture' with 'stay', which only removes) and no "
+                            "rules.contacts. A capture that explodes makes no contact."
                         ),
                     },
                 },

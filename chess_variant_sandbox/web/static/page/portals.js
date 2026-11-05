@@ -1369,12 +1369,16 @@ function transitWords(transit, called) {
   const into = stillPortalAt(preview, transit.portal);
   const out = stillPortalAt(preview, transit.portalOut);
   const way = transit.exitDir;
-  if (!into || !out || !(way >= 0 && way < 8)) return '';
+  // SR5g (P1): on a hex lattice the way is one of twelve, worded as the board draws it
+  // (`portalStep`, unflipped as the bench is).
+  const hex = transit.exitHex ? portalStep(way, false, true) : null;
+  if (!into || !out || !(hex || (way >= 0 && way < 8))) return '';
   // By number and square, as the play board says it (`portalName`): every end looks alike.
   const pairs = new Set(((preview.portals || {}).ends || []).map(end => end.pair)).size;
   const mapped = portalMapped(into, out);
-  return `The ${called} moves ${TRANSIT_GOING[way]} into ${portalName(into, pairs)} on ${
-    boardName(transit.portal)}, and comes out one step ${TRANSIT_BESIDE[way]} ${mapped
+  const beside = hex ? `${hex.words} from` : TRANSIT_BESIDE[way];
+  return `The ${called} moves ${hex ? hex.words : TRANSIT_GOING[way]} into ${
+    portalName(into, pairs)} on ${boardName(transit.portal)}, and comes out one step ${beside} ${mapped
     ? 'the end it leads to' : 'its partner'} on ${boardName(transit.portalOut)}, on ${boardName(transit.to)}.`;
 }
 
@@ -1407,6 +1411,17 @@ function portalKeyHtml() {
     that passes over a fold is not changed.${ends.every(isFold)
       ? ' <button class="linkish" id="dPortalKeyShut">close</button>' : ''}</div>` : '';
   if (ends.length && ends.every(isFold)) return `<div class="portalKey small" id="dPortalKey">${fold}</div>`;
+  // SR5g (P1): on a hex board the way out is one of twelve, which the square's grid of
+  // eight arrows does not show.
+  if (((DRAFT || {}).board || {}).lattice === 'hex') {
+    return `<div class="portalKey small" id="dPortalKey">
+    <div>A piece comes out beside the end its portal leads to (the one its beak points at),
+      one step further along the nearest of the twelve lines from a cell, to its six
+      neighbours and its six diagonals: a move along a line carries straight on, and a
+      knight comes out along the diagonal beside its jump.
+      <button class="linkish" id="dPortalKeyShut">close</button></div>${fold}
+  </div>`;
+  }
   const arrows = ['&#8598;', '&#8593;', '&#8599;', '&#8592;', '&#9678;', '&#8594;', '&#8601;',
     '&#8595;', '&#8600;'];
   return `<div class="portalKey small" id="dPortalKey">

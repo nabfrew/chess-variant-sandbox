@@ -134,9 +134,10 @@ class TestTheLift:
 
     def test_the_other_sweep_refusals_stand(self) -> None:
         spec = _spec()
-        spec["rules"]["explode_on_capture"] = {"radius": 1}
+        spec["rules"]["wrap"] = {"files": "both"}
         ids = refused_ids(validate_spec(spec))
-        assert "W3" in ids and "W5" not in ids
+        # SR6d lifted W6 too (`tests/test_sweep_wrap.py`).
+        assert "W6" not in ids and "W5" not in ids
 
     def test_describe_says_the_sweep_pays(self) -> None:
         text = describe_spec(_spec())
