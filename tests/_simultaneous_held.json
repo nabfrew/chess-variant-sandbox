@@ -1,0 +1,141 @@
+{
+  "schema_version": 31,
+  "name": "simultaneous condottieri",
+  "description": "SR7n's test spec (R20): four condottieri nobody owns stand in the middle of a six by six game in rounds, each moved by whichever player has more pieces next to it, read on the round's board; a held piece's move is its holder's one move of the round, and it claims for its holder.",
+  "board": {
+    "width": 6,
+    "height": 6
+  },
+  "pieces": [
+    {
+      "id": "K",
+      "name": "king",
+      "royal": true,
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "dihedral8"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "guard",
+      "value": 2,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "dihedral8"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "condottiere",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "dihedral8"
+        }
+      ],
+      "control": "majority"
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "K",
+        "squares": [
+          "a1"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "f1"
+        ]
+      },
+      {
+        "piece": "G",
+        "squares": [
+          "b2",
+          "c2",
+          "d2",
+          "e2"
+        ]
+      },
+      {
+        "piece": "C",
+        "player": "nobody",
+        "squares": [
+          "c3",
+          "d3"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "max_plies": 200,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "simultaneous": {},
+    "territory": {
+      "mode": "repaint"
+    },
+    "drops": {
+      "from_captures": true
+    }
+  }
+}

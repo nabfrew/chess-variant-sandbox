@@ -2413,7 +2413,8 @@ class CompiledSpec:
     # schema 29 -- which is what keeps their boundary bytes and keys where they were.
     rest: tuple[int, ...] = ()
     # One key per (turns left, player, square) for a resting piece,
-    # ``((left - 1) * 2 + player) * n_squares + square``, ``left`` 1 to ``max(rest)``; drawn
+    # ``((left - 1) * 2 + player) * n_squares + square``, ``left`` 1 to ``rest_layers``
+    # (``max(rest)``, one more in a long turn, SR7d); drawn
     # last of all and only under the rule (`_build_zobrist`). For a game whose largest rest
     # is 1 this is schema 27's layout, ``player * n_squares + square``. Empty otherwise.
     zobrist_rest: tuple[int, ...] = ()
@@ -2474,6 +2475,13 @@ class CompiledSpec:
     def rest_max(self) -> int:
         """The largest rest any type declares, 0 without the rule."""
         return max(self.rest, default=0)
+
+    @property
+    def rest_layers(self) -> int:
+        """The most turns left a resting entry can hold (`rest_layers`): the key's layers and
+        the net's rest plane width. A duck game's compiled turn is its two halves, not a long
+        turn."""
+        return rest_layers(self.rest_max, None if self.duck is not None else self.turn)
 
     def turns(self, piece_type: int) -> bool:
         """Whether a move may turn this type: it has more than one orientation and its
@@ -3039,7 +3047,9 @@ def _compile(
             fold_ends=n_types - declared_types if has_folds else 0,
             simultaneous=isinstance(simultaneous, dict),
             initiative=isinstance(simultaneous, dict) and simultaneous.get("tie") == "initiative",
-            rest_max=max(piece_rests(spec).values(), default=0),
+            rest_max=rest_layers(
+                max(piece_rests(spec).values(), default=0), _compile_turn(rules.get("turn")),
+            ),
             respawn_keys=sum(every for every, _ in npcs.respawn) if npcs is not None else 0,
             heading_squares=tuple(
                 square for square in range(n_squares) if npcs is not None and npcs.on_line(square)
@@ -4829,6 +4839,16 @@ def _facing_lines(
                 path.append(current)
         table.append(tuple(entries))
     return tuple(table)
+
+
+def rest_layers(rest_max: int, turn: TurnRule | None) -> int:
+    """SR7d (L2, `docs/plan-schema-next.md` §2.2): the most turns left a resting entry can
+    hold. An entry counts its player's turns still to rest, the one in progress counted, so
+    in a long turn a piece that moves before its turn's last move (it rests the rest of that
+    turn, then its ``rest`` turns) enters at ``rest + 1``: one layer more than the longest
+    rest. ``turn`` is the game's own long turn (``None`` in a turn of one move and in a duck
+    game, whose two halves hold one piece move); 0 without a rest."""
+    return rest_max + 1 if rest_max and turn is not None else rest_max
 
 
 def _compile_turn(turn: Any) -> TurnRule | None:

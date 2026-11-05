@@ -559,18 +559,34 @@ impl<'t> Game<'t> {
     }
 
     /// `coming_phases` in a pounce game: `count` phases on the raw board, each starting from
-    /// the wild set the one before it left, the mover alternating from the side to move.
+    /// the wild set the one before it left, each phase's mover the player who makes the move
+    /// it follows: from the side to move, along the turn's schedule (SR7b, L3: in a long turn
+    /// the side to move makes the rest of its turn first, `remaining` moves, then the other
+    /// player its next turn's `length_of`). A turn of one move alternates, as before.
     pub(super) fn pounce_coming_phases(&mut self, count: usize) -> Vec<Vec<(usize, usize, u8, u8)>> {
         let mut phases = vec![Vec::new(); count];
         let mut saved = Saved::new();
         let mut standing = self.wild_standing();
         let mut mover = self.side;
+        // A duck game's turn rule is its two halves, and its phase runs once a turn (after the
+        // duck half), so its phases alternate as a turn of one does.
+        let schedule = self.t.turn.as_ref().filter(|_| self.t.duck.is_none());
+        let mut left = self.remaining.max(1);
+        let mut turns = self.turns_taken;
         // No clock and no heading beside a pounce (respawn and turns_back are refused).
         let mut heading = SquareSet::EMPTY;
         for steps in phases.iter_mut() {
             let mut sink = Coming { saved: &mut saved, steps, clocks: &mut [], heading: &mut heading };
             standing = self.pounce_walk(&mut sink, mover, standing);
-            mover = 1 - mover;
+            match schedule {
+                Some(_) if left > 1 => left -= 1,
+                Some(rule) => {
+                    turns += 1;
+                    left = rule.length_of(turns).max(1);
+                    mover = 1 - mover;
+                }
+                None => mover = 1 - mover,
+            }
         }
         saved.restore(&mut self.board);
         phases

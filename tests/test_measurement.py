@@ -596,7 +596,12 @@ class TestTheFingerprintsPointAtSomething:
 # piece, the sweep switch and what blocks a sweep. Read only in games no library game is; SR5r
 # replayed the library on build 865fca5eb3a023f9 (`docs/reference/replay-2026-11-05.md`). It was
 # "7abe38341bdf5a58" after SR4r.
-FROZEN_METRICS = "5a9df6bcc63dfa8f"
+# **Moved by batch E (SR7a-SR7n2), re-frozen 2026-11-05 by SR7r (its replay)**: the engine's
+# Python side (`engine/compile.py`, `engine.py`, `coming.py`) for long turns, a purse, nobody's
+# pieces and a held piece in rounds, and the gained, priced and sold spy. Read only in games no
+# library game is; SR7r replayed the library on build 205d19bd6aea5a51
+# (`docs/reference/replay-2026-11-05b.md`). It was "5a9df6bcc63dfa8f" after SR5r.
+FROZEN_METRICS = "599b8777a79f2883"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -974,7 +979,12 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved by batches C and D, re-frozen 2026-11-04 by SR5r+SR6r**: the engine's Python side (as
 # `FROZEN_METRICS` says), only in games no library game is; SR5r replayed the library under it.
 # It was "a637827f2e7b0d6f" after SR4r.
-FROZEN_ANALYSIS = "9185155861926832"
+# **Moved by batch E, re-frozen 2026-11-05 by SR7r**: `tournament/analysis.py` (a spy's gains,
+# `PURSE_SERIES` and `NEUTRAL_SERIES` in rounds) and the engine's Python side (as
+# `FROZEN_METRICS` says), only in games no library game is: the library holds no spy game, and
+# its two round games have no purse and no piece nobody owns. SR7r replayed the library under
+# it, every canonical.json identical outside `basis`. It was "9185155861926832" after SR5r.
+FROZEN_ANALYSIS = "22032ebaf99740ac"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

@@ -331,7 +331,8 @@ class TestRoundsIsOneStepFromChess:
         answer = designing.take_turns(CHESS, "several", {"moves": 2})
         assert answer["errors"] == []
         assert answer["draft"]["rules"]["turn"] == {"moves": 2}
-        assert "en_passant" not in answer["draft"]["rules"]
+        # En passant stays beside a long turn since SR7a (L1): the window is the opponent's.
+        assert answer["draft"]["rules"]["en_passant"] is True
         assert _problems(answer["draft"]) == []
 
     def test_a_conflict_with_no_change_of_ours_refuses_in_words(self) -> None:
@@ -407,7 +408,7 @@ class TestEveryReasonAtOnceInPlainWords:
         assert drawn.index("first reason.") < drawn.index("second reason.")
 
 
-# The five sentences the validator writes about a field of the whole army (`pieces[].key`),
+# The four sentences the validator writes about a field of the whole army (`pieces[].key`),
 # each with a draft that raises it. Built on chess in rounds, where speed and the spy mean
 # something, except where the point is that they don't.
 def _in_rounds() -> dict[str, Any]:
@@ -425,15 +426,14 @@ def _army_cases() -> list[tuple[str, dict[str, Any]]]:
                             "moves": [{"kind": "leap", "vectors": [[0, 1]]}]})
     spy_alone = copy.deepcopy(CHESS)
     spy_alone["pieces"][1]["spy"] = True
-    gained = _in_rounds()
-    gained["pieces"][1]["spy"] = True
-    gained["rules"]["promotion"]["to"] = ["Q", "R", "B", "N"]
+    # A fifth, `pieces[].spy beside` a rule that would gain a spy, went with its last
+    # refusal: a stock holding the spy is a gain since SR7j (Y7), as a promotion into it is
+    # since SR7h (Y3).
     return [
         ("pieces[].speed orders the two moves of a round", no_rounds),
         ("pieces[].speed: speeds are ranks", gap),
         ("pieces[].speed never orders a round", level),
         ("pieces[].spy: a spy decides when a game plays in rounds", spy_alone),
-        ("pieces[].spy beside", gained),
     ]
 
 
@@ -441,7 +441,7 @@ class TestAPieceFieldIsNamedWhereItIs:
     """Fix 3. A problem about `pieces[].speed` or `pieces[].spy` opened *Where the game comes
     from* and named neither the piece nor the field (F3)."""
 
-    @pytest.mark.parametrize("index", range(5))
+    @pytest.mark.parametrize("index", range(4))
     def test_each_army_sentence_names_the_piece_and_the_field(self, index: int) -> None:
         opening, spec = _army_cases()[index]
         raised = [line for line in _problems(spec) if line.startswith(opening)]
@@ -1009,20 +1009,28 @@ class TestEveryPieceRests:
         assert '<option value="0" selected>never</option>' in menu, menu
         assert sentence == "No piece rests: any piece may move in every round."
 
-    def test_a_choice_no_piece_can_take_is_refused_in_plain_words(self) -> None:
+    def test_several_moves_a_turn_take_a_rest(self) -> None:
+        """A turn of several moves was the choice no piece could take until SR7d (L2 lifted,
+        generation 99): every piece now rests beside it."""
         several = designing.take_turns(CHESS, "several")["draft"]
         answer = designing.rest_every_piece(several, 1)
+        assert answer["errors"] == [] and answer["draft"] is not None
+        assert all(piece.get("rest") == 1 for piece in answer["draft"]["pieces"])
+        assert _problems(answer["draft"]) == []
+
+    def test_a_choice_no_piece_can_take_is_refused_in_plain_words(self) -> None:
+        """A rest past the longest any piece may take, refused on every piece alone."""
+        answer = designing.rest_every_piece(CHESS, 5)
         assert answer["draft"] is None and answer["changes"] == []
         assert answer["errors"], answer
         for line in answer["errors"]:
             assert not _RAW_PATH.search(line), line
             assert "schema" not in line, line
-        assert "more than one move a turn" in " ".join(answer["errors"])
-        said = _draw(several, "restSaidHtml()",
-                     f"REST_SAID = {{ key: restKey(), rest: 1,"
+        said = _draw(CHESS, "restSaidHtml()",
+                     f"REST_SAID = {{ key: restKey(), rest: 5,"
                      f" errors: {json.dumps(answer['errors'])} }};")
         words = _visible(said)
-        assert ("'every piece rests 1 turn after it moves' can't be chosen for this game yet, "
+        assert ("'every piece rests 5 turns after it moves' can't be chosen for this game yet, "
                 "so nothing was changed.") in words, words
         assert answer["errors"][0] in words
 

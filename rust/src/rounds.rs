@@ -40,6 +40,10 @@ pub(super) struct RoundUndo {
     respawn: Vec<u8>,
     /// Generation 38 (N5): the headings, empty without the rule.
     heading_back: SquareSet,
+    /// SR7g (R19): both purses, `[0, 0]` without the rule.
+    purse: [u16; 2],
+    /// SR7h (§2.12): the side to move, which a round of a spy game writes on a gain.
+    side: usize,
 }
 
 /// One player's move of a round, read off the round's board.
@@ -47,12 +51,12 @@ pub(super) struct RoundUndo {
 struct Plan {
     m: u32,
     kind: u32,
-    /// `None` for a drop, which has no origin.
+    /// `None` for a drop or a buy (SR7g), which has no origin.
     origin: Option<usize>,
     target: usize,
-    /// The piece as it stands before the move, or a drop's arriving value.
+    /// The piece as it stands before the move, or a drop's or a buy's arriving value.
     mover: u8,
-    /// Its type before the move (the dropped type for a drop): "a capture by P" means
+    /// Its type before the move (the dropped or bought type): "a capture by P" means
     /// the piece that set out, as `make` reads it.
     piece_type: usize,
 }
@@ -69,8 +73,18 @@ struct Taking {
     /// for a capture of a standing piece, and for a collision's only under `rules.strike`.
     strikes: bool,
     /// The captor was itself eliminated (a *yes/yes* tie under the default): it captured,
-    /// but there is no captor left to transform (§2.4, last bullet).
+    /// but there is no captor left to transform (§2.4, last bullet). For a shot (SR7e): the
+    /// shooter was itself struck by the other player's shot, so it changes no further.
     captor_gone: bool,
+    /// SR7e (R11): a shot, made before the moves (§4 step 0); its captor stands on
+    /// `origin`, where step 5 promotes it or switches its side.
+    shot: bool,
+    /// The captor's move word (a shot reads its promotion).
+    m: u32,
+    /// SR7n (R20): the block the captor's piece stands in -- `captor` for its own piece,
+    /// `WILD` for a held piece (majority control), which stays nobody's whatever it meets:
+    /// a change of type is written into nobody's block, and it never changes sides.
+    block: usize,
 }
 
 /// `Game::round_log` events, for the page to draw a round (§6.1, *The boundary*).
@@ -87,7 +101,8 @@ pub const EVENT_SWAP: u8 = 4;
 /// the one who moved first.
 pub const EVENT_ORDER: u8 = 5;
 /// Schema 28: the slower move was lost, its piece taken, moved or changed by the faster
-/// move. The square is the slower move's origin, the player its player.
+/// move. The square is the slower move's origin, the player its player. SR7e (R11): also a
+/// move whose piece the other player's shot struck before it could move, in any round.
 pub const EVENT_LOST: u8 = 6;
 /// Schema 28: the faster move ended the game, so the slower was never played. The square
 /// is the slower move's origin (a drop's destination), the player its player. A slower
@@ -123,11 +138,13 @@ impl StepFacts {
     }
 }
 
-/// Each player's move after one step: arrived, stood (a turn, a contact that stays), void.
+/// Each player's move after one step: arrived, stood (a turn, a contact that stays, a
+/// shot), void, or struck by a shot before it could move (SR7e).
 struct Step {
     arriving: [bool; 2],
     standing: [bool; 2],
     void: [bool; 2],
+    struck: [bool; 2],
 }
 
 /// Who does what in one step, settled from the two choices before anything moves (§2.2,
@@ -139,6 +156,15 @@ struct Roles {
     void: [bool; 2],
     /// Schema 27's `swap: "collision"`: two moves each ending on the other's origin.
     swapped: bool,
+    /// SR7e (R11): the move is a shot (`rules.strike` placed `"stay"`), standing.
+    shot: [bool; 2],
+    /// SR7e (R11): the other player's shot strikes this move's piece before it moves, so
+    /// the move is not made (`EVENT_LOST`).
+    struck: [bool; 2],
+    /// SR7f (R18): two moves that strike one nobody's piece without moving (two shots, or
+    /// two contacts that stay) met by `beats` and the tie, and this one lost (or neither
+    /// won): it stands and changes nothing (`EVENT_VOID`), never a void for the run.
+    missed: [bool; 2],
 }
 
 impl<'t> Game<'t> {
@@ -194,7 +220,7 @@ impl<'t> Game<'t> {
 
     /// Whether `m` is one of a barred pair's capture-only moves for `player` (§2.7).
     fn barred(&mut self, player: usize, m: u32) -> bool {
-        if move_kind(m) == MOVE_DROP {
+        if enters_play(move_kind(m)) {
             return false;
         }
         let origin = move_from(m) as i16;
@@ -220,11 +246,16 @@ impl<'t> Game<'t> {
         // The movement tables alone (schema 30, `docs/archive/plan-passive.md` §2.8): the move was
         // already offered under the round's effects, and emptying a square can change them.
         self.generate_movement(&mut moves);
+        // SR7n (R20): and the held pieces' moves. The emptied square held the other player's
+        // piece or a nobody's, so emptying it never takes a held piece from `player`.
+        if self.t.majority.is_some() {
+            self.push_foreign(&mut moves);
+        }
         self.side = saved;
         self.put(target, standing);
         moves.iter().any(|&other| {
             let kind = move_kind(other);
-            kind != MOVE_DROP && kind != MOVE_ROTATE && move_from(other) == origin
+            !enters_play(kind) && kind != MOVE_ROTATE && move_from(other) == origin
                 && move_to(other) == target
         })
     }
@@ -233,7 +264,8 @@ impl<'t> Game<'t> {
         let t = self.t;
         let kind = move_kind(m);
         let target = move_to(m);
-        if kind == MOVE_DROP {
+        // SR7g (R19): a buy enters play as a drop does, an arrival with no origin.
+        if enters_play(kind) {
             let piece_type = move_promotion(m) as usize;
             return Plan {
                 m, kind, origin: None, target,
@@ -335,7 +367,12 @@ impl<'t> Game<'t> {
             npc_log: self.npc_log.len(),
             respawn: self.respawn.clone(),
             heading_back: self.heading_back,
+            purse: self.purse,
+            side: self.side,
         });
+        // SR7h: who had a spy before the round, for the phase both ways (`spy.rs`). One
+        // test in a round game without a spy.
+        let had_spies = t.spy.is_some().then(|| self.spies());
         self.round_log.clear();
         let standoff_before = self.standoff_key();
         self.working_key = self.key;
@@ -364,9 +401,14 @@ impl<'t> Game<'t> {
                 arriving = step.arriving;
                 standing = step.standing;
                 void = step.void;
+                gone = step.struck;
             }
             Some(f) => {
                 let s = 1 - f;
+                // SR7e (R11): whether the slower move is a shot on the round's board. One
+                // whose victim the faster move took away is void, never a move: a shot does
+                // not move its shooter.
+                let slower_shot = sim.shoots && self.stays_put(&plans[s], s);
                 self.round_log.push((EVENT_ORDER, plans[f].target, f as i8));
                 let mut active = [false; 2];
                 active[f] = true;
@@ -377,6 +419,8 @@ impl<'t> Game<'t> {
                 // round there and the slower move is never played.
                 if t.reach_leaves {
                     self.goal_left_by = self.goal_left(&plans, arriving);
+                } else if t.reach_held {
+                    self.goal_left_by = self.held_arrivals(&plans, arriving);
                 }
                 self.check_memo.set([-1, -1]);
                 ended = self.round_goal_ending().is_some();
@@ -392,7 +436,7 @@ impl<'t> Game<'t> {
                     // §2.5 F: the piece that chose is no longer there as itself.
                     gone[s] = true;
                     self.round_log.push((EVENT_LOST, square, s as i8));
-                } else if !self.offered(s, plan.m) {
+                } else if !self.offered(s, plan.m) || (slower_shot && !self.stays_put(&plan, s)) {
                     // §2.5 A to H: the word is not one the piece could make on this board.
                     // A single void move, never part of a void run (§2.8).
                     self.round_log.push((EVENT_VOID, square, s as i8));
@@ -446,7 +490,8 @@ impl<'t> Game<'t> {
                 } else {
                     plans[i].origin
                 };
-                rest_key ^= self.rest_after_turn(i, end, i);
+                // A round is a turn of both (a long turn is refused beside rounds, L4).
+                rest_key ^= self.rest_after_turn(i, end, i, true);
             }
         }
 
@@ -485,6 +530,10 @@ impl<'t> Game<'t> {
         }
         if t.reach_leaves {
             self.goal_left_by = self.goal_left(&plans, arriving);
+        } else if t.reach_held {
+            // SR7n (R20): a held piece's arrival, read off the round's moves, since the piece
+            // on the goal afterwards is nobody's and decides nothing on the board.
+            self.goal_left_by = self.held_arrivals(&plans, arriving);
         }
         let rights_changed = self.unmoved != previous_unmoved;
         let progress = material_changed || promoted || one_way || laid_permanent;
@@ -492,8 +541,18 @@ impl<'t> Game<'t> {
             progress || irreversible_kind || rights_changed || initiative_passed;
         self.halfmove = if progress { 0 } else { self.halfmove + 2 };
         self.ply += 2;
-        self.key =
-            self.working_key ^ key_extra ^ standoff_before ^ self.standoff_key() ^ rest_key;
+        // SR7h (§2.12): a spy game's round leaves the side its phase reads, and may deal the
+        // initiative; both before the standoff key is read.
+        let side_key = match had_spies {
+            Some(had) => self.after_round(had),
+            None => 0,
+        };
+        self.key = self.working_key
+            ^ key_extra
+            ^ standoff_before
+            ^ self.standoff_key()
+            ^ rest_key
+            ^ side_key;
         self.history.push(self.key);
         if irreversible {
             self.window = self.history.len() - 1;
@@ -525,11 +584,13 @@ impl<'t> Game<'t> {
         for i in 0..2 {
             let Some(origin) = plans[i].origin else { continue };
             let value = self.board[plans[i].target];
+            // SR7n (R20, O11's reading): a held piece leaving its holder's goal decides for
+            // the holder, while it stands, nobody's, where it went.
             left[i] = arriving[i]
                 && reach.squares[i][origin]
                 && reach.admits(plans[i].piece_type)
                 && value != 0
-                && t.owner_of(value) == i;
+                && t.owner_of(value) == self.block_of(i, &plans[i]);
         }
         match left {
             [true, true] => 2,
@@ -559,15 +620,67 @@ impl<'t> Game<'t> {
     /// destination as chosen), the voids first, from the two choices alone (§2.4).
     #[inline(always)]
     fn resolve_step(&mut self, plans: &[Plan; 2], active: [bool; 2], facts: &mut StepFacts) -> Step {
-        let roles = self.settle_voids(plans, active);
+        let mut roles = self.settle_voids(plans, active);
+        if roles.standing[0] && roles.standing[1] && plans[0].target == plans[1].target {
+            self.strike_contest(plans, &mut roles, facts);
+        }
         self.note_kinds(plans, roles, facts);
+        let mut takings = if roles.shot[0] || roles.shot[1] {
+            self.shots(plans, roles, facts)
+        } else {
+            Vec::new()
+        };
         self.departures(plans, roles, facts);
         let arrival = self.own_consequences(plans, active, roles, facts);
-        let takings = self.meetings(plans, roles, arrival, facts);
+        self.meetings(plans, roles, arrival, facts, &mut takings);
         self.what_captures_cause(&takings, facts);
         self.blasts(&takings, facts);
         self.claims(plans, active, roles, facts);
-        Step { arriving: roles.arriving, standing: roles.standing, void: roles.void }
+        let standing = [roles.standing[0] && !roles.missed[0], roles.standing[1] && !roles.missed[1]];
+        Step { arriving: roles.arriving, standing, void: roles.void, struck: roles.struck }
+    }
+
+    /// SR7f (R18, `docs/reference/rounds.md` §4 step 4): two moves that stand and strike one
+    /// piece -- two shots, or two contacts that stay -- share a target only when it is
+    /// nobody's (a piece nobody owns, or a wild piece), since a player's piece is only ever
+    /// the other player's target. They meet as a collision as any other: by `beats` between
+    /// the two strikers, then the tie. The winner's strike is made as if alone; the loser,
+    /// or both with no winner, misses.
+    #[cold]
+    #[inline(never)]
+    fn strike_contest(&mut self, plans: &[Plan; 2], roles: &mut Roles, facts: &mut StepFacts) {
+        let t = self.t;
+        let sim = self.sim();
+        let square = plans[0].target;
+        let victim = self.board[square];
+        let striking = |i: usize| plans[i].kind != MOVE_ROTATE && plans[i].origin != Some(square);
+        if victim == 0 || t.owner_of(victim) != WILD || !striking(0) || !striking(1) {
+            return;
+        }
+        let beats = [
+            sim.beats(t.n_types, plans[0].piece_type, plans[1].piece_type),
+            sim.beats(t.n_types, plans[1].piece_type, plans[0].piece_type),
+        ];
+        let winner = match beats {
+            [true, false] => Some(0),
+            [false, true] => Some(1),
+            _ if sim.tie == 1 => {
+                let holder = self.initiative as usize;
+                self.initiative = (1 - holder) as i8;
+                facts.initiative_passed = true;
+                self.round_log.push((EVENT_INITIATIVE, square, holder as i8));
+                Some(holder)
+            }
+            _ => None,
+        };
+        for (i, plan) in plans.iter().enumerate() {
+            if winner != Some(i) {
+                roles.missed[i] = true;
+                roles.shot[i] = false;
+                let origin = plan.origin.expect("a strike that stays has an origin");
+                self.round_log.push((EVENT_VOID, origin, i as i8));
+            }
+        }
     }
 
     /// §2.2, §2.4 (§4 step 4's first clause, settled before anything moves): who moves, who
@@ -584,15 +697,28 @@ impl<'t> Game<'t> {
             active[0] && self.stays_put(&plans[0], 0),
             active[1] && self.stays_put(&plans[1], 1),
         ];
+        // SR7e (R11): under `rules.strike` placed `"stay"` every such capture is a shot. It
+        // stands whatever its victim chose, and strikes that piece where it stood on the
+        // round's board before anything moves, so the struck piece's own move is not made.
+        let shot = [sim.shoots && stays[0], sim.shoots && stays[1]];
+        let mut struck = [false; 2];
+        for j in 0..2 {
+            let i = 1 - j;
+            struck[j] = active[j] && shot[i] && !shot[j] && plans[j].origin == Some(plans[i].target);
+            if struck[j] {
+                self.round_log.push((EVENT_LOST, plans[i].target, j as i8));
+            }
+        }
         let mut standing = [false; 2];
         for i in 0..2 {
             let j = 1 - i;
             let own_target = stays[i] && t.owner_of(self.board[plans[i].target]) == i;
             let vacated = raw[j] && !stays[j] && plans[j].origin == Some(plans[i].target);
-            standing[i] =
-                active[i] && (plans[i].kind == MOVE_ROTATE || (stays[i] && (own_target || !vacated)));
+            standing[i] = active[i]
+                && !struck[i]
+                && (plans[i].kind == MOVE_ROTATE || shot[i] || (stays[i] && (own_target || !vacated)));
         }
-        let moving = [raw[0] && !standing[0], raw[1] && !standing[1]];
+        let moving = [raw[0] && !standing[0] && !struck[0], raw[1] && !standing[1] && !struck[1]];
         // Schema 27 (Q942a, `swap: "collision"`): two moves each ending on the other's
         // origin meet, whatever their modes, so neither is void (`docs/archive/plan-round-chase.md` R2).
         let swapped = sim.swap_collides
@@ -615,7 +741,7 @@ impl<'t> Game<'t> {
             }
         }
         let arriving = [moving[0] && !void[0], moving[1] && !void[1]];
-        Roles { arriving, standing, void, swapped }
+        Roles { arriving, standing, void, swapped, shot, struck, missed: [false; 2] }
     }
 
     /// What the moves made say to the tail's clocks and window, by their kinds alone.
@@ -623,19 +749,22 @@ impl<'t> Game<'t> {
     fn note_kinds(&self, plans: &[Plan; 2], roles: Roles, facts: &mut StepFacts) {
         let t = self.t;
         for (i, plan) in plans.iter().enumerate() {
-            let made = roles.arriving[i] || roles.standing[i];
+            let made = roles.arriving[i] || (roles.standing[i] && !roles.missed[i]);
             if made {
                 facts.one_way |= t.is_one_way(plan.piece_type);
                 let kind = plan.kind;
                 let plain_portal = kind == MOVE_PORTAL && move_promotion(plan.m) == 0;
                 facts.irreversible_kind |= kind != MOVE_NORMAL && kind != MOVE_ROTATE && !plain_portal;
+                // SR7g (R19): a buy adds material, so it is progress, as in `make`.
                 facts.promoted |= kind == MOVE_PROMOTION
+                    || kind == MOVE_BUY
                     || (kind == MOVE_PORTAL && move_promotion(plan.m) != 0);
             }
         }
     }
 
-    /// §4 step 2: departures. Each moving piece leaves its origin; a drop leaves the hand.
+    /// §4 step 2: departures. Each moving piece leaves its origin; a drop leaves the hand; a
+    /// buy (SR7g, R19) spends its price, whether or not the bought piece survives the round.
     #[inline(always)]
     fn departures(&mut self, plans: &[Plan; 2], roles: Roles, facts: &mut StepFacts) {
         let t = self.t;
@@ -647,6 +776,13 @@ impl<'t> Game<'t> {
                 Some(origin) => {
                     self.write(origin, 0);
                     facts.touched.set(origin);
+                }
+                None if plan.kind == MOVE_BUY => {
+                    let purse = t.purse.as_deref().expect("a buy without a purse");
+                    let before = self.purse[i];
+                    let after = before - purse.price[plan.piece_type];
+                    self.working_key ^= purse.key(i, before) ^ purse.key(i, after);
+                    self.purse[i] = after;
                 }
                 None => {
                     let rule = t.drops.as_ref().expect("a drop without a drop rule");
@@ -672,7 +808,7 @@ impl<'t> Game<'t> {
         let t = self.t;
         let mut arrival = [0u8; 2];
         for i in 0..2 {
-            if !active[i] {
+            if !active[i] || roles.struck[i] || roles.shot[i] || roles.missed[i] {
                 continue;
             }
             let plan = plans[i];
@@ -725,19 +861,18 @@ impl<'t> Game<'t> {
         roles: Roles,
         arrival: [u8; 2],
         facts: &mut StepFacts,
-    ) -> Vec<Taking> {
-        let mut takings: Vec<Taking> = Vec::new();
+        takings: &mut Vec<Taking>,
+    ) {
         let collided =
             roles.arriving[0] && roles.arriving[1] && plans[0].target == plans[1].target;
         if collided {
-            self.collision(plans, arrival, facts, &mut takings);
+            self.collision(plans, arrival, facts, takings);
         } else if roles.swapped {
-            self.swap_meeting(plans, arrival, facts, &mut takings);
+            self.swap_meeting(plans, arrival, facts, takings);
         } else {
-            self.arrivals_take(plans, roles, arrival, facts, &mut takings);
+            self.arrivals_take(plans, roles, arrival, facts, takings);
         }
         self.contacts_that_stood(plans, roles, facts);
-        takings
     }
 
     /// Step 4's collision: two arrivals on one square, decided by `beats` and the tie. A
@@ -887,7 +1022,7 @@ impl<'t> Game<'t> {
     fn contacts_that_stood(&mut self, plans: &[Plan; 2], roles: Roles, facts: &mut StepFacts) {
         let t = self.t;
         for (i, &plan) in plans.iter().enumerate() {
-            if !roles.standing[i] || plan.kind == MOVE_ROTATE {
+            if !roles.standing[i] || plan.kind == MOVE_ROTATE || roles.shot[i] || roles.missed[i] {
                 continue;
             }
             let victim = self.board[plan.target];
@@ -913,15 +1048,15 @@ impl<'t> Game<'t> {
                     }
                 }
             }
-            if t.has_npcs && t.owner_of(taken.victim) == WILD {
-                self.points[taken.captor] += t.npc_bounty[taken.square];
+            // TC4 (`docs/plan-turncoat.md` §5.1): a wild piece's route bounty and a type's,
+            // for any piece but the captor's own; SR7g (R19): to `bounty_payee`, into the
+            // points and under a purse the purse, as `make` pays.
+            if t.pays {
+                self.pay_round(taken.victim, taken.square, taken.captor);
             }
-            // TC4 (`docs/plan-turncoat.md` §5.1): a type's bounty, for any piece but the
-            // captor's own. Into the tally alone: a purse is never beside a round.
-            if !t.piece_bounty.is_empty() && t.owner_of(taken.victim) != taken.captor {
-                self.points[taken.captor] += t.piece_bounty[t.type_of(taken.victim)];
-            }
-            if taken.strikes {
+            if taken.shot {
+                self.shooter_after(taken, &mut facts.touched);
+            } else if taken.strikes {
                 self.strike_after(taken, &mut facts.touched);
             }
         }
@@ -961,13 +1096,13 @@ impl<'t> Game<'t> {
             if hit && t.pays && !centres.get(square) {
                 // SR4f (T8), SR4l (O22): a blast pays for every piece it destroys as taking it
                 // would (a wild piece its route's bounty, an enemy its type's, the captor's own
-                // nothing): here to each captor whose blast reached it. A purse is never beside
-                // a round, so into the tally alone.
+                // nothing): here to each captor whose blast reached it, into the points and,
+                // under a purse (SR7g), the purse.
                 for taken in takings {
                     if explosion.fires(taken.captor_type, t.type_of(taken.victim))
                         && explosion.reach(taken.square).contains(&square)
                     {
-                        self.points[taken.captor] += t.bounty_paid(value, square, taken.captor);
+                        self.pay_round(value, square, taken.captor);
                     }
                 }
             }
@@ -987,15 +1122,17 @@ impl<'t> Game<'t> {
             return;
         };
         for i in 0..2 {
-            let square = if active[i] && plans[i].kind == MOVE_ROTATE {
+            let square = if active[i] && !roles.struck[i] && plans[i].kind == MOVE_ROTATE {
                 plans[i].origin.expect("a rotation has an origin")
             } else if roles.arriving[i] {
                 plans[i].target
             } else {
                 continue;
             };
+            // SR7n (R20, O10's reading): a held piece's arrival claims for its holder, while
+            // the piece, still nobody's, stands where it moved.
             let value = self.board[square];
-            if value == 0 || t.owner_of(value) != i {
+            if value == 0 || t.owner_of(value) != self.block_of(i, &plans[i]) {
                 continue;
             }
             let want = (i + 1) as u8;
@@ -1038,7 +1175,32 @@ impl<'t> Game<'t> {
         self.npc_log.truncate(undo.npc_log);
         self.respawn = undo.respawn;
         self.heading_back = undo.heading_back;
+        self.purse = undo.purse;
+        self.side = undo.side;
         self.check_memo.set([-1, -1]);
+    }
+
+    /// What taking `captured` from `square` pays `taker`'s move in a round
+    /// (`Tables::bounty_paid`, the one statement), to `Tables::bounty_payee` (nobody, for a
+    /// nobody's piece under `bounty_to: "loser"`), into the points and, under a purse
+    /// (SR7g, R19), the payee's purse, capped as `make`'s `fill_purse` caps it. The round's
+    /// undo is a snapshot, so nothing is logged.
+    fn pay_round(&mut self, captured: u8, square: usize, taker: usize) {
+        let t = self.t;
+        let paid = t.bounty_paid(captured, square, taker);
+        if paid == 0.0 {
+            return;
+        }
+        let payee = t.bounty_payee(captured, taker);
+        if payee >= 2 {
+            return;
+        }
+        self.points[payee] += paid;
+        if let Some(purse) = t.purse.as_deref() {
+            if paid > 0.0 {
+                self.fill_purse(purse, payee, paid);
+            }
+        }
     }
 
     fn taking(&self, captor: usize, plan: &Plan, victim: u8, square: usize, strikes: bool) -> Taking {
@@ -1050,6 +1212,125 @@ impl<'t> Game<'t> {
             origin: plan.origin,
             strikes: strikes && self.t.strike.is_some(),
             captor_gone: false,
+            shot: false,
+            m: plan.m,
+            block: self.block_of(captor, plan),
+        }
+    }
+
+    /// SR7n (R20): the block `player`'s plan moves a piece of: the player's own, or
+    /// `WILD` for a held piece (a nobody's byte the player holds on the round's board). A
+    /// drop or a buy enters as the player's.
+    #[inline(always)]
+    fn block_of(&self, player: usize, plan: &Plan) -> usize {
+        if plan.origin.is_some() && self.t.owner_of(plan.mover) == WILD { WILD } else { player }
+    }
+
+    /// SR7n (R20, `docs/reference/rounds.md` §4 step 10): which players' held pieces
+    /// arrived on their goals this round, read as `make`'s `held_arrival` reads one move
+    /// (SR5k, O11): a held piece that arrived and still stands nobody's on the square it
+    /// moved to, of a type the goal admits, on its holder's goal, `safe` asked on the board
+    /// the round leaves. `goal_left_by`'s values: 2 both, 0 or 1 that player, -1 neither.
+    #[cold]
+    fn held_arrivals(&self, plans: &[Plan; 2], arriving: [bool; 2]) -> i8 {
+        let t = self.t;
+        let Some(reach) = t.reach.as_ref() else {
+            return -1;
+        };
+        let nobodys = |value: u8| {
+            value != 0
+                && t.owner_of(value) == WILD
+                && matches!(t.kind_of(value), CONTROL_MAJORITY | CONTROL_NEUTRAL)
+        };
+        let mut arrived = [false; 2];
+        for i in 0..2 {
+            let plan = &plans[i];
+            let here = self.board[plan.target];
+            arrived[i] = arriving[i]
+                && self.block_of(i, plan) == WILD
+                && t.kind_of(plan.mover) == CONTROL_MAJORITY
+                && nobodys(here)
+                && reach.squares[i][plan.target]
+                && reach.admits(t.type_of(here))
+                && !(reach.safe && self.threatened(1 - i, plan.target));
+        }
+        match arrived {
+            [true, true] => 2,
+            [true, false] => 0,
+            [false, true] => 1,
+            _ => -1,
+        }
+    }
+
+    /// SR7e (R11, `docs/reference/rounds.md` §4 step 0): the shots, before anything moves.
+    /// Each reads its victim on the round's board and both are written together, so two
+    /// shooters that shoot each other both fire; a shooter struck by the other's shot
+    /// changes no further (`captor_gone`). Returns the shots as captures, first in what
+    /// they cause (§4 step 5: the hand, the bounties, the shooter's promotion and side).
+    #[cold]
+    #[inline(never)]
+    fn shots(&mut self, plans: &[Plan; 2], roles: Roles, facts: &mut StepFacts) -> Vec<Taking> {
+        let t = self.t;
+        let mut takings = Vec::new();
+        let mut writes = [(0usize, 0u8); 2];
+        for i in 0..2 {
+            if !roles.shot[i] {
+                continue;
+            }
+            let plan = plans[i];
+            let victim = self.board[plan.target];
+            let (becomes, _, _) = self.meeting(plan.piece_type, victim, i);
+            let survivor = if becomes >= 0 {
+                t.arriving_value(t.owner_of(victim), becomes as usize, plan.target)
+            } else {
+                0
+            };
+            writes[i] = (plan.target, survivor);
+            let mut taken = self.taking(i, &plan, victim, plan.target, false);
+            taken.shot = true;
+            taken.captor_gone = roles.shot[1 - i] && plan.origin == Some(plans[1 - i].target);
+            takings.push(taken);
+        }
+        for (i, &(square, value)) in writes.iter().enumerate() {
+            if roles.shot[i] {
+                self.write(square, value);
+                facts.touched.set(square);
+                facts.material_changed = true;
+            }
+        }
+        takings
+    }
+
+    /// §4 step 5 for a shot (SR7e): the shooter, still on its origin, becomes what its move
+    /// made it, as `make`'s rifle does -- the promoted piece, then a side switch
+    /// (`switches_sides`) keeping its heading -- unless the other player's shot struck it,
+    /// or an arrival took it on its origin, this round.
+    fn shooter_after(&mut self, taken: &Taking, touched: &mut SquareSet) {
+        let t = self.t;
+        let origin = taken.origin.expect("a shot has an origin");
+        let standing = self.board[origin];
+        if taken.captor_gone || standing == 0 || t.owner_of(standing) != taken.block {
+            return;
+        }
+        let promotion = move_promotion(taken.m) as usize;
+        let mut value = match move_kind(taken.m) {
+            MOVE_PROMOTION => t.entering_value(taken.captor, promotion),
+            MOVE_PORTAL if promotion != 0 => t.entering_value(taken.captor, promotion - 1),
+            _ => standing,
+        };
+        let (_, mover_becomes, flips) = self.meeting(taken.captor_type, taken.victim, taken.captor);
+        // SR7n (R20): a held shooter stays nobody's (`Taking::block`).
+        let flips = flips && taken.block != WILD;
+        if mover_becomes >= 0 {
+            value = t.arriving_value(taken.block, mover_becomes as usize, origin);
+        }
+        if flips {
+            let now = if mover_becomes >= 0 { t.entering_value(taken.captor, mover_becomes as usize) } else { value };
+            value = t.rehome_value(now, 1 - taken.captor, origin);
+        }
+        if value != standing {
+            self.write(origin, value);
+            touched.set(origin);
         }
     }
 
@@ -1061,6 +1342,10 @@ impl<'t> Game<'t> {
         let victim = self.board[plan.target];
         let mover = self.board[origin];
         let (becomes, mover_becomes, flips) = self.meeting(plan.piece_type, victim, player);
+        // SR7n (R20): a held mover stays nobody's (`strike_writes`' reading): a change of type
+        // is written into nobody's block, and it never changes sides.
+        let block = if t.owner_of(mover) == WILD { WILD } else { player };
+        let flips = flips && block != WILD;
         let as_type = if mover_becomes >= 0 { mover_becomes as usize } else { t.type_of(mover) };
         // TC1: a flip is the one change of allegiance, `rehome_value`'s; TC2: the mover as it
         // stands (or as it now is, when it changed type), so it keeps its heading.
@@ -1068,7 +1353,7 @@ impl<'t> Game<'t> {
             let now = if mover_becomes >= 0 { t.entering_value(player, as_type) } else { mover };
             t.rehome_value(now, 1 - player, origin)
         } else if mover_becomes >= 0 {
-            t.arriving_value(player, as_type, origin)
+            t.arriving_value(block, as_type, origin)
         } else {
             mover
         };
@@ -1090,10 +1375,12 @@ impl<'t> Game<'t> {
         let t = self.t;
         let strike = t.strike.as_ref().expect("a strike without a strike rule");
         let (becomes, mover_becomes, flips) = self.meeting(taken.captor_type, taken.victim, taken.captor);
+        // SR7n (R20): a held captor stays nobody's (`Taking::block`).
+        let flips = flips && taken.block != WILD;
         let standing = self.board[taken.square];
         if !taken.captor_gone
             && standing != 0
-            && t.owner_of(standing) == taken.captor
+            && t.owner_of(standing) == taken.block
             && (mover_becomes >= 0 || flips)
         {
             let as_type = if mover_becomes >= 0 { mover_becomes as usize } else { t.type_of(standing) };
@@ -1103,7 +1390,7 @@ impl<'t> Game<'t> {
                 let now = if mover_becomes >= 0 { t.entering_value(taken.captor, as_type) } else { standing };
                 t.rehome_value(now, 1 - taken.captor, taken.square)
             } else {
-                t.arriving_value(taken.captor, as_type, taken.square)
+                t.arriving_value(taken.block, as_type, taken.square)
             };
             self.write(taken.square, value);
         }
@@ -1199,8 +1486,11 @@ impl<'t> Game<'t> {
                         _ => [false, false],
                     }
                 } else {
+                    // SR7n (R20): a held piece's arrival on a side's goal (`held_arrivals`);
+                    // -1 in every game without majority control.
+                    let held = if t.reach_held { self.goal_left_by } else { -1 };
                     [0, 1].map(|side| {
-                        self.occupied()[side].iter().any(|square| {
+                        held == side as i8 || held == 2 || self.occupied()[side].iter().any(|square| {
                             reach.squares[side][square]
                                 && reach.admits(t.type_of(self.board[square]))
                                 && !(reach.safe && self.threatened(1 - side, square))

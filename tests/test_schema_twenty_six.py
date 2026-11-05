@@ -236,8 +236,6 @@ REFUSED = [
     ("R10", lambda s: s["rules"].update(strike={
         "effect": "demote", "chain": [{"from": "Q", "to": "R"}], "position": "choose",
         "landing": {"vectors": [[1, 0]], "symmetry": "rotate4"}, "immune": ["K"]})),
-    ("R11", lambda s: s["rules"].update(strike={
-        "position": "stay", "immune": ["K"]})),
     ("R10", lambda s: s["rules"].update(contacts={
         "links": [{"mover": "N", "onto": "Q", "onto_to": "R"}], "position": "choose",
         "landing": {"vectors": [[1, 0]], "symmetry": "rotate4"}, "immune": ["K"]})),

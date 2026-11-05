@@ -1,7 +1,7 @@
 {
   "schema_version": 14,
   "name": "en passant inside a two-move turn",
-  "description": "Not a game -- the smallest spec that reached rust/src/game.rs:1210 before the validator refused it. rules.turn gives a player two moves, so the en-passant window a double step opens is still open on that same player's second move, and the pawn on a2 may take its own pawn on b4 in passing. The strike rule turned the self-capture into a panic, because strike_writes reads the schema-11 own-contact tables, which are empty when no contact link declares own: true. The core would still do all of that; the validator is what stops a spec reaching it. Used by tests/test_spec.py::TestCoherence.",
+  "description": "Not a game -- the smallest spec that reached rust/src/game.rs:1210 before the validator refused it (Q341). rules.turn gives a player two moves, and the en-passant window a double step opened was still open on that same player's second move, so the pawn on a2 could take its own pawn on b4 in passing; the strike rule turned the self-capture into a panic, because strike_writes reads the schema-11 own-contact tables, which are empty when no contact link declares own: true. Q531 refused the self-capture in the core, and SR7a (L1, generation 97) lifted the refusal: the window is the opponent's, opened by the mover's last double step of the turn and open for the opponent's first move only. Used by tests/test_spec.py, tests/test_engine.py and tests/test_en_passant_long_turn.py.",
   "board": { "width": 5, "height": 5 },
   "pieces": [
     {

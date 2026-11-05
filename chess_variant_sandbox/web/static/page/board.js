@@ -2249,6 +2249,13 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
     if (last && last.foldIn !== undefined && last.foldOut !== undefined
         && from === last.from && to === last.to && !swallowed.has(to)) {
       const time = foldTrip(svg, node, pieceOf(before[from]), before, last, cell, W, H, view);
+      // SR6e (W8, Q1100): a sweep through a fold cuts what stood before the fold as it
+      // slides there (the engine's `swept`), then goes through with the ripple.
+      if (swept.length) {
+        busy = Math.max(busy, sweepCut(svg, node, at(from), at(last.foldIn),
+          swept.map(sq => [pieceOf(before[sq]), ...at(sq)]), cell, time.approach));
+        for (const sq of swept) cut.add(sq);
+      }
       traveller = node;
       blows.set(to, time.blow);
       lastBlow = Math.max(lastBlow, time.blow.at);
@@ -2321,19 +2328,61 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
   // cannot work that out from two positions -- a capture by a piece that is not a bomb
   // looks exactly like one by a piece that is. Null means every capturer / every victim,
   // which is atomic and every ruleset written before schema 10.
-  const explodes = (from, to) => {
-    if (!ex) return false;
-    const victim = pieceOf(before[to]);
-    if (!victim) return false;                 // nothing was taken here
-    if (ex.of && !ex.of[victim.type]) return false;
-    if (ex.by) {
-      if (from === null || from === undefined) return false;
-      const capturer = pieceOf(before[from]);
-      if (!capturer || !ex.by[capturer.type]) return false;
+  const explodes = (from, to) => blastFires(ex, before, pieceOf, from, to);
+  // SR6c (W3, Q1100): a sweep beside a blast. The sweep removes what it removes, then its
+  // blasts go off together where `sweepBlastCentres` (`viz/wrapped.js`, the replay's too) says
+  // they did, from the compiled rule and the engine's swept squares (`last.swept`).
+  // The sweeper always goes in its blast, so it never pairs: it travels as a ghost, cutting the
+  // line (`sweepCut`), and burns on its landing as the blasts go off.
+  const sweepCentres = [];
+  if (ex && swept.length && last && last.from !== null && last.from !== undefined
+      && gone.includes(last.from) && !came.includes(last.to)) {
+    const sweeper = pieceOf(before[last.from]);
+    sweepCentres.push(...sweepBlastCentres(ex, before, pieceOf, last.from, last.to, last.swept));
+    if (sweepCentres.length && sweeper) {
+      const [fx, fy] = at(last.from), [tx, ty] = at(last.to);
+      const ghost = ghostAt(svg, sweeper, tx, ty, cell);
+      let flight, arriveAt, dx, dy;
+      if (last.foldIn !== undefined && last.foldOut !== undefined) {
+        // Q1101: a sweep through a fold that blasts goes the fold's way, as one that survives
+        // does (the pairs loop above): it cuts the line as it slides to the fold, sinks, and
+        // rises out of the far end, where it lands and burns. Never straight across.
+        const time = foldTrip(svg, ghost, sweeper, before, last, cell, W, H, view);
+        busy = Math.max(busy, sweepCut(svg, ghost, [fx, fy], at(last.foldIn),
+          swept.map(sq => [pieceOf(before[sq]), ...at(sq)]), cell, time.approach));
+        flight = time.landed;
+        arriveAt = time.blow.at;
+        dx = time.blow.dx;
+        dy = time.blow.dy;
+      } else {
+        const step = wrapStep(last.from, last.to, W, H,
+          wrapAllow(SESSION.ruleset.wrap, sweeper.player));
+        [dx, dy] = stepXY(step, cell, view);
+        flight = travel(ghost, -dx, -dy, false);
+        if (step.wrapped) animateCrossing(svg, ghost, sweeper, fx, fy, dx, dy, cell, false, flight);
+        busy = Math.max(busy, sweepCut(svg, ghost, [fx, fy], [tx, ty],
+          swept.map(sq => [pieceOf(before[sq]), ...at(sq)]), cell, flight));
+        arriveAt = flight * PACE.impact;
+      }
+      for (const sq of swept) cut.add(sq);
+      busy = Math.max(busy, burn(svg, sweeper, tx, ty, cell,
+        { at: arriveAt, dx: dx, dy: dy, arriving: true }, [tx, ty]));
+      ghost.animate([{ opacity: 1 }, { opacity: 0 }],
+        { duration: PACE.blastLag * 2, delay: arriveAt, fill: 'forwards' });
+      lastBlow = Math.max(lastBlow, arriveAt);
+      busy = Math.max(busy, flight);
+      moved.add(last.from);
+      if (gone.includes(last.to)) blastVictims.add(last.to);
+      for (const centre of sweepCentres) {
+        for (const neighbour of (ex.blast[centre] || [])) {
+          if (gone.includes(neighbour) && !moved.has(neighbour) && !cut.has(neighbour)) {
+            blastVictims.add(neighbour);
+          }
+        }
+      }
     }
-    return true;
-  };
-  if (ex) {
+  }
+  if (ex && !sweepCentres.length) {
     // Paired moves that landed on a square with an explosion neighbourhood.
     for (const [from, to] of pairs) {
       if (!explodes(from, to)) continue;
@@ -2370,7 +2419,7 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
         }
         const arriveAt = flight * PACE.impact;
         // The capturer explodes at `to` on arrival, not at `from`.
-        const capBlow = { at: arriveAt, dx: dx, dy: dy };
+        const capBlow = { at: arriveAt, dx: dx, dy: dy, arriving: true };
         busy = Math.max(busy,
           burn(svg, capturerPiece, tx, ty, cell, capBlow, [tx, ty]));
         ghost.animate([{ opacity: 1 }, { opacity: 0 }],
@@ -2391,8 +2440,8 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
   // Where each blast went off: a destination where a capture set one off (not every paired
   // move's, which includes quiet moves), and the square an atomic capturer died on. One
   // fireball over each one's area, and every piece it took thrown outward from the nearest.
-  const blastCenters = new Set();
-  if (ex) {
+  const blastCenters = new Set(sweepCentres);
+  if (ex && !sweepCentres.length) {
     for (const [from, to] of pairs) {
       if (gone.includes(to) && explodes(from, to)) blastCenters.add(to);
     }
@@ -2402,10 +2451,11 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
         && explodes(last.from, last.to)) {
       blastCenters.add(last.to);
     }
-    for (const center of blastCenters) {
-      busy = Math.max(busy, blastFire(svg, [center, ...(ex.blast[center] || [])], cell, view,
-                                      blows.has(center) ? blows.get(center).at : lastBlow));
-    }
+  }
+  // A sweep's blasts (`sweepCentres`) all go off as the sweeper lands: they clear together.
+  for (const center of blastCenters) {
+    busy = Math.max(busy, blastFire(svg, [center, ...(ex.blast[center] || [])], cell, view,
+                                    blows.has(center) ? blows.get(center).at : lastBlow));
   }
   const blastFrom = sq => {
     for (const center of blastCenters) {
@@ -2657,7 +2707,8 @@ function foldTrip(svg, node, piece, before, last, cell, W, H, view) {
     { opacity: 1, transform: 'scale(1)' },
   ], { duration: plan.rise.for, delay: plan.rise.at, fill: 'backwards' });
   rise.onfinish = () => { node.style.transformOrigin = ''; };
-  return { landed: plan.landed, blow: { at: plan.strike, dx: idx, dy: idy } };
+  return { landed: plan.landed, approach: plan.approach.for,
+           blow: { at: plan.strike, dx: idx, dy: idy } };
 }
 
 // With reduced motion, a trip through a portal is a crossfade and nothing else: the

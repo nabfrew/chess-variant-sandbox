@@ -540,11 +540,22 @@ impl Player {
         let mid = arena.len();
         game.generate_legal_for(1, arena);
         let end = arena.len();
-        if let Some(outcome) = game.round_terminal_with([&arena[base..mid], &arena[mid..end]]) {
+        // SR7h (§2.12): in a spy game a round may gain a spy and leave the blind rounds, for
+        // announced ones or for turns. The matrix is a search through blind rounds, so such a
+        // position is a leaf: its verdict by its phase (a turn's is the alternating game's),
+        // else the evaluator.
+        let mut leaf = depth == 0;
+        let verdict = if game.t.spy.is_some() && game.phase() != crate::game::Phase::Blind {
+            leaf = true;
+            game.spy_terminal_with([&arena[base..mid], &arena[mid..end]])
+        } else {
+            game.round_terminal_with([&arena[base..mid], &arena[mid..end]])
+        };
+        if let Some(outcome) = verdict {
             arena.truncate(base);
             return Ok(round_terminal_value(outcome, game, seat, self.round_win));
         }
-        if depth == 0 {
+        if leaf {
             let value =
                 self.eval.evaluate_round(game, seat, [&arena[base..mid], &arena[mid..end]]);
             arena.truncate(base);

@@ -5,7 +5,9 @@ each step is played by its phase -- an alternating or reply turn as the alternat
 plays it, a round as `tests/simultaneous_oracle.py` resolves one -- with the one write of
 the spy's own, the initiative's deal at the first announced round (E10). This module works
 all of that out from the compiled tables and the moves, and the tests hold the core to it
-step by step. CLAUDE.md rule 3 allows it: it is a declared test oracle.
+step by step. Since SR7h a spy can be gained (a promotion into one), so the phase moves both
+ways, and a round writes the side to move the phase after it reads (`round_`). CLAUDE.md rule
+3 allows it: it is a declared test oracle.
 
 It asks the engine only questions answered elsewhere: an alternating turn is played by the
 spy game's **alternating twin** (the same file without the spy flags, ``beats``,
@@ -122,6 +124,28 @@ def turn(engine: Engine, state: GameState, move: int) -> GameState:
 
 
 def round_(engine: Engine, state: GameState, first: int, second: int) -> GameState:
-    """A round, announced or blind: the resolution never asks who announced (§1.4)."""
+    """A round, announced or blind: the resolution never asks who announced (§1.4); then,
+    since SR7h (`docs/plan-schema-next.md` §2.12, *The gained spy, said once*), the side the
+    phase reads off the board after it, and the deal where announced rounds begin."""
     assert is_round(engine, state), "a round in a turn phase"
-    return resolve_round(engine, state, first, second)
+    had = (has_spy(engine, state, 0), has_spy(engine, state, 1))
+    after = resolve_round(engine, state, first, second)
+    has = (has_spy(engine, after, 0), has_spy(engine, after, 1))
+    gained = tuple(has[i] and not had[i] for i in (0, 1))
+    side = after.side_to_move
+    if has[0] and has[1]:
+        # Turns again: the player who did not gain answers; both gained, the first player.
+        side = 1 if gained == (True, False) else 0
+    elif has[0] != has[1]:
+        # Announced rounds: the holder to move, the other announcing.
+        side = 0 if has[0] else 1
+    initiative = after.initiative
+    sim = engine.spec.simultaneous
+    begins = not had[0] and not had[1] and has[0] != has[1]
+    if sim is not None and sim.deal_initiative and begins:
+        initiative = 1 - side
+    if side == after.side_to_move and initiative == after.initiative:
+        return after
+    moved = after.with_(side_to_move=side, initiative=initiative)
+    key = engine._compute_hash(moved)
+    return moved.with_(key=key, repetition=(*after.repetition[:-1], key))

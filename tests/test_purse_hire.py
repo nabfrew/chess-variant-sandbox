@@ -92,17 +92,16 @@ class TestTheKeys:
         [
             (lambda s: s["rules"]["purse"].update(bribe=False), "which nothing charges"),
             (lambda s: s["rules"]["purse"].update(bribe="yes"), "must be true or false"),
-            (lambda s: s["pieces"][1].update(spy=True), "on a spy"),
+            # SR7l (O24) lifted the price's own refusal on a spy: a priced spy here is refused
+            # as a spy game without rounds (and in rounds a bribe is R19's).
+            (lambda s: s["pieces"][2].update(spy=True), "declare rules.simultaneous"),
             (lambda s: s["rules"]["purse"].update(region=["a1"]), "region with no market"),
             (lambda s: s["rules"]["purse"].update(market=[]), "market is empty"),
         ],
     )
     def test_each_refusal_is_named(self, edit: Any, words: str) -> None:
         spec = _hire()
-        if words == "on a spy":
-            spec["pieces"][2]["spy"] = True
-        else:
-            edit(spec)
+        edit(spec)
         errors = validate_spec(spec)
         assert any(words in error for error in errors), errors
 

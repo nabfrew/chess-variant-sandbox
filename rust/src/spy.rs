@@ -7,14 +7,22 @@
 //! **announced rounds**: the player without a spy chooses first, the move is shown to the
 //! other, and both are resolved as a round (`make_round`). Once neither has a spy, play is in
 //! plain blind rounds. The phase is a function of the board and the side to move, never
-//! state: spies are lost and never gained (the validator), and `make_round` never writes
-//! `side`, so once rounds begin the side to move stays the spy holder and the phase stays a
-//! round phase.
+//! state, read afresh after every turn and every round.
 //!
-//! The one write of its own is the initiative's deal (E10): under `tie: "initiative"` the
-//! token goes to the announcer when the first announced round begins, which is the turn
-//! (`spy_turn`) whose position first reads *announced*. `make` is untouched; the deal sits
-//! beside it and is undone by `unmake_spy_turn`.
+//! SR7h (`docs/plan-schema-next.md` §2.12, *The gained spy, said once*): a spy can be gained
+//! (a promotion into one, Y3), so the phase moves both ways. A turn needs nothing new: `make`
+//! flips the side as ever and the table below reads the board it leaves (a reply turn that
+//! gains back leaves an alternating position, the other player to move; a second spy is a
+//! buffer, since the count is summed). A round writes `side` (`after_round`, undone with the
+//! round's snapshot): after it, both with a spy is turns again, **the player who did not gain
+//! to move** (both gained: the first player); one with a spy is announced rounds, the holder
+//! to move (so the other announces); neither is blind rounds, the side left where it stood.
+//!
+//! The one other write is the initiative's deal (E10): under `tie: "initiative"` the token goes
+//! to the announcer each time announced rounds begin after a stretch without them, from a turn
+//! (`spy_turn`; `make` is untouched, the deal sits beside it and is undone by
+//! `unmake_spy_turn`) or from a blind round (`after_round`). A round that keeps the phase
+//! announced, the spy changing hands, deals nothing: announced rounds did not begin there.
 //!
 //! `tests/spy_oracle.py` is the declared oracle.
 
@@ -126,6 +134,39 @@ impl<'t> Game<'t> {
         self.unmake();
     }
 
+    /// Who has a spy, `[player 0, player 1]`: what `make_round` reads before a round of a
+    /// spy game, so that `after_round` can tell a gain (SR7h).
+    pub(super) fn spies(&self) -> [bool; 2] {
+        [self.has_spy(0), self.has_spy(1)]
+    }
+
+    /// SR7h (§2.12): the side to move a round of a spy game leaves, and the initiative's deal
+    /// where the round begins announced rounds after blind ones; `had` is who had a spy before
+    /// the round. Returns the key's change for the side (the deal is the standoff key's, which
+    /// `make_round` reads after this). A round's undo is a snapshot, so nothing is logged.
+    pub(super) fn after_round(&mut self, had: [bool; 2]) -> u64 {
+        let has = self.spies();
+        let side = match has {
+            // Turns again: the player who did not gain moves first, answering the gain;
+            // both gained, the first player, as at the start of a game.
+            [true, true] => usize::from(!had[0] && had[1]),
+            // Announced rounds: the holder answers, so the other announces.
+            [true, false] => 0,
+            [false, true] => 1,
+            [false, false] => self.side,
+        };
+        let deal = self.t.spy.as_ref().is_some_and(|spy| spy.deal);
+        if deal && had == [false, false] && has[0] != has[1] {
+            // Announced rounds begin after blind ones: the token to the announcer (E10).
+            self.initiative = (1 - side) as i8;
+        }
+        if side == self.side {
+            return 0;
+        }
+        self.side = side;
+        self.t.zobrist_side
+    }
+
     fn sim_tables(&self) -> &'t SimTables {
         self.t.simultaneous.as_deref().expect("a spy game without rules.simultaneous")
     }
@@ -144,6 +185,16 @@ impl<'t> Game<'t> {
     pub fn spy_terminal(&mut self) -> Option<Outcome> {
         if self.phase().is_round() {
             self.round_terminal()
+        } else {
+            self.terminal()
+        }
+    }
+
+    /// The whole verdict where a round's two lists are already in hand (SR7h, the matrix
+    /// search's leaf): a round's from them, a turn's from its own list.
+    pub fn spy_terminal_with(&mut self, lists: [&[u32]; 2]) -> Option<Outcome> {
+        if self.phase().is_round() {
+            self.round_terminal_with(lists)
         } else {
             self.terminal()
         }

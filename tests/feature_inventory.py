@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from chess_variant_sandbox.spec.reachability import _promotion_entries
+from chess_variant_sandbox.spec.reachability import _promotion_entries, stocked_ids
 from chess_variant_sandbox.spec.schema import (
     EXTINCTION_PER_TYPE_OWN,
     REPETITION_NEVER,
@@ -39,12 +39,14 @@ from chess_variant_sandbox.spec.schema import (
     move_push,
     neutral_ids,
     nobodys_ids,
+    nobodys_spy_ids,
     npc_pounce,
     npc_respawn,
     npc_split,
     npc_turns_back,
     piece_bounties,
     piece_prices,
+    piece_rests,
     piece_sights,
     player_stocks,
     promoting_piece_ids,
@@ -54,6 +56,10 @@ from chess_variant_sandbox.spec.schema import (
     push_rule,
     reach_pieces,
     sight_affects_wild,
+    spy_drop_ids,
+    spy_gain_routes,
+    spy_market_ids,
+    spy_promotion_targets,
     strike_is_live,
     sweep_effects,
     sweep_range_stated_off,
@@ -65,7 +71,7 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 96
+LAST_BUMP = 109
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -2070,6 +2076,221 @@ def _schema_ninety_six_uses(spec: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _schema_ninety_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 97 added, by name (SR7a,
+    `docs/plan-schema-next.md` §2.2 row L1; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.en_passant.turn`` -- en passant beside a long turn: the window is the
+      opponent's, opened by the mover's last double step of the turn and open for the
+      opponent's first move only.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if rules.get("en_passant") and turn_is_long(rules):
+        return {"rules.en_passant.turn"}
+    return set()
+
+
+def _schema_ninety_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 98 added, by name (SR7b,
+    `docs/plan-schema-next.md` §2.2 row L3; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.npcs.turn`` -- wild pieces beside a long turn: a phase follows every move of the
+      turn, the first as well as the last.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if rules.get("npcs") and turn_is_long(rules):
+        return {"rules.npcs.turn"}
+    return set()
+
+
+def _schema_ninety_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 99 added, by name (SR7d,
+    `docs/plan-schema-next.md` §2.2 row L2; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``pieces.rest.turn`` -- a rest beside a long turn: a piece that moved this turn is not
+      offered again this turn, then rests its ``rest`` turns.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if any(turns > 0 for turns in piece_rests(spec).values()) and turn_is_long(rules):
+        return {"pieces.rest.turn"}
+    return set()
+
+
+def _schema_one_hundred_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 100 added, by name (SR7e,
+    `docs/plan-schema-next.md` §2.3 row R11; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.strike.stay.simultaneous`` -- a strike placed ``"stay"`` in rounds: a shot does
+      not move the shooter, so it never collides, and shots resolve before the round's moves.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    strike = rules.get("strike")
+    if (
+        isinstance(rules.get("simultaneous"), dict)
+        and strike_is_live(strike)
+        and isinstance(strike, dict)
+        and strike.get("position") == "stay"
+    ):
+        return {"rules.strike.stay.simultaneous"}
+    return set()
+
+
+def _schema_one_hundred_one_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 101 added, by name (SR7f,
+    `docs/plan-schema-next.md` §2.3 row R18; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``setup.placements.nobody.simultaneous`` -- a placement for nobody in rounds: two players'
+      moves onto a nobody's piece's square are a collision as any other, by ``beats`` and the
+      tie (a held piece, majority control, stayed refused beside rounds until generation 109).
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if isinstance(rules.get("simultaneous"), dict) and neutral_ids(spec):
+        return {"setup.placements.nobody.simultaneous"}
+    return set()
+
+
+def _schema_one_hundred_two_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 102 added, by name (SR7g,
+    `docs/plan-schema-next.md` §2.3 row R19; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.purse.simultaneous`` -- a purse in rounds: a buy is an arrival with the round's
+      moves, and two buys onto one square, or a buy and a move, collide by ``beats`` and the
+      tie, each price paid (a purse that hires or bribes stays refused beside rounds).
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if isinstance(rules.get("simultaneous"), dict) and isinstance(rules.get("purse"), dict):
+        return {"rules.purse.simultaneous"}
+    return set()
+
+
+def _schema_one_hundred_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 103 added, by name (SR7h,
+    `docs/plan-schema-next.md` §2.12 row Y3; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.promotion.spy`` -- a promotion into a spy: the promoting player gains a spy on
+      the promotion square, and the phase is read afresh both ways (a second spy a buffer; a
+      round's gain back to turns, the player who did not gain first; a gain in blind rounds
+      begins announced ones; a gain on the reply turn back to turns).
+    """
+    if spy_promotion_targets(spec):
+        return {"rules.promotion.spy"}
+    return set()
+
+
+def _schema_one_hundred_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 104 added, by name (SR7i,
+    `docs/plan-schema-next.md` §2.12 rows Y4 to Y6; numbered by order of landing, bumping no
+    version). Three lifted refusals, no key:
+
+    * ``rules.strike.chain.spy`` -- a strike chain into a spy: the struck piece stays its
+      owner's, so its owner gains a spy;
+    * ``rules.strike.switches_sides.spy`` -- a spy in ``switches_sides``: a spy that captures
+      and changes sides is lost by its old side and gained by its new one in that move;
+    * ``rules.contacts.spy`` -- a contact link into a spy, gained by whoever owns the piece
+      after the link (``mover_to`` the mover, ``onto_to`` the target's owner).
+    """
+    names = {
+        "strike.chain": "rules.strike.chain.spy",
+        "strike.switches_sides": "rules.strike.switches_sides.spy",
+        "contacts": "rules.contacts.spy",
+    }
+    return {names[route] for route in spy_gain_routes(spec) if route in names}
+
+
+
+def _schema_one_hundred_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 105 added, by name (SR7j,
+    `docs/plan-schema-next.md` §2.12 rows Y7 and Y8; numbered by order of landing, bumping no
+    version). Two lifted refusals, no key:
+
+    * ``rules.drops.stock.spy`` -- a spy in a stock: held, not on the board, it counts for
+      nobody until it is dropped, and dropping it gains it;
+    * ``rules.drops.from_captures.spy`` -- a spy taken into a hand: lost by its side at the
+      capture, and the taker's to drop (a spy demoted in the hand by ``promoted_from`` comes
+      back as something else, so is not this).
+    """
+    rules = spec.get("rules")
+    drops = rules.get("drops") if isinstance(rules, dict) else None
+    if not isinstance(drops, dict) or not spy_drop_ids(spec):
+        return set()
+    found: set[str] = set()
+    if set(spy_drop_ids(spec)) & stocked_ids(drops):
+        found.add("rules.drops.stock.spy")
+    if drops.get("from_captures", True) is not False:
+        taken = {**spec, "rules": {**spec["rules"], "drops": {"from_captures": True}}}
+        if spy_drop_ids(taken):
+            found.add("rules.drops.from_captures.spy")
+    return found
+
+
+def _schema_one_hundred_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 106 added, by name (SR7k,
+    `docs/plan-schema-next.md` §2.11 row O6; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``setup.placements.nobody.spy`` -- a spy nobody owns (placed for nobody, or made of a
+      nobody's piece by a strike or a contact): it gives nobody secrecy, since the phase counts
+      the players' spies only; taken it is gone, or the taker's to drop under a capture hand.
+    """
+    if nobodys_spy_ids(spec):
+        return {"setup.placements.nobody.spy"}
+    return set()
+
+
+def _schema_one_hundred_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 107 added, by name (SR7l,
+    `docs/plan-schema-next.md` §2.11 row O24; numbered by order of landing, bumping no version):
+    **nothing a valid spec can use**. SR7l moved a priced spy's refusal from a spy refusal to the
+    purse's own *nothing charges it*: in a spy game (always in rounds) a hire and a bribe stay
+    refused (R19), and a market could not sell a spy until generation 108 (SR7m, O27), so no
+    spec SR7l lets through has a priced spy. The priced spy a market sells is generation 108's
+    ``rules.purse.market.spy``.
+    """
+    return set()
+
+
+def _schema_one_hundred_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 108 added, by name (SR7m,
+    `docs/plan-schema-next.md` §2.11 row O27; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.purse.market.spy`` -- a spy for sale (and so priced, SR7l): bought, it is a spy
+      gained when it stands on the board, the phase read afresh both ways; in a round the buy
+      is an arrival that collides, its price paid whether or not it stands. Supply unlimited.
+    """
+    if spy_market_ids(spec):
+        return {"rules.purse.market.spy"}
+    return set()
+
+def _schema_one_hundred_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 109 added, by name (SR7n,
+    `docs/plan-schema-next.md` §2.3 row R20; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``pieces.control.majority.simultaneous`` -- a held piece (majority control) in rounds: its
+      holder is read on the round's board, and its move is that player's one move of the round,
+      an arrival that collides by ``beats`` and the tie, claiming and reaching for the holder.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if isinstance(rules.get("simultaneous"), dict) and majority_ids(spec):
+        return {"pieces.control.majority.simultaneous"}
+    return set()
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -2159,4 +2380,17 @@ _COLLECTORS = {
     94: _schema_ninety_four_uses,
     95: _schema_ninety_five_uses,
     96: _schema_ninety_six_uses,
+    97: _schema_ninety_seven_uses,
+    98: _schema_ninety_eight_uses,
+    99: _schema_ninety_nine_uses,
+    100: _schema_one_hundred_uses,
+    101: _schema_one_hundred_one_uses,
+    102: _schema_one_hundred_two_uses,
+    103: _schema_one_hundred_three_uses,
+    104: _schema_one_hundred_four_uses,
+    105: _schema_one_hundred_five_uses,
+    106: _schema_one_hundred_six_uses,
+    107: _schema_one_hundred_seven_uses,
+    108: _schema_one_hundred_eight_uses,
+    109: _schema_one_hundred_nine_uses,
 }

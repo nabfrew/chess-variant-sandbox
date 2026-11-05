@@ -100,7 +100,8 @@ class TestARookSweep:
 class TestTheCut:
     def test_the_board_cuts_swept_pieces_instead_of_striking_them(self) -> None:
         assert "function sweepCut(" in PAGE
-        assert PAGE.count("sweepCut(svg, node,") == 1
+        # Two since Q1100: the move's own slide, and the slide to a fold a sweep goes through.
+        assert PAGE.count("sweepCut(svg, node,") == 2
         assert "cut.has(sq)" in PAGE
 
     def test_the_landing_cuts_them_the_same_way(self) -> None:

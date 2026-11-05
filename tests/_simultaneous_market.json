@@ -1,0 +1,168 @@
+{
+  "schema_version": 31,
+  "name": "simultaneous market",
+  "description": "SR7g's test spec (R19): a five by five game in rounds with a purse and a market selling pawns and knights onto the middle rank, which both players share, so two buys onto one square, or a buy and a move, collide by beats and the tie; every capture pays its bounty into the taker's purse.",
+  "board": {
+    "width": 5,
+    "height": 5
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "price": 2,
+      "bounty": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "beats": [
+        "K"
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "price": 4,
+      "bounty": 2,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "beats": [
+        "P",
+        "R",
+        "K"
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "bounty": 4,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "d2",
+          "e2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "c1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "R",
+        "N"
+      ]
+    },
+    "max_plies": 200,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "simultaneous": {},
+    "purse": {
+      "start": 6,
+      "market": [
+        "P",
+        "N"
+      ],
+      "region": [
+        "a3",
+        "b3",
+        "c3",
+        "d3",
+        "e3"
+      ]
+    }
+  }
+}

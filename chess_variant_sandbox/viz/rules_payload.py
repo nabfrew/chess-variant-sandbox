@@ -120,6 +120,11 @@ def explosion_payload(spec: Any) -> dict[str, Any] | None:
         # SR5a (T1): what the blast's strikes reach, 0 for none (the compiled bits); the page
         # reads only whether a struck piece may stand where the capturer died.
         "strikes": ex.strikes,
+        # SR6c (W3, Q1100): per type, whether its sweep blasts each swept square that sets the
+        # blast off (`effects: "path"`, `ExplosionRule.sweep_path`, compiled), else ``None``:
+        # every sweep makes one blast, on its landing. Two positions cannot tell a path blast
+        # from a landing one, so the page reads where they went off from this and `swept`.
+        "sweepPath": list(ex.sweep_path) if ex.sweep_path else None,
     }
 
 

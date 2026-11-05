@@ -146,6 +146,8 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::write_ep_window": "`make`'s phase (CS8): sets the en passant window after the promoting piece's two-square "
         "move; `ep_passes` holds no entry for a piece that cannot double-step, and a piece "
         "that never stands never moves",
+        "game.rs::keeps_ep_window": "SR7a (L1): whether a later move of a long turn keeps the "
+        "window; it keeps only a window that is open, which nothing under either refusal opens",
         "game.rs::generate_pseudo_legal_as": "`capturable_ep`, the three arms that take in "
         "passing; they need a window, which nothing under either refusal opens",
     },
@@ -314,6 +316,9 @@ READERS: dict[str, dict[str, str]] = {
         "asks it after a faster move too)",
         "rounds.rs::round_goal_ending": "schema 26's arm: the named piece on a "
         "goal square, per side",
+        "rounds.rs::held_arrivals": "SR7n (R20, O11's reading in rounds): whether a held "
+        "piece's arrival stands on its holder's goal, read only under `reach_held`, of the "
+        "type standing on the target after the round",
     },
     "goal_distance": {
         "eval.rs::goal_distance_of": "the distance of a piece that stands, for the race and "
@@ -424,6 +429,9 @@ READERS: dict[str, dict[str, str]] = {
         "rounds.rs::contact_in_place": "schema 26: a contact's two pieces, as `strike_writes`",
         "rounds.rs::strike_after": "schema 26: a struck piece and its captor, as "
         "`strike_writes`",
+        "rounds.rs::shots": "SR7e: a shot's victim struck in place, as `strike_writes`' stay arm",
+        "rounds.rs::shooter_after": "SR7e: a shooter changed where it stands, as "
+        "`strike_writes`' stay arm",
         "tables.rs::rehome_value": "TC1: a piece changing sides on the board enters play for "
         "its new owner, as a struck piece does",
     },
@@ -432,6 +440,8 @@ READERS: dict[str, dict[str, str]] = {
         "struck piece becomes where it lands",
         "rounds.rs::contact_in_place": "TC1, schema 26: a contact flip, as `strike_writes`",
         "rounds.rs::strike_after": "TC1, schema 26: a captor that switches, as `strike_writes`",
+        "rounds.rs::shooter_after": "TC1, SR7e: a shooter that switches where it stands, as "
+        "`strike_writes`",
         "game.rs::write_board": "`make`'s board phase (CS8), TC6: a hire or a bribe, the bought piece entering play for its "
         "new owner where it stands (`promote_on_entry` counts both as a way in)",
         "game.rs::play_move_for_filter": "TC6: the same hire or bribe in the legality filter",
@@ -446,6 +456,10 @@ READERS: dict[str, dict[str, str]] = {
         "rounds.rs::make_round": "schema 28: whether the slower move's piece still stands "
         "on its origin as itself, compared with the board; a drop has no origin and is "
         "never asked",
+        "rounds.rs::block_of": "SR7n (R20): whether the moving piece is nobody's (held); a "
+        "drop has no origin and is never asked, entering as its player's",
+        "rounds.rs::held_arrivals": "SR7n (R20): whether a held move's piece is of a majority "
+        "type, under `reach_held`; a drop has no origin and is never held",
     },
     # `multi_royal` moves only where the spec declares a real royal promotion beside the
     # phantom one; every reader counts royals standing on the board.

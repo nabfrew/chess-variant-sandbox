@@ -2349,8 +2349,9 @@ impl<'t> Game<'t> {
     /// earlier steps of the same phase leave it. The board is put back before returning.
     ///
     /// `count` phases, one after another, each played on the board the one before it left
-    /// (Q764): a wild piece walks twice before the player to move moves again -- after
-    /// that player's move and after the reply -- so the board asks for two. Every phase
+    /// (Q764): the board asks for two, the phase after the next move and the one after the
+    /// move that follows it (the reply, or in a long turn the mover's own next move, SR7b;
+    /// a pouncer's mover follows the turn's schedule, `pounce_coming_phases`). Every phase
     /// after the first is still the board *without* the moves between them, which is the
     /// one thing this cannot know. Exactly `count` entries, an empty one for a phase in
     /// which nothing would walk, and every entry empty for a ruleset without wild pieces.
@@ -2418,6 +2419,35 @@ impl<'t> Game<'t> {
     #[inline(never)]
     fn npc_phase_for_filter_shielded(&mut self, saved: &mut Saved) {
         self.wild_phase::<_, true>(&mut Filter { saved });
+    }
+
+    /// SR7a (L1): whether a move of `player` from `origin`, already written to the board,
+    /// leaves the en passant window open. Only a move that is not its turn's first does
+    /// (the turn's first closes the window the other player's last double step opened, as
+    /// in every one-move game), and only while the window still describes the board: the
+    /// pawn that stepped is still on `ep_victim`, `player`'s and of the en passant type, it
+    /// did not leave it (a piece of the same type cannot have come back in its place inside
+    /// one move), and nothing stands on `ep_target`. A move that disturbs it closes it for
+    /// good, so the opponent never answers a double step whose pawn moved on, was blasted
+    /// or swept away, or had a piece set down where it passed. Asked only under a turn rule.
+    #[cold]
+    #[inline(never)]
+    fn keeps_ep_window(&self, origin: usize, player: usize) -> bool {
+        let t = self.t;
+        let Some(rule) = t.turn.as_ref() else { return false };
+        if self.ep_victim == NO_SQUARE || self.ep_target == NO_SQUARE || t.ep_type < 0 {
+            return false;
+        }
+        if self.remaining == rule.length_of(self.turns_taken) {
+            return false;
+        }
+        let victim = self.ep_victim as usize;
+        let occupant = self.board[victim];
+        origin != victim
+            && occupant != 0
+            && t.owner_of(occupant) == player
+            && t.type_of(occupant) == t.ep_type as usize
+            && self.board[self.ep_target as usize] == 0
     }
 
     /// Close the en passant window if the phase wrote either of its two squares.
@@ -3206,13 +3236,19 @@ impl<'t> Game<'t> {
         }
     }
 
-    /// The en passant window: closed by every move, opened by a double step.
+    /// The en passant window: opened by a double step, closed by the first move of every
+    /// turn. SR7a (L1, ruled 2026-10-27): the window is the opponent's, so inside a long turn
+    /// a later move of the same player keeps it (`keeps_ep_window`), and the mover's *last*
+    /// double step of the turn is the one the opponent's first move may answer.
     #[inline(always)]
     fn write_ep_window(&mut self, m: u32, played: &Played) {
         let t = self.t;
         let kind = played.kind;
-        self.ep_target = NO_SQUARE;
-        self.ep_victim = NO_SQUARE;
+        // One test in a game without a turn rule, where every move is a turn's first.
+        if t.turn.is_none() || !self.keeps_ep_window(played.origin, played.player) {
+            self.ep_target = NO_SQUARE;
+            self.ep_victim = NO_SQUARE;
+        }
         if !enters_play(kind)
             && t.ep_type >= 0
             && played.piece_type == t.ep_type as usize
@@ -3613,8 +3649,9 @@ impl<'t> Game<'t> {
         }
     }
 
-    /// Schema 29 (Q983a, `docs/plan-rest.md` §3.2-§3.4): the end of the player's turn (a
-    /// long turn is refused beside rest). The piece that made the move stands where the
+    /// Schema 29 (Q983a, `docs/plan-rest.md` §3.2-§3.4): the player's move under the rest,
+    /// written per move and counted at the turn's end (SR7d, L2: `rest_turn_ends`, read
+    /// before `end_ply` spends the move). The piece that made the move stands where the
     /// move ended: its origin for a turn in place or a strike that stays, else the
     /// target; one blown up or eaten in the phase stands nowhere, which the board says.
     #[inline(always)]
@@ -3633,7 +3670,8 @@ impl<'t> Game<'t> {
             // owner's (`arrival_owner`; a held piece, nobody's, reads as the mover's and so
             // enters no list, being the mover's in none).
             let owner = if move_foreign(m) { self.arrival_owner(played) } else { played.player };
-            *key ^= self.rest_after_turn(played.player, (kind != MOVE_HIRE).then_some(end), owner);
+            let ends_turn = self.rest_turn_ends();
+            *key ^= self.rest_after_turn(played.player, (kind != MOVE_HIRE).then_some(end), owner, ends_turn);
         }
     }
 
@@ -3869,11 +3907,15 @@ impl<'t> Game<'t> {
         let mut key = self.key ^ t.zobrist_side;
         key ^= folds.key(t.n_squares, end, origin) ^ folds.key(t.n_squares, end, target);
         self.set_fold(end, target as i16);
-        if previous_ep != NO_SQUARE {
-            key ^= t.zobrist_ep_file(previous_ep);
+        // SR7a (L1): a fold's own move later in a long turn keeps the window the mover's
+        // double step opened (it writes no board byte), as any other move of the turn does.
+        if !(t.turn.is_some() && self.keeps_ep_window(usize::MAX, player)) {
+            if previous_ep != NO_SQUARE {
+                key ^= t.zobrist_ep_file(previous_ep);
+            }
+            self.ep_target = NO_SQUARE;
+            self.ep_victim = NO_SQUARE;
         }
-        self.ep_target = NO_SQUARE;
-        self.ep_victim = NO_SQUARE;
         if t.check_limit > 0 {
             let opponent = 1 - player;
             let delivered = if t.multi_royal {
@@ -3905,7 +3947,8 @@ impl<'t> Game<'t> {
         // piece made it (a portal end never rests), so nothing enters.
         if t.rest.is_some() {
             self.rest_log.push(self.resting);
-            key ^= self.rest_after_turn(player, None, player);
+            let ends_turn = self.rest_turn_ends();
+            key ^= self.rest_after_turn(player, None, player, ends_turn);
         }
         self.undo.push(Undo {
             origin,

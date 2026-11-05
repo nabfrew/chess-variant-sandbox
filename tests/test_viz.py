@@ -6,6 +6,7 @@ import copy
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import node_session
 import pytest
@@ -1481,13 +1482,21 @@ def _replayed(spec: dict, tmp_path: Path, steps: list[int], seed: int = 0) -> tu
     """A random game of `spec`, rendered, and the replay page stepped to each beat in
     `steps` by its own `goto`, in node. Returns the payload and what the page did."""
     from chess_variant_sandbox.tournament.play import play_game
-    from chess_variant_sandbox.viz.html import render_game
 
     record = play_game(Engine(spec), ("random", "random"), seed=seed)
+    return _replayed_record(spec, record, tmp_path, steps)
+
+
+def _replayed_record(spec: dict, record: Any, tmp_path: Path, steps: list[int],
+                     expression: str | None = None) -> tuple:
+    """`record` rendered and stepped as `_replayed` does; `expression`, where given, is what
+    the page is asked for instead of `_STEP`'s account."""
+    from chess_variant_sandbox.viz.html import render_game
+
     out = render_game(spec, record, tmp_path / "replay.html")
     script = re.search(r"<script>(.*)</script>", out.read_text(encoding="utf-8"), re.S)
     assert script is not None
-    expression = _STEP.replace("STEPS", json.dumps(steps))
+    expression = expression or _STEP.replace("STEPS", json.dumps(steps))
     done = node_session.run(
         _REPLAY_STUB + script.group(1) + "\nconsole.log(JSON.stringify(" + expression + "));"
     )
@@ -1571,6 +1580,59 @@ class TestTheReplayStepsThroughTheWildPiecesTurn:
         script = (Path(__file__).parents[1] / "chess_variant_sandbox" / "viz" / "replay.js")
         text = script.read_text(encoding="utf-8")
         assert "function showPush(" in text and "move.pushCrush" in text
+
+    @staticmethod
+    def _sweep_blast(effects: str | None) -> dict:
+        """6x6, kings a1/f6, a sweeper (S) on a3 whose sweep runs along the rank over two
+        guards on b3 and d3, an atomic blast of radius 1 sparing the kings."""
+        sweep: dict = {"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4"}
+        if effects is not None:
+            sweep["effects"] = effects
+        king = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}
+        return {
+            "name": "a sweep's path blasts in the replay (Q1101 test spec)",
+            "board": {"width": 6, "height": 6},
+            "pieces": [
+                {"id": "K", "royal": True, "value": 0, "moves": [king]},
+                {"id": "S", "value": 5, "moves": [sweep]},
+                {"id": "G", "value": 2, "moves": [king]},
+            ],
+            "setup": {"mirror": False, "placements": [
+                {"piece": "K", "player": 0, "squares": ["a1"]},
+                {"piece": "S", "player": 0, "squares": ["a3"]},
+                {"piece": "K", "player": 1, "squares": ["f6"]},
+                {"piece": "G", "player": 1, "squares": ["b3", "d3"]},
+            ]},
+            "rules": {"win": "royal_capture", "stalemate": "draw", "max_plies": 60,
+                      "explode_on_capture": {"radius": 1, "immune": ["K"]}},
+        }
+
+    @pytest.mark.parametrize(("effects", "centres"), [("path", [13, 15]), (None, [16])])
+    def test_a_sweeps_blasts_go_off_where_the_board_puts_them(
+        self, tmp_path: Path, effects: str | None, centres: list[int]
+    ) -> None:
+        """Q1101: the frame carries the engine's swept squares (`sweep_transit`), and the
+        replay centres the blasts as the play board does (`moveBlastCentres`, one copy in
+        `wrapped.js`): under `effects: "path"` on each swept guard (b3, d3), else one on the
+        landing (e3). Each centre is marked, which is all a still reader sees of a path blast."""
+        from chess_variant_sandbox.spec import spec_hash
+        from chess_variant_sandbox.tournament.record import GameRecord
+
+        spec = self._sweep_blast(effects)
+        engine = Engine(spec)
+        move = engine.find_move(engine.initial_state(), "Sa3xe3 (sweeps b3, d3)")
+        record = GameRecord(ruleset_hash=spec_hash(spec), ruleset_name=spec["name"], seed=0,
+                            agents=("-", "-"), moves=[move], winner=None, reason="test", plies=1)
+        asked = ("(() => { const seen = " + _STEP.replace("STEPS", "[1]")
+                 + "; return { centres: blastCentres(BEATS[1]), seen: seen.seen,"
+                 " fires: typeof showBlasts }; })()")
+        data, page = _replayed_record(spec, record, tmp_path, [1], asked)
+        assert data["moves"][0]["swept"] == [13, 15]
+        assert data["explosion"]["sweepPath"] == ([False, True, False] if effects else None)
+        assert page["centres"] == centres
+        assert page["fires"] == "function"
+        (seen,) = page["seen"]
+        assert seen["marks"] == sorted({12, 16, *centres})
 
     def test_the_split_and_the_words_are_one_copy(self, tmp_path: Path) -> None:
         """Both surfaces carry `plyBeats` and `phaseWords` through the shared module and

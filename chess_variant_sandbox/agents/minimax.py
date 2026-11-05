@@ -447,7 +447,11 @@ class MinimaxAgent:
         best_move = moves[0]
         for move in moves:
             child = self.engine.apply_round(state, *_pair(announcer, announced, move))
-            score = self._negamax(child, depth - 1, 1, alpha, INFINITY)
+            # SR7h: a gain may hand the move over; the child's value is then the other's.
+            if child.side_to_move != state.side_to_move:
+                score = -self._negamax(child, depth - 1, 1, -INFINITY, -alpha)
+            else:
+                score = self._negamax(child, depth - 1, 1, alpha, INFINITY)
             if score > alpha:
                 alpha, best_move = score, move
         return best_move
@@ -543,14 +547,18 @@ class MinimaxAgent:
         beta: float,
     ) -> float:
         """The answerer's ply: the best of its moves against ``announced``, ordered at
-        ``ply``; the side does not change across a round, so a child's value passes."""
+        ``ply``; a round keeps the side unless a spy is gained in it (SR7h), so a child's
+        value passes, or is negated with its window where the side changed."""
         moves = list(answers)
         self._order(state, moves, ply)
         best = -INFINITY
         for move in moves:
             quiet = not self._is_loud(state, move)
             child = self.engine.apply_round(state, *_pair(announcer, announced, move))
-            score = self._negamax(child, depth - 1, ply + 1, alpha, beta)
+            if child.side_to_move != state.side_to_move:
+                score = -self._negamax(child, depth - 1, ply + 1, -beta, -alpha)
+            else:
+                score = self._negamax(child, depth - 1, ply + 1, alpha, beta)
             if score > best:
                 best = score
             if best > alpha:

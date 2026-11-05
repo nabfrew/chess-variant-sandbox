@@ -326,6 +326,17 @@ class TestTheWalkPicker:
             assert f'data-step="{_square(a)}&gt;{_square(b)}"' in html \
                 or f'data-step="{_square(a)}>{_square(b)}"' in html, (a, b)
 
+    def test_the_legend_names_the_pending_walk(self) -> None:
+        """Q1101: the legend under the set-up board names the walk the board draws, the draft's
+        while it is picked, not the last check's one-square walk, which drew no line: before,
+        a walk picked from one square was drawn with no legend entry until the answer came
+        back (the look check's `S3 walk` row, which failed under load)."""
+        spec = _one_wolf(["a4"])
+        steps = _PICK_ROUTE + _line("row", "a4")
+        said = _page(spec, steps, "[benchLegendHtml('setup'), walksDrawn(lastPreview())]")
+        assert said[1] is False, "the check's answer is still the one-square walk"
+        assert 'data-legend="walk"' in said[0], said[0]
+
     def test_the_answer_once_back_is_drawn_unchanged(self) -> None:
         spec = _wolves()
         steps = _PICK_ROUTE

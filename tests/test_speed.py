@@ -742,6 +742,15 @@ def walk_digest(names: list[str], seeds: int = 3, rounds: int = 60) -> str:
 SPEEDLESS = sorted(
     path.stem for path in HERE.glob("_simultaneous_*.json")
     if "speed" not in path.stem and path.stem not in ("_simultaneous_resting", "_simultaneous_scored")
+    # SR7e's three rifle specs (R11): a game that was refused until generation 100 has no
+    # "before" to play byte for byte; the ten games the digest was taken over stay its basis.
+    and path.stem not in ("_simultaneous_rifle", "_simultaneous_demoting_shot", "_simultaneous_rifle_hand")
+    # SR7f's two stone specs (R18), refused until generation 101, likewise.
+    and path.stem not in ("_simultaneous_nobody", "_simultaneous_nobody_rifle")
+    # SR7g's two market specs (R19), refused until generation 102, likewise.
+    and path.stem not in ("_simultaneous_market", "_simultaneous_market_blast")
+    # SR7n's four held specs (R20), refused until generation 109, likewise.
+    and not path.stem.startswith("_simultaneous_held")
 )
 
 # Taken with main's package and core (47490df3bfedc24b, before Q943a) and with this one, and

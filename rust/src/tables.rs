@@ -36,10 +36,15 @@ pub const MAX_PIECE_TYPES: usize = 24;
 /// how many of one player's pieces can rest at once (one enters a turn, none stays longer).
 /// `spec/schema.py::REST_MAX` is the validator's copy.
 pub const REST_MAX: usize = 4;
-/// SR5e (V7): each player's resting-list slots. A commanded move rests its piece in its
-/// owner's list, so beside a command a player's list holds its own rests and the ones the
-/// opponent's commands began, each at most the longest rest: twice `REST_MAX`.
-pub const REST_SLOTS: usize = 2 * REST_MAX;
+/// SR7d (L2): the most moves a turn may have (`spec/schema.py::MAX_MOVES_PER_TURN` is the
+/// validator's copy). A long turn enters a piece a move, so it bounds the resting lists.
+pub const MAX_TURN_MOVES: usize = 4;
+/// Each player's resting-list slots, `RestTables::slots` at its largest. A player enters at
+/// most one piece a move, so at most a turn's moves a turn, and an entry holds at most the
+/// longest rest's layers (`REST_MAX`; one more in a long turn, SR7d: the turn it moved in);
+/// beside a command (SR5e, V7) a player's list also holds the pieces the opponent's commands
+/// rested, as many again.
+pub const REST_SLOTS: usize = 2 * (REST_MAX + 1) * MAX_TURN_MOVES;
 /// Schema 21: the most portal ends a game has, across all its groups, and so how wide
 /// every by-end array is (`Game::fold_at`, `FoldTables::starts`, a transit's ends).
 /// `spec/schema.py::MAX_PORTAL_ENDS` is the validator's copy, pinned equal by a test.
@@ -1340,6 +1345,12 @@ pub struct SimTables {
     /// Schema 28 (Q943a, `docs/archive/plan-speed.md` §4.2): `[type]`, each type's speed. Empty
     /// unless a piece declares one, so `make_round` never orders a round in any other game.
     pub speed: Vec<u8>,
+    /// SR7e (R11, `docs/reference/rounds.md` §4 step 0): a capture under `rules.strike`
+    /// placed `"stay"` is a **shot**, made before the round's moves; its shooter never
+    /// moves, so never collides. Derived (`collision_strikes`, which is `rules.strike`'s,
+    /// beside the strike's position), so nothing new crosses: a contact that stays
+    /// (`rules.contacts`) keeps its own reading.
+    pub shoots: bool,
 }
 
 impl SimTables {
@@ -1372,13 +1383,17 @@ pub struct RestTables {
     pub turns: Vec<u8>,
     /// `[((left - 1) * 2 + player) * n_squares + square]`: XORed in for each resting piece.
     pub zobrist: Vec<u64>,
-    /// How many of a player's `REST_SLOTS` slots can ever be live: the longest rest, as a
-    /// player enters at most one piece a turn and each rests at most this many of its turns
-    /// and an entry takes the first free slot; twice that beside a command (SR5e, V7), whose
-    /// moves enter the commanded piece in its owner's list, one more a turn of the opponent's.
-    /// The core walks only these.
+    /// How many of a player's `REST_SLOTS` slots can ever be live: `longest` times the
+    /// longest turn's moves, as a player enters at most one piece a move, an entry holds at
+    /// most `longest` of its player's turns and takes the first free slot; twice that beside
+    /// a command (SR5e, V7), whose moves enter the commanded piece in its owner's list, one
+    /// more a move of the opponent's. In a turn of one move, the longest rest. The core
+    /// walks only these.
     pub slots: usize,
-    /// The longest rest a type declares (`R`), and so the most turns left an entry can hold.
+    /// The most turns left an entry can hold: the longest rest a type declares (`R`), and in
+    /// a long turn `R + 1` (SR7d, L2: a piece that moves before its turn's last move also
+    /// rests the rest of that turn, so its count, of its player's turns with the one in
+    /// progress counted, starts one higher). The key's layers and the net's plane width.
     pub longest: usize,
     /// SR5e (V7): a command beside the rest. A resting piece is moved by neither player, so
     /// the filter drops the side to move's moves from both lists' squares, and a commanded
@@ -2682,8 +2697,8 @@ impl Tables {
     /// TC9c (`docs/plan-turncoat.md` §5.10): who `bounty_paid` pays when `taker`'s move takes
     /// `captured`: the taker, or under `rules.purse.bounty_to: "loser"` the player who owned
     /// the piece (`WILD`, nobody, for a piece nobody owns: no one is paid). Asked only where
-    /// the payment is not zero, by `make` and `unmake` alike; rounds are refused beside a
-    /// purse, so the round's payment never meets the rule.
+    /// the payment is not zero, by `make` and `unmake` alike, and by the round's payment
+    /// (`rounds.rs::pay_round`, SR7g).
     #[inline]
     pub fn bounty_payee(&self, captured: u8, taker: usize) -> usize {
         match self.purse.as_deref() {
@@ -3146,7 +3161,7 @@ impl Tables {
         // commands rested, so it takes twice the slots, and the filter reads both lists.
         if tables.sight.as_ref().is_some_and(|sight| sight.has_command) {
             if let Some(rest) = tables.rest.as_deref_mut() {
-                rest.slots = 2 * rest.longest;
+                rest.slots *= 2;
                 rest.commanded = true;
             }
         }
@@ -3155,11 +3170,12 @@ impl Tables {
         tables.npc_sight = tables.npc_shield || tables.npc_tamed;
         tables.spy = Self::spy_rule(&tables, source)?;
 
-        // TC4: a round pays its bounties into the tally alone (`rounds.rs`), so a purse is
-        // never beside one; the purse's compiler refuses them together too.
-        if tables.purse.is_some() && tables.simultaneous.is_some() {
+        // SR7g (R19): a purse with a market plays in rounds (a buy is an arrival with the
+        // round's moves, `rounds.rs`); one that can hire or bribe stays refused there, as the
+        // validator refuses it (two players recruiting one piece on the board).
+        if tables.purse.as_deref().is_some_and(PurseTables::contested) && tables.simultaneous.is_some() {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "a purse beside rounds; the compiler refuses them together",
+                "a purse that hires or bribes beside rounds; the validator refuses them together",
             ));
         }
         tables.hop_lines = tables.build_hop_lines();
@@ -4488,6 +4504,8 @@ impl Tables {
             initiative_start: sim_rule[1] as i8,
             void_run: sim_rule[2] as u8,
             collision_strikes: sim_rule[3] != 0,
+            shoots: sim_rule[3] != 0
+                && tables.strike.as_ref().is_some_and(|strike| strike.position == StrikePosition::Stay),
             collision_allowed: collision.iter().map(|flag| *flag != 0).collect(),
             zobrist_initiative: zobrist[0],
             zobrist_squares: zobrist[1..1 + 2 * n].to_vec(),
@@ -4508,10 +4526,16 @@ impl Tables {
             return Ok(None);
         }
         let max = piece_rest.iter().copied().max().unwrap_or(0) as usize;
+        // SR7d (L2): a long turn (never a duck game's two halves, one piece move a turn)
+        // keys one layer more, and a player's list takes up to a turn's moves a turn.
+        let long = tables.turn.as_ref().filter(|_| tables.duck.is_none());
+        let moves = long.map_or(1, |rule| rule.ramp.iter().copied().fold(rule.moves, u32::max) as usize);
+        let layers = max + long.is_some() as usize;
         if piece_rest.len() != tables.n_types
             || max == 0
             || max > REST_MAX
-            || zobrist_rest.len() != max * 2 * tables.n_squares
+            || moves > MAX_TURN_MOVES
+            || zobrist_rest.len() != layers * 2 * tables.n_squares
         {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "the rest tables do not fit this ruleset's types and squares",
@@ -4520,8 +4544,8 @@ impl Tables {
         Ok(Some(Box::new(RestTables {
             turns: piece_rest,
             zobrist: zobrist_rest,
-            slots: max,
-            longest: max,
+            slots: layers * moves,
+            longest: layers,
             commanded: false,
         })))
     }

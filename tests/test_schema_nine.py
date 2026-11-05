@@ -49,7 +49,6 @@ from chess_variant_sandbox.engine.bridge import canonical_tables, rust_supports
 from chess_variant_sandbox.engine.compile import WILD, compile_spec
 from chess_variant_sandbox.measurement import tables_fingerprint
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
-from chess_variant_sandbox.spec.refusals import refused_ids
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -698,18 +697,11 @@ class TestWhatTheValidatorRefuses:
         errors = validate_spec(spec)
         assert any("walks through an obstacle at c4" in error for error in errors), errors
 
-    @pytest.mark.parametrize(
-        ("rule", "value", "rid"),
-        [
-            ("turn", {"moves": 2, "ramp": [1]}, "L3"),
-        ],
-    )
-    def test_a_combination_is_refused_by_name(
-        self, chess_spec: dict[str, Any], rule: str, value: Any, rid: str
-    ) -> None:
-        spec = _boar(chess_spec, **{rule: value})
-        errors = validate_spec(spec)
-        assert rid in refused_ids(errors), errors
+    def test_a_long_turn_beside_a_wild_piece_is_allowed(self, chess_spec: dict[str, Any]) -> None:
+        """SR7b lifted L3: a phase follows every move of a long turn
+        (`tests/test_wild_long_turn.py` plays it)."""
+        spec = _boar(chess_spec, turn={"moves": 2, "ramp": [1]})
+        assert validate_spec(spec) == []
 
     def test_a_strike_beside_a_wild_piece_is_allowed(self, chess_spec: dict[str, Any]) -> None:
         """SR4e lifted T7: a strike never reaches a wild type (`tests/test_wild_beside_strike.py`
@@ -1025,14 +1017,17 @@ class TestTheSurfaces:
         assert validate_spec(spec) == []
         assert spec_hash(spec) == before, "set-a-patrol does not undo itself"
 
-    def test_the_operator_refuses_where_the_validator_would(
+    def test_the_operator_looses_a_patrol_in_a_long_turn(
         self, chess_spec: dict[str, Any]
     ) -> None:
+        """SR7b lifted L3, so a patrol is offered beside a long turn too, and validates."""
         from chess_variant_sandbox.loop.operators import _set_a_patrol
 
         spec = copy.deepcopy(chess_spec)
         spec["rules"]["turn"] = {"moves": 2, "ramp": [1]}
-        assert _set_a_patrol(spec, random.Random(3)) is None
+        assert _set_a_patrol(spec, random.Random(3))
+        assert spec["rules"]["npcs"]
+        assert validate_spec(spec) == [], validate_spec(spec)
 
     def test_scoring_the_clock_counts_points_when_there_is_something_wild(
         self, chess_spec: dict[str, Any]

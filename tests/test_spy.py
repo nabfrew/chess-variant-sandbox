@@ -322,6 +322,21 @@ def _refused(spec: dict[str, Any], words: str) -> None:
     assert any(words in error for error in errors), errors
 
 
+def _disjoint() -> dict:
+    """`_spy_small` with disjoint armies: player 0's spy is S, player 1's T (a copy)."""
+    spec = _load("_spy_small")
+    spy = next(piece for piece in spec["pieces"] if piece["id"] == "S")
+    spec["pieces"].append({**copy.deepcopy(spy), "id": "T", "name": "other spy"})
+    flipped = []
+    for placement in spec["setup"]["placements"]:
+        squares = [f"{square[0]}{6 - int(square[1:])}" for square in placement["squares"]]
+        piece = "T" if placement["piece"] == "S" else placement["piece"]
+        flipped.append({"piece": piece, "squares": squares, "player": 1})
+    spec["setup"] = {"mirror": False, "placements": spec["setup"]["placements"] + flipped}
+    return spec
+
+
+
 class TestTheRefusals:
     def test_every_test_spec_validates(self) -> None:
         for name in SPECS:
@@ -369,32 +384,93 @@ class TestTheRefusals:
                 piece["captures"] = [pid for pid in ("K", "R", "N", "P")]
         _refused(spec, "nothing can remove player 0's spy")
 
-    def test_a_promotion_to_it(self) -> None:
+    def test_a_promotion_to_it_is_a_gain_since_sr7h(self) -> None:
+        # Y3, lifted by SR7h (generation 103): the promoting player gains a spy
+        # (`tests/test_spy_gained.py` plays it).
         spec = _load("_spy_small")
         spec["rules"]["promotion"]["to"] = ["R", "S"]
-        _refused(spec, "rules.promotion turns a piece into the spy 'S'")
+        assert validate_spec(spec) == []
 
-    def test_a_stock_holding_it(self) -> None:
+    def test_a_promotion_into_the_other_player_s_spy_type(self) -> None:
+        # Disjoint armies: player 0's spy is S and player 1's T; a promotion of player 1's
+        # pawn into S would make a spy that counts for nobody.
+        spec = _disjoint()
+        assert validate_spec(spec) == []
+        spec["rules"]["promotion"]["to"] = ["R", "S"]
+        _refused(spec, "rules.promotion turns player 1's piece into the spy 'S'")
+        assert not any("player 0's piece" in error for error in validate_spec(spec))
+
+    def test_a_stock_holding_it_is_a_gain_since_sr7j(self) -> None:
+        # Y7, lifted by SR7j (generation 105): a spy in the stock counts for nobody until it
+        # is dropped, and dropping it gains it (`tests/test_spy_in_hand.py` plays it).
         spec = _load("_spy_stock")
         spec["rules"]["drops"]["stock"] = {"N": 1, "S": 1}
-        _refused(spec, "rules.drops.stock puts the spy 'S' in a hand")
+        assert validate_spec(spec) == []
 
-    def test_a_hand_filled_from_captures(self) -> None:
+    def test_a_hand_filled_from_captures_is_a_gain_since_sr7j(self) -> None:
+        # Y8, lifted by SR7j: a taken spy is lost at once and is its taker's to drop.
         spec = _load("_spy_stock")
         del spec["rules"]["drops"]["from_captures"]
-        _refused(spec, "a taken spy would come back as its taker's")
+        assert validate_spec(spec) == []
 
-    def test_a_strike_that_switches_it(self) -> None:
+    def test_a_hand_holding_the_other_player_s_spy_type(self) -> None:
+        # Disjoint armies: a hand filled from captures would give each player the other's
+        # spy type, a spy for nobody; refused by name, as a promotion into it is.
+        spec = _disjoint()
+        spec["rules"]["drops"] = {"from_captures": True}
+        _refused(spec, "rules.drops fills player 0's hand with the spy 'T'")
+        _refused(spec, "rules.drops fills player 1's hand with the spy 'S'")
+
+    def test_a_strike_that_switches_it_is_a_gain_since_sr7i(self) -> None:
+        # Y5, lifted by SR7i (generation 104): the switched spy is lost by one side and
+        # gained by the other (`tests/test_spy_gained_on_board.py` plays it).
         spec = _load("_spy_small")
         spec["pieces"][4]["captures"] = ["P"]
         spec["pieces"][4]["moves"][0]["mode"] = "both"
-        spec["rules"]["strike"] = {"switches_sides": ["S"]}
-        _refused(spec, "rules.strike.switches_sides names the spy 'S'")
+        spec["rules"]["strike"] = {"switches_sides": ["S"], "immune": ["K"]}
+        assert validate_spec(spec) == []
 
-    def test_a_strike_chain_into_it(self) -> None:
+    def test_a_strike_chain_into_it_is_a_gain_since_sr7i(self) -> None:
+        # Y4, lifted by SR7i: the struck piece's owner gains the spy.
         spec = _load("_spy_small")
-        spec["rules"]["strike"] = {"chain": [{"from": "N", "to": "S"}]}
-        _refused(spec, "rules.strike.chain turns a piece into the spy 'S'")
+        spec["rules"]["strike"] = {
+            "effect": "demote", "position": "stay", "chain": [{"from": "N", "to": "S"}],
+            "immune": ["K"],
+        }
+        assert not [error for error in validate_spec(spec) if "spy" in error]
+
+    def test_a_contact_link_into_it_is_a_gain_since_sr7i(self) -> None:
+        # Y6, lifted by SR7i: gained by whoever owns the piece after the link.
+        spec = _load("_spy_small")
+        spec["rules"]["contacts"] = {"links": [{"mover": "N", "onto": "P", "mover_to": "S"}], "immune": ["K"]}
+        assert not [error for error in validate_spec(spec) if "spy" in error]
+
+    def test_a_gain_into_the_other_player_s_spy_type(self) -> None:
+        # Disjoint armies (player 0's spy S, player 1's T): a chain, a switch or a link that
+        # would give a player the other's spy type is refused by name, as a promotion is.
+        spec = _disjoint()
+        spec["rules"]["strike"] = {
+            "effect": "demote", "position": "stay", "chain": [{"from": "N", "to": "S"}],
+            "immune": ["K"],
+        }
+        _refused(spec, "rules.strike.chain gives player 1 the spy 'S'")
+        assert not any("player 0 the spy" in error for error in validate_spec(spec))
+        spec = _disjoint()
+        for spy in ("S", "T"):
+            piece = next(piece for piece in spec["pieces"] if piece["id"] == spy)
+            piece["captures"] = ["P"]
+            piece["moves"][0]["mode"] = "both"
+        spec["rules"]["strike"] = {"switches_sides": ["S"], "immune": ["K"]}
+        _refused(spec, "rules.strike.switches_sides gives player 1 the spy 'S'")
+        spec = _disjoint()
+        spec["rules"]["contacts"] = {"links": [{"mover": "N", "onto": "P", "mover_to": "T"}], "immune": ["K"]}
+        _refused(spec, "a rules.contacts link's mover_to gives player 0 the spy 'T'")
+        spec = _disjoint()
+        spec["rules"]["contacts"] = {
+            "links": [{"mover": "R", "onto": "N", "onto_to": "S"}], "position": "stay",
+            "immune": ["K"],
+        }
+        _refused(spec, "a rules.contacts link's onto_to gives player 1 the spy 'S'")
 
     def test_extinction_counting_it_on_its_own(self) -> None:
         spec = _load("_spy_small")

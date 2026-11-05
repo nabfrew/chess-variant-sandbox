@@ -120,7 +120,9 @@ class Layout:
         sim = getattr(spec, "simultaneous", None)
         rounds = sim is not None
         has_initiative = sim is not None and sim.tie == TIE_INITIATIVE
-        rest_turns = max(spec.rest) if spec.rest else 0
+        # The plane's width is the most turns left an entry holds: the longest rest, one more
+        # in a long turn (SR7d, `RestTables::longest`).
+        rest_turns = spec.rest_layers if spec.rest else 0
         has_rest = rest_turns > 0
         initiative = turn + TURN_CAP
         rest = initiative + (2 if has_initiative else 0)

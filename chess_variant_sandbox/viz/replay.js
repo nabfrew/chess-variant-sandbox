@@ -175,6 +175,9 @@ function draw() {
   if (beat.kind !== 'phase' && move && Array.isArray(move.pushed)) {
     for (const [square, onto] of move.pushed) marked.add(onto === null ? square : onto);
   }
+  // Q1101: where the move's blasts went off, which for a path blast is a swept square the
+  // two marks above say nothing about.
+  for (const square of blastCentres(beat)) marked.add(square);
   FOLDS_SHOWN = DATA.folds ? DATA.folds[beat.ply] || [] : [];
   FRAME = boardView(W, H, AXES, SHIFT, false, DATA.lattice, CUT);
   svg.setAttribute('viewBox', viewBox(FRAME, CELL));
@@ -392,6 +395,48 @@ function showPush(move, before) {
 // How long a piece thrown off or crushed takes to go: the play board's `PACE.pushFall`.
 const PUSH_MS = 520;
 
+// Q1101: where a move beat's blasts went off, as the play board centres them
+// (`moveBlastCentres`, `viz/wrapped.js`): the compiled rule (`DATA.explosion`, the play board's
+// `explosion_payload`, `sweepPath` among it), the position the move was made on, and the
+// engine's swept squares (`move.swept`). Empty for a phase beat and a game without a blast.
+function blastCentres(beat) {
+  if (!DATA.explosion || beat.kind !== 'move' || beat.ply < 1) return [];
+  return moveBlastCentres(DATA.explosion, DATA.boards[beat.ply - 1], pieceOf,
+                          DATA.moves[beat.ply - 1]);
+}
+
+// A blast as the play board draws one (`motion.js` `blastFire`): one fireball over each
+// centre's whole area (`DATA.explosion.blast`, the compiled neighbourhood), flaring and gone.
+// A sweep's blasts go off together, as the core sets them off.
+const BLAST_MS = 640;
+
+function showBlasts(beat) {
+  if (STILL.matches) return;
+  for (const centre of blastCentres(beat)) {
+    const boxes = [centre, ...(DATA.explosion.blast[centre] || [])]
+      .map(square => squareXY(square, CELL, FRAME));
+    const x0 = Math.min(...boxes.map(b => b[0])), y0 = Math.min(...boxes.map(b => b[1]));
+    const x1 = Math.max(...boxes.map(b => b[0])) + CELL, y1 = Math.max(...boxes.map(b => b[1])) + CELL;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, rx = (x1 - x0) / 2, ry = (y1 - y0) / 2;
+    const fire = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    fire.setAttribute('data-journey', 'blast');
+    fire.setAttribute('pointer-events', 'none');
+    fire.innerHTML = [['var(--fx-flare)', 1, 0.5], ['var(--fx-fire)', 0.62, 0.8],
+      ['var(--fx-spark)', 0.26, 1]].map(([ink, k, opacity]) =>
+      `<ellipse cx="${cx}" cy="${cy}" rx="${rx * k}" ry="${ry * k}" fill="${ink}" opacity="${opacity}"/>`)
+      .join('');
+    fire.style.opacity = '0';
+    fire.style.transformOrigin = `${cx}px ${cy}px`;
+    svg.appendChild(fire);
+    const run = fire.animate([
+      { opacity: 0, transform: 'scale(0.15)' },
+      { opacity: 1, transform: 'scale(0.7)', offset: 0.25 },
+      { opacity: 0, transform: 'scale(1.15)' },
+    ], { duration: BLAST_MS, easing: 'ease-out', fill: 'forwards' });
+    run.onfinish = () => fire.remove();
+  }
+}
+
 function goto(target) {
   const was = at;
   at = Math.max(0, Math.min(BEATS.length - 1, target));
@@ -404,6 +449,7 @@ function goto(target) {
   const moved = beat.kind === 'phase' ? beat.steps : [DATA.moves[beat.ply - 1]];
   for (const m of moved) showCrossing(m.from, m.to, BEATS[was].board, beat.board);
   if (beat.kind !== 'phase') showPush(DATA.moves[beat.ply - 1], BEATS[was].board);
+  showBlasts(beat);
 }
 
 function togglePlay() {

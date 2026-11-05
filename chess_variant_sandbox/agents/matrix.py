@@ -197,7 +197,9 @@ class RoundSearch:
         outcome = engine.terminal(state)
         if outcome is not None:
             return terminal_value(outcome, state, seat, self.round_win)
-        if depth == 0:
+        # SR7h (`docs/plan-schema-next.md` §2.12): a spy game's round may gain a spy and leave
+        # the blind rounds; the matrix searches blind rounds only, so that position is a leaf.
+        if depth == 0 or (engine.spy and engine.phase(state).name != "blind"):
             counts = (len(lists[0]), len(lists[1]))
             return self.evaluator.evaluate_round(engine, state, seat, counts, lists)
         mine, theirs = lists[seat], lists[1 - seat]

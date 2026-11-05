@@ -4,7 +4,8 @@
 one test per decision of §3: the key and its refusals, the worked example of §3.2, the type that
 rests after a promotion, a resting piece captured, displaced or transformed by the other player,
 the lift on the final list (with check, with `must_capture`, with `forbid_immobility`), a resting
-piece's check answered, long turns refused, castling, a drop. The core is held to the declared
+piece's check answered, long turns allowed (since SR7d, `tests/test_rest_long_turn.py`),
+castling, a drop. The core is held to the declared
 oracle (`tests/rest_oracle.py`) move list by move list and rest list by rest list over random
 games of the two alternating rest test specs (`tests/_rest_checkmate.json`, Gardner under
 checkmate with the queen resting 2 and the rooks 1; `tests/_rest_drops.json`, Gardner by royal
@@ -32,7 +33,6 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_CASTLE, decode_move
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import spec_hash, validate_spec
-from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import piece_rests
 from chess_variant_sandbox.spec.spelling import current_spelling
 from tests.feature_inventory import _schema_twenty_nine_uses
@@ -148,7 +148,9 @@ def test_a_rest_out_of_range_is_refused(value: Any, words: str) -> None:
     assert any(words in error for error in validate_spec(resting(GARDNER, {"Q": value})))
 
 
-def test_a_rest_on_a_wild_piece_or_beside_a_long_turn_is_refused() -> None:
+def test_a_rest_on_a_wild_piece_is_refused_and_beside_a_long_turn_is_not() -> None:
+    """A long turn beside a rest is allowed since SR7d (L2 lifted, generation 99;
+    `tests/test_rest_long_turn.py` holds how it plays)."""
     wild = load("_simultaneous_wild")
     del wild["rules"]["simultaneous"]
     for piece in wild["pieces"]:
@@ -157,9 +159,9 @@ def test_a_rest_on_a_wild_piece_or_beside_a_long_turn_is_refused() -> None:
     assert validate_spec(wild) == [], validate_spec(wild)
     assert any("wild piece" in error for error in validate_spec(resting(wild, {"N": 1})))
     long = resting(GARDNER, {"Q": 1}, turn={"moves": 2})
-    assert "L2" in refused_ids(validate_spec(long))
+    assert validate_spec(long) == []
     ramp = resting(GARDNER, {"Q": 1}, turn={"moves": 1, "ramp": [1, 2]})
-    assert "L2" in refused_ids(validate_spec(ramp))
+    assert validate_spec(ramp) == []
 
 
 def test_the_old_switch_is_read_only_through_the_converter() -> None:

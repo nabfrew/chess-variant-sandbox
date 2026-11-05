@@ -576,11 +576,28 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "in rounds (rules.simultaneous, which a spy game must declare) in which the "
                     "player without a spy announces their move first and the other chooses "
                     "knowing it, both resolved together. Once neither has a spy, both choose in "
-                    "secret. Both players must start with a spy on the board, nothing may "
-                    "bring one back (no promotion to it, no stock or hand holding it, no "
-                    "drops.from_captures, no strike.switches_sides), it may not be royal, and "
-                    "something of the other player's must be able to remove it. Leave it out "
-                    "for an ordinary piece."
+                    "secret. A spy can be gained on the board, as the player's own spy type: "
+                    "by a promotion into it, a strike chain into it (the struck piece's owner "
+                    "gains it), a strike.switches_sides naming it (a spy that changes sides is "
+                    "lost by its old side and gained by its new one in that move) or a contact "
+                    "link into it (gained by whoever owns the piece after the link), or by a "
+                    "drop: a spy in a hand (in drops.stock, or one taken under "
+                    "drops.from_captures, which its side loses at the capture and which is the "
+                    "taker's) counts for nobody until it is dropped, and dropping it gains it, "
+                    "a drop in a round colliding as any drop does, or by a buy from the "
+                    "market (rules.purse.market), gained when the bought spy stands after its "
+                    "move or round (a buy in a round collides as any arrival, its price paid "
+                    "whether or not it stands); the phase "
+                    "is read afresh after every move and round, both ways: "
+                    "a second spy is one more to lose; when a round leaves both players with a "
+                    "spy they take turns again, the player who did not gain moving first (the "
+                    "first player if both did); a gain in secret rounds starts announced ones, "
+                    "the other player announcing. Both players must start with a spy on the "
+                    "board, it may not be royal, and something of the other "
+                    "player's must be able to remove it. A spy nobody owns (placed for nobody, "
+                    "or a nobody's piece a strike or a contact turns into one) counts for "
+                    "neither player: taken, it is gone, or under drops.from_captures it is the "
+                    "taker's to drop, as the taker's own spy type. Leave it out for an ordinary piece."
                 ),
             },
             "speed": {
@@ -625,8 +642,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "command sight a commanded move rests the piece as its owner's move "
                     "would, counted on its owner's turns, and while a piece rests neither "
                     "player may move it (the lift reads each player's own moves, commands "
-                    "included). Never on a wild piece, and not beside a turn of more than one "
-                    "move (rules.turn moves or ramp)."
+                    "included). In a turn of several moves (rules.turn moves or ramp) a piece "
+                    "that moved earlier in the turn may not move again in that turn, and then "
+                    "rests its rest turns after it (the lift still applies). Never on a wild "
+                    "piece."
                 ),
             },
             "sight": {
@@ -749,7 +768,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "Beside rules.explode_on_capture a held piece's blast is the "
                     "mover's: one that would destroy the mover's royal is no move, and one "
                     "that destroys the other player's wins for the mover. In a turn of "
-                    "several moves the holder is read afresh at the start of each move."
+                    "several moves the holder is read afresh at the start of each move; in "
+                    "rounds (rules.simultaneous) it is read on the board the round begins on, "
+                    "and the held move is the holder's move of the round."
                 ),
             },
             # Q1077 (`docs/plan-turncoat.md` §4.7).
@@ -832,7 +853,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "by a player with a piece next to it) and by a bribe "
                     "(rules.purse.bribe: an enemy piece of the type next to one of yours, "
                     "at twice the price). Only where one of those reads it; never on a "
-                    "royal, a spy or a wild type."
+                    "royal or a wild type. A price is only what buying costs: a priced piece "
+                    "taken pays its bounty, never its price, and one gained (a switch, a "
+                    "drop) moves no coins. On a spy only a market can charge it, since a spy "
+                    "game plays in rounds, where hiring and bribing are refused."
                 ),
             },
             "facing": _object(
@@ -895,8 +919,14 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     'Whose pieces these are: 0, 1, or "nobody" for pieces neither player '
                     "owns (under a mirrored setup their squares are mirrored too, still "
                     "nobody's). A piece nobody owns blocks and may be taken by either player; "
-                    "its type's control says whether anyone may move it. Never a royal, a spy "
-                    "or a wild type, and refused beside rules.simultaneous. Beside rules.npcs "
+                    "its type's control says whether anyone may move it. Never a royal or a "
+                    "wild type. A spy placed for nobody gives nobody secrecy (pieces.spy). In rounds (rules.simultaneous) one stands, and two moves "
+                    "onto its square collide as any two do, by pieces.beats and the tie, the "
+                    "winner taking it too (two shots at it meet the same way); a held one "
+                    "(control 'majority') is moved by the player who holds it when the round "
+                    "begins, as that player's move of the round, colliding as any move does and "
+                    "claiming or reaching for that player (tie 'impossible' is refused beside "
+                    "it: one held piece can meet another of its type). Beside rules.npcs "
                     "a wild piece eats one its type may capture, paying nobody; the duck never "
                     "lands on one. Beside rules.portals a held piece goes through a portal as "
                     "its holder's piece would, and a fold may move under one. Beside "
@@ -1020,7 +1050,12 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
             },
             "en_passant": {
                 "type": "boolean",
-                "description": "Requires promotion; applies to the promoting piece.",
+                "description": (
+                    "Requires promotion; applies to the promoting piece. In a turn of several "
+                    "moves the window is the opponent's: it is opened by the "
+                    "mover's last double step of the turn and open for the opponent's first "
+                    "move only."
+                ),
             },
             "castling": _object(
                 {
@@ -1425,9 +1460,11 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         },
                         "route": _squares(
                             "The squares it walks, in order and cyclically, starting on "
-                            "the first. Distinct squares, on no other wild piece's route, "
-                            "with no piece of the opening array on the first. One square "
-                            "is a wild piece that never moves."
+                            "the first, one step after every move (in a turn of several "
+                            "moves, rules.turn, after each of them). Distinct squares, on "
+                            "no other wild piece's route, with no piece of the opening "
+                            "array on the first. One square is a wild piece that never "
+                            "moves."
                         ),
                         "also_at": _squares(
                             "More wild pieces of the same kind on this same route: the "
@@ -1797,8 +1834,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "the piece is placed on an empty square of the region, entering "
                             "play as a dropped piece does (its first facing, promoted if it "
                             "enters its zone under promote_on_entry). Supply is unlimited. "
-                            "Never a royal, a spy, a wild type, the duck or a type with no "
-                            "moves. Optional: leave it out where coins buy only hires or "
+                            "Never a royal, a wild type, the duck or a type with no moves. A "
+                            "spy for sale is a spy gained when it stands on the board "
+                            "(pieces.spy), only as a spy type both players start with. Optional: leave it out where coins buy only hires or "
                             "bribes."
                         ),
                     },
@@ -1843,8 +1881,12 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "Coins, and what to spend them on: each player holds a purse, filled "
                     "by bounties and spent on buying pieces from a market, hiring a priced "
                     "piece nobody owns that stands next to one of theirs (its price), or "
-                    "under bribe buying an enemy one (twice the price). Not beside rounds "
-                    "(rules.simultaneous). Beside explode_on_capture a blast pays the mover "
+                    "under bribe buying an enemy one (twice the price). In rounds "
+                    "(rules.simultaneous) a buy is an arrival with the round's moves: two "
+                    "buys onto one square, or a buy and a move, collide by pieces.beats and "
+                    "the tie, each price paid whether or not the bought piece survives; a "
+                    "purse that can hire or bribe is refused there. Beside explode_on_capture "
+                    "a blast pays the mover "
                     "the bounty of every piece it destroys as taking it would (nothing for "
                     "the mover's own), up to the cap; under drops.placement a "
                     "held hand is placed first. In a turn of several moves each buy is a "
@@ -2024,8 +2066,11 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "ending reached by both players in the same round is a draw. A round "
                     "counts as two moves on the clocks. Not usable beside castling, en "
                     "passant, a sweep, check rules, a turn of more than one move, a "
-                    "portal a player moves, a strike or contact position 'choose', a "
-                    "strike position 'stay', or drops.no_mate. Two switches work "
+                    "portal a player moves, a strike or contact position 'choose', or "
+                    "drops.no_mate. A capture under a strike placed 'stay' is a shot: "
+                    "it never moves the shooter, so it never collides, and it is made "
+                    "before the round's moves, so the piece it strikes does not make its "
+                    "own. Two switches work "
                     "against a royal chased round after round, swap and both; "
                     "pieces[].rest (\"rest\": 1 on every piece) is a third remedy."
                 ),

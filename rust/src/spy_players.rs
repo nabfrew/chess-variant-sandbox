@@ -175,8 +175,10 @@ impl Player {
 
     /// The answerer's ply of an announced round: the best of the side to move's moves
     /// (`arena[answers.0..answers.1]`, copied and ordered at `ply`) with the announcer's `a`
-    /// fixed, each child one `make_round` searched `depth - 1` rounds on. The side does not
-    /// change across a round, so a child's value passes through.
+    /// fixed, each child one `make_round` searched `depth - 1` rounds on. A round keeps the
+    /// side unless a spy is gained in it (SR7h: the way back to turns may hand the move to
+    /// the announcer), so a child's value passes through, or is negated with its window
+    /// where the side changed, as a turn's child is.
     #[allow(clippy::too_many_arguments)]
     fn answer_row(
         &mut self,
@@ -199,8 +201,13 @@ impl Player {
         for index in base..end {
             let b = arena[index];
             let quiet = !self.is_loud(game, b);
+            let mover = game.side;
             game.make_round(seat_pair(announcer, a, b));
-            let child = self.negamax::<true>(game, arena, depth - 1, ply + 1, alpha, beta);
+            let child = if game.side != mover {
+                self.negamax::<true>(game, arena, depth - 1, ply + 1, -beta, -alpha).map(|v| -v)
+            } else {
+                self.negamax::<true>(game, arena, depth - 1, ply + 1, alpha, beta)
+            };
             game.unmake_round();
             let score = match child {
                 Err(Exhausted) => {
@@ -342,8 +349,15 @@ impl Player {
         let mut best_move = moves[0];
         let mut outcome = Ok(());
         for &b in moves {
+            let mover = game.side;
             game.make_round(seat_pair(announcer, announced, b));
-            let child = self.negamax::<true>(game, &mut arena, depth - 1, 1, alpha, f64::INFINITY);
+            // SR7h: a gain may hand the move over; the child's value is then the other's.
+            let child = if game.side != mover {
+                self.negamax::<true>(game, &mut arena, depth - 1, 1, f64::NEG_INFINITY, -alpha)
+                    .map(|v| -v)
+            } else {
+                self.negamax::<true>(game, &mut arena, depth - 1, 1, alpha, f64::INFINITY)
+            };
             game.unmake_round();
             match child {
                 Err(Exhausted) => {

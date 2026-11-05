@@ -456,8 +456,9 @@ REST_SERIES = ("side", "binds", "lifted", "resting")
 
 
 # TC7 (`docs/plan-turncoat.md` §5.8): what the pass records of a game with a purse, one entry
-# a side-turn (the purse is refused beside rounds, so every side-turn is a ply), read off the
-# core's states before and after the record's move:
+# a side-turn, read off the core's states before and after the record's move (in rounds, since
+# SR7g put the market there, a round is a side-turn of each player, seat 0 first, both read
+# off the states before and after the round):
 #
 # * ``side``: whose turn it was;
 # * ``purse``: that side's coins as it chose (`GameState.purse`);
@@ -481,12 +482,14 @@ def _purse_tally(engine: Engine) -> dict[str, list[int]] | None:
 
 def _count_purse(
     engine: Engine, tally: dict[str, list[int]] | None, before: GameState, move: int,
-    after: GameState,
+    after: GameState, seat: int | None = None,
 ) -> None:
-    """One side-turn of `PURSE_SERIES`: the side to move on ``before`` making ``move``."""
+    """One side-turn of `PURSE_SERIES`: ``seat`` (the side to move on ``before`` unless
+    given, as in a round) making ``move``."""
     if tally is None:
         return
-    seat = before.side_to_move
+    if seat is None:
+        seat = before.side_to_move
     kind = move_type(move)
     change = after.purse[seat] - before.purse[seat]
     purchase = kind in (MOVE_BUY, MOVE_HIRE)
@@ -527,13 +530,16 @@ def _neutral_tally(engine: Engine) -> dict[str, list[int]] | None:
 
 
 def _count_neutral(
-    engine: Engine, tally: dict[str, list[int]] | None, state: GameState, move: int
+    engine: Engine, tally: dict[str, list[int]] | None, state: GameState, move: int,
+    seat: int | None = None, legal: list[int] | None = None,
 ) -> None:
-    """One side-turn of `NEUTRAL_SERIES`: the side to move on ``state`` making ``move``."""
+    """One side-turn of `NEUTRAL_SERIES`: the side to move on ``state`` making ``move``. SR7n
+    (R20): in a round, ``seat`` names the player and ``legal`` is its list on the round's
+    board (`Engine.legal_moves_for`), where the holder is read."""
     if tally is None:
         return
     spec = engine.spec
-    seat = state.side_to_move
+    seat = state.side_to_move if seat is None else seat
 
     def nobodys(square: int) -> bool:
         value = state.board[square]
@@ -544,8 +550,8 @@ def _count_neutral(
         if nobodys(square) and engine.controller_of(state, square) == seat
     )
     offered = sum(
-        1 for legal in engine.legal_moves(state)
-        if legal & MOVE_FOREIGN and nobodys(move_from(legal))
+        1 for word in (engine.legal_moves(state) if legal is None else legal)
+        if word & MOVE_FOREIGN and nobodys(move_from(word))
     )
     made = bool(move & MOVE_FOREIGN) and nobodys(move_from(move))
     for key, value in zip(NEUTRAL_SERIES, (seat, held, offered, int(made)), strict=True):
@@ -1158,6 +1164,11 @@ def _analyse_rounds(
     counts = round_tallies(engine)
     sight = sight_tally(engine)
     rest = rest_tally(engine)
+    # SR7g (R19): a market in rounds; each player's side-turn of the round, as the turn path.
+    purse = _purse_tally(engine)
+    # SR7n (R20): pieces nobody owns in rounds, held ones among them; each player's side-turn
+    # of the round on the round's board, where the holder is read.
+    neutral = _neutral_tally(engine)
 
     state = engine.initial_state()
     start_squares = starting_squares(engine, state.board)
@@ -1176,6 +1187,7 @@ def _analyse_rounds(
         for seat in (0, 1):
             count_sight(engine, sight, state, seat)
             count_rest(engine, rest, state, seat)
+            _count_neutral(engine, neutral, state, pair[seat], seat, lists[seat])
         board = state.board
         for move in pair:
             kind = mover_kind(engine, board, move)
@@ -1199,8 +1211,11 @@ def _analyse_rounds(
                             sum(1 for move in lists[seat] if takes(engine, board, move))
                         )
 
+        before = state
         state, _, events = engine.apply_round_with_phase(state, pair[0], pair[1])
         count_round(counts, pair, events)
+        for seat in (0, 1):
+            _count_purse(engine, purse, before, pair[seat], state, seat)
 
         # Two plies a round, as every per-ply series in the record: the key after the
         # round twice, and a revisit counted on both, so the rate is per round.
@@ -1227,6 +1242,8 @@ def _analyse_rounds(
         rounds=counts,
         sight=sight,
         rest=rest,
+        purse=purse,
+        neutral=neutral,
     )
 
 
@@ -1313,7 +1330,12 @@ def _one_round_blunder(
 # Per game: the turns played while both spies stood, whether the reply turn was played (0 or
 # 1), the announced and the blind rounds, and for each player the ply after the step that
 # took its last spy (the clock's count, as §5.3's first loss reads it) and how (`SPY_LOSSES`),
-# both ``None`` while it stands.
+# both ``None`` while it stands. Since SR7h to SR7j a spy can be won back (a promotion, a
+# strike, a side switch or a link into one, or a drop from the hand, `docs/plan-schema-next.md`
+# §2.12), so the pass also keeps, for each player, the ply after the step that gave a spyless
+# side a spy again and how (`SPY_GAINS`), both ``None`` until it happens; each pair holds the
+# last such step, a loss and a gain read alike. A second spy beside one still standing is no
+# gain here: who holds a spy did not change.
 SPY_COUNTS = (
     "alternating_plies",
     "reply_turns",
@@ -1323,7 +1345,14 @@ SPY_COUNTS = (
     "lost_ply_1",
     "lost_how_0",
     "lost_how_1",
+    "gained_ply_0",
+    "gained_ply_1",
+    "gained_how_0",
+    "gained_how_1",
 )
+
+# The keys of `SPY_COUNTS` that stay ``None`` until a spy is lost or won back.
+_SPY_EVENTS = ("lost_", "gained_")
 
 # How a spy was lost, read off the step's move words, the board it was chosen on and the
 # round's events, first match wins: its own move promoted it; it moved and met another
@@ -1332,6 +1361,15 @@ SPY_COUNTS = (
 # piece's step, a strike chain or a contact's merge, in that order when a game has several);
 # `other` where none applies.
 SPY_LOSSES = ("promotion", "collision", "capture", "blast", "wild", "strike", "other")
+
+# How a spy was won back (SR7h to SR7j), first match wins: the gainer's own move promoted into
+# the spy; the gainer dropped it from its hand (SR7j: a stocked spy, or one it took under
+# `from_captures`); the gainer bought it from the market (SR7m); a move of the other player's
+# set out from where one of its spies stood,
+# under a strike that switches a spy's side; otherwise the spec's rule that makes a spy of a
+# piece, a strike chain then a contact link; `other` where none applies. A spy taken into a
+# hand is lost at the capture, read as any capture is (`SPY_LOSSES`' `capture`).
+SPY_GAINS = ("promotion", "drop", "buy", "switch", "strike", "link", "other")
 
 _SWAP_MET = 4
 
@@ -1461,6 +1499,70 @@ def spy_loss(engine: Engine, step: SpyStep, player: int) -> str:
     return "other"
 
 
+def spy_gain(engine: Engine, step: SpyStep, player: int) -> str:
+    """How ``player``, without a spy before ``step``, came to hold one after it
+    (`SPY_GAINS`' reading)."""
+    before, after = step.state.board, step.after.board
+    new = {
+        square for square in _spy_squares(engine, after, player) if before[square] != after[square]
+    }
+    for seat, move in zip(step.seats, step.moves, strict=True):
+        if seat == player and move_type(move) == MOVE_PROMOTION and move_to(move) in new:
+            return "promotion"
+    for seat, move in zip(step.seats, step.moves, strict=True):
+        if seat == player and move_type(move) == MOVE_DROP and move_to(move) in new:
+            return "drop"
+    for seat, move in zip(step.seats, step.moves, strict=True):
+        if seat == player and move_type(move) == MOVE_BUY and move_to(move) in new:
+            return "buy"
+    # Which rule wrote it, read off the spec as written (the compiler folds a strike and a
+    # contact table into one rule): the routes `schema.spy_gain_routes` names.
+    rules = json.loads(engine.spec.source).get("rules") or {}
+    strike: dict[str, Any] = rules["strike"] if isinstance(rules.get("strike"), dict) else {}
+    assert engine.spec.spy is not None
+    spies = {engine.spec.piece_ids[kind] for types in engine.spec.spy.types for kind in types}
+    routes: set[str] = set()
+    if spies & set(strike.get("switches_sides") or ()):
+        routes.add("strike.switches_sides")
+    if strike.get("chain"):
+        routes.add("strike.chain")
+    if rules.get("contacts"):
+        routes.add("contacts")
+    if "strike.switches_sides" in routes:
+        theirs = _spy_squares(engine, before, 1 - player)
+        for seat, move in zip(step.seats, step.moves, strict=True):
+            if (
+                seat != player and move_type(move) not in (MOVE_DROP, MOVE_FOLD)
+                and move_from(move) in theirs
+            ):
+                return "switch"
+    if "strike.chain" in routes:
+        return "strike"
+    if "contacts" in routes:
+        return "link"
+    return "other"
+
+
+def blank_spy_counts() -> dict[str, Any]:
+    """A spy game's `SPY_COUNTS` before its first step: the counts 0, the events ``None``."""
+    return {key: (None if key.startswith(_SPY_EVENTS) else 0) for key in SPY_COUNTS}
+
+
+def count_spy_holders(engine: Engine, spy: dict[str, Any], step: SpyStep, ply: int) -> None:
+    """Write ``step``'s change of who holds a spy into ``spy`` (`SPY_COUNTS`): each player who
+    held one before and not after lost it, each who held none before and one after won it
+    back, at ``ply``, the clock's count after the step. The pass and the site's walk
+    (`site/legality.py`) both read a step through here."""
+    before = spy_holders(step.phase, step.state.side_to_move)
+    after = spy_holders(engine.phase(step.after), step.after.side_to_move)
+    for player in sorted(before - after):
+        spy[f"lost_ply_{player}"] = ply
+        spy[f"lost_how_{player}"] = spy_loss(engine, step, player)
+    for player in sorted(after - before):
+        spy[f"gained_ply_{player}"] = ply
+        spy[f"gained_how_{player}"] = spy_gain(engine, step, player)
+
+
 def _round_leaf(engine: Engine, evaluator: Evaluator, state: GameState) -> float:
     """A round reached inside a turn's probe, from the side to move's point of view: its
     verdict if the game has ended, else the ruler's `evaluate_round` (mobility is off at the
@@ -1540,9 +1642,7 @@ def _analyse_spy(
     legal_counts: list[int] = []
     capture_counts: list[int] = []
     rounds = round_tallies(engine)
-    spy: dict[str, Any] = {
-        key: (None if key.startswith("lost_") else 0) for key in SPY_COUNTS
-    }
+    spy = blank_spy_counts()
 
     start = engine.initial_state()
     start_squares = starting_squares(engine, start.board)
@@ -1595,12 +1695,7 @@ def _analyse_spy(
             else:
                 seen_keys.add(after.key)
 
-        lost = spy_holders(step.phase, state.side_to_move) - spy_holders(
-            engine.phase(after), after.side_to_move
-        )
-        for player in sorted(lost):
-            spy[f"lost_ply_{player}"] = walked
-            spy[f"lost_how_{player}"] = spy_loss(engine, step, player)
+        count_spy_holders(engine, spy, step, walked)
 
     return GameAnalysis(
         seed=record.seed,

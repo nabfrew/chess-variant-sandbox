@@ -58,6 +58,21 @@ class SmokeResult:
         return {"passed": self.passed, "reasons": self.reasons, "stats": self.stats}
 
 
+def _over_at_the_start(winner: int | None, reason: str) -> str:
+    """The refusal of an opening the core reads as already ended, in a visitor's words:
+    sides, never seats, and never a reason's key."""
+    if reason == "royal_captured" and winner is not None:
+        side = "first" if winner == 0 else "second"
+        return (
+            "the game is over before the first move: the starting position leaves a royal "
+            f"piece open to capture at once, so the {side} side has already won"
+        )
+    if winner is None:
+        return "the game is over before the first move: the starting position is already a draw"
+    side = "first" if winner == 0 else "second"
+    return f"the game is over before the first move: the {side} side has already won by the rules"
+
+
 def smoke_test(
     spec: dict[str, Any],
     games: int = SMOKE_GAMES,
@@ -125,6 +140,17 @@ def smoke_test(
             passed=False,
             reasons=[stuck],
             stats={"opening_moves": 0},
+        )
+    over = engine.terminal(state)
+    if over is not None:
+        # Q1109 (`docs/reference/fold-terminal-at-ply-zero.md`): an opening the core already
+        # reads as ended, most often its illegal-position guard (a royal attacked by the side
+        # to move). The core answers; this only words the verdict, before any playout, so the
+        # refusal names the cause rather than a 100% forced-result rate.
+        return SmokeResult(
+            passed=False,
+            reasons=[_over_at_the_start(over.winner, over.reason)],
+            stats={"opening_moves": float(opening_moves)},
         )
 
     threads = workers if workers > 0 else max(1, (os.cpu_count() or 2) - 1)

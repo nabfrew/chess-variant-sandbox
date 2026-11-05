@@ -28,6 +28,10 @@ Two moves are drawn moving because their marks cannot explain them: a crossing o
 (`showCrossing`), and since Q1074bo a push (`showPush`), whose line the frame carries from
 the engine (`viz.wrapped.push_transit`): the line slides one step on, and the piece it threw
 off falls over the edge, or the piece it crushed on a wall is pressed flat where it stood.
+And since Q1101 a blast (`showBlasts`): a fireball over each blast's area, centred where the
+play board centres it (`moveBlastCentres`, shared through `viz/wrapped.js`), which for a sweep
+under ``effects: "path"`` is each swept square the frame carries (`sweep_transit`); the centres
+are marked too, since nothing else says where a path blast went off.
 """
 
 from __future__ import annotations
@@ -55,6 +59,7 @@ from chess_variant_sandbox.viz.wrapped import (
     fold_transit,
     portal_transit,
     push_transit,
+    sweep_transit,
 )
 
 
@@ -111,6 +116,10 @@ def render_game(
                 # was crushed on a wall rather than thrown off, so the replay slides the
                 # line and drops or crushes the last piece as the play board does.
                 **(push_transit(engine, state, move) or {}),
+                # Q1101: the squares a sweep cleared, the play board's own
+                # (`viz.wrapped.sweep_transit`), so the replay puts its blasts where they went
+                # off (`moveBlastCentres`): on each swept square under `effects: "path"`.
+                **(sweep_transit(engine, state, move) or {}),
                 "material": record.material[index] if index < len(record.material) else None,
                 "branching": record.branching[index] if index < len(record.branching) else None,
             }
@@ -248,6 +257,8 @@ _TEMPLATE = """<!doctype html>
     --portal-edge: #1e140c; --portal-stone: #b3aca1;
     /* A fold portal's pool, lit near white in its middle (schema 22, Q843d). */
     --fold-light: #fffbe8;
+    /* A blast's fireball (Q1101): the play board's effect tokens, the same in both themes. */
+    --fx-fire: #f59e42; --fx-flare: #e8852e; --fx-spark: #f5c242;
   }
   @media (prefers-color-scheme: dark) {
     :root {

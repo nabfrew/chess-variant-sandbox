@@ -581,8 +581,12 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "While both players have a spy, they take turns. When one loses theirs, they make one "
         "ordinary reply move if it is their turn, and then each round the player without a spy "
         "moves first, in the open, and the other answers knowing it. Once neither has one, "
-        "both choose in secret. A spy game must be played in rounds, and a lost spy never "
-        "comes back.",
+        "both choose in secret. A spy game must be played in rounds, and a spy is won only on "
+        "the board, where a rule turns a piece into one (a promotion, a strike, a side switch "
+        "or a capture's link) or a spy is dropped from the hand or bought from the market, "
+        "and only as its owner's own "
+        "kind of spy. A spy in the hand counts for nobody until it is dropped, and a spy "
+        "nobody owns gives nobody secrecy.",
     ),
     # TC3 (`docs/plan-turncoat.md` §4): how a piece nobody owns is moved.
     "pieces.control": (

@@ -2771,6 +2771,56 @@ function plyBeats(after, last) {
           { kind: 'phase', board: after, steps: steps, walkers: walkers }];
 }
 
+// Schema 10 (Q18): whether `from`'s capture of what stood on `to` in `before` sets the blast
+// off. `ex` is the compiled rule (`explosion_payload`): `by` and `of` narrow which captures
+// explode, null for every capturer and every victim. Two positions cannot tell a bomb's capture
+// from another piece's, so this reads the rule. `pieceOf` is the renderer's own board value to
+// piece. One copy, for the play board (`board.js`) and the offline replay (Q1101).
+function blastFires(ex, before, pieceOf, from, to) {
+  if (!ex) return false;
+  const victim = pieceOf(before[to]);
+  if (!victim) return false;                 // nothing was taken here
+  if (ex.of && !ex.of[victim.type]) return false;
+  if (ex.by) {
+    if (from === null || from === undefined) return false;
+    const capturer = pieceOf(before[from]);
+    if (!capturer || !ex.by[capturer.type]) return false;
+  }
+  return true;
+}
+
+// SR6c (W3, Q1100): where a sweep's blasts went off, in the order the core sets them off. Under
+// `effects: "path"` (the compiled `ex.sweepPath[sweeper]`) one on each swept square whose piece
+// sets one off and one on the landing if its capture does; else one on the landing when anything
+// removed does. Each removal fires as the sweeper's capture of it would, whoever owns it. `swept`
+// is the engine's (`viz.wrapped.sweep_transit`), never a diff. Empty where nothing went off.
+function sweepBlastCentres(ex, before, pieceOf, from, to, swept) {
+  if (!ex || !swept || !swept.length) return [];
+  const sweeper = pieceOf(before[from]);
+  const fires = sq => blastFires(ex, before, pieceOf, from, sq);
+  if (sweeper && ex.sweepPath && ex.sweepPath[sweeper.type]) {
+    const centres = swept.filter(fires);
+    if (fires(to)) centres.push(to);
+    return centres;
+  }
+  return fires(to) || swept.some(fires) ? [to] : [];
+}
+
+// Q1101: where the mover's own blasts went off, for the offline replay, which draws a fireball
+// on each: a sweep's (`sweepBlastCentres`), else its landing when its capture there sets one
+// off. A blast a wild piece's phase sets off is the phase's, not the move's. `before` is the
+// position the move was made on.
+function moveBlastCentres(ex, before, pieceOf, move) {
+  if (!ex || !move || move.from === null || move.from === undefined) return [];
+  if (Array.isArray(move.swept) && move.swept.length) {
+    return sweepBlastCentres(ex, before, pieceOf, move.from, move.to, move.swept);
+  }
+  // A move onto a piece of its own side (a castling written king-onto-rook) takes nothing.
+  const mover = pieceOf(before[move.from]), there = pieceOf(before[move.to]);
+  if (!mover || !there || mover.player === there.player) return [];
+  return blastFires(ex, before, pieceOf, move.from, move.to) ? [move.to] : [];
+}
+
 // What a ply's wild-piece phase did, in words, for the line a move list gives that beat.
 // It reads the ply's own account -- the steps the core logged and the walkers `plyBeats`
 // found -- and names pieces through `nameOf`, a board value to the spec's name for it,

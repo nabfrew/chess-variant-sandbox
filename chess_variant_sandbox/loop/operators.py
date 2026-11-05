@@ -69,11 +69,13 @@ from chess_variant_sandbox.spec.schema import (
     absent_squares,
     beats_of,
     blast_meets_sweeper,
+    bribe_ids,
     castling_spans,
     contacts_meet_sweeper,
     contacts_only_remove,
     duck_piece,
     en_passant_can_fire,
+    foreign_spy_gains,
     format_square,
     has_equal_speed_opponent,
     has_rests,
@@ -82,6 +84,7 @@ from chess_variant_sandbox.spec.schema import (
     insufficient_material_live,
     is_nobodys,
     is_simultaneous,
+    majority_ids,
     move_push,
     neutral_ids,
     nobodys_ids,
@@ -109,7 +112,6 @@ from chess_variant_sandbox.spec.schema import (
     purse_bribes,
     purse_market,
     purse_pays_loser,
-    purse_rule,
     push_bars,
     push_rule,
     pushable_ids,
@@ -130,7 +132,6 @@ from chess_variant_sandbox.spec.schema import (
     sweep_conflicts,
     sweep_effects,
     sweep_length,
-    turn_is_long,
     uses_sweep,
     wild_type_ids,
 )
@@ -750,10 +751,11 @@ def _change_symmetry(spec: dict[str, Any], rng: random.Random) -> str | None:
     if _lattice_symmetries(spec) is HEX_SYMMETRIES:
         return _turn_a_hex_move(spec, movers, rng)
     piece, move = rng.choice(movers)
-    if str(piece.get("id")) in _pouncing_types(spec):
+    if str(piece.get("id")) in _pouncing_types(spec) | majority_ids(spec):
         # Generation 39 (N3b): a pouncer's moves must read the same for both players (a wild
         # piece has no forward), so it draws only among the symmetries that keep them so
-        # (N7's hydra was the first library game with a pouncer to meet this).
+        # (N7's hydra was the first library game with a pouncer to meet this). A majority
+        # type's too (TC3: a held piece moves in nobody's frame), which SR7n's sweep met.
         orientation = (spec.get("setup") or {}).get("orientation", "mirror")
         current = move.get("symmetry", "none")
         alike = [
@@ -970,18 +972,15 @@ def _toggle_a_rule(spec: dict[str, Any], rng: random.Random) -> str | None:
         return f"removed {_RULE_NAMES[key]}"
 
     if key == "en_passant":
-        # Four things the validator refuses, asked here so the operator does not offer
+        # Three things the validator refuses, asked here so the operator does not offer
         # a child that is thrown away: en passant is defined against *the promoting*
         # piece, so there has to be exactly one promotion rule, and that piece has to
         # have a move that travels two squares. The guard used to ask whether *any*
         # piece had a `range: 2` slide, which is a different question with the same
         # shape -- a spec whose rook double-steps and whose pawn does not passed it --
         # and `can_double_step` is imported rather than reimplemented so the two
-        # readings cannot drift. The fourth is a turn of more than one move, where the
-        # mover could answer their own double step; the other half of that pair is in
-        # `transform.set_turn`, which drops the rule rather than refusing the edit.
-        if turn_is_long(rules):
-            return None
+        # readings cannot drift. A long turn was a fourth until SR7a (L1, generation 97):
+        # the window is the opponent's, opened by the mover's last double step of the turn.
         if not en_passant_can_fire(spec):
             return None
         if push_bars(spec, "en_passant"):
@@ -1176,8 +1175,8 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
         return None  # a strike or contact that leaves its victim standing
     if any(npc_split(npc) for npc in rules.get("npcs") or ()):
         return None  # generation 41 (N3d): copies would mint pieces for a capture hand
-    if spy_ids(spec):
-        return None  # schema 27: a hand that fills from captures or holds a spy gives one back
+    # A spy taken into the hand is the taker's to drop since SR7j (Y8): `_spy_gain_guarded`
+    # keeps a child only where it is the taker's own spy type.
     # `only_lost` reads the board, and a piece in hand is not on it (SR2, H1): no guard.
     # A wild immunity beside the hand (N17) holds only while the piece is wild (SR4g): no
     # guard.
@@ -1329,6 +1328,20 @@ def _add_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     else:
         move.setdefault("vectors", []).append(vector)
         change = f"a {vector[0]},{vector[1]} step"
+    if new_id in majority_ids(spec):
+        # TC3 (`docs/plan-turncoat.md` §4.4): a majority type's moves read the same for both
+        # players, so the new piece, a majority type too, takes a symmetry that keeps them so
+        # (SR7n's sweep met a split condottiere refused).
+        orientation = (spec.get("setup") or {}).get("orientation", "mirror")
+        if not reads_alike_for_both(move.get("vectors"), move.get("symmetry", "none"), orientation):
+            alike = [
+                s for s in _lattice_symmetries(spec)
+                if reads_alike_for_both(move.get("vectors"), s, orientation)
+            ]
+            if not alike or "legs" in move:
+                return None
+            move["symmetry"] = rng.choice(alike)
+            change += f" under {move['symmetry']}"
     return (
         f"some of the {source.get('name', source['id'])}s are now a new piece "
         f"{new_id} with {change}"
@@ -1430,24 +1443,15 @@ def _lengthen_the_turn(spec: dict[str, Any], rng: random.Random) -> str | None:
     if rules.get("turn"):
         strip_rule(spec, "turn")
         return "a turn is one move again"
-    if rules.get("npcs"):
-        # The other half of `_set_a_patrol`'s guard, which has always refused a patrol
-        # beside a `turn` and was never refused back: a wild piece walks between the two
-        # halves of a long turn and the validator says so by name. Every draw on
-        # `archive/wolves` was refused before this.
-        return None
+    # Wild pieces stay beside the longer turn since SR7b (L3, generation 98): a phase follows
+    # every move, the turn's first as its last.
     if is_simultaneous(rules):
         return None  # schema 26: a round is one secret move each
-    had_en_passant = bool(rules.get("en_passant"))
+    # En passant stays beside the longer turn since SR7a (L1, generation 97): the window is
+    # the opponent's, opened by the mover's last double step of the turn. Rests stay since
+    # SR7d (L2, generation 99): a piece that moved this turn rests the rest of it, then its turns.
     set_turn(spec)
-    sentence = (
-        "a turn is now two moves, after a first turn of one so neither side is a move ahead"
-    )
-    if had_en_passant and not rules.get("en_passant"):
-        # `set_turn` settles it: a player who moves twice could take their own pawn in
-        # passing, so the rule cannot stand beside the longer turn.
-        sentence += ", and en passant is gone with the one-move turn"
-    return sentence
+    return "a turn is now two moves, after a first turn of one so neither side is a move ahead"
 
 
 def _join_the_edges(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -1622,6 +1626,31 @@ def _wall_off_a_square(spec: dict[str, Any], rng: random.Random) -> str | None:
     return f"{square} and its mirror are walls now -- no piece may stand there or move through"
 
 
+def _spy_gain_guarded(
+    edit: Callable[[dict[str, Any], random.Random], str | None],
+) -> Callable[[dict[str, Any], random.Random], str | None]:
+    """SR7i and SR7j (Y4 to Y8, `docs/plan-schema-next.md` §2.12): a strike chain, a side
+    switch, a contact link or a drop from the hand may now make a spy, gained by the piece's
+    owner, but only as that owner's own spy type. In a spy game ``edit`` runs on a copy, and the child is kept only where the
+    validator's own predicate (`schema.foreign_spy_gains`) has nothing against it; the
+    random draws are the same either way."""
+
+    def guarded(spec: dict[str, Any], rng: random.Random) -> str | None:
+        if not spy_ids(spec):
+            return edit(spec, rng)
+        trial = copy.deepcopy(spec)
+        said = edit(trial, rng)
+        if said is None or foreign_spy_gains(trial):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return said
+
+    guarded.__name__ = edit.__name__
+    guarded.__doc__ = edit.__doc__
+    return guarded
+
+
 def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Make a capture demote its victim instead of removing it, or put it back.
 
@@ -1654,9 +1683,10 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
         # away from under a sweep that strikes its path takes the switch with it
         # (`_settle_sweep_effects`).
         return None
-    if is_simultaneous(rules):
-        return None  # schema 26: a strike that stays is refused beside rounds
+    # SR7e (R11) lifted rounds: a strike that stays is a shot there, made before the moves.
     before = rules.get("strike")
+    # SR7i (Y4) lifted a strike chain into a spy: the struck piece's owner gains it. In a spy
+    # game the operator is `_spy_gain_guarded`, declining a chain into the other's spy type.
     set_strike(spec, effect=rng.choice(("demote", "promote")), position="stay")
     if rules.get("strike") is before:
         return None  # nothing to build a chain from
@@ -1714,8 +1744,8 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     if rules.get("strike") or rules.get("explode_on_capture") or rules.get("drops"):
         return None  # two rules cannot both say what happens to a taken piece
     before = rules.get("contacts")
-    if spy_ids(spec):
-        return None  # schema 27: a contact chain may turn a piece into the spy, which a spy game refuses
+    # SR7i (Y6) lifted a link into a spy (gained by its owner after the link);
+    # `_spy_gain_guarded` declines one into the other player's spy type.
     set_contacts(spec, effect=rng.choice(("promote", "demote")))
     if rules.get("contacts") is before:
         return None  # one non-royal piece, so there is no rung to move to
@@ -1823,6 +1853,11 @@ def _place_the_survivor(spec: dict[str, Any], key: str, rng: random.Random) -> s
         return None
     if uses_sweep(spec):
         return None  # W1's narrower row: a chosen square is refused beside a sweep (SR6a)
+    if is_simultaneous(rules):
+        # A chosen square is refused in rounds (the square would be chosen before the other
+        # move is known); a strike that stays reached rounds with SR7e, and a spy game with
+        # SR7i, so this half-draw meets one now.
+        return None
     set_landing(spec, key)
     where = (
         "any empty cell next to where it stood"
@@ -1883,8 +1918,8 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
         settle_landing(spec)
         return f"the {pair[0]} can no longer move onto its own {pair[1]}"
 
-    if spy_ids(spec):
-        return None  # schema 27: a merge may turn a piece into the spy, which a spy game refuses
+    # SR7i (Y6) lifted a merge into a spy (the mover's gain); `_spy_gain_guarded` declines
+    # one into the other player's spy type.
 
     # SR4i (T9): beside `must_capture` a merge is no capture, offered only where nothing
     # enemy can be taken, so the pair is allowed.
@@ -1980,8 +2015,6 @@ def _place_a_stone(spec: dict[str, Any], rng: random.Random) -> str | None:
 
     if _a_hand_is_refused_beside_the_capture(spec):
         return None  # a strike or contact that leaves its victim standing
-    if spy_ids(spec):
-        return None  # schema 27: a hand that fills from captures or holds a spy gives one back
     taken = {str(piece.get("id")) for piece in pieces(spec)}
     spare = [pid for pid in _SPARE_IDS if pid not in taken]
     if not spare:
@@ -2256,13 +2289,15 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
     """
     if push_bars(spec, "simultaneous"):
         return None  # Q1074b5: `rules.simultaneous` is refused beside a push (§3.14)
-    # TC3 (`docs/plan-turncoat.md` §4.5): the rule this adds is refused beside a piece nobody owns.
-    if neutral_ids(spec):
-        return None
+    # SR7f (R18) lifted rounds beside a piece nobody owns that stands (a collision onto its
+    # square is a collision as any other), and SR7n (R20) beside a held piece (majority
+    # control): its holder is read on the round's board, its move an arrival as any other.
     if duck_piece(spec.get("rules")) is not None:
         return None  # generation 42 (N4b): refused beside the duck (nobody is the mover in a round)
-    if purse_rule(spec) is not None:
-        return None  # TC5 (`docs/plan-turncoat.md` §5.9): two buyers in one round
+    # SR7g (R19) lifted rounds beside a market (a buy is an arrival with the round's moves);
+    # a purse that hires or bribes stays refused (two players recruiting one piece).
+    if hire_ids(spec) or bribe_ids(spec):
+        return None
     if _commands(spec):
         return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
     rules = spec.setdefault("rules", {})
@@ -2445,10 +2480,9 @@ def _tire_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Make a piece type rest after it moves, rest longer or shorter, or never rest (schema 29,
     `docs/plan-rest.md` §5.7), in any game, alternating or in rounds. A type that never rests
     is made to rest 1; one that rests is moved a turn up or down (0 takes the key away, and
-    none goes past `REST_MAX`). Each child must pass the validator, so a game of long turns,
-    where a rest is refused, gets none; a game with a command gets one since SR5e (V7)."""
-    if turn_is_long(spec.get("rules")):
-        return None
+    none goes past `REST_MAX`). Each child must pass the validator; a game with a command gets
+    one since SR5e (V7), and a game of long turns since SR7d (L2: a piece that moved this turn
+    rests the rest of it, then its turns)."""
     candidates = _restable(spec)
     for piece in rng.sample(candidates, len(candidates)):
         trial = copy.deepcopy(spec)
@@ -2870,8 +2904,9 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
             return hunted
         clear_npcs(spec)
         return "the wild pieces are gone; every piece on the board belongs to somebody"
-    if rules.get("turn") or rules.get("portals") or _shields(spec):
+    if rules.get("portals") or _shields(spec):
         return None  # the validator refuses each of these beside a wild piece
+    # SR7b (L3): a long turn beside wild pieces is allowed; a phase follows every move.
     # SR4f (T8): a blast beside wild pieces is allowed; a wild eat does not explode, and a
     # wild piece the blast destroys pays its bounty to the mover.
     # SR4c (W5): a sweep beside wild pieces is allowed; each swept wild piece pays the mover.
@@ -3200,8 +3235,8 @@ def _place_the_army(spec: dict[str, Any], rng: random.Random) -> str | None:
         return "a player holding a piece must place it before anything on the board moves"
     if _a_hand_is_refused_beside_the_capture(spec):
         return None  # a strike or contact that leaves its victim standing
-    if spy_ids(spec):
-        return None  # schema 27: a hand that fills from captures or holds a spy gives one back
+    # A spy in the stock is held for nobody until placed since SR7j (Y7); the validator
+    # below refuses a spy for nobody by name.
     setup = spec.get("setup")
     board = spec.get("board") or {}
     width, height = board.get("width"), board.get("height")
@@ -3914,7 +3949,7 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     if isinstance(strike, dict) and "by" in strike:
         # SR4j (T10): `by` and `switches_sides` read apart, so a shooting strike may also
         # gain a switch (half the draws), every capturer changing sides by its own list.
-        if "switches_sides" not in strike and not spy_ids(spec) and rng.random() < 0.5:
+        if "switches_sides" not in strike and rng.random() < 0.5:
             never_switch = {*wild_type_ids(rules), duck_piece(rules)}
             trial = copy.deepcopy(spec)
             trial["rules"]["strike"]["switches_sides"] = sorted(
@@ -3952,8 +3987,8 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         explosion.pop("immune", None)
         explosion.pop("blast", None)  # SR1b: a stated shape and a radius are refused together
         return "a capture destroys the taker with what it took, and nothing beside them"
-    if spy_ids(spec):
-        return None  # schema 27: a strike may switch a spy to the other side, which a spy game refuses
+    # SR7i (Y5) lifted a spy in `switches_sides` (lost by one side, gained by the other);
+    # `_spy_gain_guarded` declines a switch into a side that does not start with its type.
     if explosion or rules.get("drops") or rules.get("contacts") or uses_sweep(spec):
         return None  # two rules cannot both say what happens to a taken piece
     # I1: a piece that never moves never captures, so it never switches.
@@ -3981,8 +4016,8 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         for entry in (promotion if isinstance(promotion, list) else [promotion])
     )
     # Schema 18c: circe gives back what `only_lost` counts as lost, so it is not offered.
-    # Schema 26: a strike that stays is refused beside rounds, so it is not offered there.
-    stays = () if is_simultaneous(rules) else ("stay", "shoot")
+    # SR7e (R11) lifted rounds: a strike that stays is a shot there, so it is offered too.
+    stays = ("stay", "shoot")
     choice = rng.choice((*stays, "switch") if only_lost else (*stays, "home", "switch"))
     if choice == "shoot":
         rule["position"] = "stay"
@@ -4540,12 +4575,14 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
     a random empty square in the half between the armies (mirrored, under a mirrored setup;
     stated twice, square and image, otherwise), and half the time the player with more pieces
     next to it may move it (``control: "majority"``; a quarter of those count only the four
-    orthogonal neighbours, and, Q1077, half of them attack the other king, ``takes_royal``). In a game with some, one of four, at random: they go (their
+    orthogonal neighbours, and, Q1077, half of them attack the other king, ``takes_royal``);
+    in a spy game (SR7k, O6), half the time one of its spy types is placed for nobody instead,
+    a decoy that hides nothing. In a game with some, one of four, at random: they go (their
     placements, and a type nothing else places); majority control is given to one standing
     type or taken from every type; a majority type's neighbours swap between the king's
     step and the orthogonal four; or (Q1077) a majority type's ``takes_royal`` is switched,
-    so its held pieces give check or no longer. The validator decides the rest (rounds;
-    wild pieces and the duck are allowed since SR3f, portals since SR3g, a strike and contacts
+    so its held pieces give check or no longer. The validator decides the rest (a held type
+    beside ``tie: "impossible"``; standing pieces in rounds are allowed since SR7f, held ones since SR7n, wild pieces and the duck are allowed since SR3f, portals since SR3g, a strike and contacts
     since SR4k, a blast since SR5j, a territory and a goal since SR5k).
     """
     trial = copy.deepcopy(spec)
@@ -4563,7 +4600,22 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
             "id": pid, "name": "condottiere", "value": 2, "moves": [copy.deepcopy(_CROWD_STEP)],
         }
         said = f"a {pid} that steps as a king stands on the board belonging to nobody"
-        if rng.random() < 0.5:
+        new_type = True
+        spies = spy_ids(spec)
+        if spies and rng.random() < 0.5:
+            # SR7k (O6): in a spy game, half the time one of its spies stands for nobody
+            # instead: a decoy that hides nothing (the phase counts the players' spies only),
+            # gone when taken, or the taker's to drop under a capture hand.
+            pid = rng.choice(spies)
+            new_type = False
+            name = next(str(p.get("name", pid)) for p in pieces(spec) if p.get("id") == pid)
+            said = (
+                f"a {name} stands on the board belonging to nobody: a spy nobody owns hides "
+                "nothing"
+            )
+        # SR7n (R20) lifted a held piece in rounds (SR7f a standing one); the validator
+        # refuses it beside `tie: "impossible"`, which a held type's own pair breaks.
+        elif rng.random() < 0.5:
             added["control"] = (
                 copy.deepcopy(_CROWD_CROSS) if rng.random() < 0.25 else "majority"
             )
@@ -4575,7 +4627,8 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
             if rng.random() < 0.5:
                 added["takes_royal"] = True
                 said += ", and attacking the other player's king"
-        trial["pieces"].append(added)
+        if new_type:
+            trial["pieces"].append(added)
         mirrored = setup.get("mirror", True) is not False
         orientation = str(setup.get("orientation", "mirror"))
         names = [
@@ -4752,8 +4805,8 @@ def _open_a_market(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Give the players a purse and a market, close it, or change it (TC5, ``rules.purse``,
     `docs/plan-turncoat.md` §5.4).
 
-    In a game without one: one or two random non-royal types that move (never a spy, a wild
-    type or the duck) go on sale at their declared value rounded (1 to 40), and each player
+    In a game without one: one or two random non-royal types that move (never a wild type or
+    the duck; a spy since SR7m, O27, bought as a gain) go on sale at their declared value rounded (1 to 40), and each player
     starts with 0 to 4 coins, placing on the first rank or (one time in three) on the two back
     ranks. In a game with one, one of four, at random: the purse closes
     (the prices go with it, and a bounty left with no points count to pay into); a price
@@ -4771,7 +4824,7 @@ def _open_a_market(spec: dict[str, Any], rng: random.Random) -> str | None:
         } | {duck_piece(rules)}
         candidates = sorted(
             piece["id"] for piece in pieces(trial)
-            if not piece.get("royal") and piece.get("spy") is not True and piece.get("moves")
+            if not piece.get("royal") and piece.get("moves")
             and piece.get("id") not in wild and isinstance(piece.get("id"), str)
         )
         if not candidates:
@@ -5521,13 +5574,13 @@ def _spare_its_own_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
-    Operator("soften-the-capture", _soften_the_capture),
-    Operator("become-what-you-take", _become_what_you_take),
-    Operator("merge-your-own", _merge_your_own),
+    Operator("soften-the-capture", _spy_gain_guarded(_soften_the_capture)),
+    Operator("become-what-you-take", _spy_gain_guarded(_become_what_you_take)),
+    Operator("merge-your-own", _spy_gain_guarded(_merge_your_own)),
     Operator("set-the-blast", _set_the_blast),
-    Operator("leave-something-behind", _leave_something_behind),
+    Operator("leave-something-behind", _spy_gain_guarded(_leave_something_behind)),
     Operator("shape-the-blast", _shape_the_blast),
-    Operator("place-a-stone", _place_a_stone),
+    Operator("place-a-stone", _spy_gain_guarded(_place_a_stone)),
     Operator("set-a-patrol", _set_a_patrol),
     Operator("share-a-walk", _share_a_walk),
     Operator("bring-them-back", _bring_them_back),
@@ -5577,7 +5630,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("reprice-a-piece", _reprice_a_piece),
     Operator("move-a-placement", _move_a_placement),
     Operator("change-the-win-condition", _drop_royalty),
-    Operator("hand-the-pieces-back", _hand_the_pieces_back),
+    Operator("hand-the-pieces-back", _spy_gain_guarded(_hand_the_pieces_back)),
     Operator("win-by-arrival", _win_by_arrival),
     Operator("score-the-clock", _score_the_clock),
     Operator("claim-the-ground", _claim_the_ground),

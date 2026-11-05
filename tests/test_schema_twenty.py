@@ -149,7 +149,7 @@ class TestTheValidator:
     def test_a_bar_a_long_turn_meets_is_accepted(self) -> None:
         """A turn of two moves lets the gate's one mover move it again at once."""
         spec = _sluice_draft()
-        spec["rules"].pop("en_passant")  # refused beside a long turn, for its own reason
+        spec["rules"].pop("en_passant")  # not this test's subject (refused beside a long turn until SR7a)
         spec["rules"]["turn"] = {"moves": 2}
         assert validate_spec(spec) == []
 
@@ -347,7 +347,7 @@ class TestABarAMoveCanMeetIsStillKeyed:
         """Two moves a turn: the gate's first step bars its mover's second move; the second
         step is followed by Black's move, who may not move the gate, so it bars nothing."""
         spec = _sluice_draft()
-        spec["rules"].pop("en_passant")  # refused beside a long turn, for its own reason
+        spec["rules"].pop("en_passant")  # not this test's subject (refused beside a long turn until SR7a)
         spec["rules"]["turn"] = {"moves": 2}
         engine = Engine(spec)
         first, second = _play(engine, [("e4", "f4"), ("f4", "g4")])

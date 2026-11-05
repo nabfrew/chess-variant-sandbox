@@ -108,37 +108,19 @@ class TestCoherence:
         spec["rules"] = {"win": "checkmate", "en_passant": True}
         assert any("en_passant requires" in e for e in validate_spec(spec))
 
-    def test_en_passant_is_refused_beside_a_turn_of_more_than_one_move(self) -> None:
-        """The spec the fuzzer found, and why the pair is still refused.
+    def test_en_passant_beside_a_turn_of_more_than_one_move_validates(self) -> None:
+        """The spec the fuzzer found validates since SR7a (L1, generation 97).
 
-        The core writes the en-passant window per move and flips the side only when the
-        turn runs out, so a player with two moves could answer their own double step and
-        take their own pawn in passing -- and with a `strike` rule beside it the core
-        panicked on an empty own-contact table. This fixture is the smallest spec that
-        did it. Q531 fixed the self-capture in the core
-        (`tests/test_engine.py::TestAPawnNeverTakesItsOwnInPassing`); the refusal stays
-        because whether the opponent may answer a double step made on a turn's first move
-        is a design question nobody has answered. `docs/bugs.md` holds the reasoning.
+        Q341 refused the pair: the window a double step opened was still open on the mover's
+        own next move. Q531 stopped the self-capture in the core, and SR7a settled the design
+        question: the window is the opponent's, opened by the mover's last double step of
+        the turn and open for the opponent's first move only
+        (`tests/test_en_passant_long_turn.py` plays it). A ramp to two moves is a long turn
+        too, and validates as well.
         """
         spec = _fixture("_en_passant_in_a_long_turn.json")
-        errors = validate_spec(spec)
-        assert "L1" in refused_ids(errors), errors
-
-        # The pair is the only thing wrong with it: drop either half and it validates,
-        # so this pins the combination rather than some other defect in the fixture.
-        without_turn = copy.deepcopy(spec)
-        del without_turn["rules"]["turn"]
-        assert validate_spec(without_turn) == []
-        without_ep = copy.deepcopy(spec)
-        del without_ep["rules"]["en_passant"]
-        assert validate_spec(without_ep) == []
-
-    def test_a_ramp_that_reaches_two_moves_is_a_long_turn_too(self) -> None:
-        """`moves: 1, ramp: [2]` is a player moving twice in the opening, and counts."""
-        spec = _fixture("_en_passant_in_a_long_turn.json")
+        assert validate_spec(spec) == []
         spec["rules"]["turn"] = {"moves": 1, "ramp": [2]}
-        assert "L1" in refused_ids(validate_spec(spec))
-        spec["rules"]["turn"] = {"moves": 1, "ramp": [1]}
         assert validate_spec(spec) == []
 
     def test_a_piece_that_is_not_royal_may_castle_beside_royals(self) -> None:

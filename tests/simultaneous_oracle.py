@@ -14,6 +14,33 @@ slower move's word, `offered`), what the wild pieces' phase does on a board
 (`coming_phases`), whether a board ends the game (`terminal_prefix`, for the ordered round's
 middle) and the slow definition of the key (`_compute_hash`) -- and never asks it to
 resolve anything.
+
+SR7e (R11, `docs/reference/rounds.md` §4 step 0): under `rules.strike` placed `"stay"` a
+capture is a **shot**. The shooter stands whatever its victim chose, so it never collides;
+both shots read their victims on the round's board and are written before anything
+departs; a piece a shot strikes does not make its own move (it is *lost*); in step 5 the
+shooter, if nothing struck or took it, becomes what its move made it (a promotion, a side
+switch). In an ordered round the slower shot whose victim the faster move took away is void.
+
+SR7g (R19, ruled 2026-10-27: *a collision like any other*): under ``rules.purse`` a buy is an
+arrival with the round's moves, as a drop is. Its price leaves the buyer's purse at the
+departures, whether or not the bought piece survives; two buys onto one square, or a buy and a
+move, collide by ``beats`` and the tie, the bought piece by its own type. Every capture's
+bounty (a wild piece's route bounty, a type's ``pieces[].bounty`` for any piece but the
+captor's own) is paid to the taker, or under ``bounty_to: "loser"`` to the piece's owner
+(nobody, for a nobody's piece), into the points and the purse (capped at ``PURSE_MAX``), a
+blast's victims each to the captor whose blast reached them.
+
+SR7n (R20): a held piece (``control: "majority"``) in a round. Its holder is read on the round's
+board (the core's generator, asked as any player's moves are), and its move is that player's one
+move of the round, an arrival as any other: it collides by ``beats`` and the tie, and is taken
+as a nobody's piece is. It stays nobody's whatever it meets (its *block*, ``WILD``): a strike or
+a link changes its type in nobody's block and never its side. Its claim is its holder's, and its
+arrival on its holder's goal is read off the round's moves into ``goal_left_by``, as ``make``'s
+``held_arrival`` reads one move: still standing nobody's where it moved, of a type the goal
+admits, ``safe`` asked of the other player's captures onto it on the round's resolved board
+(the oracle's reading of a threat: a capture move, so a held goal with ``safe`` is checked here
+only beside no wild piece and no sight).
 """
 
 from __future__ import annotations
@@ -23,9 +50,16 @@ from typing import Any
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.bridge import build_tables
-from chess_variant_sandbox.engine.compile import WILD, CompiledSpec
+from chess_variant_sandbox.engine.compile import (
+    CONTROL_MAJORITY,
+    CONTROL_NEUTRAL,
+    PURSE_MAX,
+    WILD,
+    CompiledSpec,
+)
 from chess_variant_sandbox.engine.engine import _pack
 from chess_variant_sandbox.engine.moves import (
+    MOVE_BUY,
     MOVE_DROP,
     MOVE_NORMAL,
     MOVE_PORTAL,
@@ -55,6 +89,14 @@ def _arriving(spec: CompiledSpec, player: int, piece_type: int, square: int) -> 
         if becomes >= 0:
             return _entering(spec, player, becomes)
     return _entering(spec, player, piece_type)
+
+
+def _in_block(spec: CompiledSpec, block: int, piece_type: int, square: int) -> int:
+    """SR7n: a piece of ``piece_type`` entering ``block``: a player's arriving value, or a
+    nobody's byte (facing 0, no zone), as `Tables::arriving_value` reads the third owner."""
+    if block == WILD:
+        return spec.encode_piece(WILD, piece_type, 0)
+    return _arriving(spec, block, piece_type, square)
 
 
 def _rehome(spec: CompiledSpec, value: int, new_owner: int, square: int) -> int:
@@ -88,7 +130,7 @@ def lands_if_empty(engine: Engine, state: GameState, board: bytes, player: int, 
     probe = state.with_(board=bytes(emptied), side_to_move=player)
     for other in engine.pseudo_legal_moves(probe):
         o, t, kind, _ = decode_move(other)
-        if kind not in (MOVE_DROP, MOVE_ROTATE) and o == origin and t == target:
+        if kind not in (MOVE_DROP, MOVE_BUY, MOVE_ROTATE) and o == origin and t == target:
             return True
     return False
 
@@ -139,6 +181,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
     hands = [list(state.hands[0]), list(state.hands[1])]
     colour = bytearray(state.colour)
     points = list(state.points)
+    purse = list(state.purse)
     unmoved = state.unmoved
     initiative = state.initiative
     moves = (first, second)
@@ -146,7 +189,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
     plans = []
     for player, move in enumerate(moves):
         origin, target, kind, promotion = decode_move(move)
-        if kind == MOVE_DROP:
+        if kind in (MOVE_DROP, MOVE_BUY):
             plans.append({
                 "m": move, "kind": kind, "origin": None, "target": target, "promotion": promotion,
                 "mover": _arriving(spec, player, promotion, target), "type": promotion,
@@ -156,10 +199,34 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 "m": move, "kind": kind, "origin": origin, "target": target, "promotion": promotion,
                 "mover": board[origin], "type": spec.type_of(board[origin]),
             })
+        # SR7n (R20): the block the moving piece stands in, WILD for a held piece.
+        plans[-1]["block"] = (
+            WILD if plans[-1]["origin"] is not None and spec.owner_of(plans[-1]["mover"]) == WILD
+            else player
+        )
 
     touched: set[int] = set()
     flags = {"material": False, "promoted": False, "one_way": False, "kind": False,
              "passed": False, "laid": False}
+
+    wild_types = {t for t in spec.npcs.piece if t >= 0} if spec.npcs is not None else set()
+
+    def pay(victim: int, square: int, captor: int) -> None:
+        """SR7g: what taking ``victim`` pays, as `Tables::bounty_paid` and `bounty_payee` say."""
+        owner = spec.owner_of(victim)
+        if owner == captor:
+            return
+        paid = 0.0
+        if owner == WILD and spec.type_of(victim) in wild_types:
+            paid += tables["npc_bounty"][square]
+        if spec.bounty:
+            paid += spec.bounty[spec.type_of(victim)]
+        payee = owner if spec.purse is not None and spec.purse.to_loser else captor
+        if paid == 0 or payee >= 2:
+            return
+        points[payee] += paid
+        if spec.purse is not None and paid > 0:
+            purse[payee] = min(purse[payee] + int(paid), PURSE_MAX)
 
     def worth(value: int) -> float:
         return -1.0 if value == 0 else spec.piece_values[spec.type_of(value)]
@@ -171,19 +238,21 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
         victim = board[plan["target"]]
         if victim == 0 or plan["origin"] == plan["target"]:
             return False
-        becomes, mover_becomes, flips = _meeting(spec, plan["type"], victim, player)
-        return becomes != -1 or mover_becomes >= 0 or flips
+        # SR4j (T10): a switch alone advances; only a meeting the strike reaches stays.
+        becomes, mover_becomes, _ = _meeting(spec, plan["type"], victim, player)
+        return becomes != -1 or mover_becomes >= 0
 
     def contact_in_place(player: int, plan: dict[str, Any]) -> bool:
         origin, target = plan["origin"], plan["target"]
         victim, mover = board[target], board[origin]
         becomes, mover_becomes, flips = _meeting(spec, plan["type"], victim, player)
+        flips = flips and plan["block"] != WILD
         as_type = mover_becomes if mover_becomes >= 0 else spec.type_of(mover)
         if flips:
             now = _entering(spec, player, as_type) if mover_becomes >= 0 else mover
             attacker = _rehome(spec, now, 1 - player, origin)
         elif mover_becomes >= 0:
-            attacker = _arriving(spec, player, as_type, origin)
+            attacker = _in_block(spec, plan["block"], as_type, origin)
         else:
             attacker = mover
         survivor = _arriving(spec, spec.owner_of(victim), becomes, target) if becomes >= 0 else 0
@@ -196,23 +265,34 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
         return state.with_(
             board=bytes(board), hands=(tuple(hands[0]), tuple(hands[1])), colour=bytes(colour),
             points=(points[0], points[1]), unmoved=unmoved, initiative=initiative,
+            purse=(purse[0], purse[1]),
         )
 
-    def step(active: tuple[bool, bool]) -> tuple[list[bool], list[bool], list[bool]]:
+    def step(
+        active: tuple[bool, bool],
+    ) -> tuple[list[bool], list[bool], list[bool], list[bool]]:
         """§2.2 to §4 step 7 for the players ``active`` names (both at equal speeds)."""
         nonlocal unmoved, initiative
         raw = [active[i] and plans[i]["origin"] != plans[i]["target"] for i in (0, 1)]
         stays = [active[i] and stays_put(plans[i], i) for i in (0, 1)]
+        # SR7e (R11): a shot stands, and strikes its victim before anything moves.
+        shot = [shoots and stays[i] for i in (0, 1)]
+        struck = [
+            active[j] and shot[1 - j] and not shot[j]
+            and plans[j]["origin"] == plans[1 - j]["target"]
+            for j in (0, 1)
+        ]
         standing = [False, False]
         for i in (0, 1):
             j = 1 - i
             there = board[plans[i]["target"]]
             own_target = stays[i] and there != 0 and spec.owner_of(there) == i
             vacated = raw[j] and not stays[j] and plans[j]["origin"] == plans[i]["target"]
-            standing[i] = active[i] and (
-                plans[i]["kind"] == MOVE_ROTATE or (stays[i] and (own_target or not vacated))
+            standing[i] = active[i] and not struck[i] and (
+                plans[i]["kind"] == MOVE_ROTATE or shot[i]
+                or (stays[i] and (own_target or not vacated))
             )
-        moving = [raw[i] and not standing[i] for i in (0, 1)]
+        moving = [raw[i] and not standing[i] and not struck[i] for i in (0, 1)]
         # Schema 27 (Q942a, R2): a swap meets as a collision, so neither move is void.
         swapped = (
             sim.swap_collides and moving[0] and moving[1]
@@ -231,13 +311,66 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
             )
         arriving = [moving[i] and not void[i] for i in (0, 1)]
 
+        # SR7f (R18): two moves that stand and strike one nobody's piece (two shots, two
+        # contacts that stay) meet as a collision: `beats` between the strikers, then the
+        # tie; the winner's strike alone is made, the loser (both, with no winner) misses.
+        missed = [False, False]
+        target = plans[0]["target"]
+        victim = board[target]
+        if (
+            standing[0] and standing[1] and plans[1]["target"] == target
+            and victim != 0 and spec.owner_of(victim) == WILD
+            and all(plans[i]["kind"] != MOVE_ROTATE and plans[i]["origin"] != target for i in (0, 1))
+        ):
+            types = [plans[0]["type"], plans[1]["type"]]
+            beats = [
+                sim.collision_allowed[types[0] * n_types + types[1]],
+                sim.collision_allowed[types[1] * n_types + types[0]],
+            ]
+            if beats == [True, False]:
+                contest: int | None = 0
+            elif beats == [False, True]:
+                contest = 1
+            elif sim.tie == 1:
+                contest = initiative
+                initiative = 1 - initiative
+                flags["passed"] = True
+            else:
+                contest = None
+            missed = [contest != i for i in (0, 1)]
+            shot = [shot[i] and not missed[i] for i in (0, 1)]
+
         for i in (0, 1):
-            if arriving[i] or standing[i]:
+            if arriving[i] or (standing[i] and not missed[i]):
                 kind, promotion = plans[i]["kind"], plans[i]["promotion"]
                 flags["one_way"] |= plans[i]["type"] in spec.one_way_types
                 plain_portal = kind == MOVE_PORTAL and promotion == 0
                 flags["kind"] |= kind not in (MOVE_NORMAL, MOVE_ROTATE) and not plain_portal
-                flags["promoted"] |= kind == MOVE_PROMOTION or (kind == MOVE_PORTAL and promotion != 0)
+                flags["promoted"] |= (
+                    kind in (MOVE_PROMOTION, MOVE_BUY) or (kind == MOVE_PORTAL and promotion != 0)
+                )
+
+        # Step 0 (SR7e): the shots, both read on the round's board, then written together.
+        takings: list[dict[str, Any]] = []
+        shot_writes = []
+        for i in (0, 1):
+            if not shot[i]:
+                continue
+            plan = plans[i]
+            victim = board[plan["target"]]
+            becomes, _, _ = _meeting(spec, plan["type"], victim, i)
+            survivor = _arriving(spec, spec.owner_of(victim), becomes, plan["target"]) if becomes >= 0 else 0
+            shot_writes.append((plan["target"], survivor))
+            takings.append({
+                "captor": i, "captor_type": plan["type"], "victim": victim,
+                "square": plan["target"], "origin": plan["origin"], "strikes": False,
+                "gone": shot[1 - i] and plan["origin"] == plans[1 - i]["target"],
+                "shot": True, "m": plan["m"], "block": plan["block"],
+            })
+        for square, value in shot_writes:
+            board[square] = value
+            touched.add(square)
+            flags["material"] = True
 
         # Step 2: departures.
         for i in (0, 1):
@@ -246,6 +379,11 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
             if plans[i]["origin"] is not None:
                 board[plans[i]["origin"]] = 0
                 touched.add(plans[i]["origin"])
+            elif plans[i]["kind"] == MOVE_BUY:
+                # SR7g: the price is paid whether or not the bought piece survives.
+                rule = spec.purse
+                assert rule is not None
+                purse[i] -= rule.price[rule.market.index(plans[i]["type"])]
             else:
                 drops = spec.drops
                 assert drops is not None
@@ -256,7 +394,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
         # Step 3: each move's own consequences.
         arrival = [0, 0]
         for i in (0, 1):
-            if not active[i]:
+            if not active[i] or struck[i] or shot[i] or missed[i]:
                 continue
             plan = plans[i]
             if plan["kind"] == MOVE_ROTATE:
@@ -286,13 +424,13 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
             arrival[i] = value
 
         # Step 4: the meetings.
-        takings: list[dict[str, Any]] = []
 
         def taking(captor: int, victim: int, square: int, strikes: bool) -> dict[str, Any]:
             return {
                 "captor": captor, "captor_type": plans[captor]["type"], "victim": victim,
                 "square": square, "origin": plans[captor]["origin"],
                 "strikes": strikes and spec.strike is not None, "gone": False,
+                "shot": False, "m": plans[captor]["m"], "block": plans[captor]["block"],
             }
 
         def meet() -> tuple[int | None, list[bool]]:
@@ -367,7 +505,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 board[square] = arrival[i]
         for i in (0, 1):
             plan = plans[i]
-            if not standing[i] or plan["kind"] == MOVE_ROTATE:
+            if not standing[i] or plan["kind"] == MOVE_ROTATE or shot[i] or missed[i]:
                 continue
             victim = board[plan["target"]]
             if victim == 0 or spec.owner_of(victim) == i or board[plan["origin"]] != plan["mover"]:
@@ -382,16 +520,19 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 slot = spec.demotions[spec.type_of(victim)]
                 if not (drops.unlimited and drops.unlimited[slot]):
                     hands[captor][slot] += 1
-            if spec.npcs is not None and spec.owner_of(victim) == WILD:
-                points[captor] += tables["npc_bounty"][taken["square"]]
+            pay(victim, taken["square"], captor)
+            if taken["shot"]:
+                shooter_after(taken)
+                continue
             if not taken["strikes"]:
                 continue
             strike = spec.strike
             assert strike is not None
             becomes, mover_becomes, flips = _meeting(spec, taken["captor_type"], victim, captor)
+            flips = flips and taken["block"] != WILD
             square = taken["square"]
             there = board[square]
-            if not taken["gone"] and there != 0 and spec.owner_of(there) == captor and (
+            if not taken["gone"] and there != 0 and spec.owner_of(there) == taken["block"] and (
                 mover_becomes >= 0 or flips
             ):
                 as_type = mover_becomes if mover_becomes >= 0 else spec.type_of(there)
@@ -399,7 +540,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                     now = _entering(spec, captor, as_type) if mover_becomes >= 0 else there
                     board[square] = _rehome(spec, now, 1 - captor, square)
                 else:
-                    board[square] = _arriving(spec, captor, as_type, square)
+                    board[square] = _in_block(spec, taken["block"], as_type, square)
             if becomes < 0:
                 continue
             owner = spec.owner_of(victim)
@@ -436,6 +577,13 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 if square in centres or (
                     square in blast and spec.type_of(value) not in explosion.immune_types
                 ):
+                    if square not in centres:
+                        for taken in takings:
+                            capturer, victim_type = taken["captor_type"], spec.type_of(taken["victim"])
+                            if (explosion.by_types is None or capturer in explosion.by_types) and (
+                                explosion.of_types is None or victim_type in explosion.of_types
+                            ) and square in explosion.blast[taken["square"]]:
+                                pay(value, square, taken["captor"])
                     board[square] = 0
                     touched.add(square)
                     flags["material"] = True
@@ -444,20 +592,44 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
         territory = spec.territory
         if territory is not None:
             for i in (0, 1):
-                if active[i] and plans[i]["kind"] == MOVE_ROTATE:
+                if active[i] and not struck[i] and plans[i]["kind"] == MOVE_ROTATE:
                     square = plans[i]["origin"]
                 elif arriving[i]:
                     square = plans[i]["target"]
                 else:
                     continue
                 value = board[square]
-                if value == 0 or spec.owner_of(value) != i:
+                if value == 0 or spec.owner_of(value) != plans[i]["block"]:
                     continue
                 want, before = i + 1, colour[square]
                 if before != want and (territory.mode == "repaint" or before == 0):
                     colour[square] = want
                     flags["laid"] |= territory.mode != "repaint"
-        return arriving, standing, void
+        return arriving, [standing[i] and not missed[i] for i in (0, 1)], void, struck
+
+    def shooter_after(taken: dict[str, Any]) -> None:
+        """SR7e, §4 step 5 for a shot: the shooter on its origin becomes what its move made
+        it (the promoted piece, then a side switch), unless struck or taken this round."""
+        origin, captor = taken["origin"], taken["captor"]
+        there = board[origin]
+        if taken["gone"] or there == 0 or spec.owner_of(there) != taken["block"]:
+            return
+        _, _, kind, promotion = decode_move(taken["m"])
+        value = there
+        if kind == MOVE_PROMOTION:
+            value = _entering(spec, captor, promotion)
+        elif kind == MOVE_PORTAL and promotion != 0:
+            value = _entering(spec, captor, promotion - 1)
+        _, mover_becomes, flips = _meeting(spec, taken["captor_type"], taken["victim"], captor)
+        flips = flips and taken["block"] != WILD
+        if mover_becomes >= 0:
+            value = _in_block(spec, taken["block"], mover_becomes, origin)
+        if flips:
+            now = _entering(spec, captor, mover_becomes) if mover_becomes >= 0 else value
+            value = _rehome(spec, now, 1 - captor, origin)
+        if value != there:
+            board[origin] = value
+            touched.add(origin)
 
     def goal_left(arriving: list[bool]) -> int:
         reach = spec.reach
@@ -471,26 +643,64 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
             left[i] = (
                 arriving[i] and origin in reach.squares[i]
                 and reach.admits(plans[i]["type"])
-                and value != 0 and spec.owner_of(value) == i
+                and value != 0 and spec.owner_of(value) == plans[i]["block"]
             )
         return {(True, True): 2, (True, False): 0, (False, True): 1}.get(tuple(left), -1)
 
+    def held_arrivals(arriving: list[bool]) -> int:
+        """SR7n (R20, O11's reading): which players' held pieces arrived on their goals."""
+        reach = spec.reach
+        assert reach is not None and spec.neutrals is not None
+        kind = spec.neutrals.kind
+        arrived = [False, False]
+        for i in (0, 1):
+            plan = plans[i]
+            standing = board[plan["target"]]
+            if not (
+                arriving[i] and plan["block"] == WILD
+                and kind[spec.type_of(plan["mover"])] == CONTROL_MAJORITY
+                and standing != 0 and spec.owner_of(standing) == WILD
+                and kind[spec.type_of(standing)] in (CONTROL_MAJORITY, CONTROL_NEUTRAL)
+                and plan["target"] in reach.squares[i]
+                and reach.admits(spec.type_of(standing))
+            ):
+                continue
+            if reach.safe:
+                assert spec.npcs is None and spec.sight is None, "a threat read as a capture"
+                probe = here().with_(side_to_move=1 - i)
+                if any(
+                    decode_move(m)[1] == plan["target"]
+                    and decode_move(m)[2] not in (MOVE_DROP, MOVE_BUY)
+                    for m in engine.pseudo_legal_moves(probe)
+                ):
+                    continue
+            arrived[i] = True
+        return {(True, True): 2, (True, False): 0, (False, True): 1}.get(tuple(arrived), -1)
+
     leaves = spec.reach is not None and spec.reach.leaves
+    reach_held = (
+        spec.reach is not None and not spec.reach.leaves
+        and spec.neutrals is not None and spec.neutrals.has_majority
+    )
+    shoots = bool(sim.collision_strikes) and spec.strike is not None and spec.strike.position == "stay"
     speeds = [sim.speed[plan["type"]] for plan in plans] if sim.speed else [0, 0]
     gone = [False, False]
     ended = False
     goal_left_by = state.goal_left_by
     if speeds[0] == speeds[1]:
-        arriving, standing, void = step((True, True))
+        arriving, standing, void, gone = step((True, True))
     else:
         # Schema 28: two moves in order, the faster first.
         f = 0 if speeds[0] > speeds[1] else 1
         s = 1 - f
         arriving, standing, void = [False, False], [False, False], [False, False]
-        made, stood, _ = step((f == 0, f == 1))
+        slower_shot = shoots and stays_put(plans[s], s)
+        made, stood, _, _ = step((f == 0, f == 1))
         arriving[f], standing[f] = made[f], stood[f]
         if leaves:
             goal_left_by = goal_left(arriving)
+        elif reach_held:
+            goal_left_by = held_arrivals(arriving)
         # §2.6: the endings after the faster move, asked of the position it left with the
         # clocks and the repetition window set aside (they are read at the round's end).
         middle = here().with_(goal_left_by=goal_left_by, halfmove=0, ply=0, repetition=())
@@ -498,8 +708,10 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
         origin = plans[s]["origin"]
         if ended or origin is not None and (origin in touched or board[origin] != plans[s]["mover"]):
             gone[s] = True
-        elif offered(engine, here(), s, plans[s]["m"]):
-            made, stood, _ = step((s == 0, s == 1))
+        elif offered(engine, here(), s, plans[s]["m"]) and not (
+            slower_shot and not stays_put(plans[s], s)
+        ):
+            made, stood, _, _ = step((s == 0, s == 1))
             arriving[s], standing[s] = made[s], stood[s]
 
     # Step 8: the wild pieces, as the engine's phase would walk them on this board -- not
@@ -544,6 +756,8 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
     rights = unmoved != state.unmoved
     if leaves:
         goal_left_by = goal_left(arriving)
+    elif reach_held:
+        goal_left_by = held_arrivals(arriving)
     progress = flags["material"] or flags["promoted"] or flags["one_way"] or flags["laid"]
     irreversible = progress or flags["kind"] or rights or flags["passed"]
     after = here().with_(

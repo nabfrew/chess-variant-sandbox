@@ -25,6 +25,10 @@ Beside a command (SR5e, `docs/plan-schema-next.md` §2.7 row V7, as ruled 2026-1
 commanded move enters its piece in its **owner's** list, counted on the owner's turns, and a
 resting piece of either list is offered to neither player, so the lift reads the player's every
 offer, commands included.
+
+In a long turn (SR7d, `docs/plan-schema-next.md` §2.2 row L2, as ruled 2026-10-27): a piece that
+moved this turn is not offered again this turn, then rests its `rest` turns. The list is
+written at every move and counted down at the turn's last (`after_turn`'s ``ends_turn``).
 """
 
 from __future__ import annotations
@@ -73,26 +77,41 @@ def as_rest(lists: Lists) -> tuple[tuple[tuple[int, int], ...], tuple[tuple[int,
 
 def after_turn(
     engine: Engine, lists: Lists, board: bytes, player: int, end: int | None,
-    owner: int | None = None,
+    owner: int | None = None, ends_turn: bool = True,
 ) -> Lists:
-    """§3.2-§3.4: the end of ``player``'s turn on ``board`` (the board the turn left). Count
-    ``player``'s entries down (an entry at 0 leaves), drop every entry of either player whose
-    square no longer holds its code, then enter the piece standing on ``end`` in ``owner``'s
-    list (``player``'s unless a command moved the piece: SR5e, its owner's) if it is
-    ``owner``'s and its type (the type it is now) rests, replacing any entry on that square."""
+    """§3.2-§3.4: ``player``'s move on ``board`` (the board the move left). Drop every entry
+    of either player whose square no longer holds its code, then enter the piece standing on
+    ``end`` in ``owner``'s list (``player``'s unless a command moved the piece: SR5e, its
+    owner's) if it is ``owner``'s and its type (the type it is now) rests, replacing any entry
+    on that square; and where the move ends ``player``'s turn, count ``player``'s entries
+    down (an entry at 0 leaves).
+
+    SR7d (L2): an entry's count is its player's turns still to rest, the one in progress
+    counted. So a piece of ``player``'s own entering on a move that does not end the turn
+    rests this turn and its ``rest`` turns after: ``rest + 1`` until the turn's last move
+    counts it down. A commanded piece rests on its owner's turns, none of which is in progress,
+    so it enters at ``rest``. A turn of one move: every move ends its turn, the count first
+    and the entry at ``rest``, which is the same thing."""
     spec = engine.spec
     owner = player if owner is None else owner
-    counted = [list(lists[0]), list(lists[1])]
-    counted[player] = [(square, left - 1, code) for square, left, code in counted[player] if left > 1]
-    kept = [[entry for entry in counted[owner] if board[entry[0]] == entry[2]] for owner in (0, 1)]
+    kept = [[entry for entry in lists[side] if board[entry[0]] == entry[2]] for side in (0, 1)]
     if end is not None:
         value = board[end]
         if value and spec.owner_of(value) == owner:
             turns = spec.rest[spec.type_of(value)] if spec.rest else 0
             if turns:
+                this_turn = 1 if owner == player else 0
                 kept[owner] = [entry for entry in kept[owner] if entry[0] != end]
-                kept[owner].append((end, turns, value))
+                kept[owner].append((end, turns + this_turn, value))
+    if ends_turn:
+        kept[player] = [(square, left - 1, code) for square, left, code in kept[player] if left > 1]
     return kept[0], kept[1]
+
+
+def ends_turn(engine: Engine, state: GameState) -> bool:
+    """Whether the side to move's next move is the last of its turn: the turn's own count of
+    moves left (`GameState.remaining`), a duck game's piece half its one piece move."""
+    return engine.spec.duck is not None or state.remaining <= 1
 
 
 def end_of_move(engine: Engine, before: GameState, after: GameState, move: int) -> int | None:
@@ -218,6 +237,6 @@ def apply(engine: Engine, state: GameState, move: int) -> tuple[GameState, Lists
         owner = found if found in (0, 1) else mover
     lists = after_turn(
         engine, lists_of(state), after.board, mover,
-        end_of_move(engine, state, after, move), owner,
+        end_of_move(engine, state, after, move), owner, ends_turn(engine, state),
     )
     return after, lists

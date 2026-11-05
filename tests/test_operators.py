@@ -107,7 +107,11 @@ _NUMBER_WORDS = {
     83: "eighty_three", 84: "eighty_four", 85: "eighty_five", 86: "eighty_six",
     87: "eighty_seven", 88: "eighty_eight", 89: "eighty_nine", 90: "ninety",
     91: "ninety_one", 92: "ninety_two", 93: "ninety_three", 94: "ninety_four",
-    95: "ninety_five", 96: "ninety_six",
+    95: "ninety_five", 96: "ninety_six", 97: "ninety_seven",
+    98: "ninety_eight", 99: "ninety_nine", 100: "one_hundred", 101: "one_hundred_one",
+    102: "one_hundred_two", 103: "one_hundred_three", 104: "one_hundred_four",
+    105: "one_hundred_five", 106: "one_hundred_six",
+    107: "one_hundred_seven", 108: "one_hundred_eight", 109: "one_hundred_nine",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -818,15 +822,10 @@ class TestEnPassantFollowsTheDoubleStep:
             assert not child["rules"].get("en_passant"), f"seed {seed}"
             assert validate_spec(child) == [], f"seed {seed}"
 
-    def test_the_rule_is_not_offered_inside_a_turn_of_more_than_one_move(
-        self, specs
-    ) -> None:
-        """Q341's half of the pair, on the side that adds the rule.
-
-        With two moves a turn the mover can answer their own double step, so the
-        validator refuses the combination and the operator must not offer it. The other
-        half is `set_turn`, which drops the rule rather than declining the edit.
-        """
+    def test_the_rule_is_offered_inside_a_turn_of_more_than_one_move(self, specs) -> None:
+        """SR7a (L1, generation 97) lifted Q341's pair: the window is the opponent's, opened
+        by the mover's last double step of the turn, so `toggle-a-rule` adds en passant
+        beside a long turn, and every child validates."""
         from chess_variant_sandbox.loop.operators import _toggle_a_rule
 
         spec = copy.deepcopy(specs["chess"])
@@ -834,28 +833,24 @@ class TestEnPassantFollowsTheDoubleStep:
         spec["rules"]["turn"] = {"moves": 2, "ramp": [1]}
         spec["schema_version"] = max(int(spec.get("schema_version", 1)), 4)
         assert validate_spec(spec) == []
+        added = 0
         for seed in range(60):
             child = copy.deepcopy(spec)
             _toggle_a_rule(child, random.Random(seed))
-            assert not child["rules"].get("en_passant"), f"seed {seed}"
+            added += bool(child["rules"].get("en_passant"))
             assert validate_spec(child) == [], f"seed {seed}"
+        assert added, "toggle-a-rule never added en passant beside the long turn"
 
-    def test_lengthening_the_turn_takes_en_passant_with_it(self, specs) -> None:
-        """The same pair from the other side, where declining would cost the operator most.
-
-        45 of the 71 library specs declare en passant, so a `_lengthen_the_turn` that
-        refused them all would be an operator with almost nothing to do -- which is the
-        shape `TestEveryOperatorOverTheWholeCorpus` exists to catch. `set_turn` settles
-        the rule away instead, and the sentence the operator returns says so.
-        """
+    def test_lengthening_the_turn_keeps_en_passant(self, specs) -> None:
+        """The same pair from the other side: `set_turn` keeps the rule since SR7a."""
         from chess_variant_sandbox.loop.operators import _lengthen_the_turn
 
         spec = copy.deepcopy(specs["chess"])
         assert spec["rules"]["en_passant"] is True
         sentence = _lengthen_the_turn(spec, random.Random(0))
         assert sentence is not None
-        assert "en passant" in sentence
-        assert "en_passant" not in spec["rules"]
+        assert "en passant" not in sentence
+        assert spec["rules"]["en_passant"] is True
         assert spec["rules"]["turn"] == {"moves": 2, "ramp": [1]}
         assert validate_spec(spec) == []
 
@@ -2066,7 +2061,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 96
+_FEATURES_ARE_FOR_SCHEMA = 109
 
 
 @dataclass(frozen=True)
@@ -2594,8 +2589,8 @@ def _parent_hex_path() -> dict:
 
 
 def _long_turn(spec: dict) -> dict:
-    """``spec`` in a turn of two moves after a first of one (`transform.set_turn`, which takes
-    en passant out)."""
+    """``spec`` in a turn of two moves after a first of one (`transform.set_turn`, which keeps
+    en passant since SR7a and wild pieces since SR7b)."""
     from chess_variant_sandbox.spec.transform import set_turn
 
     set_turn(spec)
@@ -3120,6 +3115,111 @@ def _parent_shielded_sweep() -> dict:
         "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1, "effect": "shield",
         "whose": "own",
     }]
+    return spec
+
+
+def _parent_en_passant_in_a_long_turn() -> dict:
+    """Chess in two moves a turn after a first of one, en passant kept (SR7a, L1): the window
+    is the opponent's, opened by the mover's last double step of the turn."""
+    spec = _long_turn(_chess())
+    assert spec["rules"]["en_passant"] is True
+    return spec
+
+
+def _parent_wild_in_a_long_turn() -> dict:
+    """*Wolf circuit* (`archive/wolves-patrol`) in two moves a turn after a first of one (SR7b,
+    L3): the wolves step after every move of the turn."""
+    spec = _long_turn(load_spec(ROOT / "archive" / "wolves-patrol.json"))
+    assert spec["rules"]["npcs"]
+    return spec
+
+
+def _parent_shooter_in_rounds() -> dict:
+    """SR7e's test game, Gardner's minichess in rounds under rifle (R11): a shot does not move
+    the shooter, so it never collides, and shots resolve before the round's moves."""
+    spec = load_spec(ROOT / "tests" / "_simultaneous_rifle.json")
+    assert spec["rules"]["strike"]["position"] == "stay"
+    return spec
+
+
+def _parent_nobody_in_rounds() -> dict:
+    """SR7f's test game, three stones nobody owns on a five by five board in rounds (R18): two
+    players' moves onto a stone's square are a collision as any other."""
+    spec = load_spec(ROOT / "tests" / "_simultaneous_nobody.json")
+    assert spec["rules"]["simultaneous"] == {}
+    return spec
+
+
+def _parent_spy_promotion() -> dict:
+    """SR7h's test game, spy small with its pawns promoting into a rook, a knight or a spy
+    (Y3): the promoting player gains a spy."""
+    spec = load_spec(ROOT / "tests" / "_spy_promoting.json")
+    assert "S" in spec["rules"]["promotion"]["to"]
+    return spec
+
+
+def _parent_spy_gained_on_board(name: str) -> Callable[[], dict]:
+    """SR7i's test games, `_spy_promoting` with a strike chain into the spy, the spy switching
+    sides, or a contact link into it (Y4 to Y6): the piece's owner after the move gains it."""
+
+    def parent() -> dict:
+        from tests.test_spy_gained_on_board import _spec
+
+        return _spec(name)
+
+    return parent
+
+
+def _parent_spy_in_hand(name: str) -> Callable[[], dict]:
+    """SR7j's test games, `_spy_promoting` with a spy in each player's stock or with a hand
+    filled from captures (Y7, Y8): a spy in the hand counts for nobody until it is dropped."""
+
+    def parent() -> dict:
+        from tests.test_spy_in_hand import _spec
+
+        return _spec(name)
+
+    return parent
+
+
+def _parent_spy_for_nobody() -> dict:
+    """SR7k's test game, `_spy_promoting` with a spy of the shared type placed for nobody on
+    c3 (O6): it gives nobody secrecy."""
+    from tests.test_spy_for_nobody import _spec
+
+    return _spec("bare")
+
+
+def _parent_spy_for_sale() -> dict:
+    """SR7m's test game, `_spy_promoting` with a purse whose market sells the spy onto the
+    middle rank (O27): a bought spy is a spy gained."""
+    from tests.test_spy_for_sale import _spec
+
+    return _spec()
+
+
+def _parent_held_in_rounds() -> dict:
+    """SR7n's test game, four condottieri nobody owns held by the majority next to them on a
+    six by six board in rounds (R20): a held move is its holder's move of the round."""
+    spec = load_spec(ROOT / "tests" / "_simultaneous_held.json")
+    assert spec["rules"]["simultaneous"] == {}
+    return spec
+
+
+def _parent_market_in_rounds() -> dict:
+    """SR7g's test game, a market selling pawns and knights onto the shared middle rank of a
+    five by five board in rounds (R19): a buy is an arrival with the round's moves."""
+    spec = load_spec(ROOT / "tests" / "_simultaneous_market.json")
+    assert spec["rules"]["simultaneous"] == {} and spec["rules"]["purse"]["market"]
+    return spec
+
+
+def _parent_rest_in_a_long_turn() -> dict:
+    """*Chess with a weary queen* (`archive/chess-with-a-weary-queen`) in two moves a turn after
+    a first of one (SR7d, L2): a piece that moved this turn is not offered again this turn,
+    then rests its turns."""
+    spec = _long_turn(load_spec(ROOT / "archive" / "chess-with-a-weary-queen.json"))
+    assert any(piece.get("rest") for piece in spec["pieces"])
     return spec
 
 
@@ -3901,11 +4001,107 @@ def _parent_riders_in_hand() -> dict:
 # Generation 96 (SR6g, §2.7 W10): one name, a shield beside a sweep (a lifted refusal; a
 # shielded piece ends a sweep's ray). `cast-a-gaze` enters it on a sweeping game (it drew no
 # shield there until now) and `sweep-a-slider` beside a shield (it declined there until now);
-# `blind-a-piece` and `sweep-a-slider`'s way back leave it.
+# `blind-a-piece` and `sweep-a-slider`'s way back leave it. Its row retires with generation
+# 97, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 97 (SR7a, §2.2 L1): one name, en passant beside a long turn (a lifted refusal;
+# the window is the opponent's, opened by the mover's last double step of the turn).
+# `lengthen-the-turn` enters it on a game with en passant (it took the rule away until now)
+# and `toggle-a-rule` beside a long turn (it declined there until now); `toggle-a-rule`'s
+# removal and `lengthen-the-turn`'s way back leave it. Its row retires with generation 98, its
+# showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 98 (SR7b, §2.2 L3): one name, wild pieces beside a long turn (a lifted refusal; a
+# phase follows every move of the turn). `lengthen-the-turn` enters it on a game with wild
+# pieces (it declined there until now) and `set-a-patrol` beside a long turn (it declined
+# there until now); `set-a-patrol`'s removal and `lengthen-the-turn`'s way back leave it. Its
+# row retires with generation 99, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 99 (SR7d, §2.2 L2): one name, a rest beside a long turn (a lifted refusal; a piece
+# that moved this turn is not offered again this turn, then rests its turns).
+# `lengthen-the-turn` enters it on a game that rests (it took every rest away until now) and
+# `tire-a-piece` beside a long turn (it declined there until now); `tire-a-piece`'s removal and
+# `lengthen-the-turn`'s way back leave it. Its row retires with generation 100, its showcase
+# still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 100 (SR7e, §2.3 R11): one name, a strike placed "stay" in rounds (a lifted refusal;
+# a shot does not move the shooter and resolves before the round's moves). `soften-the-capture`
+# and `leave-something-behind` offer a strike that stays in rounds (they declined there until now). Its
+# row retires with generation 101, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 101 (SR7f, §2.3 R18): one name, a placement for nobody in rounds (a lifted
+# refusal; two players' moves onto a nobody's piece's square are a collision as any other).
+# `play-at-once` enters it on a game with pieces nobody owns that stand (it declined there
+# until now) and `gather-a-crowd` in rounds; `gather-a-crowd`'s removal and `play-at-once`'s
+# way back leave it. Its row retires with generation 102, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 102 (SR7g, §2.3 R19): one name, a purse in rounds (a lifted refusal for the
+# market; a buy is an arrival with the round's moves and collides as any arrival does; a hire
+# or a bribe stays refused). `play-at-once` enters it on a game with a market (it declined
+# beside every purse until now) and `open-a-market` in rounds; `open-a-market`'s closing and
+# `play-at-once`'s way back leave it. Its row retires with generation 103, its showcase still
+# owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 103 (SR7h, §2.12 Y3): one name, a promotion into a spy (a lifted refusal; the
+# promoting player gains a spy and the phase is read afresh both ways). `plant-a-spy` enters it
+# on a game whose promotion reaches the type it flags (the validator refused that flag until
+# now), and its way out (every flag taken away) leaves it. Its row retires with generation 104,
+# its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 104 (SR7i, §2.12 Y4 to Y6): three names, a strike chain into a spy, a spy in a
+# strike's `switches_sides` and a contact link into a spy (three lifted refusals; the piece's
+# owner after the move gains the spy, and the phase is read afresh both ways).
+# `plant-a-spy` enters them on a game whose strike or contact table reaches the type it flags
+# (the validator refused that flag until now), and `soften-the-capture`,
+# `leave-something-behind` and `become-what-you-take` on a spy game (they declined in one until
+# now; `_spy_gain_guarded` declines only a gain into the other player's spy type);
+# `plant-a-spy`'s way out and each operator's own removal leave them. Their rows retire with
+# generation 105, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 105 (SR7j, §2.12 Y7, Y8): two names, a spy in a stock and a spy taken into a hand
+# (two lifted refusals; a spy in the hand counts for nobody until it is dropped, and dropping it
+# gains it). `plant-a-spy` enters them on a game with a hand (the validator refused that flag
+# until now), and `hand-the-pieces-back`, `place-a-stone` and `place-the-army` run on a spy
+# game (they declined in one until now; `_spy_gain_guarded` and the validator decline only a
+# spy for nobody); `plant-a-spy`'s way out and each operator's own removal leave them. Their
+# rows retire with generation 106, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 106 (SR7k, §2.11 O6): one name, a spy nobody owns (a lifted refusal; it gives
+# nobody secrecy, and taken it is gone or the taker's to drop under a capture hand).
+# `gather-a-crowd` enters it on a spy game (half the time it places one of the game's spy types
+# for nobody, in place of a new type), and its own removal (every nobody's placement goes) or
+# `plant-a-spy`'s way out (every flag goes) leaves it. Its row retires with generation 107, its
+# showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 107 (SR7l, §2.11 O24): no name. The refusal of a price on a spy moved to the
+# purse's own *nothing charges it*, and in a spy game nothing can charge it until generation
+# 108 sells a spy (a hire and a bribe stay refused in rounds), so no valid spec uses it and the
+# table is empty (`feature_inventory._schema_one_hundred_seven_uses`).
+#
+# Generation 108 (SR7m, §2.11 O27): one name, a spy for sale (a lifted refusal; a bought spy is
+# a spy gained when it stands). `open-a-market` may now put a spy game's spy on sale (it
+# skipped spies until now; the validator refuses a spy type a buyer does not start with), and
+# `plant-a-spy` flags a type a market sells; the market's closing and `plant-a-spy`'s way out
+# leave it. Its row retires with generation 109, its showcase still owed
+# (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 109 (SR7n, §2.3 R20): one name, a held piece in rounds (a lifted refusal; the
+# holder is read on the round's board, and a held move is that player's move of the round).
+# `play-at-once` enters it on a game with a held type (it declined there until now) and
+# `gather-a-crowd` on a game in rounds (it placed only standing pieces there); `play-at-once`'s
+# way back, `gather-a-crowd`'s removal and its taking control away leave it.
+def _beside(spec: dict, rule: str, key: str) -> bool:
+    return bool((spec.get("rules", {}).get(rule) or {}).get(key))
+
+
 _FEATURES: dict[str, _Feature] = {
-    "SR6g a shield beside a sweep": _Feature(
-        None, frozenset({"pieces.sight.shield.sweep"}), True,
-        "chess-sweeping-bishops+shield", _parent_shielded_sweep, likely=uses_sweep,
+    "SR7n a held piece in rounds": _Feature(
+        # `keeps_army` False, as SR7f's: `gather-a-crowd` puts a type of its own on the board.
+        None, frozenset({"pieces.control.majority.simultaneous"}), False,
+        "simultaneous-held", _parent_held_in_rounds,
+        likely=lambda spec: bool((spec.get("rules") or {}).get("simultaneous"))
+        or any(isinstance(p, dict) and p.get("control") for p in spec.get("pieces") or []),
     ),
 }
 
@@ -3918,11 +4114,35 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
 _SHOWCASE_OWED: dict[str, str] = {
-    # Generation 96 (SR6g): a shield beside a sweep, owed by SR6s7 (a sweep stopped by a
-    # shield, `docs/plan-schema-next.md` §3.2), usable after SR6r.
-    "SR6g a shield beside a sweep": (
-        "owed by SR6s7, a sweep stopped by a shield (docs/plan-schema-next.md §3.2)"
+    # Generation 109 (SR7n): a held piece in rounds, owed by SR7s11 (a held piece in rounds,
+    # `docs/plan-schema-next.md` §3.2), usable after the replay that carries it.
+    "SR7n a held piece in rounds": (
+        "owed by SR7s11, a held piece in rounds (docs/plan-schema-next.md §3.2)"
     ),
+    # Generation 108's name (SR7m) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7n retired its
+    # `_FEATURES` row, still owed by SR7s10.
+    # Generation 107 (SR7l) adds no name. Generation 106's name (SR7k) went to
+    # `_NO_SHOWCASE_ON_PURPOSE` when SR7l retired its `_FEATURES` row, still owed by SR7s9.
+    # Generation 105's names (SR7j) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7k retired their
+    # `_FEATURES` rows, still owed by SR7s8.
+    # Generation 104's names (SR7i) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7j retired their
+    # `_FEATURES` rows, still owed by SR7s8.
+    # Generation 103's name (SR7h) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7i retired its
+    # `_FEATURES` row, still owed by SR7s8.
+    # Generation 102's name (SR7g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7h retired its
+    # `_FEATURES` row, still owed by SR7s7.
+    # Generation 101's name (SR7f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7g retired its
+    # `_FEATURES` row, still owed by SR7s6.
+    # Generation 100's name (SR7e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7f retired its
+    # `_FEATURES` row, still owed by SR7s5.
+    # Generation 99's name (SR7d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7e retired its
+    # `_FEATURES` row, still owed by SR7s3.
+    # Generation 98's name (SR7b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7d retired its
+    # `_FEATURES` row, still owed by SR7s2.
+    # Generation 97's name (SR7a) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7b retired its
+    # `_FEATURES` row, still owed by SR7s1.
+    # Generation 96's name (SR6g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7a retired its
+    # `_FEATURES` row, still owed by SR6s7.
     # Generation 95's name (SR6f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6g retired its
     # `_FEATURES` row, still owed by SR6s6.
     # Generation 94's name (SR6e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6f retired its
@@ -4227,6 +4447,21 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     94: frozenset({"rules.portals.sweep"}),
     95: frozenset({"pieces.sight.command.sweep"}),
     96: frozenset({"pieces.sight.shield.sweep"}),
+    97: frozenset({"rules.en_passant.turn"}),
+    98: frozenset({"rules.npcs.turn"}),
+    99: frozenset({"pieces.rest.turn"}),
+    100: frozenset({"rules.strike.stay.simultaneous"}),
+    101: frozenset({"setup.placements.nobody.simultaneous"}),
+    102: frozenset({"rules.purse.simultaneous"}),
+    103: frozenset({"rules.promotion.spy"}),
+    104: frozenset({
+        "rules.strike.chain.spy", "rules.strike.switches_sides.spy", "rules.contacts.spy",
+    }),
+    105: frozenset({"rules.drops.stock.spy", "rules.drops.from_captures.spy"}),
+    106: frozenset({"setup.placements.nobody.spy"}),
+    107: frozenset(),
+    108: frozenset({"rules.purse.market.spy"}),
+    109: frozenset({"pieces.control.majority.simultaneous"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -4235,6 +4470,87 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 108's name (SR7m), owed in `_SHOWCASE_OWED` until generation 109 (SR7n)
+    # retired its `_FEATURES` row. Still owed by SR7s10 (`docs/plan-schema-next.md` §3.2), a spy
+    # for sale; the entry goes the day it lands.
+    "schema 108: rules.purse.market.spy": (
+        "owed by SR7s10, a spy for sale (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 106's name (SR7k), owed in `_SHOWCASE_OWED` until generation 107 (SR7l)
+    # retired its `_FEATURES` row. Still owed by SR7s9 (`docs/plan-schema-next.md` §3.2), a spy
+    # nobody owns; the entry goes the day it lands.
+    "schema 106: setup.placements.nobody.spy": (
+        "owed by SR7s9, a spy nobody owns (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 105's names (SR7j), owed in `_SHOWCASE_OWED` until generation 106 (SR7k)
+    # retired their `_FEATURES` rows. Still owed by SR7s8 (`docs/plan-schema-next.md` §3.2), a
+    # gained spy; the entries go the day it lands.
+    "schema 105: rules.drops.stock.spy": (
+        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 105: rules.drops.from_captures.spy": (
+        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 104's names (SR7i), owed in `_SHOWCASE_OWED` until generation 105 (SR7j)
+    # retired their `_FEATURES` rows. Still owed by SR7s8 (`docs/plan-schema-next.md` §3.2), a
+    # gained spy; the entries go the day it lands.
+    "schema 104: rules.strike.chain.spy": (
+        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 104: rules.strike.switches_sides.spy": (
+        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
+    ),
+    "schema 104: rules.contacts.spy": (
+        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 103's name (SR7h), owed in `_SHOWCASE_OWED` until generation 104 (SR7i) retired
+    # its `_FEATURES` row. Still owed by SR7s8 (`docs/plan-schema-next.md` §3.2), a gained spy;
+    # the entry goes the day it lands.
+    "schema 103: rules.promotion.spy": (
+        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 102's name (SR7g), owed in `_SHOWCASE_OWED` until generation 103 (SR7h) retired
+    # its `_FEATURES` row. Still owed by SR7s7 (`docs/plan-schema-next.md` §3.2), a market in
+    # rounds; the entry goes the day it lands.
+    "schema 102: rules.purse.simultaneous": (
+        "owed by SR7s7, a market in rounds (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 101's name (SR7f), owed in `_SHOWCASE_OWED` until generation 102 (SR7g) retired
+    # its `_FEATURES` row. Still owed by SR7s6 (`docs/plan-schema-next.md` §3.2), nobody's pieces
+    # in rounds; the entry goes the day it lands.
+    "schema 101: setup.placements.nobody.simultaneous": (
+        "owed by SR7s6, nobody's pieces in rounds (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 100's name (SR7e), owed in `_SHOWCASE_OWED` until generation 101 (SR7f) retired
+    # its `_FEATURES` row. Still owed by SR7s5 (`docs/plan-schema-next.md` §3.2), a shooter in
+    # rounds; the entry goes the day it lands.
+    "schema 100: rules.strike.stay.simultaneous": (
+        "owed by SR7s5, a shooter in rounds (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 99's name (SR7d), owed in `_SHOWCASE_OWED` until generation 100 (SR7e) retired
+    # its `_FEATURES` row. Still owed by SR7s3 (`docs/plan-schema-next.md` §3.2), rest in a long
+    # turn; the entry goes the day it lands.
+    "schema 99: pieces.rest.turn": (
+        "owed by SR7s3, rest in a long turn (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 98's name (SR7b), owed in `_SHOWCASE_OWED` until generation 99 (SR7d) retired
+    # its `_FEATURES` row. Still owed by SR7s2 (`docs/plan-schema-next.md` §3.2), wild pieces in
+    # a long turn; the entry goes the day it lands.
+    "schema 98: rules.npcs.turn": (
+        "owed by SR7s2, wild pieces in a long turn (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 97's name (SR7a), owed in `_SHOWCASE_OWED` until generation 98 (SR7b) retired
+    # its `_FEATURES` row. Still owed by SR7s1 (`docs/plan-schema-next.md` §3.2), en passant in
+    # a long turn; the entry goes the day it lands.
+    "schema 97: rules.en_passant.turn": (
+        "owed by SR7s1, en passant in a long turn (docs/plan-schema-next.md §3.2)"
+    ),
+    # Generation 96's name (SR6g), owed in `_SHOWCASE_OWED` until generation 97 (SR7a) retired
+    # its `_FEATURES` row. Still owed by SR6s7 (`docs/plan-schema-next.md` §3.2), a sweep
+    # stopped by a shield; the entry goes the day it lands.
+    "schema 96: pieces.sight.shield.sweep": (
+        "owed by SR6s7, a sweep stopped by a shield (docs/plan-schema-next.md §3.2)"
+    ),
     # Generation 95's name (SR6f), owed in `_SHOWCASE_OWED` until generation 96 (SR6g) retired
     # its `_FEATURES` row. Still owed by SR6s6 (`docs/plan-schema-next.md` §3.2), a commanded
     # sweeper; the entry goes the day it lands.
@@ -4761,6 +5077,24 @@ def _feature_parents() -> dict[str, dict]:
 # SR6a added one, retired with generation 90's `_FEATURES` rows (SR6c), and SR6c its like
 # (the switch beside a blast, two edits from any stored game), retired with generation 92's
 # rows (SR6d). Generation 93's one name is one edit from a stored game both ways.
+#
+# SR7j adds one: a spy in a stock is two edits from any stored game. No stored game is a spy
+# game, and none stocks a type both armies place on the board (a spy must start there), so
+# `plant-a-spy` cannot flag a stocked type; `give-a-handicap` stocks a spy game's spy
+# (`tests/test_spy_in_hand.py::test_give_a_handicap_stocks_a_spy_game_s_spy` holds the second
+# edit). It retired with generation 105's `_FEATURES` rows.
+#
+# SR7k adds its like: a spy nobody owns is two edits from any stored game. No stored game is a
+# spy game, and none in rounds places for nobody a type both armies place, so `plant-a-spy`
+# cannot flag one; `gather-a-crowd` places a spy game's spy for nobody
+# (`tests/test_spy_for_nobody.py::test_gather_a_crowd_places_a_spy_game_s_spy_for_nobody`
+# holds the second edit). It retired with generation 106's `_FEATURES` rows.
+#
+# SR7m adds its like: a spy for sale is two edits from any stored game. No stored game is a spy
+# game, and `plant-a-spy` flags no stored market game's sold type into a valid spy game; on a spy
+# game `open-a-market` puts the spy on sale
+# (`tests/test_spy_for_sale.py::test_open_a_market_sells_a_spy_game_s_spy` holds the second
+# edit). It retired with generation 108's `_FEATURES` rows.
 _CANNOT_ENTER: dict[str, str] = {}
 _CANNOT_LEAVE: dict[str, str] = {}
 

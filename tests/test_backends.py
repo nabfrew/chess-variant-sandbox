@@ -193,9 +193,13 @@ def test_a_two_length_sweep_game_is_identical_move_for_move(agents: tuple[str, s
 # Schema 26 (Q918b): the round players. Q918a's test specs (`tests/_simultaneous_*.json`):
 # a mirrored Gardner-sized game, drops and promotion, an explosion, an own-merge contact, a
 # static portal pair beside a fold; and Q942a's schema-27 switches (the rest; all three with
-# a score; swaps that collide beside an explosion). The fast arms cut each game at 24 plies (twelve rounds);
-# the slow ones play it to its verdict.
-ROUND_SPECS = ["gardner", "shogi", "atomic", "merge", "portals", "resting", "scored", "atomic_collide"]
+# a score; swaps that collide beside an explosion); SR7e's rifle (a shot in rounds, R11); and
+# SR7f's stones nobody owns (R18); and SR7g's market (R19).
+# The fast arms cut each game at 24 plies (twelve rounds); the slow ones play it to its verdict.
+ROUND_SPECS = [
+    "gardner", "shogi", "atomic", "merge", "portals", "resting", "scored", "atomic_collide", "rifle",
+    "nobody", "market",
+]
 ROUND_ROSTER = [
     ("greedy", "random"),
     ("matrix:nodes=250", "greedy"),

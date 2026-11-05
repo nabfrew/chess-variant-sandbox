@@ -19,7 +19,7 @@ stay inline in `schema.py`.
 Kept rows only: what SR2 and SR2b lifted (L5, L6, T2 and T5 in part, H1, H2, H6, W9, N20,
 V5 and V6 in part) and the core lifts of SR3d (K2), SR3e (K3), SR3f (O1, O2), SR3g (P9,
 P10), SR4b (W4), SR4c (W5), SR4d (H11), SR4e (T6, T7), SR4f (T8), SR4h (V5, V6, V9), SR4i (T9), SR4j (T10), SR5a (T1, T4),
-SR5b (V2), SR5c and SR5c2 (V1), SR5d (V3, V4), SR5g (P1), SR5h (P5), SR5i (P6, P7), SR5j (O12), SR5k (O10, O11), SR6a (W1), SR6b (W2), SR6c (W3), SR6d (W6) is not here, or is here as the
+SR5b (V2), SR5c and SR5c2 (V1), SR5d (V3, V4), SR5g (P1), SR5h (P5), SR5i (P6, P7), SR5j (O12), SR5k (O10, O11), SR6a (W1), SR6b (W2), SR6c (W3), SR6d (W6), SR7a (L1), SR7b (L3), SR7d (L2), SR7e (R11), SR7f (R18), SR7g (R19), SR7n (R20) is not here, or is here as the
 narrower case still refused.
 """
 
@@ -41,7 +41,6 @@ class Refusal(NamedTuple):
 _SWEEP = "pieces[].moves[].kind: \"sweep\""
 _LONG_TURN = "rules.turn (moves or ramp over 1)"
 _COMMAND = "pieces[].sight effect \"command\""
-_NOBODY = "setup.placements player \"nobody\""
 
 
 def _rounds(rid: str, second: str, what: str, why: str) -> Refusal:
@@ -68,36 +67,16 @@ def _portals(rid: str, key: str, why: str) -> Refusal:
     return Refusal(rid, "rules.portals", f"rules.{key}", f"rules.portals is refused beside rules.{key}: {why}")
 
 
-def _nobody(rid: str, key: str, why: str) -> Refusal:
-    return Refusal(rid, _NOBODY, f"rules.{key}", f"a placement for nobody is refused beside rules.{key}: {why}")
-
-
-def _purse(rid: str, key: str, why: str) -> Refusal:
-    return Refusal(rid, "rules.purse", f"rules.{key}", f"rules.purse is refused beside rules.{key}: {why}")
-
-
 _NO_CHECK_AT_ONCE = "there is no check when both players move at once"
 
 REFUSALS: tuple[Refusal, ...] = (
     # §2.2 Long turns.
-    Refusal(
-        "L1", "rules.en_passant", _LONG_TURN,
-        "rules.en_passant beside a turn longer than one move: the window a double "
-        "step opens is still open on the mover's own next move, so a player could "
-        "take their own pawn in passing; use one move per turn, or drop en passant",
-    ),
-    Refusal(
-        "L2", "pieces[].rest", _LONG_TURN,
-        "pieces[].rest beside a turn longer than one move (rules.turn moves or ramp): "
-        "inside a turn of several moves a rest would need a second rule, for a piece that "
-        "moved earlier in the same turn; use one move per turn, or leave the rest out",
-    ),
-    Refusal(
-        "L3", "rules.npcs", _LONG_TURN,
-        "rules.npcs beside a turn longer than one move: a wild piece walks between "
-        "turns, and a legality filter would have to know whether the move it is "
-        "testing ends the turn; use one move per turn",
-    ),
+    # L1 (en passant beside a long turn) lifted by SR7a: the window is the opponent's, opened
+    # by the mover's last double step of the turn and open for the opponent's first move only.
+    # L2 (rest beside a long turn) lifted by SR7d: a piece that moved this turn is not offered
+    # again this turn, then rests its `rest` turns; the list is written per move, counted per turn.
+    # L3 (wild pieces beside a long turn) lifted by SR7b: a phase follows every move, as in a
+    # turn of one, so no legality filter needs to know whether a move ends the turn.
     _rounds("L4", _LONG_TURN, "a turn longer than one move", "a round is one secret move each"),
     Refusal("L7", "rules.duck", "rules.turn", "rules.duck beside rules.turn: a turn already has its two halves"),
     # §2.3 Rounds. R1 (its message says whether the win is stated), R14 (three keys) and R16
@@ -131,10 +110,8 @@ REFUSALS: tuple[Refusal, ...] = (
         "R10", 'rules.contacts.position: "choose"', "rules.contacts.position 'choose'",
         "the square is chosen before the other player's move is known",
     ),
-    _rounds(
-        "R11", 'rules.strike.position: "stay"', "rules.strike.position 'stay'",
-        "a captor that collided did move, so staying would mean going back",
-    ),
+    # R11 (a strike placed "stay" in rounds) lifted by SR7e: a shot does not move the shooter,
+    # so it never collides, and shots resolve before the round's moves (rounds.md §4 step 0).
     _rounds(
         "R12", 'rules.contacts (an own link, position "swap")',
         "an own rules.contacts link with position 'swap'",
@@ -148,8 +125,18 @@ REFUSALS: tuple[Refusal, ...] = (
         "and nobody is the mover",
     ),
     _command("R17", "simultaneous", "two players could move one piece in one round"),
-    _nobody("R18", "simultaneous", "a round's collisions were not written for a piece nobody owns"),
-    _purse("R19", "simultaneous", "two buyers in one round is a rule not written"),
+    # R18 (a placement for nobody in rounds) lifted by SR7f for a piece that stands, and its
+    # narrower row (a held piece, majority control; R20) by SR7n: the holder is read on the
+    # round's board and its move is an arrival as any other.
+    # R19 (the purse in rounds) lifted by SR7g for the market: a buy is an arrival with the
+    # round's moves, and two buys onto one square, or a buy and a move, collide by `beats`
+    # and the tie, each price paid. A purse that hires or bribes stays refused (the auction).
+    Refusal(
+        "R19", "rules.purse (a hire or rules.purse.bribe)", "rules.simultaneous",
+        "rules.purse that can hire (a priced piece placed for nobody) or bribe "
+        "(rules.purse.bribe) beside rules.simultaneous: two players recruiting one piece on "
+        "the board in one round is a rule not written; a purse with a market alone is allowed",
+    ),
     # §2.4 What a taken piece becomes.
     # SR5a (T1, ruled 2026-10-27: a switch, `explode_on_capture.strikes`) lifted the pair;
     # what stays refused is the switch where it cannot be read, and the pair where its

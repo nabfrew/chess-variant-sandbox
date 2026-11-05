@@ -247,13 +247,27 @@ def fold_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
     since schema 24), with their names and the group's number (``foldPair``, the colour).
     The trip (the ripple), the trail at rest and the destination dots read these and work
     out nothing (Q843d, `docs/archive/plan-portals-2.md` §5.3; their revised look is §5.3R's).
+
+    A sweep through a fold over pieces (SR6e, W8; Q1100) is a ``MOVE_SWEEP`` whose word names
+    its ray and step, never the fold end, so its route is `Engine.sweep_fold_route`'s and its
+    group is the fold standing on the way in (`Engine.fold_square`): it gets the same ripple.
     """
     route = engine.fold_route(state, move)
-    if route is None:
-        return None
+    if route is not None:
+        # The tag is the fold end gone through, plus one (`MOVE_FOLD`'s word, §3.3).
+        end = move_fold(move) - 1
+    else:
+        route = engine.sweep_fold_route(state, move)
+        if route is None:
+            return None
+        portals = engine.spec.portals
+        ends = [e for e in range(len(portals.end_types))
+                if engine.fold_square(state, e) == route[0]]
+        if not ends:
+            return None
+        end = ends[0]
     way_in, way_out = route
-    # The tag is the fold end gone through, plus one (`MOVE_FOLD`'s word, §3.3).
-    group = engine.spec.portals.group_of[move_fold(move) - 1] + 1
+    group = engine.spec.portals.group_of[end] + 1
     return {
         "foldIn": way_in,
         "foldInName": square_name(way_in, engine.spec.width),

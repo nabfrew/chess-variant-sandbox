@@ -55,6 +55,7 @@ from chess_variant_sandbox.spec.schema import (
     move_push,
     neutral_ids,
     nobodys_ids,
+    nobodys_spy_ids,
     npc_immunity_unbound,
     npc_pounce,
     npc_respawn,
@@ -81,11 +82,13 @@ from chess_variant_sandbox.spec.schema import (
     reach_pieces,
     sight_affects_wild,
     simultaneous_switch,
+    spy_gain_routes,
     spy_ids,
     strike_is_live,
     sweep_effects,
     sweep_length,
     takes_royal_ids,
+    turn_is_long,
     uses_sweep,
     wild_type_ids,
     wrap_joins_an_edge,
@@ -311,6 +314,13 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     if rules.get("en_passant"):
         lines.append("A piece that steps two squares past an enemy that could have taken "
                      "it on the way may be captured as if it had stepped one.")
+        # SR7a (L1, ruled 2026-10-27): in a long turn the window is the opponent's.
+        if turn_is_long(rules):
+            lines.append(
+                "In a turn of several moves only the last two-square step of the turn may be "
+                "taken in passing, and only by the opponent's first move of the next turn; a "
+                "piece that moves on, or is removed, before the turn ends may not."
+            )
     if rules.get("castling") and "king_file" in rules["castling"]:
         castling = rules["castling"]
         files = castling["king_file"]
@@ -2107,8 +2117,9 @@ def _describe_bounties(spec: dict[str, Any]) -> list[str]:
             "step) pays nobody; a blast pays the player who made the capture for every piece "
             "it destroys, as taking it would (nothing for that player's own)."
             if blast else
-            "nothing, and a piece removed by anything but a move's capture (a blast, a wild "
-            "piece's step) pays nobody."
+            # Since SR4l a blast pays as taking would; a game without one has no blast to name.
+            "nothing, and a piece removed by anything but a move's capture (a wild piece's "
+            "step) pays nobody."
         )
     ]
 
@@ -2141,6 +2152,14 @@ def _describe_purse(spec: dict[str, Any]) -> list[str]:
             f"leaves their purse and the piece is placed on {where}, entering play as a new "
             "piece does. Supply is unlimited."
         )
+        # SR7g (R19, ruled 2026-10-27): in rounds a buy is an arrival with the round's moves.
+        if is_simultaneous(spec):
+            lines.append(
+                "In a round a buy is made with the other player's move: two buys onto one "
+                "square, or a buy and a move onto one square, collide as any two arrivals do, "
+                "the bought piece by its own type, and the price is spent whether or not the "
+                "bought piece survives."
+            )
     # TC6 (`docs/plan-turncoat.md` §5.5): hires and bribes.
     hired = sorted(hire_ids(spec))
     if hired:
@@ -2316,6 +2335,13 @@ def _describe_rest(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         "other player rests no more. When every move a player has is a resting piece's, "
         "the rest is lifted for that turn, so the rest never leaves a player without a move."
     ]
+    # SR7d (L2, ruled 2026-10-27): in a long turn a piece that moved this turn rests the rest
+    # of it before its own n turns begin.
+    if turn_is_long(rules):
+        lines.append(
+            "In a turn of several moves a piece that moved earlier in the turn may not move "
+            "again in that turn, and then rests its n turns after it."
+        )
     if rules.get("win", "checkmate") == "checkmate" or rules.get("check_limit"):
         lines.append("A resting piece gives check, and its check must still be answered.")
     return lines
@@ -2598,6 +2624,17 @@ def _describe_sight(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     return lines
 
 
+# SR7h to SR7m: how a spy can be gained, by `schema.SPY_GAIN_ROUTES`' route.
+_SPY_GAIN_WORDS = {
+    "promotion": "a piece promoting into a spy",
+    "drops": "a spy dropped from the hand",
+    "purse.market": "a spy bought from the market",
+    "strike.chain": "a capture that strikes a piece into a spy",
+    "strike.switches_sides": "a spy that captures and changes sides (lost by its old side)",
+    "contacts": "a capture whose link turns a piece into a spy",
+}
+
+
 def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     """Schema 26 (Q918a): the round, the collision table, the tie, the void bar and what an
     ending reached by both means (`docs/reference/rounds.md` §2, §3); schema 27's chase
@@ -2612,14 +2649,48 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
         # Schema 27 (Q935a, `docs/plan-spy.md` §1): the phases first, since every round
         # sentence below applies only once a spy is lost.
         named = " or ".join(spies)
+        ways = [_SPY_GAIN_WORDS[route] for route in spy_gain_routes(spec)]
+        # SR7h (Y3) and SR7i (Y4 to Y6, `docs/plan-schema-next.md` §2.12): a promotion, a
+        # strike, a side switch or a link into a spy gains one for the piece's owner.
+        how = (ways[0] if len(ways) == 1 else ", ".join(ways[:-1]) + " or " + ways[-1]) if ways else ""
+        regained = (
+            f"{how[:1].upper()}{how[1:]} gains a spy for whoever owns the piece after the "
+            "move, and who has a spy is read again after "
+            "every move and round, both ways: a second spy is one more to lose; when a round "
+            "leaves both players with a spy they take turns again, the player who did not "
+            "gain moving first (the first player if both did); a spy gained in secret rounds "
+            "starts announced ones, the other player announcing; and a player who wins a spy "
+            "back on their reply move is back to taking turns."
+        ) if ways else "A spy lost is never regained."
+        if "drops" in spy_gain_routes(spec):
+            # SR7j (Y7, Y8): a spy in a hand is held, not on the board.
+            regained += (
+                " A spy in a hand counts for nobody until it is dropped"
+                + (
+                    "; a spy taken into a hand is lost by its side at the capture and is "
+                    "its taker's to drop."
+                    if (rules.get("drops") or {}).get("from_captures", True) is not False
+                    else "."
+                )
+            )
+        if nobodys_spy_ids(spec):
+            # SR7k (O6): a spy nobody owns counts for neither player.
+            regained += (
+                " A spy nobody owns counts for neither player and gives nobody secrecy; "
+                + (
+                    "taken, it goes to its taker's hand, and dropping it gains it."
+                    if "drops" in spy_gain_routes(spec)
+                    and (rules.get("drops") or {}).get("from_captures", True) is not False
+                    else "taken, it is gone."
+                )
+            )
         lines = [
             f"The spy ({named}) decides how the game is played. While both players have a "
             "spy on the board, they take turns as usual. When one player loses their last "
             "spy, they first play one ordinary reply move if it is their turn, so a spy's "
             "taker can be taken back; from then on the game is played in rounds in which "
             "the player without a spy announces their move first, and the other chooses "
-            "knowing it. Once neither has a spy, both choose in secret. A spy lost is never "
-            "regained.",
+            "knowing it. Once neither has a spy, both choose in secret. " + regained,
             "In a round both moves are made together, on the board both chose from. There "
             "is no check at any time: a royal piece may be left where it can be taken.",
         ]
@@ -2642,7 +2713,39 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
             "swap squares, do not collide."
         ),
     ]
-    speeds = {pid: speed for pid, speed in piece_speeds(spec).items() if speed > 0}
+    strike = rules.get("strike")
+    if isinstance(strike, dict) and strike.get("position") == "stay" and strike_is_live(strike):
+        # SR7e (R11, ruled 2026-10-27): a shot does not move its shooter, so it never
+        # collides, and shots are made before the round's moves.
+        lines.append(
+            "A capture the strike reaches is a shot: the shooter never leaves its square, so "
+            "it never collides, and the shots are made before the round's moves, each on the "
+            "piece standing on its target when the round began. A piece a shot strikes does "
+            "not make its own move; two shots at each other both hit."
+        )
+    if neutral_ids(spec):
+        # SR7f (R18, ruled 2026-10-27): two moves onto a nobody's piece's square are a
+        # collision as any other; two strikes at it that stay meet the same way.
+        held = sorted(majority_ids(spec))
+        lines.append(
+            ("A piece nobody owns stands still in a round unless a player holds it. "
+             if held else "A piece nobody owns stands still in a round. ")
+            + "Two moves onto its square collide as "
+            "any two do: the winner takes it too, and with no winner it goes with them, taken "
+            "by nobody. Two moves that strike it without moving meet the same way, and only "
+            "the winner's strikes."
+        )
+        if held:
+            # SR7n (R20, staged 2026-11-05 by SR7g): the holder is read on the round's board,
+            # and a held move is that player's one move of the round, an arrival as any other.
+            lines.append(
+                f"A held piece ({', '.join(held)}) is moved by the player who holds it when the "
+                "round begins, as that player's move of the round: it collides as any moving "
+                "piece does, by beats and the tie, and stays nobody's whatever it meets; what "
+                "it claims or reaches, it claims or reaches for that player. Who holds it after "
+                "the round is read afresh."
+            )
+    speeds ={pid: speed for pid, speed in piece_speeds(spec).items() if speed > 0}
     if speeds and has_speeds(spec):
         # Schema 28 (Q943a, `docs/archive/plan-speed.md` §2.4, §4.3): the order before the
         # collision sentence, which then reads only for equal speeds.
@@ -3353,6 +3456,15 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
                if has_royal and not is_simultaneous(rules) else "")
             + ". The shields are read as the wild pieces set off after a move, before any of "
             "them steps."
+        )
+    # SR7b (L3, ruled 2026-10-27): in a turn of several moves a phase follows every move.
+    if turn_is_long(rules):
+        lines.append(
+            "In a turn of several moves the wild pieces set off after every move of it, the "
+            "first as well as the last"
+            + (", and a piece that pounces takes from the player who has just moved, who may "
+               "be about to move again" if pouncers else "")
+            + "."
         )
     return lines
 

@@ -558,7 +558,7 @@ def set_rule(spec: dict[str, Any], key: str, value: Any) -> dict[str, Any]:
 
 
 def settle_en_passant(spec: dict[str, Any]) -> dict[str, Any]:
-    """Drop ``en_passant`` once the spec can no longer hold it. Two reasons.
+    """Drop ``en_passant`` once the spec can no longer hold it.
 
     The dangling-reference repair ``drop_piece`` already makes for a promotion whose
     piece is gone, one level down: en passant answers a **two-square** move by the
@@ -569,23 +569,18 @@ def settle_en_passant(spec: dict[str, Any]) -> dict[str, Any]:
     where an operator whose every child is thrown away looks exactly like one that had
     nothing to do.
 
-    The second reason is a turn of more than one move, where the window a double step
-    opens is still open on the mover's own next move. ``set_turn`` calls this, which is
-    why ``_lengthen_the_turn`` still has something to do on the 45 library specs that
-    declare en passant instead of being refused on every one of them.
+    A turn of more than one move was a second reason until SR7a (L1, generation 97): the
+    window is now the opponent's, opened by the mover's last double step of the turn, so
+    ``set_turn`` keeps en passant.
 
-    Asked through ``schema.can_double_step`` and ``schema.turn_is_long``, which are the
-    validator's own readings, so a transform can never leave behind a spec the validator
-    will refuse for either reason. Called by every edit that can *shorten* a move or
-    *lengthen* a turn.
+    Asked through ``schema.en_passant_is_inert``, the validator's own reading, so a
+    transform can never leave behind a spec the validator will refuse for it. Called by
+    every edit that can *shorten* a move or *lengthen* a turn.
     """
-    from chess_variant_sandbox.spec.schema import en_passant_is_inert, turn_is_long
+    from chess_variant_sandbox.spec.schema import en_passant_is_inert
 
     rules = spec.get("rules", {})
     if not rules.get("en_passant"):
-        return spec
-    if turn_is_long(rules):
-        rules.pop("en_passant", None)
         return spec
     # no single promoting piece: a refusal of its own, not this one
     if en_passant_is_inert(spec):
@@ -1118,18 +1113,14 @@ def _settle_sights(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any
 def _settle_rests(listed: list[Any], rules: dict[str, Any]) -> list[str]:
     """Schema 29 (Q983a, `docs/plan-rest.md` §3.1, §5.1): what an edit can leave of the rests
     that the validator refuses. A rest on a type no player moves (a wild
-    piece) or on one that lost its last move and has no stock goes; and every rest goes
-    beside a turn of more than one move."""
-    from chess_variant_sandbox.spec.schema import piece_has_stock, turn_is_long
+    piece) or on one that lost its last move and has no stock goes. A long turn keeps them
+    (SR7d, L2: a piece that moved this turn rests the rest of it, then its turns)."""
+    from chess_variant_sandbox.spec.schema import piece_has_stock
 
     written = [piece for piece in listed if isinstance(piece, dict) and "rest" in piece]
     if not written:
         return []
     dropped: list[str] = []
-    if turn_is_long(rules):
-        for piece in written:
-            piece.pop("rest")
-        return ["rest"]
     skipped = {
         npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
     }
@@ -1486,8 +1477,8 @@ def set_turn(spec: dict[str, Any], moves: int = 2) -> dict[str, Any]:
     nobody has measured one, and guessing at it here would be inventing data -- which is
     the same rule that keeps `screen` and `turn` out of `rulesets/`.
 
-    `settle_en_passant` takes en passant with it, because a player who moves twice can
-    answer their own double step.
+    En passant stays (SR7a, L1: the window is the opponent's, opened by the mover's last
+    double step of the turn); `settle_en_passant` is asked as every turn edit asks it.
     """
     rules = spec.setdefault("rules", {})
     rules["turn"] = {"moves": moves, "ramp": [1]}

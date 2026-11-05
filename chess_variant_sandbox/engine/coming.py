@@ -8,8 +8,10 @@ as it is -- the same rule (``npc_step_of``), the same order, the same ``(from, t
 steps ``Engine.apply_with_phase`` reports -- then plays it again on the board the first one
 left, and puts the board back.
 
-A wild piece walks twice before the player to move moves again -- after that player's move
-and after the reply -- so the board asks for two phases (Q764). The real phases run after
+The board asks for two phases (Q764): the one after the next move and the one after the move
+that follows it, which is the reply, or in a long turn (SR7b) the mover's own next move while
+its turn lasts; a pouncer's prey is the player who makes that move, read off the turn's
+schedule by the core. The real phases run after
 the *coming* moves, which may step into a wild piece's way, clear it, or take the piece,
 so this is not a prediction of those moves. Wild pieces walk fixed routes: nothing in it
 is drawn at random.
@@ -26,8 +28,8 @@ from __future__ import annotations
 from chess_variant_sandbox.engine.engine import Engine, _pack
 from chess_variant_sandbox.engine.state import GameState, PhaseStep
 
-# How many phases the board draws: the one after the next move and the one after the
-# reply, which is every phase before the player now to move moves again.
+# How many phases the board draws: the one after the next move and the one after the move
+# after that (the reply, or in a long turn the same player's next move).
 COMING_PHASES = 2
 
 

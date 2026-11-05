@@ -385,22 +385,20 @@ class TestAPawnNeverTakesItsOwnInPassing:
         assert self._passing(engine.move_texts(window(1))) == ["Pe5xd6 e.p."]
         assert self._passing(engine.move_texts(window(0))) == []
 
-    def test_a_long_turn_does_not_take_its_own_double_step(self, monkeypatch) -> None:
-        """The fuzzer's spec, past the validator that refuses it (Q341).
+    def test_a_long_turn_does_not_take_its_own_double_step(self) -> None:
+        """The fuzzer's spec, which validates since SR7a (L1).
 
         White's first move double-steps b2-b4 and leaves White to move again, with the
         window on b3 open and the pawn on a2 beside it. Before Q531 `Pa2xb3 e.p.` was
         legal and, with the `strike` rule, panicked the core on the self-capture. The
-        guard stays: whether the opponent may answer a double step made on a turn's
-        first move is still the open design question `docs/bugs.md` names.
+        window stays open for Black's first move (`tests/test_en_passant_long_turn.py`).
         """
         spec = json.loads(
             (Path(__file__).parent / "_en_passant_in_a_long_turn.json").read_text(
                 encoding="utf-8"
             )
         )
-        assert validate_spec(spec), "the validator still refuses the pair"
-        monkeypatch.setattr(compile_module, "validate_or_raise", lambda spec: None)
+        assert validate_spec(spec) == []
         engine = Engine(compile_spec(spec))
 
         state = engine.initial_state()

@@ -395,19 +395,19 @@ class TestRefusals:
         spec["setup"]["placements"].append({"piece": "K", "player": "nobody", "squares": ["e3"]})
         _refused(spec, "a royal always belongs to a player")
 
-    def test_a_spy_for_nobody(self):
+    def test_a_spy_for_nobody_is_lifted_since_sr7k(self):
+        # O6, lifted by SR7k (generation 106): a nobody's spy gives nobody secrecy
+        # (`tests/test_spy_for_nobody.py` plays it).
         spec = _spec()
         spec["pieces"][2]["spy"] = True
         spec["setup"]["placements"].append({"piece": "G", "player": "nobody", "squares": ["e3"]})
-        _refused(spec, "a spy is never gained")
+        assert not [error for error in validate_spec(spec) if "never gained" in error]
 
-    @pytest.mark.parametrize("key, value, rid", [
-        ("simultaneous", {}, "R18"),
-        # O3 and O4 (a strike, contacts) lifted by SR4k: `tests/test_struck_nobody.py`.
-    ])
-    def test_beside_a_rule_that_shares_the_block_or_the_capture(self, key, value, rid):
-        spec = _spec(**{key: value})
-        _refused_pair(spec, rid)
+    def test_rounds_are_lifted(self):
+        """SR7n (`docs/plan-schema-next.md` R20; R18's narrower row, SR7f): a held piece in
+        rounds is its holder's one move of the round; `tests/test_held_in_rounds.py` holds the
+        core to it. O3 and O4 (a strike, contacts) lifted by SR4k: `tests/test_struck_nobody.py`."""
+        assert validate_spec(_spec(simultaneous={}, win="royal_capture")) == []
 
     @pytest.mark.parametrize("key, value", [
         ("territory", {"mode": "repaint"}),

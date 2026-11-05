@@ -115,23 +115,22 @@ from chess_variant_sandbox.tournament.analysis import (
     BLUNDER_FRACTION,
     BLUNDER_SAMPLE,
     PLY_STRIDE,
-    SPY_COUNTS,
     BlunderTrial,
     CorpusAnalysis,
     GameAnalysis,
     SpyStep,
+    blank_spy_counts,
     blunder_rng,
     count_rest,
     count_round,
     count_sight,
+    count_spy_holders,
     mover_kind,
     moves_an_instance,
     rest_tally,
     round_blunder,
     round_tallies,
     sight_tally,
-    spy_holders,
-    spy_loss,
     spy_round_blunder,
     starting_squares,
     takes,
@@ -853,7 +852,7 @@ def _walk_steps(
     `_play_spy_python`): once a turn, and twice a round, each seat's own branching. The
     analysis fields are `analysis._analyse_rounds`' and `_analyse_spy`'s reading, the
     round and spy tallies and the sights among them, through the pass's own counters
-    (`count_round`, `count_sight`, `spy_holders`, `spy_loss`). A step is sampled where the
+    (`count_round`, `count_sight`, `count_spy_holders`). A step is sampled where the
     pass samples it, and gives a sample for each seat with a choice when both have a move,
     which is when the pass's reading of a round exists.
     """
@@ -878,7 +877,7 @@ def _walk_steps(
     captures: list[int] = []
     rounds = round_tallies(engine)
     spies: dict[str, Any] | None = (
-        {key: (None if key.startswith("lost_") else 0) for key in SPY_COUNTS} if spy else None
+        blank_spy_counts() if spy else None
     )
     sight = sight_tally(engine)
     rest = rest_tally(engine)
@@ -989,12 +988,7 @@ def _walk_steps(
         else:
             seen.add(after.key)
         if spies is not None and step_phase is not None:
-            lost = spy_holders(step_phase, state.side_to_move) - spy_holders(
-                engine.phase(after), after.side_to_move
-            )
-            for player in sorted(lost):
-                spies[f"lost_ply_{player}"] = len(keys)
-                spies[f"lost_how_{player}"] = spy_loss(engine, step.as_spy_step(), player)
+            count_spy_holders(engine, spies, step.as_spy_step(), len(keys))
 
         state = after
         ply += len(words)

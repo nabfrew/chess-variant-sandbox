@@ -1114,6 +1114,7 @@ class Engine:
         heading_back: Iterable[str] = (),
         duck_owed: bool = False,
         purse: tuple[int, int] | None = None,
+        hands: tuple[Iterable[int], Iterable[int]] | None = None,
     ) -> GameState:
         """Build a position directly, for tests, puzzles, and CLI setup.
 
@@ -1130,6 +1131,10 @@ class Engine:
         false, the side to move owes its piece move. Place the duck as ``("D", 2)``.
         ``purse`` (TC4) is each player's coins; left out, both hold the purse's start, and
         without a purse it is ``(0, 0)`` whatever is given.
+        ``hands`` is each player's held pieces, counted by type in ``spec.piece_ids`` order;
+        left out, a drop game's hands are empty (one zero per type, the shape the core indexes
+        at a capture and a drop), and without ``rules.drops`` there is no hand whatever is
+        given.
         """
         spec = self.spec
         board = bytearray(spec.n_squares)
@@ -1170,9 +1175,29 @@ class Engine:
                 (purse if purse is not None else (spec.purse.start, spec.purse.start))
                 if spec.purse is not None else (0, 0)
             ),
+            hands=self._hands(hands),
         )
         key = self._compute_hash(state)
         return state.with_(key=key, repetition=(key,))
+
+    def _hands(
+        self, hands: tuple[Iterable[int], Iterable[int]] | None,
+    ) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        """`make_state`'s hands: sized to the types wherever the game has drops (the core's
+        `deposit_capture` indexes a hand by the taken piece's type, so an empty one panicked at
+        the first capture), and empty otherwise, as `GameState`'s default."""
+        if self.spec.drops is None:
+            return ((), ())
+        n_types = self.spec.n_types
+        if hands is None:
+            return ((0,) * n_types, (0,) * n_types)
+        first, second = (tuple(int(count) for count in hand) for hand in hands)
+        for player, hand in enumerate((first, second)):
+            if len(hand) != n_types or any(count < 0 for count in hand):
+                raise ValueError(
+                    f"hands[{player}] must hold {n_types} counts of zero or more, got {hand!r}"
+                )
+        return (first, second)
 
     def duck_owed(self, state: GameState) -> bool:
         """Generation 42 (N4b): whether ``state``'s side to move owes its duck move, the

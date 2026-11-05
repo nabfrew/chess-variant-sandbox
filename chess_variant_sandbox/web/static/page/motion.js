@@ -157,6 +157,12 @@ function burn(svg, piece, x, y, cell, blow, from) {
       filter: 'brightness(2)' },
   ], { duration: PACE.blastBurn, delay: start, easing: 'ease-in', fill: 'forwards' });
   run.onfinish = () => ghost.remove();
+  // A piece that travels to its blast (`blow.arriving`: the atomic capturer, a sweeper) is not
+  // on this square until it gets there, so its burning copy is held unseen until then (Q1101:
+  // a sweep's landing showed the sweeper standing on it from the start of the move).
+  if (blow.arriving && blow.at > 0) {
+    ghost.animate([{ opacity: 0 }, { opacity: 0 }], { duration: blow.at });
+  }
   return start + PACE.blastBurn;
 }
 

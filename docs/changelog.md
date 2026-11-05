@@ -14,6 +14,18 @@ any other address keeps its brackets.
 
 ## 2026-11-05
 
+### Longer turns, rounds and spies that change hands
+
+Another family of rules now works together. A turn can hold several moves alongside wild pieces, resting pieces and the
+duck. Games where both players move at once can now have a piece that shoots without moving, pieces nobody owns
+(including ones whoever has more pieces beside them controls), and a market for buying pieces. In a spy game a spy can
+now be won back: a pawn may promote into one, a capture can send one to your hand to drop later, a spy can be bought, or
+placed on the board for nobody. Who moves next follows who holds a spy. Every game in the library was checked again
+under the new rules, and no score changed.
+
+The board also shows more of what happens in a move: a sweeping piece's explosions go off on each square they hit, and
+a sweep through a fold slides into it and rises from the far end, on the play page and in saved replays.
+
 ### Portals and sweeps reach more rules
 
 Two more families of rules can now be combined in one game. Portals work beside territory, beside pieces that may

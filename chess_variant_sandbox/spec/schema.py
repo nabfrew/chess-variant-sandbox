@@ -1336,8 +1336,8 @@ def _check_rest_coherence(
                 f"pieces[{index}].rest is on a piece with no moves that no hand can drop: a "
                 "piece that never moves never rests; leave it out"
             )
-    if turn_is_long(rules):
-        errors.append(refusal("L2"))
+    # L2 lifted by SR7d: beside a long turn a piece that moved this turn rests the rest of
+    # it, then its `rest` turns.
 
 
 # Schema 30 (Q999a, `docs/archive/plan-passive.md` §2): lines of sight. A type declares at most
@@ -1985,12 +1985,12 @@ def speed_ranks_in_use(spec: dict[str, Any]) -> list[int]:
 
 def speeds_order_a_round(spec: dict[str, Any]) -> bool:
     """Whether some type one player can hold and some type the other can hold differ in
-    speed (over `simultaneous_holdings`); otherwise every round is an equal-speed round and
+    speed (over `simultaneous_movers`); otherwise every round is an equal-speed round and
     the speeds are inert (§4.1). False for a game that declares none."""
     if not has_speeds(spec):
         return False
     speeds = piece_speeds(spec)
-    first, second = simultaneous_holdings(spec)
+    first, second = simultaneous_movers(spec)
     return any(
         speeds[x] != speeds[y] for x in first for y in second if x in speeds and y in speeds
     )
@@ -2002,7 +2002,7 @@ def has_equal_speed_opponent(spec: dict[str, Any], piece_id: str) -> bool:
     speeds (§2.3), so a type with none never collides. True where no player can hold the
     type, which is not speed's business."""
     speeds = piece_speeds(spec)
-    held = simultaneous_holdings(spec)
+    held = simultaneous_movers(spec)
     holders = [player for player in (0, 1) if piece_id in held[player]]
     if not holders:
         return True
@@ -2014,7 +2014,7 @@ def _any_equal_speed_meeting(spec: dict[str, Any]) -> bool:
     """Whether some type one player can hold and some type the other can hold share a
     speed, so that a collision can happen at all (§2.3)."""
     speeds = piece_speeds(spec)
-    first, second = simultaneous_holdings(spec)
+    first, second = simultaneous_movers(spec)
     return any(speeds.get(x, 0) == speeds.get(y, 0) for x in first for y in second)
 
 
@@ -2109,7 +2109,7 @@ def simultaneous_swap_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
     A swap is two moves each ending on the other's origin while the other stands there, so
     each is a capture of the other: without such a pair no swap can happen and
     ``swap: "collision"`` can never fire (`docs/archive/plan-round-chase.md` §3 R2). Over
-    `simultaneous_holdings`, so a type a player can come to hold counts; a piece takes a
+    `simultaneous_movers`, so a type a player can come to hold or move counts; a piece takes a
     type when its ``captures`` allows it and it has a move that may capture. Schema 28
     (Q943a): only a pair of equal speed, since between unequal speeds the faster takes the
     slower where it stands and no swap happens (`docs/archive/plan-speed.md` §2.5, case B)."""
@@ -2127,7 +2127,7 @@ def simultaneous_swap_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
             for move in piece.get("moves") or []
         )
 
-    first, second = simultaneous_holdings(spec)
+    first, second = simultaneous_movers(spec)
     for x in sorted(first):
         for y in sorted(second):
             if (
@@ -2226,6 +2226,18 @@ def simultaneous_holdings(spec: dict[str, Any]) -> tuple[set[str], set[str]]:
             return held[0], held[1]
 
 
+def simultaneous_movers(spec: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """The piece ids each player can ever move in a round: `simultaneous_holdings`, and since
+    SR7n (R20) every type a held piece (majority control) can be, for both players, since
+    either may come to hold it (`majority_ids`). What a round's collisions, swaps and speeds
+    are read over; `simultaneous_holdings` stays what a player *owns* (a sight's sides, a
+    spy's gains), which a held piece never is. So a held type X is in both players' sets and
+    the pair (X, X) always ties: `tie: "impossible"` is refused beside any held type."""
+    first, second = simultaneous_holdings(spec)
+    held = majority_ids(spec)
+    return first | held, second | held
+
+
 def simultaneous_tie_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
     """The first pair of a player-0 type and a player-1 type whose collision is a tie (both
     beat the other, or neither does), or ``None`` when no tie can occur (§3.1, F). Schema 28
@@ -2235,7 +2247,7 @@ def simultaneous_tie_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
     by_id = {piece["id"]: piece for piece in pieces if isinstance(piece.get("id"), str)}
     declared = list(by_id)
     speeds = piece_speeds(pieces)
-    first, second = simultaneous_holdings(spec)
+    first, second = simultaneous_movers(spec)
     for x in sorted(first):
         for y in sorted(second):
             if speeds.get(x, 0) != speeds.get(y, 0):
@@ -2282,43 +2294,256 @@ def placed_ids(spec: dict[str, Any]) -> tuple[set[str], set[str]]:
     return held
 
 
-def _spy_gains(rules: dict[str, Any], spies: set[str]) -> list[str]:
-    """Every route by which a player could come to hold a spy it did not start with
-    (`docs/plan-spy.md` §1.2, *never gained*), each as the words of its refusal."""
-    found: list[str] = []
+def _promotion_targets_for(entry: dict[str, Any], player: int) -> set[str]:
+    """What one promotion rule can turn ``player``'s piece into, either spelling."""
+    by_player = entry.get("to_by_player")
+    if isinstance(by_player, dict):
+        targets = by_player.get(str(player), by_player.get(player))
+    else:
+        targets = entry.get("to")
+    if not isinstance(targets, list):
+        return set()
+    return {target for target in targets if isinstance(target, str)}
+
+
+def spy_promotion_targets(spec: dict[str, Any]) -> list[str]:
+    """SR7h (Y3): the spy types some promotion can turn a piece into, sorted; a promotion into
+    one gains a spy. Empty in a game without a spy or without such a promotion."""
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    spies = set(spy_ids(spec))
+    found: set[str] = set()
     for entry in _promotion_entries(rules):
         if isinstance(entry, dict):
-            for target in sorted(_promotion_target_ids(entry) & spies):
-                found.append(f"rules.promotion turns a piece into the spy {target!r}")
+            found |= _promotion_target_ids(entry) & spies
+    return sorted(found)
+
+
+SPY_GAIN_ROUTES = ("promotion", "drops", "purse.market", "strike.chain", "strike.switches_sides", "contacts")
+
+
+def spy_drop_ids(spec: dict[str, Any]) -> list[str]:
+    """SR7j (Y7, Y8): the spy types some player can drop, sorted: one in a stock, or one a
+    capture files into a hand under `from_captures` (demoted by ``promoted_from``, as the
+    core's `deposit_capture` does). Empty without a spy or without `rules.drops`."""
+    spies = set(spy_ids(spec))
+    rules = spec.get("rules")
+    drops = rules.get("drops") if isinstance(rules, dict) else None
+    if not spies or not isinstance(drops, dict) or not drops:  # ``{}`` compiles to no drops
+        return []
+    found = spies & stocked_ids(drops)
+    if drops.get("from_captures", True) is not False:
+        pieces = [piece for piece in _listed(spec.get("pieces")) if isinstance(piece, dict)]
+        declared = {piece.get("id") for piece in pieces}
+        demoted = {
+            piece.get("id"): piece["promoted_from"] for piece in pieces
+            if piece.get("promoted_from") in declared
+        }
+        first, second = simultaneous_holdings(spec)
+        found |= spies & {demoted.get(pid, pid) for pid in first | second}
+    return sorted(found)
+
+
+def spy_market_ids(spec: dict[str, Any]) -> list[str]:
+    """SR7m (O27): the spy types `rules.purse.market` sells, sorted. A bought spy is a spy
+    gained when it stands on the board after its move or round. Empty without a spy or a
+    market."""
+    spies = set(spy_ids(spec))
+    return sorted(spies & set(purse_market(spec))) if spies else []
+
+
+def nobodys_spy_ids(spec: dict[str, Any]) -> list[str]:
+    """SR7k (O6): the spy types a piece nobody owns can be, sorted: one placed for nobody, or
+    one a strike or a contact makes of a nobody's piece (`nobodys_ids`). Such a spy gives
+    nobody secrecy (the phase counts the players' spies only); taken, it is gone, or the
+    taker's to drop under a capture hand. Empty without a spy."""
+    spies = set(spy_ids(spec))
+    return sorted(spies & nobodys_ids(spec)) if spies else []
+
+
+def spy_gain_routes(spec: dict[str, Any]) -> list[str]:
+    """SR7h to SR7j (Y3 to Y8): the rules by which a spy can be gained on the board, in
+    `SPY_GAIN_ROUTES`' order: a promotion into a spy type, a drop of one (SR7j: a spy in a
+    stock, or a taken spy under `from_captures`, held for nobody until dropped), a strike
+    chain into one, a strike `switches_sides` naming one (the spy changes sides: lost by one,
+    gained by the other), a contact link whose `mover_to` or `onto_to` is one; and since SR7m
+    (O27) a buy of one from the market (`spy_market_ids`). Empty without a spy."""
+    spies = set(spy_ids(spec))
+    rules = spec.get("rules")
+    if not spies or not isinstance(rules, dict):
+        return []
+    found: set[str] = set()
+    if spy_promotion_targets(spec):
+        found.add("promotion")
+    if spy_drop_ids(spec):
+        found.add("drops")
+    if spy_market_ids(spec):
+        found.add("purse.market")
     strike: dict[str, Any] = rules["strike"] if isinstance(rules.get("strike"), dict) else {}
-    for link in _listed(strike.get("chain")):
-        if isinstance(link, dict) and _in(link.get("to"), spies):
-            found.append(f"rules.strike.chain turns a piece into the spy {link['to']!r}")
-    switching = _str_set(_listed(strike.get("switches_sides")))
-    for spy in sorted(switching & spies):
-        found.append(
-            f"rules.strike.switches_sides names the spy {spy!r}, which would join the other "
-            "player when it captures"
-        )
+    if any(isinstance(link, dict) and _in(link.get("to"), spies) for link in _listed(strike.get("chain"))):
+        found.add("strike.chain")
+    if _str_set(_listed(strike.get("switches_sides"))) & spies:
+        found.add("strike.switches_sides")
     contacts: dict[str, Any] = (
         rules["contacts"] if isinstance(rules.get("contacts"), dict) else {}
     )
-    for link in _listed(contacts.get("links")):
-        if not isinstance(link, dict):
+    if any(
+        isinstance(link, dict) and (_in(link.get("mover_to"), spies) or _in(link.get("onto_to"), spies))
+        for link in _listed(contacts.get("links"))
+    ):
+        found.add("contacts")
+    return [route for route in SPY_GAIN_ROUTES if route in found]
+
+
+def _foreign_spy_promotions(
+    rules: dict[str, Any], spies: set[str], started: tuple[set[str], set[str]],
+    holdings: tuple[set[str], set[str]],
+) -> list[str]:
+    """SR7h (Y3, `docs/plan-schema-next.md` §2.12): a promotion into a spy gains it, but only
+    into one of the promoting player's own spy types (those it starts with on the board,
+    `compile.SpyRule.types`); one of the other player's would be a spy for nobody."""
+    found: list[str] = []
+    for entry in _promotion_entries(rules):
+        if not isinstance(entry, dict):
             continue
-        for key in ("mover_to", "onto_to"):
-            if _in(link.get(key), spies):
-                found.append(f"a rules.contacts link turns a piece into the spy {link[key]!r}")
+        for player in (0, 1):
+            if entry.get("piece") not in holdings[player]:
+                continue
+            for target in sorted((_promotion_targets_for(entry, player) & spies) - started[player]):
+                found.append(
+                    f"rules.promotion turns player {player}'s piece into the spy {target!r}, "
+                    f"which player {player} does not start with: a spy counts for the player "
+                    "whose spy type it is, so promote each player into its own spy"
+                )
+    return found
+
+
+def _foreign_spy_drops(
+    pieces: list[Any], rules: dict[str, Any], spies: set[str],
+    started: tuple[set[str], set[str]], holdings: tuple[set[str], set[str]],
+    nobodys: set[str],
+) -> list[str]:
+    """SR7j (Y7, Y8, `docs/plan-schema-next.md` §2.12): a spy in a hand is held, not on the
+    board, and counts for nobody until it is dropped; dropping it gains it for the dropper.
+    As every other gain (`_foreign_spy_gains`), only as one of the dropper's own spy types
+    (those it starts with on the board, `compile.SpyRule.types`): a spy in a player's stock,
+    or one it could take from the other into its hand (demoted by ``promoted_from``, as
+    `deposit_capture` files it), that it does not start with would be a spy for nobody.
+    SR7k (O6): ``nobodys`` (`nobodys_ids`) are the types a nobody's piece can be; either
+    player may take one into its hand, so a nobody's spy type there is read as one taken
+    from the other player."""
     drops = rules.get("drops")
-    if isinstance(drops, dict):
-        for spy in sorted(spies & stocked_ids(drops)):
-            found.append(f"rules.drops.stock puts the spy {spy!r} in a hand")
-        if drops.get("from_captures", True) is not False:
+    if not isinstance(drops, dict) or not drops:  # ``{}`` compiles to no drops
+        return []
+    declared = {piece["id"] for piece in pieces if isinstance(piece, dict) and isinstance(piece.get("id"), str)}
+    demoted = {
+        piece["id"]: piece["promoted_from"] for piece in pieces
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+        and piece.get("promoted_from") in declared
+    }
+    fills = drops.get("from_captures", True) is not False
+    found: list[str] = []
+    for player, stock in enumerate(player_stocks(drops)):
+        for spy in sorted(spies & _str_set(stock) - started[player]):
             found.append(
-                "rules.drops fills a hand from captures, and a taken spy would come back as "
-                "its taker's (set from_captures to false)"
+                f"rules.drops.stock gives player {player} the spy {spy!r} to drop, which player "
+                f"{player} does not start with: a spy counts for the player whose spy type it "
+                "is, so stock each player's own spy"
+            )
+        if not fills:
+            continue
+        taken = {demoted.get(pid, pid) for pid in holdings[1 - player] | nobodys}
+        for spy in sorted(spies & taken - started[player] - _str_set(stock)):
+            found.append(
+                f"rules.drops fills player {player}'s hand with the spy {spy!r} it takes, "
+                f"which player {player} does not start with: a spy counts for the player whose "
+                "spy type it is, so give both players one spy type, demote it in the hand "
+                "(promoted_from), or set from_captures to false"
             )
     return found
+
+
+def _foreign_spy_gains(
+    rules: dict[str, Any], spies: set[str], started: tuple[set[str], set[str]],
+    holdings: tuple[set[str], set[str]],
+) -> list[str]:
+    """SR7i (Y4 to Y6, `docs/plan-schema-next.md` §2.12): a strike chain, a side switch or a
+    contact link that makes a spy gains it for the piece's owner after the move, but, as a
+    promotion's (`_foreign_spy_promotions`), only as one of that owner's own spy types (those
+    it starts with, `compile.SpyRule.types`); one of the other player's would be a spy for
+    nobody. Each route is read per player who can hold the piece it acts on (``holdings``)."""
+    found: list[str] = []
+
+    def foreign(player: int, spy: str, how: str) -> None:
+        if spy in spies and spy not in started[player]:
+            found.append(
+                f"{how} gives player {player} the spy {spy!r}, which player {player} does "
+                "not start with: a spy counts for the player whose spy type it is, so make "
+                "each player's piece into its own spy"
+            )
+
+    strike: dict[str, Any] = rules["strike"] if isinstance(rules.get("strike"), dict) else {}
+    contacts: dict[str, Any] = (
+        rules["contacts"] if isinstance(rules.get("contacts"), dict) else {}
+    )
+    switching = _str_set(_listed(strike.get("switches_sides")))
+    for player in (0, 1):
+        for link in _listed(strike.get("chain")):
+            if (
+                isinstance(link, dict) and link.get("from") in holdings[player]
+                and isinstance(link.get("to"), str)
+            ):
+                foreign(player, link["to"], "rules.strike.chain")
+        for spy in sorted(switching & spies & holdings[1 - player]):
+            foreign(player, spy, "rules.strike.switches_sides")
+        for link in _listed(contacts.get("links")):
+            if not isinstance(link, dict):
+                continue
+            if link.get("mover") in holdings[player] and isinstance(link.get("mover_to"), str):
+                foreign(player, link["mover_to"], "a rules.contacts link's mover_to")
+            if link.get("onto") in holdings[player] and isinstance(link.get("onto_to"), str):
+                foreign(player, link["onto_to"], "a rules.contacts link's onto_to")
+    return sorted(set(found), key=found.index)
+
+
+def _foreign_spy_buys(rules: dict[str, Any], spies: set[str], started: tuple[set[str], set[str]]) -> list[str]:
+    """SR7m (O27, `docs/plan-schema-next.md` §2.11): a spy a market sells is gained by its
+    buyer when it stands on the board, and, as every other gain, only as one of the buyer's own
+    spy types (those it starts with on the board): a market spy type a player does not start
+    with would be a spy for nobody when that player buys it. A market sells to both players."""
+    purse = rules.get("purse")
+    market = purse.get("market") if isinstance(purse, dict) else None
+    sold = {entry for entry in _listed(market) if isinstance(entry, str)} & spies
+    found: list[str] = []
+    for player in (0, 1):
+        for spy in sorted(sold - started[player]):
+            found.append(
+                f"rules.purse.market sells player {player} the spy {spy!r}, which player "
+                f"{player} does not start with: a spy counts for the player whose spy type it "
+                "is, so sell only a spy type both players start with"
+            )
+    return found
+
+
+def foreign_spy_gains(spec: dict[str, Any]) -> list[str]:
+    """The validator's refusals of a spy gained as a type its new owner does not start with
+    (SR7i's `_foreign_spy_gains` and SR7h's `_foreign_spy_promotions`), for a whole spec:
+    empty in a game without a spy. The operators ask it of a child, so they decline exactly
+    where the validator would refuse (`loop/operators.py::_spy_gain_guarded`)."""
+    spies = set(spy_ids(spec))
+    rules = spec.get("rules")
+    if not spies or not isinstance(rules, dict):
+        return []
+    started = placed_ids(spec)
+    holdings = simultaneous_holdings(spec)
+    return [
+        *_foreign_spy_promotions(rules, spies, started, holdings),
+        *_foreign_spy_gains(rules, spies, started, holdings),
+        *_foreign_spy_drops(
+            _listed(spec.get("pieces")), rules, spies, started, holdings, nobodys_ids(spec),
+        ),
+        *_foreign_spy_buys(rules, spies, started),
+    ]
 
 
 def _spy_can_be_removed(spec: dict[str, Any], rules: dict[str, Any], spy: str, by: set[str]) -> bool:
@@ -2354,8 +2579,11 @@ def _check_spy_coherence(
 ) -> None:
     """Schema 27 (Q935a): ``pieces[].spy`` and every refusal of `docs/plan-spy.md` §1.7, in
     words. A spy decides when a game plays in rounds, so it needs the round rule; it may be
-    lost but never gained, so the phases only move forward; both players start with one; and
-    something must be able to remove it, or the rule never fires."""
+    lost, and gained on the board as the player's own spy type (a promotion since SR7h, Y3; a
+    strike chain, a side switch or a contact link since SR7i, Y4 to Y6), the phase then read
+    afresh both ways; a spy in a hand since SR7j, Y7 and Y8, held for nobody until dropped);
+    both players start with one; and something must be able to remove it, or the rule never
+    fires."""
     flagged: list[tuple[int, dict[str, Any]]] = []
     for index, piece in enumerate(pieces):
         if not isinstance(piece, dict) or "spy" not in piece:
@@ -2398,11 +2626,6 @@ def _check_spy_coherence(
                 f"player {player} starts with no spy on the board, so the game would begin in "
                 "rounds; place a spy for each player"
             )
-    for route in _spy_gains(rules, spies):
-        errors.append(
-            f"pieces[].spy beside {route}: a spy may be lost but never gained, so the game "
-            "never goes back to taking turns"
-        )
     extinction = rules.get("extinction")
     if isinstance(extinction, dict) and extinction.get("per_type") in (True, EXTINCTION_PER_TYPE_OWN):
         for spy in sorted(spies & _str_set(_listed(extinction.get("pieces")))):
@@ -2411,6 +2634,13 @@ def _check_spy_coherence(
                 "would end the game, so its rounds would never be played"
             )
     holdings = simultaneous_holdings({**spec, "rules": rules, "pieces": pieces})
+    errors.extend(_foreign_spy_promotions(rules, spies, started, holdings))
+    errors.extend(_foreign_spy_gains(rules, spies, started, holdings))
+    errors.extend(_foreign_spy_drops(
+        pieces, rules, spies, started, holdings,
+        nobodys_ids({**spec, "rules": rules, "pieces": pieces}),
+    ))
+    errors.extend(_foreign_spy_buys(rules, spies, started))
     for player in (0, 1):
         mine = started[player] & spies
         if mine and not any(
@@ -2553,8 +2783,7 @@ def _check_simultaneous_coherence(
         position = stated.get("position", "advance")
         if position == "choose":
             errors.append(refusal("R10", f'rules.{key}.position: "choose"'))
-        if key == "strike" and position == "stay":
-            errors.append(refusal("R11"))
+        # R11 lifted by SR7e: a strike placed "stay" is a shot, made before the round's moves.
         if key == "contacts" and position == "swap" and any(
             isinstance(link, dict) and link.get("own") is True
             for link in stated.get("links") or []
@@ -2583,8 +2812,16 @@ def _check_simultaneous_coherence(
             "piece of the other; leave it out"
         )
     elif tie in SIMULTANEOUS_TIES:
-        pair = simultaneous_tie_pair({**spec, "rules": rules, "pieces": pieces})
-        if tie == "impossible" and pair is not None:
+        whole = {**spec, "rules": rules, "pieces": pieces}
+        pair = simultaneous_tie_pair(whole)
+        held = sorted(majority_ids(whole))
+        if tie == "impossible" and held:
+            # SR7n (R20): a held type is in both players' movers, so the pair (X, X) ties.
+            errors.append(
+                f'rules.simultaneous.tie "impossible", but {held[0]!r} is held (control '
+                '"majority"): either player may move it, so one of it can meet another and tie'
+            )
+        elif tie == "impossible" and pair is not None:
             errors.append(
                 f'rules.simultaneous.tie "impossible", but a {pair[0]} of the first player and '
                 f"a {pair[1]} of the second can collide and tie (each beats the other, or "
@@ -3801,7 +4038,7 @@ def turn_is_long(rules: dict[str, Any] | None) -> bool:
     """Does ``rules.turn`` ever give a player more than one move in a row?
 
     The validator's own reading of "a long turn", shared by every rule that is refused
-    beside one and by ``transform.settle_en_passant``, so the two cannot drift. ``ramp``
+    beside one, so the two cannot drift. ``ramp``
     counts: a turn of one move whose opening ramps to two is still a player moving twice.
     """
     turn = (rules or {}).get("turn")
@@ -4023,16 +4260,9 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
             "the promoting piece, so there must be one"
         )
 
-    # The core writes the en-passant window per *move* and flips the side only when the
-    # turn runs out, so inside a two-move turn a double step is still answerable by the
-    # player who made it -- a pawn taking its own pawn in passing. Refused rather than
-    # repaired in the core, which is the `npcs` precedent below: the core fix has to
-    # answer a design question nobody has asked (does the window close at the move or at
-    # the turn, and may the opponent answer a double step made on the first move?), and
-    # it would stale every stored measurement by build fingerprint. `docs/bugs.md` holds
-    # the reasoning.
-    if rules.get("en_passant") and turn_is_long(rules):
-        errors.append(refusal("L1"))
+    # SR7a (L1, ruled 2026-10-27) lifted en passant beside a long turn: the window is the
+    # opponent's, opened by the mover's last double step of the turn and open for the
+    # opponent's first move only (`Game::keeps_ep_window`).
 
     setup = spec.get("setup")
     if has_royal and isinstance(setup, dict) and isinstance(setup.get("placements"), list):
@@ -5221,8 +5451,9 @@ def _check_npc_coherence(
     _check_npc_pounce(npcs, by_id, rules, orientation, errors)
     _check_npc_split(npcs, rules, errors)
 
-    if turn_is_long(rules):
-        errors.append(refusal("L3"))
+    # SR7b (L3, ruled 2026-10-27): wild pieces beside a long turn are allowed. A phase follows
+    # every move, the turn's first as its last, so the legality filter plays the move and the
+    # phase and never asks whether the move ends the turn.
 
     if wants_points:
         def bounty_of(npc: Any) -> float:
@@ -9280,8 +9511,8 @@ def _check_neutral_coherence(
     A nobody's placement shares the third owner's block, which wild pieces, the duck and
     portal ends already use with readers of their own (the phase, the bounty tally, the duck
     half, a portal's moves), so a neutral is refused beside each of those until every such
-    reader asks the block's control kind; and beside rounds, a strike and contacts, whose
-    writes of what a capture leaves were never stated for nobody's piece. A majority type
+    reader asks the block's control kind (since lifted: SR3f, SR3g, SR4k for a strike and
+    contacts, SR7f for rounds, and SR7n for a held type in rounds). A majority type
     must read alike for both players, since its holder moves it in the first player's frame,
     and sits beside none of the rules that would make a second rule of what a nobody's mover
     claims, reaches or blasts.
@@ -9336,8 +9567,10 @@ def _check_neutral_coherence(
         )
         if piece.get("royal"):
             errors.append(f"{where}: a royal always belongs to a player")
-        if piece.get("spy") is True:
-            errors.append(f"{where}: a spy is never gained, and a nobody's piece may be")
+        # SR7k (O6, ruled 2026-10-28: lifted): a nobody's spy, placed or made by a strike or
+        # a contact, gives nobody secrecy: the phase counts the players' spies on the board
+        # only (`Game::has_spy` reads the two players' blocks). Taken into a hand it is the
+        # taker's to drop, as its own spy type only (`_foreign_spy_drops`).
         if pid in wild or pid == duck:
             errors.append(f"{where}: a wild type walks its route, it does not stand for nobody")
         if _stated_on(piece, "rest"):
@@ -9357,9 +9590,12 @@ def _check_neutral_coherence(
     # lifted a strike and contacts: a struck or linked nobody's piece becomes what the chain
     # or link says and stays nobody's (`nobodys_ids`), and a held piece's capture strikes, or
     # meets its target, as its holder's piece of the type would.
-    if "simultaneous" in rules:
-        errors.append(refusal("R18"))
-
+    # SR7f (R18, ruled 2026-10-27) lifted rounds for a piece that stands: two players' moves
+    # onto its square are a collision as any other (`docs/reference/rounds.md` §4 step 4).
+    # SR7n (R20, staged 2026-11-05 by SR7g) lifted a held piece (majority control) beside
+    # rounds: its holder is read on the round's board, and its move is that player's one move
+    # of the round, an arrival as any other; `tie: "impossible"` beside it fails its proof
+    # (`simultaneous_movers`), naming the held type.
     _check_neutral_squares(spec, setup, orientation, errors)
 
     majority = majority_ids(spec)
@@ -10625,7 +10861,7 @@ def hire_ids(spec: Any) -> set[str]:
 
 def bribe_ids(spec: Any) -> set[str]:
     """TC6: the types a player may bribe, at twice the price: every priced type under
-    ``rules.purse.bribe`` (a price is refused on a royal and a spy)."""
+    ``rules.purse.bribe`` (a price is refused on a royal; a spy game cannot bribe, R19)."""
     return set(piece_prices(spec)) if purse_bribes(spec) else set()
 
 
@@ -10750,15 +10986,16 @@ def _check_purse_coherence(
     refusal by name.
 
     * **a price's shape** -- a whole number 0 to ``PRICE_MAX`` (0 the off value); never on a
-      royal, a spy (TC6: a spy is never gained) or a wild type or the duck; and only where
+      royal or a wild type or the duck (a spy since SR7l, O24); and only where
       something charges it: a market that sells the type, a placement for nobody (a hire,
       TC6) or ``rules.purse.bribe`` (TC6);
-    * **beside** rounds (and so the spy), portals and a blast (§5.9; a long turn was lifted
-      by SR2, `docs/plan-schema-next.md` L6);
+    * **beside** rounds (and so the spy) when it can hire or bribe (SR7g lifted the market
+      there, R19); portals and a blast (§5.9; a long turn was lifted by SR2,
+      `docs/plan-schema-next.md` L6; portals by SR3g, a blast by SR4l);
     * **a fractional wild bounty**: a purse holds whole coins;
     * **nothing to spend on**: no market, no priced piece placed for nobody, no bribe (TC6);
       a region with no market; a bribe with no priced piece a player can hold;
-    * **a market type** that is royal, a spy, nobody's (wild or the duck), moveless,
+    * **a market type** that is royal, nobody's (wild or the duck), moveless,
       unpriced, or with no square in the region it may stand on.
     """
     purse = purse_rule(rules)
@@ -10782,8 +11019,10 @@ def _check_purse_coherence(
         pid = piece.get("id")
         if piece.get("royal"):
             errors.append(f"{loc} on a royal: a royal is never bought or sold")
-        elif piece.get("spy") is True:
-            errors.append(f"{loc} on a spy: a spy is never gained")
+        # SR7l (O24, ruled again 2026-10-29: lifted): a price on a spy is what buying one
+        # costs, and only that (a taken spy pays its bounty, a gained one moves no coins). In
+        # a spy game only a market can charge it: a hire or a bribe stays refused beside
+        # rounds (R19), so a priced spy no market sells meets the *nothing charges it* below.
         elif pid in wild or pid == duck_piece(rules):
             errors.append(f"{loc} on a wild type ({pid!r}): a wild piece is never a player's")
         elif pid not in market and pid not in hired and not bribed:
@@ -10797,7 +11036,12 @@ def _check_purse_coherence(
     # SR3g (P9) lifted portals: a momentum end's square is not empty for a buy, an empty fold's
     # is, and a bought piece stands in it (a buy never goes through). SR4l (O22) lifted a blast:
     # it pays the mover every enemy victim's bounty, nothing for the mover's own.
-    if rules.get("simultaneous") not in (None, False):
+    # SR7g (R19, ruled 2026-10-27: a collision like any other) lifted rounds for the market:
+    # a buy is an arrival with the round's moves and collides on its square by `beats` and
+    # the tie, its price paid whether or not it survives. A purse that can hire (a priced
+    # piece placed for nobody) or bribe stays refused there: two players recruiting one
+    # piece on the board is the auction, not built.
+    if rules.get("simultaneous") not in (None, False) and (hired or bribe_ids(spec)):
         errors.append(refusal("R19"))
     # SR2 (`docs/plan-schema-next.md` §2.2 L6) lifted the long turn: a buy is a move, and two
     # buys in a turn are two moves, each paid from the purse as the move before left it.
@@ -10851,8 +11095,8 @@ def _check_purse_coherence(
         where = f"rules.purse.market {pid!r}"
         if piece.get("royal"):
             errors.append(f"{where} is royal: a royal is never bought")
-        if piece.get("spy") is True:
-            errors.append(f"{where} is a spy: a spy is never gained")
+        # SR7m (O27, ruled again 2026-10-29: lifted): a spy for sale is a spy gained when it
+        # stands on the board (`_foreign_spy_buys`: only as the buyer's own spy type).
         if pid in wild or pid == duck_piece(rules):
             errors.append(f"{where} is nobody's piece (a wild piece or the duck), never a player's")
         if not piece.get("moves"):

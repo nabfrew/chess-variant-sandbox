@@ -1535,3 +1535,14 @@ retired its six, the files moved unchanged to `tests/_retired_<stem>.json` and n
 `watering-hole-by-speed` and `gardner-with-spies-resting`. No hash moved, no file was deleted, their
 runs stay in `runs/`, and on the site each is *retired* at the next deploy, its page, matches and
 ratings kept. `archive/` held no preview from then until Q1074bs's four push previews (2026-10-31, above).
+
+## `rear-guard-torus-even-promotion.json`: rear guard torus chess with even promotion (2026-11-05)
+
+The user's fix to *rear guard torus chess* (`torus-less-extended.json`, `8d9fb1b4c0b4`). That game
+promoted a White pawn on the thirteenth or fourteenth rank, so a rear pawn, facing back through the
+join, promoted after just three steps. Here every pawn promotes on the enemy king's starting rank
+(the eleventh for White, the fourth for Black), so front and rear pawns are each six steps out. One key
+of the mechanics moved (`rules.promotion`), so it is a new game, `0df9ea99bd82`; the parent stays as it was.
+Measured 0.918 [0.892, 0.938] under `v12`, the mean of four runs, viable 4-0, against the parent's 0.954
+[0.933, 0.968]. Games ran longer (97 plies against 65), fewer were decided (83% against 92%), and the second
+player scored better (the first scored 0.43 against 0.52).

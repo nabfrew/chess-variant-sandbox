@@ -23,6 +23,12 @@
 //! by neither player: `rest_filter` reads both lists (`RestTables::commanded`), so the lift
 //! fires for a player whose every offer, commands included, is a resting piece's.
 //!
+//! In a long turn (SR7d, `docs/plan-schema-next.md` §2.2 row L2) the list is written per move
+//! and counted per turn: a piece that moved this turn is not offered again this turn, then
+//! rests its `rest` turns. An entry's count is its player's turns still to rest, the turn in
+//! progress counted, so a piece entering before its turn's last move enters one higher and
+//! the turn's last move counts the list down (`rest_after_turn`'s `ends_turn`).
+//!
 //! Every game without a rest has `Tables::rest` `None` and pays one test at each call site.
 //! `tests/rest_oracle.py` is the declared oracle.
 
@@ -66,22 +72,24 @@ impl<'t> Game<'t> {
             .rest
             .as_deref()
             .map_or((REST_SLOTS, false), |rest| (rest.slots, rest.commanded));
-        let mut squares = [usize::MAX; 2 * REST_SLOTS];
+        // Squares as `i16`, the entries' own width, so the buffer stays small beside the
+        // long turn's wider lists (SR7d).
+        let mut squares = [NO_SQUARE; 2 * REST_SLOTS];
         let mut live = 0;
         for entry in self.resting[player][..slots].iter().filter(|e| e.live()) {
-            squares[live] = entry.square as usize;
+            squares[live] = entry.square;
             live += 1;
         }
         if both {
             for entry in self.resting[1 - player][..slots].iter().filter(|e| e.live()) {
-                squares[live] = entry.square as usize;
+                squares[live] = entry.square;
                 live += 1;
             }
         }
         match live {
             0 => false,
-            1 => drop_resting(out, base, |from| from == squares[0]),
-            _ => drop_resting(out, base, |from| squares[..live].contains(&from)),
+            1 => drop_resting(out, base, |from| from == squares[0] as usize),
+            _ => drop_resting(out, base, |from| squares[..live].contains(&(from as i16))),
         }
     }
 
@@ -93,8 +101,23 @@ impl<'t> Game<'t> {
     /// commanded move (SR5e, V7: a command starts the rest as the owner's move would, and it
     /// counts on the owner's turns). Returns the change to the key. Out of line, so `make`
     /// stays its size in a game without a rest.
+    ///
+    /// SR7d (L2, `docs/plan-schema-next.md` §2.2): the list is written per move and counted
+    /// per turn. `ends_turn` (`rest_turn_ends`) says whether this move is the last of
+    /// `player`'s turn; only then do `player`'s entries count down. A piece of `player`'s
+    /// own that enters on an earlier move of the turn enters one higher, `turns + 1`: it
+    /// rests the rest of this turn (the filter reads it at once), and the turn's last move
+    /// counts it down to `turns` with the rest. A commanded piece enters at `turns` as
+    /// ever, its owner's list counting on its owner's turns. In a turn of one move every move
+    /// ends its turn, so nothing differs.
     #[inline(never)]
-    pub(super) fn rest_after_turn(&mut self, player: usize, end: Option<usize>, owner: usize) -> u64 {
+    pub(super) fn rest_after_turn(
+        &mut self,
+        player: usize,
+        end: Option<usize>,
+        owner: usize,
+        ends_turn: bool,
+    ) -> u64 {
         let t = self.t;
         let rest = t.rest.as_deref().expect("a rest update without a rest");
         let n = t.n_squares;
@@ -105,7 +128,8 @@ impl<'t> Game<'t> {
                 return None;
             }
             let turns = rest.turns[t.type_of(value)];
-            (turns != 0).then_some((square, value, turns))
+            let this_turn = (owner == player && !ends_turn) as u8;
+            (turns != 0).then_some((square, value, turns + this_turn))
         });
         // One pass over both lists: `player`'s entries count down, and an entry leaves when
         // its count ends, when its square no longer holds the code that rested there, or
@@ -116,7 +140,7 @@ impl<'t> Game<'t> {
         let entering_square = entering.map_or(usize::MAX, |(square, _, _)| square);
         let mut delta = 0u64;
         for list in 0..2 {
-            let own = list == player;
+            let own = list == player && ends_turn;
             let entered = list == owner;
             for entry in self.resting[list][..rest.slots].iter_mut() {
                 if !entry.live() {
@@ -142,9 +166,18 @@ impl<'t> Game<'t> {
         let slot = self.resting[owner][..rest.slots]
             .iter_mut()
             .find(|e| !e.live())
-            .expect("more resting pieces than the slots: a long turn beside rest");
+            .expect("more resting pieces than the slots");
         *slot = Resting { square: square as i16, left: turns, code: value };
         delta ^ rest.key(n, owner, square, turns)
+    }
+
+    /// SR7d (L2): whether the move about to be made is the last of its player's turn, read
+    /// before `end_ply` spends it: always in a turn of one move, and in a duck game, whose
+    /// piece half is its turn's one piece move (the duck half writes no rest); otherwise on
+    /// the turn's last move.
+    #[inline(always)]
+    pub(super) fn rest_turn_ends(&self) -> bool {
+        self.t.turn.is_none() || self.t.duck.is_some() || self.remaining <= 1
     }
 
     /// Q1074b8 (N5, `docs/plan-push.md` §3.9): a push moves every piece of its line, and a

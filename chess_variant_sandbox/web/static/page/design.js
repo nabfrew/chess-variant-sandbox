@@ -619,8 +619,11 @@ function benchLegendHtml(shown) {
   const preview = lastPreview();
   if (!preview || typeof legendEntries !== 'function') return '';
   const kinds = new Set(boardKinds(preview.obstacles, preview.portals));
-  // The wild pieces' walks, where the set-up board draws them (Q852).
-  if (shown === 'setup' && walksDrawn(preview)) kinds.add('walk');
+  // The wild pieces' walks, where the set-up board draws them (Q852): the walks it draws,
+  // which while one is picked are the draft's (`pickedWalk`, as `benchBoardHtml` draws them),
+  // not the last check's. Read off the check's, a walk picked from one square drew at once
+  // and was named only when the answer came back, and never while a slow one was out (Q1101).
+  if (shown === 'setup' && walksDrawn(pickedWalk(preview))) kinds.add('walk');
   const marks = squareMarks(preview, { zone: !zonesShown() });
   Object.keys(marks).forEach(square => marks[square].forEach(mark => kinds.add(mark.kind)));
   const said = legendEntries(kinds, preview.wrap, '', preview.portals);
@@ -2932,15 +2935,28 @@ function seatPair(held, piece, seat, href) {
 // Asked after a pause rather than on every keystroke: the check compiles the spec and
 // plays a hundred and fifty random games, which is a fifth of a second and not something
 // to do per letter typed into a description.
+// Q1101: which check was asked last and which answer was taken last. The pause above spaces
+// the asks, not the answers: under load a slow answer came back after a newer one and stood
+// in for it, an older draft's verdict and preview, until the next edit. An answer behind one
+// already taken is dropped.
+// Q1108: `DRAFT_CHECK_FOR` is the draft the taken answer (`DRAFT_CHECK`) was asked about, as
+// `JSON.stringify(DRAFT)` was then, so a reader can tell the answer to this draft from an
+// earlier one's: the look check's walk picker waits on it.
+let DRAFT_ASKED = 0, DRAFT_TAKEN = 0, DRAFT_CHECK_FOR = '';
+
 function checkDraft() {
   if (DRAFT_TIMER) clearTimeout(DRAFT_TIMER);
   DRAFT_TIMER = setTimeout(() => {
     snapshotDraft();
     const asked = JSON.stringify(DRAFT);
+    const ask = ++DRAFT_ASKED;
     // With the game it was forked from, so the answer can say what changed from it.
     api('/api/design/check', { spec: DRAFT, parent: DRAFT_FROM }).then(answer => {
+      if (ask < DRAFT_TAKEN) return;
+      DRAFT_TAKEN = ask;
       const current = JSON.stringify(DRAFT) === asked;
       DRAFT_CHECK = answer;
+      DRAFT_CHECK_FOR = asked;
       if (fitAfterReshape(answer)) return;
       if (answer.preview) DRAFT_PREVIEW = answer.preview;
       // When the answer came, said on the verdict so a re-check is seen to have happened
@@ -2992,7 +3008,10 @@ function checkDraft() {
       // a list of other games' changes.
       refreshTry();
     }).catch(error => {
+      if (ask < DRAFT_TAKEN) return;
+      DRAFT_TAKEN = ask;
       DRAFT_CHECK = { valid: false, errors: [errorWords(error)] };
+      DRAFT_CHECK_FOR = asked;
       drawVerdict();
     });
   }, 320);
