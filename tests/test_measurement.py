@@ -658,7 +658,9 @@ class TestTheFingerprintsPointAtSomething:
 # **Moved 2026-11-08 by Q1104**: `metrics/scoring.py`'s `DEFAULT_WEIGHTS` is `v13`. The library
 # was replayed on the 400-25,600 ladder and re-scored under `v13` on this value
 # (`docs/reference/v13-calibration.md`). It was "0ffc7a9c233fb907" after Q1128.
-FROZEN_METRICS = "c27f53099d8b7848"
+# **Moved 2026-11-08 by Q1167**: `tournament/analysis.py` (see `FROZEN_ANALYSIS`). It was
+# "c27f53099d8b7848" after Q1104.
+FROZEN_METRICS = "6bb1874a3e53ff1f"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -1062,7 +1064,12 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # `FROZEN_METRICS` says), read only in a game whose moves cost coins, which no library game has
 # until H5; the ladder replay (Q1104) re-analyses. It was "ff808d0763410e21" after Q1126.
 # Q1104 (2026-11-08) replayed and re-analysed the whole library on this value: it did not move.
-FROZEN_ANALYSIS = "3d0d6621922c3e1c"
+# **Moved 2026-11-08 by Q1167**: `_analyse_game` walks past a keep or a pass (`moves_no_piece`)
+# instead of stopping at it, counting it under no type. Only a game whose records hold a keep or
+# a pass reads differently (drover, tessabi, `archive/no-zugzwang`); every other `analysis.json`
+# is the same bytes. Q1167 re-analysed those three; the rest re-stamp on the refresher's
+# re-analysis. It was "3d0d6621922c3e1c" after Q1104.
+FROZEN_ANALYSIS = "a33aea600f785471"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

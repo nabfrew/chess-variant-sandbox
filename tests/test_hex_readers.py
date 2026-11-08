@@ -321,6 +321,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/drover": "79157d5933075c80",  # TS3 (Q1133), 2026-11-07; TS5 (Q1135): nothing may capture the boulder (was 145ae318c1c15f3b)
     "rulesets/leapfrog": "f488b38ed4a8d399",  # TS4 (Q1134), 2026-11-07
     "rulesets/tessabi": "b7a4d9f5c88277a7",  # TS5 (Q1135), 2026-11-07: Tessabi, from tessabi.com
+    "archive/no-zugzwang": "9dce8118e1cc99ff",  # H5 (Q1129), 2026-11-08
     "rulesets/rock-paper-shove": "cc56261d19467597",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "2c67ec37c9123078",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "2702b1dee85bfe5c",  # Q1074bs, 2026-10-31

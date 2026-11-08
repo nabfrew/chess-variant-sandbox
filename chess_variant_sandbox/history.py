@@ -30,6 +30,13 @@ the spread of a game's stored scores at one weights version, beside its interval
 words with no cut-off. `/admin` and the local scores panel only; it changes no score and
 no trust level, and a visitor is sent none of it.
 
+**The boards before the ledger** (`boards`, `docs/plan-score-history.md` §2.2): the
+calibration campaigns' scores from v3 to v12's adoption, before this ledger began, a frozen
+record in `history_boards.json` beside this file. **The library's history**
+(`library_history`, SH2): the boards, the ledgers and each current score joined by game,
+the payload of `GET /api/library/history` on both servers; `visitors_history` is a site
+visitor's copy of it.
+
 **A campaign that measures in another tree** and delivers by copying would replace the file
 with no history; `deliver` is the delivery that keeps it (`python -m
 chess_variant_sandbox.history deliver <from-runs> <to-runs>`).
@@ -39,10 +46,12 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 import shutil
 import sys
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -498,6 +507,246 @@ def volatility_rows(runs_dir: Path, names: Mapping[str, str]) -> list[dict[str, 
     rows = [{**volatility(digest, runs_dir), "name": name or digest[:12]}
             for digest, name in names.items()]
     return sorted(rows, key=lambda row: (str(row["name"]).lower(), row["hash"]))
+
+
+# ------------------------------------------------------------------ the boards before the ledger
+
+# `docs/plan-score-history.md` §2.2: what each calibration campaign scored, v3 to v12 at
+# adoption (2026-10-03), when the ledger began. Written once by
+# `docs/reference/score-history/build_boards.py` from campaign directories only the
+# calibration machine holds, and committed; never edited by hand but for a `same_game` row.
+BOARDS_FILE = Path(__file__).with_name("history_boards.json")
+
+
+@lru_cache(maxsize=1)
+def _boards_text() -> str:
+    return BOARDS_FILE.read_text(encoding="utf-8")
+
+
+def boards() -> dict[str, Any]:
+    """The boards before the ledger, a fresh copy each call.
+
+    ``snapshots``, oldest first: each with ``id`` (``v3`` … ``v12a``), ``weights_version``,
+    ``date``, ``basis`` (in words), ``source`` (where the campaign stored it), optionally
+    ``hashes_from`` (the snapshot whose hashes it borrows, its own source recording names
+    only) and ``entries``: ``hash`` and ``name`` as the campaign recorded them, ``index`` and
+    ``viable`` as stored. ``same_game`` joins an old hash to the hash its game has now:
+    ``how`` is ``hash`` (renamed, the identity unchanged: ``from == to``) or ``file`` (the
+    same file, its mechanics edited since, with the ``task`` that did it). A hash in no join
+    is its game's hash now, or a game retired. Past values, every one: nothing here is a
+    headline, and the current version's column is `canonical.json`'s, never this file's.
+    """
+    data: dict[str, Any] = json.loads(_boards_text())
+    return data
+
+
+# ------------------------------------------------------------------ the library's history
+
+# What a site visitor is not sent of `library_history` (`docs/plan-score-history.md` §2.2,
+# §2.5): a ledger line's basis and the bookkeeping around it, and where a campaign stored
+# its board. Everything else is the same bytes for everybody.
+MAINTAINER_DAY_FIELDS = (
+    "n", "ci_low", "ci_high", "sd", "seeds", "basis", "digest", "to", "needs", "reasons",
+    "moved", "convergence", "players", "path",
+)
+MAINTAINER_SNAPSHOT_FIELDS = ("source",)
+
+_VERSION = re.compile(r"v(\d+)[a-z]*")
+
+
+def _version_number(word: str) -> int | None:
+    found = _VERSION.fullmatch(str(word or ""))
+    return int(found.group(1)) if found else None
+
+
+def _joined(same_game: Iterable[Mapping[str, Any]]) -> dict[str, tuple[str, str]]:
+    """Each old hash's hash now and how the two are joined (``hash`` or ``file``), the
+    chain followed to its end: a file edited twice joins its first hash to its last."""
+    step = {str(join["from"]): (str(join["to"]), str(join["how"])) for join in same_game}
+    resolved: dict[str, tuple[str, str]] = {}
+    for start in step:
+        digest, how, seen = start, "hash", {start}
+        while digest in step:
+            digest, link = step[digest]
+            how = "file" if "file" in (how, link) else "hash"
+            if digest in seen:
+                break
+            seen.add(digest)
+        resolved[start] = (digest, how)
+    return resolved
+
+
+def _day(entry: Entry) -> dict[str, Any]:
+    """One ledger line as the library's history carries it: the visitor's fields first,
+    the maintainer's after (`MAINTAINER_DAY_FIELDS`)."""
+    return {
+        "index": entry.index,
+        "viable": entry.viable,
+        "runs": entry.runs,
+        "weights_version": entry.weights_version,
+        "measured": entry.measured,
+        "replaced": entry.replaced,
+        "why": _what_moved(entry.moved),
+        **{key: value for key, value in entry.as_dict().items()
+           if key in MAINTAINER_DAY_FIELDS},
+        "players": _players(entry.basis),
+    }
+
+
+def library_history(
+    games: Iterable[Any], runs_dir: Path, current_version: str | None = None
+) -> dict[str, Any]:
+    """Every score the library has kept for its games, by snapshot: the payload of
+    `GET /api/library/history` (`docs/plan-score-history.md` §2.2, SH2).
+
+    ``games`` are `web.library.Game`s (anything with ``hash``, ``name``, ``source`` and
+    ``score``). Joined by game, three records:
+
+    - ``snapshots``, oldest first, each ``id``, ``kind``, ``weights_version``, ``date`` and
+      ``basis`` in words: the boards file's (``kind`` ``board``, v3 … v12a, with their
+      ``source``), then each weights version the ledgers on this box hold that is no
+      older than the boards' last and is not the current one (``ledger``: each game's last
+      score under it, ``date`` the newest of those), then the current version (``current``:
+      each game's current score, ``date`` the newest measured).
+    - ``games``, each ``hash``, ``name``, ``source``; ``points`` by snapshot id
+      (``index``, ``viable``, and on a board point reached through a join ``as`` (the old
+      name) and ``how``, ``file`` where the line crosses an edit of the mechanics);
+      ``current``, the present measurement with its ``status``, ``revision``, ``measured``,
+      ``runs``, ``index`` and ``viable``, or ``None`` with none; and ``days``, every ledger
+      line oldest first (`_day`), which with ``current`` after them is the day series.
+    - ``cohort``, the hashes with a point at every snapshot, and ``joins``, the boards
+      file's ``same_game``.
+
+    **A provisional score is never a point.** The current column holds only a score whose
+    status is ``current`` at the current version; a provisional one is in ``current``,
+    marked, with its revision (`library.Game.status`), and a game never measured has no
+    points there at all. Every number is a stored one, printed as stored: nothing here
+    computes an index, an interval, a rank or a verdict.
+
+    The maintainer's payload; `visitors_history` is what anybody else is sent.
+    """
+    if current_version is None:
+        from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
+
+        current_version = DEFAULT_WEIGHTS
+    runs_dir = Path(runs_dir)
+    record = boards()
+    joins = list(record.get("same_game") or [])
+    joined = _joined(joins)
+    games = list(games)
+    wanted = {str(game.hash) for game in games}
+
+    snapshots: list[dict[str, Any]] = []
+    points: dict[str, dict[str, dict[str, Any]]] = {digest: {} for digest in wanted}
+    for board in record.get("snapshots") or []:
+        snapshot = {key: value for key, value in board.items() if key != "entries"}
+        snapshots.append({"kind": "board", **snapshot})
+        for entry in board.get("entries") or []:
+            old = str(entry.get("hash"))
+            digest, how = (old, "") if old in wanted else joined.get(old, (old, ""))
+            if digest not in wanted:
+                continue
+            held = points[digest].get(snapshot["id"])
+            if held is not None and (how or "as" not in held):
+                continue  # one point a game a snapshot; the game's own hash wins
+            point: dict[str, Any] = {"index": entry.get("index"), "viable": entry.get("viable")}
+            if how:
+                point.update({"as": entry.get("name"), "how": how})
+            points[digest][snapshot["id"]] = point
+
+    ledgers = {digest: sorted(read(digest, runs_dir), key=lambda entry: entry.n)
+               for digest in sorted(wanted)}
+    floor = max((_version_number(board.get("weights_version", "")) or 0
+                 for board in record.get("snapshots") or []), default=0)
+    current_number = _version_number(current_version)
+    versions = sorted(
+        {entry.weights_version for entries in ledgers.values() for entry in entries
+         if entry.weights_version != current_version
+         and (_version_number(entry.weights_version) or -1) >= floor},
+        key=lambda word: (_version_number(word) or 0, word),
+    )
+    for version in versions:
+        if current_number is not None and (_version_number(version) or 0) > current_number:
+            continue
+        dates = []
+        for digest, entries in ledgers.items():
+            last = [entry for entry in entries if entry.weights_version == version]
+            if not last:
+                continue
+            points[digest][version] = {"index": last[-1].index, "viable": last[-1].viable}
+            if last[-1].measured:
+                dates.append(last[-1].measured)
+        snapshots.append({
+            "kind": "ledger", "id": version, "weights_version": version,
+            "date": max(dates, default=None),
+            "basis": f"each game's last score under {version}, from its ledger",
+        })
+
+    rows: list[dict[str, Any]] = []
+    current_dates = []
+    for game in games:
+        digest = str(game.hash)
+        score = game.score
+        current = None
+        if isinstance(score, Mapping) and score.get("status") in ("current", "provisional"):
+            current = {
+                "status": score.get("status"),
+                "revision": score.get("revision"),
+                "measured": score.get("measured_at"),
+                "runs": len(score.get("seeds") or ()),
+                "index": score.get("index"),
+                "viable": score.get("viable"),
+            }
+            if current["status"] == "current" and current["revision"] == current_version:
+                points[digest][current_version] = {
+                    "index": current["index"], "viable": current["viable"]}
+                if current["measured"]:
+                    current_dates.append(current["measured"])
+        rows.append({
+            "hash": digest,
+            "name": str(game.name),
+            "source": str(game.source),
+            "points": points[digest],
+            "current": current,
+            "days": [_day(entry) for entry in ledgers[digest]],
+        })
+    snapshots.append({
+        "kind": "current", "id": current_version, "weights_version": current_version,
+        "date": max(current_dates, default=None),
+        "basis": "each game's current score",
+    })
+    ids = [snapshot["id"] for snapshot in snapshots]
+    return {
+        "currentVersion": current_version,
+        "snapshots": snapshots,
+        "games": rows,
+        "cohort": [row["hash"] for row in rows if all(key in row["points"] for key in ids)],
+        "joins": joins,
+        "maintainer": True,
+    }
+
+
+def visitors_history(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """`library_history`'s payload as a site visitor is sent it: a copy with the ledger
+    lines' bases and bookkeeping (`MAINTAINER_DAY_FIELDS`) and the boards' campaign paths
+    left out. The values, dates, run counts, versions and the words for why each line was
+    replaced stay: the same numbers a visitor already reads as *was* sentences."""
+    return {
+        **payload,
+        "snapshots": [
+            {key: value for key, value in snapshot.items()
+             if key not in MAINTAINER_SNAPSHOT_FIELDS}
+            for snapshot in payload.get("snapshots") or []
+        ],
+        "games": [
+            {**row, "days": [
+                {key: value for key, value in day.items() if key not in MAINTAINER_DAY_FIELDS}
+                for day in row.get("days") or []
+            ]}
+            for row in payload.get("games") or []
+        ],
+        "maintainer": False,
+    }
 
 
 # ------------------------------------------------------------------ delivery

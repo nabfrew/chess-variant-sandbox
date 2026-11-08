@@ -350,6 +350,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/drover": "131c3dafd395828f",  # TS3 (Q1133), 2026-11-07
     "rulesets/leapfrog": "533fad75aaeecd45",  # TS4 (Q1134), 2026-11-07
     "rulesets/tessabi": "7b92c066aa2bdb5f",  # TS5 (Q1135), 2026-11-07: Tessabi, from tessabi.com
+    "archive/no-zugzwang": "cca02b4d69cf1272",  # H5 (Q1129), 2026-11-08
     "rulesets/rock-paper-shove": "43142f6be2e63c9b",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "019f4704a5c0d78c",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "3510f2fd444cf5f9",  # Q1074bs, 2026-10-31

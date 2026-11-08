@@ -46,9 +46,10 @@ ARCHIVED_PREVIEWS: dict[str, str] = {
     "los-alamos-with-shove-or-take.json": "1fced818630e",
     "los-alamos-with-crushing-pillars.json": "e72a8715217c",
     "gardner-with-bishops-that-shove-straight.json": "e271933cd127",
+    "no-zugzwang.json": "1cb062a21f06",
 }
 """The previews in `archive/`: Q1074bs's four push showcases (2026-10-31, `docs/plan-push.md`
-§6.3). None from Q1005 (2026-10-23, `docs/reference/preview-call-2026-10.md`), which made a
+§6.3), and H5's no zugzwang (Q1129, 2026-11-08: chess plus the pass, `docs/plan-hunger.md` §6). None from Q1005 (2026-10-23, `docs/reference/preview-call-2026-10.md`), which made a
 call on each of the eleven the user asked about, until then. Five joined the library
 (`JOINED_TURNS`, four since Q1007e retired one) and six left for `tests/_retired_*.json`, as
 Q962b's six and Q962c's one had (`docs/reference/previews-2026-10-18.md`)."""

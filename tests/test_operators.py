@@ -4440,12 +4440,13 @@ _SHOWCASE_OWED: dict[str, str] = {
     # `-with-meek-pawns`, `-with-the-initiative`, `archive/watering-hole`).
     # Empty again at schema 25: its showcase, `archive/torus-less-extended.json`, is the
     # game the bump was for (Q869). Schema 24's fold is shown by `archive/crease.json` (Q844b).
-    # Generation 117 (H2): income's showcase is Hunger Chess, H5's (`docs/plan-hunger.md` §6),
-    # where pieces at home forage; its two keys are shown by arms of it (a richer forage, a
-    # foraging ground other than the home rank) or by game-ideas' *Mines* and *Plunder*.
-    "H2 income": "H5 (Q1129): rulesets/hunger.json",
-    "H2 income per piece": "H5 (Q1129): an arm of rulesets/hunger.json paying more a piece",
-    "H2 income region": "H5 (Q1129): an arm of rulesets/hunger.json foraging other ground",
+    # Generation 117 (H2): income's showcase was to be Hunger Chess, H5's. H5 (Q1129,
+    # `docs/plan-hunger.md` §6.2) measured it at 0.709, under the user's 0.8 bar for the library,
+    # so it stays a candidate (`docs/reference/hunger-candidate.json`, its arms beside it) and a
+    # follow-up design task owes the game, and with it these three (§6.3).
+    "H2 income": "the Hunger redesign after Q1129 (docs/plan-hunger.md §6.3)",
+    "H2 income per piece": "the Hunger redesign after Q1129 (docs/plan-hunger.md §6.3)",
+    "H2 income region": "the Hunger redesign after Q1129 (docs/plan-hunger.md §6.3)",
 }
 
 
@@ -4634,17 +4635,16 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
-    # Generation 116's name (H3), owed in `_SHOWCASE_OWED` until generation 117 (H2) retired its
-    # `_FEATURES` row. Still owed by H5 (Q1129, `docs/plan-hunger.md` §6), Hunger Chess and its
-    # chess-plus-the-pass arm; the entry goes the day it lands.
-    "schema 116: rules.pass": "owed by H5 (Q1129): rulesets/hunger.json",
-    # Generation 115's names (H1), owed in `_SHOWCASE_OWED` until generation 116 (H3) retired
-    # their `_FEATURES` rows. Still owed by H5 (Q1129, `docs/plan-hunger.md` §6), Hunger Chess
-    # and its promotion "new" arm; the entries go the day it lands.
-    "schema 115: pieces.upkeep": "owed by H5 (Q1129): rulesets/hunger.json",
-    "schema 115: rules.purse.upkeep": "owed by H5 (Q1129): rulesets/hunger.json",
+    # Generation 116's name (H3) went on 2026-11-08, when H5 (Q1129) archived
+    # `archive/no-zugzwang.json` (chess plus the pass) as a preview. Generation 115's names (H1),
+    # owed in `_SHOWCASE_OWED` until generation 116 (H3) retired their `_FEATURES` rows: H5
+    # measured Hunger Chess at 0.709, under the user's 0.8 bar for the library, so it and its
+    # promotion "new" arm stay candidates in `docs/reference/` and the Hunger redesign owes them
+    # (`docs/plan-hunger.md` §6.3).
+    "schema 115: pieces.upkeep": "owed by the Hunger redesign after Q1129 (plan-hunger §6.3)",
+    "schema 115: rules.purse.upkeep": "owed by the Hunger redesign after Q1129 (plan-hunger §6.3)",
     "schema 115: rules.purse.upkeep.promotion": (
-        "owed by H5 (Q1129): the promotion \"new\" arm of rulesets/hunger.json"
+        "owed by the Hunger redesign after Q1129 (plan-hunger §6.3)"
     ),
     # Generation 111's third name (TS1), `rules.reach.both`, went when TS5 (Q1135) landed
     # `rulesets/tessabi.json` (Tessabi, from tessabi.com), which states `both: "draw"` and whose

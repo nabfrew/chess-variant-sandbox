@@ -216,3 +216,45 @@ def test_rated_net_reads_a_store_without_an_acceptance_as_score_zero(tmp_path: P
     finally:
         unregister_net(late, "h")
         unregister_net(early, "h")
+
+
+# ------------------------------------------------------------------ batch 6 (Q1153)
+
+
+def test_a_clock_with_a_limit_of_one_fills_at_one() -> None:
+    from chess_variant_sandbox.agents.nets import _clock
+
+    assert _clock(10, 1, 1) == list(range(10, 18))
+    assert _clock(10, 0, 1) == []
+
+
+def test_a_net_and_its_heads_are_frozen() -> None:
+    import dataclasses
+
+    net = Net.parse(_smallest())
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        net.n_inputs = 2  # type: ignore[misc]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        net.heads[0].b3 = 2  # type: ignore[misc]
+
+
+def test_a_random_net_reaches_the_top_of_its_accumulator_bias() -> None:
+    """Seed 158 draws the accumulator bias's upper end, 100."""
+    from chess_variant_sandbox.agents.nets import random_net
+
+    blob = random_net(1, 158, accumulator=1, hidden1=1, hidden2=1)
+    net = Net.parse(blob)
+    assert (net.w0, net.b0) == ((19,), (100,))
+    assert hashlib.sha256(blob).hexdigest() == (
+        "c9693035501774516244699dfac8d1d43e8a88a9176885c06942e881b760cb9a"
+    )
+
+
+def test_a_net_output_is_clipped_at_two_to_the_twenty_seven() -> None:
+    """All weights zero, so the output is the head's bias: one past the limit clips to it,
+    one inside the negative limit passes."""
+    limit = 1 << 27
+    heads = [([0], [0], [0], [0], [0], limit + 1), ([0], [0], [0], [0], [0], -(limit - 1))]
+    net = Net.parse(encode(1, 1, 1, 1, [0], [0], heads))
+    assert net.forward([0], 0) == limit
+    assert net.forward([0], 1) == -(limit - 1)

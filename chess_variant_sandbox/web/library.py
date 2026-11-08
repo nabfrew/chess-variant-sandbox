@@ -921,6 +921,49 @@ def discover(
     return list(found)
 
 
+# The library's score history (`history.library_history`, SH2 of
+# `docs/plan-score-history.md`), the last one built from each runs root. It reads about 130
+# ledgers, so it is held as the listing is: `discover` hands back the very `Game` objects of
+# its cached listing for exactly as long as `_scan`'s key is unmoved -- and that key stamps
+# every `canonical.json` and `history.jsonl` -- so the same objects in the same order are
+# the same files read. A moved stamp is a new listing, new objects and a new build. The
+# games are held beside the key so that no object named in it can be freed and its `id`
+# reused.
+_HISTORIES: dict[str, tuple[tuple[int, ...], list[Game], dict[str, Any]]] = {}
+_HISTORIES_LOCK = threading.Lock()
+
+
+def history_games(games: Iterable[Game]) -> list[Game]:
+    """The games the library's history is about: the library's own and the previews
+    (`docs/plan-score-history.md` §2.1's chips). A design run's candidate has one run and
+    no ledger, so it is out (§6)."""
+    return [game for game in games if game.source in (*LIBRARY_SOURCES, PREVIEW)]
+
+
+def library_history(games: Iterable[Game], runs_dir: Path) -> dict[str, Any]:
+    """`history.library_history` over `history_games`, held while the listing is.
+
+    The maintainer's payload, shared between callers: a caller that narrows it builds a
+    new dict (`history.visitors_history`, the site's door) and never edits this one.
+    """
+    shown = history_games(games)
+    key = tuple(id(game) for game in shown)
+    root = str(runs_dir)
+    with _HISTORIES_LOCK:
+        held = _HISTORIES.get(root)
+        if held is not None and held[0] == key:
+            return held[2]
+    from chess_variant_sandbox import history
+
+    payload = history.library_history(shown, Path(runs_dir))
+    with _HISTORIES_LOCK:
+        _HISTORIES.pop(root, None)
+        while len(_HISTORIES) >= _LISTINGS_KEPT:
+            _HISTORIES.pop(next(iter(_HISTORIES)))
+        _HISTORIES[root] = (key, shown, payload)
+    return payload
+
+
 def reread_one(game: Game, runs_dir: Path) -> Game:
     """This one game's own measurement and verdict, re-read from its own directory.
 

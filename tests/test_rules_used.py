@@ -44,6 +44,8 @@ COSTS: dict[str, float] = {
     "duck": 2.0,
     # Generation 45 (TC5); its first library spec is TC10b's free companies.
     "purse": 2.0,
+    # Generation 116 (H3); its first library spec is H5's archive/no-zugzwang (Q1129).
+    "pass": 1.0,
 }
 # A chase switch (`rest`, `swap`, `both`), each on top of `simultaneous` (schema 27).
 SWITCH_COST = 1.0

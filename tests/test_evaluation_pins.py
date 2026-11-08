@@ -10,10 +10,11 @@ turns on a board that is not square; a royal that starts in the stock.
 from __future__ import annotations
 
 import copy
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from typing import Any
 
+import pytest
 from test_speed import gardner as speed_gardner
 
 from chess_variant_sandbox.agents import evaluation
@@ -148,6 +149,39 @@ def test_an_unpriced_race_counted_to_two_arrivals_is_a_goal_term() -> None:
     safe = {"squares": ["e5"], "mirror": "rotate", "safe": True}
     assert has_goal_terms(rps(reach={**safe, "count": 2}).spec) is True
     assert has_goal_terms(rps(reach=safe).spec) is False
+
+
+def test_declared_values_below_one_are_scaled_by_the_smallest_of_them() -> None:
+    """Every declared value halved to 0.5: the declared scale is 0.5 too, so the blended
+    values are the same as at 1."""
+    spec = rps_spec()
+    for piece in spec["pieces"]:
+        piece["value"] = 0.5
+    assert validate_spec(spec) == [], validate_spec(spec)
+    assert Evaluator.for_engine(Engine(spec)).values == (1.0, 1.0, 1.0)
+
+
+def test_only_the_first_players_rock_immune_is_still_counted() -> None:
+    """Player 1 holds no paper: player 0's rock (type 0, mask 1) is the only immune piece."""
+    engine = rps(reach=None)
+    evaluator = Evaluator.for_engine(engine)
+    state = engine.make_state({"a1": ("R", 0), "b1": ("P", 0), "c1": ("S", 0), "e5": ("R", 1), "c5": ("S", 1)})
+    assert evaluator.immunity(state, 0) == 1.0
+    assert evaluator.immunity(state, 1) == -1.0
+
+
+def test_a_shortfall_counts_each_side_against_its_own_opening_army() -> None:
+    """Player 0 starts with three pieces, player 1 with two, a minimum of one: player 0
+    down to two has used half its room, player 1 still on two none of it."""
+    spec = rps_spec(reach=None, extinction={"pieces": "any", "min_count": 1, "result": "loss"})
+    spec["setup"]["placements"] = spec["setup"]["placements"][:5]
+    assert validate_spec(spec) == [], validate_spec(spec)
+    engine = Engine(spec)
+    evaluator = Evaluator.for_engine(engine)
+    assert evaluator._extinction_counts == (3, 2)
+    state = engine.make_state({"a1": ("R", 0), "b1": ("P", 0), "e5": ("R", 1), "d5": ("P", 1)})
+    assert evaluator._shortfall(state.board, 0) == 0.5
+    assert evaluator._shortfall(state.board, 1) == 0.0
 
 
 def test_a_spec_with_no_scoring_rule_scores_nothing() -> None:
@@ -368,7 +402,11 @@ def test_hop_capture_reach_is_read_from_the_first_frame() -> None:
         "rules": {"win": "checkmate", "stalemate": "draw", "max_plies": 100},
     }
     assert validate_spec(spec) == [], validate_spec(spec)
-    assert evaluation.has_capture_reach(Engine(spec).spec, 1) is False
+    compiled = Engine(spec).spec
+    assert evaluation.has_capture_reach(compiled, 1) is False
+    # The measured values agree: a king on 6x2 reaches 4*3 + 8*5 = 52 squares in all, and
+    # the cannon facing forward takes nothing anywhere (turned, it would).
+    assert _measured_values(compiled) == (52 / 12, 0.0)
 
 
 def test_sixty_four_goal_squares_a_side_can_still_be_sealed() -> None:
@@ -558,3 +596,347 @@ def test_a_round_asks_each_player_for_its_own_moves() -> None:
     assert evaluator.evaluate_round(engine, state, 1, counts) == evaluator.evaluate_round(
         engine, state, 1, counts, both
     )
+
+
+# ------------------------------------------------------------ Q1153's survivors
+
+
+def test_a_counted_arrival_that_loses_is_minus_half_of_a_count_of_two() -> None:
+    """The same arrival counted to a loss: player 0's paper on e5 is half of the way to
+    losing, -0.5 and not -1."""
+    engine = rps(reach={"squares": ["e5"], "mirror": "rotate", "safe": True, "count": 2,
+                        "piece": ["R", "P"], "result": "loss"})
+    state = engine.make_state({"a1": ("R", 0), "e5": ("P", 0), "c5": ("S", 1), "d5": ("P", 1)})
+    assert Evaluator.for_engine(engine).goal_progress(state, 0) == -0.5
+    assert Evaluator.for_engine(engine).goal_progress(state, 1) == 0.5
+
+
+def test_sweep_capture_reach_is_read_from_the_first_frame() -> None:
+    """A turning sweeper whose only capture is three squares forward, on a board three high:
+    facing forward it can take nothing anywhere; turned sideways on six files, it could."""
+    spec = {
+        "schema_version": 31, "name": "long sweeper", "description": "A test game.",
+        "board": {"width": 6, "height": 3},
+        "pieces": [
+            {"id": "K", "name": "king", "royal": True, "value": 0, "moves": [
+                {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "dihedral8"}]},
+            {"id": "W", "name": "sweeper", "value": 3,
+             "moves": [{"kind": "sweep", "vectors": [[0, 3]], "mode": "capture"},
+                       {"kind": "leap", "vectors": [[0, 1]], "mode": "move"}],
+             "facing": {"axes": 4, "initial": "forward"}},
+        ],
+        "setup": {"placements": [{"piece": "K", "squares": ["a1"]}, {"piece": "W", "squares": ["c1"]}]},
+        "rules": {"win": "checkmate", "stalemate": "draw", "max_plies": 100},
+    }
+    assert validate_spec(spec) == [], validate_spec(spec)
+    compiled = Engine(spec).spec
+    assert evaluation.has_capture_reach(compiled, 1) is False
+    assert evaluation.has_capture_reach(compiled, 0) is True
+
+
+def test_a_royal_first_in_the_table_is_not_counted_as_material() -> None:
+    """A royal as type 0 beside the cycle: the counted mask is the three cycle types only."""
+    spec = rps_spec(reach=None, win="royal_capture")
+    royal = {"id": "K", "name": "king", "royal": True, "value": 0, "captures": [],
+             "moves": STEP}
+    spec["pieces"].insert(0, royal)
+    spec["setup"]["placements"] += [
+        {"piece": "K", "player": 0, "squares": ["e1"]},
+        {"piece": "K", "player": 1, "squares": ["a5"]},
+    ]
+    assert validate_spec(spec) == [], validate_spec(spec)
+    table = immunity_threats(Engine(spec).spec)
+    assert table is not None
+    assert table[1] == 0b1110
+
+
+def test_declared_values_all_zero_fall_back_to_a_declared_scale_of_one() -> None:
+    """Every declared value zero: nothing to scale by, so the declared half adds nothing
+    and each value is the measured half alone."""
+    spec = rps_spec()
+    for piece in spec["pieces"]:
+        piece["value"] = 0
+    assert validate_spec(spec) == [], validate_spec(spec)
+    values = Evaluator.for_engine(Engine(spec)).values
+    expected = 1.0 - evaluation.DECLARED_WEIGHT
+    assert values == (expected, expected, expected)
+
+
+# ------------------------------------------------------------ Q1153's ninth queue
+
+
+def test_piece_values_are_frozen_and_hashable() -> None:
+    """The value pair is a frozen record: a field cannot be reassigned, and it hashes."""
+    values = evaluation.PieceValues.derived_only((1.0, 2.0))
+    try:
+        values.derived = (3.0,)  # type: ignore[misc]
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("PieceValues accepted an assignment")
+    assert hash(values) == hash(evaluation.PieceValues.derived_only((1.0, 2.0)))
+
+
+def test_the_prey_pool_is_derived_and_left_out_of_the_repr() -> None:
+    evaluator = Evaluator.for_spec(rps().spec)
+    assert evaluator.prey == (True, True, True)
+    assert "prey=" not in repr(evaluator)
+
+
+def test_an_evaluator_built_from_the_tables_prices_a_move_at_five_hundredths() -> None:
+    assert Evaluator.for_spec(rps().spec).mobility_weight == 0.05
+
+
+def test_a_colouring_won_at_one_square_is_a_goal_term() -> None:
+    assert has_goal_terms(rps(reach=None, territory={"mode": "permanent", "win_at": 1}).spec)
+
+
+def test_each_player_hunts_with_what_its_own_promotion_makes() -> None:
+    """A minnow promotes to scissors for player 0 and to paper for player 1: each player's
+    minnow threatens what its own promotion takes, so the two rows differ."""
+    minnow = {"id": "M", "name": "minnow", "value": 1, "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"}]}
+    spec = rps_spec((minnow,), promotion={"piece": "M", "rank": "last",
+                                          "to_by_player": {"0": ["S"], "1": ["P"]}})
+    spec["setup"]["placements"].append({"piece": "M", "player": 0, "squares": ["d1"]})
+    spec["setup"]["placements"].append({"piece": "M", "player": 1, "squares": ["b5"]})
+    assert validate_spec(spec) == [], validate_spec(spec)
+    threats = capture_threats(Engine(spec).spec)
+    rock, paper, scissors = 1 << 0, 1 << 1, 1 << 2
+    assert threats == ((scissors, rock, paper, paper), (scissors, rock, paper, rock))
+
+
+def test_a_square_holding_the_other_sides_royal_is_not_this_sides_resting_royal() -> None:
+    """Player 1's king rests on b4 and player 0 has no king on the board. Asked about player
+    0 at b4, with lists in which a move lands on b4, the answer is no: the royal there is
+    not player 0's."""
+    engine = Engine(load_spec(ROOT / "tests" / "_retired_breather_by_weight.json"))
+    at = {"d2": ("B", 0), "a1": ("R", 0), "b4": ("K", 1), "e4": ("P", 1), "a5": ("R", 1)}
+    state = _placed(engine, at, rest=((), (("b4", 1),)))
+    mine, theirs = _lists(engine, state)
+    b4 = engine._square_index("b4")
+    swapped = (theirs, mine)
+    assert evaluation._royal_resting_falls(engine.spec, state, 1, b4, (mine, theirs)) is True
+    assert evaluation._royal_resting_falls(engine.spec, state, 0, b4, swapped) is False
+
+
+# ------------------------------------------------------------ Q1153's tenth queue
+
+
+def test_the_immunity_term_is_one_piece_by_default() -> None:
+    assert evaluation.IMMUNE_PIECES == 1.0
+    assert Evaluator.for_engine(rps()).immune_pieces == 1.0
+
+
+def test_the_cheapest_piece_skips_a_type_priced_at_zero() -> None:
+    """The rock priced at nothing: the cheapest piece is the paper's or scissors' third, not
+    the rock's zero."""
+    engine = rps()
+    unpriced = replace(Evaluator.for_engine(engine), values=(0.0, 1.0, 1.0))
+    assert unpriced.cheapest_piece(engine.initial_state().board) == 1 / 3
+
+
+def test_a_shortfall_with_no_room_above_the_minimum_is_none() -> None:
+    """Player 1 starts on two pieces against a minimum of two: it has no room to lose, so it
+    has used none of it; player 0, three against two, has used all of its one."""
+    spec = rps_spec(reach=None, extinction={"pieces": "any", "min_count": 2, "result": "loss"})
+    spec["setup"]["placements"] = spec["setup"]["placements"][:5]
+    assert validate_spec(spec) == [], validate_spec(spec)
+    engine = Engine(spec)
+    evaluator = Evaluator.for_engine(engine)
+    state = engine.make_state({"a1": ("R", 0), "e5": ("R", 1), "d5": ("P", 1)})
+    assert evaluator._extinction_counts == (3, 2)
+    assert evaluator._shortfall(state.board, 0) == 1.0
+    assert evaluator._shortfall(state.board, 1) == 0.0
+
+
+# ------------------------------------------------------------ Q1153's eleventh queue
+
+
+def test_no_immune_piece_is_zero_before_any_division_by_the_mean() -> None:
+    """At the cycle game's opening each side holds the hunter of every type, so nothing is
+    immune and the term is zero before it divides by the mean piece -- which, on a table
+    priced at nothing, is zero itself."""
+    engine = rps()
+    unpriced = replace(Evaluator.for_engine(engine), values=(0.0,) * engine.spec.n_types)
+    assert immunity_threats(engine.spec) is not None
+    assert unpriced.immunity(engine.initial_state(), 0) == 0.0
+    assert unpriced.immunity(engine.initial_state(), 1) == 0.0
+
+
+def test_an_immune_racer_past_the_diameter_races_for_nothing_rather_than_less() -> None:
+    """9x3, goals a3 and i3 for player 0 (rotated to i1 and a1), a diameter of 4. Each side
+    holds one paper and nobody a scissors, so both are immune. Player 1's paper seals a3, so
+    player 0's paper on b1 is seven steps from its one open goal: past the diameter, a race
+    of zero, not a negative one. Player 1's is two from a1: (4 - 2) / 4 = 1/2. Equal immune
+    material, so the term is -1/2."""
+    spec = rps_spec(reach={"squares": ["a3", "i3"], "mirror": "rotate", "result": "win"})
+    spec["board"] = {"width": 9, "height": 3}
+    spec["setup"]["placements"] = [
+        {"piece": "P", "player": 0, "squares": ["b1"]},
+        {"piece": "P", "player": 1, "squares": ["a3"]},
+    ]
+    assert validate_spec(spec) == [], validate_spec(spec)
+    engine = Engine(spec)
+    evaluator = Evaluator.for_engine(engine)
+    assert engine.spec.goal_diameter == 4
+    state = engine.initial_state()
+    assert evaluator.sealed_goals(state)[0] != 0
+    assert evaluator.immunity(state, 0) == -0.5
+    assert evaluator.immunity(state, 1) == 0.5
+
+
+# ------------------------------------------------------------ Q1153's twelfth queue
+
+
+def _royal_first_spec(**rules: Any) -> dict[str, Any]:
+    """The cycle game with a royal as type 0, one a side, won by taking it."""
+    spec = rps_spec(reach=None, win="royal_capture", **rules)
+    royal = {"id": "K", "name": "king", "royal": True, "value": 0, "captures": [],
+             "moves": STEP}
+    spec["pieces"].insert(0, royal)
+    spec["setup"]["placements"] += [
+        {"piece": "K", "player": 0, "squares": ["e1"]},
+        {"piece": "K", "player": 1, "squares": ["a5"]},
+    ]
+    assert validate_spec(spec) == [], validate_spec(spec)
+    return spec
+
+
+def test_an_inexhaustible_type_first_in_the_table_leaves_the_types_after_it_a_value() -> None:
+    """Type 0 in an unlimited stock is priced at nothing; the two after it still priced."""
+    spec = rps_spec(drops={"from_captures": False, "stock": {"R": "unlimited"}})
+    assert validate_spec(spec) == [], validate_spec(spec)
+    values = Evaluator.for_engine(Engine(spec)).values
+    assert len(values) == 3
+    assert values[0] == evaluation.INEXHAUSTIBLE_VALUE
+    assert values[1] == values[2] > 0.0
+
+
+def test_a_royal_first_in_the_table_with_an_empty_stock_is_read_off_the_board() -> None:
+    """Drops but no stock: the stock is empty, so royal type 0 is past its end and the
+    answer comes off the opening board."""
+    spec = Engine(_royal_first_spec(drops={"from_captures": True})).spec
+    assert spec.drops is not None
+    assert spec.drops.stock_of(0) == ()
+    assert _royal_loss_ends_it(spec, 0) is True
+    assert _royal_loss_ends_it(spec, 1) is True
+
+
+def test_a_hand_is_summed_per_side_from_zero_to_the_last_bit() -> None:
+    """One piece in player 0's hand at a value of 0.1: exactly 0.1 and -0.1, as
+    ``eval.rs::hand_value`` adds it (a side starting at anything but zero rounds it off)."""
+    engine = rps(drops={"from_captures": True})
+    evaluator = replace(Evaluator.for_engine(engine), values=(0.1, 0.2, 0.3))
+    hands = ((1, 0, 0), (0, 0, 0))
+    assert evaluator.hand_value(hands, 0) == 0.1
+    assert evaluator.hand_value(hands, 1) == -0.1
+
+
+def test_immunity_switched_off_is_never_computed() -> None:
+    """Immunity weighted at zero on a table priced at nothing: the term would divide an
+    immune piece by a mean of zero, so it must not be evaluated at all; the score is zero."""
+    engine = rps(reach=None)
+    evaluator = replace(
+        Evaluator.for_engine(engine), values=(0.0, 0.0, 0.0), immune_pieces=0.0
+    )
+    state = engine.make_state(
+        {"a1": ("R", 0), "b1": ("P", 0), "c1": ("S", 0), "e5": ("R", 1), "c5": ("S", 1)}
+    )
+    assert immunity_threats(engine.spec) is not None
+    assert evaluator._score(state, 0, 0) == 0.0
+
+
+def test_a_region_count_scores_one_for_each_own_piece_standing_in_it() -> None:
+    """Region {a1, c1}, reflected for the second player (c1 lands on c5 either way): two of
+    player 0's three pieces stand in it, one of player 1's two, so 2.0 and 1.0 exactly."""
+    engine = rps(scoring={"count": "region", "region": ["a1", "c1"]})
+    evaluator = Evaluator.for_engine(engine)
+    state = engine.make_state(
+        {"a1": ("R", 0), "b1": ("P", 0), "c1": ("S", 0), "c5": ("S", 1), "b5": ("P", 1)}
+    )
+    assert evaluator.score_for(state, 0) == 2.0
+    assert evaluator.score_for(state, 1) == 1.0
+
+
+# ------------------------------------------------------------ Q1153's fourteenth queue
+
+
+def test_an_override_worth_nothing_off_the_royals_is_refused() -> None:
+    """Every non-royal entry zero is no opinion at all, and is refused; one non-zero entry is
+    an opinion and is kept."""
+    from chess_variant_sandbox.agents.evaluation import PieceValues
+
+    derived = (1.0, 2.0, 3.0)
+    with pytest.raises(ValueError, match="every non-royal piece is worth nothing"):
+        PieceValues.of(derived, (0.0, 0.0, 0.0), ())
+    with pytest.raises(ValueError, match="every non-royal piece is worth nothing"):
+        PieceValues.of(derived, (0.0, 0.0, 0.0), (0,))
+    kept = PieceValues.of(derived, (0.0, 4.0, 0.0), ())
+    assert kept.derived == derived
+
+
+def test_an_evaluator_is_frozen() -> None:
+    evaluator = Evaluator.for_engine(rps())
+    with pytest.raises(FrozenInstanceError):
+        evaluator.mobility_weight = 1.0  # type: ignore[misc]
+    assert hash(evaluator) == hash(evaluator)
+
+
+def test_running_out_as_a_loss_counts_half_the_way_as_minus_a_half() -> None:
+    """The whole army counted, three pieces a side and one left at the threshold: player 0
+    one piece down is half of the way to losing, -0.5 and not -1."""
+    engine = rps(reach=None, extinction={"pieces": "any", "result": "loss"})
+    evaluator = Evaluator.for_engine(engine)
+    state = engine.make_state(
+        {"a1": ("R", 0), "b1": ("P", 0), "e5": ("R", 1), "d5": ("P", 1), "c5": ("S", 1)}
+    )
+    assert evaluator._shortfall(state.board, 0) == 0.5
+    assert evaluator.goal_progress(state, 0) == -0.5
+    assert evaluator.goal_progress(state, 1) == 0.5
+
+
+def test_a_count_past_the_clock_mid_turn_is_worth_the_whole_lead_and_no_more() -> None:
+    """Three moves a turn and a clock of 100: a turn starts at 99, so ply 101 is a mid-turn
+    position past the clock. Four pieces to two is a lead of a third, and the ramp stops at
+    one, so the term is that third and not a hundredth more."""
+    engine = rps(reach=None, scoring={"count": "pieces"}, turn={"moves": 3}, max_plies=100)
+    evaluator = Evaluator.for_engine(engine)
+    placed = engine.make_state(
+        {"a1": ("R", 0), "b1": ("P", 0), "c1": ("S", 0), "a2": ("R", 0), "e5": ("R", 1),
+         "d5": ("P", 1)}
+    )
+    assert evaluator.score_for(placed, 0) == 4.0
+    assert evaluator.score_for(placed, 1) == 2.0
+    at_clock = placed.with_(ply=100)
+    past = placed.with_(ply=101)
+    assert evaluator.goal_progress(at_clock, 0) == 1 / 3
+    assert evaluator.goal_progress(past, 0) == 1 / 3
+    assert evaluator.goal_progress(past, 1) == -1 / 3
+
+
+def test_a_threshold_at_the_opening_count_has_no_shortfall() -> None:
+    """One counted piece a side and a threshold of one: there is no room to run short, so the
+    shortfall is zero whatever the board holds -- a second one included."""
+    engine = rps(reach=None, extinction={"pieces": ["S"], "result": "loss"})
+    evaluator = Evaluator.for_engine(engine)
+    state = engine.make_state(
+        {"a1": ("R", 0), "b1": ("S", 0), "c1": ("S", 0), "e5": ("R", 1), "c5": ("S", 1)}
+    )
+    assert evaluator._shortfall(state.board, 0) == 0.0
+    assert evaluator._shortfall(state.board, 1) == 0.0
+    assert evaluator.goal_progress(state, 0) == 0.0
+
+
+def test_a_royal_first_in_the_table_with_no_hands_at_all_is_still_caught() -> None:
+    """Without drops a state's hands are empty tuples, not a row of zeros: a royal of type 0
+    must not index into them (Q1153). The rook on a1 catches player 1's king on a5."""
+    spec = speed_gardner({"R": 1, "N": 2})
+    spec["pieces"].sort(key=lambda piece: piece["id"] != "K")
+    assert validate_spec(spec) == [], validate_spec(spec)
+    engine = Engine(spec)
+    assert sorted(engine.spec.royal_types) == [0]
+    state = _placed(engine, OPEN)
+    assert state.hands == ((), ())
+    assert _falls(engine, state, 1) is True
+    assert _falls(engine, state, 0) is False

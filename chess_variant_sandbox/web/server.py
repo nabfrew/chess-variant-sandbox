@@ -599,6 +599,11 @@ class App:
             return {"signedIn": False, "handle": None, "admin": False, "accounts": False}
         if parts == ["api", "library"]:
             return self.library_payload()
+        if parts == ["api", "library", "history"]:
+            # Every score the library has kept, by snapshot (SH2 of
+            # `docs/plan-score-history.md`): the boards, the ledgers and the current
+            # scores joined by game, held while the listing is (`library.library_history`).
+            return library.library_history(self.refresh(), self.runs_dir)
         if parts == ["api", "stories"]:
             return self.stories_payload()
         if parts == ["api", "graph"]:

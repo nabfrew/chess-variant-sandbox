@@ -16,7 +16,9 @@ Nothing plays: `measure`'s expensive calls are stubs, on `test_corpus`'s five-sq
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,8 @@ from test_corpus import SPEC, _find, _Scored, world  # noqa: F401  (`world` is a
 
 from chess_variant_sandbox import corpus, history, measurement
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
+from chess_variant_sandbox.spec import edits, load_spec, spec_hash
+from chess_variant_sandbox.spec.legacy_names import LEGACY_NAMES
 
 
 @pytest.fixture
@@ -370,6 +374,156 @@ class TestTheSiteKeepsItFromVisitors:
         assert row["name"] == "alpha" and row["entries"][0]["index"] == 0.5
 
 
+OLD = "0123456789ab"  # the game's hash before an edit of its mechanics, on the boards
+RETIRED = "deaddeaddead"  # a board game with no file now
+
+
+def _boards(digest: str) -> dict[str, Any]:
+    """A boards record in `history_boards.json`'s shape: two snapshots, the game under its
+    old hash in the first (joined by file) and under both hashes in the second."""
+    return {
+        "about": "a test's boards", "written_by": "tests/test_history.py",
+        "snapshots": [
+            {"id": "v3", "weights_version": "v3", "date": "2026-08-20",
+             "basis": "one run, calibration corpus", "source": "runs/v3/*/index-v3.json",
+             "entries": [
+                 {"hash": OLD, "name": "old lancers", "index": 0.5, "viable": True},
+                 {"hash": RETIRED, "name": "gone", "index": 0.4, "viable": False}]},
+            {"id": "v12a", "weights_version": "v12", "date": "2026-10-03",
+             "basis": "mean of four runs", "source": "runs/v12-rescore/compare.json",
+             "entries": [
+                 {"hash": OLD, "name": "old lancers", "index": 0.1, "viable": False},
+                 {"hash": digest, "name": "lancers", "index": 0.55, "viable": True}]},
+        ],
+        "same_game": [{"from": OLD, "to": digest, "how": "file", "file": "archive/x.json",
+                       "task": "Q1, a test", "old_name": "old lancers", "name": "lancers"}],
+    }
+
+
+def _line(world, n: int, index: float, weights: str, measured: str, **moved: Any) -> None:  # noqa: F811
+    outgoing = {"index": index, "runs": [{}] * 4, "viable": True,
+                "weights_version": weights, "basis": {"weights_version": weights}}
+    entry = history.entry_for(n, outgoing, {"weights_version": weights, **moved},
+                              measured, "replay", ("why",))
+    history.append(world["hash"], world["runs"], entry)
+
+
+class TestTheLibraryHistory:
+    """SH2 (`docs/plan-score-history.md` §2.2): the payload `GET /api/library/history`
+    sends, its visitor's copy, and that the listing's cache holds it."""
+
+    @pytest.fixture
+    def listed(self, world, game, monkeypatch) -> Any:  # noqa: F811
+        from chess_variant_sandbox.web import library
+
+        monkeypatch.setattr(history, "boards", lambda: _boards(world["hash"]))
+        # A listing of files written this instant is never cached (`library._SETTLE_NS`).
+        monkeypatch.setattr(library, "_SETTLE_NS", 0)
+        _stored(world, index=0.8)
+        _line(world, 1, 0.6, "v11", "2026-10-01", net="a")
+        _line(world, 2, 0.7, "v12", "2026-11-05", net="b")
+        _line(world, 3, 0.75, "v12", "2026-11-06", engine="c")
+
+        def listing() -> list[Any]:
+            return library.discover(world["rulesets"], world["runs"], world["archive"])
+
+        return listing
+
+    def test_the_shape(self, world, listed) -> None:  # noqa: F811
+        from chess_variant_sandbox.web import library
+
+        payload = library.library_history(listed(), world["runs"])
+        assert set(payload) == {"currentVersion", "snapshots", "games", "cohort", "joins",
+                                "maintainer"}
+        assert payload["currentVersion"] == DEFAULT_WEIGHTS and payload["maintainer"]
+        # The boards', then the ledger's versions no older than the boards' last (v11 is a
+        # board column already), then the current one.
+        assert [(s["id"], s["kind"]) for s in payload["snapshots"]] == [
+            ("v3", "board"), ("v12a", "board"), ("v12", "ledger"),
+            (DEFAULT_WEIGHTS, "current")]
+        for snapshot in payload["snapshots"]:
+            assert {"id", "kind", "weights_version", "date", "basis"} <= set(snapshot)
+        assert payload["snapshots"][2]["date"] == "2026-11-06"
+        [row] = payload["games"]
+        assert set(row) == {"hash", "name", "source", "points", "current", "days"}
+        assert row["hash"] == world["hash"] and row["source"] == "archived"
+        assert row["points"] == {
+            "v3": {"index": 0.5, "viable": True, "as": "old lancers", "how": "file"},
+            "v12a": {"index": 0.55, "viable": True},  # its own hash beats the join
+            "v12": {"index": 0.75, "viable": True},   # the last line under v12
+            DEFAULT_WEIGHTS: {"index": 0.8, "viable": True},
+        }
+        current = row["current"]
+        assert current["status"] == "current" and current["revision"] == DEFAULT_WEIGHTS
+        assert current["index"] == 0.8 and current["runs"] == 4 and current["measured"]
+        assert [day["index"] for day in row["days"]] == [0.6, 0.7, 0.75]
+        assert [day["why"] for day in row["days"]] == [
+            "the players changed", "the players changed", "its engine changed"]
+        assert row["days"][0]["basis"] == {"weights_version": "v11"}
+        assert payload["cohort"] == [world["hash"]]
+        assert payload["joins"] == _boards(world["hash"])["same_game"]
+        json.dumps(payload)  # it travels as JSON
+
+    def test_a_visitor_is_sent_the_numbers_and_no_basis(self, world, listed) -> None:  # noqa: F811
+        from chess_variant_sandbox.web import library
+
+        payload = library.library_history(listed(), world["runs"])
+        sent = history.visitors_history(payload)
+        assert sent["maintainer"] is False
+        assert all("source" not in snapshot for snapshot in sent["snapshots"])
+        [row] = sent["games"]
+        assert row["points"] == payload["games"][0]["points"]
+        for day in row["days"]:
+            assert set(day) == {"index", "viable", "runs", "weights_version", "measured",
+                                "replaced", "why"}
+        # The maintainer's copy is untouched.
+        assert "basis" in payload["games"][0]["days"][0]
+        assert "source" in payload["snapshots"][0]
+
+    def test_a_provisional_score_is_marked_and_never_a_point(self, world, listed) -> None:  # noqa: F811
+        from chess_variant_sandbox.web import library
+
+        path = corpus.measurement_dir(world["hash"], world["runs"]) / "canonical.json"
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        stored["basis"] = {**stored["basis"], "engine": "another-core"}
+        path.write_text(json.dumps(stored), encoding="utf-8")
+
+        payload = library.library_history(listed(), world["runs"])
+        [row] = payload["games"]
+        assert row["current"]["status"] == "provisional" and row["current"]["index"] == 0.8
+        assert DEFAULT_WEIGHTS not in row["points"]
+        assert payload["cohort"] == []
+        assert payload["snapshots"][-1]["date"] is None
+        sent = history.visitors_history(payload)
+        assert sent["games"][0]["current"]["status"] == "provisional"
+
+    def test_it_is_held_while_the_listing_is(self, world, listed) -> None:  # noqa: F811
+        from chess_variant_sandbox.web import library
+
+        first = library.library_history(listed(), world["runs"])
+        assert library.library_history(listed(), world["runs"]) is first
+        _line(world, 4, 0.78, DEFAULT_WEIGHTS, "2026-11-08", engine="d")
+        again = library.library_history(listed(), world["runs"])
+        assert again is not first and len(again["games"][0]["days"]) == 4
+
+    def test_both_servers_answer_it(self, world, listed) -> None:  # noqa: F811
+        from chess_variant_sandbox.site import routes
+        from chess_variant_sandbox.web.server import App
+
+        app = App(world["rulesets"], world["runs"], archive_dir=world["archive"])
+        payload = app.get("/api/library/history")
+        assert [row["hash"] for row in payload["games"]] == [world["hash"]]
+        found = routes.find("GET", "/api/library/history")
+        assert found is not None and found.visitor == "" and found in routes.ALLOWED
+
+    def test_a_design_runs_candidate_is_not_in_it(self, world, listed) -> None:  # noqa: F811
+        from chess_variant_sandbox.web import library
+
+        everything = listed()
+        assert {game.source for game in library.history_games(everything)} <= {
+            *library.LIBRARY_SOURCES, library.PREVIEW}
+
+
 class TestDelivery:
     def test_a_delivery_under_another_basis_keeps_what_it_replaces(
         self, world, tmp_path  # noqa: F811
@@ -406,12 +560,160 @@ class TestDelivery:
 
 class TestItMovesNothing:
     def test_it_is_in_no_fingerprint_set(self) -> None:
-        ours = (measurement.ROOT / "chess_variant_sandbox/history.py").resolve()
-        for kind in ("engine", "metrics", "analysis"):
-            assert ours not in {path.resolve() for path in measurement.fingerprinted(kind)}, kind
+        for name in ("history.py", "history_boards.json"):
+            ours = (measurement.ROOT / "chess_variant_sandbox" / name).resolve()
+            for kind in ("engine", "metrics", "analysis"):
+                assert ours not in {path.resolve() for path in measurement.fingerprinted(kind)}, \
+                    (name, kind)
 
     def test_no_metric_imports_it(self) -> None:
         metrics = measurement.ROOT / "chess_variant_sandbox" / "metrics"
         for path in metrics.rglob("*.py"):
             text = path.read_text(encoding="utf-8")
             assert "import history" not in text and "history import" not in text, path
+
+
+# ------------------------------------------------------------------ the boards before the ledger
+# `docs/plan-score-history.md` §2.2 (SH1): `history_boards.json`'s shape, its joins, and that
+# no entry carries a value its source does not.
+
+TREE = Path(__file__).resolve().parents[1]
+_HEX = re.compile(r"^[0-9a-f]{12}$")
+_BUILD = TREE / "docs" / "reference" / "score-history" / "build_boards.py"
+
+
+def _campaign_runs() -> Path | None:
+    """The `runs/` holding the calibration campaigns: this tree's, or the main checkout's
+    when this is a worktree. ``None`` where neither holds them (the box, a cloud worker)."""
+    candidates = [TREE / "runs"]
+    dot_git = TREE / ".git"
+    if dot_git.is_file():
+        pointer = dot_git.read_text(encoding="utf-8").strip().removeprefix("gitdir:").strip()
+        candidates.append(Path(pointer).parents[2] / "runs")  # <main>/.git/worktrees/<name>
+    for runs in candidates:
+        if (runs / "v12-rescore" / "compare.json").exists():
+            return runs
+    return None
+
+
+def _build() -> Any:
+    spec = importlib.util.spec_from_file_location("build_boards", _BUILD)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _norm(name: str) -> str:
+    return name.strip().rstrip(".").lower()
+
+
+class TestTheBoards:
+    def test_the_snapshots_are_v3_to_v12_at_adoption_in_order(self) -> None:
+        snapshots = history.boards()["snapshots"]
+        assert [s["id"] for s in snapshots] == ["v3", "v5", "v6", "v8", "v9", "v10", "v11", "v12a"]
+        dates = [s["date"] for s in snapshots]
+        assert dates == sorted(dates) and dates[-1] == "2026-10-03"  # the ledger began then
+        for snapshot in snapshots:
+            assert set(snapshot) >= {"id", "weights_version", "date", "basis", "source", "entries"}
+            assert snapshot["id"].startswith(snapshot["weights_version"])
+            assert snapshot["basis"] and snapshot["entries"]
+            hashes = [entry["hash"] for entry in snapshot["entries"]]
+            assert len(hashes) == len(set(hashes)), snapshot["id"]
+            for entry in snapshot["entries"]:
+                assert set(entry) == {"hash", "name", "index", "viable"}
+                assert _HEX.match(entry["hash"]) and entry["name"]
+                assert entry["index"] is None or 0.0 <= entry["index"] <= 1.0
+                assert entry["viable"] in (True, False, None)
+
+    def test_no_snapshot_is_the_current_version(self) -> None:
+        # The current column is `canonical.json`'s; every version after v12 is the ledger's.
+        versions = {s["weights_version"] for s in history.boards()["snapshots"]}
+        assert DEFAULT_WEIGHTS not in versions
+
+    def test_a_borrowed_hash_names_the_snapshot_it_came_from(self) -> None:
+        snapshots = {s["id"]: s for s in history.boards()["snapshots"]}
+        borrowing = [s for s in snapshots.values() if "hashes_from" in s]
+        assert borrowing
+        for snapshot in borrowing:
+            lender = {_norm(e["name"]): e["hash"] for e in snapshots[snapshot["hashes_from"]]["entries"]}
+            for entry in snapshot["entries"]:
+                assert lender[_norm(entry["name"])] == entry["hash"], entry
+
+    def test_every_hash_join_is_a_legacy_name_identity(self) -> None:
+        legacy = set(LEGACY_NAMES.values())
+        found = [join for join in history.boards()["same_game"] if join["how"] == "hash"]
+        assert found
+        for join in found:
+            assert join["from"] == join["to"] and join["to"] in legacy, join
+            spec = load_spec(TREE / join["file"])
+            assert spec_hash(spec) == join["to"] and spec["name"] == join["name"], join
+
+    def test_every_file_join_names_a_file_in_the_tree(self) -> None:
+        found = [join for join in history.boards()["same_game"] if join["how"] == "file"]
+        assert found
+        for join in found:
+            assert join["file"].split("/")[0] in ("archive", "rulesets"), join
+            assert spec_hash(load_spec(TREE / join["file"])) == join["to"] != join["from"], join
+            assert join["task"], join
+            if join["from"] in edits.EDITED:
+                assert edits.current(join["from"]) == join["to"], join
+
+    def test_every_join_starts_at_a_recorded_hash(self) -> None:
+        data = history.boards()
+        recorded = {e["hash"] for s in data["snapshots"] for e in s["entries"]}
+        froms = [join["from"] for join in data["same_game"]]
+        assert set(froms) <= recorded and len(froms) == len(set(froms))
+        assert {join["how"] for join in data["same_game"]} <= {"hash", "file"}
+
+    def test_no_entry_carries_a_value_its_source_does_not(self) -> None:
+        runs = _campaign_runs()
+        if runs is None:
+            pytest.skip("the calibration campaigns' runs/ is not on this machine")
+        for snapshot in history.boards()["snapshots"]:
+            source = _source_entries(runs, snapshot)
+            if source is None:
+                continue  # v6: a table in a document, names only
+            for entry in snapshot["entries"]:
+                assert source[entry["hash"]] == entry, (snapshot["id"], entry)
+
+    def test_the_build_refuses_a_changed_snapshot(self) -> None:
+        build = _build()
+        held = history.boards()
+        assert build.refusal(None, held) is None
+        assert build.refusal(held, {**held, "same_game": []}) is None  # a join may change
+        moved = json.loads(json.dumps(held))
+        moved["snapshots"][0]["entries"][0]["index"] = 0.5
+        assert "v3" in build.refusal(held, moved)
+        assert build.refusal(held, {**held, "snapshots": held["snapshots"][:-1]})
+
+    def test_the_committed_file_is_what_the_build_writes(self) -> None:
+        assert _build().render(history.boards()) == history.BOARDS_FILE.read_text(encoding="utf-8")
+
+
+def _source_entries(runs: Path, snapshot: dict[str, Any]) -> dict[str, dict[str, Any]] | None:
+    """A snapshot's entries re-read from its source, by hash; ``None`` for v6's table."""
+    source = snapshot["source"]
+    if not source.startswith("runs/"):
+        return None
+
+    def entry(digest: str, name: str, index: Any, viable: Any) -> dict[str, Any]:
+        return {"hash": digest, "name": name, "index": index, "viable": viable}
+
+    if "*" in source:
+        found = {}
+        for path in runs.glob(source.removeprefix("runs/")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            found[data["ruleset_hash"]] = entry(data["ruleset_hash"], data["ruleset_name"],
+                                                data.get("total"), data.get("viable"))
+        return found
+    data = json.loads((runs / source.removeprefix("runs/")).read_text(encoding="utf-8"))
+    if snapshot["id"] == "v10":
+        return {h: entry(h, r["name"], r.get("index"), r.get("viable")) for h, r in data.items()}
+    if snapshot["id"] == "v11":
+        rows = [r["canonical"] for r in data.values()]
+        return {r["hash"]: entry(r["hash"], r["name"], r.get("index"), r.get("viable")) for r in rows}
+    # v12a: the board records names; the entry's hash is v11's (`hashes_from`).
+    by_name = {e["name"]: e["hash"] for e in snapshot["entries"]}
+    return {by_name[r["name"]]: entry(by_name[r["name"]], r["name"], r.get("v12"), r.get("viable"))
+            for r in data["board"]}

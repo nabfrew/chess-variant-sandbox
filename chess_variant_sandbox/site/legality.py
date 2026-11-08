@@ -127,6 +127,7 @@ from chess_variant_sandbox.tournament.analysis import (
     count_spy_holders,
     mover_kind,
     moves_an_instance,
+    moves_no_piece,
     rest_tally,
     round_blunder,
     round_tallies,
@@ -735,20 +736,22 @@ def walk(
         # `starting_squares`, `takes`), so the two cannot drift apart again as they did
         # over a fold's own move (Q875).
         kind = mover_kind(engine, board, move) if counting else None
-        if kind is None:
+        if kind is None and not (counting and moves_no_piece(move)):
             # `_analyse_game` stops counting at a move from an empty square, saying the
             # record and the spec have drifted apart. A legal move does not start on one
             # (a fold's own move is read by its end, not its origin), so this is kept only
-            # so that the two read every game alike.
+            # so that the two read every game alike. A keep or a pass moves no piece and is
+            # counted under no type, and the walk goes on past it (Q1167).
             counting = False
         else:
             count_sight(engine, sight, state, state.side_to_move)
             count_rest(engine, rest, state, state.side_to_move)
-            if moves_an_instance(move) and move_from(move) in starting:
-                moved.add(move_from(move))
-            moves_by_type[kind] += 1
-            if takes(engine, board, move):
-                captures_by_type[kind] += 1
+            if kind is not None:
+                if moves_an_instance(move) and move_from(move) in starting:
+                    moved.add(move_from(move))
+                moves_by_type[kind] += 1
+                if takes(engine, board, move):
+                    captures_by_type[kind] += 1
             if ply % PLY_STRIDE == 0 and len(legal) > 1:
                 legal_counts.append(len(legal))
                 capture_counts.append(sum(1 for m in legal if takes(engine, board, m)))

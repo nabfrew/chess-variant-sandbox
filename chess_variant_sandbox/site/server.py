@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from chess_variant_sandbox import corpus
+from chess_variant_sandbox import corpus, history
 from chess_variant_sandbox.measurement import Basis
 from chess_variant_sandbox.site import (
     admin,
@@ -390,6 +390,8 @@ class SiteApp(App):
         parts = routes.split(path)
         if parts == ("api", "library"):
             return self._library(asked)
+        if parts == ("api", "library", "history"):
+            return self._library_history()
         if parts == ("api", "me"):
             return self._me()
         if parts == ("api", "profile"):
@@ -621,6 +623,32 @@ class SiteApp(App):
         self._pool.give(connection, connect)
 
     # ------------------------------------------------ the games page, with the store on it
+
+    def _library_history(self) -> dict[str, Any]:
+        """`GET /api/library/history` as the site sends it (SH2, `docs/plan-score-history.md`).
+
+        The local application's payload through the listing's door (`drafts.offered`): a
+        game taken off the site, or a preview with no public row, is not in it, nor in the
+        cohort. Public (D1, answered A by the user on 2026-11-08). An admin is sent it
+        whole, as the local application is; anybody else `history.visitors_history`'s
+        copy, without the ledger lines' bases. A provisional score is already marked and
+        never a point in either (`history.library_history`).
+        """
+        payload = super().get("/api/library/history")
+        with self._connection() as connection:
+            kept = drafts.offered(
+                payload.get("games") or [], shown=drafts.listed(connection),
+                gone=admin.unlisted_games(connection),
+            )
+        hashes = {str(row["hash"]) for row in kept}
+        narrowed = {
+            **payload,
+            "games": list(kept),
+            "cohort": [digest for digest in payload.get("cohort") or [] if digest in hashes],
+        }
+        if self.role == admin.ADMIN:
+            return narrowed
+        return history.visitors_history(narrowed)
 
     def _library(self, query: dict[str, str]) -> Any:
         """The local application's listing with the site's own columns and orderings.

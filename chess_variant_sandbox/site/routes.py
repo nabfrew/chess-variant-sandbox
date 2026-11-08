@@ -92,6 +92,16 @@ ALLOWED: tuple[Route, ...] = (
         "signed in or not, the handle, the role -- nothing rated, and cheap (Q199)",
     ),
     Route("GET", "/api/library", "the listing, with the roster and the metric legend"),
+    Route(
+        "GET",
+        "/api/library/history",
+        "every score the library has kept for its games, by snapshot from weights v3 on: "
+        "the boards before the ledger, each game's ledger and its current score "
+        "(`docs/plan-score-history.md` SH2; public, the user's answer to D1 on "
+        "2026-11-08). Read-only, names nobody, and the same for everybody but an admin, "
+        "who is also sent each ledger line's basis; a provisional score is marked "
+        "and never a point, and a game off the site is not in it",
+    ),
     Route("GET", "/api/stories", "the landing's stories' games, replayed through the engine: "
           "each frame's squares and what its move did (LP4); the same for everybody"),
     Route("GET", "/api/game/<hash>", "one game: rules, pieces, measurement, opponents"),

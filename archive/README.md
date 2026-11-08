@@ -1546,3 +1546,13 @@ of the mechanics moved (`rules.promotion`), so it is a new game, `0df9ea99bd82`;
 Measured 0.918 [0.892, 0.938] under `v12`, the mean of four runs, viable 4-0, against the parent's 0.954
 [0.933, 0.968]. Games ran longer (97 plies against 65), fewer were decided (83% against 92%), and the second
 player scored better (the first scored 0.43 against 0.52).
+
+## `no-zugzwang.json`: chess where you may pass (Q1129, 2026-11-08)
+
+A **preview**, the one-feature showcase of `rules.pass` (generation 116, H3): chess plus the pass, which a player
+not in check may play instead of a move. It was measured as an arm of Hunger Chess (`docs/plan-hunger.md` §6), whose
+showcase stayed a candidate under the user's 0.8 bar (`docs/reference/hunger-candidate.json`). Passes are 5.4% of the
+plies between computer players, 95% of games still end in checkmate, and the score is chess's to
+within a hundredth (0.939 on a patched analysis pass against chess's 0.938, `v13`): the pass on its own changes chess
+too little for this roster to see, which is its pre-registered failure, recorded rather than hidden. Hash
+`1cb062a21f06`.

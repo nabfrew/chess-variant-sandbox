@@ -108,6 +108,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/drover.json": ("643743c84589", "710c04f27ce06b46"),  # TS3, 2026-11-07: a runner and an optional boulder move a turn
     "rulesets/leapfrog.json": ("1e6b3dbb8039", "a5f918c453eaec23"),  # TS4, 2026-11-07: frogs that leap a row and push it back
     "rulesets/tessabi.json": ("684b14652b2b", "d54b1bb38db2b6f0"),  # TS5, 2026-11-07: Tessabi, from tessabi.com
+    "archive/no-zugzwang.json": ("1cb062a21f06", "ee38137f86850a6e"),  # H5 (Q1129), 2026-11-08: chess plus the pass
     "rulesets/cylinder.json": ("a9306688fe57", "6a56433c2492eaf3"),
     "rulesets/dobutsu.json": ("a2f0c65ceedf", "d158e949aa940a34"),
     "rulesets/duck-chess.json": ("7acb867a99aa", "06ae7548db734adb"),  # Q1079, 2026-10-31: standard duck chess

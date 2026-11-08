@@ -23,8 +23,11 @@ What it decides itself:
    likeness, each with what they share, whether or not a line joins them.
 4. **The picture is fitted to the page.** `mapping` places games in t-SNE's own scale;
    here the picture is scaled so the median distance from a game to its nearest drawn
-   neighbour is `RING` layout units, and any two dots nearer than `MIN_SEPARATION` are
-   pushed apart, so no dot is drawn on another and names have room.
+   neighbour is `RING` layout units; then each community is drawn as one place
+   (`relaxing`, Q1165: a disc round where most of it was drawn, its games keeping their
+   bearings, the discs kept apart), and any two dots nearer than `MIN_SEPARATION` are
+   pushed apart, so no dot is drawn on another and names have room. The memory keeps
+   t-SNE's places; the relaxation is drawn from them each time.
 5. **A community drawn in two places is said to be.** t-SNE keeps neighbourhoods, so a
    community whose halves share little but one word can be drawn as two knots. Each
    community carries its drawn `parts` -- its members joined while each is within
@@ -62,7 +65,7 @@ from typing import TYPE_CHECKING, Any
 
 from chess_variant_sandbox.spec import edits, relate
 from chess_variant_sandbox.spec.likeness import LIKENESS_VERSION, Likeness, likeness_of_forms
-from chess_variant_sandbox.web import families, mapping
+from chess_variant_sandbox.web import families, mapping, relaxing
 
 if TYPE_CHECKING:  # a Game is the library's; importing it at runtime would be a cycle
     from chess_variant_sandbox.web.library import Game
@@ -593,7 +596,7 @@ def _drawn(representatives: Sequence[Game], runs: Path) -> _Drawn:
         families.write_memory(memory, found)
     drawn = _Drawn(
         map=found,
-        placed=_fitted(found.positions),
+        placed=_relaxed(_fitted(found.positions), found.family_of),
         ids=ids,
         forms=forms,
         relation=likeness_of_forms(forms),
@@ -654,6 +657,25 @@ def _fitted(positions: Mapping[str, tuple[float, float]]) -> dict[str, tuple[flo
     spot = {
         digest: [positions[digest][0] * scale, positions[digest][1] * scale] for digest in ids
     }
+    _separated(ids, spot, MIN_SEPARATION)
+    return {digest: (spot[digest][0], spot[digest][1]) for digest in ids}
+
+
+def _relaxed(
+    fitted: Mapping[str, tuple[float, float]], family_of: Mapping[str, str | None]
+) -> dict[str, tuple[float, float]]:
+    """The fitted picture with each community drawn as one place (`relaxing`, Q1165).
+
+    The spacing inside a community is `RING`, the fitted picture's own median gap, and the
+    dots are pushed apart to `MIN_SEPARATION` again afterwards. The map's memory keeps
+    t-SNE's places; this is the picture drawn from them, a function of them and of the
+    communities alone.
+    """
+    if len(fitted) < 2:
+        return dict(fitted)
+    found = relaxing.relaxed(fitted, family_of, RING)
+    ids = sorted(found)
+    spot = {digest: [found[digest][0], found[digest][1]] for digest in ids}
     _separated(ids, spot, MIN_SEPARATION)
     return {digest: (spot[digest][0], spot[digest][1]) for digest in ids}
 

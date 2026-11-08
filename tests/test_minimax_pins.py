@@ -28,6 +28,7 @@ from chess_variant_sandbox.agents.minimax import (
     DUCK_QUIESCE,
     DUCK_REFUTE,
     EXACT,
+    KEEP_TABLE,
     LOWER,
     MAX_PLY,
     MOPUP,
@@ -35,13 +36,14 @@ from chess_variant_sandbox.agents.minimax import (
     TT_MOVE,
     UPPER,
     MinimaxAgent,
+    _pair,
     _path_open,
     mopup_weight,
     repairs_of,
 )
 from chess_variant_sandbox.engine import Engine, GameState
 from chess_variant_sandbox.engine.compile import SIGHT_PATH_AURA, WILD
-from chess_variant_sandbox.engine.moves import MOVE_DUCK, decode_move, encode_move
+from chess_variant_sandbox.engine.moves import DUCK_PLACE, MOVE_DUCK, decode_move, encode_move
 from chess_variant_sandbox.tournament.play import eval_values, play_game, seat_rng
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -846,3 +848,408 @@ def test_a_quiescence_cutoff_past_the_last_ply_is_filed_in_the_last_slot() -> No
     stand_pat = 0.35000000000000003
     value = agent._quiesce(state, 2, MAX_PLY, stand_pat - 0.01, stand_pat + 0.01)
     assert (value, agent._refuters[MAX_PLY - 2:]) == (2.35, [-1, 2576])
+
+
+# ------------------------------------------------------------------ batch 6
+
+
+def test_a_cutoffs_history_weight_is_its_depth_squared() -> None:
+    """A quiet cutoff at depth 3 adds 9 to its from-to history, one at depth 1 adds 1, and
+    one at depth 0 or below adds nothing."""
+    engine = _ending("R", "b1", "e1", "e8")
+    agent = MinimaxAgent(engine, nodes=10)
+    squares = engine.spec.n_squares
+    move = encode_move(1, 0)
+    for depth in (3, 1, 0, -2):
+        agent._remember(move, True, depth, 1, 0)
+    assert agent._history == {1 * squares + 0: 10}
+    assert agent._killers[1] == [move, -1]
+
+
+def _wide_duck() -> Engine:
+    """A 16x16 game won by taking the royal, with a duck: the board's last square is 255."""
+    return Engine({
+        "name": "wide duck (pins)",
+        "board": {"width": 16, "height": 16},
+        "pieces": [
+            {"id": "K", "name": "king", "royal": True, "value": 0, "moves": KING_STEPS},
+            {"id": "D", "name": "duck", "value": 0, "moves": []},
+        ],
+        "setup": {"mirror": False, "placements": [
+            {"piece": "K", "player": 0, "squares": ["a1"]},
+            {"piece": "K", "player": 1, "squares": ["a16"]},
+        ]},
+        "rules": {"win": "royal_capture", "stalemate": "draw", "max_plies": 200,
+                  "duck": {"piece": "D"}},
+    })
+
+
+def test_a_duck_refuted_by_nothing_on_a_wide_board_moves_nothing_forward() -> None:
+    """On a 16x16 board square 255 is real. At a duck half whose children all answer from the
+    table (none names a refutation), the duck onto 255, put last by the history and the only
+    one that fails high, is reached last: a cleared reply slot reads as no refutation, not as
+    one onto square 255."""
+    engine = _wide_duck()
+    state = engine.make_state({"a1": ("K", 0), "a16": ("K", 1)}, duck_owed=True)
+    moves = engine.legal_moves(state)
+    assert all(decode_move(m)[2] == MOVE_DUCK for m in moves) and len(moves) == 254
+    corner = [m for m in moves if decode_move(m)[1] == 255]
+    assert len(corner) == 1 and moves[-1] == corner[0]
+    agent = MinimaxAgent(engine, nodes=10**7, repairs=DUCK_REFUTE)
+    agent.duck_cutoffs = []
+    squares = engine.spec.n_squares
+    for move in moves:
+        if move not in corner:
+            origin, target, _, _ = decode_move(move)
+            agent._history[origin * squares + target] = 1
+        child = engine.apply(state, move)
+        value = -5.0 if move in corner else 5.0
+        agent._table[agent._table_key(child)] = (9, value, EXACT, agent._generation, NO_MOVE)
+    assert agent._negamax(state, 2, 0, -INF, 1.0) == 5.0
+    assert (agent.duck_cutoffs, agent._nodes) == ([253], 255)
+
+
+# ------------------------------------------------------------------ batch 7
+
+
+def test_a_piece_halfs_count_past_the_last_ply_is_filed_in_the_last_slot() -> None:
+    """``_note_turn`` files a piece half's count at its ply, clamped to the last slot (95);
+    a duck half's own list is never filed."""
+    engine = _gardner_duck()
+    pieces = engine.legal_moves(engine.initial_state())
+    ducks = engine.legal_moves(_after(engine, 1))
+    assert len(pieces) == 7 and decode_move(ducks[0])[2] == MOVE_DUCK
+    for ply in (MAX_PLY - 1, MAX_PLY + 3):
+        agent = MinimaxAgent(engine, nodes=10)
+        agent._note_turn(pieces, ply)
+        assert agent._turn_moves[MAX_PLY - 3:] == [0, 0, 7]
+        agent._note_turn(ducks, ply)
+        agent._note_turn([], ply)
+        assert agent._turn_moves[MAX_PLY - 3:] == [0, 0, 7]
+
+
+def test_an_unheard_duck_has_no_history_under_duck_history() -> None:
+    """A duck whose target holds no history ranks at zero: one filed at weight one, the least
+    a cutoff files, comes first."""
+    engine = _gardner_duck()
+    state = _after(engine, 1)
+    moves = engine.legal_moves(state)
+    assert all(decode_move(m)[2] == MOVE_DUCK for m in moves) and len(moves) > 2
+    last = moves[-1]
+    agent = MinimaxAgent(engine, nodes=10, repairs=DEFAULT_REPAIRS | DUCK_HISTORY)
+    agent._duck_history[state.side_to_move * engine.spec.n_squares + decode_move(last)[1]] = 1
+    ordered = list(moves)
+    agent._order(state, ordered, 1)
+    assert ordered == [last, *moves[:-1]]
+
+
+def test_a_duck_half_that_reaches_beta_exactly_stops() -> None:
+    """Seed 1's game, seven plies in, owes a duck half whose depth-1 quiescence is -3.98 in 10
+    nodes; with beta at that value the ducks stop on reaching it: 4 nodes."""
+    engine = _gardner_duck()
+    state = _after(engine, 7, seed=1)
+    assert decode_move(engine.legal_moves(state)[0])[2] == MOVE_DUCK
+    full = MinimaxAgent(engine, nodes=10**7, repairs=DUCK_QUIESCE)
+    value = full._quiesce(state, 1, 1, -INF, INF)
+    assert (value, full._nodes) == (-3.980000000000001, 10)
+    closed = MinimaxAgent(engine, nodes=10**7, repairs=DUCK_QUIESCE)
+    assert (closed._quiesce(state, 1, 1, value - 1, value), closed._nodes) == (value, 4)
+
+
+# ------------------------------------------------------------------ batch 8
+
+
+def test_a_repair_is_spelled_zero_or_one_and_nothing_else() -> None:
+    assert repairs_of({"keep": 0}) & KEEP_TABLE == 0
+    assert repairs_of({"keep": 1}) & KEEP_TABLE == KEEP_TABLE
+    for value in (-1, 2):
+        with pytest.raises(ValueError, match=rf"keep={value}: a search repair is spelled 0 or 1"):
+            repairs_of({"keep": value})
+
+
+def test_a_placed_duck_lifts_no_square() -> None:
+    """A duck placed (not stepped) lifts nothing: a piece of the mover's on square 1 still
+    screens its neighbour on square 0 from the slider beyond it, so only the open attack on
+    the royal (through d1) is blocked."""
+    engine = _gardner_duck()
+    state = engine.make_state(
+        {"a1": ("R", 0), "b1": ("N", 0), "c1": ("R", 1), "e1": ("K", 0), "e5": ("K", 1)},
+        side_to_move=0,
+    )
+    agent = MinimaxAgent(engine, nodes=10)
+    d3 = engine._square_index("d3")
+    assert engine._square_index("b1") == 1
+    placed = encode_move(d3, d3, MOVE_DUCK, DUCK_PLACE)
+    assert agent._duck_blocks(state, placed) == {engine._square_index("d1")}
+
+
+def test_a_round_that_reaches_beta_exactly_is_filed_as_a_lower_bound() -> None:
+    engine, state, _ = _spy_round()
+    phase = engine.phase(state)
+    agent = MinimaxAgent(engine, nodes=10**7)
+    agent._begin_search()
+    assert agent._round_node(state, phase, 1, 1, -INF, -7.1725) == -7.1725
+    assert agent._table[agent._table_key(state)][:3] == (1, -7.1725, LOWER)
+
+
+def test_duck_front_alone_brings_no_refutations_forward() -> None:
+    """Seed 2's game nine plies in, searched to depth 3: ``duck_front`` alone costs 726 nodes,
+    and only with ``duck_refute`` beside it do the refutations save 86 of them."""
+    engine = _gardner_duck()
+    state = _after(engine, 9, seed=2)
+    got = []
+    for repairs in (DUCK_FRONT, DUCK_FRONT | DUCK_REFUTE):
+        agent = MinimaxAgent(engine, nodes=10**7, repairs=repairs)
+        agent._begin_search()
+        got.append((agent._negamax(state, 3, 0, -INF, INF), agent._nodes))
+    assert got == [(11.04, 726), (11.04, 640)]
+
+
+def test_a_kept_move_that_is_not_legal_here_is_passed_over() -> None:
+    """A key can be shared by positions with different moves (the key omits the clocks), so a
+    kept move is tried first only when it is legal here, and only under ``tt_move``: a word no
+    move here has is passed over, and without ``tt_move`` a planted word 1 is ignored; both cost
+    what nothing kept costs, with the killer leading."""
+    engine = _ending("R", "b1", "e1", "e8")
+    state = engine.initial_state()
+    moves = engine.legal_moves(state)
+    stranger = encode_move(63, 62)
+    assert stranger not in moves and 1 in moves
+    got = []
+    for repairs, kept in (
+        ((DEFAULT_REPAIRS & ~MOPUP) | TT_MOVE, stranger),
+        (DEFAULT_REPAIRS & ~MOPUP, 1),
+    ):
+        agent = MinimaxAgent(engine, nodes=10**7, repairs=repairs)
+        agent._table[agent._table_key(state)] = (0, 0.0, EXACT, agent._generation, kept)
+        agent._killers[1][0] = moves[3]
+        got.append((agent._negamax(state, 3, 1, -INF, INF), agent._nodes))
+    assert got == [(0.9, 614), (0.9, 614)]
+
+
+# ------------------------------------------------------------------ batch 10
+
+
+def test_a_bare_constructors_budget_is_twenty_thousand() -> None:
+    """The constructor's own default, not `build_agent`'s spelling of it."""
+    agent = MinimaxAgent(Engine(_load("rulesets/gardner.json")))
+    assert (agent.budget, agent.name) == (20_000, "minimax:nodes=20000")
+
+
+def test_a_node_past_the_last_ply_clears_the_last_refuter_slot() -> None:
+    """A node at ply 96 answered from the table still clears its refuter slot, the last (95),
+    and leaves slot 94 alone."""
+    engine = Engine(_load("rulesets/gardner.json"))
+    state = engine.initial_state()
+    agent = MinimaxAgent(engine, nodes=10**7)
+    agent._table[agent._table_key(state)] = (9, 1.5, EXACT, agent._generation, NO_MOVE)
+    agent._refuters[MAX_PLY - 1] = agent._refuters[MAX_PLY - 2] = 7
+    assert agent._negamax(state, 2, MAX_PLY, -INF, INF) == 1.5
+    assert agent._refuters[MAX_PLY - 2:] == [7, -1]
+
+
+def test_a_duck_half_at_the_last_plies_reads_its_childs_refuter() -> None:
+    """Under ``duck_refute`` a duck half at ply 95 or 96 reads its children's refutations from
+    the last slot, and searches as one at ply 1 does: -3.88 in 28 nodes at depth 2."""
+    engine = _gardner_duck()
+    state = _after(engine, 1)
+    assert decode_move(engine.legal_moves(state)[0])[2] == MOVE_DUCK
+    got = []
+    for ply in (1, MAX_PLY - 1, MAX_PLY):
+        agent = MinimaxAgent(engine, nodes=10**7, repairs=DUCK_REFUTE)
+        got.append((agent._negamax(state, 2, ply, -INF, INF), agent._nodes))
+    assert got == [(-3.8799999999999972, 28)] * 3
+
+
+def test_a_duck_half_at_the_root_reads_slot_zero() -> None:
+    """A duck half at ply 0 has no ply above it: its turn's count is read from slot 0 (here 9),
+    never the last slot (left 0), so it stands pat at 0.45, not 0."""
+    engine = _gardner_duck()
+    state = _after(engine, 1)
+    assert decode_move(engine.legal_moves(state)[0])[2] == MOVE_DUCK
+    agent = MinimaxAgent(engine, nodes=10**7, repairs=DEFAULT_REPAIRS & ~DUCK_QUIESCE)
+    agent._turn_moves[0] = 9
+    assert agent._quiesce(state, 0, 0, -INF, INF) == 0.45000000000000534
+
+
+def test_a_quiescent_piece_halfs_count_past_the_last_ply_is_filed_in_the_last_slot() -> None:
+    engine = Engine(_load("rulesets/gardner.json"))
+    for ply in (MAX_PLY - 1, MAX_PLY + 2):
+        agent = MinimaxAgent(engine, nodes=10**7)
+        assert agent.repairs & DUCK_MOBILITY
+        agent._quiesce(engine.initial_state(), 0, ply, -INF, INF)
+        assert agent._turn_moves[MAX_PLY - 3:] == [0, 0, 7]
+
+
+# ------------------------------------------------------------------ batch 11 (Q1153)
+
+
+def test_duck_refute_alone_brings_no_blocks_to_the_front() -> None:
+    """The position `test_duck_front_brings_the_blocks_to_the_very_front` searches, under
+    ``duck_refute`` alone: the duck half is still a duck half for it, but only ``duck_front``
+    sends the blocks first, so the history's favourite leads and the first block to fail
+    high is reached where the order puts it."""
+    engine = _small_duck()
+    state = engine.make_state(
+        {"b4": ("R", 0), "f1": ("K", 0), "b1": ("R", 1), "f6": ("K", 1)}, duck_owed=True
+    )
+    agent = MinimaxAgent(engine, nodes=10**7, repairs=DUCK_REFUTE)
+    blocks = agent._duck_blocks(state, engine.legal_moves(state)[0])
+    favourite = next(m for m in engine.legal_moves(state) if decode_move(m)[1] not in blocks)
+    origin, target, _, _ = decode_move(favourite)
+    agent._history[origin * engine.spec.n_squares + target] = 9
+    agent.duck_cutoffs = []
+    _table_children(agent, state, blocks)
+    assert agent._negamax(state, 2, 0, -INF, 1.0) == 5.0
+    assert (agent.duck_cutoffs, agent._nodes) == ([1], 3)
+
+
+def _cannon_duck() -> Engine:
+    """A 6x6 royal-capture game with a duck and a cannon that slides to move and hops to take."""
+    return Engine({
+        "name": "cannon duck (pins)",
+        "board": {"width": 6, "height": 6},
+        "pieces": [
+            {"id": "K", "name": "king", "royal": True, "value": 0, "moves": KING_STEPS},
+            {"id": "R", "name": "rook", "value": 5, "moves": ROOK_SLIDE},
+            {"id": "C", "name": "cannon", "value": 4, "moves": [
+                {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "move"},
+                {"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "capture"},
+            ]},
+            {"id": "D", "name": "duck", "value": 0, "moves": []},
+        ],
+        "setup": {"mirror": False, "placements": [
+            {"piece": "K", "player": 0, "squares": ["f1"]},
+            {"piece": "K", "player": 1, "squares": ["f6"]},
+        ]},
+        "rules": {"win": "royal_capture", "stalemate": "draw", "max_plies": 200,
+                  "duck": {"piece": "D"}},
+    })
+
+
+def test_an_unscreened_hopper_threatens_nothing_a_duck_could_block() -> None:
+    """The opponent's hopper on b1 has open lines to the mover's rook on b4 and royal on f1 but
+    nothing to hop over, so it attacks neither: no duck square blocks anything. A screen-needing
+    source must be passed over before its path is read."""
+    engine = _cannon_duck()
+    state = engine.make_state(
+        {"b4": ("R", 0), "f1": ("K", 0), "b1": ("C", 1), "f6": ("K", 1)}, duck_owed=True
+    )
+    agent = MinimaxAgent(engine, nodes=10)
+    assert agent._duck_blocks(state, engine.legal_moves(state)[0]) == set()
+
+
+def test_a_seeing_duck_placed_lifts_no_corner() -> None:
+    """In `tests/_duck_shepherd.json` (a duck that sees its eight neighbours) the opponent's
+    leaper on d3 attacks the mover's on b2 and royal on e1. A placed duck lifts no square, so
+    the mover's own piece on a1 (square 0) keeps the duck from standing there, though a1 is
+    beside b2."""
+    engine = Engine(_load("tests/_duck_shepherd.json"))
+    state = engine.make_state(
+        {"a1": ("R", 0), "b2": ("N", 0), "e1": ("K", 0), "d3": ("N", 1), "e8": ("K", 1)},
+        side_to_move=0, duck_owed=True,
+    )
+    first = engine.legal_moves(state)[0]
+    assert decode_move(first)[2:] == (MOVE_DUCK, DUCK_PLACE)
+    agent = MinimaxAgent(engine, nodes=10)
+    assert sorted(agent._duck_blocks(state, first)) == [
+        1, 2, 3, 5, 8, 10, 11, 12, 13, 16, 17, 18, 20, 26, 27, 28,
+    ]
+
+
+# ------------------------------------------------------------------ batch 12
+
+
+def test_a_duck_cutoff_without_duck_history_is_filed_in_the_shared_history() -> None:
+    """With ``duck_history`` off a duck move's cutoff is filed like a piece move's, under
+    origin and target in the shared table, and the duck table stays empty."""
+    engine = _gardner_duck()
+    squares = engine.spec.n_squares
+    assert not DEFAULT_REPAIRS & DUCK_HISTORY
+    agent = MinimaxAgent(engine, nodes=10)
+    agent._remember(encode_move(7, 12, MOVE_DUCK), True, 3, 1, 1)
+    assert agent._duck_history == {}
+    assert agent._history == {7 * squares + 12: 9}
+
+
+def test_a_duck_quiescences_replies_file_their_counts_one_ply_down() -> None:
+    """Under ``duck_quiesce`` and ``duck_mobility``, the opponent's piece halves below an owed
+    duck half at ply 1 are ply 2, so their turns' counts are filed in slot 2 and the duck
+    halves under them read it."""
+    engine = _gardner_duck()
+    state = _after(engine, 1)
+    agent = MinimaxAgent(engine, nodes=10**7, repairs=DUCK_QUIESCE | DUCK_MOBILITY)
+    value = agent._quiesce(state, 2, 1, -INF, INF)
+    got = (value, agent._nodes, agent._turn_moves[:5])
+    assert got == (-2.1699999999999964, 8, [0, 0, 7, 0, 5])
+
+
+def test_a_spy_games_minimax_refuses_a_net_by_name() -> None:
+    """A spy game's minimax plays the built-in objective only: a ``net=`` is refused as one
+    (no net plays a spy game), before any store is looked for."""
+    engine, _, _ = _spy_round()
+    with pytest.raises(ValueError, match=r"net names an objective .*\(no net plays a spy game\)"):
+        build_agent("minimax:net=000000000000,nodes=100", engine)
+
+
+def test_turn_counts_are_written_only_under_duck_mobility() -> None:
+    """``_turn_moves`` is written only under ``duck_mobility``: without the bit a root search
+    files no count, with it the root's own count (gardner-duck's opening, 7) sits in slot 0."""
+    engine = _gardner_duck()
+    state = engine.initial_state()
+    moves = engine.legal_moves(state)
+    off = MinimaxAgent(engine, nodes=10**7, repairs=DEFAULT_REPAIRS & ~DUCK_MOBILITY)
+    on = MinimaxAgent(engine, nodes=10**7, repairs=DEFAULT_REPAIRS | DUCK_MOBILITY)
+    for agent in (off, on):
+        agent._begin_search()
+        agent._search_root(state, list(moves), 1)
+    assert (off._turn_moves[0], on._turn_moves[0]) == (0, 7)
+
+
+# ------------------------------------------------------------------ Q1153 (minimax-13)
+
+
+def test_an_answer_that_hands_the_move_over_is_searched_one_ply_down() -> None:
+    """Only the answers that hand the move over, from ply 1 at depth 1: each child is a node at
+    ply 2, which clears that ply's refuter slot (and leaves ply 1's and ply 3's alone)."""
+    engine, state, announced = _spy_round()
+    agent = MinimaxAgent(engine, nodes=10**7)
+    agent._begin_search()
+    answers = [
+        m for m in engine.legal_moves_for(state, 0)
+        if engine.apply_round(state, *_pair(1, announced, m)).side_to_move != 0
+    ]
+    agent._refuters[1:5] = [7777, 7777, 7777, 7777]
+    value = agent._answer_row(state, 1, announced, answers, 1, 1, -INF, INF)
+    assert (len(answers), value) == (7, -7.2175)
+    assert agent._refuters[1:4] == [7777, -1, 7777]
+
+
+def test_a_killer_in_the_last_slot_orders_a_node_past_the_last_ply() -> None:
+    """A killer filed in the last slot (95) goes first at ply 95 and at any ply past it; one
+    in slot 94 is not read there."""
+    engine = Engine(_load("rulesets/gardner.json"))
+    state = engine.initial_state()
+    moves = engine.legal_moves(state)
+    last, other = moves[-1], moves[-2]
+    for ply in (MAX_PLY - 1, MAX_PLY + 4):
+        agent = MinimaxAgent(engine, nodes=10)
+        agent._killers[MAX_PLY - 1] = [last, -1]
+        agent._killers[MAX_PLY - 2] = [other, -1]
+        ordered = list(moves)
+        agent._order(state, ordered, ply)
+        assert ordered[0] == last and ordered[1:] == [m for m in moves if m != last]
+
+
+def test_a_duck_half_two_plies_from_the_last_reads_its_childs_refuter() -> None:
+    """Under ``duck_refute`` a duck half at ply 94 reads its children's refutations from slot 95,
+    where they file them, and searches as one at ply 1 does: -0.86 in 355 nodes at depth 3,
+    against 367 with the repair off."""
+    engine = _gardner_duck()
+    state = _after(engine, 7)
+    assert decode_move(engine.legal_moves(state)[0])[2] == MOVE_DUCK
+    got = []
+    for ply, repairs in ((1, DUCK_REFUTE), (MAX_PLY - 2, DUCK_REFUTE), (MAX_PLY - 2, 0)):
+        agent = MinimaxAgent(engine, nodes=10**7, repairs=repairs)
+        got.append((agent._negamax(state, 3, ply, -INF, INF), agent._nodes))
+    assert got == [(-0.8600000000000008, 355)] * 2 + [(-0.8600000000000008, 367)]

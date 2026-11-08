@@ -14,6 +14,14 @@ any other address keeps its brackets.
 
 ## 2026-11-08
 
+### The game map's groups hold together
+
+On the map of games, each coloured group now sits together in one cluster with space around it. Before, about one dot in three sat nearer another group than its own, and some groups were drawn in two or three pieces.
+
+### Three scores corrected, and a new archive game: no zugzwang
+
+Games where a player can pass, or skip part of a turn, were scored from only the stretch of each game before the first pass or skip. They are now read in full: Tessabi rises from 0.469 to 0.557 and Drover from 0.800 to 0.817. *No zugzwang*, chess in which you may pass instead of moving, is in the archive at 0.939, level with chess. Hunger Chess was measured at 0.709 and stays out of the library while its design is reworked.
+
 ### Scores now come from stronger computer players
 
 Every game in the library was replayed with the measuring players searching four times further: 400 to 25,600 positions a move instead of 100 to 6,400, so even the weakest player now looks ahead on nearly every game. Games whose old score leaned on a near-random weakest player fell: crazyhouse from 0.937 to 0.847, circe from 0.932 to 0.847, torus chess from 0.858 to 0.775 and shogi from 0.887 to 0.858. Rear guard torus chess, first at 0.954, is now level with chess (0.937 against 0.938); chess rose from 0.907. The new top three are the herd (0.982), one-way cylinder chess (0.956) and one-way torus chess (0.956). Four games are no longer viable (demotion chess, shut wormhole, divide and ferry), and jeson mor now is. Tessabi's score is no longer provisional and reads 0.469.

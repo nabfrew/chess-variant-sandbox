@@ -690,7 +690,7 @@ def _analyse_game(
     for index, move in enumerate(record.moves):
         board = state.board
         kind = mover_kind(engine, board, move)
-        if kind is None:
+        if kind is None and not moves_no_piece(move):
             # The record and the spec have drifted apart. Stop counting rather than
             # inventing numbers; replay raises on the same condition with a message.
             break
@@ -698,11 +698,15 @@ def _analyse_game(
         count_rest(engine, rest, state, state.side_to_move)
         _count_neutral(engine, neutral, state, move)
         before = state
-        if moves_an_instance(move) and move_from(move) in start_squares:
-            moved_squares.add(move_from(move))
-        moves_by_type[kind] += 1
-        if takes(engine, board, move):
-            captures_by_type[kind] += 1
+        if kind is not None:
+            # A keep or a pass (Q1167) moves no piece: it counts under no type and
+            # the walk goes on past it. It used to stop here, and every later ply
+            # of the game went unread.
+            if moves_an_instance(move) and move_from(move) in start_squares:
+                moved_squares.add(move_from(move))
+            moves_by_type[kind] += 1
+            if takes(engine, board, move):
+                captures_by_type[kind] += 1
 
         if index % PLY_STRIDE == 0:
             legal = engine.legal_moves(state)
@@ -1888,8 +1892,9 @@ def count_rest(
 
 
 def mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
-    """The internal type a move counts under in `moves_by_type`, or `None` from an empty
-    origin, which only a record that has drifted from its spec plays.
+    """The internal type a move counts under in `moves_by_type`, or `None`: for a keep or a
+    pass (`moves_no_piece`, counted under no type), or from an empty origin, which only a
+    record that has drifted from its spec plays.
 
     A drop counts under the type it drops. A fold's own move (schema 22, revised at 24)
     counts under its end's internal type: a fold stands on no byte of the board, so its
@@ -1917,6 +1922,13 @@ def mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
         return None
     occupant = board[move_from(move)]
     return None if occupant == 0 else engine.spec.type_of(occupant)
+
+
+def moves_no_piece(move: int) -> bool:
+    """Whether a move moves no piece at all: a keep (TS3) or a pass (H3). `mover_kind`
+    answers `None` for it, as for a record drifted from its spec, but it is a legal move
+    and the walks count it under no type and go on (Q1167)."""
+    return move_type(move) in (MOVE_KEEP, MOVE_PASS)
 
 
 def moves_an_instance(move: int) -> bool:

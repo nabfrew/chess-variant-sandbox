@@ -600,8 +600,8 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # 122 since TS1's crossings, which does too, the same whole far row; 123 since TS2's
     # boulder, which does too, the same whole far row; 124 since TS3's drover, the same again;
     # 125 since TS4's leapfrog, the same again; 126 since TS5's tessabi, the same again on
-    # files b to d, beside walls on files a and e.
-    assert len(paths) == 126
+    # files b to d, beside walls on files a and e; 127 since H5's no zugzwang, which declares none.
+    assert len(paths) == 127
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:

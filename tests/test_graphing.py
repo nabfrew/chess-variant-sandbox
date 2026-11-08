@@ -528,6 +528,12 @@ def _memory(runs: Path) -> Path:
     return runs / families.MAP_FILE
 
 
+def _places(runs: Path) -> dict[str, tuple[float, float]]:
+    """The places the map's memory keeps: t-SNE's, before the page's relaxation."""
+    games = json.loads(_memory(runs).read_text(encoding="utf-8"))["games"]
+    return {digest: tuple(row["position"]) for digest, row in games.items() if "position" in row}
+
+
 class TestTheMemory:
     """`runs/graph/map.json`: the first build draws cold and writes it; later ones settle.
 
@@ -582,15 +588,23 @@ class TestTheMemory:
     def test_a_new_game_settles_into_the_picture(self, tmp_path: Path) -> None:
         """The others keep their places but for a shuffle; the new one joins the memory."""
         first = built(LIBRARY, tmp_path)
+        remembered = [_places(tmp_path)]
         newcomer = spec("four", check_limit=4)
         second = built([*LIBRARY, newcomer], tmp_path)
         assert toy_id(newcomer) in json.loads(
             _memory(tmp_path).read_text(encoding="utf-8")
         )["games"]
+        # The remembered picture (t-SNE's places, `runs/graph/map.json`) only shuffles.
+        was, now = remembered[0], _places(tmp_path)
+        shifts = sorted(math.dist(was[digest], now[digest]) for digest in was)
+        xs = [x for x, _ in was.values()]
+        assert shifts[len(shifts) // 2] < 0.05 * (max(xs) - min(xs))
+        # The drawn picture is relaxed from it (Q1165): a community whose size moved
+        # re-fills its disc and nudges its neighbours, by less than one nearest gap.
         before = {node.hash: (node.x, node.y) for node in first.nodes}
         after = {node.hash: (node.x, node.y) for node in second.nodes}
         moved = sorted(math.dist(before[digest], after[digest]) for digest in before)
-        assert moved[len(moved) // 2] < 0.05 * first.bounds["width"]
+        assert moved[len(moved) // 2] < graphing.RING
 
     def test_a_memory_of_another_version_is_drawn_over_cold(self, tmp_path: Path) -> None:
         built(LIBRARY, tmp_path)

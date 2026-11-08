@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -775,3 +776,825 @@ def test_a_round_games_quantization_error_is_seat_0s_every_round() -> None:
 
 
 ROUND_ERROR = 0.018076215158490574
+
+
+# ------------------------------------------------------------------ Q1153, the rest
+
+
+def test_a_round_harvest_skips_an_odd_opening_and_takes_every_strideth_round() -> None:
+    """One skipped ply skips round 0 (its board is at ply 0 < 1); a stride of 3 then takes
+    rounds 1, 4 and 7 of a nine-round game, counted from the first, not from round 0."""
+    spec = load_spec(ROUNDS)
+    engine = Engine(spec)
+    state = engine.initial_state()
+    moves: list[int] = []
+    for _ in range(9):
+        assert engine.terminal(state) is None
+        first = engine.legal_moves_for(state, 0)[0]
+        second = engine.legal_moves_for(state, 1)[0]
+        moves += [first, second]
+        state = engine.apply_round(state, first, second)
+    procedure = ROUND_SMALL.with_(
+        label_nodes=0, result_weight=1.0, skip_plies=1, stride=3
+    )
+    tdata._setup(spec, procedure)
+    try:
+        _rows, sides, _targets, indices, plies, results, _values = tdata._harvest_rounds(
+            [(5, moves, 0.0, 7)]
+        )
+    finally:
+        tdata._WORKER.clear()
+    assert plies == [2, 8, 14]
+    assert sides == [0, 0, 0] and indices == [5, 5, 5] and results == [0.0, 0.0, 0.0]
+
+
+def test_a_scale_of_zero_is_refused_and_a_small_one_is_not() -> None:
+    assert SMALL.with_(scale=0.001).scale == 0.001
+    for scale in (0.0, -0.5):
+        with pytest.raises(
+            ValueError, match="^skip_plies, scale and learning_rate must be positive$"
+        ):
+            SMALL.with_(scale=scale)
+
+
+class _Stop(Exception):
+    pass
+
+
+def test_training_by_default_plays_on_all_cores_and_harvests_on_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``workers`` 0 is the tournament's "all but one core" for self-play; the harvest,
+    which has no such reading, gets at least one."""
+    seen: dict[str, int] = {}
+
+    def self_play(_spec: Any, _procedure: Any, workers: int) -> list[Any]:
+        seen["self_play"] = workers
+        return []
+
+    def harvest(_spec: Any, _records: Any, _procedure: Any, workers: int, report: Any) -> Any:
+        seen["harvest"] = workers
+        raise _Stop
+
+    monkeypatch.setattr(store, "self_play", self_play)
+    monkeypatch.setattr(store, "harvest", harvest)
+    with pytest.raises(_Stop):
+        store.train_ruleset(load_spec(GARDNER), SMALL, root=tmp_path)
+    assert seen == {"self_play": 0, "harvest": 1}
+
+
+# ------------------------------------------------------------------ Q1153, batch 7
+
+
+def test_a_dataset_cannot_be_changed_in_place() -> None:
+    from dataclasses import FrozenInstanceError
+
+    data = _dataset()
+    with pytest.raises(FrozenInstanceError):
+        data.games = 3  # type: ignore[misc]
+    assert data.games == 2
+
+
+def test_no_games_are_no_chunks() -> None:
+    assert tdata._chunks([], 1) == []
+    assert tdata._chunks([], 4) == []
+
+
+class _CoreDroppingLast:
+    def __init__(self, core: Any) -> None:
+        self._core = core
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._core, name)
+
+    def search_values(self, *args: Any, **kwargs: Any) -> list[Any]:
+        return list(self._core.search_values(*args, **kwargs))[:-1]
+
+
+class _EngineDroppingLast:
+    def __init__(self, engine: Any) -> None:
+        self._engine = engine
+        self.core = _CoreDroppingLast(engine.core)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._engine, name)
+
+
+def test_a_teacher_answering_fewer_positions_than_asked_is_refused() -> None:
+    spec = load_spec(GARDNER)
+    engine = Engine(spec)
+    state = engine.initial_state()
+    moves: list[int] = []
+    for _ in range(4):
+        move = engine.legal_moves(state)[0]
+        moves.append(move)
+        state = engine.apply(state, move)
+    procedure = SMALL.with_(
+        result_weight=0.5, label_nodes=20, label_search="player", skip_plies=0
+    )
+    tdata._setup(spec, procedure)
+    try:
+        found = tdata._harvest_games([(0, moves, 1.0, 7)])
+        assert len(found[0]) == 4
+        tdata._WORKER["engine"] = _EngineDroppingLast(tdata._WORKER["engine"])
+        with pytest.raises(ValueError, match="zip"):
+            tdata._harvest_games([(0, moves, 1.0, 7)])
+    finally:
+        tdata._WORKER.clear()
+
+
+def test_a_round_label_blends_the_result_and_the_round_value_by_the_weight() -> None:
+    spec = load_spec(ROUNDS)
+    engine = Engine(spec)
+    state = engine.initial_state()
+    moves: list[int] = []
+    for _ in range(4):
+        first = engine.legal_moves_for(state, 0)[0]
+        second = engine.legal_moves_for(state, 1)[0]
+        moves += [first, second]
+        state = engine.apply_round(state, first, second)
+    tdata._setup(spec, ROUND_SMALL.with_(result_weight=0.25))
+    try:
+        _rows, _sides, targets, _i, _plies, results, values = tdata._harvest_rounds(
+            [(0, moves, 1.0, 7)]
+        )
+    finally:
+        tdata._WORKER.clear()
+    assert results == [1.0, 1.0, 1.0] and len(values) == 3
+    for target, value in zip(targets, values, strict=True):
+        assert 0.0 < value < 1.0
+        assert target == pytest.approx(0.25 + 0.75 * value, abs=1e-12)
+
+
+def test_w0s_integer_bound_is_i16_less_b0s_over_the_active_count() -> None:
+    # 32,767 - 127 = 32,640 = 272 x 120 exactly.
+    assert model.w0_int_limit(272) == 120
+    assert model.w0_int_limit(273) == 119
+
+
+def test_the_dense_weights_are_clipped_to_their_i8_limit() -> None:
+    net = model.initial(6, SMALL, 3)
+    for side in (0, 1):
+        net.params[f"w1_{side}"][0, :2] = [5.0, -5.0]
+        net.params[f"w2_{side}"][0, :2] = [-5.0, 5.0]
+    model._clip(net)
+    limit = 127 / 64
+    for side in (0, 1):
+        assert net.params[f"w1_{side}"][0, :2].tolist() == [limit, -limit]
+        assert net.params[f"w2_{side}"][0, :2].tolist() == [-limit, limit]
+
+
+def test_an_accumulator_above_one_passes_no_gradient() -> None:
+    net = model.initial(6, SMALL, 3)
+    net.params["w0"][:] = 0.25
+    net.params["b0"][:] = 1.0  # every accumulator is 1.25 to 1.75: clipped at one
+    index, sides, targets = _batch([0, 1, 0])
+    _loss, grads = model._gradients(net, index, sides, targets, 1.0)
+    assert grads["w3_0"].any()
+    assert not grads["b0"].any() and not grads["w0"].any()
+
+
+def test_a_hidden_width_of_one_is_allowed() -> None:
+    assert SMALL.with_(hidden1=1, hidden2=1).hidden1 == 1
+
+
+def test_the_acceptance_bar_is_two_errors_over_half() -> None:
+    found = store.Acceptance(
+        candidate="a", reference="b", score=0.5, error=0.0, games=2,
+        identical=0, candidate_nodes=1, reference_nodes=2, accepted=False,
+    )
+    assert found.as_dict()["bar"] == "score - 2 x error > 0.5"
+
+
+def test_training_by_default_runs_the_whole_duel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, clean: None
+) -> None:
+    from dataclasses import replace
+
+    spec = load_spec(GARDNER)
+    n_inputs = int(Engine(spec).core.net_inputs())
+    monkeypatch.setattr(store, "quantization_error", lambda *args: 0.0)
+    asked: dict[str, Any] = {}
+    found = store.Acceptance(
+        candidate="a", reference="b", score=0.5, error=0.0, games=2, identical=0,
+        candidate_nodes=1, reference_nodes=1, accepted=False,
+    )
+
+    def accept(*args: Any, **kwargs: Any) -> Any:
+        asked.update(kwargs)
+        return found
+
+    monkeypatch.setattr(store, "accept", accept)
+    store.train_ruleset(
+        spec, SMALL, root=tmp_path, workers=1, data=replace(_dataset(), n_inputs=n_inputs)
+    )
+    assert asked["curtail"] is False
+
+
+# ------------------------------------------------------------------ Q1153, batch 8
+
+
+def test_no_opening_is_zero_plies_whatever_the_seed() -> None:
+    assert [tdata.opening_plies_for(seed, 0) for seed in range(6)] == [0] * 6
+    assert [tdata.opening_plies_for(seed, -3) for seed in range(6)] == [0] * 6
+
+
+def test_a_replay_plays_by_default_on_all_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``workers`` 0 is the tournament's "all but one core"; a replay is no exception."""
+    seen: list[int] = []
+    monkeypatch.setattr(tdata, "replay_bytes", lambda spec, procedure: None)
+    monkeypatch.setattr(
+        tdata, "_replay_link_games", lambda spec, replay, workers: seen.append(workers) or []
+    )
+    monkeypatch.setattr(
+        tdata, "new_games", lambda spec, procedure, workers: seen.append(workers) or []
+    )
+    procedure = SimpleNamespace(replay=SimpleNamespace(links=("one back",)))
+    assert tdata.replay_games({}, procedure) == []  # type: ignore[arg-type]
+    assert tdata.link_games({}, procedure, 0) == []  # type: ignore[arg-type]
+    assert tdata.link_games({}, procedure, 1) == []  # type: ignore[arg-type]
+    assert seen == [0, 0, 0]
+
+
+def test_a_resumed_campaign_harvest_loads_every_sealed_piece(tmp_path: Path) -> None:
+    spec = load_spec(GARDNER)
+    engine = Engine(spec)
+    state = engine.initial_state()
+    moves: list[int] = []
+    for _ in range(6):
+        move = engine.legal_moves(state)[0]
+        moves.append(move)
+        state = engine.apply(state, move)
+    records = [_record(i, moves) for i in range(3)]
+    with checkpoint.active(tmp_path / "campaign", build="pins"):
+        first = tdata.harvest(spec, records, SMALL, workers=1)
+    lines: list[str] = []
+    with checkpoint.active(tmp_path / "campaign", build="pins"):
+        again = tdata.harvest(spec, records, SMALL, workers=1, report=lines.append)
+    # Every piece is on disk: one report, of the whole, and nothing played again.
+    assert lines == ["  harvested 3/3 games"]
+    assert first.positions == again.positions == 12
+    assert again.ply.tolist() == first.ply.tolist() == [2, 3, 4, 5] * 3
+
+
+def test_an_accumulator_at_exactly_one_passes_no_gradient() -> None:
+    net = model.initial(6, SMALL, 3)
+    net.params["w0"][:] = 0.0
+    net.params["b0"][:] = 1.0  # every accumulator is exactly 1.0: the top of its clip
+    index, sides, targets = _batch([0, 1, 0])
+    _loss, grads = model._gradients(net, index, sides, targets, 1.0)
+    assert grads["w3_0"].any()
+    assert not grads["b0"].any() and not grads["w0"].any()
+
+
+def test_the_held_out_games_are_played_on_one_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    spec = load_spec(GARDNER)
+    n_inputs = int(Engine(spec).core.net_inputs())
+    net = model.initial(n_inputs, SMALL, 8)
+    seen: list[int] = []
+
+    def no_games(spec: Any, procedure: Procedure, workers: int = 0) -> list[Any]:
+        seen.append(workers)
+        return []
+
+    monkeypatch.setattr(store, "self_play", no_games)
+    store.quantization_error(spec, net, model.quantize(net), SMALL)
+    assert seen == [1]
+
+
+def test_a_duel_without_an_opening_is_the_runners_and_never_opens_below_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import chess_variant_sandbox.tournament.checkpoint as played
+    import chess_variant_sandbox.tournament.duel as duel
+
+    def run_tournament(spec: Any, config: Any) -> Any:
+        candidate, reference = config.agents
+        return SimpleNamespace(records=[
+            SimpleNamespace(agents=(candidate, reference), nodes=(1, 2), moves=[], seed=0),
+        ])
+
+    def opened(*args: Any) -> list[Any]:
+        raise AssertionError("a duel asked for no opening was opened")
+
+    monkeypatch.setattr(played, "run_tournament", run_tournament)
+    monkeypatch.setattr(store, "_opening_duel", opened)
+    monkeypatch.setattr(
+        duel,
+        "grade",
+        lambda records, candidate, reference: SimpleNamespace(
+            score=0.5, error=0.0, games=1, identical=0, pairs=[0.5]
+        ),
+    )
+    for plies in (0, -2):
+        found = store.accept(load_spec(GARDNER), SMALL, pairs=1, workers=1, opening_plies=plies)
+        assert (found.opening_plies, found.openings) == (0, 1), plies
+        assert (found.candidate_nodes, found.reference_nodes) == (1, 2)
+
+
+# ------------------------------------------------------------------ Q1153 (queue training-9)
+
+
+class _NoPool:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise AssertionError("a pool was started")
+
+
+def test_a_single_game_is_harvested_without_a_pool_whatever_the_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = load_spec(GARDNER)
+    monkeypatch.setattr(tdata, "ProcessPoolExecutor", _NoPool)
+    lines: list[str] = []
+    found = tdata.harvest(spec, [_record(0)], SMALL, workers=4, report=lines.append)
+    assert (found.games, found.positions, lines) == (1, 0, [])
+
+
+def test_a_hidden_unit_between_one_and_two_passes_no_gradient() -> None:
+    net = model.initial(6, SMALL, 3)
+    net.params["w1_0"][:] = 0.0
+    net.params["b1_0"][:] = 1.5  # every first hidden unit is 1.5: clipped at one
+    net.params["w2_0"][:] = 0.1
+    net.params["b2_0"][:] = 0.2  # the second layer is 0.5: open, so it passes a gradient back
+    index, sides, targets = _batch([0, 0, 0])
+    _loss, grads = model._gradients(net, index, sides, targets, 1.0)
+    assert grads["w2_0"].any() and grads["b2_0"].any()
+    assert not grads["w1_0"].any() and not grads["b1_0"].any()
+
+
+def _stub_duel(monkeypatch: pytest.MonkeyPatch, records: Any) -> list[int]:
+    import chess_variant_sandbox.tournament.checkpoint as played
+    import chess_variant_sandbox.tournament.duel as duel
+
+    opened: list[int] = []
+
+    def run_tournament(spec: Any, config: Any) -> Any:
+        raise AssertionError("an opened duel ran the plain runner")
+
+    def opening_duel(spec: Any, config: Any, most: int) -> list[Any]:
+        opened.append(most)
+        return records(config.agents)
+
+    monkeypatch.setattr(played, "run_tournament", run_tournament)
+    monkeypatch.setattr(store, "_opening_duel", opening_duel)
+    monkeypatch.setattr(
+        duel,
+        "grade",
+        lambda records, candidate, reference: SimpleNamespace(
+            score=0.5, error=0.0, games=2, identical=0, pairs=[0.5]
+        ),
+    )
+    return opened
+
+
+def test_a_duel_of_one_opening_ply_is_opened(monkeypatch: pytest.MonkeyPatch) -> None:
+    opened = _stub_duel(
+        monkeypatch,
+        lambda agents: [
+            SimpleNamespace(agents=agents, nodes=(1, 2), moves=[3, 4], seed=4),
+            SimpleNamespace(agents=agents[::-1], nodes=(2, 1), moves=[3, 5], seed=4),
+        ],
+    )
+    found = store.accept(load_spec(GARDNER), SMALL, pairs=1, workers=1, opening_plies=1)
+    assert opened == [1]
+    assert (found.opening_plies, found.openings) == (1, 1)
+
+
+def test_a_round_duels_openings_are_counted_in_whole_rounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Seed 11 opens with 4 of at most 8 plies: two rounds. The two games share their first
+    # round and differ in the second, so they are two openings; seed 6 (5 plies) is two
+    # rounds as well, its odd ply not part of one.
+    def records(agents: Any) -> list[Any]:
+        return [
+            SimpleNamespace(agents=agents, nodes=(1, 2), moves=[1, 2, 3, 4, 9], seed=11),
+            SimpleNamespace(agents=agents[::-1], nodes=(2, 1), moves=[1, 2, 7, 8, 9], seed=11),
+            SimpleNamespace(agents=agents, nodes=(1, 2), moves=[1, 2, 3, 4, 5], seed=6),
+            SimpleNamespace(agents=agents[::-1], nodes=(2, 1), moves=[1, 2, 7, 8, 6], seed=6),
+        ]
+
+    opened = _stub_duel(monkeypatch, records)
+    found = store.accept(load_spec(ROUNDS), ROUND_SMALL, pairs=2, workers=1, opening_plies=8)
+    assert opened == [8]
+    assert found.candidate.startswith("matrix:")
+    assert found.openings == 2
+
+
+def test_the_output_weight_is_clipped_to_its_i8_limit() -> None:
+    net = model.initial(6, SMALL, 3)
+    for side in (0, 1):
+        net.params[f"w3_{side}"].flat[:2] = [100.0, -100.0]
+    model._clip(net)
+    limit = 127 * 127 / 1024  # 15.751953125
+    for side in (0, 1):
+        assert net.params[f"w3_{side}"].flat[:2].tolist() == [limit, -limit]
+
+
+def test_arms_default_to_one_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[tuple[str, int]] = []
+
+    def self_play(spec: Any, procedure: Any, workers: int) -> list[Any]:
+        asked.append(("self_play", workers))
+        return []
+
+    def harvest(spec: Any, records: Any, procedure: Any, workers: int, report: Any) -> Any:
+        asked.append(("harvest", workers))
+        return "dataset"
+
+    monkeypatch.setattr(tdata, "self_play", self_play)
+    monkeypatch.setattr(tdata, "harvest", harvest)
+    assert tdata.harvest_arms({}, [SMALL]) == ["dataset"]
+    assert asked == [("self_play", 1), ("harvest", 1)]
+
+
+def _acceptance(**fields: Any) -> store.Acceptance:
+    base: dict[str, Any] = dict(
+        candidate="a", reference="b", score=0.5, error=0.0, games=5,
+        identical=0, candidate_nodes=1, reference_nodes=2, accepted=False,
+    )
+    base.update(fields)
+    return store.Acceptance(**base)
+
+
+def test_an_acceptance_counts_one_opening_and_whole_pairs_by_default() -> None:
+    found = _acceptance()
+    assert found.openings == 1
+    assert found.decided_after == 2
+    assert found.as_dict()["decided_after"] == 2
+    assert repr(found.as_dict()["planned_pairs"]) == "2"
+
+
+def test_the_acceptance_bar_subtracts_two_errors() -> None:
+    # [0, 1]: score 0.5, error 0.5; [0.6, 0.7]: score 0.65, error 0.05.
+    assert store.accepts([0.0, 1.0]) is False
+    assert store.accepts([0.6, 0.7]) is True
+    assert store.accepts([0.5, 0.5]) is False
+
+
+def test_a_hidden_unit_at_exactly_zero_passes_no_gradient() -> None:
+    net = model.initial(6, SMALL, 3)
+    net.params["w1_0"][:] = 0.0
+    net.params["b1_0"][:] = 0.0  # every first hidden unit is exactly 0.0: the bottom of its clip
+    net.params["b2_0"][:] = 0.5  # the second layer is open, so it passes a gradient back
+    index, sides, targets = _batch([0, 0, 0])
+    _loss, grads = model._gradients(net, index, sides, targets, 1.0)
+    assert grads["b2_0"].any()
+    assert not grads["w1_0"].any() and not grads["b1_0"].any()
+
+
+def test_a_hidden_unit_at_exactly_one_passes_no_gradient() -> None:
+    net = model.initial(6, SMALL, 3)
+    net.params["w1_0"][:] = 0.0
+    net.params["b1_0"][:] = 1.0  # every first hidden unit is exactly 1.0: the top of its clip
+    net.params["w2_0"][:] = 0.1
+    net.params["b2_0"][:] = 0.2  # the second layer is 0.5: open
+    index, sides, targets = _batch([0, 0, 0])
+    _loss, grads = model._gradients(net, index, sides, targets, 1.0)
+    assert grads["b2_0"].any()
+    assert not grads["w1_0"].any() and not grads["b1_0"].any()
+
+
+def test_a_second_hidden_unit_at_exactly_zero_passes_no_gradient() -> None:
+    net = model.initial(6, SMALL, 3)
+    net.params["w2_0"][:] = 0.0
+    net.params["b2_0"][:] = 0.0  # every second hidden unit is exactly 0.0
+    # Four positions, so the errors do not cancel (the first three's sum to zero at 0.5).
+    index, sides, targets = _batch([0, 0, 0, 0])
+    _loss, grads = model._gradients(net, index, sides, targets, 1.0)
+    assert grads["b3_0"].any()
+    assert not grads["b2_0"].any() and not grads["w2_0"].any() and not grads["w1_0"].any()
+
+
+def test_result_weight_above_one_is_refused() -> None:
+    assert SMALL.with_(result_weight=1.0).result_weight == 1.0
+    with pytest.raises(ValueError, match=r"^result_weight 1.5 is outside \[0, 1\]$"):
+        SMALL.with_(result_weight=1.5)
+
+
+def test_a_negative_td_lambda_is_refused() -> None:
+    searched = SMALL.with_(result_weight=0.5, label_nodes=40)
+    assert searched.with_(td_lambda=0.0).td_lambda == 0.0
+    with pytest.raises(ValueError, match=r"^td_lambda -0.5 is outside \[0, 1\]$"):
+        searched.with_(td_lambda=-0.5)
+
+
+def test_an_alternating_harvest_takes_every_strideth_ply_counted_from_the_skip() -> None:
+    """One skipped ply and a stride of three take plies 1, 4 and 7 of a nine-ply game."""
+    spec = load_spec(GARDNER)
+    engine = Engine(spec)
+    state = engine.initial_state()
+    moves: list[int] = []
+    for _ in range(9):
+        assert engine.terminal(state) is None
+        move = engine.legal_moves(state)[0]
+        moves.append(move)
+        state = engine.apply(state, move)
+    tdata._setup(spec, SMALL.with_(skip_plies=1, stride=3))
+    try:
+        _rows, sides, _targets, indices, plies, results, _values = tdata._harvest_games(
+            [(5, moves, 1.0, 7)]
+        )
+    finally:
+        tdata._WORKER.clear()
+    assert plies == [1, 4, 7]
+    assert sides == [1, 0, 1] and indices == [5, 5, 5] and results == [0.0, 1.0, 0.0]
+
+
+def _branches(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """Which way a schedule is played: ("tournament",) whole, or ("opened", most) per task."""
+    taken: list[Any] = []
+    monkeypatch.setattr(
+        checkpoint, "run_tournament",
+        lambda spec, config: taken.append(("tournament",)) or SimpleNamespace(records=[]),
+    )
+    monkeypatch.setattr(
+        tdata, "_play_tasks",
+        lambda spec, config, tasks, most: taken.append(("opened", most)) or [],
+    )
+    return taken
+
+
+def test_new_games_of_one_opening_ply_are_opened_and_of_none_are_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    taken = _branches(monkeypatch)
+    spec = load_spec(GARDNER)
+    for plies in (0, 1, 2):
+        tdata.new_games(spec, SMALL.with_(opening_plies=plies), workers=1)
+    assert taken == [("tournament",), ("opened", 1), ("opened", 2)]
+
+
+def test_a_replay_link_of_one_opening_ply_is_opened_and_of_none_is_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    taken = _branches(monkeypatch)
+    monkeypatch.setattr(tdata, "_checked_bytes", lambda *args: b"")
+    net = Parent(procedure="c00000000003", weights_sha256="ab" * 32)
+    for plies in (0, 1, 2):
+        replay = Replay(
+            agents=("minimax:net=c00000000003,nodes=10", "greedy"), games=2, seed=9,
+            opening_plies=plies, net=net,
+        )
+        tdata._replay_link_games(load_spec(GARDNER), replay, 1)
+    assert taken == [("tournament",), ("opened", 1), ("opened", 2)]
+
+
+class _RecordedPool(ThreadPoolExecutor):
+    """A process pool run on one thread of this process; records that it was asked for."""
+
+    made: list[int] = []
+
+    def __init__(self, max_workers: int, mp_context: Any, initializer: Any, initargs: Any):
+        super().__init__(max_workers=1)
+        initializer(*initargs)
+        _RecordedPool.made.append(max_workers)
+
+
+def test_a_two_worker_campaign_harvest_is_a_process_pool(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spec = load_spec(GARDNER)
+    _RecordedPool.made = []
+    monkeypatch.setattr(tdata, "ProcessPoolExecutor", _RecordedPool)
+    with checkpoint.active(tmp_path / "two", build="pins"):
+        found = tdata.harvest(spec, [_record(i) for i in range(3)], SMALL, workers=2)
+    assert found.games == 3
+    assert _RecordedPool.made == [2]
+    with checkpoint.active(tmp_path / "one", build="pins"):
+        tdata.harvest(spec, [_record(i) for i in range(3)], SMALL, workers=1)
+    assert _RecordedPool.made == [2]
+
+
+# ------------------------------------------------------------------ Q1153 batch 13
+
+
+def test_a_dataset_whose_last_offset_misses_its_inputs_is_refused_and_an_empty_one_is_not() -> None:
+    with pytest.raises(ValueError, match="last offset is not the number of inputs"):
+        Dataset(
+            n_inputs=4,
+            offsets=np.array([0, 2], dtype=np.int64),
+            inputs=np.array([0, 1, 2], dtype=np.int32),
+            sides=np.array([0], dtype=np.int8),
+            targets=np.array([0.5], dtype=np.float32),
+            games=1,
+        )
+    # No sample: the offsets' one zero is not checked against stray inputs.
+    empty = Dataset(
+        n_inputs=4,
+        offsets=np.array([0], dtype=np.int64),
+        inputs=np.array([3], dtype=np.int32),
+        sides=np.array([], dtype=np.int8),
+        targets=np.array([], dtype=np.float32),
+        games=0,
+    )
+    assert empty.positions == 0
+
+
+def test_a_dataset_is_saved_into_a_directory_it_makes(tmp_path: Path) -> None:
+    target = tmp_path / "deep" / "er" / "set.npz"
+    saved = _dataset().save(target)
+    assert saved.exists() and saved.parent == tmp_path / "deep" / "er"
+
+
+def test_a_harvest_by_default_starts_no_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    spec = load_spec(GARDNER)
+    monkeypatch.setattr(tdata, "ProcessPoolExecutor", _NoPool)
+    found = tdata.harvest(spec, [_record(i) for i in range(3)], SMALL)
+    assert (found.games, found.positions) == (3, 0)
+
+
+def test_eighteen_pooled_chunks_report_every_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    spec = load_spec(GARDNER)
+    monkeypatch.setattr(tdata, "ProcessPoolExecutor", _InlinePool)
+    lines: list[str] = []
+    tdata.harvest(spec, [_record(i) for i in range(18)], SMALL, workers=3, report=lines.append)
+    assert lines == [f"  harvested {i}/18 chunks, 0 positions" for i in range(1, 19)]
+
+
+def test_padding_no_rows_is_an_empty_rectangle_one_wide() -> None:
+    offsets = np.array([0, 2, 3], dtype=np.int64)
+    inputs = np.array([4, 5, 6], dtype=np.int32)
+    out = model._padded(offsets, inputs, np.array([], dtype=np.int64), 9)
+    assert out.shape == (0, 1)
+
+
+def test_a_learning_rate_of_zero_is_refused_and_a_small_one_is_not() -> None:
+    assert SMALL.with_(learning_rate=0.0001).learning_rate == 0.0001
+    for rate in (0.0, -0.5):
+        with pytest.raises(
+            ValueError, match="^skip_plies, scale and learning_rate must be positive$"
+        ):
+            SMALL.with_(learning_rate=rate)
+
+
+def test_a_store_is_written_into_a_root_it_makes(tmp_path: Path) -> None:
+    blob = model.quantize(model.initial(6, SMALL, 3))
+    record = NetRecord("abcabcabcabc", "0123", "unchecked", blob)
+    root = tmp_path / "new" / "store"
+    meta = store.write_store(record, {"a": 1}, root)
+    assert meta == root / "0123-abcabcabcabc.json"
+    assert (root / "0123-abcabcabcabc.net").read_bytes() == blob
+
+
+def test_an_acceptance_duel_collects_no_series(monkeypatch: pytest.MonkeyPatch) -> None:
+    import chess_variant_sandbox.tournament.duel as duel
+
+    seen: list[Any] = []
+
+    def games(spec: Any, config: Any, most: int) -> list[Any]:
+        seen.append(config)
+        candidate, reference = config.agents
+        return [SimpleNamespace(agents=(candidate, reference), nodes=(1, 2), moves=[1], seed=5)]
+
+    monkeypatch.setattr(store, "_opening_duel", games)
+    monkeypatch.setattr(
+        duel,
+        "grade",
+        lambda records, candidate, reference: SimpleNamespace(
+            score=0.5, error=0.0, games=1, identical=0, pairs=[0.5]
+        ),
+    )
+    store.accept(load_spec(GARDNER), SMALL, pairs=1, workers=1, opening_plies=2)
+    assert [(c.collect_series, c.include_self_play, c.paired) for c in seen] == [(False, False, True)]
+
+
+def test_nine_games_on_one_worker_are_two_chunks_of_eight_a_worker() -> None:
+    # ceil(9 / 8) = 2 games a chunk: a ninth game splits the eight-chunk cut.
+    nine = [(i, [], 0.5, i) for i in range(9)]
+    cut = tdata._chunks(nine, 1)  # type: ignore[arg-type]
+    assert [[g[0] for g in chunk] for chunk in cut] == [[0, 1], [2, 3], [4, 5], [6, 7], [8]]
+    # Seventeen on one worker: three a chunk.
+    seventeen = [(i, [], 0.5, i) for i in range(17)]
+    assert [len(c) for c in tdata._chunks(seventeen, 1)] == [3, 3, 3, 3, 3, 2]  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("most_active", [0, 1])
+def test_one_or_no_active_input_spreads_w0_half_each_way(most_active: int) -> None:
+    w0 = model.initial(40, SMALL, most_active).params["w0"]
+    assert np.isfinite(w0).all()
+    top = float(np.abs(w0).max())
+    # 0.5 / sqrt(1); two active rows would be 0.5 / sqrt(2) = 0.354.
+    assert 0.36 < top <= 0.5
+
+
+def test_a_replay_sets_negative_opening_is_refused_and_none_is_not() -> None:
+    net = Parent(procedure="c00000000003", weights_sha256="ab" * 32)
+    agents = ("minimax:net=c00000000003,nodes=10", "greedy")
+    assert Replay(agents=agents, games=1, seed=9, opening_plies=0, net=net).opening_plies == 0
+    with pytest.raises(ValueError, match="^a replay set's opening_plies must be 0 or more$"):
+        Replay(agents=agents, games=1, seed=9, opening_plies=-1, net=net)
+
+
+def test_an_acceptance_duel_by_default_plays_on_all_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+    import chess_variant_sandbox.tournament.duel as duel
+
+    seen: list[Any] = []
+
+    def games(spec: Any, config: Any, most: int) -> list[Any]:
+        seen.append(config)
+        candidate, reference = config.agents
+        return [SimpleNamespace(agents=(candidate, reference), nodes=(1, 2), moves=[1], seed=5)]
+
+    monkeypatch.setattr(store, "_opening_duel", games)
+    monkeypatch.setattr(
+        duel,
+        "grade",
+        lambda records, candidate, reference: SimpleNamespace(
+            score=0.5, error=0.0, games=1, identical=0, pairs=[0.5]
+        ),
+    )
+    store.accept(load_spec(GARDNER), SMALL, pairs=1, opening_plies=2)
+    assert [c.workers for c in seen] == [0]
+
+
+# ------------------------------------------------------------------ Q1153 batch training-15
+
+
+def test_self_play_by_default_plays_new_and_replayed_games_on_all_cores(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``workers`` 0 is the tournament's "all but one core"; self-play's own default too."""
+    seen: list[tuple[str, int]] = []
+    monkeypatch.setattr(tdata, "parent_bytes", lambda spec, procedure: b"")
+    monkeypatch.setattr(tdata, "replay_bytes", lambda spec, procedure: b"")
+    monkeypatch.setattr(
+        tdata, "new_games", lambda spec, procedure, workers: seen.append(("new", workers)) or [1]
+    )
+    monkeypatch.setattr(
+        tdata,
+        "replay_games",
+        lambda spec, procedure, workers: seen.append(("replay", workers)) or [2],
+    )
+    procedure = SimpleNamespace(replay=SimpleNamespace())
+    assert tdata.self_play({}, procedure) == [1, 2]  # type: ignore[arg-type]
+    assert seen == [("new", 0), ("replay", 0)]
+
+
+def test_an_accumulator_at_exactly_zero_passes_no_gradient() -> None:
+    net = model.initial(6, SMALL, 3)
+    net.params["w0"][:] = 0.0
+    net.params["b0"][:] = 0.0  # every accumulator is exactly 0.0: the bottom of its clip
+    net.params["w1_0"][:] = 0.3
+    net.params["b1_0"][:] = 0.5  # the first hidden layer is 0.5: open
+    net.params["w2_0"][:] = 0.3
+    net.params["b2_0"][:] = 0.2  # the second is 0.65: open
+    net.params["w3_0"][:] = 0.5
+    index, sides, targets = _batch([0, 0, 0])
+    _loss, grads = model._gradients(net, index, sides, targets, 1.0)
+    assert grads["b1_0"].any()  # a gradient reaches the accumulator...
+    assert not grads["b0"].any() and not grads["w0"].any()  # ...and stops there
+
+
+def test_a_round_game_with_a_parent_alone_is_refused() -> None:
+    parent = Parent(procedure="c00000000003", weights_sha256="ab" * 32)
+    assert ROUND_SMALL.parent is None and ROUND_SMALL.replay is None
+    with pytest.raises(ValueError, match="^a round game's generations are not built"):
+        ROUND_SMALL.with_(parent=parent)
+
+
+def test_an_acceptance_cannot_be_changed_in_place() -> None:
+    from dataclasses import FrozenInstanceError
+
+    found = store.Acceptance(
+        candidate="a", reference="b", score=0.5, error=0.1, games=2,
+        identical=0, candidate_nodes=1, reference_nodes=2, accepted=False,
+    )
+    with pytest.raises(FrozenInstanceError):
+        found.accepted = True  # type: ignore[misc]
+    assert found.accepted is False
+
+
+def test_a_duel_of_one_opening_ply_counts_its_distinct_first_moves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Seeds 4 and 7 each open with 1 ply of at most 1 (OPENINGS_1); their first moves differ.
+    opened = _stub_duel(
+        monkeypatch,
+        lambda agents: [
+            SimpleNamespace(agents=agents, nodes=(1, 2), moves=[3, 4], seed=4),
+            SimpleNamespace(agents=agents[::-1], nodes=(2, 1), moves=[3, 6], seed=4),
+            SimpleNamespace(agents=agents, nodes=(1, 2), moves=[5, 4], seed=7),
+            SimpleNamespace(agents=agents[::-1], nodes=(2, 1), moves=[5, 6], seed=7),
+        ],
+    )
+    found = store.accept(load_spec(GARDNER), SMALL, pairs=2, workers=1, opening_plies=1)
+    assert opened == [1]
+    assert (found.opening_plies, found.openings) == (1, 2)
+
+
+def test_a_one_input_nets_padding_reads_no_row() -> None:
+    # One input row: the padding slot (index 1 == n_inputs) must be masked, never looked up.
+    f32 = np.float32
+    params = {"w0": np.array([[0.25, 0.5]], dtype=f32), "b0": np.array([0.0, 0.25], dtype=f32)}
+    for side in (0, 1):
+        params[f"w1_{side}"] = np.array([[1.0, 1.0]], dtype=f32)
+        params[f"b1_{side}"] = np.zeros(1, dtype=f32)
+        params[f"w2_{side}"] = np.array([[0.5]], dtype=f32)
+        params[f"b2_{side}"] = np.zeros(1, dtype=f32)
+        params[f"w3_{side}"] = np.array([2.0], dtype=f32)
+        params[f"b3_{side}"] = np.array([0.125], dtype=f32)
+    net = model.FloatNet(params=params, w0_limit=127)
+    found = model._forward(net, np.array([[0, 1]], dtype=np.int64), np.array([0], dtype=np.int8))
+    assert found.x0.tolist() == [[0.25, 0.75]]
+    assert found.y.tolist() == [1.125]

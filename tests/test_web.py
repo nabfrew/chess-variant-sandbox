@@ -11334,12 +11334,13 @@ class TestBuildingAGameByHand:
         # `push` (Q1074b2) joined it, and left on 2026-10-30 with Q1074bg1's
         # `rulesets/brink.json`.
         # `turn` left it on 2026-11-07 with TS3's `rulesets/drover.json` (Q1133), a turn of parts.
-        # `pass` (generation 116, H3, Q1126) joined it; H5's `rulesets/hunger.json` takes it out.
-        # `income` (generation 117, H2, Q1127) joined it; H5's Hunger takes it out too.
+        # `pass` (generation 116, H3, Q1126) joined it, and left on 2026-11-08 with H5's
+        # `archive/no-zugzwang` (Q1129).
+        # `income` (generation 117, H2, Q1127) joined it; H5's Hunger scored under the library's
+        # bar (`docs/plan-hunger.md` §6.2), so the Hunger redesign takes it out.
         assert _RULES_KEYS - seen == {
             "checkmate",
             "income",
-            "pass",
         },"the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(
