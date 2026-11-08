@@ -434,30 +434,55 @@ def test_a_library_storys_numbers_are_its_games_own_measurement(measured_runs: P
             assert said["runs"] == len(canonical["seeds"]) and said["runs"] >= 1
             assert said["viable"] == canonical["viable"]
             assert said["status"] == "current"
-            assert f"{canonical['index']:.3f}" in said["line"]
-            assert f"{said['runs']} run" in said["line"]
-            assert "scoring rules version" in said["line"]
+            if canonical["index"] is None:
+                # Too few runs gave a total (`seeds.MIN_TOTALS`): the page says only that.
+                assert said["line"] == "ruled out"
+            else:
+                assert f"{canonical['index']:.3f}" in said["line"]
+                assert f"{said['runs']} run" in said["line"]
+                assert "scoring rules version" in said["line"]
             assert set(said["qualities"]) == set(stories.QUALITIES)
         assert told[story.key]["failed"]["words"]
 
 
+def _recorded_rows(played: stories.Played) -> list[dict[str, Any]]:
+    """The row at the beat's line in every copy of its run here: the current measurement's,
+    then each one it replaced (`runs/<hash>/previous/<n>/`, kept by `history deliver`), in
+    this checkout's `runs/` and the main checkout's. A story's game was recorded from one
+    measurement; a replay (Q1104's ladder shift) moves the current run on, never the kept one."""
+    rows: list[dict[str, Any]] = []
+    run = f"{played.hash}-{played.seed}"
+    for runs in (ROOT / "runs", main_runs_dir()):
+        if runs is None:
+            continue
+        paths = [runs / run / "games.jsonl"]
+        paths += sorted((runs / played.hash / "previous").glob(f"*/{run}/games.jsonl"))
+        for path in paths:
+            if path.exists():
+                with path.open(encoding="utf-8") as lines:
+                    found = next((r for i, r in enumerate(lines) if i == played.line), None)
+                if found is not None:
+                    rows.append(json.loads(found))
+    return rows
+
+
 def test_the_recorded_moves_are_the_runs_own_records() -> None:
-    source = _runs_with_the_stories()
-    if source is None:
+    if _runs_with_the_stories() is None:
         pytest.skip("no runs/ here holds the stories' recorded games")
     for story in LIBRARY_STORIES:
         for played in (story.wrong.game, story.right.game):
-            path = source / f"{played.hash}-{played.seed}" / "games.jsonl"
-            if not path.exists():
-                pytest.skip(f"{path} is not here")
             assert played.line is not None
-            with path.open(encoding="utf-8") as rows:
-                row = json.loads(next(r for i, r in enumerate(rows) if i == played.line))
+            rows = _recorded_rows(played)
+            if not rows:
+                pytest.skip(f"no run of {played.hash}-{played.seed} is here")
             kept = stories.game_record(played)
-            assert row["ruleset_hash"] == played.hash
-            assert kept["moves"] == row["moves"]
-            assert (kept["winner"], kept["reason"]) == (row["winner"], row["reason"])
-            assert kept["agents"] == row["agents"]
+            assert any(
+                row["ruleset_hash"] == played.hash
+                and kept["moves"] == row["moves"]
+                and (kept["winner"], kept["reason"]) == (row["winner"], row["reason"])
+                and kept["agents"] == row["agents"]
+                for row in rows
+            ), (story.key, played.hash)
 
 
 def test_render_is_read_only_and_needs_no_listing(scores: dict[str, Any], tmp_path: Path,

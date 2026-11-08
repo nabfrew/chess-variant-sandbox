@@ -10,6 +10,7 @@ measurements meaning what their names say.
 from __future__ import annotations
 
 import copy
+import math
 from pathlib import Path
 
 import pytest
@@ -175,6 +176,11 @@ class TestDerivedComponents:
 
     def test_utilisation_is_one_when_every_type_moves_equally(self) -> None:
         assert _normalised_entropy([10, 10, 10, 10]) == pytest.approx(1.0)
+
+    def test_one_moving_type_is_positive_zero_not_negative_zero(self) -> None:
+        """`-0.0 == 0.0`, so only the sign written to JSON shows the difference."""
+        for counts in ([1, 0], [3, 0]):
+            assert math.copysign(1.0, _normalised_entropy(counts)) == 1.0
 
     def test_utilisation_falls_when_a_type_never_moves(self) -> None:
         """The failure this measures: material added for novelty that nobody uses."""

@@ -26,7 +26,7 @@ from typing import Any
 # (board, side_to_move, unmoved, ep_target, ep_victim, halfmove, ply, key,
 #  repetition, checks, hands,
 #  (colour, remaining, turns_taken, points, goal_left_by, portal_bar, folds,
-#   (initiative, void_run, bars), rest, respawn, heading_back, (purse, push_bar)))
+#   (initiative, void_run, bars), rest, respawn, heading_back, (purse, push_bar, banked, parts)))
 # The round group is schema 26's (Q918a): who holds the initiative (-1 for no such rule),
 # the void run's pair ((-1, -1) for none) and the barred pairs. ``rest`` is schema 29's
 # (Q983a): each player's resting pieces, ``(square, turns left)`` by square, empty for none.
@@ -34,10 +34,12 @@ from typing import Any
 # ``heading_back`` is generation 38's (N5): the squares of the wild pieces walking their line
 # back, ascending, empty without the rule. The twelfth element of the group, PyO3's ceiling,
 # is the tail every later field joins: ``purse`` is TC4's, each player's coins, ``(0, 0)``
-# without a purse; ``push_bar`` Q1074b6's, ``(y, x)`` or ``(-1, -1)``.
+# without a purse; ``push_bar`` Q1074b6's, ``(y, x)`` or ``(-1, -1)``; ``banked`` TS1's,
+# each player's banked pieces, ``(0, 0)`` without ``reach.removes``; ``parts`` TS3's, the
+# mask of the turn's parts filled, 0 without ``turn.parts``.
 Rounds = tuple[int, tuple[int, int], list[tuple[int, int]]]
 Rest = tuple[list[tuple[int, int]], list[tuple[int, int]]]
-Tail = tuple[tuple[int, int], tuple[int, int]]
+Tail = tuple[tuple[int, int], tuple[int, int], tuple[int, int], int]
 State = tuple[
     bytes, int, bytes, int, int, int, int, int, list[int],
     tuple[int, int], tuple[list[int], list[int]],
@@ -127,6 +129,7 @@ class Core:
     def sight_of(self, state: tuple[Any, ...], square: int) -> list[tuple[int, int]]: ...
     def controller_of(self, state: tuple[Any, ...], square: int) -> int: ...
     def rest_turn(self, state: tuple[Any, ...], player: int) -> tuple[bool, bool]: ...
+    def move_cost(self, state: tuple[Any, ...], move: int) -> int: ...
     def in_check(self, state: tuple[Any, ...], player: int) -> bool: ...
     def compute_hash(self, state: tuple[Any, ...]) -> int: ...
     def perft(self, state: tuple[Any, ...], depth: int, stop_at_terminal: bool = ..., threads: int = ...) -> int: ...

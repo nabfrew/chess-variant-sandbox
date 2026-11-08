@@ -596,15 +596,20 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # 113 since Q1074bg1's brink, which declares none; 114 since Q1074bg2's dohyo, which declares none;
     # 119 since Q1074bs's rock paper shove and four push previews, which declare none;
     # 120 since Q1079's duck chess, which declares none; 121 since SR3s1's runners, which does,
-    # sending each side to the other's whole back rank (both readings agree on a whole rank).
-    assert len(paths) == 121
+    # sending each side to the other's whole back rank (both readings agree on a whole rank);
+    # 122 since TS1's crossings, which does too, the same whole far row; 123 since TS2's
+    # boulder, which does too, the same whole far row; 124 since TS3's drover, the same again;
+    # 125 since TS4's leapfrog, the same again; 126 since TS5's tessabi, the same again on
+    # files b to d, beside walls on files a and e.
+    assert len(paths) == 126
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:
         spec = load_spec(path)
         if "reach" not in spec["rules"]:
             continue
-        assert "obstacles" not in spec["rules"], path.name
+        # Tessabi (TS5) is the one with walls beside a goal; none is on a goal square.
+        assert "obstacles" not in spec["rules"] or path.stem == "tessabi", path.name
         compiled = compile_spec(spec)
         assert compiled.reach is not None
         width, height = spec["board"]["width"], spec["board"]["height"]
@@ -620,8 +625,10 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
         with_reach[path.stem] = (compiled.reach.squares[1], by_orientation)
 
     assert sorted(with_reach) == [
-        "dobutsu", "intransitive", "jeson-mor", "kingofthehill", "racingkings", "rps-v3",
-        "runners", "watering-hole",
+        "boulder", "crossings", "dobutsu", "drover", "intransitive", "jeson-mor", "kingofthehill",
+        "leapfrog", "racingkings",
+        "rps-v3",
+        "runners", "tessabi", "watering-hole",
     ]
     differ = sorted(name for name, (built, other) in with_reach.items() if built != other)
     assert differ == ["intransitive"]

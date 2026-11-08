@@ -28,7 +28,8 @@
 
 use crate::game::Game;
 use crate::tables::{
-    DropRule, EntryTable, ExtinctionRule, Tables, GOAL_UNREACHABLE, MAX_PIECE_TYPES, WILD,
+    DropRule, EntryTable, ExtinctionRule, PurseTables, ReachRule, Tables, GOAL_UNREACHABLE,
+    MAX_PIECE_TYPES, WILD,
 };
 
 pub const WIN_SCORE: f64 = 1_000_000.0;
@@ -233,6 +234,15 @@ pub const MOPUP_SPAN: f64 = 8.0;
 /// reads as unconfined; the walk stops there. A square board of 64 squares, whole.
 pub const MOPUP_AREA: f64 = 64.0;
 
+/// H4 (`docs/plan-hunger.md` §5, §R4): **the income term's horizon**, in turns. Under
+/// `rules.income` a piece standing where it earns is worth what it earns over this many of its
+/// player's turns, at the coin's worth (`coin_value`): the evaluator then sees the income a
+/// developing move gives up. One constant for the shape of quantity (a flow read as a stock),
+/// never per rule. Read only by a minimax player under the `INCOME` search bit (`agents.rs`),
+/// so the analysis probe's ruler is unchanged. Mirrors `INCOME_TURNS` in
+/// `chess_variant_sandbox/agents/evaluation.py`; the module exports it so a test holds the two.
+pub const INCOME_TURNS: f64 = 4.0;
+
 /// N4: the mop-up term's weight in the units of an evaluator whose piece values are
 /// `values`: `MOPUP_PIECES` mean non-royal pieces, as `round_win` is. `agents/minimax.py::
 /// mopup_weight` is the oracle (which also says where the term is defined).
@@ -382,7 +392,13 @@ pub struct Evaluator {
     /// largest. Zero in every game without a purse, and where running out is the win
     /// (`material_sign` negative: coins buy material that side wants to shed), so the term
     /// costs one comparison per evaluated node. Mirrors `agents/evaluation.py::coin_value`.
+    /// H4 (`docs/plan-hunger.md` §R4): the rate is also over moves under upkeep
+    /// (`moves_rate`), so a purse with no market has a worth.
     coin_weight: f64,
+    /// H4 (§5): the income term's weight, `coin_weight * INCOME_TURNS`, zero unless
+    /// `with_income` set it (a minimax player under the `INCOME` bit, in a game with income
+    /// and a coin worth), so every other evaluator costs one comparison per node.
+    income_weight: f64,
 }
 
 /// Q466 (F2): which pieces the opponent can never capture, read off the capture relation.
@@ -578,7 +594,20 @@ impl Evaluator {
             immunity: None,
             seal: Seal::of(t).map(Box::new),
             coin_weight,
+            income_weight: 0.0,
         }
+    }
+
+    /// H4 (`docs/plan-hunger.md` §5): the same evaluator with the income term: each coin a
+    /// player's pieces earn at the start of their turn, as they stand, is worth `INCOME_TURNS`
+    /// coins at `coin_weight`, mine minus theirs. Unchanged without `rules.income` or where a
+    /// coin is worth nothing (no spend, or a negative material sign).
+    /// `agents/evaluation.py::Evaluator.income` is the oracle's switch.
+    pub fn with_income(mut self, t: &Tables) -> Self {
+        if t.income.is_some() && self.coin_weight != 0.0 {
+            self.income_weight = self.coin_weight * INCOME_TURNS;
+        }
+        self
     }
 
     /// Q708 (F1): per racing side, the mask of its goal squares (by index into
@@ -1042,6 +1071,17 @@ impl Evaluator {
             let coins = f64::from(game.purse[player]) - f64::from(game.purse[1 - player]);
             score += self.coin_weight * coins;
         }
+        if self.income_weight != 0.0 {
+            // H4: what each side's pieces earn as they stand, mine minus theirs, over
+            // `INCOME_TURNS` turns at the coin's worth.
+            if let Some(income) = game.t.income.as_deref() {
+                let edge = i32::from(game.income_of(income, player))
+                    - i32::from(game.income_of(income, 1 - player));
+                if edge != 0 {
+                    score += self.income_weight * f64::from(edge);
+                }
+            }
+        }
         if self.spy_weight != 0.0 {
             let edge = spy_edge(game, player);
             if edge != 0 {
@@ -1103,6 +1143,17 @@ impl Evaluator {
                 // the whole reason a material evaluator reads one and not the other.
                 total += clamp((theirs - mine) * -f64::from(rule.result));
             }
+        }
+
+        // TS1 (`docs/plan-tessabi.md` §1): a goal counted to more than one arrival, or one
+        // that banks: each side's tally (`reach_tally`, its bank plus its listed pieces on its
+        // goal) as a share of the count. A counting term, so all of the goal weight: a banked
+        // runner reads as progress, worth more than the material it took off the board.
+        if let Some(rule) = t.reach.as_ref().filter(|rule| rule.removes || rule.count > 1) {
+            let count = f64::from(rule.count);
+            let mine = reach_tally(game, rule, player) / count;
+            let theirs = reach_tally(game, rule, 1 - player) / count;
+            total += clamp(mine - theirs) * f64::from(rule.result);
         }
 
         total
@@ -1182,11 +1233,24 @@ impl Evaluator {
 /// other side does, `0` while both or neither have one (`Game::has_spy`, the summed mask the
 /// phase reads). Asked only in a spy game. `agents/evaluation.py::Evaluator.spy_edge` is the
 /// same reading.
+/// TS1: `player`'s tally towards a counted goal, its banked pieces plus its listed pieces
+/// standing on its own goal (no `safe` test: the term is a share of the way, as the race's
+/// distance is). `agents/evaluation.py::reach_tally` is the same reading.
+fn reach_tally(game: &Game<'_>, rule: &ReachRule, player: usize) -> f64 {
+    let t = game.t;
+    let standing = game.occupied()[player]
+        .iter()
+        .filter(|&square| rule.squares[player][square] && rule.admits(t.type_of(game.board[square])))
+        .count();
+    f64::from(game.banked[player]) + standing as f64
+}
+
 /// TC5 (`docs/plan-turncoat.md` §5.6): the coin term's rate, `values[type] / price` at its
 /// largest over the market, or 0.0 without a purse. Read off the evaluator's own values,
 /// not the declared ones, so a coin is counted in the units material is.
 /// TC6 (§5.6): and over what a hire buys at its price and a bribe at twice it, in type order,
 /// hires first (`PurseTables::hire`, `PurseTables::bribe`).
+/// H4 (`docs/plan-hunger.md` §5, §R4): and over moves under upkeep (`moves_rate`), last.
 pub fn coin_value(t: &Tables, values: &[f64]) -> f64 {
     t.purse.as_deref().map_or(0.0, |purse| {
         let market = purse
@@ -1194,13 +1258,51 @@ pub fn coin_value(t: &Tables, values: &[f64]) -> f64 {
             .iter()
             .map(|&(piece_type, price)| values[piece_type as usize] / f64::from(price))
             .fold(0.0, f64::max);
-        [&purse.hire, &purse.bribe]
+        let bought = [&purse.hire, &purse.bribe]
             .into_iter()
             .flat_map(|costs| costs.iter().enumerate())
             .filter(|(_, cost)| **cost != 0)
             .map(|(piece_type, cost)| values[piece_type] / f64::from(*cost))
-            .fold(market, f64::max)
+            .fold(market, f64::max);
+        f64::max(bought, moves_rate(t, purse, values))
     })
+}
+
+/// H4 (`docs/plan-hunger.md` §R4): **the moves channel**, what a coin buys in moves:
+/// `mean value / mean move cost`, both means over the opening position's non-royal pieces of
+/// either player whose type has a move cost, a piece's move cost being its type's mean over
+/// the squares it may stand on (`PurseTables::upkeep_mean`, the compiler's). The two means
+/// share one count, so the rate is the sum of values over the sum of costs, added in square
+/// order. 0.0 without upkeep, so no other purse's rate moves. Read off the evaluator's own
+/// values, as the market's rate is. `agents/evaluation.py::moves_rate` is the same function.
+pub fn moves_rate(t: &Tables, purse: &PurseTables, values: &[f64]) -> f64 {
+    if purse.upkeep_mean.is_empty() {
+        return 0.0;
+    }
+    let mut value = 0.0;
+    let mut cost = 0.0;
+    for square in 0..t.n_squares {
+        let raw = t.initial_board[square];
+        if raw == 0 {
+            continue;
+        }
+        let owner = t.owner_of(raw);
+        let piece_type = t.type_of(raw);
+        if owner > 1 || t.royal_types.contains(&piece_type) {
+            continue;
+        }
+        let mean = purse.upkeep_mean[owner * t.n_types + piece_type];
+        if mean == 0.0 {
+            continue;
+        }
+        value += values[piece_type];
+        cost += mean;
+    }
+    if cost > 0.0 {
+        value / cost
+    } else {
+        0.0
+    }
 }
 
 pub fn spy_edge(game: &Game<'_>, player: usize) -> i32 {

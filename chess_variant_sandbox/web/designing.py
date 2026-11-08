@@ -1328,22 +1328,13 @@ def portal_problem(problem: str, spec: Any = None, sides: Any = None) -> dict[st
     if re.match(rf"at most {MAX_PIECE_TYPES} piece types, and rules\.portals adds one", text):
         return {"says": "This game has too many kinds of piece for more portals: each end "
                 "counts as one.", "beside": True}
-    if text.startswith("rules.portals is refused on a hex lattice"):
-        return {"says": "Portals can't be used on a hexagon board yet. Take off one of them: "
-                "the portals, or the hexagons.", "beside": True}
+    # Portals on a hex lattice (SR5g, P1), beside a sweep (SR6e, W8) and beside a piece kept to
+    # some squares (SR5i, P7) are no longer refused, so their sentences went.
     beside = re.match(r"rules\.portals is refused beside rules\.(\w+):", text)
     if beside:
         key = beside.group(1)
         title = _PORTAL_BESIDE.get(key) or RULE_WORDS.get(key, (key.replace("_", " "), ""))[0]
         return {"says": f"Portals can't be used together with the rule '{title}' yet. Take "
-                "off one of them.", "beside": True}
-    if text.startswith("rules.portals is refused beside a 'sweep' move"):
-        return {"says": "Portals can't be used together with a piece that sweeps yet. Take off "
-                "one of them.", "beside": True}
-    region = re.match(r"piece '([^']*)' has a region, which rules\.portals refuses", text)
-    if region:
-        return {"says": f"Portals can't be used together with a piece kept to some squares "
-                f"({_piece_called(spec, region.group(1))}'s 'only on these squares') yet. Take "
                 "off one of them.", "beside": True}
     return _portal_piece_problem(text, spec, named)
 
@@ -1931,10 +1922,8 @@ def _remedy(problem: str, trial: dict[str, Any]) -> str | None:
         names = _drop_on_pieces(trial, "beats", int(beats[1]))
         return (f"Who the {names[0]} beats in a collision is cleared: it only matters when "
                 "both players move at once.") if names else None
-    passing = re.match(r"^rules\.en_passant beside a turn longer than one move", problem)
-    if passing and _drop_rule(trial, "en_passant"):
-        return (f"The rule '{_rule_title('en_passant')}' is taken out: in a turn of several moves a "
-                "player could take their own pawn in passing.")
+    # A turn of several moves keeps taking in passing (SR7a, L1), wild pieces (SR7b, L3) and
+    # rest (SR7d, L2), so choosing it takes nothing out.
     return None
 
 
@@ -2002,8 +1991,9 @@ def rest_every_piece(spec: Any, rest: Any) -> dict[str, Any]:
     them all from one control beside *add a piece* and keeps each card's field for the
     exceptions. The rule language has no rest for the whole game, so the choice is written
     out on each piece, and the validator decides what may take one: a piece it refuses a rest
-    on alone (a portal, a wild piece) is left without and said, and a choice no piece may take
-    (a turn of several moves) is not made, with every reason in plain words. Choosing replaces
+    on alone (a wild piece) is left without and said, and a choice no piece may take is not
+    made, with every reason in plain words. A turn of several moves takes a rest since SR7d
+    (L2): a piece that moved earlier in the turn is not offered again in it. Choosing replaces
     every piece's rest, the exceptions included.
 
     The answer is ``{"draft", "changes", "errors"}``, as `take_turns`'. The draft is never

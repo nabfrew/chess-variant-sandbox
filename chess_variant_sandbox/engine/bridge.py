@@ -17,7 +17,13 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from chess_variant_sandbox.engine.compile import SIGHT_COMMAND_OWN, CompiledSpec
+from chess_variant_sandbox.engine.compile import (
+    CONTROL_MAJORITY,
+    HOP_DISPLACE,
+    MODE_MOVE,
+    SIGHT_COMMAND_OWN,
+    CompiledSpec,
+)
 from chess_variant_sandbox.engine.moves import MAX_SWEEP_RAYS, MAX_SWEEP_THROUGH
 
 # A stated ending result, as the integer the core carries: a loss for the side the rule
@@ -192,6 +198,19 @@ def _flatten_entries(
     return index, refs, squares, modes
 
 
+def _hop_runs(spec: CompiledSpec) -> list[int]:
+    """TS4: each hop entry's run code in `_flatten_entries`' entry order, or ``[]`` where no
+    hop states a run or a displacement."""
+    codes = [
+        entry[5]
+        for frame in range(spec.n_frames)
+        for piece_type in range(spec.n_types)
+        for square in range(spec.n_squares)
+        for entry in spec.hops[frame][piece_type][square]
+    ]
+    return codes if any(codes) else []
+
+
 def _flatten_dirs(
     table: Any, n_frames: int, n_types: int, n_squares: int
 ) -> list[int]:
@@ -251,6 +270,10 @@ _MOVEMENT_INERT: dict[str, Any] = {
     # `[k][type]` flattened as 0/1, list `k` being screen code `SCREEN_TYPES + k`. Empty
     # unless a hop names its screen's types, so no stored game's tables move.
     "hop_screen_types": [],
+    # TS4 (`docs/plan-tessabi.md` §4): each hop entry's run code (`compile.HOP_RUN_MASK`,
+    # `HOP_DISPLACE`), parallel to `hop_refs`' entries. Empty unless some hop states a run or
+    # a displacement, so no stored game's tables move.
+    "hop_runs": [],
 }
 
 
@@ -279,6 +302,7 @@ def _movement_fields(spec: CompiledSpec) -> dict[str, Any]:
         "hop_refs": hop_refs,
         "hop_squares": hop_squares,
         "hop_modes": hop_modes,
+        "hop_runs": _hop_runs(spec),
         "hop_screen_types": [
             int(piece_type in listed)
             for listed in spec.screen_types
@@ -404,6 +428,8 @@ _ENDING_INERT: dict[str, Any] = {
     "forbid_check": False,
     "forbid_immobility": False,
     "check_limit": 0,
+    # H3: no pass, so no stored game's tables move.
+    "passes": False,
 }
 
 
@@ -428,6 +454,7 @@ def _ending_fields(spec: CompiledSpec) -> dict[str, Any]:
         "forbid_check": spec.forbid_check,
         "forbid_immobility": spec.forbid_immobility,
         "check_limit": spec.check_limit,
+        "passes": spec.passes,
     }
 
 
@@ -748,6 +775,10 @@ def _drops_fields(spec: CompiledSpec) -> dict[str, Any]:
     }
 
 
+# TS1: `reach.both` as the core reads it (`tables.rs::REACH_BOTH_*`).
+_REACH_BOTH = {"first": 0, "draw": 1, "mover": 2}
+
+
 _REACH_INERT: dict[str, Any] = {
     "has_reach": False,
     "reach_piece_type": -1,
@@ -760,6 +791,13 @@ _REACH_INERT: dict[str, Any] = {
     "reach_safe": False,
     # Schema 18 (Q786). False unless the reach rule says `on: "leave"`.
     "reach_leaves": False,
+    # TS1 (`docs/plan-tessabi.md` §1): the bank, the count and the both-at-once reading, at
+    # their off values for every game before them (so no stored game's tables move); the
+    # banks' keys only under `removes`.
+    "reach_removes": False,
+    "reach_count": 1,
+    "reach_both": 0,
+    "zobrist_banked": [],
     "goal_distance": [],
     "goal_diameter": 1,
     "goal_distance_each": [],
@@ -788,6 +826,11 @@ def _reach_fields(spec: CompiledSpec) -> dict[str, Any]:
         "reach_safe": reach.safe if reach else False,
         # Schema 18 (Q786): win by leaving a goal square. False for every game before it.
         "reach_leaves": reach.leaves if reach else False,
+        # TS1: `rust/src/tables.rs::REACH_BOTH_FIRST` 0, `_DRAW` 1, `_MOVER` 2.
+        "reach_removes": reach.removes if reach else False,
+        "reach_count": reach.count if reach else 1,
+        "reach_both": _REACH_BOTH[reach.both] if reach else 0,
+        "zobrist_banked": list(reach.bank_zobrist) if reach else [],
         # How far each piece is from a winning square, from every square, on an empty
         # board. Compiled by `compile.py` because it is a fact about the rules; flattened
         # here for the same reason everything else is, and read once per evaluated node.
@@ -815,6 +858,13 @@ _TURN_INERT: dict[str, Any] = {
     "has_turn": False,
     "turn_moves": 1,
     "turn_ramp": [],
+    # TS3 (`docs/plan-tessabi.md` §3): the turn's parts, empty for every game whose turn is
+    # not written as parts, so no stored game's tables move.
+    "turn_parts_own": [],
+    "turn_parts_nobody": [],
+    "turn_parts_optional": 0,
+    "turn_parts_any": False,
+    "zobrist_parts": [],
 }
 
 
@@ -822,10 +872,17 @@ def _turn_fields(spec: CompiledSpec) -> dict[str, Any]:
     """Sent as a table of turn lengths plus the length everything past it settles to, so
     the core reads an index rather than reimplementing the ramp."""
     turn = spec.turn
+    parts = spec.parts
     return {
         "has_turn": turn is not None,
         "turn_moves": turn.moves if turn else 1,
         "turn_ramp": list(turn.lengths) if turn else [],
+        # TS3: `rust/src/tables.rs::PartsRule`, masks over type indices per part.
+        "turn_parts_own": list(parts.own) if parts else [],
+        "turn_parts_nobody": list(parts.nobody) if parts else [],
+        "turn_parts_optional": parts.optional if parts else 0,
+        "turn_parts_any": parts.any_order if parts else False,
+        "zobrist_parts": list(parts.zobrist) if parts else [],
     }
 
 
@@ -1012,6 +1069,8 @@ _NEUTRAL_INERT: dict[str, Any] = {
     "neighbour_squares": [],
     # Q1077 (`docs/plan-turncoat.md` §4.7): per type, 1 where a held neutral may take a royal.
     "neutral_takes_royal": [],
+    # TS2 (`docs/plan-tessabi.md` §2): per type, 1 where either player moves it (shared).
+    "neutral_shared": [],
 }
 
 
@@ -1042,6 +1101,10 @@ def _neutral_fields(spec: CompiledSpec) -> dict[str, Any]:
             [int(piece_type in neutrals.takes_royal) for piece_type in range(spec.n_types)]
             if neutrals.takes_royal else []
         ),
+        "neutral_shared": (
+            [int(piece_type in neutrals.shared) for piece_type in range(spec.n_types)]
+            if neutrals.shared else []
+        ),
     }
 
 
@@ -1064,6 +1127,30 @@ def _purse_fields(spec: CompiledSpec) -> dict[str, Any]:
     }
 
 
+# H2 (`docs/plan-hunger.md` §3). 0 and empty without income, so no other game's tables move.
+_INCOME_INERT: dict[str, Any] = {
+    "income_per_piece": 0,
+    "income_squares": [],
+}
+
+
+def _income_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """H2 (`docs/plan-hunger.md` §3, `compile.IncomeRule`): the coins a piece earns standing in
+    the region, 0 without the rule; and the region's squares, ``player * n_squares + square``
+    for each player's square in ascending order (player 0's first), empty without it."""
+    income = spec.income
+    if income is None:
+        return dict(_INCOME_INERT)
+    return {
+        "income_per_piece": income.per_piece,
+        "income_squares": [
+            player * spec.n_squares + square
+            for player in (0, 1)
+            for square in income.squares[player]
+        ],
+    }
+
+
 _MARKET_INERT: dict[str, Any] = {
     # TC5. Empty without a purse.
     "purse_market": [],
@@ -1077,6 +1164,11 @@ _MARKET_INERT: dict[str, Any] = {
     "purse_neighbour_squares": [],
     # TC9c (§5.10). False unless a bounty is paid to the player who lost the piece.
     "purse_to_loser": False,
+    # H1 (`docs/plan-hunger.md` §2.2). Empty and false unless moves cost upkeep.
+    "purse_upkeep": [],
+    "purse_upkeep_new": False,
+    # H4 (`docs/plan-hunger.md` §R4). Empty unless moves cost upkeep.
+    "purse_upkeep_mean": [],
 }
 
 
@@ -1090,6 +1182,7 @@ def _market_fields(spec: CompiledSpec) -> dict[str, Any]:
             "purse_market": [], "purse_price": [], "purse_square_index": [], "purse_squares": [],
             "purse_hire": [], "purse_bribe": [], "purse_neighbour_index": [],
             "purse_neighbour_squares": [], "purse_to_loser": False,
+            "purse_upkeep": [], "purse_upkeep_new": False, "purse_upkeep_mean": [],
         }
     index = [0]
     squares: list[int] = []
@@ -1119,6 +1212,11 @@ def _market_fields(spec: CompiledSpec) -> dict[str, Any]:
         "purse_neighbour_index": near_index,
         "purse_neighbour_squares": near,
         "purse_to_loser": purse.to_loser,
+        # H1: the move-cost table, `[(player * n_types + type) * n_squares + square]`.
+        "purse_upkeep": list(purse.upkeep),
+        "purse_upkeep_new": purse.upkeep_new,
+        # H4: each (player, type)'s mean move cost, `[player * n_types + type]`.
+        "purse_upkeep_mean": list(purse.upkeep_mean),
     }
 
 
@@ -1639,6 +1737,7 @@ _FLATTENERS: tuple[tuple[Callable[[CompiledSpec], dict[str, Any]], dict[str, Any
     (_neutral_fields, _NEUTRAL_INERT),
     (_purse_fields, _PURSE_INERT),
     (_market_fields, _MARKET_INERT),
+    (_income_fields, _INCOME_INERT),
     (_npc_fields, _NPC_INERT),
     (_pounce_fields, _POUNCE_INERT),
     (_entry_promotion_fields, _ENTRY_PROMOTION_INERT),
@@ -1790,6 +1889,66 @@ def _push_holds(spec: CompiledSpec) -> list[str]:
     return held
 
 
+def _upkeep_holds(spec: CompiledSpec) -> str | None:
+    """H1 (`docs/plan-hunger.md` §2.3, §2.4): why the core cannot charge this game's moves
+    their upkeep, or ``None``. `Game::move_cost` reads where the moving piece stands after the
+    move off the word and the board before it, as the type it moves as (or the promoted type),
+    so every rule whose arrival it cannot read that way is held shut here as the validator
+    refuses it: a foreign move (whose purse?), a mover a meeting changes or turns, a transit,
+    a drop, rounds and a long turn."""
+    purse = spec.purse
+    if purse is None or not purse.upkeep:
+        return None
+    if len(purse.upkeep) != 2 * spec.n_types * spec.n_squares:
+        return "rules.purse.upkeep: a move-cost table whose size is not two players' types by squares"
+    strike = spec.strike
+    turn = spec.turn
+    beside = (
+        (spec.simultaneous is not None, "rules.simultaneous"),
+        (turn is not None and (turn.moves > 1 or any(n > 1 for n in turn.lengths)), "a long turn"),
+        (spec.portals is not None, "rules.portals"),
+        (spec.npcs is not None, "rules.npcs"),
+        (spec.drops is not None, "rules.drops"),
+        (spec.sight is not None and spec.sight.has_command, "a command"),
+        (spec.neutrals is not None and spec.neutrals.has_majority, "a held or shared type"),
+        (strike is not None and (
+            any(to >= 0 for to in strike.mover_to) or any(to >= 0 for to in strike.own_mover_to)
+            or any(strike.mover_flips)
+        ), "a meeting that changes or turns the mover"),
+        (spec.push is not None, "rules.push"),
+    )
+    held = [name for present, name in beside if present]
+    return "rules.purse.upkeep beside " + "; ".join(held) if held else None
+
+
+def _displace_holds(spec: CompiledSpec) -> str | None:
+    """TS4: why the core cannot play this game's displacements, or ``None``. Two displacing hop
+    entries of one slot reaching one landing would leave `Tables::displace_path` two lines to
+    choose from; a displacement beside a royal, wrap or portals has no reading in the core
+    (the validator refuses each by name, this holds a spec that reached the compiler some
+    other way)."""
+    found = False
+    for frame in spec.hops:
+        for per_type in frame:
+            for entries in per_type:
+                landings: set[int] = set()
+                for ray, modes, *_, code in entries:
+                    if not code & HOP_DISPLACE:
+                        continue
+                    found = True
+                    for target, mode in zip(ray, modes, strict=True):
+                        if mode & MODE_MOVE:
+                            if target in landings:
+                                return (
+                                    "pieces[].moves[] hop displace: two displacing hops of "
+                                    "one piece reach one square"
+                                )
+                            landings.add(target)
+    if found and (spec.royal_types or spec.portals is not None or spec.wrap is not None):
+        return "pieces[].moves[] hop displace beside a royal, wrap or portals (first build)"
+    return None
+
+
 def rust_supports(spec: CompiledSpec) -> str | None:
     """``None`` if the Rust core can play this ruleset, else why it cannot.
 
@@ -1862,6 +2021,54 @@ def rust_supports(spec: CompiledSpec) -> str | None:
     # core holds at most 252 distinct lists; a game can hardly write that many.
     if len(spec.screen_types) > 255 - 3:
         return "pieces[].moves[].screen: more distinct type lists than a screen code holds"
+    # TS3 (`docs/plan-tessabi.md` §3): a part admits by the piece on a move's origin, so a move
+    # with no piece there (a drop, a buy, a fold's own move) or another rule that orders the
+    # list (rest's lift, `must_capture`) has no reading beside parts; a part mask is a byte
+    # over at most 64 types. The validator refuses each by name; this holds a spec that
+    # reached the compiler some other way.
+    if spec.parts is not None:
+        if (
+            spec.drops is not None or spec.purse is not None or spec.portals is not None
+            or spec.rest or spec.must_capture or spec.npcs is not None
+            or spec.simultaneous is not None or spec.duck is not None
+        ):
+            return "rules.turn.parts beside a rule whose moves no part can admit (first build)"
+        if spec.n_types > 64:
+            return "rules.turn.parts: more piece types than a part's mask holds"
+    # TS1 (`docs/plan-tessabi.md` §1): the counting goal is read in `schema_two_ending` alone,
+    # so a round (`round_goal_ending`) and a held arrival's single flag have no reading for it,
+    # and the bank is played in `make` alone, which the check filter does not replay. The
+    # validator refuses each by name; this holds a spec that reached the compiler some other way.
+    reach = spec.reach
+    if reach is not None and reach.counts:
+        if spec.simultaneous is not None:
+            return "rules.reach removes, count or both beside rules.simultaneous"
+        # TS2 narrowed the validator's half to a held or shared type the goal admits (a type
+        # `reach.piece` leaves out never arrives: `Game::held_arrival` asks `admits`); TS5
+        # (Tessabi's shared gatekeeper beside counted runners) narrowed this half to match.
+        if (reach.removes or reach.count > 1) and spec.neutrals is not None and any(
+            kind == CONTROL_MAJORITY and reach.admits(piece_type)
+            for piece_type, kind in enumerate(spec.neutrals.kind)
+        ):
+            return "rules.reach removes or count beside a held piece (control: majority)"
+        if reach.removes and (
+            spec.forbid_check or spec.forbid_immobility
+            or (spec.win == "checkmate" and spec.royal_types)
+        ):
+            return "rules.reach.removes beside a check rule: the legality filter plays no bank"
+        if reach.removes and (
+            not reach.piece_types or any(t in spec.royal_types for t in reach.piece_types)
+        ) and spec.royal_types:
+            return "rules.reach.removes on a royal type"
+    # TS4 (`docs/plan-tessabi.md` §4): `unmake` finds a displacement's line by the hop entry of
+    # the hopper's slot that reaches the target displacing, so no two may reach one target.
+    displace_held = _displace_holds(spec)
+    if displace_held:
+        return displace_held
+    # H1 (`docs/plan-hunger.md` §2.3): a move's cost is read off the word and the board.
+    upkeep_held = _upkeep_holds(spec)
+    if upkeep_held:
+        return upkeep_held
     # Q1074b2 (`docs/plan-push.md` §7): the core plays the single push (`MOVE_PUSH`,
     # `chain: "one"`); what it does not yet play is held shut here (`_push_holds`).
     if spec.push is not None:

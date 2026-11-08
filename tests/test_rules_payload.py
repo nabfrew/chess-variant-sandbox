@@ -31,6 +31,10 @@ RULESETS = (
     "rulesets/dobutsu.json",  # reach, drops
     "archive/kyoto.json",  # drops either face
     "archive/jeson-mor.json",  # a goal left rather than reached
+    "rulesets/crossings.json",  # TS1: a goal that banks its arrivals and counts them
+    "rulesets/boulder.json",  # TS2: a piece nobody owns that either player moves
+    "rulesets/drover.json",  # TS3: a turn of parts, a runner and an optional boulder move
+    "rulesets/leapfrog.json",  # TS4: a hop over a run that displaces what it jumps
     "archive/chess-oriented-pawns.json",  # facing
     "archive/divide.json",  # walls
     "archive/hex-glinski-hexagon.json",  # a hexagon's absent corners

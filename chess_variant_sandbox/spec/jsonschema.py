@@ -31,6 +31,8 @@ from chess_variant_sandbox.spec.schema import (
     ENDING_RESULTS,
     FACING_AXES,
     FACING_NAMES,
+    HOP_DISPLACE,
+    INCOME_PER_PIECE_MAX,
     LATTICES,
     MAX_BOARD_DIM,
     MAX_LEGS,
@@ -51,6 +53,8 @@ from chess_variant_sandbox.spec.schema import (
     PUSH_EDGES,
     PUSH_WALLS,
     PUSH_WHOSE,
+    REACH_BOTH,
+    REACH_COUNT_MAX,
     REACH_ON,
     REPETITION_NEVER,
     REST_MAX,
@@ -69,6 +73,8 @@ from chess_variant_sandbox.spec.schema import (
     SWEEP_EFFECTS,
     SYMMETRIES,
     TERRITORY_MODES,
+    UPKEEP_MAX,
+    UPKEEP_PROMOTIONS,
     WEIGHT_MAX,
     WIN_CONDITIONS,
     WRAP_FILE_EDGES,
@@ -224,8 +230,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "type": "string",
                 "enum": list(PATHS),
                 "description": (
-                    "For a slide only, how its path runs. straight (the default): every "
-                    "step the same direction. circle: each step turns to the next of the "
+                    "For a slide (or a lame rider), how its path runs. straight (the "
+                    "default): every step the same direction. circle: each step turns to the next of the "
                     "move's directions round, always the same way (either way), until it "
                     "would land on a square it has been on; the knight's eight, [[1, 2]] "
                     "by dihedral8, is the rose, round an octagon of up to seven knight "
@@ -239,10 +245,14 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "counts steps. A circle needs directions all the way round (no gap of "
                     "half a turn); a zigzag two less than half a turn apart. On a hex "
                     "lattice the directions go round as they lie in the plane: the hex "
-                    "knight's twelve, [[1, 2]] by dihedral12, is the hex rose. Refused on "
-                    "any other kind, at range 1, beside portals, on the piece en passant "
-                    "is about, and on a wild piece, unless it pounces on its prey (which "
-                    "reads its own capture moves)."
+                    "knight's twelve, [[1, 2]] by dihedral12, is the hex rose. On a lame "
+                    "with a range other than 1 (a lame rider), each jump is also blocked "
+                    "by a piece on its own direction's legs, read from the square it jumps "
+                    "from (stated legs turn with the direction), and a blocked leg ends that "
+                    "path. Refused on a leap, hop or sweep, at range 1 (a single lame leap "
+                    "included), beside portals, on the piece en passant is about, and on a "
+                    "wild piece, unless it pounces on its prey (which reads its own capture "
+                    "moves)."
                 ),
             },
             "screen_range": {
@@ -294,6 +304,36 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "destroyed once. Every sweep of one piece says the "
                     "same; path needs a strike that strikes what the piece sweeps, a "
                     "contact link whose mover is the piece, or a blast its captures set off."
+                ),
+            },
+            # TS4 (`docs/plan-tessabi.md` §4): a hop over a run, and displacement.
+            "run": {
+                "anyOf": [
+                    {"type": "boolean"},
+                    {"type": "integer", "minimum": 2, "maximum": MAX_BOARD_DIM},
+                ],
+                "description": (
+                    "For a hop of mode 'move' only. true: the hop jumps a whole run of pieces "
+                    "-- one or more occupied squares in a row along its line, starting on the "
+                    "square next to the mover -- and lands on the first square past it, which "
+                    "must be empty (Halma's or a leapfrog's jump). A number caps the run's "
+                    "length (2 or more). Every piece in the run must be one screen allows; a "
+                    "wall or the edge at the run's end is no move. Not beside screen_range "
+                    "or push. false (the default) is the plain hop over one screen."
+                ),
+            },
+            "displace": {
+                "type": "string",
+                "enum": list(HOP_DISPLACE),
+                "description": (
+                    "For a hop of mode 'move' only. back: every piece the hop jumps moves one "
+                    "square back along the line, toward where the hopper came from; the "
+                    "nearest takes the hopper's old square. Nothing leaves the board and "
+                    "nothing is captured, and it moves pieces nobody owns too. A displaced "
+                    "piece does not promote; one displaced onto its own goal counts there. On "
+                    "a plain one-screen hop it is a leapfrog exchange. Not beside a royal "
+                    "piece, territory, wrap, portals, en passant, rounds, sweeps, wild pieces, "
+                    "the duck, sights or rest. none (the default) moves only the hopper."
                 ),
             },
             # SR3c (`docs/plan-schema-next.md` §1 rank 7): an owner word or a list of ids.
@@ -712,7 +752,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
             },
             "control": {
                 "anyOf": [
-                    {"type": "string", "enum": ["stands", "majority"]},
+                    {"type": "string", "enum": ["stands", "majority", "shared"]},
                     _object(
                         {
                             "majority": _object(
@@ -770,7 +810,14 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "that destroys the other player's wins for the mover. In a turn of "
                     "several moves the holder is read afresh at the start of each move; in "
                     "rounds (rules.simultaneous) it is read on the board the round begins on, "
-                    "and the held move is the holder's move of the round."
+                    "and the held move is the holder's move of the round. "
+                    '"shared": either player may move it as their move, whoever stands next '
+                    "to it, in nobody's frame by its type's moves, onto an empty square or "
+                    "taking a non-royal piece of the other player its captures allow (never "
+                    "the mover's own). Moving it does not make it yours. A shared type reads "
+                    "the same for both players as a majority type must, and is refused beside "
+                    "takes_royal, rules.simultaneous, a price, and on a portal end; it arrives "
+                    "on a goal and claims territory as a held piece does."
                 ),
             },
             # Q1077 (`docs/plan-turncoat.md` §4.7).
@@ -857,6 +904,18 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "taken pays its bounty, never its price, and one gained (a switch, a "
                     "drop) moves no coins. On a spy only a market can charge it, since a spy "
                     "game plays in rounds, where hiring and bribing are refused."
+                ),
+            },
+            "upkeep": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": UPKEEP_MAX,
+                "description": (
+                    f"What a move of this type costs per row, 1 to {UPKEEP_MAX}; omit it and "
+                    "the type moves for nothing. Under rules.purse.upkeep a move pays this "
+                    "times the rows from its owner's first row to where the piece ends (0 on "
+                    "the first row), from the purse, before the move; a move the purse cannot "
+                    "pay for may not be made. Needs rules.purse.upkeep; never on a wild type."
                 ),
             },
             "facing": _object(
@@ -1083,7 +1142,60 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "from again."
                 ),
             },
+            # H2 (`docs/plan-hunger.md` §3): what `compile.IncomeRule` reads.
+            "income": {
+                "anyOf": [
+                    {"type": "boolean"},
+                    _object(
+                        {
+                            "per_piece": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": INCOME_PER_PIECE_MAX,
+                                "description": (
+                                    f"Coins each piece in the region earns a turn, 1 (the "
+                                    f"default) to {INCOME_PER_PIECE_MAX}."
+                                ),
+                            },
+                            "region": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "The squares where a piece earns, written for the first "
+                                    "player and reflected for the second. Leave it out for "
+                                    "each player's first rank. Algebraic squares such as a1 "
+                                    "or e4."
+                                ),
+                            },
+                        },
+                        required=[],
+                        strict=strict,
+                    ),
+                ],
+                "description": (
+                    "H2: at the start of each of a player's turns, the first player's first "
+                    "turn included, the bank pays them per_piece coins (1 by default) for each "
+                    "of their pieces, the royal too, standing in the region (by default their "
+                    "first rank), into the purse, up to its cap. Counted on the board as the "
+                    "turn starts, so a piece taken in the region earns nothing that turn. true "
+                    "is a coin per piece on the first rank; false the game without it. Needs "
+                    "rules.purse; refused beside scoring.count \"points\" and rounds."
+                ),
+            },
             # Q1069a: what `compile.InsufficientMaterialRule` reads.
+            "pass": {
+                "type": "boolean",
+                "description": (
+                    "H3: the side to move may pass, making no move at all: nothing on the "
+                    "board changes and the turn goes to the opponent. Offered wherever making "
+                    "no move is legal, so never while in check where the game has check. It "
+                    "costs nothing, counts toward the no-progress clock and can repeat a "
+                    "position, and with it no position is stalemate (rules.stalemate must be "
+                    "left at its default). false is the game without it. Refused beside "
+                    "rounds, the duck, a turn of more than one move or of parts, "
+                    "must_capture, a placement phase, wild pieces, portals and a push."
+                ),
+            },
             "insufficient_material": {
                 "type": "boolean",
                 "description": (
@@ -1169,8 +1281,56 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "[1] gives the first turn one move and levels it."
                         ),
                     },
+                    "parts": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": MAX_MOVES_PER_TURN,
+                        "items": _object(
+                            {
+                                "pieces": {
+                                    "anyOf": [
+                                        {"type": "string", "enum": ["own", "shared"]},
+                                        {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "minItems": 1,
+                                        },
+                                    ],
+                                    "description": (
+                                        "Which pieces this part of the turn moves: 'own' "
+                                        "(the mover's pieces and any nobody's piece they "
+                                        "hold), 'shared' (the pieces either player moves, "
+                                        "control 'shared'), or a list of piece ids."
+                                    ),
+                                },
+                                "optional": {
+                                    "type": "boolean",
+                                    "description": (
+                                        "The mover may keep this part instead of moving."
+                                    ),
+                                },
+                            },
+                            required=["pieces"],
+                            strict=strict,
+                        ),
+                        "description": (
+                            "A turn written as parts, in place of 'moves': one move per "
+                            "part, each moving only the pieces its part names (Neutron: "
+                            "the shared piece, then your own). A move is offered only if "
+                            "the turn can still be finished after it."
+                        ),
+                    },
+                    "order": {
+                        "type": "string",
+                        "enum": ["fixed", "any"],
+                        "description": (
+                            "'fixed' fills the parts in the order written; 'any' lets each "
+                            "move fill whichever unfilled part admits its piece (the parts "
+                            "must then admit no piece in common)."
+                        ),
+                    },
                 },
-                required=["moves"],
+                required=[],
                 strict=strict,
             ),
             "obstacles": _object(
@@ -1863,6 +2023,39 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "losing it is no loss."
                         ),
                     },
+                    "upkeep": {
+                        "anyOf": [
+                            {"type": "boolean"},
+                            _object(
+                                {
+                                    "promotion": {
+                                        "type": "string",
+                                        "enum": list(UPKEEP_PROMOTIONS),
+                                        "description": (
+                                            "What a promotion pays for: \"both\" (the "
+                                            "default) the moving piece's arrival and the "
+                                            "promoted type's on the same square, \"new\" "
+                                            "only the promoted type's."
+                                        ),
+                                    },
+                                },
+                                required=[],
+                                strict=strict,
+                            ),
+                        ],
+                        "description": (
+                            "true: every move costs coins, its piece's pieces[].upkeep times "
+                            "the rows from its owner's first row to the square the piece ends "
+                            "on (0 on the first row), paid from the purse before the move (a "
+                            "capture's bounty comes after); a move the purse cannot pay for "
+                            "may not be made, and attack still ignores coins. A castle pays "
+                            "for the castling piece only, a buy its price and its square, a "
+                            "hire nothing. Needs a type with an upkeep. Refused beside rounds, "
+                            "a long turn, portals, wild pieces, a command, a held or shared "
+                            "type, drops, a hex board, contacts and switches_sides. false "
+                            "(the default) never."
+                        ),
+                    },
                     "region": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -2155,6 +2348,33 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "goal square decides the game. 'leave': the move that takes "
                             "the piece off a goal square decides it (Jeson Mor), and "
                             "standing there decides nothing. Not with safe."
+                        ),
+                    },
+                    # TS1 (`docs/plan-tessabi.md` §1): scoring goals.
+                    "removes": {
+                        "type": "boolean",
+                        "description": (
+                            "true: a listed piece standing on its own side's goal at the end "
+                            "of a move is taken off the board and banked for its owner (not "
+                            "a capture). Not with safe, on 'leave', a royal runner, check, "
+                            "extinction, bare_royal or rounds."
+                        ),
+                    },
+                    "count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": REACH_COUNT_MAX,
+                        "description": (
+                            "How many banked plus standing listed pieces a side needs on its "
+                            "goal to reach it (1, the default: the first arrival)."
+                        ),
+                    },
+                    "both": {
+                        "type": "string",
+                        "enum": list(REACH_BOTH),
+                        "description": (
+                            "When both sides reach their goal on one move: 'first' (the "
+                            "default, player 0's), 'draw', or 'mover' (the side that moved)."
                         ),
                     },
                 },

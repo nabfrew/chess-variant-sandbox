@@ -214,6 +214,10 @@ DEFAULTS: dict[str, str] = {
     "rules.must_capture": "`false`",
     "rules.forbid_check": "`false`",
     "rules.forbid_immobility": "`false`",
+    "rules.pass": "`false`",
+    "rules.income": "`false`",
+    "rules.income.per_piece": "`1`",
+    "rules.income.region": "each player's first rank",
     "rules.max_plies": "`400`",
     "rules.repetition_draw": "`3`",
     "rules.no_progress_draw": "`100`",
@@ -402,9 +406,10 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Several moves a turn; or both players choosing at once, neither seeing the other's "
         "move, with rules for what wins a collision, which pieces are fast enough to move "
         "first, and spies whose loss takes a player's secrecy away; and pieces that must rest "
-        "for some of their player's turns after they move, by turns or in rounds.",
+        "for some of their player's turns after they move, by turns or in rounds; or a turn "
+        "a player may pass, making no move at all.",
         ("rules.turn", "rules.simultaneous", "pieces[].beats", "pieces[].speed",
-         "pieces[].spy", "pieces[].rest"),
+         "pieces[].spy", "pieces[].rest", "rules.pass"),
     ),
     (
         "What pieces do to each other without moving",
@@ -434,8 +439,12 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "(or any squares the game names), hiring a priced piece nobody owns that stands next "
         "to one of theirs, or bribing an enemy one away at twice its price. Every exchange "
         "is then priced twice, in material and in coins, and every turn asks whether to "
-        "raise a piece or move one.",
-        ("rules.purse", "pieces[].price"),
+        "raise a piece or move one. Coins may also pay for moves: each move costs its "
+        "piece's upkeep for every row it ends from home, and a move the purse cannot pay "
+        "for may not be made. And coins may be paid each turn: a player's pieces standing on "
+        "their own back rank (or any squares the game names) earn coins at the start of "
+        "every turn, so holding ground at home is an income.",
+        ("rules.purse", "pieces[].price", "pieces[].upkeep", "rules.income"),
     ),
     (
         "Chess's own rules",

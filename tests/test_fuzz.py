@@ -87,8 +87,9 @@ def test_a_seeded_batch_builds_hexagons_joined_and_unjoined() -> None:
 # 9 s (Q749). Asked of by name, so a generator that stops building them fails here. Seed 29
 # was the unjoined one until N5's `pace-a-line` joined the operators the generator draws from,
 # and again since Q1059a's `gate-the-hand` joined them, when seed 32 became a game in rounds
-# (`play-at-once`), which the walk does not play.
-TWO_HEXAGONS = (29, 36)
+# (`play-at-once`), which the walk does not play. Since TS3's `split-the-turn` joined them
+# (Q1133) seed 29 is joined and seed 32 the unjoined one again, in turns.
+TWO_HEXAGONS = (32, 36)
 
 
 def _one_of_each() -> list[fuzz.Case]:

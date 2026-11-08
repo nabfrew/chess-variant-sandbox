@@ -268,6 +268,7 @@ class TestRefusals:
             ("tests/_purse_market.json", "the purse"),
             ("tests/_retired_gardner_in_rounds.json", "rounds"),
             ("tests/_retired_gardner_with_spies.json", "spies"),
+            ("rulesets/crossings.json", "a scoring goal that banks"),
         ],
     )
     def test_a_game_it_cannot_read_is_refused_by_name(self, path: str, rule: str) -> None:

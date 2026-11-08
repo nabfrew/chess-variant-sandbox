@@ -149,6 +149,62 @@ def test_a_game_of_rounds_is_refused() -> None:
         list(puzzles.candidates(rounds, []))
 
 
+# ------------------------------------------------------------------ the survey's reads (Q1110)
+
+
+def test_the_walk_reaches_what_reached_reaches(
+    engine: Engine, records: list[GameRecord]
+) -> None:
+    """`holding`'s walk shares each prefix with the one before, and must land where
+    `reached` lands, or nowhere where it does: across games, back to a shorter prefix,
+    through an illegal move and a word that is no move."""
+    prefixes: list[Any] = []
+    for record in records:
+        prefixes += [record.moves[:ply] for ply in range(0, len(record.moves), 3)]
+        prefixes.append(record.moves[:4] + [999_999] + record.moves[5:9])
+        prefixes.append(record.moves[:2])
+    prefixes += [["x"], None, records[0].moves[:6], records[0].moves]
+    walk = puzzles._Walk(engine)
+    for prefix in prefixes:
+        try:
+            expected = puzzles.reached(engine, prefix)
+        except TypeError:
+            expected = None
+        got = walk.reach(prefix) if prefix is not None else None
+        assert (None if got is None else puzzles.content(got)) == (
+            None if expected is None else puzzles.content(expected)), prefix
+
+
+def test_a_game_with_no_record_is_read_without_compiling_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_engine(*_: Any, **__: Any) -> Engine:
+        raise AssertionError("standing compiled a game it had no question for")
+
+    monkeypatch.setattr(puzzles, "Engine", no_engine)
+    found = puzzles.standing("0123456789ab", "probe", SPEC, tmp_path, seeds=(0,))
+    assert not found.owed and "not all on disk" in found.reason
+
+
+def test_a_game_that_declares_rounds_is_asked_of_its_compile(tmp_path: Path) -> None:
+    rounds = {**SPEC, "schema_version": 26, "rules": {"win": "royal_capture", "simultaneous": {}}}
+    found = puzzles.standing("0123456789ab", "probe", rounds, tmp_path, seeds=())
+    assert not found.owed and found.reason.startswith("a game of rounds")
+
+
+@pytest.mark.slow
+def test_only_a_game_that_declares_rounds_compiles_to_rounds() -> None:
+    """`standing` asks the compile whether a game plays rounds only where it declares
+    `rules.simultaneous` (`plays_in_rounds`): no library game compiles to rounds, or to a
+    spy, without it."""
+    from chess_variant_sandbox.metrics.components import plays_in_rounds
+
+    for _digest, name, spec in puzzles.library(Path(__file__).resolve().parents[1]):
+        if not plays_in_rounds(spec):
+            compiled = Engine(spec)
+            assert not (compiled.simultaneous or compiled.spy), name
+
+
 # ------------------------------------------------------------------ a position's name (Q993c)
 
 
@@ -275,6 +331,31 @@ def test_a_capture_of_the_royal_is_proved_won_in_one(engine: Engine) -> None:
     assert winners[0]["move"] == engine.find_move(state, "Sc3xc4")
     assert row["winning"] == 1 and row["single"]
     assert [entry["move"] for entry in row["scores"]] == engine.legal_moves(state)
+
+
+def test_the_probe_stops_once_every_root_move_is_decided(engine: Engine) -> None:
+    # Q1114 (plan-performance C2a): side 1 to move, every one of its moves won or lost by
+    # force within five plies. The probe stops at the iteration that decides them all, so
+    # a budget no search could spend (it would take hours) returns at once and returns
+    # what a small budget does: a deeper search cannot move a decided score.
+    import time
+
+    from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES
+    from chess_variant_sandbox.tournament.play import eval_values
+
+    state = engine.make_state(
+        {"a1": ("K", 0), "b1": ("K", 1), "c1": ("S", 0), "b2": ("T", 1)}, side_to_move=1
+    )
+    values = eval_values(engine.spec)
+    small = engine.root_scores(state, values, SMALL, puzzles.MAX_DEPTH, GOAL_PIECES,
+                               IMMUNE_PIECES)
+    assert len(small) > 2 and all(abs(score) >= puzzles.PROVEN for score in small)
+    assert len({puzzles.proof_of(score) for score in small}) == 2  # won and lost both
+    began = time.monotonic()
+    vast = engine.root_scores(state, values, 10**12, puzzles.MAX_DEPTH, GOAL_PIECES,
+                              IMMUNE_PIECES)
+    assert time.monotonic() - began < 5.0
+    assert vast == small
 
 
 def test_the_scores_are_the_cores_in_its_own_order(engine: Engine) -> None:

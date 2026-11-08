@@ -267,6 +267,13 @@ class FixtureMachine(FakeMachine):
         self.calls.append(("ladders", self.commit))
         return refresher.ladder_items(self.root / "runs", self.root)
 
+    def resurvey(self, part: str, digest: str) -> list[Item]:
+        # One game read again after its rating (Q1110), as `refresher plan --only` reads it;
+        # what the loop then holds must be what a whole survey reads.
+        self.calls.append(("resurvey", part, digest))
+        assert part == refresher.LADDERS
+        return refresher.ladder_items(self.root / "runs", self.root, only=[digest])
+
     def repair(self, it: Item) -> Outcome:
         if not it.ladder:
             return super().repair(it)
@@ -289,20 +296,22 @@ class TestTheLoop:
         looping = refresher.Refresher(machine, refresher.Ledger(root / "ledger"), passes=20)
         assert looping.run() == 0
         work = [c[:2] for c in machine.calls
-                if c[0] in ("acquire", "repair", "release", "deliver", "ladders")]
+                if c[0] in ("acquire", "repair", "release", "deliver", "ladders", "resurvey")]
         assert work == [
             # The score: the ladders are not read while it is owed.
             ("acquire", "quiet"), ("repair", digests["dull"]), ("release", "quiet"),
             ("deliver", digests["dull"]),
+            # Read whole once a pass (Q1110), then each rated game alone.
             ("ladders", "c1"),
             ("acquire", "heavy"), ("repair", digests["dobutsu"]), ("release", "heavy"),
-            ("ladders", "c1"),
+            ("resurvey", "ladders"),
             ("acquire", "heavy"), ("repair", digests["dull"]), ("release", "heavy"),
-            ("ladders", "c1"),
+            ("resurvey", "ladders"),
             ("acquire", "heavy"), ("repair", digests["gardner"]), ("release", "heavy"),
-            ("ladders", "c1"),
+            ("resurvey", "ladders"),
             ("acquire", "heavy"), ("repair", digests["courier"]), ("release", "heavy"),
-            ("ladders", "c1"),
+            ("resurvey", "ladders"),
+            # Nothing owed: the pass ends, and the next reads them whole again.
         ]
         assert rating == [(digests["dobutsu"], False), (digests["dull"], False),
                           (digests["gardner"], True), (digests["courier"], False)]

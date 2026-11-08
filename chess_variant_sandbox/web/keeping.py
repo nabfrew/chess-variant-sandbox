@@ -245,7 +245,7 @@ class Measurements:
             self._runs[candidate.hash] = run
 
         thread = threading.Thread(
-            target=self._measure,
+            target=_written(self._measure),
             args=(run, candidate, force, seeds),
             name=f"measure-{candidate.hash}",
             daemon=True,
@@ -315,7 +315,7 @@ class Measurements:
             self._stopping = False
 
         thread = threading.Thread(
-            target=self._run_sweep,
+            target=_written(self._run_sweep),
             args=(sweep, [candidate for candidate, _ in candidates], force),
             name="measure-sweep",
             daemon=True,
@@ -362,3 +362,11 @@ class Measurements:
         with self._lock:
             stopped = self._stopping
         sweep.state = "stopped" if stopped else "finished"
+
+
+def _written(work: Any) -> Any:
+    """A measuring thread's target as an in-process writer (`library.writing`, C15a): no
+    listing is held while it writes `runs/`, nor across its end."""
+    from chess_variant_sandbox.web import library
+
+    return library.written(work)

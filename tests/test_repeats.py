@@ -126,3 +126,118 @@ class TestTheReading:
 
         short = repeats.reading({}, runs, ROSTER, "v12", index=0.60, sd=0.01, minimum=3)
         assert short["distinct_index"] is None and short["rests"] is False
+
+
+class TestTheBandEdges:
+    def test_a_one_node_rung_searches_and_three_budgets_have_a_top_two(self) -> None:
+        """A budget of one node is a searching rung; a game whose two seats are exactly the
+        searching set is in the band; with three budgets the top two are the upper two."""
+        roster = ("greedy", "minimax:nodes=1", "minimax:nodes=400")
+        games = [
+            _game(("minimax:nodes=1", "minimax:nodes=400"), [1]),
+            _game(("minimax:nodes=1", "minimax:nodes=400"), [1]),
+            _game(("minimax:nodes=400", "minimax:nodes=400"), [2]),
+            _game(("greedy", "minimax:nodes=400"), [3]),
+        ]
+        assert repeats.shares(games, roster) == {
+            "all": 0.75, "searching": 0.6667, "top_two": 0.6667,
+        }
+
+
+class _Scored:
+    def __init__(self, scored: bool, headline: float) -> None:
+        self.scored = scored
+        self.headline = headline
+
+
+class TestTheDistinctTotal:
+    """The scorer and the ratings stood in for: what the re-score is asked and returns."""
+
+    def _stand_in(self, monkeypatch, outcome) -> list[dict]:
+        from chess_variant_sandbox.metrics import index
+        from chess_variant_sandbox.tournament import ratings
+
+        asked: list[dict] = []
+
+        def score_ruleset(spec, records, rated, **kwargs):
+            asked.append({"games": [r.seed for r in records], **kwargs})
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        monkeypatch.setattr(index, "score_ruleset", score_ruleset)
+        monkeypatch.setattr(ratings, "rate", lambda records: None)
+        return asked
+
+    def _records(self) -> list[GameRecord]:
+        return [_game(TOP, [1], seed=0), _game(TOP, [1], seed=1), _game(TOP, [2], seed=2)]
+
+    def test_each_game_once_no_interval_four_places(self, monkeypatch) -> None:
+        asked = self._stand_in(monkeypatch, _Scored(True, 0.123456))
+        assert repeats.distinct_total({}, self._records(), None, "v12") == (0.1235, 2)
+        assert asked == [
+            {"games": [0, 2], "weights": "v12", "analysis": None, "interval": False},
+        ]
+
+    def test_no_combination_is_no_total(self, monkeypatch) -> None:
+        self._stand_in(monkeypatch, _Scored(False, 0.5))
+        assert repeats.distinct_total({}, self._records(), None, "v12") == (None, 2)
+
+    def test_a_refusal_is_no_total_and_never_fails_the_measurement(self, monkeypatch) -> None:
+        self._stand_in(monkeypatch, ValueError("refused"))
+        assert repeats.distinct_total({}, self._records(), None, "v12") == (None, 2)
+
+    def test_no_games_is_no_total_and_nothing_kept(self, monkeypatch) -> None:
+        asked = self._stand_in(monkeypatch, _Scored(True, 0.5))
+        assert repeats.distinct_total({}, [], None, "v12") == (None, 0)
+        assert asked == []
+
+
+class TestTheValues:
+    def test_a_run_is_immutable(self) -> None:
+        """The reading is pure in its runs; a run is a value, not a handle to edit."""
+        import dataclasses
+
+        run = repeats.Run(seed=0, records=[], analysis=None, counted=True)
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            run.counted = False  # type: ignore[misc]
+
+    def test_the_distinct_mean_is_published_to_four_places(self, monkeypatch) -> None:
+        totals = {0: 0.1234, 1: 0.1235, 2: 0.1237}
+        monkeypatch.setattr(
+            repeats, "distinct_total",
+            lambda spec, records, analysis, weights: (totals[records[0].seed], 1),
+        )
+        runs = [
+            repeats.Run(seed=s, records=[_game(TOP, [s], seed=s)], analysis=None, counted=True)
+            for s in totals
+        ]
+        block = repeats.reading({}, runs, ROSTER, "v12", index=None, sd=None, minimum=1)
+        assert block["distinct_index"] == 0.1235
+
+    @pytest.mark.parametrize(
+        ("distinct", "index", "sd", "rests"),
+        [
+            (0.61996, 0.6, 0.01, True),     # the difference rounds up to the line
+            (0.6208, 0.6, 0.0104, True),    # the line is 0.0208, not 0.021
+            (0.62, 0.6, 0.010004, True),    # the line is 0.0200, not 0.02001
+        ],
+    )
+    def test_both_sides_are_read_at_four_places(self, distinct, index, sd, rests) -> None:
+        assert repeats.rests(distinct, index, sd) is rests
+
+
+class TestTheSummary:
+    def test_the_line_and_its_rests_clause(self) -> None:
+        block = {
+            "all": 0.5, "searching": None, "top_two": 0.25, "distinct_index": 0.65344,
+            "rests": True,
+        }
+        assert repeats.summary(block) == (
+            "  different games: all 50%, top two 25%; counted once, 0.653"
+            " (rests on repeated games)"
+        )
+        assert repeats.summary({**block, "rests": False}) == (
+            "  different games: all 50%, top two 25%; counted once, 0.653"
+        )
+        assert repeats.summary(None) == ""

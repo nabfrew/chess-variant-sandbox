@@ -47,6 +47,9 @@ from chess_variant_sandbox.spec.schema import (
     format_square,
     has_speeds,
     hire_ids,
+    hop_displaces,
+    hop_run,
+    income_rule,
     insufficient_material_live,
     insufficient_material_roles,
     is_nobodys,
@@ -62,6 +65,7 @@ from chess_variant_sandbox.spec.schema import (
     npc_split,
     npc_turns_back,
     obstacle_squares,
+    passes,
     path_of,
     piece_bounties,
     piece_prices,
@@ -69,7 +73,9 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     piece_speeds,
     piece_strengths,
+    piece_upkeeps,
     piece_weights,
+    player_moved_nobodys_ids,
     player_stocks,
     portal_groups,
     portal_stand_in_shape,
@@ -77,9 +83,11 @@ from chess_variant_sandbox.spec.schema import (
     purse_market,
     purse_pays_loser,
     purse_rule,
+    purse_upkeep,
     push_rule,
     pushing_ids,
     reach_pieces,
+    shared_ids,
     sight_affects_wild,
     simultaneous_switch,
     spy_gain_routes,
@@ -269,7 +277,10 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_purse(spec))
 
     turn = rules.get("turn")
-    if turn and int(turn.get("moves", 1)) > 1:
+    if isinstance(turn, dict) and isinstance(turn.get("parts"), list):
+        # TS3: a turn of parts, first for the same reason as a long turn.
+        lines.extend(_describe_turn_parts(spec, turn))
+    elif turn and int(turn.get("moves", 1)) > 1:
         # First in the list on purpose: it changes what "a turn" means, so every other
         # sentence below is read differently once you know it.
         lines.append(_describe_turn(turn))
@@ -282,7 +293,7 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     # Third, one level down again: a wall is a fact about the board, so it is read
     # before any sentence about a piece; a strike is what every capture below means; a
     # wild piece is a third actor every other sentence has to be read against.
-    lines.extend(_describe_obstacles(rules))
+    lines.extend(_describe_obstacles(rules, _jumps_past_a_square(spec)))
     lines.extend(_describe_strike(spec, rules))
     lines.extend(_describe_contacts(spec, rules))
     lines.extend(_describe_npcs(spec, rules))
@@ -292,12 +303,17 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     # Q1074b4 (`docs/plan-push.md` §2): what a push moves, read with the moves that push.
     lines.extend(_describe_push(spec))
 
-    lines.append(
-        ("A player with no legal move at the start of a round " if is_simultaneous(rules)
-         else "A player with no legal move ")
-        + {"draw": "draws", "loss": "loses", "win": "wins"}[rules.get("stalemate", "draw")]
-        + ("; both without one is a draw." if is_simultaneous(rules) else ".")
-    )
+    if passes(rules):
+        # H3 (`docs/plan-hunger.md` §4): the pass replaces the stalemate sentence, since under it
+        # no position is stalemate (the validator refuses a stalemate rule beside it).
+        lines.append(_describe_pass(rules))
+    else:
+        lines.append(
+            ("A player with no legal move at the start of a round " if is_simultaneous(rules)
+             else "A player with no legal move ")
+            + {"draw": "draws", "loss": "loses", "win": "wins"}[rules.get("stalemate", "draw")]
+            + ("; both without one is a draw." if is_simultaneous(rules) else ".")
+        )
     if rules.get("checkmate", "loss") == "win":
         lines.append("Being checkmated wins the game.")
 
@@ -355,6 +371,22 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_insufficient_material(spec, rules))
     lines.extend(_describe_ending_order(rules))
     return lines
+
+
+def _describe_pass(rules: dict[str, Any]) -> str:
+    """H3 (`docs/plan-hunger.md` §4): ``rules.pass``, in the reader's words. Where the game has
+    check the pass is the null move filtered as any move is, so it is never offered in check."""
+    checked = rules.get("win", "checkmate") == "checkmate"
+    return (
+        "Instead of moving, a player may pass: nothing on the board changes, nothing is paid, "
+        "and the turn goes to the opponent. "
+        + ("A player in check may not pass, so a player with no move out of check is "
+           "checkmated, and a player not in check always has a move: no position is "
+           "stalemate. " if checked else
+           "A player may always pass, so no player is ever without a move. ")
+        + "A pass counts toward the no-progress clock, and passing back and forth can repeat a "
+        "position."
+    )
 
 
 def _describe_common_castling(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
@@ -918,6 +950,9 @@ def _describe_piece(
         notes.append(
             "while nobody owns it, is moved by whoever has more pieces next to it (see the rules)"
         )
+    elif control == "shared":
+        # TS2 (`docs/plan-tessabi.md` §2).
+        notes.append("while nobody owns it, either player may move it (see the rules)")
     rest = piece.get("rest")
     if isinstance(rest, int) and not isinstance(rest, bool) and rest > 0:
         # Schema 29 (Q983a): the rules say what a rest does; the piece says its own.
@@ -1002,6 +1037,19 @@ def _move_descriptor(move: dict[str, Any]) -> str:
         reach = f"jumping directly over pieces, but stopped by a wall on {legs}"
     elif kind == "leap":
         reach = "jumping directly, ignoring anything in between"
+    elif kind == "lame" and path_of(move) != "straight":
+        # SR11a (PA4): a turning lame rider, counted in jumps, each stoppable at its legs.
+        jumps = "any number of jumps" if max_range == 0 else f"up to {max_range} jumps"
+        turn = (
+            "turning to the next direction round at every jump, either way"
+            if path_of(move) == "circle"
+            else "turning to a neighbouring direction and back at every jump, a zigzag"
+        )
+        passes = f"any of its legs ({legs})" if legs else "the square it passes"
+        reach = (
+            f"leaping again and again ({jumps}), {turn}, each jump stopped by a piece "
+            f"standing on {passes}, and the path by a piece where it lands"
+        )
     elif kind == "lame" and legs:
         # SR1a: the stated legs, every one of which can stop the jump.
         reach = (
@@ -1070,13 +1118,17 @@ def _move_descriptor(move: dict[str, Any]) -> str:
     if kind == "hop":
         screen = _screen_words(move)
         screen_range = int(move.get("screen_range", 0))
-        if screen_range == 1:
+        if hop_run(move) is not None:
+            # TS4 (`docs/plan-tessabi.md` §4): a run, landing just past it.
+            where = ", landing on the first square past the row, which must be empty"
+            screen = _run_words(move)
+        elif screen_range == 1:
             where = ", landing immediately past it"
         elif screen_range > 1:
             where = f", landing at most {screen_range} squares past it"
         else:
             where = f", then {reach}"
-        reach = f"leaping {screen}{where}"
+        reach = f"leaping {screen}{where}{_displace_clause(move)}"
 
     text = f"{mode} along {vectors}{_SYMMETRY_TEXT[symmetry]}, {reach}"
     if len(directions) > len(move["vectors"]):
@@ -1534,10 +1586,13 @@ def _path_words(move: dict[str, Any], aim: _Aim) -> str | None:
     two and one, in all eight directions, each step turning to the next direction round, ...*.
 
     Counted in steps, which is what the engine counts its ``range`` in. ``None`` for a
-    straight slide, and where the step has no phrase (the vectors say it then)."""
+    straight slide, and where the step has no phrase (the vectors say it then). A turning
+    lame rider (SR11a, PA4) is counted in jumps, each one stoppable at its own legs."""
     path = path_of(move)
     if path == "straight":
         return None
+    if move["kind"] == "lame":
+        return _lame_path_words(move, aim, path)
     if aim.step and aim.scale == 1:
         noun, over = f"one-square steps {aim.words}", ""
     elif aim.step:
@@ -1559,6 +1614,33 @@ def _path_words(move: dict[str, Any], aim: _Aim) -> str | None:
                 "neighbour), so the path zigzags between the two")
     return (f"{count} {noun}, {turn}{nearest}; stopped by a piece on a square it lands on"
             f"{over}")
+
+
+def _lame_path_words(move: dict[str, Any], aim: _Aim, path: str) -> str | None:
+    """A turning lame rider (SR11a, `docs/plan-schema-next.md` PA4): *any number of jumps of
+    two and one, ..., each jump turning to the next direction round, ...; each jump blocked by
+    a piece on the square it passes, and the path by a piece on a square it lands on*."""
+    if aim.step and aim.scale > 1:
+        noun = f"jumps of {_count(aim.scale)} squares {aim.words}"
+    elif not aim.step and aim.unit:
+        noun = f"jumps of {aim.words}"
+    else:
+        return None
+    far = int(move.get("range", DEFAULT_RANGE["lame"]))
+    near = int(move.get("min_range", 1))
+    count = "any number of" if far == 0 else f"up to {_count(far)}"
+    nearest = f", stopping no nearer than jump {_count(near)}" if near > 1 else ""
+    if path == "circle":
+        turn = ("each jump turning to the next direction round, always the same way (either "
+                "way), so the path circles and never comes back onto a square it has been on")
+    else:
+        turn = ("turning to a neighbouring direction and back again at every jump (either "
+                "neighbour), so the path zigzags between the two")
+    legs = _legs_words(move)
+    passes = (f"any square it is stated to pass ({legs})" if legs
+              else "the square it passes")
+    return (f"{count} {noun}, {turn}{nearest}; each jump blocked by a piece on {passes}, "
+            "and the path by a piece on a square it lands on")
 
 
 def _slide_words(move: dict[str, Any], aim: _Aim) -> str | None:
@@ -1591,6 +1673,8 @@ def _legs_words(move: dict[str, Any]) -> str:
 
 
 def _leap_words(move: dict[str, Any], aim: _Aim) -> str | None:
+    if move["kind"] == "lame" and path_of(move) != "straight":
+        return _path_words(move, aim)
     over = aim.scale > 1 or not aim.step
     if aim.step:
         words = f"{_count(aim.scale)} square{'' if aim.scale == 1 else 's'} {aim.words}"
@@ -1634,9 +1718,39 @@ def _screen_words(move: dict[str, Any]) -> str:
     )
 
 
+def _run_words(move: dict[str, Any]) -> str:
+    """TS4: what a hop over a run jumps: the row of pieces next to it, each one its screen
+    allows, at most the cap long."""
+    run = hop_run(move)
+    owner = {"own": "your own", "enemy": "enemy"}.get(str(move.get("screen", "any")), "")
+    kinds = move.get("screen")
+    pieces = (
+        f"pieces of these kinds, of either side: {', '.join(sorted(kinds))}"
+        if isinstance(kinds, list) else f"{owner} pieces".strip() if owner else "pieces of either side"
+    )
+    cap = f" (at most {run})" if run else ""
+    return f"a whole row of {pieces}{cap} starting on the square next to it"
+
+
+def _displace_clause(move: dict[str, Any]) -> str:
+    """TS4: what a displacing hop does to what it jumps, or ``""``."""
+    if not hop_displaces(move):
+        return ""
+    return (
+        "; every piece it jumps, of either side or nobody's, moves one square back along the "
+        "line toward where it started, the nearest onto the square it left (nothing is taken)"
+    )
+
+
 def _hop_words(move: dict[str, Any], aim: _Aim) -> str | None:
     if not aim.step or aim.scale != 1:
         return None
+    if hop_run(move) is not None:
+        # TS4 (`docs/plan-tessabi.md` §4): a run's landing is fixed, just past it.
+        return (
+            f"jumps {aim.words}, over {_run_words(move)}, landing on the first square past "
+            f"the row, which must be empty{_displace_clause(move)}"
+        )
     screen = _screen_words(move)
     # ``screen_range`` caps the landing from the screen; without one the descriptor's own
     # reach does, counted the same way from the screen outwards.
@@ -1653,7 +1767,7 @@ def _hop_words(move: dict[str, Any], aim: _Aim) -> str | None:
         landing = f"landing {_count(near)} to {_count(far)} squares past it"
     else:
         landing = f"landing at most {_count(far)} squares past it"
-    return f"jumps {aim.words}, over {screen}, {landing}"
+    return f"jumps {aim.words}, over {screen}, {landing}{_displace_clause(move)}"
 
 
 def _sweep_words(move: dict[str, Any], aim: _Aim) -> str | None:
@@ -1756,6 +1870,15 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "A move may not leave one of your own pieces somewhere it could never move from "
         "again.",
     ),
+    "income": (
+        "coins each turn for holding ground",
+        "At the start of each turn a player is paid coins for each of their pieces standing "
+        "in a region, by default their own first rank.",
+    ),
+    "pass": (
+        "a player may pass",
+        "Instead of moving, a player may make no move at all, wherever that is legal.",
+    ),
     "insufficient_material": (
         "a draw when too little is left to mate",
         "The game is drawn the moment neither side has enough left to mate: the royals "
@@ -1850,7 +1973,8 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
     "turn": (
         "more than one move a turn",
         "A turn is this many moves rather than one, and the opening turns can be given "
-        "their own lengths.",
+        "their own lengths; or a turn is parts, each moving only the pieces it names, some "
+        "of which may be left.",
     ),
     "win": (
         "how the game is won",
@@ -1885,7 +2009,10 @@ RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
     # "sumo" stays (Q1074bo): it is the name a player brings from sumo chess, the published
     # game the push comes from, and this tuple is what *find a rule* matches a typed word to.
     "push": ("sumo", "push", "shove"),
-    "turn": ("double move", "marseillais", "progressive", "several moves", "two moves"),
+    "turn": (
+        "double move", "marseillais", "progressive", "several moves", "two moves",
+        "neutron", "turn parts",
+    ),
     "castling": ("castle",),
     "en_passant": ("en passant",),
     "must_capture": ("antichess", "losing chess", "giveaway", "forced capture", "suicide"),
@@ -1899,6 +2026,8 @@ RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
     "insufficient_material": (
         "insufficient material", "dead position", "bare kings", "not enough to mate",
     ),
+    "pass": ("pass", "muster", "skip a turn", "null move"),
+    "income": ("income", "forage", "wage", "stipend", "harvest", "supply"),
     "no_progress_draw": ("fifty-move", "fifty move", "50 move", "stall"),
     "max_plies": ("move limit", "length", "turn limit"),
     "royal_facing": ("flying general", "kings facing", "facing"),
@@ -2176,6 +2305,43 @@ def _describe_purse(spec: dict[str, Any]) -> list[str]:
             f"pieces next to it, for twice its price ({listed}): it changes sides where it "
             "stands, keeping the way it points, and whoever paid last owns it."
         )
+    # H1 (`docs/plan-hunger.md` §2.5): a move's cost.
+    promotion = purse_upkeep(spec)
+    if promotion is not None:
+        rates = piece_upkeeps(spec)
+        listed = ", ".join(f"{pid} {rate}" for pid, rate in rates.items())
+        lines.append(
+            f"Moves cost coins: a move costs its piece's upkeep ({listed}; every other piece "
+            "0) times the rows from its owner's first row to where it ends (0 on that row), "
+            "paid from the purse before the move; a move the purse cannot pay for may not be "
+            "made. The coins a capture brings come after, so they cannot pay for it. A piece "
+            "that stays where it is (a turn, a capture that leaves it on its square) pays for "
+            "that square; castling pays for the castling piece only; "
+            + (
+                "a promotion pays for the promoted piece's arrival only"
+                if promotion == "new"
+                else "a promotion pays for both arrivals, the piece's and the promoted piece's"
+            )
+            + (", and a bought piece for its square as well as its price" if market else "")
+            + ". A move paid for this way is an ordinary move and resets no clock. Attack is "
+            "about where pieces stand, never coins: an attack the attacker could not afford "
+            "still gives check."
+        )
+    # H2 (`docs/plan-hunger.md` §3): income.
+    income = income_rule(spec)
+    if income is not None:
+        per_piece = income["per_piece"]
+        where = (
+            f"{_squares(income['region'])} (reflected for the second player)"
+            if income["region"] else "their own first rank"
+        )
+        lines.append(
+            f"At the start of each of a player's turns, the first player's first turn "
+            f"included, the bank pays them {per_piece} coin{'' if per_piece == 1 else 's'} for "
+            f"each piece of theirs, the royal too, standing on {where}, into their purse (up "
+            f"to its cap). The pieces are counted on the board as the turn starts, so a piece "
+            "taken there earns nothing on its owner's next turn."
+        )
     # SR3g (P9): beside portals.
     rules = spec.get("rules")
     if purse_market(spec) and isinstance(rules, dict) and rules.get("portals"):
@@ -2192,10 +2358,23 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
     neutrals = sorted(neutral_ids(spec))
     if not neutrals:
         return []
+    # TS5 (Q1135): said only where some other piece's `captures` reach one; in a game where
+    # nothing does (Tessabi's gatekeeper, Boulder's and Drover's boulder) it was false.
+    takeable = any(
+        isinstance(piece, dict)
+        and piece.get("id") not in neutrals
+        and (piece.get("captures") is None or set(piece.get("captures") or []) & set(neutrals))
+        for piece in spec.get("pieces") or []
+    )
     lines = [
         f"Some pieces belong to nobody ({', '.join(neutrals)}, placed for nobody): they are in "
-        "neither army, so they count for no ending or material, they block, and either player "
-        "may capture one (a capture into a hand gives the taker one of that type)."
+        "neither army, so they count for no ending or material, they block, and "
+        + (
+            "either player may capture one (a capture into a hand gives the taker one of that "
+            "type)."
+            if takeable
+            else "nothing may capture one."
+        )
     ]
     held = sorted(majority_ids(spec))
     if held:
@@ -2240,6 +2419,18 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
                 "hands the count to the other player is illegal if the piece would then attack "
                 "the mover's royal."
             )
+    # TS2 (`docs/plan-tessabi.md` §2): shared control.
+    shared = sorted(shared_ids(spec))
+    if shared:
+        lines.append(
+            f"A piece nobody owns of type {', '.join(shared)} is shared: either player may move "
+            "it as their move, whoever stands next to it. It moves as its type does, the same "
+            "for either player, onto an empty square or capturing a non-royal piece of the "
+            "other player its type may take, never the mover's own; it never promotes, "
+            "castles or captures en passant, attacks nothing and gives no check, and stays "
+            "nobody's after it moves. Where these rules speak of a held piece, a shared piece "
+            "is held by whoever moves it."
+        )
     # SR3f (O1, O2): beside wild pieces and the duck.
     rules = spec.get("rules")
     if not isinstance(rules, dict):
@@ -2257,7 +2448,7 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
         through = (
             " A held piece goes through a portal or a fold as its holder's piece would, "
             "landing only where it may land."
-            if majority_ids(spec) else ""
+            if player_moved_nobodys_ids(spec) else ""
         )
         lines.append(
             "A piece coming out of a portal onto a piece nobody owns takes it where it may "
@@ -2276,26 +2467,30 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
             f" A held piece's capture is a {rule} as its holder's piece of the type would make "
             "it, landing and placing as that player's piece would, and the piece stays nobody's "
             "whatever it becomes; it never changes sides."
-            if majority_ids(spec) else ""
+            if player_moved_nobodys_ids(spec) else ""
         )
         lines.append(
             f"A {rule} that reaches a piece nobody owns turns it into what the {rule} says, and "
             f"it stays nobody's{becomes}." + held_line
         )
     # SR5j (O12): a held piece's blast is the mover's.
-    if rules.get("explode_on_capture") and majority_ids(spec):
+    if rules.get("explode_on_capture") and player_moved_nobodys_ids(spec):
         lines.append(
             "A held piece's capture explodes as any capture does, and the blast is the "
             "mover's: a held capture whose blast would destroy the mover's own royal is not "
             "a move, and one whose blast destroys the other player's royal wins for the mover."
         )
     # SR5k (O10, O11): a held piece claims and arrives for the mover.
-    if rules.get("territory") and majority_ids(spec):
+    if rules.get("territory") and player_moved_nobodys_ids(spec):
         lines.append(
             "A held piece claims the square it lands on for the player who moved it."
         )
     reach = rules.get("reach")
-    if isinstance(reach, dict) and majority_ids(spec):
+    # TS2: only where the goal admits a held or shared type; one `reach.piece` leaves out never
+    # arrives (`ReachRule::admits`).
+    if isinstance(reach, dict) and (
+        player_moved_nobodys_ids(spec) & (set(reach_pieces(reach)) or player_moved_nobodys_ids(spec))
+    ):
         if reach.get("on") == "leave":
             lines.append(
                 "A held piece is read by the goal as if the player who moved it owned it: "
@@ -2920,6 +3115,51 @@ def _describe_turn(turn: dict[str, Any]) -> str:
     return text
 
 
+def _describe_turn_parts(spec: dict[str, Any], turn: dict[str, Any]) -> list[str]:
+    """TS3 (`docs/plan-tessabi.md` §3): a turn written as parts, in words: what each part
+    moves, which may be kept, the order, and the completion rule."""
+    parts = [part for part in turn["parts"] if isinstance(part, dict)]
+    names = {
+        piece["id"]: str(piece.get("name") or piece["id"])
+        for piece in spec.get("pieces") or [] if isinstance(piece, dict) and "id" in piece
+    }
+
+    def what(part: dict[str, Any]) -> str:
+        pieces = part.get("pieces")
+        if pieces == "own":
+            return "one of your own pieces"
+        if pieces == "shared":
+            return "a piece both players move"
+        listed = [names.get(pid, str(pid)) for pid in pieces or []]
+        return "a " + (" or ".join(listed) if listed else "piece")
+
+    described = [
+        what(part) + (" (which you may leave instead)" if part.get("optional") else "")
+        for part in parts
+    ]
+    if len(described) == 1:
+        lines = [f"A turn is one move, of {described[0]}."]
+    else:
+        joined = "; ".join(f"{index + 1}. {text}" for index, text in enumerate(described))
+        order = (
+            "in any order, each move filling the part its piece belongs to"
+            if turn.get("order") == "any" else "in that order"
+        )
+        lines = [f"A turn is {len(described)} parts, {order}: {joined}."]
+    if any(part.get("optional") for part in parts):
+        lines.append(
+            "Leaving a part is a move of its own that moves nothing; the clocks count it."
+        )
+    if len(parts) > 1:
+        lines.append(
+            "A move is allowed only if the rest of the turn can still be played after it, "
+            "and the game can end after any move of a turn; a player whose turn cannot be "
+            "played at all has no legal move. Repetition and the clocks are read only at a "
+            "turn's start."
+        )
+    return lines
+
+
 def _promotion_rules(rules: dict[str, Any]) -> list[dict[str, Any]]:
     promotion = rules.get("promotion")
     if isinstance(promotion, list):
@@ -2994,7 +3234,25 @@ def _describe_entry_promotion(rules: dict[str, Any]) -> str:
     )
 
 
-def _describe_obstacles(rules: dict[str, Any]) -> list[str]:
+def _jumps_past_a_square(spec: dict[str, Any]) -> bool:
+    """Whether some piece has a leap or lame move longer than one step: the only moves that
+    may pass over a wall (a hop's line, a run's included, ends at one). TS5 (Q1135): a game
+    whose only jump is a hop has no jump a wall can be under."""
+    for piece in spec.get("pieces") or []:
+        if not isinstance(piece, dict):
+            continue
+        for move in piece.get("moves") or []:
+            if not isinstance(move, dict) or move.get("kind") not in ("leap", "lame"):
+                continue
+            for vector in move.get("vectors") or []:
+                if isinstance(vector, list) and any(
+                    isinstance(c, int) and abs(c) > 1 for c in vector
+                ):
+                    return True
+    return False
+
+
+def _describe_obstacles(rules: dict[str, Any], jumps: bool = True) -> list[str]:
     """Squares nothing may occupy.
 
     Stated high in the list, beside the seam, and for the same reason: a wall changes
@@ -3010,6 +3268,8 @@ def _describe_obstacles(rules: dict[str, Any]) -> list[str]:
         f"{_squares(squares)}{mirrored} are walls. No piece may stand on them, and "
         "nothing can move or capture through one."
     ]
+    if not jumps:
+        return lines
     lines.append(
         "A jumping piece may not land on a wall but may jump over one."
         if not obstacles.get("blocks_leaps")
@@ -3825,12 +4085,38 @@ def _describe_extra_rules(rules: dict[str, Any], hexy: bool = False) -> list[str
             f"{piece} moving off {where} is a {reach.get('result', 'win')}: it has to get "
             f"there first and then step away, and standing there decides nothing."
         )
+    elif reach and (reach.get("removes") is True or reach.get("count", 1) != 1):
+        # TS1 (`docs/plan-tessabi.md` §1): a scoring goal, banked and counted.
+        piece = _runners(reach)
+        where = _squares(reach["squares"], limit=6)
+        count = reach.get("count", 1)
+        safe = " and not capturable there" if reach.get("safe") else ""
+        if reach.get("removes") is True:
+            lines.append(
+                f"{piece[0].upper() + piece[1:]} standing on {where} at the end of a move, "
+                "however it got there, is "
+                "taken off the board and banked for its owner: not a capture, nobody takes it "
+                "and it never comes back. A player who has banked "
+                + (f"{count} pieces" if count > 1 else "one")
+                + f" has a {reach.get('result', 'win')}."
+            )
+        else:
+            lines.append(
+                f"Having {count} of {piece.lower()} standing on {where}{safe} at once is a "
+                f"{reach.get('result', 'win')}."
+            )
     elif reach:
         piece = _runners(reach)
         safe = " and surviving there" if reach.get("safe") else ""
         lines.append(
             f"{piece} reaching {_squares(reach['squares'], limit=6)}{safe} is a "
             f"{reach.get('result', 'win')}."
+        )
+    # TS1: a goal reached by both players on the same move.
+    if isinstance(reach, dict) and reach.get("both") in ("draw", "mover"):
+        lines.append(
+            "If one move brings both players to their goal at once, the game is "
+            + ("drawn." if reach["both"] == "draw" else "won by the player who moved.")
         )
     extinction = rules.get("extinction")
     if extinction:

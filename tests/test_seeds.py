@@ -13,6 +13,7 @@ sees a spec, and nothing here plays anything.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -606,3 +607,199 @@ class TestTheSeatIsDecidedOverTheRunsPooled:
     def test_an_unknown_rule_is_named_rather_than_guessed_at(self) -> None:
         with pytest.raises(ValueError, match="unknown verdict rule"):
             verdict(self._runs([(8, 7, 1)]), "vote-by-coin")
+
+    def test_a_viable_vote_quotes_no_run_beside_a_pooled_refusal(self) -> None:
+        """Three runs accept and one fails another gate, so the vote admits it; the four
+        runs' sweep refuses it pooled, and that refusal is the only sentence."""
+        runs = self._runs([(16, 0, 0)] * 4)
+        runs[3] = dataclasses.replace(
+            runs[3], viable=False, violations=("mean_plies=6.0 too low",)
+        )
+        combined = _combined(runs, VOTE_POOLED_SEAT)
+        assert combined.verdict.viable is True
+        assert combined.viable is False
+        assert len(combined.violations) == 1
+        assert "over 4 runs" in combined.violations[0]
+
+
+# Q1145: the mutation survivors of `metrics/seeds.py`, each pinned to a literal.
+
+
+def _blind(seed: int) -> RunReading:
+    """A run the roster could not read that failed no gate it could read: it abstains."""
+    return RunReading(
+        seed=seed, scored=False, total=None, sd=None, viable=False,
+        violations=(f"blind at {seed}",), measured=False,
+    )
+
+
+def _with_interval(seed: int, total: float, interval: dict) -> RunReading:
+    return RunReading(
+        seed=seed, scored=True, total=total, sd=float(interval["sd"]), viable=True,
+        contributions={"depth": total}, interval=interval,
+    )
+
+
+class TestTheSmallPieces:
+    def test_no_runs_still_ask_for_one_scored_run(self) -> None:
+        assert seeds.minimum_totals(0) == 1
+        assert seeds.minimum_totals(2) == 2
+        assert seeds.minimum_totals(9) == 3
+
+    def test_the_readings_are_frozen(self) -> None:
+        run = _run(0)
+        found = _combined([run])
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            run.total = 0.1  # type: ignore[misc]
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            found.verdict.viable = False  # type: ignore[misc]
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            found.index = 0.1  # type: ignore[misc]
+
+    def test_from_result_keeps_the_sd_only_of_a_score(self) -> None:
+        common: dict = dict(
+            ruleset_hash="abc", ruleset_name="x", weights_version="v10", total=0.7,
+            viable=True, violations=[], scores={"depth": 0.7}, raw={},
+            families={"depth": 0.7}, interval={"sd": 0.03, "mean": 0.7},
+        )
+        scored = RunReading.from_result(5, IndexResult(contributions={"depth": 0.7}, **common))
+        assert (scored.scored, scored.total, scored.sd, scored.games) == (True, 0.7, 0.03, 0)
+        withheld = RunReading.from_result(6, IndexResult(contributions={}, **common))
+        assert (withheld.scored, withheld.total, withheld.sd) == (False, None, None)
+
+    def test_unscored_is_not_scored(self) -> None:
+        raised = RunReading.unscored(7, "no blunder trials")
+        assert raised.scored is False
+        assert (raised.total, raised.sd, raised.viable) == (None, None, False)
+        assert raised.violations == ("no blunder trials",)
+
+    def test_two_runs_pool_the_seat(self) -> None:
+        assert seeds.pools_the_seat(VOTE_POOLED_SEAT, 2) is True
+        assert seeds.pools_the_seat(VOTE_POOLED_SEAT, 1) is False
+        assert seeds.pools_the_seat(VOTE_TIE_REFUSES, 2) is False
+
+    def test_counts_past_the_words_are_digits(self) -> None:
+        assert seeds._word(8) == "eight"
+        assert seeds._word(9) == "9"
+
+
+class TestTheSplitSentences:
+    def test_two_runs_that_disagree_say_so_and_name_the_refuser(self) -> None:
+        found = _combined([_run(0), _run(1000, viable=False)])
+        assert found.violations == (
+            "One of its two runs accepts it and one refuses it. A tie refuses, so it is "
+            "ruled out.",
+            "run 1000: a gate 1000 failed",
+        )
+
+    def test_abstentions_beside_both_votes(self) -> None:
+        assert seeds._split(2, 1, False, 1, False) == (
+            "Of its four runs, two accept it, one refuses it and one could not be read, "
+            "so it is not measured."
+        )
+        assert seeds._split(2, 2, False, 1, False) == (
+            "Of its five runs, two accept it, two refuse it and one could not be read, "
+            "so it is not measured."
+        )
+
+    def test_one_blind_run_has_no_split(self) -> None:
+        found = verdict([_blind(0)], seeds.VOTE_BLIND_ABSTAINS)
+        assert (found.split, found.abstain, found.measured) == ("", 1, False)
+
+    def test_two_runs_one_blind_are_not_measured_in_the_plural(self) -> None:
+        found = _combined([_run(0), _blind(1000)], seeds.VOTE_BLIND_ABSTAINS)
+        assert found.measured is False
+        assert found.violations == (
+            "Not measured: its computer players could not tell a stronger search from a "
+            "weaker one on most of its runs.",
+            "Of its two runs, one accepts it and one could not be read, so it is not "
+            "measured.",
+            "run 1000: blind at 1000",
+        )
+
+    def test_a_run_s_own_seat_refusal_is_quoted_when_the_seat_is_not_pooled(self) -> None:
+        runs = [_run(0), _run(1000)] + [
+            _run(seed, viable=False, violations=(_seat_refusal(seed),))
+            for seed in (2000, 3000)
+        ]
+        found = _combined(runs, VOTE_TIE_REFUSES)
+        assert found.violations == (
+            "Two of its four runs accept it and two refuse it. A tie refuses, so it is "
+            "ruled out.",
+            "run 2000: " + _seat_refusal(2000),
+            "run 3000: " + _seat_refusal(3000),
+        )
+
+
+class TestTheMeanAndItsTables:
+    def test_a_total_that_is_not_a_score_is_never_averaged(self) -> None:
+        stray = RunReading(seed=3000, scored=False, total=0.1, sd=None, viable=False)
+        found = _combined([_run(0, 0.8), _run(1000, 0.6), _run(2000, 0.7), stray])
+        assert found.totals_used == 3
+        assert found.index == 0.7
+
+    def test_a_zero_total_counts_as_zero(self) -> None:
+        found = _combined([_run(0, 0.0), _run(1000, 0.6), _run(2000, 0.9)])
+        assert found.index == 0.5
+
+    def test_the_index_is_rounded_to_four_places(self) -> None:
+        found = _combined([_run(seed, 0.11111) for seed in (0, 1000, 2000)])
+        assert found.index == 0.1111
+
+    def test_the_display_tables_are_the_usable_runs_means(self) -> None:
+        runs = [_run(0, 0.8), _run(1000, 0.6), _run(2000, 0.7), _placeholder(3000)]
+        found = _combined(runs)
+        assert found.detail["scores"] == {"depth": 0.7}
+        assert found.detail["raw"] == {"depth": 7.0}
+
+    def test_means_round_to_four_places_over_the_runs_that_have_the_key(self) -> None:
+        assert seeds._means([{"a": 0.11111, "b": 1.0}, {"a": 0.11113}, {}]) == {
+            "a": 0.1111, "b": 1.0,
+        }
+
+    def test_unreadable_is_the_intersection(self) -> None:
+        def reading(seed: int, unreadable: tuple[str, ...]) -> RunReading:
+            return RunReading(seed=seed, scored=False, total=None, sd=None, viable=False,
+                              unreadable=unreadable)
+
+        assert seeds._unreadable([reading(0, ("a", "b")), reading(1, ("b", "c"))]) == ("b",)
+        assert seeds._unreadable([reading(0, ("x",))]) == ("x",)
+
+    def test_the_ladder_reads_missing_fields_as_zero(self) -> None:
+        run = RunReading(
+            seed=0, scored=False, total=None, sd=None, viable=False,
+            standings=({"name": "a", "rating": 10.0, "games": None}, {"name": "b"}),
+        )
+        assert seeds._ladder([run]) == [
+            {"name": "a", "rating": 10.0, "games": 0},
+            {"name": "b", "rating": 0.0, "games": 0},
+        ]
+
+
+class TestTheIntervalLiteral:
+    def test_three_runs_pinned(self) -> None:
+        runs = [
+            _with_interval(0, 0.7, {"mean": 0.7, "sd": 0.02, "ci_low": 0.66,
+                                    "ci_high": 0.74}),
+            _with_interval(1000, 0.71, {"mean": 0.71, "sd": 0.03, "ci_low": 0.65,
+                                        "ci_high": 0.76, "resamples": 300,
+                                        "deterministic_pairings": 0.3702,
+                                        "stratum_correction": 1.03702}),
+            _with_interval(2000, 0.7234, {"mean": 0.7234, "sd": 0.01, "ci_low": 0.7,
+                                          "ci_high": 0.75, "resamples": 200}),
+        ]
+        assert _combined(runs).detail["interval"] == {
+            "mean": 0.7111, "sd": 0.0125, "ci_low": 0.6859, "ci_high": 0.7342,
+            "deterministic_pairings": 0.123, "stratum_correction": 1.0123,
+            "runs": 3, "resamples": 0,
+        }
+
+    def test_four_runs_narrow_both_ends(self) -> None:
+        found = _combined([_run(seed, 0.7) for seed in (0, 1000, 2000, 3000)])
+        assert (found.ci_low, found.ci_high) == (0.68, 0.72)
+
+    def test_one_usable_run_without_a_bootstrap_drops_the_interval(self) -> None:
+        bare = dataclasses.replace(_run(3000), interval=None)
+        found = _combined([_run(0), _run(1000), _run(2000), bare])
+        assert found.index == 0.7
+        assert (found.sd, found.detail["interval"]) == (None, None)

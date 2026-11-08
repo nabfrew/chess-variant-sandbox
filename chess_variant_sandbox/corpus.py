@@ -28,8 +28,11 @@ one button labelled "keep", and refuses to promote what has not been tested.
 from __future__ import annotations
 
 import json
+import os
 import re
+import sys
 from collections.abc import Mapping
+from concurrent.futures import BrokenExecutor, ProcessPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -61,13 +64,23 @@ from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
 from chess_variant_sandbox.spec.schema import validate_spec
 from chess_variant_sandbox.spec.spelling import current_spelling
 from chess_variant_sandbox.tournament import TournamentConfig
-from chess_variant_sandbox.tournament.analysis import CorpusAnalysis, analyse_corpus
+from chess_variant_sandbox.tournament.analysis import (
+    BLUNDER_SAMPLE,
+    CorpusAnalysis,
+    _analyse_one,
+    _blunder_choices,
+    _blunder_one,
+    _init_worker,
+    _searching,
+    analyse_corpus,
+)
 
 # Q900: the runner's `run_tournament` outside a campaign, and resumable from its sealed
 # pieces inside one (`--checkpoint DIR measure`, `checkpoint.active`). Until Q900 this was
 # the runner's own, so a campaign given to `measure` was opened and ignored, and a
 # measurement killed partway replayed every game (`docs/reference/campaign-checkpoints.md`).
-from chess_variant_sandbox.tournament.checkpoint import run_tournament
+# Q1117: a measurement's replayed seeds are one schedule, `run_schedules`, the same way.
+from chess_variant_sandbox.tournament.checkpoint import run_schedules
 
 RULESET_DIR = Path("rulesets")
 ARCHIVE_DIR = Path("archive")
@@ -91,7 +104,22 @@ RUNS_DIR = Path("runs")
 # budgets are these, not the round ladder's sixteen-fold ones: a spy game starts
 # alternating, where these are the measured rungs, and Q930's finding that its round
 # phases need 25,600 nodes to separate players is read beside the score (§3.4).
-LADDER_BUDGETS = (100, 200, 400, 800, 1600, 6400)
+#
+# **Shifted two doublings up on 2026-11-05** (`docs/plan-ladder-shift.md`, Phase B), from
+# `100, 200, 400, 800, 1600, 6400`: at 100 and 200 nodes a wide game's search does not finish
+# its first ply (`docs/reference/search-depth.md` §2: 20 rulesets at 100, 4 at 200, 1 at 400),
+# so the bottom rung played near random and inflated the fitted gradient. The same six-rung
+# shape, the same budgets on every game. A spy game and a rated net's ladder follow it.
+LADDER_BUDGETS = (400, 800, 1600, 3200, 6400, 25600)
+
+# The budgets a game in rounds is measured at, before `ROUND_BUDGET_FACTOR`: the alternating
+# ladder's before the shift, kept when it moved (`docs/plan-ladder-shift.md` §2, the rounds
+# decision). A round player's bottom rung already searches past greedy's matrix at sixteen
+# times 100 (`docs/reference/round-roster-budgets.md` §6-§7), so the reason the alternating
+# ladder moved does not reach it, and following it would make the round top rung 409,600.
+# `loop.screen.round_roster` keeps mapping any `minimax:nodes=N` to `matrix:nodes=16N`; only
+# the measured round ladder reads these.
+ROUND_LADDER_BUDGETS = (100, 200, 400, 800, 1600, 6400)
 CANONICAL_AGENTS = ("random", "greedy") + tuple(
     f"minimax:nodes={budget}" for budget in LADDER_BUDGETS
 )
@@ -101,7 +129,7 @@ CANONICAL_SEED = 0
 # The roster a game played in rounds is measured on (schema 26, Q918d;
 # `docs/archive/plan-simultaneous.md` §6.2): the same eight places, with the round players where
 # the alternating ladder has minimax, which is refused on these games, at
-# `ROUND_BUDGET_FACTOR` (16) times its budgets, `matrix:nodes=1600` to `102400` (Q944a,
+# `ROUND_BUDGET_FACTOR` (16) times `ROUND_LADDER_BUDGETS`, `matrix:nodes=1600` to `102400` (Q944a,
 # `docs/reference/round-roster-budgets.md` §6). At the same budgets the bottom rungs were
 # greedy under other names: a round player always finishes greedy's whole one-round matrix
 # and spends nothing more when that matrix holds its budget. `loop.screen.round_roster`
@@ -111,7 +139,7 @@ CANONICAL_SEED = 0
 # the watering hole since 2026-10-29). The stamp names the roster,
 # so a round game's score is never read as though the ladder were the alternating one.
 ROUND_AGENTS = ("random", "greedy") + tuple(
-    f"matrix:nodes={budget * ROUND_BUDGET_FACTOR}" for budget in LADDER_BUDGETS
+    f"matrix:nodes={budget * ROUND_BUDGET_FACTOR}" for budget in ROUND_LADDER_BUDGETS
 )
 
 # Where the measuring roster reads a game's learned net from (Q502h). Relative, as
@@ -144,7 +172,8 @@ def canonical_agents(
     the weights version stay, so every score still sits in one leaderboard; which players
     measured it is in its `Basis.agents` and `Basis.net`. **In rounds** the rule is the
     same (RS, `docs/plan-teacher.md` §10.14): with a rated round net every matrix rung of
-    `ROUND_AGENTS` plays `matrix:net=<procedure>,nodes=N` at its own budget.
+    `ROUND_AGENTS` plays `matrix:net=<procedure>,nodes=N` at its own budget, sixteen times
+    `ROUND_LADDER_BUDGETS` (which stayed where they were when `LADDER_BUDGETS` moved).
 
     Read off `nets/` every call, so a newly kept generation stales its game's score the
     moment its store lands, and the refresher replays it (`docs/archive/plan-evolving-score.md` §6.4).
@@ -160,7 +189,7 @@ def canonical_agents(
         # plays the game's kept round net at its own budget.
         return ("random", "greedy") + tuple(
             f"matrix:net={procedure},nodes={budget * ROUND_BUDGET_FACTOR}"
-            for budget in LADDER_BUDGETS
+            for budget in ROUND_LADDER_BUDGETS
         )
     return ("random", "greedy") + tuple(
         f"minimax:net={procedure},nodes={budget}" for budget in LADDER_BUDGETS
@@ -787,11 +816,29 @@ def _measure_seeds(
                 plays.remove(seed)
 
     weighting = load_weights(weights)
+    # Q1117 (C9): every seed that is played, played as one schedule and analysed in one
+    # pool; the rest brought up to date one by one, as before.
+    needs = dict(work)
+    for seed in sorted(needs):
+        if needs[seed] != "replay" and not (run_dir(candidate.hash, seed, runs_dir)
+                                            / "games.jsonl").exists():
+            say(f"  seed {seed}: its games are not on disk, so it is played again")
+            needs[seed] = "replay"
+    played = _play_seeds(
+        candidate, [seed for seed in sorted(needs) if needs[seed] == "replay"],
+        runs_dir, weighting, workers, say, origins,
+    )
+    # Q1144 (C9's follow-up): the seeds that owe a re-analysis share one pool too.
+    reanalysed = _reanalyse_seeds(
+        candidate, [seed for seed in sorted(needs) if needs[seed] == "reanalyse"],
+        runs_dir, workers, say,
+    )
     readings = [
-        _run_seed(
-            candidate, seed, work[seed], runs_dir, weighting, workers, say,
+        played[seed] if seed in played else _run_seed(
+            candidate, seed, needs[seed], runs_dir, weighting, workers, say,
             origin=origins.get(seed, "played"),
             total=(totals or {}).get(seed),
+            analysed=reanalysed.get(seed),
         )
         for seed in sorted(work)
     ]
@@ -831,22 +878,28 @@ def rescore_kept(
     from chess_variant_sandbox.tournament import rate, read_records
 
     weighting = load_weights(weights)
-    totals: list[float | None] = []
-    for seed in sorted(int(seed) for seed in seeds):
+    order = sorted(int(seed) for seed in seeds)
+    corpora: dict[int, list[Any]] = {}
+    analyses: dict[int, CorpusAnalysis] = {}
+    for seed in order:
         out = Path(kept) / f"{candidate.hash}-{seed}"
         records = list(read_records(out / "games.jsonl"))
         if not records:
             raise CorpusError(f"{out} has no games to re-score")
-        analysis: CorpusAnalysis | None = None
+        corpora[seed] = records
         if not reanalyse and (out / "analysis.json").exists():
-            analysis = CorpusAnalysis.load(out / "analysis.json")
-        if analysis is None:
-            behind = stale_build()
-            if behind is not None:
-                raise CorpusError(behind)
-            analysis = analyse_corpus(
-                candidate.spec, records, seed=CANONICAL_SEED, workers=workers
-            )
+            analyses[seed] = CorpusAnalysis.load(out / "analysis.json")
+    # Q1144 (C9's follow-up): every seed that needs the pass gets it in one pool.
+    owed = [seed for seed in order if seed not in analyses]
+    if owed:
+        behind = stale_build()
+        if behind is not None:
+            raise CorpusError(behind)
+        fresh = analyse_seeds(candidate.spec, [corpora[seed] for seed in owed], workers)
+        analyses.update(zip(owed, fresh, strict=True))
+    totals: list[float | None] = []
+    for seed in order:
+        records, analysis = corpora[seed], analyses[seed]
         try:
             result = score_ruleset(
                 candidate.spec, records, rate(records), weights=weighting, analysis=analysis
@@ -948,8 +1001,13 @@ def _run_seed(
     say: Any,
     origin: str = "played",
     total: float | None = None,
+    analysed: tuple[list[Any], CorpusAnalysis] | None = None,
 ) -> RunReading:
-    """One run, brought to the state it owes, as a reading for the combiner."""
+    """One run, brought to the state it owes, as a reading for the combiner.
+
+    ``analysed`` is this run's records and fresh analysis when `_reanalyse_seeds` already
+    ran the pass for it, in the pool it shared with the game's other seeds.
+    """
     out = run_dir(candidate.hash, seed, runs_dir)
 
     if need != "replay" and not (out / "games.jsonl").exists():
@@ -957,7 +1015,9 @@ def _run_seed(
         need = "replay"
 
     if need == "replay":
-        return _play_seed(candidate, seed, out, weighting, workers, say, origin)
+        return _play_seeds(
+            candidate, [seed], runs_dir, weighting, workers, say, {seed: origin}
+        )[seed]
 
     if not need:
         reading = _read_seed(candidate, seed, out, weighting, total, say, origin)
@@ -968,50 +1028,226 @@ def _run_seed(
     return _rescore_seed(
         candidate, seed, out, weighting, workers, say,
         reanalyse=need == "reanalyse", origin=origin,
+        analysed=analysed if need == "reanalyse" else None,
     )
 
 
-def _play_seed(
+def _play_seeds(
     candidate: Candidate,
-    seed: int,
-    out: Path,
+    seeds: list[int],
+    runs_dir: Path,
     weighting: Any,
     workers: int,
     say: Any,
-    origin: str,
-) -> RunReading:
-    """Play, analyse and score one seed into its own run directory."""
+    origins: Mapping[int, str],
+) -> dict[int, RunReading]:
+    """Play, analyse and score these seeds, each into its own run directory (Q1117, C9).
+
+    The seeds' schedules are played as one (`run_schedules`: one core call, every game
+    started longest first), then analysed in one pool (`analyse_seeds`), then each scored
+    in seed order. Each run's files are the ones it gets played alone: a game's seed and
+    players are its own schedule's, and every result goes back to its own run.
+    """
+    if not seeds:
+        return {}
     agents = canonical_agents(candidate.hash, spec=candidate.spec)
-    refusal = _foreign_run(out, seed, agents)
-    if refusal:
-        raise CorpusError(refusal)
+    outs = {seed: run_dir(candidate.hash, seed, runs_dir) for seed in seeds}
+    for seed in seeds:
+        refusal = _foreign_run(outs[seed], seed, agents)
+        if refusal:
+            raise CorpusError(refusal)
 
+    named = ", ".join(str(seed) for seed in seeds)
     say(
-        f"seed {seed}: {len(agents)} agents, "
+        f"{'seeds' if len(seeds) > 1 else 'seed'} {named}: {len(agents)} agents, "
         f"{CANONICAL_GAMES} games a pairing"
+        + (", one schedule" if len(seeds) > 1 else "")
     )
-    tournament = run_tournament(
+    tournaments = run_schedules(
         candidate.spec,
-        TournamentConfig(
-            agents=agents,
-            games_per_pairing=CANONICAL_GAMES,
-            seed=seed,
-            workers=workers,
-        ),
+        [
+            TournamentConfig(
+                agents=agents, games_per_pairing=CANONICAL_GAMES, seed=seed, workers=workers
+            )
+            for seed in seeds
+        ],
     )
-    tournament.save(out)
+    for seed, tournament in zip(seeds, tournaments, strict=True):
+        tournament.save(outs[seed])
 
-    say(f"  {len(tournament.records)} games; the analysis pass")
-    analysis = analyse_corpus(
-        candidate.spec, tournament.records, seed=CANONICAL_SEED, workers=workers
-    )
-    analysis.save(out / "analysis.json")
+    say(f"  {sum(len(t.records) for t in tournaments)} games; the analysis pass")
+    analyses = analyse_seeds(candidate.spec, [t.records for t in tournaments], workers)
+    for seed, analysis in zip(seeds, analyses, strict=True):
+        analysis.save(outs[seed] / "analysis.json")
 
-    say("  scoring")
-    return _score_run(
-        candidate, seed, out, tournament.records, tournament.ratings,
-        weighting, analysis, say, origin=origin,
+    readings: dict[int, RunReading] = {}
+    for seed, tournament, analysis in zip(seeds, tournaments, analyses, strict=True):
+        say(f"  seed {seed}: scoring")
+        readings[seed] = _score_run(
+            candidate, seed, outs[seed], tournament.records, tournament.ratings,
+            weighting, analysis, say, origin=origins.get(seed, "played"),
+        )
+    return readings
+
+
+def _stored_records(out: Path) -> list[Any]:
+    """The games a run directory holds, or the refusal a re-score makes without them."""
+    from chess_variant_sandbox.tournament import read_records
+
+    records = list(read_records(out / "games.jsonl"))
+    if not records:
+        raise CorpusError(
+            f"{out} has no games to re-score; delete it and measure again"
+        )
+    return records
+
+
+def _reanalyse_seeds(
+    candidate: Candidate,
+    seeds: list[int],
+    runs_dir: Path,
+    workers: int,
+    say: Any,
+) -> dict[int, tuple[list[Any], CorpusAnalysis]]:
+    """The analysis pass again over these seeds' stored games, in one pool (Q1144, C9).
+
+    What `_rescore_seed(reanalyse=True)` does a seed at a time, done for every seed that
+    owes it at once through `analyse_seeds`: the pool starts once, as wide as the
+    physical cores, and every seed's trials and games are one queue. Each seed's
+    `analysis.json` is written as the one-seed pass writes it; the scoring is left to
+    `_rescore_seed`, which is handed each seed's records and analysis.
+    """
+    if not seeds:
+        return {}
+    outs = {seed: run_dir(candidate.hash, seed, runs_dir) for seed in seeds}
+    corpora = [_stored_records(outs[seed]) for seed in seeds]
+    named = ", ".join(str(seed) for seed in seeds)
+    say(
+        f"{'seeds' if len(seeds) > 1 else 'seed'} {named}: re-analysing the games already "
+        "on disk, because the pass itself changed"
+        + (", one pool" if len(seeds) > 1 else "")
     )
+    analyses = analyse_seeds(candidate.spec, corpora, workers)
+    done: dict[int, tuple[list[Any], CorpusAnalysis]] = {}
+    for seed, records, analysis in zip(seeds, corpora, analyses, strict=True):
+        analysis.save(outs[seed] / "analysis.json")
+        done[seed] = (records, analysis)
+    return done
+
+
+def physical_cores() -> int:
+    """The machine's physical cores, or its logical ones where they cannot be read.
+
+    The analysis pool's width (Q1117): its workers are processes, each holding a compiled
+    spec, and §9 of `docs/reference/perf-profile-2026-11.md` found eight workers faster
+    than fifteen on an eight-core, sixteen-thread machine.
+    """
+    logical = os.cpu_count() or 1
+    cores: int | None = None
+    try:
+        if sys.platform == "win32":
+            cores = _windows_cores()
+        else:
+            seen = set()
+            for topology in Path("/sys/devices/system/cpu").glob("cpu[0-9]*/topology"):
+                package = (topology / "physical_package_id").read_text().strip()
+                core = (topology / "core_id").read_text().strip()
+                seen.add((package, core))
+            cores = len(seen) or None
+    except (OSError, ValueError):
+        cores = None
+    return max(1, min(logical, cores or logical))
+
+
+def _windows_cores() -> int | None:
+    """`GetLogicalProcessorInformation`'s processor-core entries (relationship 0)."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class _Info(ctypes.Structure):
+        _fields_ = [
+            ("mask", ctypes.c_size_t),
+            ("relationship", ctypes.c_int),
+            ("union", ctypes.c_ulonglong * 2),
+        ]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    size = wintypes.DWORD(0)
+    kernel.GetLogicalProcessorInformation(None, ctypes.byref(size))
+    count = size.value // ctypes.sizeof(_Info)
+    if not count:
+        return None
+    buffer = (_Info * count)()
+    if not kernel.GetLogicalProcessorInformation(buffer, ctypes.byref(size)):
+        return None
+    return sum(1 for entry in buffer[: size.value // ctypes.sizeof(_Info)]
+               if entry.relationship == 0) or None
+
+
+def analyse_seeds(
+    spec: dict[str, Any], corpora: list[list[Any]], workers: int = 0
+) -> list[CorpusAnalysis]:
+    """`analyse_corpus` over each seed's records, in one process pool (Q1117, C9).
+
+    Each corpus's answer is the one `analyse_corpus(spec, records, seed=CANONICAL_SEED,
+    workers=workers)` gives: the same graded games, the same blunder sample, each trial on
+    its own stream. What changes is the pool: started once rather than once a seed, as
+    wide as the physical cores (never wider than ``workers`` asks), and fed every seed's
+    trials and games as one queue, the trials first since they are the longer tasks.
+    A corpus too small to pool (under eight graded games) goes the serial way it always
+    did, through `analyse_corpus`.
+    """
+    resolved = workers if workers > 0 else max(1, (os.cpu_count() or 2) - 1)
+    width = min(resolved, physical_cores())
+    graded = [[r for r in records if _searching(r)] or records for records in corpora]
+    pooled = [resolved > 1 and len(games) >= 8 for games in graded]
+    results: list[CorpusAnalysis | None] = [
+        None if pool else analyse_corpus(spec, records, seed=CANONICAL_SEED, workers=workers)
+        for records, pool in zip(corpora, pooled, strict=True)
+    ]
+    members = [index for index, pool in enumerate(pooled) if pool]
+    if not members:
+        return [result for result in results if result is not None]
+    if len(members) == 1 or width == 1:
+        for index in members:
+            results[index] = analyse_corpus(
+                spec, corpora[index], seed=CANONICAL_SEED, workers=width
+            )
+        return [result for result in results if result is not None]
+
+    chosen = [_blunder_choices(graded[index], BLUNDER_SAMPLE, CANONICAL_SEED) for index in members]
+    try:
+        with ProcessPoolExecutor(
+            max_workers=width, initializer=_init_worker, initargs=(spec,)
+        ) as pool:
+            trials = pool.map(
+                _blunder_one,
+                [(record, CANONICAL_SEED) for picks in chosen for record in picks],
+                chunksize=1,
+            )
+            games = pool.map(
+                _analyse_one, [record for index in members for record in graded[index]],
+                chunksize=2,
+            )
+            all_trials, all_games = list(trials), list(games)
+    except BrokenExecutor:
+        print("  analysis worker pool died; analysing each seed alone", flush=True)
+        for index in members:
+            results[index] = analyse_corpus(spec, corpora[index], seed=CANONICAL_SEED, workers=1)
+        return [result for result in results if result is not None]
+
+    trial_at = game_at = 0
+    for index, picks in zip(members, chosen, strict=True):
+        mine = all_trials[trial_at : trial_at + len(picks)]
+        trial_at += len(picks)
+        analyses = all_games[game_at : game_at + len(graded[index])]
+        game_at += len(graded[index])
+        results[index] = CorpusAnalysis(
+            games=analyses, blunders=[trial for trial in mine if trial is not None]
+        )
+    return [result for result in results if result is not None]
 
 
 def _foreign_run(out: Path, seed: int, roster: tuple[str, ...] = CANONICAL_AGENTS) -> str:
@@ -1597,6 +1833,16 @@ def poolable(
     weights: str = DEFAULT_WEIGHTS,
     seeds: tuple[int, ...] | None = None,
 ) -> bool:
+    """Whether `refresh` would only re-score or re-analyse games already on disk (`pool_repair`)."""
+    return pool_repair(candidate, runs_dir, weights, seeds) is not None
+
+
+def pool_repair(
+    candidate: Candidate,
+    runs_dir: Path = RUNS_DIR,
+    weights: str = DEFAULT_WEIGHTS,
+    seeds: tuple[int, ...] | None = None,
+) -> str | None:
     """Whether `refresh` would only re-score or re-analyse games already on disk.
 
     What `measure` asks before it sends a game through a process pool (R7 of
@@ -1606,23 +1852,27 @@ def poolable(
     `refresh` itself, so a pooled game takes the serial path's every step.
 
     Conservative on purpose. A missing seed, a run whose games are gone, or a
-    stamp that cannot be read all say no, and the game is repaired serially as before.
+    stamp that cannot be read all say no (None), and the game is repaired serially as
+    before. Otherwise the repair it owes, ``"rescore"`` or ``"reanalyse"``: `measure`
+    pools the first always and the second only when there are enough of them (Q-C10).
     """
     expected = tuple(sorted(seeds)) if seeds else expected_seeds(candidate.stage)
     stored = read_measurement(
         candidate.hash, runs_dir, weights, candidate.spec, expected
     )
     if stored is None or stored.current or stored.basis is None:
-        return False
+        return None
     staleness = stored.staleness
     if staleness.missing_seeds:
-        return False
-    if staleness.stored_needs not in ("rescore", "reanalyse"):
-        return False
-    return all(
+        return None
+    needs = staleness.stored_needs
+    if needs not in ("rescore", "reanalyse"):
+        return None
+    present = all(
         (run_dir(candidate.hash, seed, runs_dir) / "games.jsonl").exists()
         for seed in stored.basis.seeds
     )
+    return needs if present else None
 
 
 def _rescore_seed(
@@ -1634,6 +1884,7 @@ def _rescore_seed(
     say: Any,
     reanalyse: bool = False,
     origin: str = "played",
+    analysed: tuple[list[Any], CorpusAnalysis] | None = None,
 ) -> RunReading:
     """Score the games already in this run directory, without replaying them.
 
@@ -1650,19 +1901,27 @@ def _rescore_seed(
     The pass runs at `CANONICAL_SEED` whatever this run's seed is. Every trial is fixed by
     the pass's seed and the record it is drawn from, and the records differ by run, so the
     trials already differ between runs without the pass's own seed moving.
+
+    ``analysed`` is the records and the re-analysis `_reanalyse_seeds` already made for
+    this run in the game's shared pool (Q1144), its `analysis.json` already written; the
+    run is then only scored.
     """
-    from chess_variant_sandbox.tournament import rate, read_records
+    from chess_variant_sandbox.tournament import rate
+
+    if analysed is not None:
+        say(f"seed {seed}: re-scoring the games already on disk, re-analysed")
+        records, done = analysed
+        return _score_run(
+            candidate, seed, out, records, rate(records), weighting, done, say,
+            origin=origin,
+        )
 
     say(
         f"seed {seed}: re-analysing and re-scoring the games already on disk"
         if reanalyse
         else f"seed {seed}: re-scoring the games already on disk"
     )
-    records = list(read_records(out / "games.jsonl"))
-    if not records:
-        raise CorpusError(
-            f"{out} has no games to re-score; delete it and measure again"
-        )
+    records = _stored_records(out)
 
     analysis_path = out / "analysis.json"
     analysis: CorpusAnalysis | None = None

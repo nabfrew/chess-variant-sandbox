@@ -1184,9 +1184,10 @@ class TestVersionElevenIsAReAnchor:
     })
 
     def test_it_was_the_default_until_v12(self) -> None:
-        """`v12` (EV4) gave every end a source and took the default; `v11` stays on disk,
-        because a score records the version that made it."""
-        assert DEFAULT_WEIGHTS == "v12"
+        """`v12` (EV4) gave every end a source and took the default, and `v13` (Q1104) took it
+        on the shifted ladder; `v11` stays on disk, because a score records the version that
+        made it."""
+        assert DEFAULT_WEIGHTS == "v13"
         assert load_weights("v11").version == "v11"
         assert load_weights("v11").sources == {}
 

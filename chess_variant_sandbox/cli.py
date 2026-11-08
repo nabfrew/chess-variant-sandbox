@@ -1545,22 +1545,30 @@ def _cmd_measure(args: argparse.Namespace) -> int:
 def _measure_all(targets: list[str], args: argparse.Namespace) -> int:
     """Repair every target, the re-score-only games side by side (R7 of the perf survey).
 
-    The repairs are planned first. A game that owes a tournament or anything
-    `corpus.poolable` cannot vouch for runs here, in target order, as it always did: it
-    already uses every core. The games that owe only a re-score or a re-analysis of games
-    on disk then go through a process pool of `--workers` processes, each doing exactly
-    what `_measure_one` does, and what each said is printed whole, in target order, so
-    the log reads as the serial one would. `--workers 1` is the serial path.
+    The repairs are planned first (`pool_plan`). A game that owes a tournament, anything
+    `corpus.pool_repair` cannot vouch for, and a re-analysis too few to fill the pool run
+    here, in target order, as they always did: they already use every core. The games
+    that owe only a re-score (and the re-analyses, when there are enough) then go through
+    a process pool of `--workers` processes, never more than the worktree's compute lease
+    books (`measure_pool_size`), each doing exactly what `_measure_one` does, and what
+    each said is printed whole, in target order after the serial games, so each game's
+    block reads as the serial one would. `--workers 1` is the serial path.
 
     Nothing about a game's answer depends on which path it took: each writes only its own
     directories, from its own records, with no seed drawn from anything shared, and
     `tests/test_corpus.py` holds the two paths' files byte for byte.
     """
-    import os
-
-    pool_size = args.workers if args.workers > 0 else max(1, (os.cpu_count() or 2) - 1)
+    slots = held_lease_slots()
+    pool_size = measure_pool_size(args.workers, slots, os.cpu_count())
+    if slots is not None and (args.workers == 0 or args.workers > slots):
+        if args.workers > slots:
+            print(f"  --workers {args.workers} is more than this worktree's lease books "
+                  f"({slots} slots): running on {slots}")
+        # The serial games' tournaments and analysis passes are held to the lease too.
+        # Threads never change an answer, so this moves no file.
+        args = argparse.Namespace(**{**vars(args), "workers": slots})
     seeds = _seed_set(args)
-    pooled: dict[str, corpus.Candidate] = {}
+    owed: dict[str, tuple[corpus.Candidate, str]] = {}
     if (
         pool_size > 1 and not args.force and getattr(args, "adopt", None) is None
         and not getattr(args, "recertify", False)
@@ -1570,10 +1578,12 @@ def _measure_all(targets: list[str], args: argparse.Namespace) -> int:
                 candidate = corpus.find(digest, runs_dir=args.runs)
             except (ValueError, OSError):
                 continue
-            if corpus.poolable(candidate, args.runs, args.weights, seeds):
-                pooled[digest] = candidate
-    if len(pooled) < 2:
-        pooled = {}
+            repair = corpus.pool_repair(candidate, args.runs, args.weights, seeds)
+            if repair is not None:
+                owed[digest] = (candidate, repair)
+    pooled = pool_plan(
+        {digest: repair for digest, (_, repair) in owed.items()}, pool_size
+    )
 
     failed = 0
     for digest in targets:
@@ -1596,13 +1606,16 @@ def _measure_all(targets: list[str], args: argparse.Namespace) -> int:
             max_workers=min(pool_size, len(pooled)),
             mp_context=multiprocessing.get_context("spawn"),
         ) as pool:
-            futures = [
-                pool.submit(
-                    _measure_pooled, candidate, args.runs, args.weights, seeds
+            # Submitted dearest first (the pool takes work in that order), so a
+            # re-analysis does not start last and leave the other workers idle; printed in
+            # target order, so the log does not depend on which finished first.
+            futures = {
+                digest: pool.submit(
+                    _measure_pooled, owed[digest][0], args.runs, args.weights, seeds
                 )
-                for candidate in pooled.values()
-            ]
-            for future in futures:
+                for digest in sorted(pooled, key=lambda d: pooled[d] != "reanalyse")
+            }
+            for future in (futures[digest] for digest in pooled):
                 lines, refusal = future.result()
                 for line in lines:
                     print(line)
@@ -1610,6 +1623,82 @@ def _measure_all(targets: list[str], args: argparse.Namespace) -> int:
                     failed += 1
                     print(refusal)
     return 1 if failed else 0
+
+
+def pool_plan(owed: dict[str, str], pool_size: int) -> dict[str, str]:
+    """Which of the games owing a pooled repair go through the pool (Q-C10), in target order.
+
+    ``owed`` maps a game to the repair `corpus.pool_repair` found, in target order. A
+    re-score is cheap and serial inside, so every one is pooled. A re-analysis is mostly
+    the analysis pass, which spreads over every worker it is given; in the pool it gets
+    one core, so it is pooled only when at least ``pool_size`` are owed and the pool's
+    cores would otherwise be idle. Fewer run serially, each pass on the whole lease
+    (measured in `docs/plan-performance.md` §2 C10: one re-analysis took 420 s on a pool
+    worker's single core). A pool of fewer than two games is no pool.
+    """
+    reanalyses = sum(repair == "reanalyse" for repair in owed.values())
+    plan = {
+        digest: repair for digest, repair in owed.items()
+        if repair != "reanalyse" or reanalyses >= pool_size
+    }
+    return plan if pool_size > 1 and len(plan) >= 2 else {}
+
+
+def measure_pool_size(asked: int, slots: int | None, cpus: int | None) -> int:
+    """How many processes `measure`'s re-score pool runs on (Q-C10).
+
+    ``asked`` is `--workers` (0 for the default, the cores less one). ``slots`` is what
+    this worktree's compute lease books (`held_lease_slots`), and it bounds either: a pool
+    wider than the lease would take cores another worktree was promised. With no lease
+    to read (a test, a machine outside the scheme) the bound is the machine.
+    """
+    size = asked if asked > 0 else max(1, (cpus or 2) - 1)
+    if slots is not None:
+        size = min(size, slots)
+    return max(1, size)
+
+
+def held_lease_slots(cwd: Path | None = None) -> int | None:
+    """The slots this worktree's live compute lease books, or None when it holds none.
+
+    Reads the file `.claude/scripts/compute_lease.py acquire` writes, in the main
+    checkout's `.claude/coordinator/leases/`, named by `slug` of the worktree root; the
+    spelling is that script's, and `tests/test_corpus.py` holds the two together. An
+    expired or unreadable lease is no lease. Nothing here acquires or waits: the lease
+    hook already refused a `measure` that holds none.
+    """
+    import re
+    import subprocess
+
+    def git(*words: str) -> str | None:
+        try:
+            done = subprocess.run(
+                ["git", *words], cwd=cwd, capture_output=True, text=True, check=True,
+                timeout=10,
+            )
+        except (subprocess.SubprocessError, OSError):
+            return None
+        return done.stdout.strip() or None
+
+    top = git("rev-parse", "--show-toplevel")
+    common = git("rev-parse", "--git-common-dir")
+    if top is None or common is None:
+        return None
+    common_path = Path(common)
+    if not common_path.is_absolute():
+        common_path = (cwd or Path.cwd()) / common_path
+    root = str(Path(top).resolve())
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", root).strip("-")[-80:]
+    file = common_path.resolve().parent / ".claude" / "coordinator" / "leases" / f"{slug}.json"
+    try:
+        lease = json.loads(file.read_text(encoding="utf-8"))
+        slots = int(lease["slots"])
+        expires = float(lease["expires"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if expires <= time.time() or slots < 1:
+        return None
+    return slots
 
 
 def _measure_pooled(

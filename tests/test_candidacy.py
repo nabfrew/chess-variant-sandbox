@@ -18,7 +18,7 @@ import site_words
 
 from chess_variant_sandbox import corpus
 from chess_variant_sandbox.spec import load_spec, spec_hash
-from chess_variant_sandbox.web import candidacy, designing, keeping
+from chess_variant_sandbox.web import candidacy, designing, keeping, library
 from chess_variant_sandbox.web import server as server_module
 from chess_variant_sandbox.web.server import App
 
@@ -59,7 +59,17 @@ def _store(
     On the library's four seeds by default, because the rung this fixture stands before
     is promotion, and `promotion_blocker` asks for all four. `corpus.ONE_SEED` is what
     *measure it* on a draft's page writes.
+
+    Written as *measure it*'s thread writes it, in process (`library.writing`): no listing
+    `App.refresh` holds outlives it (C15a).
     """
+    with library.writing():
+        _write_measurement(tmp_path, digest, weights, seeds)
+
+
+def _write_measurement(
+    tmp_path: Path, digest: str, weights: str, seeds: tuple[int, ...]
+) -> None:
     candidate = corpus.find(
         digest, runs_dir=tmp_path / "runs", ruleset_dir=tmp_path / "rulesets",
         archive_dir=tmp_path / "archive",

@@ -313,9 +313,14 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/bastion": "74c12b0fe52b876b",
     "rulesets/berolina": "733c98e8156d9fb6",  # Q614 (W7): its description, for a player; 2026-10-18: its description, written as the game's idea (was 32995edcf561f5e3)
     "rulesets/brink": "2307e963db78b4b2",  # Q1074bg1, 2026-10-30
-    "rulesets/dohyo": "540f1a7a8d2039d7",  # Q1074bd, 2026-10-31: the corner ring (was ee04f5c4ac063dae, Q1074bg2)
+    "rulesets/dohyo": "2e2d507daecc8f2b",  # TS5 (Q1135), 2026-11-07: no jump a wall can be under, so no jumping line (was 540f1a7a8d2039d7, Q1074bd: the corner ring; ee04f5c4ac063dae, Q1074bg2)
     "rulesets/duck-chess": "7cc8b4708407e4df",  # Q1079, 2026-10-31
     "rulesets/runners": "6cda351ff3b64cd3",  # SR3s1, 2026-11-03
+    "rulesets/crossings": "d28251a8234ce3f7",  # TS1 (Q1131), 2026-11-07
+    "rulesets/boulder": "d668dcb5b7dbce38",  # TS2 (Q1132), 2026-11-07; TS5 (Q1135): nothing may capture the boulder (was 8c4f9f74386337f6)
+    "rulesets/drover": "79157d5933075c80",  # TS3 (Q1133), 2026-11-07; TS5 (Q1135): nothing may capture the boulder (was 145ae318c1c15f3b)
+    "rulesets/leapfrog": "f488b38ed4a8d399",  # TS4 (Q1134), 2026-11-07
+    "rulesets/tessabi": "b7a4d9f5c88277a7",  # TS5 (Q1135), 2026-11-07: Tessabi, from tessabi.com
     "rulesets/rock-paper-shove": "cc56261d19467597",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "2c67ec37c9123078",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "2702b1dee85bfe5c",  # Q1074bs, 2026-10-31

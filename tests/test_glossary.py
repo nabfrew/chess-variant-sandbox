@@ -10,7 +10,21 @@ moves the figure again has to touch this file rather than leave the page lying.
 
 from __future__ import annotations
 
-from chess_variant_sandbox.metrics.glossary import HOW_IT_WORKS
+import dataclasses
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from chess_variant_sandbox.metrics import scoring
+from chess_variant_sandbox.metrics.glossary import (
+    HOW_IT_WORKS,
+    MEASUREMENTS,
+    Measurement,
+    _roster_rho,
+    explain,
+)
 
 
 def _body(heading: str) -> str:
@@ -109,3 +123,58 @@ class TestTheSitesWords:
 
         assert "two sides" in FAMILIES["balance"]
         assert "harness" not in FAMILIES["depth"]
+
+
+def _write(directory: Path, version: str, data: Any) -> None:
+    text = data if isinstance(data, str) else json.dumps(data)
+    (directory / f"{version}.json").write_text(text, encoding="utf-8")
+
+
+class TestExplainOnAMadeUpVersion:
+    """`explain` and `_roster_rho` against a weights directory written inline (Q1145)."""
+
+    def test_weights_are_shown_to_four_places(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(scoring, "WEIGHTS_DIR", tmp_path)
+        curve = {"curve": "higher_better", "points": {"zero_at": 0.0, "good_at": 1.0}}
+        _write(tmp_path, "vt", {"version": "vt", "components": {
+            "p_one": {**curve, "weight": 0.123456, "family": "f1", "roster_rho": 0.7},
+            "p_two": {**curve, "weight": 0.654321, "family": "f2"},
+        }})
+        guide = explain("vt")
+        assert guide["families"] == {
+            "f1": {"means": "", "weight": 0.1235},
+            "f2": {"means": "", "weight": 0.6543},
+        }
+        assert guide["components"]["p_one"]["weight"] == 0.1235
+        assert guide["components"]["p_one"]["roster_rho"] == 0.7
+        assert guide["components"]["p_two"]["weight"] == 0.6543
+        assert "roster_rho" not in guide["components"]["p_two"]
+
+    def test_roster_rho_skips_a_malformed_entry_and_keeps_reading(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(scoring, "WEIGHTS_DIR", tmp_path)
+        _write(tmp_path, "vt", {"components": {
+            "p": 3, "q": {"roster_rho": 0.4}, "r": {"roster_rho": True},
+        }})
+        assert _roster_rho("vt") == {"q": 0.4}
+
+    def test_roster_rho_of_a_missing_or_unparseable_file_is_empty(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(scoring, "WEIGHTS_DIR", tmp_path)
+        assert _roster_rho("absent") == {}
+        _write(tmp_path, "broken", "{not json")
+        assert _roster_rho("broken") == {}
+
+
+def test_a_measurement_is_immutable_and_hashable() -> None:
+    # MEASUREMENTS holds one shared instance per component that every `explain` reads;
+    # `frozen` is what keeps a caller from editing the glossary in place.
+    entry = Measurement(title="t", what="w", how="h", reading="r")
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        entry.title = "changed"  # type: ignore[misc]
+    assert hash(entry) == hash(Measurement(title="t", what="w", how="h", reading="r"))
+    assert MEASUREMENTS

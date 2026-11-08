@@ -42,8 +42,11 @@ from chess_variant_sandbox.spec.schema import (
     hire_ids,
     piece_bounties,
     piece_prices,
+    piece_upkeeps,
     purse_bribes,
     purse_market,
+    purse_rule,
+    purse_upkeep,
     reach_pieces,
     stocked_ids,
     strike_is_live,
@@ -51,6 +54,9 @@ from chess_variant_sandbox.spec.schema import (
     strike_survives_anything,
     wild_type_ids,
     wrap_axes,
+)
+from chess_variant_sandbox.spec.schema import (
+    shared_ids as _shared_ids,
 )
 
 
@@ -306,6 +312,23 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
             rules[key] = rewritten
         else:
             rules.pop(key)
+
+    # TS3: a turn of parts left with a "shared" part and no shared type, or with no part the
+    # mover must play, is refused by name; the parts that admit nothing go, and the turn with
+    # them where none is owed.
+    turn = rules.get("turn")
+    if isinstance(turn, dict) and isinstance(turn.get("parts"), list):
+        if not _shared_ids(spec):
+            turn["parts"] = [
+                part for part in turn["parts"]
+                if not (isinstance(part, dict) and part.get("pieces") == "shared")
+            ]
+        if not any(
+            isinstance(part, dict) and part.get("optional") is not True for part in turn["parts"]
+        ):
+            rules.pop("turn")
+        elif len(turn["parts"]) < 2:
+            turn.pop("order", None)
 
     # En passant is defined against *the* promoting piece. If the one it was about is
     # gone, so is the rule; the validator says as much and would refuse the spec.
@@ -935,8 +958,27 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
             purse.pop("region")
         if purse_bribes(spec) and not piece_prices(spec):
             purse.pop("bribe")
-        if not purse_market(spec) and not hire_ids(spec) and not purse_bribes(spec):
+        # H1 (`docs/plan-hunger.md` §2.1): a move's cost with no type left to charge goes, and
+        # a promotion reading with no promotion left reads as the default.
+        if purse_upkeep(spec) is not None and not piece_upkeeps(spec):
+            purse.pop("upkeep")
+            dropped.append("upkeep")
+        if purse_upkeep(spec) == "new" and not rules.get("promotion"):
+            purse["upkeep"] = True
+        if (
+            not purse_market(spec) and not hire_ids(spec) and not purse_bribes(spec)
+            and purse_upkeep(spec) is None
+        ):
             drop("purse")
+    # H2 (`docs/plan-hunger.md` §3): income is paid into the purse, so it goes with it.
+    if purse_rule(spec) is None and rules.get("income") not in (None, False):
+        drop("income")
+    # H1: an upkeep nothing charges (no rule left) goes.
+    if purse_upkeep(spec) is None:
+        for piece in listed if isinstance(listed, list) else []:
+            if isinstance(piece, dict) and "upkeep" in piece:
+                piece.pop("upkeep")
+                dropped.append(f"upkeep:{piece.get('id')}")
     charged = set(purse_market(spec)) | hire_ids(spec)
     bribes = purse_bribes(spec)
     for piece in listed if isinstance(listed, list) else []:
@@ -2003,6 +2045,16 @@ def split_piece(
                 named = piece.get(key)
                 if isinstance(named, list) and source_id in named and new_id not in named:
                     named.append(new_id)
+
+    # TS1's counted goal (`rules.reach.count` above 1) counts the source's copies: the share
+    # the clone takes must still count, or the count can outrun the listed supply and the
+    # child is refused as unwinnable (TS5's Tessabi, Q1135). Inert at a count of one.
+    reach = (spec.get("rules") or {}).get("reach")
+    if isinstance(reach, dict) and isinstance(reach.get("count"), int) and reach["count"] > 1:
+        listed = reach.get("piece")
+        names = [listed] if isinstance(listed, str) else listed
+        if isinstance(names, list) and source_id in names and new_id not in names:
+            reach["piece"] = sorted([*names, new_id])
 
     # Keyed by what the placement says of its pieces besides where they stand, in the
     # order first met, so a spec with one bare placement gets the one it always did.

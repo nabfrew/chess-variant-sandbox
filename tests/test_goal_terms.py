@@ -149,7 +149,9 @@ PHASE_B = {
     # finished last (`ladder_monotonicity` 0.33). After it the ladder is monotonic --
     # random -686, greedy -225, then 89, 303, 519.
     "antichess": "73fde0b76c57dee4",
-    "horde": "a17dbbca70b40efa",
+    # Moved 2026-11-07 by Q1105, a search change (a first ply that runs out keeps its best
+    # scored move; `search-depth.md` §5), no term: it was "a17dbbca70b40efa".
+    "horde": "f52862c455a0d8c8",
     "threecheck": "ac39bd9e60fe80e6",
 }
 
@@ -161,7 +163,9 @@ PHASE_B = {
 # because no *goal* term reads a hand; the table's claim is about evaluation terms, and
 # the hand is one now.
 HAND = {
-    "crazyhouse": "b92c261e6719fb63",
+    # Moved 2026-11-07 by Q1105, a search change (a first ply that runs out keeps its best
+    # scored move; `search-depth.md` §5), no term: it was "b92c261e6719fb63".
+    "crazyhouse": "7b9f1e1e469d8764",
     "dobutsu": "d5b311ca12a00a4e",
 }
 

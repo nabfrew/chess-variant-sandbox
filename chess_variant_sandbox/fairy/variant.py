@@ -82,6 +82,8 @@ from chess_variant_sandbox.spec.schema import (
     SpecError,
     blast_directions,
     format_square,
+    hop_displaces,
+    hop_run,
     parse_square,
     path_of,
 )
@@ -315,6 +317,8 @@ _RULES_TRANSLATED = frozenset(
         "must_capture",
         "no_progress_draw",
         "obstacles",
+        # H3 (`docs/plan-hunger.md` §4): `pass = true`, where the royal is their king (below).
+        "pass",
         "promotion",
         "reach",
         "repetition_draw",
@@ -333,6 +337,8 @@ _RULES_REFUSED = frozenset(
         "promote_on_entry",
         # TC5 (`docs/plan-turncoat.md` §5.7): read off `compiled.purse`.
         "purse",
+        # H2 (`docs/plan-hunger.md` §3): read off `compiled.income`.
+        "income",
         # Q1074b1 (`docs/plan-push.md` §4): read off `compiled.push`.
         "push",
         "scoring",
@@ -407,7 +413,12 @@ _RULE_OBJECT_KEYS: dict[str, frozenset[str]] = {
     # `on` is schema 18 (Q786): read off the compiled rule by `_ending_lines`, which refuses
     # `leave` by name. Over there `flagMove` gives the other side one more move after a
     # flag is reached, which is not leaving (`general-fairy-fork.md`).
-    "reach": frozenset({"mirror", "on", "piece", "result", "safe", "squares"}),
+    # TS1 (`docs/plan-tessabi.md` §1): `removes`, `count` and `both`, read off the compiled
+    # rule by `_ending_lines`, which refuses a bank and a count past one by name (a flag there
+    # ends the game at the first arrival and leaves the piece standing) and notes `both`.
+    "reach": frozenset(
+        {"both", "count", "mirror", "on", "piece", "removes", "result", "safe", "squares"}
+    ),
     # Generation 42 (N4c): `piece` is the wall `position.py` writes as `*`; `start` and `goes`
     # are read off the compiled `DuckRule` by `_check_duck`, which refuses all but the classic.
     "duck": frozenset({"goes", "piece", "start"}),
@@ -454,7 +465,13 @@ def _check_unsupported_rules(
             "setup.placements.player: a piece nobody owns has no counterpart in "
             "Fairy-Stockfish, where every piece is a side's"
         )
-        if compiled.neutrals.has_majority:
+        if compiled.neutrals.shared:
+            # TS2 (`docs/plan-tessabi.md` §2): compiled as a majority kind with no neighbours.
+            reasons.append(
+                "pieces.control: a piece nobody owns that either side may move has no "
+                "counterpart there"
+            )
+        if compiled.neutrals.has_count:
             reasons.append(
                 "pieces.control: a piece moved by whichever side has more pieces next to it "
                 "has no counterpart there"
@@ -472,6 +489,20 @@ def _check_unsupported_rules(
         reasons.append(
             "rules.purse: currency, and a market that sells pieces for it, have no "
             "counterpart in Fairy-Stockfish"
+        )
+        if compiled.purse.upkeep:
+            # H1 (`docs/plan-hunger.md` §2.5): named apart, so the reason says what a reader of
+            # a purse with no market is missing.
+            reasons.append(
+                "rules.purse.upkeep: a move that costs coins, and one the purse cannot pay "
+                "for being illegal, have no counterpart in Fairy-Stockfish"
+            )
+    if compiled.income is not None:
+        # H2 (`docs/plan-hunger.md` §3): coins paid each turn for pieces on a region; named
+        # apart from the purse it fills, as the upkeep is.
+        reasons.append(
+            "rules.income: coins paid at the start of each turn for pieces standing on a "
+            "region have no counterpart in Fairy-Stockfish"
         )
     if compiled.push is not None:
         # Q1074b1 (`docs/plan-push.md` §4): a move there is a capture or a quiet move onto its
@@ -928,6 +959,12 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             "rules.purse, which is "
             "refused off the compiled rule (compiled.purse); a pocket is a count, not a price",
         ),
+        "upkeep": (
+            _REFUSED,
+            "H1: what a move of the type costs per row, read only beside rules.purse.upkeep, "
+            "which is refused with the purse off the compiled rule (compiled.purse); "
+            "Fairy-Stockfish has no move that costs anything",
+        ),
         "pushes": (
             _REFUSED,
             "Q1074b1: who a pusher may push, read only beside a move that pushes, which is "
@@ -979,6 +1016,17 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             _REFUSED,
             "SR6a: the sweep switch, only on a sweep, which `_descriptor_term` refuses by name "
             "(and every compiled strike is refused already)",
+        ),
+        "run": (
+            _REFUSED,
+            "TS4: a hop over a run of pieces, refused by name in `_descriptor_term` where it "
+            "states one (Betza's hop jumps one screen); false, the off value, refuses nothing",
+        ),
+        "displace": (
+            _REFUSED,
+            "TS4: a hop that moves what it jumps, refused by name in `_descriptor_term` where "
+            "it states one (Fairy-Stockfish moves only the hopper); none, the off value, "
+            "refuses nothing",
         ),
         "push": (
             _REFUSED,
@@ -1879,6 +1927,15 @@ def _descriptor_term(
     mode = descriptor.get("mode", "both")
 
     if kind == "hop":
+        # TS4 (`docs/plan-tessabi.md` §4): Betza's hop jumps one screen and moves nothing else.
+        if hop_run(descriptor) is not None:
+            reasons.append(f"{where}: a hop over a whole run of pieces has no counterpart")
+            return None
+        if hop_displaces(descriptor):
+            reasons.append(
+                f"{where}: a hop that moves the pieces it jumps back a square has no counterpart"
+            )
+            return None
         if isinstance(descriptor.get("screen"), list):
             reasons.append(
                 f"{where}: a hop whose screen names its types has no counterpart but "
@@ -2068,6 +2125,21 @@ def _rule_lines(
         # Generation 42 (N4c, `docs/archive/plan-npc.md` §4.6): every move ends by setting the wall
         # down on any empty square but its own (`_check_duck` refused every other duck).
         lines.append("wallingRule = duck")
+    if compiled.passes:
+        # H3 (`docs/plan-hunger.md` §4): their `pass = true`, probed on pyffish 0.0.90: a pass
+        # is offered where the side to move is not in check and spelled as their king's square
+        # twice (`position.uci_of`). Only where the royal is their king slot, which is one king
+        # whose check they test; a pseudo-royal or an extinction royal has no square their pass
+        # is written on, and `checking = false` asks a question of the null move they were not
+        # probed on.
+        if royalty != "king" or compiled.forbid_check:
+            reasons.append(
+                "rules.pass: Fairy-Stockfish's pass is written on its king's square and was "
+                "probed only beside a king it checks, not beside "
+                + ("checking = false" if royalty == "king" else "a royal that is not its king")
+            )
+        else:
+            lines.append("pass = true")
     if compiled.must_capture:
         lines.append("mustCapture = true")
     if compiled.forbid_check:
@@ -2298,7 +2370,21 @@ def _ending_lines(
             "and Fairy-Stockfish has no such rule (its flagMove gives the other side one "
             "more move after a flag is reached, which is not leaving)"
         )
+    elif reach is not None and (reach.removes or reach.count > 1):
+        # TS1: Fairy-Stockfish has no count of arrivals and no bank: a flag there ends the game
+        # at the first arrival and leaves the piece standing, which is another rule.
+        reasons.append(
+            "rules.reach removes or count: Fairy-Stockfish has no count of arrivals and no "
+            "bank (a flag ends the game at the first arrival, the piece left standing)"
+        )
     elif reach is not None:
+        if reach.both != "first":
+            # TS1: one move bringing both players home at once is decided over there by its
+            # own order of the two flags; ours reads `both`, so the verdict may differ there.
+            reasons.append(
+                f'rules.reach.both "{reach.both}": Fairy-Stockfish decides a flag both players '
+                "reach on one move by its own order, not as a draw or the mover's"
+            )
         if reach.result != "win":
             notes.append(
                 f"rules.reach ends the game as a {reach.result} for the arriving player; "

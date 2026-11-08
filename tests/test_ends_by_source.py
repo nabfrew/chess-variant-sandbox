@@ -72,8 +72,11 @@ def _raw(version: str) -> dict[str, Any]:
 
 
 class TestVersionTwelve:
-    def test_it_is_the_default(self) -> None:
-        assert DEFAULT_WEIGHTS == "v12"
+    def test_it_was_the_default_until_v13(self) -> None:
+        # Q1104 (2026-11-08): `v13` re-read the reference ends on the shifted ladder;
+        # `tests/test_v13_ends.py` holds the new version. `v12` stays loadable.
+        assert DEFAULT_WEIGHTS == "v13"
+        assert load_weights("v12").version == "v12"
 
     def test_only_the_ends_moved_from_v11(self) -> None:
         """So a `v11` to `v12` move of any score is the scale changing source (§4.4)."""

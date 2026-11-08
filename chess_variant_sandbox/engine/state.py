@@ -156,6 +156,16 @@ class GameState:
     # without the rule. In the Zobrist key, as ``portal_bar`` is: the same board with and
     # without a bar has different legal moves.
     push_bar: tuple[int, int] = (-1, -1)
+    # TS1 (``rules.reach.removes``, `docs/plan-tessabi.md` §1): how many listed pieces each
+    # player has banked, taken off their own goal at the end of a move. ``(0, 0)`` for every
+    # game without the rule. In the Zobrist key: one board reached with different banks has
+    # a different future.
+    banked: tuple[int, int] = (0, 0)
+    # TS3 (``rules.turn.parts``, `docs/plan-tessabi.md` §3): the mask of the turn's parts
+    # filled so far this turn, 0 at every turn's start and in every game without the rule. In
+    # the Zobrist key: under order ``"any"`` one board with different parts filled has
+    # different moves.
+    parts: int = 0
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)

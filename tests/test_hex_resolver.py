@@ -291,6 +291,12 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "simultaneous", "simultaneous_initiative", "simultaneous_impossible", "beats_share",  # Q918a
     "wins_by_leaving",  # Q786
     "reach_runners",  # SR3a
+    "reach_removes", "reach_count", "reach_both",  # TS1 (Q1131)
+    "turn_parts_named", "turn_parts_optional", "turn_order_any",  # TS3 (Q1133)
+    "hop_run_share", "hop_displace_share",  # TS4 (Q1134)
+    "has_upkeep", "upkeep_mean", "upkeep_new",  # H1 (Q1125)
+    "passes",  # H3 (Q1126)
+    "has_income", "income_per_piece", "income_region",  # H2 (Q1127)
     "stock_is_uneven",  # SR3b
     "typed_screen_share",  # SR3c
     "portal_pairs", "portals_move", "portals_one_way",  # Q771
@@ -321,6 +327,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "duck_by_moves",  # N4b
     "nobody_share", "majority_share", "majority_geometry",  # TC3
     "majority_takes_royal",  # Q1077
+    "shared_share",  # TS2 (Q1132)
     "bounty_share",  # TC4
     "has_purse", "purse_start", "purse_region", "price_share",  # TC5
     "has_hire", "has_bribe",  # TC6
@@ -338,6 +345,11 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/dohyo": "058a15a873e5314b",  # Q1074bd, 2026-10-31: the corner ring (was 046edcf48e185db7, Q1074bg2)
     "rulesets/duck-chess": "f9808c9f13e0867d",  # Q1079, 2026-10-31
     "rulesets/runners": "bc491b28315f0aba",  # SR3s1, 2026-11-03
+    "rulesets/crossings": "a4437357e193fda0",  # TS1 (Q1131), 2026-11-07
+    "rulesets/boulder": "c76929ed586be0ff",  # TS2 (Q1132), 2026-11-07
+    "rulesets/drover": "131c3dafd395828f",  # TS3 (Q1133), 2026-11-07
+    "rulesets/leapfrog": "533fad75aaeecd45",  # TS4 (Q1134), 2026-11-07
+    "rulesets/tessabi": "7b92c066aa2bdb5f",  # TS5 (Q1135), 2026-11-07: Tessabi, from tessabi.com
     "rulesets/rock-paper-shove": "43142f6be2e63c9b",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "019f4704a5c0d78c",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "3510f2fd444cf5f9",  # Q1074bs, 2026-10-31

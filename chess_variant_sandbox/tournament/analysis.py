@@ -52,6 +52,8 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_FOLD,
     MOVE_FOREIGN,
     MOVE_HIRE,
+    MOVE_KEEP,
+    MOVE_PASS,
     MOVE_PROMOTION,
     MOVE_PUSH,
     MOVE_ROTATE,
@@ -1910,6 +1912,9 @@ def mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
         portals = engine.spec.portals
         assert portals is not None
         return portals.end_types[move_fold(move)]
+    if kind in (MOVE_KEEP, MOVE_PASS):
+        # TS3: a keep moves no piece; H3: nor does a pass.
+        return None
     occupant = board[move_from(move)]
     return None if occupant == 0 else engine.spec.type_of(occupant)
 
@@ -1918,7 +1923,9 @@ def moves_an_instance(move: int) -> bool:
     """Whether a move moves the piece on its origin square: a drop or a buy (TC5) moves none,
     a hire or a bribe (TC6) changes its side where it stands, and a fold's own move leaves
     the piece standing in it where it is."""
-    return move_type(move) not in (MOVE_DROP, MOVE_BUY, MOVE_FOLD, MOVE_DUCK, MOVE_HIRE)
+    return move_type(move) not in (
+        MOVE_DROP, MOVE_BUY, MOVE_FOLD, MOVE_DUCK, MOVE_HIRE, MOVE_KEEP, MOVE_PASS
+    )
 
 
 def starting_squares(engine: Engine, board: bytes) -> set[int]:
@@ -1967,6 +1974,8 @@ def takes(engine: Engine, board: bytes, move: int) -> bool:
         MOVE_FOLD,
         MOVE_DUCK,
         MOVE_HIRE,
+        MOVE_KEEP,
+        MOVE_PASS,
     )
 
 

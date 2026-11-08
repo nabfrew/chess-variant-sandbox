@@ -48,6 +48,7 @@ from chess_variant_sandbox.spec.schema import (
     DEFAULT_RANGE,
     FACING_NAMES,
     HEX_SYMMETRIES,
+    INCOME_PER_PIECE_MAX,
     POUNCE_KINDS,
     PRICE_MAX,
     PURSE_MAX,
@@ -81,10 +82,10 @@ from chess_variant_sandbox.spec.schema import (
     has_rests,
     has_speeds,
     hire_ids,
+    income_rule,
     insufficient_material_live,
     is_nobodys,
     is_simultaneous,
-    majority_ids,
     move_push,
     neutral_ids,
     nobodys_ids,
@@ -96,6 +97,7 @@ from chess_variant_sandbox.spec.schema import (
     obstacle_squares,
     opening_counts,
     parse_square,
+    passes,
     path_of,
     path_refusals,
     piece_bounties,
@@ -105,6 +107,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     piece_speeds,
     placed_ids,
+    player_moved_nobodys_ids,
     player_stocks,
     portal_groups,
     portal_open_ends,
@@ -112,14 +115,19 @@ from chess_variant_sandbox.spec.schema import (
     purse_bribes,
     purse_market,
     purse_pays_loser,
+    purse_rule,
+    purse_upkeep,
     push_bars,
     push_rule,
     pushable_ids,
     pushing_ids,
     reach_pieces,
     reach_reflection,
+    reach_scoring,
     reads_alike_for_both,
     reflect_square,
+    run_hop_ids,
+    shared_ids,
     simultaneous_tie_pair,
     spy_ids,
     stocked_ids,
@@ -202,7 +210,7 @@ class Operator:
     edit: Callable[[dict[str, Any], random.Random], str | None]
 
     def apply(self, spec: dict[str, Any], rng: random.Random) -> str | None:
-        summary = self.edit(spec, rng)
+        summary = _income_guarded(_pass_guarded(_upkeep_guarded(self.edit)))(spec, rng)
         if summary is None:
             return None
         gone = settle_inert_rules(spec) + _settle_sweep_effects(spec)
@@ -293,6 +301,10 @@ def _gone_words(key: str) -> str:
         return f"the {key.split(':', 1)[1]}'s strike on every piece it sweeps"
     if key.startswith("carries:"):
         return f"the filter on the portal at {key.split(':', 1)[1]}"
+    if key.startswith("upkeep:"):
+        return f"the {key.split(':', 1)[1]}'s upkeep"
+    if key == "upkeep":
+        return "the cost of a move"
     return _GONE_WORDS.get(key, key.replace("_", " "))
 
 
@@ -451,6 +463,7 @@ def _ride_a_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
     if move.get("range", 1) != 1:
         move.pop("range", None)
         move.pop("min_range", None)
+        move.pop("path", None)  # SR11a: a single lame leap has no second jump to turn
         return f"made the {name}'s blockable leap a single jump again"
     move["range"] = rng.choice((0, 2, 3))
     if rng.random() < 0.25:
@@ -579,7 +592,8 @@ def _shape_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _bend_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
     """T1 (`docs/archive/plan-pieces-moves.md` §5.5): a straight slide's path turns, a circle or a
-    zigzag, wherever the validator lets that set of directions turn (`path_refusals`).
+    zigzag, wherever the validator lets that set of directions turn (`path_refusals`); so
+    does a lame rider's (SR11a, `docs/plan-schema-next.md` PA4), each jump on its own legs.
 
     Each child must pass the validator whole, which also refuses a path beside portals, on
     the piece en passant is about and on a wild piece, so those are drawn and declined
@@ -588,8 +602,8 @@ def _bend_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
         (index, position, path)
         for index, piece in enumerate(pieces(spec))
         for position, move in enumerate(piece.get("moves", []))
-        if move.get("kind") == "slide" and path_of(move) == "straight"
-        and move.get("range", 0) != 1
+        if move.get("kind") in ("slide", "lame") and path_of(move) == "straight"
+        and move.get("range", DEFAULT_RANGE.get(move.get("kind", ""), 1)) != 1
         for path in TURNING_PATHS
     ]
     for index, position, path in rng.sample(candidates, len(candidates)):
@@ -611,8 +625,12 @@ def _bend_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 
 def _straighten(spec: dict[str, Any], rng: random.Random) -> str | None:
-    """T1: a slide whose path turns runs straight again (``path`` taken out)."""
-    movers = [(p, m) for p, m in _movers(spec, "slide") if path_of(m) != "straight"]
+    """T1: a slide (or, SR11a, a lame rider) whose path turns runs straight again (``path``
+    taken out)."""
+    movers = [
+        (p, m) for kind in ("slide", "lame") for p, m in _movers(spec, kind)
+        if path_of(m) != "straight"
+    ]
     if not movers:
         return None
     piece, move = rng.choice(movers)
@@ -751,7 +769,7 @@ def _change_symmetry(spec: dict[str, Any], rng: random.Random) -> str | None:
     if _lattice_symmetries(spec) is HEX_SYMMETRIES:
         return _turn_a_hex_move(spec, movers, rng)
     piece, move = rng.choice(movers)
-    if str(piece.get("id")) in _pouncing_types(spec) | majority_ids(spec):
+    if str(piece.get("id")) in _pouncing_types(spec) | player_moved_nobodys_ids(spec):
         # Generation 39 (N3b): a pouncer's moves must read the same for both players (a wild
         # piece has no forward), so it draws only among the symmetries that keep them so
         # (N7's hydra was the first library game with a pouncer to meet this). A majority
@@ -1328,7 +1346,14 @@ def _add_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     else:
         move.setdefault("vectors", []).append(vector)
         change = f"a {vector[0]},{vector[1]} step"
-    if new_id in majority_ids(spec):
+    # A turning path needs its new directions to go round (a circle) or to hold a near pair (a
+    # zigzag); where they no longer do, the new piece's path runs straight, by the validator's
+    # own reading, as `change-symmetry` does (SR11a's sweep met a circling horse's copy refused).
+    if path_of(move) != "straight" and path_refusals(
+        move, "move", hex_lattice=(spec.get("board") or {}).get("lattice") == "hex"
+    ):
+        move.pop("path", None)
+    if new_id in player_moved_nobodys_ids(spec):
         # TC3 (`docs/plan-turncoat.md` §4.4): a majority type's moves read the same for both
         # players, so the new piece, a majority type too, takes a symmetry that keeps them so
         # (SR7n's sweep met a split condottiere refused).
@@ -1452,6 +1477,82 @@ def _lengthen_the_turn(spec: dict[str, Any], rng: random.Random) -> str | None:
     # SR7d (L2, generation 99): a piece that moved this turn rests the rest of it, then its turns.
     set_turn(spec)
     return "a turn is now two moves, after a first turn of one so neither side is a move ahead"
+
+
+def _split_the_turn(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Write the turn as parts, change them, or take them away (TS3, ``rules.turn.parts`` and
+    ``rules.turn.order``, `docs/plan-tessabi.md` §3).
+
+    In a game whose turn has no parts: where some type is shared (``control: "shared"``), a
+    move of your own and an optional move of a shared piece, in either order (Tessabi's turn);
+    half the time instead the shared piece first and then your own, both owed (Neutron's).
+    Elsewhere, the moving types split in two at random, a move of one group and an optional
+    move of the other, in either order. In a game with parts, one of three, at random: the
+    parts go (a turn of one move again); the order flips between ``"fixed"`` and ``"any"``; or
+    a part's ``optional`` flips. Each child is asked of the validator, which refuses parts
+    beside the rules no part can admit a move of, and the operator declines rather than hand
+    the loop a child it would refuse."""
+    rules = spec.get("rules")
+    if not isinstance(rules, dict):
+        return None
+    trial = copy.deepcopy(spec)
+    trial_rules = trial["rules"]
+    turn = trial_rules.get("turn")
+    if isinstance(turn, dict) and isinstance(turn.get("parts"), list):
+        choice = rng.randrange(3)
+        if choice == 0:
+            del trial_rules["turn"]
+            said = "a turn is one move again, of any piece"
+        elif choice == 1:
+            turn["order"] = "fixed" if turn.get("order") == "any" else "any"
+            said = (
+                "the turn's parts may be played in any order" if turn["order"] == "any"
+                else "the turn's parts are played in the order written"
+            )
+        else:
+            index = rng.randrange(len(turn["parts"]))
+            part = turn["parts"][index]
+            part["optional"] = not part.get("optional", False)
+            said = f"part {index + 1} of the turn " + (
+                "may be left" if part["optional"] else "must be played"
+            )
+    else:
+        if duck_piece(rules) is not None or is_simultaneous(rules) or "turn" in rules:
+            return None
+        shared = sorted(shared_ids(spec))
+        movers = sorted(
+            str(piece["id"]) for piece in pieces(spec)
+            if piece.get("moves") and piece.get("id") not in shared
+        )
+        if shared:
+            if rng.random() < 0.5:
+                trial_rules["turn"] = {
+                    "parts": [{"pieces": "own"}, {"pieces": "shared", "optional": True}],
+                    "order": "any",
+                }
+                said = "a turn is a move of your own and, before or after it, a shared piece's if you like"
+            else:
+                trial_rules["turn"] = {"parts": [{"pieces": "shared"}, {"pieces": "own"}]}
+                said = "a turn is a move of a shared piece, then a move of your own"
+        elif len(movers) >= 2:
+            rng.shuffle(movers)
+            cut = rng.randrange(1, len(movers))
+            first, second = sorted(movers[:cut]), sorted(movers[cut:])
+            trial_rules["turn"] = {
+                "parts": [{"pieces": first}, {"pieces": second, "optional": True}],
+                "order": "any",
+            }
+            said = (
+                f"a turn is a move of {', '.join(first)} and, before or after it, a move of "
+                f"{', '.join(second)} if you like"
+            )
+        else:
+            return None
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
 
 
 def _join_the_edges(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -1641,6 +1742,138 @@ def _spy_gain_guarded(
         trial = copy.deepcopy(spec)
         said = edit(trial, rng)
         if said is None or foreign_spy_gains(trial):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return said
+
+    guarded.__name__ = edit.__name__
+    guarded.__doc__ = edit.__doc__
+    return guarded
+
+
+def _upkeep_guarded(
+    edit: Callable[[dict[str, Any], random.Random], str | None],
+) -> Callable[[dict[str, Any], random.Random], str | None]:
+    """H1 (`docs/plan-hunger.md` §2.4): a move's cost is refused beside rounds, a long turn,
+    portals, wild pieces, a command, a held or shared type, drops, a hex board, contacts and a
+    side switch, which many operators add. Every operator runs through this (`Operator.apply`):
+    in a game with upkeep ``edit`` runs on a copy, and the child is kept only where the
+    validator has no refusal of upkeep beside it; the random draws are the same either way, and
+    every other game runs ``edit`` as it is."""
+
+    def guarded(spec: dict[str, Any], rng: random.Random) -> str | None:
+        if purse_upkeep(spec) is None:
+            return edit(spec, rng)
+        trial = copy.deepcopy(spec)
+        said = edit(trial, rng)
+        if said is None or any(
+            error.startswith("rules.purse.upkeep beside") or ".upkeep on a wild type" in error
+            for error in validate_spec(trial)
+        ):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return said
+
+    return guarded
+
+
+def _pass_guarded(
+    edit: Callable[[dict[str, Any], random.Random], str | None],
+) -> Callable[[dict[str, Any], random.Random], str | None]:
+    """H3 (`docs/plan-hunger.md` §4): the pass is refused beside rounds, the duck, a long turn,
+    forced capture, a placement phase, wild pieces, portals and a push, and beside a stalemate
+    rule it would make dead, which many operators add. Every operator runs through this
+    (`Operator.apply`): in a game with the pass ``edit`` runs on a copy, and the child is kept
+    only where the validator has no refusal naming the pass; the random draws are the same
+    either way, and every other game runs ``edit`` as it is."""
+
+    def guarded(spec: dict[str, Any], rng: random.Random) -> str | None:
+        if not passes(spec):
+            return edit(spec, rng)
+        trial = copy.deepcopy(spec)
+        said = edit(trial, rng)
+        if said is None or any("rules.pass" in error for error in validate_spec(trial)):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return said
+
+    return guarded
+
+
+def _income_guarded(
+    edit: Callable[[dict[str, Any], random.Random], str | None],
+) -> Callable[[dict[str, Any], random.Random], str | None]:
+    """H2 (`docs/plan-hunger.md` §3): income is refused beside a points count and rounds, which
+    some operators add. Every operator runs through this (`Operator.apply`): in a game with
+    income ``edit`` runs on a copy, and the child is kept only where the validator has no
+    refusal of income beside it; the random draws are the same either way, and every other game
+    runs ``edit`` as it is. (An edit that takes the purse away takes income with it:
+    `transform.settle_inert_rules`.)"""
+
+    def guarded(spec: dict[str, Any], rng: random.Random) -> str | None:
+        if income_rule(spec) is None:
+            return edit(spec, rng)
+        trial = copy.deepcopy(spec)
+        said = edit(trial, rng)
+        if said is None or any(
+            error.startswith("rules.income beside") for error in validate_spec(trial)
+        ):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return said
+
+    return guarded
+
+
+def _parts_guarded(
+    edit: Callable[[dict[str, Any], random.Random], str | None],
+) -> Callable[[dict[str, Any], random.Random], str | None]:
+    """TS3 (`docs/plan-tessabi.md` §3): a turn of parts is refused beside a hand (a drop has no
+    piece on its origin for a part to admit). In a game whose turn has parts ``edit`` runs on
+    a copy, and the child is kept only where the validator has no refusal of the parts beside
+    it; the random draws are the same either way."""
+
+    def guarded(spec: dict[str, Any], rng: random.Random) -> str | None:
+        turn = (spec.get("rules") or {}).get("turn")
+        if not (isinstance(turn, dict) and "parts" in turn):
+            return edit(spec, rng)
+        trial = copy.deepcopy(spec)
+        said = edit(trial, rng)
+        if said is None or any(
+            error.startswith("rules.turn.parts beside") for error in validate_spec(trial)
+        ):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return said
+
+    guarded.__name__ = edit.__name__
+    guarded.__doc__ = edit.__doc__
+    return guarded
+
+
+def _runs_guarded(
+    edit: Callable[[dict[str, Any], random.Random], str | None],
+) -> Callable[[dict[str, Any], random.Random], str | None]:
+    """TS4 (`docs/plan-tessabi.md` §4): a hop over a run or one that displaces is refused beside
+    a wrapped board, rounds, wild pieces and (displacing) territory, first build. In a game with
+    such a hop ``edit`` runs on a copy, and the child is kept only where the validator has no
+    refusal of the hop beside it; the random draws are the same either way."""
+
+    def guarded(spec: dict[str, Any], rng: random.Random) -> str | None:
+        if not run_hop_ids(spec):
+            return edit(spec, rng)
+        trial = copy.deepcopy(spec)
+        said = edit(trial, rng)
+        if said is None or any(
+            error.startswith("a hop's run or displace beside")
+            or error.startswith("a hop's displace beside")
+            for error in validate_spec(trial)
+        ):
             return None
         spec.clear()
         spec.update(trial)
@@ -2300,6 +2533,10 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     if _commands(spec):
         return None  # Q1007c: refused beside a command (docs/archive/plan-schema-31.md §3.6)
+    if reach_scoring((spec.get("rules") or {}).get("reach")) != (False, 1, "first"):
+        return None  # TS1: a scoring goal is refused in rounds (first build)
+    if shared_ids(spec):
+        return None  # TS2: a shared piece is refused in rounds (both would move it at once)
     rules = spec.setdefault("rules", {})
     if is_simultaneous(rules):
         del rules["simultaneous"]
@@ -4577,11 +4814,14 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
     next to it may move it (``control: "majority"``; a quarter of those count only the four
     orthogonal neighbours, and, Q1077, half of them attack the other king, ``takes_royal``);
     in a spy game (SR7k, O6), half the time one of its spy types is placed for nobody instead,
-    a decoy that hides nothing. In a game with some, one of four, at random: they go (their
+    a decoy that hides nothing. In a game with some, one of five, at random: they go (their
     placements, and a type nothing else places); majority control is given to one standing
     type or taken from every type; a majority type's neighbours swap between the king's
     step and the orthogonal four; or (Q1077) a majority type's ``takes_royal`` is switched,
-    so its held pieces give check or no longer. The validator decides the rest (a held type
+    so its held pieces give check or no longer. TS2 (`docs/plan-tessabi.md` §2): a quarter of
+    the moved types made are shared (``control: "shared"``, either player moves it), a type
+    nobody owns may be made shared or a shared one made to stand, and a shared type made
+    majority-held. The validator decides the rest (a held type
     beside ``tie: "impossible"``; standing pieces in rounds are allowed since SR7f, held ones since SR7n, wild pieces and the duck are allowed since SR3f, portals since SR3g, a strike and contacts
     since SR4k, a blast since SR5j, a territory and a goal since SR5k).
     """
@@ -4616,17 +4856,22 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
         # SR7n (R20) lifted a held piece in rounds (SR7f a standing one); the validator
         # refuses it beside `tie: "impossible"`, which a held type's own pair breaks.
         elif rng.random() < 0.5:
-            added["control"] = (
-                copy.deepcopy(_CROWD_CROSS) if rng.random() < 0.25 else "majority"
-            )
-            said += (
-                ", moved by whichever player has more pieces "
-                + ("orthogonally next to it" if isinstance(added["control"], dict) else "next to it")
-            )
-            # Q1077: half of those attack the king of the player who does not hold them.
-            if rng.random() < 0.5:
-                added["takes_royal"] = True
-                said += ", and attacking the other player's king"
+            if rng.random() < 0.25:
+                # TS2 (`docs/plan-tessabi.md` §2): a quarter of the moved ones are shared.
+                added["control"] = "shared"
+                said += ", which either player may move"
+            else:
+                added["control"] = (
+                    copy.deepcopy(_CROWD_CROSS) if rng.random() < 0.25 else "majority"
+                )
+                said += (
+                    ", moved by whichever player has more pieces "
+                    + ("orthogonally next to it" if isinstance(added["control"], dict) else "next to it")
+                )
+                # Q1077: half of those attack the king of the player who does not hold them.
+                if rng.random() < 0.5:
+                    added["takes_royal"] = True
+                    said += ", and attacking the other player's king"
         if new_type:
             trial["pieces"].append(added)
         mirrored = setup.get("mirror", True) is not False
@@ -4656,8 +4901,19 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
     else:
         by_id = {piece.get("id"): piece for piece in pieces(trial)}
         held = sorted(pid for pid in placed if by_id.get(pid, {}).get("control", "stands") != "stands")
-        choice = rng.randrange(4)
-        if choice == 3:
+        choice = rng.randrange(5)
+        if choice == 4:
+            # TS2 (`docs/plan-tessabi.md` §2): a type nobody owns becomes shared (either player
+            # moves it), or a shared one stands again.
+            pid = rng.choice(sorted(placed))
+            if by_id[pid].get("control") == "shared":
+                by_id[pid].pop("control")
+                said = f"nobody may move a {pid} nobody owns any more: it only stands"
+            else:
+                by_id[pid]["control"] = "shared"
+                by_id[pid].pop("takes_royal", None)
+                said = f"a {pid} nobody owns may be moved by either player, whoever stands next to it"
+        elif choice == 3:
             # Q1077 (`docs/plan-turncoat.md` §4.7): a held type's pieces take the other royal,
             # so check by one, or no longer.
             if not held:
@@ -4700,7 +4956,11 @@ def _gather_a_crowd(spec: dict[str, Any], rng: random.Random) -> str | None:
             if not held:
                 return None
             pid = rng.choice(held)
-            if isinstance(by_id[pid]["control"], dict):
+            if by_id[pid]["control"] == "shared":
+                # TS2: a shared type becomes held by the majority.
+                by_id[pid]["control"] = "majority"
+                said = f"a {pid} nobody owns is moved only by whichever player has more pieces next to it"
+            elif isinstance(by_id[pid]["control"], dict):
                 by_id[pid]["control"] = "majority"
                 said = f"a {pid} nobody owns is held by the majority of the eight squares round it"
             else:
@@ -5060,6 +5320,177 @@ def _pay_the_loser(spec: dict[str, Any], rng: random.Random) -> str | None:
     else:
         purse["bounty_to"] = "loser"
         said = "a bounty is paid to the player who loses the piece, not the one who takes it"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _allow_passing(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Let a player pass instead of moving, or take the pass away (H3, ``rules.pass``,
+    `docs/plan-hunger.md` §4). The validator decides the rest: the pass is refused beside
+    rounds, the duck, a long turn, forced capture, a placement phase, wild pieces, portals, a
+    push and a stalemate rule other than the default, so the operator declines there."""
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    if passes(trial):
+        rules.pop("pass")
+        said = "a player must move again: the pass is gone"
+    else:
+        rules["pass"] = True
+        said = "a player may pass instead of moving"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _income_regions(spec: dict[str, Any]) -> list[tuple[str, list[str]]]:
+    """H2: the grounds `pay-an-income` may name, written for the first player: the two home
+    ranks, the centre (two by two, or the middle file pair on an odd board) and the opponent's
+    first rank (*Plunder*). Each read off the board's size; the validator decides the rest."""
+    board = spec.get("board") or {}
+    width, height = board.get("width"), board.get("height")
+    if not isinstance(width, int) or not isinstance(height, int) or width < 2 or height < 3:
+        return []
+    files = range(width)
+    centre_files = {(width - 1) // 2, width // 2}
+    centre_ranks = {(height - 1) // 2, height // 2}
+    return [
+        ("their two home ranks", [format_square(f, r) for r in (0, 1) for f in files]),
+        (
+            "the centre",
+            [format_square(f, r) for r in sorted(centre_ranks) for f in sorted(centre_files)],
+        ),
+        ("the enemy's first rank", [format_square(f, height - 1) for f in files]),
+    ]
+
+
+def _pay_an_income(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Pay each player coins at the start of every turn for pieces standing on ground, or stop
+    paying (H2, ``rules.income``, `docs/plan-hunger.md` §3).
+
+    In a purse game without the rule: ``income: true`` (a coin a piece on the first rank) half
+    the time, else the rule with a rate of 2 to 5 or on one of `_income_regions`, so every key
+    is one edit from a purse game. In a game with it, one of three: the rule goes; the rate
+    moves (1 to a random 2 to 5, or back to 1); or the ground moves (the first rank to one of
+    `_income_regions`, or back). Never makes a purse (one needs something to spend on, which
+    `charge-for-moves` and the market operators bring). The validator decides the rest."""
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    rule = income_rule(trial)
+    if rule is None:
+        if purse_rule(trial) is None:
+            return None
+        roll = rng.random()
+        regions = _income_regions(trial)
+        if roll < 0.5 or (roll >= 0.75 and not regions):
+            rules["income"] = True
+            said = "each turn starts by paying a coin for each piece on the player's first rank"
+        elif roll < 0.75:
+            per_piece = rng.randint(2, INCOME_PER_PIECE_MAX)
+            rules["income"] = {"per_piece": per_piece}
+            said = (
+                f"each turn starts by paying {per_piece} coins for each piece on the player's "
+                "first rank"
+            )
+        else:
+            where, region = regions[rng.randrange(len(regions))]
+            rules["income"] = {"region": region}
+            said = f"each turn starts by paying a coin for each piece on {where}"
+    else:
+        income: dict[str, Any] = dict(rules["income"]) if isinstance(rules["income"], dict) else {}
+        roll = rng.random()
+        if roll < 1 / 3:
+            rules.pop("income")
+            said = "no more income: coins come from the start and from captures alone"
+        elif roll < 2 / 3:
+            if rule["per_piece"] == 1:
+                income["per_piece"] = rng.randint(2, INCOME_PER_PIECE_MAX)
+                said = f"each piece on its ground now earns {income['per_piece']} coins a turn"
+            else:
+                income.pop("per_piece", None)
+                said = "each piece on its ground earns one coin a turn again"
+            rules["income"] = income or True
+        else:
+            if rule["region"] is None:
+                regions = _income_regions(trial)
+                if not regions:
+                    return None
+                where, region = regions[rng.randrange(len(regions))]
+                income["region"] = region
+                said = f"income is now paid for pieces on {where}"
+            else:
+                income.pop("region", None)
+                said = "income is paid for pieces on the first rank again"
+            rules["income"] = income or True
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _charge_for_moves(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Charge every move its piece's upkeep per row from home, or stop charging it (H1,
+    ``pieces[].upkeep`` and ``rules.purse.upkeep``, `docs/plan-hunger.md` §2.5).
+
+    In a game without the rule: a purse if there is none (ten coins), ``upkeep: true`` (a
+    quarter of the time ``{"promotion": "new"}`` where a promotion exists), and an upkeep on
+    each type a player moves split by value, 1 for a type worth at most 1.5 and 2 for the rest,
+    the royals 0 (Hunger Chess's split). In a game with it: either the rule goes
+    (every upkeep with it, and the purse too where nothing else spends from it), or, where a
+    promotion exists, a promotion's charge switches between both arrivals and the new type's.
+    The validator decides the rest (the rule is refused beside rounds, drops and others).
+    """
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    purse = rules.get("purse")
+    if purse_upkeep(trial) is not None:
+        assert isinstance(purse, dict)
+        if rules.get("promotion") and rng.random() < 0.5:
+            if purse_upkeep(trial) == "new":
+                purse["upkeep"] = True
+                said = "a promotion pays for the piece's arrival and the promoted type's"
+            else:
+                purse["upkeep"] = {"promotion": "new"}
+                said = "a promotion pays only for the promoted type's arrival"
+        else:
+            purse.pop("upkeep")
+            for piece in pieces(trial):
+                piece.pop("upkeep", None)
+            said = "moves cost nothing again"
+            if validate_spec(trial) and set(purse) <= {"start"}:
+                del rules["purse"]
+                said += ", and the purse goes"
+                # H2: income is paid into the purse, so it goes with it.
+                if rules.pop("income", None) is not None:
+                    said += " with its income"
+    else:
+        wild = {
+            npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
+        } | {duck_piece(rules)}
+        charged = []
+        for piece in pieces(trial):
+            if piece.get("royal") or piece.get("id") in wild or not piece.get("moves"):
+                continue
+            value = piece.get("value", 1)
+            piece["upkeep"] = 1 if isinstance(value, (int, float)) and value <= 1.5 else 2
+            charged.append(f"{piece.get('id')} {piece['upkeep']}")
+        if not charged:
+            return None
+        if not isinstance(purse, dict):
+            rules["purse"] = {"start": 10}
+            purse = rules["purse"]
+        new = bool(rules.get("promotion")) and rng.random() < 0.25
+        purse["upkeep"] = {"promotion": "new"} if new else True
+        said = (
+            "every move costs its piece's upkeep per row from home, paid from the purse "
+            f"({', '.join(charged)})"
+            + ("; a promotion pays only for the promoted type" if new else "")
+        )
     if validate_spec(trial):
         return None
     spec.clear()
@@ -5473,6 +5904,69 @@ def _add_a_runner(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+# --------------------------------------------------------------------------- the scoring goal
+#
+# TS1 (`docs/plan-tessabi.md` §1, generation 111): `reach.removes`, `reach.count` and
+# `reach.both`. One operator per key, each entering it on a goal that arrives and taking it
+# back off; the validator decides the rest (a royal runner, check, rounds, a held piece).
+
+
+def _reach_edit(
+    spec: dict[str, Any], write: Callable[[dict[str, Any]], str | None]
+) -> str | None:
+    """Apply ``write`` to a copy's arrival goal, keep it if the validator does."""
+    reach = (spec.get("rules") or {}).get("reach")
+    if not isinstance(reach, dict) or reach.get("on", "arrive") == "leave":
+        return None
+    trial = copy.deepcopy(spec)
+    said = write(trial["rules"]["reach"])
+    if said is None or validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _bank_the_arrivals(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Bank a goal's arrivals, or stop banking them (`rules.reach.removes`, TS1): a listed
+    piece standing on its own goal at the end of a move leaves the board and counts for its
+    owner. A banked piece is beyond capture, so the goal's `safe` goes with it."""
+    def write(goal: dict[str, Any]) -> str | None:
+        if goal.get("removes") is True:
+            del goal["removes"]
+            return "a piece that arrives stays on the board again"
+        goal["removes"] = True
+        goal.pop("safe", None)
+        return "a piece that arrives leaves the board and is banked for its owner"
+    return _reach_edit(spec, write)
+
+
+def _count_the_arrivals(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make a goal count two or three arrivals, or one again (`rules.reach.count`, TS1)."""
+    def write(goal: dict[str, Any]) -> str | None:
+        if goal.get("count", 1) != 1:
+            del goal["count"]
+            return "the first arrival decides the game again"
+        goal["count"] = rng.choice((2, 3))
+        return f"a side needs {goal['count']} pieces on its goal to win"
+    return _reach_edit(spec, write)
+
+
+def _settle_both_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Read a goal reached by both players on one move as a draw or the mover's, or as
+    player 0's again (`rules.reach.both`, TS1)."""
+    def write(goal: dict[str, Any]) -> str | None:
+        if goal.get("both", "first") != "first":
+            del goal["both"]
+            return "a goal both players reach at once goes to the first player again"
+        goal["both"] = rng.choice(("draw", "mover"))
+        return (
+            "a goal both players reach at once is a draw" if goal["both"] == "draw"
+            else "a goal both players reach at once goes to the player who moved"
+        )
+    return _reach_edit(spec, write)
+
+
 # --------------------------------------------------------------------------- the handicap
 #
 # SR3b (`docs/plan-schema-next.md` §1 rank 6, generation 59): `drops.stock_by_player`. One
@@ -5572,6 +6066,75 @@ def _spare_its_own_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+# --------------------------------------------------------------------------- a run of pieces
+#
+# TS4 (`docs/plan-tessabi.md` §4, generation 114): a hop over a run and displacement. One
+# operator gives a piece a leapfrog's jump, or changes or takes back one it has.
+
+
+def _leap_a_row(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Give a piece a hop over a run that displaces what it jumps, or change one (TS4,
+    ``moves[].run`` and ``moves[].displace``, `docs/plan-tessabi.md` §4).
+
+    Where some hop states a run or a displacement, one of them loses one of the two at random
+    (a hop left stating neither goes, since its mode is ``"move"`` only for the keys' sake).
+    Elsewhere a piece that steps (a leap or a range-1 slide) gains a hop of ``mode: "move"``
+    along the same vectors: over a run that displaces, over a run alone, or over one screen
+    that displaces (a leapfrog), at random. The validator decides the rest (a royal, en
+    passant, a wrapped board and the others refuse it), and the operator declines rather than
+    hand the loop a child it would refuse."""
+    trial = copy.deepcopy(spec)
+    stated = [
+        (piece, move) for piece in pieces(trial) for move in piece.get("moves") or []
+        if isinstance(move, dict) and move.get("kind") == "hop"
+        and (move.get("run", False) is not False or move.get("displace", "none") != "none")
+    ]
+    if stated:
+        piece, move = rng.choice(stated)
+        keys = [key for key in ("run", "displace") if key in move]
+        key = rng.choice(keys)
+        move.pop(key)
+        if "run" not in move and "displace" not in move:
+            piece["moves"].remove(move)
+            said = f"{piece['id']} no longer leapfrogs"
+        else:
+            said = (
+                f"{piece['id']}'s hop jumps one piece, not a row"
+                if key == "run" else f"{piece['id']}'s hop leaves what it jumps where it stands"
+            )
+    else:
+        steppers = [
+            (piece, move) for piece in pieces(trial) for move in piece.get("moves") or []
+            if isinstance(move, dict) and (
+                move.get("kind") == "leap"
+                or (move.get("kind") == "slide" and move.get("range") == 1)
+            )
+        ]
+        if not steppers:
+            return None
+        piece, move = rng.choice(steppers)
+        hop: dict[str, Any] = {"kind": "hop", "vectors": copy.deepcopy(move["vectors"])}
+        if "symmetry" in move:
+            hop["symmetry"] = move["symmetry"]
+        hop["mode"] = "move"
+        shape = rng.randrange(3)
+        if shape != 2:
+            hop["run"] = True
+        if shape != 1:
+            hop["displace"] = "back"
+        piece["moves"].append(hop)
+        said = f"{piece['id']} may leap " + (
+            "a whole row of pieces, moving each one back a square" if shape == 0
+            else "a whole row of pieces" if shape == 1
+            else "a piece, which moves back onto the square it left"
+        )
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _spy_gain_guarded(_soften_the_capture)),
@@ -5580,8 +6143,8 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("set-the-blast", _set_the_blast),
     Operator("leave-something-behind", _spy_gain_guarded(_leave_something_behind)),
     Operator("shape-the-blast", _shape_the_blast),
-    Operator("place-a-stone", _spy_gain_guarded(_place_a_stone)),
-    Operator("set-a-patrol", _set_a_patrol),
+    Operator("place-a-stone", _parts_guarded(_spy_gain_guarded(_place_a_stone))),
+    Operator("set-a-patrol", _runs_guarded(_set_a_patrol)),
     Operator("share-a-walk", _share_a_walk),
     Operator("bring-them-back", _bring_them_back),
     Operator("wild-eyes", _wild_eyes),
@@ -5594,6 +6157,9 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("hire-a-sword", _hire_a_sword),
     Operator("offer-a-bribe", _offer_a_bribe),
     Operator("pay-the-loser", _pay_the_loser),
+    Operator("charge-for-moves", _charge_for_moves),
+    Operator("allow-passing", _allow_passing),
+    Operator("pay-an-income", _pay_an_income),
     Operator("promote-what-arrives", _promote_what_arrives),
     Operator("promote-on-leaving", _promote_on_leaving),
     Operator("count-each-kind", _count_each_kind),
@@ -5630,15 +6196,17 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("reprice-a-piece", _reprice_a_piece),
     Operator("move-a-placement", _move_a_placement),
     Operator("change-the-win-condition", _drop_royalty),
-    Operator("hand-the-pieces-back", _spy_gain_guarded(_hand_the_pieces_back)),
+    Operator("hand-the-pieces-back", _parts_guarded(_spy_gain_guarded(_hand_the_pieces_back))),
     Operator("win-by-arrival", _win_by_arrival),
     Operator("score-the-clock", _score_the_clock),
-    Operator("claim-the-ground", _claim_the_ground),
+    Operator("claim-the-ground", _runs_guarded(_claim_the_ground)),
     Operator("lengthen-the-turn", _lengthen_the_turn),
-    Operator("join-the-edges", _join_the_edges),
+    Operator("split-the-turn", _split_the_turn),
+    Operator("leap-a-row", _leap_a_row),
+    Operator("join-the-edges", _runs_guarded(_join_the_edges)),
     Operator("turn-to-face", _turn_to_face),
     Operator("fix-a-facing", _fix_a_facing),
-    Operator("play-at-once", _play_at_once),
+    Operator("play-at-once", _runs_guarded(_play_at_once)),
     Operator("set-a-collision", _set_a_collision),
     Operator("break-the-tie", _break_the_tie),
     Operator("sweep-a-slider", _sweep_a_slider),
@@ -5659,6 +6227,9 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("bar-the-push-back", _bar_the_push_back),
     Operator("crush-on-the-walls", _crush_on_the_walls),
     Operator("add-a-runner", _add_a_runner),
+    Operator("bank-the-arrivals", _bank_the_arrivals),
+    Operator("count-the-arrivals", _count_the_arrivals),
+    Operator("settle-both-at-once", _settle_both_at_once),
     Operator("give-a-handicap", _give_a_handicap),
     Operator("spare-its-own-kind", _spare_its_own_kind),
 )

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import functools
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import replace
@@ -243,20 +244,48 @@ class TestRecertify:
     """§7.6: a record owed only for the core or compile it was proved on is re-proved in a
     sample on this core; it is re-stamped where all agree and owed whole where any does not."""
 
-    def test_the_sample_is_every_offered_row_and_sixteen_of_the_rest(self) -> None:
-        def row(n: int, offered: bool) -> dict[str, Any]:
+    @staticmethod
+    def _record(offered: int, others: int, aside: int) -> dict[str, Any]:
+        def row(n: int, offers: bool) -> dict[str, Any]:
             return {"id": f"0-{n}-0", "result": puzzles.WON, "ends_in": 3,
                     "scores": [{"proof": puzzles.WON}] + [{"proof": puzzles.OPEN}] * 4,
-                    "shallow": puzzles.MISSED if offered else puzzles.FOUND}
-        positions = [row(n, n % 10 == 0) for n in range(60)]
-        aside = [row(100 + n, False) | {"shows": []} for n in range(20)]
-        picked = puzzles.certify_sample({"positions": positions, "set_aside": aside})
-        offered = [r for r in positions if r["shallow"] == puzzles.MISSED]
-        rest = [r for r in positions if r["shallow"] == puzzles.FOUND] + aside
-        assert picked[:len(offered)] == offered
-        assert picked[len(offered):] == [rest[i * len(rest) // 16] for i in range(16)]
-        few = puzzles.certify_sample({"positions": positions[:5], "set_aside": aside[:2]})
-        assert len(few) == 7  # fewer than sixteen to spare: all of them
+                    "shallow": puzzles.MISSED if offers else puzzles.FOUND}
+        # Offered and not interleaved, as a record's rows are.
+        kinds = [True] * offered + [False] * others
+        positions = [row(n, kinds[(n * 7) % len(kinds)]) for n in range(len(kinds))]
+        return {"positions": positions,
+                "set_aside": [row(1000 + n, False) | {"shows": []} for n in range(aside)]}
+
+    def test_the_sample_is_sixteen_offered_rows_and_sixteen_of_the_rest(self) -> None:
+        """§7.7 (`CERTIFY_VERSION` 2, Q1115): 16 of the offered rows and 16 of the rest,
+        each kept in the record's order, or all of a part with no more."""
+        assert puzzles.CERTIFY_VERSION == 2
+        assert puzzles.CERTIFY_OFFERED == puzzles.CERTIFY_OTHERS == 16
+        data = self._record(offered=70, others=40, aside=20)
+        picked = puzzles.certify_sample(data, "core-a")
+        offered = [r for r in data["positions"] if r["shallow"] == puzzles.MISSED]
+        rest = [r for r in data["positions"] if r["shallow"] == puzzles.FOUND]
+        rest += data["set_aside"]
+        assert len(picked) == 32
+        head, tail = picked[:16], picked[16:]
+        assert all(r in offered for r in head) and all(r in rest for r in tail)
+        assert head == [r for r in offered if r in head]  # the record's order
+        assert tail == [r for r in rest if r in tail]
+        few = puzzles.certify_sample(self._record(offered=5, others=3, aside=2), "core-a")
+        assert len(few) == 10  # fewer than sixteen of each: all of them
+        some = puzzles.certify_sample(self._record(offered=9, others=50, aside=0), "core-a")
+        assert len(some) == 9 + 16
+
+    def test_the_sample_is_fixed_by_the_record_and_the_build(self) -> None:
+        """A pure function of the two: the same on a second call and on a copy of the record
+        (no random stream), and another build draws other rows."""
+        data = self._record(offered=70, others=40, aside=20)
+        ids = [r["id"] for r in puzzles.certify_sample(data, "core-a")]
+        assert ids == [r["id"] for r in puzzles.certify_sample(data, "core-a")]
+        copy = json.loads(json.dumps(data))
+        assert ids == [r["id"] for r in puzzles.certify_sample(copy, "core-a")]
+        other = [r["id"] for r in puzzles.certify_sample(data, "core-b")]
+        assert len(other) == len(ids) and other != ids
 
     def test_on_agreement_the_record_is_re_stamped_and_the_old_one_kept(
         self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -276,11 +305,37 @@ class TestRecertify:
         now = puzzles.work_basis(SPEC)
         assert {k: stamp[k] for k in now} == now == {**now, "built": "a-newer-core"}
         assert stamp["rule"] == puzzles.CERTIFY_VERSION and stamp["made"]
-        assert stamp["sample"] == len(puzzles.certify_sample(old)) == len(stamp["ids"])
+        sample = puzzles.certify_sample(old, "a-newer-core")
+        assert stamp["sample"] == len(sample) == len(stamp["ids"])
+        assert stamp["ids"] == [row["id"] for row in sample]
         assert stamp["rows"] == len(old["positions"]) + len(old.get("set_aside") or [])
+        offers = [row for row in old["positions"]
+                  if row["result"] == puzzles.WON and not puzzles.trivial(row)]
+        assert stamp["offered"] == len(offers)
+        assert stamp["offered_sampled"] == min(len(offers), puzzles.CERTIFY_OFFERED)
         [kept] = puzzles.work_dir(runs, digest).glob("record-*.json")
         assert kept.read_bytes() == before
         assert not puzzles.standing(digest, "probe", SPEC, runs).owed
+
+    def test_a_record_certified_under_an_older_rule_is_not_owed_by_the_bump(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q1115: `CERTIFY_VERSION` 2 names the claim a new certificate carries; a record
+        certified under rule 1 on the loaded core and compile stays current, and is owed
+        again only when the core or compile moves, as any certificate is."""
+        root, digest, _said = made
+        runs = _rebuilt(root, tmp_path, monkeypatch)
+        puzzles.recertify(SPEC, runs, workers=4)
+        path = puzzles.record_path(runs, digest)
+        data = json.loads(path.read_text("utf-8"))
+        data["basis"]["certified"]["rule"] = 1
+        data["basis"]["certified"].pop("offered_sampled")
+        path.write_text(json.dumps(data), encoding="utf-8")
+        assert puzzles.CERTIFY_VERSION > 1
+        assert not puzzles.standing(digest, "probe", SPEC, runs).owed
+        assert puzzles.certifiable(Engine(SPEC), data, puzzles.work_basis(SPEC)) is None
+        monkeypatch.setattr(measurement, "built_fingerprint", lambda: "a-third-core")
+        assert puzzles.standing(digest, "probe", SPEC, runs).needs == puzzles.RECERTIFY
 
     def test_a_re_certified_record_is_owed_again_on_the_next_core(
         self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -301,7 +356,7 @@ class TestRecertify:
         path = puzzles.record_path(runs, digest)
         data = json.loads(path.read_text("utf-8"))
         # The record says one thing of a sampled row; this core proves another.
-        first = puzzles.certify_sample(data)[0]["id"]
+        first = puzzles.certify_sample(data, "a-newer-core")[0]["id"]
         for row in data["positions"]:
             if row["id"] == first:
                 row["ends_in"] = int(row["ends_in"]) + 2
@@ -322,7 +377,7 @@ class TestRecertify:
         runs = _rebuilt(root, tmp_path, monkeypatch)
         path = puzzles.record_path(runs, digest)
         data = json.loads(path.read_text("utf-8"))
-        rows = [r for r in puzzles.certify_sample(data) if "shallow" in r]
+        rows = [r for r in puzzles.certify_sample(data, "a-newer-core") if "shallow" in r]
         assert rows, "the fixture's sample holds a row T5 answered"
         flip = {puzzles.FOUND: puzzles.MISSED, puzzles.MISSED: puzzles.FOUND}
         for row in [*data["positions"], *(data.get("set_aside") or [])]:
@@ -419,6 +474,28 @@ class TestRecertify:
         assert kept is not None and not kept.provisional and kept.certified
         assert proven.page(kept, None)["provisional"] == ""
         assert "Checked again on" in proven.basis_said(kept)
+
+    def test_the_words_claim_a_sample_never_every_offered_position(
+        self, made, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q1115 (rule 2): the site's basis line, the refresher's word for the work and the
+        re-certify's own line say a sample was re-proved and how large, never that every
+        offered position was."""
+        from chess_variant_sandbox.web import refreshing
+
+        root, digest, _said = made
+        runs = _rebuilt(root, tmp_path, monkeypatch)
+        lines: list[str] = []
+        done = puzzles.recertify(SPEC, runs, workers=4, say=lines.append)
+        kept = proven.load(runs, digest, SPEC)
+        assert kept is not None and kept.certified
+        said = proven.basis_said(kept)
+        assert (f"by proving {done['sample']} of its {done['rows']} positions again"
+                in said)
+        words = [said, *lines, refreshing.PROOFS["re-certify"]]
+        assert any("sample" in line for line in lines + [refreshing.PROOFS["re-certify"]])
+        for line in words:
+            assert not re.search(r"(?i)every (offered|position it offers)", line), line
 
 
 # ------------------------------------------------------------------ the sample
@@ -682,16 +759,18 @@ class TestTheLoop:
         looping = refresher.Refresher(machine, refresher.Ledger(tmp_path), passes=10)
         assert looping.run() == 0
         work = [c[:2] for c in machine.calls
-                if c[0] in ("acquire", "repair", "release", "deliver", "ladders", "proofs")]
+                if c[0] in ("acquire", "repair", "release", "deliver", "ladders", "proofs",
+                            "resurvey")]
         assert work == [
             ("acquire", "quiet"), ("repair", "s"), ("release", "quiet"), ("deliver", "s"),
+            # Each survey read whole once a pass, then the game just repaired alone (Q1110).
             ("ladders", "c1"),
             ("acquire", "heavy"), ("repair", "l"), ("release", "heavy"),
-            ("ladders", "c1"), ("proofs", "c1"),
+            ("resurvey", "ladders"), ("proofs", "c1"),
             ("acquire", "heavy"), ("repair", "p"), ("release", "heavy"),
-            ("ladders", "c1"), ("proofs", "c1"),
+            ("resurvey", "proofs"),
             ("acquire", "heavy"), ("repair", "q"), ("release", "heavy"),
-            ("ladders", "c1"), ("proofs", "c1"),
+            ("resurvey", "proofs"),
         ]
         log = refresher.read_log(tmp_path)
         assert [(line["hash"], line["needs"]) for line in log if line["event"] == "repaired"] == [
@@ -762,6 +841,12 @@ class FixtureMachine(FakeMachine):
     def proofs(self) -> list[Item]:
         self.calls.append(("proofs", self.commit))
         return refresher.proof_items(self.root / "runs", self.root)
+
+    def resurvey(self, part: str, digest: str) -> list[Item]:
+        # One game read again after its proof (Q1110), as `refresher plan --only` reads it.
+        self.calls.append(("resurvey", part, digest))
+        assert part == refresher.PROOFS
+        return refresher.proof_items(self.root / "runs", self.root, only=[digest])
 
     def repair(self, it: Item) -> Outcome:
         if not it.proofs:
@@ -890,6 +975,38 @@ class TestTheRealMachine:
         assert prove[prove.index("--workers") + 1] == "6"
         # Nothing staged: a record is written in place in the main checkout's runs/.
         assert not (repo.worktree / "runs").exists()
+
+    def test_one_game_is_read_again_by_the_modules_own_plan(self, repo) -> None:  # noqa: F811
+        """Q1110: after a repair the loop reads that game alone, in the worktree, over the
+        main checkout's runs/, through `python -m chess_variant_sandbox.refresher plan`."""
+        seen: list[list[str]] = []
+        row = Item(hash="h", name="h", needs="re-prove", reason="still", tier=3,
+                   measured="", stored="proofs:abc").as_dict()
+
+        def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            seen.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, json.dumps([row]), "")
+
+        machine = replace(repo, run=run)
+        [found] = machine.resurvey(refresher.PROOFS, "h")
+        assert found.stored == "proofs:abc"
+        [argv] = seen
+        assert Path(argv[0]) == refresher._python(repo.worktree)
+        assert argv[1:9] == ["-m", "chess_variant_sandbox.refresher", "plan", "--part",
+                             "proofs", "--only", "h", "--runs"]
+        assert argv[9] == str(repo.main_runs)
+
+
+def test_the_plan_entry_point_reads_the_named_games_alone(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The module's own `plan` reads only the games it names (none here owes a record, so
+    nothing is printed but the empty list), and refuses to read one score alone."""
+    assert refresher.main(["plan", "--part", "proofs", "--only", "0" * 12,
+                           "--runs", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out) == []
+    with pytest.raises(ValueError):
+        refresher.plan(tmp_path, refresher.SCORES, only=["0" * 12])
 
 
 def _main_runs() -> Path:

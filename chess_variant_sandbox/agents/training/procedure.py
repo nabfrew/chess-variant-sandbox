@@ -53,7 +53,7 @@ ACCEPT_ERRORS = 2.0
 
 # Q918g (`docs/archive/plan-simultaneous.md` §6.4, *Q918g, scoped*): a round game's acceptance duel is at
 # the round roster's bottom rung, `matrix:nodes=1600` on both seats (§7: "beats
-# `matrix:nodes=1600` there"), sixteen times `corpus.CANONICAL_AGENTS`' 100 as every round
+# `matrix:nodes=1600` there"), sixteen times `corpus.ROUND_LADDER_BUDGETS`' 100 as every round
 # budget is (`loop/screen.ROUND_BUDGET_FACTOR`). The rest of the duel is `ACCEPT_*`'s: 200
 # pairs from seed 1,000,000, up to 8 random plies (4 rounds), two errors above even.
 ROUND_ACCEPT_NODES = 1_600

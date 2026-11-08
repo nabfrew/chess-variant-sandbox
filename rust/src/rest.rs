@@ -269,6 +269,8 @@ impl<'t> Game<'t> {
             let kind = move_kind(m);
             !enters_play(kind)
                 && kind != MOVE_FOLD
+                // H3: a pass names square 0 and moves nothing from it.
+                && kind != MOVE_PASS
                 && entries.clone().any(|e| e.live() && e.square as usize == move_from(m))
         });
         (false, lifted)

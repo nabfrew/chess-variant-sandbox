@@ -462,6 +462,12 @@ class FakeMachine:
                        for h, (needs, digest) in self.proofs_owed.items()),
                       key=lambda it: it.key)
 
+    def resurvey(self, part: str, digest: str) -> list[Item]:
+        self.calls.append(("resurvey", part, digest))
+        owed = self.ladders_owed if part == refresher.LADDERS else self.proofs_owed
+        return [Item(hash=h, name=h, needs=needs, reason="", tier=3, measured="", stored=stored)
+                for h, (needs, stored) in owed.items() if h == digest]
+
     def repair(self, it: Item) -> Outcome:
         assert self.holding == it.lease
         start = self.commit

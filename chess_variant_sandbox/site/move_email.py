@@ -43,8 +43,8 @@ Whether the other player owes a move after this one is read off the snapshot aft
 that leaves its mover owing again sends nothing: the reply turn after a spy falls
 opens a round its own player announces, and the email waits for the announcement. Each
 email says what is asked (`mail.ASKED`): the reply, the announcement, the answer to a named
-announcement (shown to both, so it may be named), or, once both spies are lost, a move
-sealed in secret. A round revealed names who announced. Nothing a secret round hides is
+announcement (shown to both, so it may be named), or, while neither player has a spy, a
+move sealed in secret. A round revealed names who announced. Nothing a secret round hides is
 named, as above.
 
 ## A failed send never blocks a move

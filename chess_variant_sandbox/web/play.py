@@ -39,6 +39,8 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_DUCK,
     MOVE_FOREIGN,
     MOVE_HIRE,
+    MOVE_KEEP,
+    MOVE_PASS,
     MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
@@ -212,8 +214,10 @@ def _coming(engine: Any, state: GameState) -> dict[str, list[dict[str, Any]]]:
 
     `engine.coming.coming_phases` is the two phases the rules would run on the board as it
     stands (Q660, Q764), each in the shape a ply's own ``phase`` has: ``coming`` after the
-    next move, ``comingThen`` after the reply, which is every step a wild piece takes
-    before the player now to move moves again. The page draws each as an arrow per wild
+    next move, ``comingThen`` after the move that follows it. In a turn of one move that is
+    the reply, so the two are every step a wild piece takes before the player now to move
+    moves again; in a long turn a phase follows every move (SR7b, L3), so mid-turn the
+    second phase follows the mover's own next move. The page draws each as an arrow per wild
     piece, the second fainter, and decides nothing: which piece walks where, whether it
     waits and what it would eat are the core's. Wild pieces walk fixed routes, so nothing
     here is drawn at random; the one thing it cannot know is the coming moves, which may
@@ -249,6 +253,10 @@ def turncoat_payload(engine: Any, state: GameState) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if spec.purse is not None:
         out["purse"] = [int(state.purse[0]), int(state.purse[1])]
+    # TS1 (`docs/plan-tessabi.md` §1): each player's banked pieces (`GameState.banked`), the
+    # core's count, present only under `reach.removes`.
+    if spec.reach is not None and spec.reach.removes:
+        out["banked"] = [int(state.banked[0]), int(state.banked[1])]
     neutrals = spec.neutrals
     if neutrals is not None and neutrals.has_majority:
         held = []
@@ -256,6 +264,11 @@ def turncoat_payload(engine: Any, state: GameState) -> dict[str, Any]:
             if not value or spec.owner_of(value) != 2:
                 continue
             if neutrals.kind[spec.type_of(value)] != CONTROL_MAJORITY:
+                continue
+            if spec.type_of(value) in neutrals.shared:
+                # TS2 (`docs/plan-tessabi.md` §2): a shared piece is the side to move's, by
+                # the compiled rule; nothing is counted.
+                held.append([square, int(state.side_to_move)])
                 continue
             holder = engine.controller_of(state, square)
             if holder in (0, 1):
@@ -281,6 +294,16 @@ def purchase_entry(engine: Any, state: GameState, move: int) -> dict[str, Any]:
     bribe = engine.spec.owner_of(value) != 2
     costs = purse.bribe if bribe else purse.hire
     return {"hire": piece_type, "cost": int(costs[piece_type]), "bribe": bribe}
+
+
+def upkeep_entry(engine: Any, state: GameState, move: int) -> dict[str, Any]:
+    """H1 (`docs/plan-hunger.md` §2.5): a move's cost under ``rules.purse.upkeep``, the core's
+    answer (`Engine.move_cost`) on the position it is made from, as ``{"upkeep": n}``. Empty in
+    every game without the rule, so their entries are what they were."""
+    purse = engine.spec.purse
+    if purse is None or not purse.upkeep:
+        return {}
+    return {"upkeep": engine.move_cost(state, move)}
 
 
 def resting_payload(state: GameState) -> list[dict[str, int]]:
@@ -427,7 +450,8 @@ class Session:
         # Schema 26: a game in rounds has no side to move. Whose choice the board offers,
         # its moves, the verdict and whether a computer seat still owes its sealed move are
         # `_round_view`'s; everything else in the snapshot is drawn as for any game. A spy
-        # game is one by turns until a spy is lost, and in rounds after.
+        # game is played by turns while both players hold a spy and in rounds while either
+        # has none; since SR7h (Y3) a spy can be gained, so it may go back to turns.
         in_rounds = spy.is_round if spy is not None else engine.simultaneous
         rounds = self._round_view(engine, spy) if in_rounds else None
         if rounds is None:
@@ -625,8 +649,11 @@ class Session:
             kind = move_type(move)
             entry = {
                 "move": move,
-                "from": None if kind == MOVE_DROP else move_from(move),
-                "to": move_to(move),
+                # TS3: a keep moves nothing, so it has no square; the page offers it as a
+                # button (`keepTrayHtml`).
+                # H3: nor does a pass (`passTrayHtml`).
+                "from": None if kind in (MOVE_DROP, MOVE_KEEP, MOVE_PASS) else move_from(move),
+                "to": None if kind in (MOVE_KEEP, MOVE_PASS) else move_to(move),
                 "text": engine.describe_move(state, move),
                 "kind": MOVE_TYPE_NAMES.get(kind, "normal"),
             }
@@ -678,6 +705,10 @@ class Session:
             if landing is not None:
                 entry["landing"] = landing
                 entry["landingName"] = square_name(landing, engine.spec.width)
+            # H1 (`docs/plan-hunger.md` §2.5): what the move costs under `rules.purse.upkeep`,
+            # the core's answer (`Engine.move_cost`; a buy's price is its `cost` above). Only
+            # in a game with the rule, so every other game's entry is what it was.
+            entry.update(upkeep_entry(engine, state, move))
             offered.append(entry)
         return offered
 
@@ -859,8 +890,12 @@ class Session:
             {
                 "ply": self.state.ply,
                 "text": engine.describe_move(self.state, move),
-                "from": None if move_type(move) in (MOVE_DROP, MOVE_BUY) else move_from(move),
-                "to": move_to(move),
+                "from": (
+                    None if move_type(move) in (MOVE_DROP, MOVE_BUY, MOVE_KEEP, MOVE_PASS)
+                    else move_from(move)
+                ),
+                # TS3: a keep goes nowhere, so the board draws no trail for it; H3: nor a pass.
+                "to": None if move_type(move) in (MOVE_KEEP, MOVE_PASS) else move_to(move),
                 # Generation 42 (N4c): a duck move's own block, `_offer`'s words; its
                 # placement has no origin and its pass no square. Absent for every other move.
                 **(_duck_entry(move) if move_type(move) == MOVE_DUCK else {}),
@@ -917,6 +952,9 @@ class Session:
                 # TC7 (§5.8): what a buy, hire or bribe bought and cost, and the purses and
                 # held neutrals of the position it left; absent without the rules.
                 **purchase_entry(engine, self.state, move),
+                # H1 (`docs/plan-hunger.md` §2.5): what the move cost under
+                # `rules.purse.upkeep`, asked of the position it was made on; absent otherwise.
+                **upkeep_entry(engine, self.state, move),
                 **turncoat_payload(engine, state),
             }
         )
@@ -977,8 +1015,9 @@ class Session:
         return []
 
     def _rounds_played(self) -> int:
-        """Rounds revealed so far: two history entries each. A spy game's turns before its
-        rounds are one entry each and are not rounds."""
+        """Rounds revealed so far: two history entries each. A spy game's turns are one entry
+        each and are not rounds, whether before its rounds or, a spy gained back (SR7h),
+        between them."""
         return sum(1 for entry in self.history if "round" in entry) // 2
 
     def _round_view(self, engine: Any, spy: Any = None) -> dict[str, Any]:
@@ -1198,6 +1237,8 @@ _EVENT_SWAP = 4
 # played because the faster move ended the game (7). Q943b draws the two beats.
 _EVENT_ORDER, _EVENT_LOST, _EVENT_UNPLAYED = 5, 6, 7
 _EVENT_NAMES = ("collision", "void", "initiative", "barred", "swap", "order", "lost", "unplayed")
+# The kinds of move that enter play, with no origin: a drop, and a buy (TC5; in a round, SR7g).
+_ENTERS_PLAY = (MOVE_DROP, MOVE_BUY)
 
 
 # `ScoringRule.count` as the score's name in the both-fire sentence: what a side was ahead
@@ -1281,7 +1322,9 @@ def round_reveal(
 
     `moves` is each seat's `{from, to, void}`, `events` each event as `{kind, square,
     player}`, `results` each seat's move in one word (`void`, `won`, `lost`, `both lost`,
-    schema 28's `unplayed`, or None), `words` the sentences, in the order the events came.
+    schema 28's `unplayed`, SR7f's `missed` -- a strike at a nobody's piece that lost to the
+    other's -- or None), `words` the sentences, in the order the events came. A missed
+    strike's move is `void` in `moves`: its piece stands where it was, as a void one does.
     `sides` is what the board calls the two players (`viz.pieces.side_names`).
     """
     spec = engine.spec
@@ -1289,7 +1332,7 @@ def round_reveal(
 
     def piece(seat: int) -> str:
         move = moves[seat]
-        if move_type(move) == MOVE_DROP:
+        if move_type(move) in _ENTERS_PLAY:
             kind = move_promotion(move) % spec.n_types
         else:
             kind = spec.type_of(before.board[move_from(move)])
@@ -1302,19 +1345,50 @@ def round_reveal(
         """The move as its seat sealed it, on the round's board."""
         return str(engine.describe_move(_as_seat(before, seat), moves[seat]))
 
-    origins = [None if move_type(m) == MOVE_DROP else move_from(m) for m in moves]
+    # A drop and (SR7g, R19) a buy enter play: no origin, the piece named by the word.
+    origins = [None if move_type(m) in _ENTERS_PLAY else move_from(m) for m in moves]
     targets = [move_to(m) for m in moves]
     voids = {player for kind, _square, player in events if kind == _EVENT_VOID}
     ordered = any(kind == _EVENT_ORDER for kind, _square, _player in events)
+
+    def nobodys(square: int) -> str | None:
+        """The name of the piece nobody owns on ``square`` before the round, else None."""
+        value = before.board[square]
+        if not value or spec.owner_of(value) < 2:
+            return None
+        return str(spec.piece_names[spec.type_of(value)])
+
+    # SR7f (R18): two strikes that stay (two shots, two contacts) at one piece nobody owns
+    # meet by `beats` and the tie, and the loser misses (`rounds.rs::strike_contest`): an
+    # `EVENT_VOID` at the loser's origin, its piece standing. Told from a void by the two
+    # moves' one target, which held a nobody's piece; never in an ordered round.
+    missed = {
+        seat for seat in voids
+        if not ordered and origins[0] is not None and origins[1] is not None
+        and targets[0] == targets[1] and nobodys(targets[seat]) is not None
+    }
     results: list[str | None] = [None, None]
     words: list[str] = []
-    if len(voids) == 2:
+    if len(missed) == 2:
+        words.append(
+            f"{piece(0)} and {piece(1)} both struck at the {nobodys(targets[0])} on "
+            f"{named(targets[0])}, and neither beat the other: both missed and stayed."
+        )
+    elif len(voids) == 2:
         words.append(
             f"{piece(0)} and {piece(1)} each went for the other, which had moved: "
             f"both moves were void."
         )
     for kind, square, player in events:
-        if kind == _EVENT_VOID:
+        if kind == _EVENT_VOID and player in missed:
+            results[player] = "missed"
+            if len(missed) == 1:
+                words.append(
+                    f"{piece(player)} struck at the {nobodys(targets[player])} on "
+                    f"{named(targets[player])} too, but {piece(1 - player)}'s strike won: "
+                    f"it missed and stayed."
+                )
+        elif kind == _EVENT_VOID:
             results[player] = "void"
             if ordered:
                 words.append(
@@ -1357,7 +1431,19 @@ def round_reveal(
         elif kind == _EVENT_LOST:
             results[player] = "lost"
             faster, stood = 1 - player, origins[player]
-            if stood is not None and targets[faster] == stood:
+            shooter = origins[faster]
+            shot = (
+                shooter is not None
+                and after.board[shooter] != 0 and spec.owner_of(after.board[shooter]) == faster
+            )
+            if stood is not None and targets[faster] == stood and shot:
+                # SR7e (R11): a shot strikes on the round's board before anything moves, in a
+                # round of equal speeds too; the shooter stays where it was.
+                words.append(
+                    f"{piece(faster)} shot {piece(player)} on {named(stood)} before it could "
+                    f"move: its move was lost."
+                )
+            elif stood is not None and targets[faster] == stood:
                 words.append(
                     f"{piece(faster)} took {piece(player)} on {named(stood)} before "
                     f"it could move: its move was lost."

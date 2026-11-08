@@ -161,7 +161,7 @@ SPY_READINGS: dict[str, str] = {
     ),
     "piece_utilisation": "every move of every step, read on the board it was chosen on",
     "instance_participation": "every move of every step",
-    "skill_gradient": "minimax:nodes=100 to 6400 on the built-in objective, every phase",
+    "skill_gradient": "minimax:nodes=400 to 25600 on the built-in objective, every phase",
     "lead_conversion": "seat 0's material before each step, written once per ply",
 }
 
@@ -578,7 +578,8 @@ def _split_rung(records: list[GameRecord]) -> int | None:
     the graded ladder*, deliberately as English rather than as a node count, so that it
     could not be chosen after the corpus had been swept. On the canonical roster the
     graded ladder is ``greedy`` plus the six searching budgets -- seven rungs, whose
-    fourth is 400.
+    fourth is 1,600 since the ladder shift (`docs/plan-ladder-shift.md`, 2026-11-05;
+    400 on the ladder of 100 to 6,400 before it). Read under the new rungs, not re-aimed.
 
     **The tie-break, fixed here while it decides nothing.** At an odd rung count the two
     readings of "median" agree, which is the case on every roster this project has
@@ -1767,4 +1768,5 @@ def _normalised_entropy(counts: list[int]) -> float:
     if total <= 0 or len(counts) < 2:
         return 0.0
     entropy = -sum((c / total) * math.log(c / total) for c in counts if c > 0)
-    return min(1.0, entropy / math.log(len(counts)))
+    # ``+ 0.0`` turns the -0.0 a single moving type gives (``-1 * log(1)``) into +0.0.
+    return min(1.0, entropy / math.log(len(counts))) + 0.0

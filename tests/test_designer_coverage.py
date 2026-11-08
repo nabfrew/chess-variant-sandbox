@@ -149,6 +149,8 @@ RULE_KEY_SETS: dict[tuple[str, ...], set[str]] = {
     ("npcs",): schema._NPC_KEYS,
     ("duck",): schema._DUCK_KEYS,
     ("purse",): schema._PURSE_KEYS,
+    # H2 (Q1127): income's rate and ground, the second branch of its `anyOf`.
+    ("income",): schema._INCOME_KEYS,
     # Q1074b6 lifted `no_push_back` and Q1074b7 `walls`, which the card draws from the
     # proposer's schema.
     ("push",): schema._PUSH_RULE_KEYS,

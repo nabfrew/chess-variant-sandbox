@@ -1706,6 +1706,16 @@ function drawBoard(previous) {
     through.set(m.to, way ? `var(--pair-${way.end.pair})` : 'var(--dot)');
     entries.add(m.portal);
   }
+  // H1 (`docs/plan-hunger.md` §2.5): under `rules.purse.upkeep` each of the picked piece's
+  // landings carries what moving there costs, the engine's answer on the offered move
+  // (`upkeep`); a move the purse cannot pay for is not offered, so it has no dot to carry one.
+  // Where several moves share a square (a promotion's choices), the cheapest is shown.
+  const upkeepAt = new Map();
+  for (const m of movesFrom(picked)) {
+    if (m.upkeep === undefined || m.hire !== undefined) continue;
+    const known = upkeepAt.get(m.to);
+    if (known === undefined || m.upkeep < known) upkeepAt.set(m.to, m.upkeep);
+  }
   // Q1071: every piece the player to move may hire or bribe wears a coin with its cost, off
   // the engine's hire moves, whatever is picked: never a ring, which is a capture's.
   const coins = coinSquares();
@@ -1841,6 +1851,12 @@ function drawBoard(previous) {
                  fill="${way}" stroke="var(--portal-edge)" stroke-width="${cell * 0.025}"
                  data-square="${square}" data-through="1"/>`;
       }
+    }
+    if (real && upkeepAt.has(square) && targets.has(square)) {
+      // H1: the move's cost in coins, small, on the landing's bottom-right corner.
+      out += `<text x="${x + cell * 0.88}" y="${y + cell * 0.9}" text-anchor="end"
+               font-size="${cell * 0.24}" fill="var(--ink)" pointer-events="none"
+               data-upkeep="${square}">${upkeepAt.get(square)}</text>`;
     }
     if (real && coins.has(square)) {
       const hire = coins.get(square);
@@ -1987,6 +2003,7 @@ function drawBoard(previous) {
 
   drawHand();
   drawPurses();
+  drawBanks();
   drawStatus();
   drawPieceSays();
   drawReview();
@@ -2897,10 +2914,12 @@ function moveRows() {
   const outcome = SESSION.outcome;
   const last = SESSION.history.length - 1;
   // One move's row, and its wild pieces' walk under it.
-  const plyRow = (m, i) => {
-    const stripe = i % 2 === 0;
+  // `n` is the move's place among the turns, which is `i` save in a spy game whose turns
+  // come back after rounds (SR7h), where a round's two entries are not two turns.
+  const plyRow = (m, i, n = i) => {
+    const stripe = n % 2 === 0;
     rows.push({ plies: i + 1, kind: 'move', stripe: stripe, html: `${
-      stripe ? `${Math.floor(i / 2) + 1}.` : '&nbsp;&nbsp;&hellip;'} ${esc(m.text)}${
+      stripe ? `${Math.floor(n / 2) + 1}.` : '&nbsp;&nbsp;&hellip;'} ${esc(m.text)}${
       signHtml(m, i === last ? outcome : null)}${liftedHtml(m)}${spentHtml(m)}${lookedHtml(m)}${
       corrMovedDayHtml(i)}` });
     if (!(m.phase || []).length) return;
@@ -2910,13 +2929,14 @@ function moveRows() {
                 html: esc(phaseText(m.phase, beat ? beat.walkers : null)) });
   };
   // Schema 26: a round is one row, both moves in seat order (`roundRowHtml`), its wild
-  // pieces' walk under it, as a ply's is. A spy game's (schema 27) turns come first, a row
-  // a move, and its rounds are named as rounds, so the two counts are not read as one.
+  // pieces' walk under it, as a ply's is. A spy game's (schema 27) turns are a row a move,
+  // before its rounds or, a spy gained back (SR7h), between them, and its rounds are named
+  // as rounds, so the two counts are not read as one.
   if (SESSION.round || SESSION.spy) {
-    let i = 0;
+    let i = 0, turns = 0;
     while (i < SESSION.history.length) {
       const first = SESSION.history[i], second = SESSION.history[i + 1];
-      if (first.round === undefined) { plyRow(first, i); i += 1; continue; }
+      if (first.round === undefined) { plyRow(first, i, turns); i += 1; turns += 1; continue; }
       if (!second) break;
       const stripe = first.round % 2 === 0;
       const number = SESSION.spy ? `round ${first.round + 1}` : first.round + 1;
@@ -2962,7 +2982,7 @@ function moveRows() {
                              html: `<b>${esc(verdictText(outcome))}</b>` });
     return rows;
   }
-  SESSION.history.forEach(plyRow);
+  SESSION.history.forEach((m, i) => plyRow(m, i));
   // The game's end, in the strip's own words, as the list's last line.
   if (outcome) rows.push({ plies: last + 1, kind: 'result', stripe: false,
                            html: `<b>${esc(verdictText(outcome))}</b>` });
@@ -3072,6 +3092,7 @@ function seatHtml(player) {
       : `${mark}${esc(seatLabel(player))}`;
   return `<b>${esc(sideName(player))}</b>
     <span class="muted">${label}</span>${initiativeHtml(player)}${purseSlotHtml(player)}${
+    bankSlotHtml(player)}${
     strength ? `<div class="muted small">${esc(strength)}</div>` : ''}`;
 }
 
@@ -3548,7 +3569,7 @@ function drawHand() {
   const droppable = new Set(SESSION.moves.filter(m => m.drop !== undefined).map(m => m.drop));
   // Generation 42 (N4c): with the duck owed, the strip is the duck's: the duck waiting off the
   // board, or the pass where it is the one move.
-  const tray = duckTrayHtml();
+  const tray = duckTrayHtml() || keepTrayHtml() || passTrayHtml();
   if (tray) { hand.innerHTML = tray; wireDuckTray(hand); return; }
   // TC7 (`docs/plan-turncoat.md` §5.8): beside the hand, the market and the picked piece's
   // hire or bribe, each from the engine's list.
@@ -3596,6 +3617,30 @@ function drawHand() {
 // listed: a buy names its type (`buy`) and its square, a hire or bribe its piece's square
 // (`hire`, `cost`, `bribe`). The page offers what the list holds and works none of it out:
 // a market piece the list does not offer is drawn greyed, whatever the purse says.
+
+// TS1 (`docs/plan-tessabi.md` §1): each player's banked pieces on the position on screen, the
+// core's count (`banked`, on the snapshot and on each history entry, `web/play.py`), out of the
+// goal's count (`ruleset.goalCount`); null without `reach.removes`.
+function banksShown() {
+  if (!SESSION || !SESSION.ruleset.goalBanks) return null;
+  return (AT ? AT.banked : SESSION.banked) || SESSION.banked || null;
+}
+
+// Under each seat's name, how many of its pieces it has banked; filled by `drawBanks`.
+function bankSlotHtml(player) {
+  if (!SESSION || !SESSION.ruleset.goalBanks) return '';
+  return `<div class="small" data-banked="${player}"></div>`;
+}
+
+function drawBanks() {
+  const banked = banksShown();
+  if (!banked) return;
+  const count = SESSION.ruleset.goalCount || 1;
+  document.querySelectorAll('[data-banked]').forEach(node => {
+    node.textContent = `${banked[Number(node.dataset.banked)] || 0} of ${count} home`;
+    node.title = 'pieces taken off on reaching their goal; ' + count + ' wins';
+  });
+}
 
 // Each player's coins on the position on screen; null without a purse.
 function purseShown() {
@@ -3723,10 +3768,14 @@ function hireNote(fromHere) {
 }
 
 // A purchase in the move list: what it cost, beside the engine's words (`N$e1`, `$Md4`).
+// H1: a move's upkeep under `rules.purse.upkeep` (the history entry's `upkeep`, the core's
+// answer on the position before it), when it cost anything.
 function spentHtml(move) {
-  if (!move || move.cost === undefined) return '';
+  if (!move) return '';
+  const paid = move.upkeep ? ` <span class="muted small" data-paid>${esc(`paid ${move.upkeep}`)}</span>` : '';
+  if (move.cost === undefined) return paid;
   const verb = move.buy !== undefined ? 'bought' : move.bribe ? 'bribed' : 'hired';
-  return ` <span class="muted small" data-spent>${esc(`${verb} for ${move.cost}`)}</span>`;
+  return ` <span class="muted small" data-spent>${esc(`${verb} for ${move.cost}`)}</span>${paid}`;
 }
 
 // TC7 (§4.3, §5.8): the pieces nobody owns that a player holds by majority on the position
@@ -3779,6 +3828,34 @@ function duckTrayHtml() {
   if (SESSION.duck !== null && SESSION.duck !== undefined) return '';
   return `${duckPieceSvg()}<span class="muted u-as-center">the duck waits off the board:
     click a lit square to put it there</span>`;
+}
+
+// TS3 (`docs/plan-tessabi.md` §3, turn parts): the keep, a move that leaves an optional part
+// of the turn and moves nothing, offered as a button under the board when the engine lists it
+// and a person is to move. It shares the duck's button wiring (a parts game has no duck).
+function keepTrayHtml() {
+  if (!SESSION || AT || SESSION.outcome || SESSION.awaitingAgent) return '';
+  if (SESSION.seats[SESSION.sideToMove] !== 'human') return '';
+  const between = SESSION.correspondence;
+  if (between && between.you !== SESSION.sideToMove) return '';
+  const keep = SESSION.moves.find(m => m.kind === 'keep');
+  if (!keep) return '';
+  return `<button class="duck-pass" data-duck-pass="${keep.move}">${
+    'keep: skip the optional part of this turn'}</button>`;
+}
+
+// H3 (`docs/plan-hunger.md` §4, `rules.pass`): the pass, a move that moves nothing, offered as a
+// button under the board when the engine lists it and a person is to move. The page's word is
+// "pass" (a game's description may call it something else); it shares the duck's wiring.
+function passTrayHtml() {
+  if (!SESSION || AT || SESSION.outcome || SESSION.awaitingAgent) return '';
+  if (SESSION.seats[SESSION.sideToMove] !== 'human') return '';
+  const between = SESSION.correspondence;
+  if (between && between.you !== SESSION.sideToMove) return '';
+  const pass = SESSION.moves.find(m => m.kind === 'pass');
+  if (!pass) return '';
+  return `<button class="duck-pass" data-duck-pass="${pass.move}">${
+    'pass: make no move this turn'}</button>`;
 }
 
 function wireDuckTray(hand) {
@@ -4725,6 +4802,8 @@ function beatEntry(kind, board, steps, snapshot, plies, walkers, coming) {
     // own), else the snapshot's (the opening's, before any move); absent without the rules.
     purse: ((move && move.purse) || snapshot.purse || []).slice(),
     held: ((move ? move.held : snapshot.held) || []).slice(),
+    // TS1: the banks of the position the ply left (the move's own), else the snapshot's.
+    banked: ((move && move.banked) || snapshot.banked || []).slice(),
   };
 }
 
@@ -5477,7 +5556,7 @@ function corrStatus() {
       check}`;
   }
   const left = between.toMove ? ` ${esc(between.toMove)}` : '';
-  // A spy game's turn says its phase (Q935e): both spies standing, or the reply.
+  // A spy game's turn says its phase (Q935e): both players with a spy, or the reply.
   const spy = corrSpyNoteHtml();
   if (between.you === mover) {
     return `<b>Your move.</b> ${fact}${left}${offer}${check}${

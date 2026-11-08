@@ -109,10 +109,20 @@ class TestDescriptors:
         """
         assert cells["rps-v1"][5] == 1
         assert cells["intransitive"][5] == 1
+        # TS2's boulder (Q1132) restricts captures too: its runners take only runners, so the
+        # boulder nobody owns is taken by nothing.
+        assert cells["boulder"][5] == 1
+        # TS3's drover (Q1133) is boulder's board under a turn of parts, so likewise.
+        assert cells["drover"][5] == 1
+        # TS4's leapfrog (Q1134): its frogs take nothing, a capture rule restricted to none.
+        assert cells["leapfrog"][5] == 1
+        # TS5's tessabi (Q1135): its runners and gatekeeper take nothing, likewise.
+        assert cells["tessabi"][5] == 1
         assert all(
             cells[name][5] == 0
             for name in CORPUS
-            if not name.startswith("rps-") and name != "intransitive"
+            if not name.startswith("rps-")
+            and name not in ("intransitive", "boulder", "drover", "leapfrog", "tessabi")
         )
         # ...and it is not merely the board or the army doing the work: hierarchy chess
         # is chess's board and chess's army, filed apart from chess.

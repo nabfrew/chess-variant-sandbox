@@ -178,12 +178,13 @@ class TestTheBrowseMenuOffersTheDefaultVersionsParts:
         assert "rule_yield" not in legend["components"]
         assert len(legend["components"]) == 12
 
-    def test_under_v12_the_menu_offers_v11s_parts(self) -> None:
-        """`v12` (EV4) is `v11`'s design with its ends given sources, so the menu is still
-        `v11`'s six families and eleven components. Before `v11` (C2, Q391) this read
-        `v10`'s menu, elegance and all."""
+    def test_under_v13_the_menu_offers_v11s_parts(self) -> None:
+        """`v12` (EV4) is `v11`'s design with its ends given sources and `v13` (Q1104) is
+        `v12`'s with its reference ends re-read, so the menu is still `v11`'s six families
+        and eleven components. Before `v11` (C2, Q391) this read `v10`'s menu, elegance and
+        all."""
         legend = library.metric_legend()
-        assert legend["version"] == scoring.DEFAULT_WEIGHTS == "v12"
+        assert legend["version"] == scoring.DEFAULT_WEIGHTS == "v13"
         assert len(legend["families"]) == 6
         assert "elegance" not in legend["families"]
         assert "rule_yield" not in legend["components"]

@@ -266,14 +266,14 @@ ASKED = ("reply", "announce", "answer", "seal")
 """What a spy game's move email can ask of its reader (Q935e), beside a plain move."""
 
 _ASKED_SAID = {
-    "reply": "Your spy is lost, so it's your move: one ordinary reply, and then the game is "
-    "played in rounds:",
+    "reply": "Your spy is lost, so it's your move: one ordinary reply, and then rounds "
+    "begin:",
     "announce": "It's your turn to announce: your move is shown to {opponent}, who answers "
     "it, and then both are made at once:",
     "answer": "Your answer is due: choose your move with theirs in view, and both are made "
     "at once:",
-    "seal": "Both spies are lost, so from now on each of you seals a move in secret. It's "
-    "your move: seal yours, and both are made at once:",
+    "seal": "Neither of you has a spy, so each of you seals a move in secret. It's your "
+    "move: seal yours, and both are made at once:",
 }
 
 _SUBJECTS = {"announce": "Your announcement", "answer": "Your answer"}
@@ -305,9 +305,10 @@ def your_move(
 
     A spy game (schema 27, Q935e, `docs/plan-spy.md` §3.7) says what is asked of the
     reader, as one of `ASKED`: `reply` (their spy is lost; one ordinary move, then
-    rounds), `announce` (their move first, in the open), `answer` (to `announced`, the
-    other's announcement, named since it is shown to both) or `seal` (both spies lost: the
-    rounds are secret from now). None says it as any game does.
+    rounds begin), `announce` (their move first, in the open), `answer` (to `announced`, the
+    other's announcement, named since it is shown to both) or `seal` (neither has a spy: the
+    rounds are secret while that lasts; since SR7h a spy can be gained back, so nothing says
+    "from now on"). None says it as any game does.
     """
     if asked is not None and asked not in ASKED:
         raise ValueError(f"no such thing to ask: {asked}")

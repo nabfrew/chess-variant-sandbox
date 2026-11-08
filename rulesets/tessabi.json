@@ -1,0 +1,106 @@
+{
+  "schema_version": 31,
+  "name": "tessabi",
+  "summary": [
+    "Get four of your runners to the far end. A runner that gets there scores and leaves the board.",
+    "Each turn, move one runner, and move the gatekeeper in the middle or leave it where it is, in either order.",
+    "The gatekeeper belongs to nobody: either player may move it, one hole in any direction onto an empty hole.",
+    "A runner steps straight forward onto an empty hole, or jumps forward, straight or diagonally, over a whole line of pieces next to it and lands on the first empty hole past them.",
+    "Every piece it jumps, yours, your opponent's or the gatekeeper, is pushed one hole back towards where the runner started. Nothing is ever taken, and a runner pushed onto its own far end scores too.",
+    "A player who cannot make a whole turn loses. If both players reach four on the same move, it is a draw."
+  ],
+  "description": "A race where every long jump moves somebody else. Six runners a side start at opposite ends of a narrow board and only ever go forward on their own, but a runner standing behind a line of pieces can jump the whole line at once, and everything it jumps slides one hole back to fill the gap. Jump your own runners and one gets far ahead while the others lose ground; jump your opponent's and you get past them, but you carry each of them a hole closer to the end they are racing for, sometimes right onto it. Between the two armies stands the gatekeeper, which belongs to nobody and which both players move every turn, before or after their runner. Moved first, it can open a hole for your jump or close the one your opponent wanted; moved second, it can block the reply. Since nothing is ever taken and every runner that scores leaves the board, the race thins out as it goes, and the question on every turn is which jump gains more ground than it gives away.",
+  "board": {
+    "width": 5,
+    "height": 7
+  },
+  "pieces": [
+    {
+      "id": "R",
+      "name": "runner",
+      "value": 1,
+      "captures": [],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[0, 1]],
+          "mode": "move"
+        },
+        {
+          "kind": "hop",
+          "vectors": [[0, 1], [1, 1]],
+          "symmetry": "lateral",
+          "mode": "move",
+          "run": true,
+          "displace": "back"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "gatekeeper",
+      "value": 1,
+      "control": "shared",
+      "captures": [],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[1, 0], [1, 1]],
+          "symmetry": "dihedral8",
+          "mode": "move"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": ["b1", "c1", "d1", "b2", "c2", "d2"]
+      },
+      {
+        "piece": "G",
+        "player": "nobody",
+        "squares": ["c4"]
+      }
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "repetition_draw": "never",
+    "no_progress_draw": 1000,
+    "obstacles": {
+      "squares": ["a1", "e1", "a2", "e2"],
+      "mirror": true
+    },
+    "reach": {
+      "piece": "R",
+      "squares": ["b7", "c7", "d7"],
+      "removes": true,
+      "count": 4,
+      "both": "draw"
+    },
+    "turn": {
+      "parts": [
+        {"pieces": "own"},
+        {"pieces": "shared", "optional": true}
+      ],
+      "order": "any"
+    }
+  },
+  "appearance": {
+    "icons": {
+      "R": "pawn",
+      "G": "rock"
+    }
+  },
+  "provenance": {
+    "added": "2026-11-07",
+    "origin": "human",
+    "source": "tessabi.com",
+    "note": "Tessabi, from tessabi.com.",
+    "history": "Q1135 (TS5, docs/plan-tessabi.md section 5): Tessabi's rules from tessabi.com, spelled with the four general rules TS1 to TS4 built for it."
+  }
+}

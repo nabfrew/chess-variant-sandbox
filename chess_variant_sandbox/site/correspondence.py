@@ -70,10 +70,13 @@ not sealed, and draws the game if neither has.
 
 ## A spy game (schema 27, Q935e, `docs/plan-spy.md` §3.7)
 
-A spy game is played by turns while both spies stand, then in rounds; which step is open is
+A spy game is played by turns while both players have a spy, and in rounds while either has
+none; since SR7h (Y3) a spy can be gained (a promotion, a strike, a link, a hand, a market), so
+the game may go back to turns, and nothing here says "from now on". Which step is open is
 the core's phase (`Engine.is_round`, `Engine.phase`), asked of the replayed position at every
 act, never worked out here. A turn (and the reply turn after a spy falls) is an ordinary
-move. A blind round is a round as above. An **announced round** is a round with an order:
+move. A blind round (neither player has a spy) is a round as above. An **announced round** is a
+round with an order:
 the announcer (the player without a spy) chooses first and in the open, and the answer comes
 once the announcement is in. The announcement waits in `sealed_move` like a seal, marked
 `announced`, and **is shown to both readers**: it is meant to be seen. It is final, as a seal
@@ -138,13 +141,13 @@ ROUND_RULES = (
 
 SPY_RULES = (
     "There is no clock: each of you moves when you like.",
-    "While both spies stand you take turns, and a move you pick is held until you send it; "
-    "a sent move is final.",
-    "Once a spy is lost, its player replies with one ordinary move, and then the game is "
-    "played in rounds, both moves made at once. While only one of you has a spy, the other "
-    "announces a move first, in the open, and the spy's holder answers it with that move in "
-    "view. Once both spies are lost, each of you seals a move in secret. An announced or "
-    "sealed move is final.",
+    "While both of you have a spy you take turns, and a move you pick is held until you send "
+    "it; a sent move is final.",
+    "When a spy is lost while you take turns, its player replies with one ordinary move, and then "
+    "the game is played in rounds, both moves made at once, for as long as either of you has "
+    "no spy. While only one of you has a spy, the other announces a move first, in the open, "
+    "and the spy's holder answers it with that move in view. While neither of you has a spy, "
+    "each of you seals a move in secret. An announced or sealed move is final.",
     "Either of you may offer a draw; it stands until the other accepts it, declines it or "
     "moves. Each of you may offer one in any five of your own moves.",
     "Either of you may cancel the game until both of you have moved; it then counts for "

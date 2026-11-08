@@ -259,10 +259,7 @@ class TestTheRefusalsInWords:
         assert {"says": "Pair 1 has an end on a wall (c4). Move it to an empty square.",
                 "pair": 1, "end": "blue", "square": "c4", "place": 1} in errors
 
-    def test_the_hexagon_and_too_many_kinds_of_piece_have_their_sentences(self) -> None:
-        assert designing.portal_problem(
-            "rules.portals is refused on a hex lattice in this schema: x")["says"].startswith(
-            "Portals can't be used on a hexagon board yet")
+    def test_too_many_kinds_of_piece_has_its_sentence(self) -> None:
         said = designing.portal_problem("at most 24 piece types, and rules.portals adds one per "
                                         "end: 21 declared and 4 portal ends")
         assert said == {"says": "This game has too many kinds of piece for more portals: each "

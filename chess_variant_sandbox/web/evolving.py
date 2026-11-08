@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.loop import LoopConfig, evolve
+from chess_variant_sandbox.web import library
 
 # Enough scrollback to see what happened in the last few generations. A run's real
 # record is the archive on disk; this is the window onto it while it is running.
@@ -98,7 +99,8 @@ class Runs:
 
         def target() -> None:
             try:
-                evolve(config, report=run.report)
+                with library.writing():
+                    evolve(config, report=run.report)
                 run.state = "finished"
             except Exception as error:  # noqa: BLE001 - the browser is the only reader
                 # A design run dies for ordinary reasons -- no API key, a network

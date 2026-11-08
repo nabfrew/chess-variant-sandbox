@@ -46,13 +46,16 @@ from chess_variant_sandbox.engine.moves import (
     DUCK_PLACE,
     MOVE_BUY,
     MOVE_CASTLE,
+    MOVE_DISPLACE,
     MOVE_DROP,
     MOVE_DUCK,
     MOVE_EN_PASSANT,
     MOVE_FOLD,
     MOVE_FOREIGN,
     MOVE_HIRE,
+    MOVE_KEEP,
     MOVE_NORMAL,
+    MOVE_PASS,
     MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_PUSH,
@@ -130,8 +133,9 @@ def _pack(state: GameState) -> tuple[Any, ...]:
             # Generation 38 (N5): the squares of the wild pieces walking their line back.
             list(state.heading_back),
             # The twelfth and last element PyO3 converts, the group every later field joins:
-            # TC4's coins, then Q1074b6's push-back bar.
-            (state.purse, state.push_bar),
+            # TC4's coins, then Q1074b6's push-back bar, then TS1's banks, then TS3's parts
+            # filled.
+            (state.purse, state.push_bar, state.banked, state.parts),
         ),
     )
 
@@ -171,6 +175,8 @@ def _unpack(packed: State) -> GameState:
         heading_back=tuple(packed[11][10]),
         purse=(packed[11][11][0][0], packed[11][11][0][1]),
         push_bar=(packed[11][11][1][0], packed[11][11][1][1]),
+        banked=(packed[11][11][2][0], packed[11][11][2][1]),
+        parts=packed[11][11][3],
     )
 
 
@@ -424,6 +430,12 @@ class Engine:
         neutral. The core counts; Python never does (rule 3)."""
         return int(self.core.controller_of(_pack(state), square))
 
+    def move_cost(self, state: GameState, move: int) -> int:
+        """What ``move`` costs the side to move under ``rules.purse.upkeep`` (H1,
+        `docs/plan-hunger.md` §2), a buy's price not included; 0 without the rule. The core
+        reads its table; Python never works out a row (rule 3)."""
+        return int(self.core.move_cost(_pack(state), move))
+
     # ------------------------------------------------------------------- players
 
     # The three calls below take an agent as the core describes it -- a ``NativeSpec``
@@ -577,6 +589,12 @@ class Engine:
                 f"{spec.piece_ids[promoted % spec.n_types]}$"
                 f"{_square_name(target, spec.width)}"
             )
+        if kind == MOVE_KEEP:
+            # TS3 (`docs/plan-tessabi.md` §3): a keep moves nothing; one is offered at most.
+            return "keep"
+        if kind == MOVE_PASS:
+            # H3 (`docs/plan-hunger.md` §4): a pass moves nothing; one is offered at most.
+            return "pass"
         if kind == MOVE_DUCK:
             # Generation 42 (N4b, `docs/archive/plan-npc.md` §4.6): the duck's half, in words.
             if promoted == DUCK_PASS:
@@ -637,6 +655,20 @@ class Engine:
             if spec.wrap is not None and not off:
                 text += f" (to {_square_name(behind, spec.width)})"
             return text
+        if kind == MOVE_DISPLACE:
+            # TS4 (`docs/plan-tessabi.md` §4): a hop that moves every piece it jumped one square
+            # back, written as the hop and the pieces it moved (``Ra1-a4 (displaces a2, a3)``),
+            # which two positions cannot name; the promotion field is the type plus one.
+            text = (
+                f"{piece}{_square_name(origin, spec.width)}-{_square_name(target, spec.width)}"
+            )
+            if promoted:
+                text += f"={spec.piece_ids[promoted - 1]}"
+            moved = [
+                _square_name(square, spec.width)
+                for square, _ in spec.displace_line(state.board, move)
+            ]
+            return text + f" (displaces {', '.join(moved)})"
         if spec.portals is not None and spec.owner_of(state.board[origin]) == WILD:
             # Schema 19 (N1): a portal's own move names its pair and end, so two portals of
             # one type are told apart: ``1o:e3-f3``.
@@ -1115,6 +1147,7 @@ class Engine:
         duck_owed: bool = False,
         purse: tuple[int, int] | None = None,
         hands: tuple[Iterable[int], Iterable[int]] | None = None,
+        banked: tuple[int, int] = (0, 0),
     ) -> GameState:
         """Build a position directly, for tests, puzzles, and CLI setup.
 
@@ -1134,7 +1167,8 @@ class Engine:
         ``hands`` is each player's held pieces, counted by type in ``spec.piece_ids`` order;
         left out, a drop game's hands are empty (one zero per type, the shape the core indexes
         at a capture and a drop), and without ``rules.drops`` there is no hand whatever is
-        given.
+        given. ``banked`` (TS1) is each player's banked pieces; without ``reach.removes`` it
+        is ``(0, 0)`` whatever is given.
         """
         spec = self.spec
         board = bytearray(spec.n_squares)
@@ -1176,6 +1210,7 @@ class Engine:
                 if spec.purse is not None else (0, 0)
             ),
             hands=self._hands(hands),
+            banked=banked if spec.reach is not None and spec.reach.removes else (0, 0),
         )
         key = self._compute_hash(state)
         return state.with_(key=key, repetition=(key,))

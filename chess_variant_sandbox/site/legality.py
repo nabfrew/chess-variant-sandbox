@@ -1558,7 +1558,16 @@ class Checker:
         queued, so a submission is never kept waiting behind somebody else's replay. A
         member's spine rating (L5, `rate`) comes last, one game a round, after the waiting
         publishes are settled; it is not in the answer.
+
+        An in-process writer (`library.writing`, C15a): a job files measurements under
+        `runs/`, so no listing is held while one runs, nor across its end.
         """
+        from chess_variant_sandbox.web import library
+
+        with library.writing():
+            return self._drain()
+
+    def _drain(self) -> list[Finished | spotcheck.Outcome]:
         done: list[Finished | spotcheck.Outcome] = []
         while True:
             with self.connect() as connection:

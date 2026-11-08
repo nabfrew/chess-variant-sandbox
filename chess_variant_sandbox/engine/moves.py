@@ -76,6 +76,20 @@ MOVE_HIRE = 11
 # the push direction's id (``move_push``, a row of ``compile.PushRule.next``), since on a seam
 # one landing can be pushed two ways from one origin. Not a capture until Q1074b3 counts it.
 MOVE_PUSH = 12
+# TS3 (`docs/plan-tessabi.md` §3, ``rules.turn.parts``): a keep. The mover fills an optional
+# part of the turn and moves nothing. Origin and target 0; the promotion field the part it
+# fills. Takes nothing; offered only in a parts game.
+MOVE_KEEP = 13
+# TS4 (`docs/plan-tessabi.md` §4, ``moves[].displace``): a hop that displaces. The hopper goes
+# from origin to target as a hop, and every piece strictly between moves one square back along
+# the hop's line, toward the origin (the nearest onto the origin). The promotion field holds the
+# hopper's promoted type plus one (0 none), as ``MOVE_PUSH``'s. Takes nothing. The line is the
+# hop entry of the hopper's slot that reaches the target displacing (``CompiledSpec.displace_path``).
+MOVE_DISPLACE = 14
+# H3 (`docs/plan-hunger.md` §4, ``rules.pass``): the pass. The side to move makes no move: origin,
+# target and promotion 0, nothing on the board changes. Offered last, where the null move survives
+# the legality filter. Takes nothing.
+MOVE_PASS = 15
 DUCK_STEP = 0
 DUCK_PLACE = 1
 DUCK_PASS = 2
@@ -104,6 +118,9 @@ MOVE_TYPE_NAMES = {
     MOVE_BUY: "buy",
     MOVE_HIRE: "hire",
     MOVE_PUSH: "push",
+    MOVE_KEEP: "keep",
+    MOVE_DISPLACE: "displace",
+    MOVE_PASS: "pass",
 }
 
 
@@ -153,10 +170,10 @@ def encode_move(
     =====  =========  ==========================================================
     0-7    origin     every kind
     8-15   target     every kind
-    16-19  kind       every kind (``MOVE_NORMAL`` .. ``MOVE_PUSH``, 0 to 12 of 16)
-    20-24  promotion  ``MOVE_PROMOTION`` (the type), ``MOVE_PORTAL`` and ``MOVE_PUSH``
+    16-19  kind       every kind (``MOVE_NORMAL`` .. ``MOVE_DISPLACE``, 0 to 14 of 16)
+    20-24  promotion  ``MOVE_PROMOTION`` (the type), ``MOVE_PORTAL``, ``MOVE_PUSH`` and ``MOVE_DISPLACE``
                       (type + 1, 0 none), ``MOVE_DROP``/``MOVE_BUY`` (the type), ``MOVE_ROTATE``
-                      (the facing), ``MOVE_DUCK`` (``DUCK_*``)
+                      (the facing), ``MOVE_DUCK`` (``DUCK_*``), ``MOVE_KEEP`` (the part)
     25-29  landing    a strike's capture under ``position: "choose"``: the
                       landing's index (< 32, ``MAX_LANDING_CANDIDATES``)
     25-29  portal     ``MOVE_PORTAL``: the entered end's internal type (< 24)

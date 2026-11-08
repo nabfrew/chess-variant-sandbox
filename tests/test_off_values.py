@@ -26,12 +26,15 @@ from chess_variant_sandbox.spec.schema import (
     EXPLODE_OFF_VALUES,
     MOVE_OFF_VALUES,
     NPC_OFF_VALUES,
+    PART_OFF_VALUES,
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
     PURSE_OFF_VALUES,
     PUSH_OFF_VALUES,
+    REACH_OFF_VALUES,
     SIGHT_OFF_VALUES,
     SIMULTANEOUS_OFF_VALUES,
+    TURN_OFF_VALUES,
 )
 from chess_variant_sandbox.spec.spelling import current_spelling
 
@@ -131,8 +134,42 @@ def _bounty_to(spec: dict[str, Any]) -> None:
     spec["rules"]["purse"]["bounty_to"] = "taker"
 
 
+def _no_upkeep(spec: dict[str, Any]) -> None:
+    """H1: a purse whose moves cost nothing."""
+    spec["rules"]["purse"]["upkeep"] = False
+
+
 def _strikes(spec: dict[str, Any]) -> None:
     spec["rules"]["explode_on_capture"]["strikes"] = "none"
+
+
+def _reach(key: str, value: Any) -> Callable[[dict[str, Any]], None]:
+    """TS1: a goal that banks nothing, wins at one and reads both at once as player 0's."""
+    def write(spec: dict[str, Any]) -> None:
+        spec["rules"]["reach"][key] = value
+    return write
+
+
+def _order(spec: dict[str, Any]) -> None:
+    """TS3: a turn's moves (or parts) in the order written."""
+    spec["rules"]["turn"]["order"] = "fixed"
+
+
+def _hop_off(key: str, value: Any) -> Any:
+    """TS4: a hop's run or displacement written at its off value, on every hop (the cannon's)."""
+
+    def edit(spec: dict[str, Any]) -> None:
+        for piece in spec["pieces"]:
+            for move in piece["moves"]:
+                if move["kind"] == "hop":
+                    move[key] = value
+
+    return edit
+
+
+def _optional(spec: dict[str, Any]) -> None:
+    """TS3: a part the mover must play."""
+    spec["rules"]["turn"]["parts"][0]["optional"] = False
 
 
 # (where it is written, the game it is written on, the edit). Every off value of every place.
@@ -157,6 +194,8 @@ CASES = [
     ("pieces[].moves[].path", "rulesets/chess.json", _straight),
     ("pieces[].moves[].push", "rulesets/chess.json", _no_push),
     ("pieces[].moves[].effects", "archive/chess-sweeping-bishops.json", _landing),
+    ("pieces[].moves[].run", "rulesets/xiangqi.json", _hop_off("run", False)),
+    ("pieces[].moves[].displace", "rulesets/xiangqi.json", _hop_off("displace", "none")),
     ("rules.push.chain", "rulesets/chess.json", _push_rule("chain", "one")),
     ("rules.push.edge", "rulesets/chess.json", _push_rule("edge", "removes")),
     ("rules.push.walls", "rulesets/chess.json", _push_rule("walls", "block")),
@@ -166,7 +205,14 @@ CASES = [
     ("rules.duck.goes", "tests/_duck_chess.json", _goes),
     ("rules.purse.bribe", "tests/_purse_market.json", _bribe),
     ("rules.purse.bounty_to", "tests/_purse_market.json", _bounty_to),
+    ("pieces[].upkeep", "rulesets/chess.json", _piece("upkeep", 0)),
+    ("rules.purse.upkeep", "tests/_purse_market.json", _no_upkeep),
     ("rules.explode_on_capture.strikes", "rulesets/atomic.json", _strikes),
+    ("rules.reach.removes", "rulesets/kingofthehill.json", _reach("removes", False)),
+    ("rules.reach.count", "rulesets/kingofthehill.json", _reach("count", 1)),
+    ("rules.reach.both", "rulesets/kingofthehill.json", _reach("both", "first")),
+    ("rules.turn.order", "tests/_en_passant_in_a_long_turn.json", _order),
+    ("rules.turn.parts[].optional", "rulesets/drover.json", _optional),
 ]
 
 
@@ -183,6 +229,9 @@ def test_every_off_value_has_a_case() -> None:
         **{f"rules.purse.{key}": 1 for key in PURSE_OFF_VALUES},
         **{f"rules.explode_on_capture.{key}": 1 for key in EXPLODE_OFF_VALUES},
         **{f"rules.push.{key}": 1 for key in PUSH_OFF_VALUES},
+        **{f"rules.reach.{key}": 1 for key in REACH_OFF_VALUES},
+        **{f"rules.turn.{key}": 1 for key in TURN_OFF_VALUES},
+        **{f"rules.turn.parts[].{key}": 1 for key in PART_OFF_VALUES},
     }
     assert set(named) == {where for where, _, _ in CASES}
 

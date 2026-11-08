@@ -37,10 +37,87 @@ pub const DOT_BOUND: i64 = MAX_ACCUMULATOR as i64 * 128 * ACTIVATION_MAX;
 const _: () = assert!(DOT_BOUND <= i32::MAX as i64 && MAX_HIDDEN <= MAX_ACCUMULATOR);
 
 /// One dense layer's dot product, `i8` weights against activations in `[0, ACTIVATION_MAX]`,
-/// summed in `i32`: exact by `DOT_BOUND`.
-#[inline]
+/// summed in `i32`: exact by `DOT_BOUND`. The arithmetic the sparse pass (`sparse_layer`)
+/// must equal; kept for the tests that say so.
+#[cfg(test)]
 fn dot(weights: &[i8], activations: &[i16]) -> i32 {
     weights.iter().zip(activations).map(|(&w, &a)| w as i32 * a as i32).sum()
+}
+
+/// Output lanes the sparse pass sums at once, held in registers across every input (Q1120):
+/// every rated net's hidden layers are 32 wide, one block. A layer's columns are padded
+/// with zero weights to a multiple of it.
+const BLOCK: usize = 32;
+const _: () = assert!(MAX_HIDDEN.is_multiple_of(BLOCK));
+
+/// The largest `|w * a|` of one product: an `i8` weight times an activation in
+/// `[0, ACTIVATION_MAX]`, 128 * 127 = 16,256. Two of them sum to 32,512, inside `i16`, so the
+/// sparse pass adds a pair of products in `i16` and widens once (Q1120).
+pub const PAIR_BOUND: i64 = 2 * 128 * ACTIVATION_MAX;
+const _: () = assert!(PAIR_BOUND <= i16::MAX as i64);
+
+/// A dense layer's weights `[k * inputs + j]` (output `k`, input `j`) as columns, one
+/// `BLOCK` of outputs at a time: `[(k / BLOCK * inputs + j) * BLOCK + k % BLOCK]`, widened to
+/// `i16`, the padding past the last output zero (Q1120).
+fn columns(weights: &[i8], outputs: usize, inputs: usize) -> Vec<i16> {
+    let mut out = vec![0i16; outputs.div_ceil(BLOCK) * inputs * BLOCK];
+    for k in 0..outputs {
+        for j in 0..inputs {
+            out[(k / BLOCK * inputs + j) * BLOCK + k % BLOCK] = weights[k * inputs + j] as i16;
+        }
+    }
+    out
+}
+
+/// One dense layer over its non-zero inputs (Q1120): `sums[k] = sum_j w[k][j] * x[j]` for
+/// every output `k` the columns hold (a whole number of blocks), from the columns `columns`
+/// builds over `inputs` inputs and the list `on` of the inputs whose `x` is not zero. A zero
+/// input adds nothing, so skipping it is exact; each pair's two products sum in `i16`
+/// (`PAIR_BOUND`) and every lane in `i32` (`DOT_BOUND`), so the sums are the dense `dot`'s
+/// bit for bit, in any order.
+#[inline]
+fn sparse_layer(columns: &[i16], inputs: usize, on: &[u16], x: &[i16], sums: &mut [i32]) {
+    let (columns, _) = columns.as_chunks::<BLOCK>();
+    let (outs, _) = sums.as_chunks_mut::<BLOCK>();
+    for (block, out) in columns.chunks_exact(inputs).zip(outs) {
+        let mut lanes = [0i32; BLOCK];
+        let mut pairs = on.chunks_exact(2);
+        for pair in &mut pairs {
+            let (j0, j1) = (pair[0] as usize, pair[1] as usize);
+            let (c0, c1, x0, x1) = (&block[j0], &block[j1], x[j0], x[j1]);
+            for k in 0..BLOCK {
+                lanes[k] += (c0[k] * x0 + c1[k] * x1) as i32;
+            }
+        }
+        if let [j] = *pairs.remainder() {
+            let (c, v) = (&block[j as usize], x[j as usize]);
+            for k in 0..BLOCK {
+                lanes[k] += (c[k] * v) as i32;
+            }
+        }
+        *out = lanes;
+    }
+}
+
+/// The list of `x`'s non-zero slots, ascending, written into the front of `on` (at least as
+/// long as `x`); the count. Branch-free: every slot is written and the count moves only past
+/// a non-zero one, since half the slots are zero in no pattern a predictor learns (Q1120).
+#[inline]
+fn list_on(x: &[i16], on: &mut [u16]) -> usize {
+    let mut n = 0;
+    for (j, &v) in x.iter().enumerate() {
+        on[n] = j as u16;
+        n += (v != 0) as usize;
+    }
+    n
+}
+
+/// The buffers an evaluation writes, kept by the caller so it allocates nothing (Q961,
+/// Q1120): the clipped accumulator and the list of its non-zero slots.
+#[derive(Clone, Debug, Default)]
+pub struct Buffers {
+    a0: Vec<i16>,
+    on: Vec<u16>,
 }
 
 /// The store's first eight bytes.
@@ -291,14 +368,21 @@ fn push_clock(out: &mut Vec<u32>, base: usize, value: u32, limit: u32) {
 /// One side-to-move bucket of the layers after the accumulator.
 #[derive(Clone, Debug)]
 pub struct Head {
-    /// `[k * accumulator + j]`
+    /// `[k * accumulator + j]`, as stored. Since Q1120 the pass reads `c1`; this is kept
+    /// for the tests' `i64` reference, which must not read the layout it checks.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub w1: Vec<i8>,
     pub b1: Vec<i32>,
-    /// `[k * hidden1 + j]`
+    /// `[k * hidden1 + j]`, as stored; the pass reads `c2`.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub w2: Vec<i8>,
     pub b2: Vec<i32>,
     pub w3: Vec<i8>,
     pub b3: i32,
+    /// `w1` and `w2` as `columns` lays them out for `sparse_layer`, made once at parse
+    /// (Q1120); the store and the fields above are unchanged.
+    c1: Vec<i16>,
+    c2: Vec<i16>,
 }
 
 /// A parsed store.
@@ -378,14 +462,11 @@ impl Net {
         let w0 = r.i16s(n_inputs.checked_mul(accumulator).ok_or("the net is too large")?)?;
         let b0 = r.i16s(accumulator)?;
         let mut head = || -> Result<Head, String> {
-            Ok(Head {
-                w1: r.i8s(hidden1 * accumulator)?,
-                b1: r.i32s(hidden1)?,
-                w2: r.i8s(hidden2 * hidden1)?,
-                b2: r.i32s(hidden2)?,
-                w3: r.i8s(hidden2)?,
-                b3: r.i32s(1)?[0],
-            })
+            let w1 = r.i8s(hidden1 * accumulator)?;
+            let b1 = r.i32s(hidden1)?;
+            let w2 = r.i8s(hidden2 * hidden1)?;
+            let (c1, c2) = (columns(&w1, hidden1, accumulator), columns(&w2, hidden2, hidden1));
+            Ok(Head { w1, b1, w2, b2: r.i32s(hidden2)?, w3: r.i8s(hidden2)?, b3: r.i32s(1)?[0], c1, c2 })
         };
         let heads = [head()?, head()?];
         if r.at != bytes.len() {
@@ -412,36 +493,38 @@ impl Net {
 
     /// The raw output for the side to move, from an accumulator.
     pub fn forward(&self, acc: &[i16], side: usize) -> i64 {
-        self.forward_with(acc, side, &mut Vec::with_capacity(self.accumulator))
+        self.forward_with(acc, side, &mut Buffers::default())
     }
 
-    /// `forward` with the clipped accumulator written into `a0`, a buffer the caller keeps
-    /// (Q961): it holds the net's own width, so an evaluation writes 256 slots, not the
-    /// 2,048 a fixed `MAX_ACCUMULATOR` array zeroed every call.
+    /// `forward` with the clipped accumulator and its non-zero slots written into
+    /// `buffers`, which the caller keeps (Q961, Q1120): they hold the net's own width, so
+    /// an evaluation allocates nothing.
     ///
     /// The dense layers sum `i8 * [0, 127]` products in `i32` (Q961), which is exact:
     /// `DOT_BOUND` below is the largest such sum any store `parse` accepts, and it is far
-    /// inside `i32`, so the sum equals the `i64` one bit for bit. The bias, the shift and
-    /// the output layer stay in `i64`, as before.
-    pub fn forward_with(&self, acc: &[i16], side: usize, a0: &mut Vec<i16>) -> i64 {
+    /// inside `i32`, so the sum equals the `i64` one bit for bit. Since Q1120 each layer
+    /// visits only its non-zero inputs (`sparse_layer`), the same integer sum. The bias,
+    /// the shift and the output layer stay in `i64`, as before.
+    pub fn forward_with(&self, acc: &[i16], side: usize, buffers: &mut Buffers) -> i64 {
         let head = &self.heads[side & 1];
+        let Buffers { a0, on } = buffers;
         a0.clear();
         a0.extend(acc.iter().take(self.accumulator).map(|&v| v.clamp(0, ACTIVATION_MAX as i16)));
-        let a0 = a0.as_slice();
+        on.resize(a0.len(), 0);
+        let n_on = list_on(a0, on);
+        let mut sums = [0i32; MAX_HIDDEN];
+        sparse_layer(&head.c1, self.accumulator, &on[..n_on], a0, &mut sums);
         let mut a1 = [0i16; MAX_HIDDEN];
-        for (k, slot) in a1.iter_mut().enumerate().take(self.hidden1) {
-            let row = &head.w1[k * self.accumulator..(k + 1) * self.accumulator];
-            let sum = dot(row, a0);
-            let a = (head.b1[k] as i64 + sum as i64) >> WEIGHT_SHIFT;
-            *slot = a.clamp(0, ACTIVATION_MAX) as i16;
+        for ((slot, &b), &sum) in a1.iter_mut().zip(&head.b1).zip(&sums[..self.hidden1]) {
+            *slot = ((b as i64 + sum as i64) >> WEIGHT_SHIFT).clamp(0, ACTIVATION_MAX) as i16;
         }
-        let a1 = &a1[..self.hidden1];
+        let mut on1 = [0u16; MAX_HIDDEN];
+        let n_on1 = list_on(&a1[..self.hidden1], &mut on1);
+        sparse_layer(&head.c2, self.hidden1, &on1[..n_on1], &a1, &mut sums);
         let mut out = head.b3 as i64;
-        for k in 0..self.hidden2 {
-            let row = &head.w2[k * self.hidden1..(k + 1) * self.hidden1];
-            let sum = dot(row, a1);
-            let a2 = ((head.b2[k] as i64 + sum as i64) >> WEIGHT_SHIFT).clamp(0, ACTIVATION_MAX);
-            out += head.w3[k] as i64 * a2;
+        for ((&b, &w), &sum) in head.b2.iter().zip(&head.w3).zip(&sums[..self.hidden2]) {
+            let a2 = ((b as i64 + sum as i64) >> WEIGHT_SHIFT).clamp(0, ACTIVATION_MAX);
+            out += w as i64 * a2;
         }
         out.clamp(-OUTPUT_LIMIT, OUTPUT_LIMIT)
     }
@@ -481,16 +564,20 @@ pub struct NetEvaluator {
     acc: Vec<i16>,
     active: Vec<u32>,
     scratch: Vec<u32>,
-    /// The clipped accumulator, kept so an evaluation writes the net's width only.
-    a0: Vec<i16>,
+    /// The clipped accumulator and its non-zero slots, kept so an evaluation allocates
+    /// nothing.
+    buffers: Buffers,
 }
 
 impl NetEvaluator {
     pub fn new(t: &Tables, net: std::sync::Arc<Net>, values: Vec<f64>) -> Self {
         let acc = net.b0.clone();
-        let a0 = Vec::with_capacity(net.accumulator);
+        let buffers = Buffers {
+            a0: Vec::with_capacity(net.accumulator),
+            on: Vec::with_capacity(net.accumulator),
+        };
         let (active, scratch) = (Vec::new(), Vec::new());
-        Self { net, layout: Layout::of(t), values, acc, active, scratch, a0 }
+        Self { net, layout: Layout::of(t), values, acc, active, scratch, buffers }
     }
 
     /// The raw integer output for the side to move, bringing the accumulator up to
@@ -515,7 +602,7 @@ impl NetEvaluator {
             }
         }
         self.scratch = std::mem::replace(&mut self.active, next);
-        self.net.forward_with(&self.acc, game.side, &mut self.a0)
+        self.net.forward_with(&self.acc, game.side, &mut self.buffers)
     }
 
     /// The score for `player`: the net's output for the side to move, negated for the
@@ -663,7 +750,7 @@ mod tests {
             state ^= state << 17;
             state
         };
-        let mut buffer = Vec::new();
+        let mut buffer = Buffers::default();
         for _ in 0..40 {
             let acc_w = 1 + (next() % 300) as usize;
             let (h1, h2) = (1 + (next() % 40) as usize, 1 + (next() % 40) as usize);
@@ -683,8 +770,16 @@ mod tests {
                 bytes.extend(((next() % 10_000) as i32 - 5000).to_le_bytes());
             }
             let net = Net::parse(&bytes).unwrap();
-            for _ in 0..8 {
-                let acc: Vec<i16> = (0..acc_w).map(|_| (next() % 400) as i16 - 120).collect();
+            for round in 0..8 {
+                // Q1120: every other accumulator mostly clipped to zero, the sparse pass's
+                // case (an odd count of non-zero slots, one, none).
+                let acc: Vec<i16> = (0..acc_w)
+                    .map(|_| match round % 2 {
+                        0 => (next() % 400) as i16 - 120,
+                        _ if next() % 5 == 0 => (next() % 140) as i16,
+                        _ => -((next() % 50) as i16),
+                    })
+                    .collect();
                 for side in 0..2 {
                     let want = forward_in_i64(&net, &acc, side);
                     assert_eq!(net.forward(&acc, side), want);

@@ -369,14 +369,17 @@ def _unreadable_result(
         for component in weights.weights
         if component in components.raw
     }
-    monotonicity = components.raw.get("ladder_monotonicity", 0.0)
-    gradient = components.raw.get("skill_gradient", 0.0)
-    why = (
-        f"the rating ladder orders the agents on only {monotonicity:.0%} of its budget "
-        "steps"
-        if monotonicity < MEASURABLE_LADDER
-        else f"a larger search rates *worse* here ({gradient:.1f} Elo per doubling)"
-    )
+    monotonicity = components.raw.get("ladder_monotonicity")
+    gradient = components.raw.get("skill_gradient")
+    if monotonicity is not None and monotonicity < MEASURABLE_LADDER:
+        why = (
+            f"the rating ladder orders the agents on only {monotonicity:.0%} of its budget "
+            "steps"
+        )
+    elif gradient is not None:
+        why = f"a larger search rates *worse* here ({gradient:.1f} Elo per doubling)"
+    else:
+        why = "the rating ladder's gradient was not measured"
     refusals = readable_gate_violations(components, weights, unreadable)
     return IndexResult(
         ruleset_hash=spec_hash_value,

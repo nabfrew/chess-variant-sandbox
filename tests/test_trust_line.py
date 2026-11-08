@@ -324,7 +324,15 @@ class TestThePayloads:
                 in line["more"]), "an entry with no runs recorded says none"
         assert line["said"] == trust.EARLY_SAID, "never the headline"
 
-    def test_a_new_check_reaches_a_listing_held_in_the_cache(self, tmp_path: Path) -> None:
+    def test_a_new_check_reaches_a_listing_held_in_the_cache(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The check is written by another process (the refresher), which reaches a listing
+        # once `App.refresh`'s hold is out (C15a); held to nought here, so this is the
+        # stamped cache's own freshness.
+        from chess_variant_sandbox.web import library
+
+        monkeypatch.setattr(library, "HOLD_SECONDS", 0.0)
         app, runs = _library(tmp_path)
         assert app.get("/api/library")["games"][0]["trust"]["level"] == trust.EARLY
         convergence = corpus.measurement_dir(DIGEST, runs) / trust.CONVERGENCE_FILE

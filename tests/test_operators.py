@@ -112,6 +112,12 @@ _NUMBER_WORDS = {
     102: "one_hundred_two", 103: "one_hundred_three", 104: "one_hundred_four",
     105: "one_hundred_five", 106: "one_hundred_six",
     107: "one_hundred_seven", 108: "one_hundred_eight", 109: "one_hundred_nine",
+    110: "one_hundred_ten", 111: "one_hundred_eleven", 112: "one_hundred_twelve",
+    113: "one_hundred_thirteen",
+    114: "one_hundred_fourteen",
+    115: "one_hundred_fifteen",
+    116: "one_hundred_sixteen",
+    117: "one_hundred_seventeen",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -421,6 +427,9 @@ class TestMutation:
         # SR6a2's `strike-the-path` switches a sweep a striking game already has, and no
         # stored game sweeps beside a strike until SR6s1: the striking bishops stand in.
         parents.append(_parent_striking_sweep())
+        # TS1's `bank-the-arrivals` needs an arrival goal in a game without check: crossings,
+        # its showcase, which it takes the bank back off.
+        parents.append(specs["crossings"])
 
         def fires(operator) -> bool:
             return any(
@@ -2061,7 +2070,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 109
+_FEATURES_ARE_FOR_SCHEMA = 117
 
 
 @dataclass(frozen=True)
@@ -3198,6 +3207,25 @@ def _parent_spy_for_sale() -> dict:
     return _spec()
 
 
+def _parent_lame_path() -> dict:
+    """Xiangqi whose horses ride on, each knight jump turned one step round from the last and
+    blocked on its own leg (SR11a, `docs/plan-schema-next.md` §2.13 PA4)."""
+    spec = load_spec(RULESETS / "xiangqi.json")
+    horse = next(piece for piece in spec["pieces"] if piece["id"] == "H")
+    horse["moves"][0].update({"range": 0, "path": "circle"})
+    return spec
+
+
+def _parent_boulder() -> dict:
+    """TS2's showcase, as committed: a boulder nobody owns that either player moves."""
+    return load_spec(RULESETS / "boulder.json")
+
+
+def _parent_drover() -> dict:
+    """TS3's showcase, as committed: a runner move and an optional boulder move, either order."""
+    return load_spec(RULESETS / "drover.json")
+
+
 def _parent_held_in_rounds() -> dict:
     """SR7n's test game, four condottieri nobody owns held by the majority next to them on a
     six by six board in rounds (R20): a held move is its holder's move of the round."""
@@ -4090,18 +4118,139 @@ def _parent_riders_in_hand() -> dict:
 # holder is read on the round's board, and a held move is that player's move of the round).
 # `play-at-once` enters it on a game with a held type (it declined there until now) and
 # `gather-a-crowd` on a game in rounds (it placed only standing pieces there); `play-at-once`'s
-# way back, `gather-a-crowd`'s removal and its taking control away leave it.
+# way back, `gather-a-crowd`'s removal and its taking control away leave it. Its row retires
+# with generation 110, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 110 (SR11a, §2.13 PA4): one name, a turning lame rider (a lifted refusal; each jump
+# blocked on its own direction's legs, read from the square it jumps from). `bend-a-line` enters
+# it on a lame rider (it turned slides only until now) and `straighten` leaves it, as does
+# `ride-a-leap` stopping the rider (a single lame leap never turns, so its path goes with its
+# range); `add-a-piece` straightens a copied path its new directions cannot turn. The parent is
+# xiangqi whose horses circle; the path names no type, so the army is kept. Its row retires
+# with generation 111, its showcase not owed (`_NO_SHOWCASE_ON_PURPOSE`).
+#
+# Generation 111 (TS1, `docs/plan-tessabi.md` §1): three names, the scoring goal's keys on
+# `rules.reach`. `bank-the-arrivals`, `count-the-arrivals` and `settle-both-at-once` each enter
+# their key on an arrival goal (banking drops `safe`, which a banked piece cannot need) and take
+# it back off. The parent of the first two is the showcase, `rulesets/crossings`; of the third,
+# the showcase reading both at once as a draw, whose showcase is owed by TS5 (Tessabi): no move
+# of the showcase brings both players home at once.
 def _beside(spec: dict, rule: str, key: str) -> bool:
     return bool((spec.get("rules", {}).get(rule) or {}).get(key))
 
 
+#
+# Generation 112 (TS2, `docs/plan-tessabi.md` §2): one name, a type placed for nobody that either
+# player moves (`pieces[].control: "shared"`). `gather-a-crowd` enters it (a new nobody's type,
+# a quarter of the moved ones shared; or a held type made shared) and leaves it (the placements
+# go, the control is taken off, or the shared type is held by the majority instead). The parent
+# is the showcase, `rulesets/boulder`; the control names no other key, so the army is kept. TS1's
+# rows retired here: its two shown names need nothing more, and the third went to
+# `_NO_SHOWCASE_ON_PURPOSE`, still owed by TS5.
+def _has_nobodys(spec: dict) -> bool:
+    return any(
+        isinstance(row, dict) and row.get("player") == "nobody"
+        for row in (spec.get("setup") or {}).get("placements") or []
+    )
+
+
+#
+# Generation 113 (TS3, `docs/plan-tessabi.md` §3): three names, a turn written as parts and its
+# two modifiers. `split-the-turn` enters each (a shared piece's optional part beside your own in
+# either order, or the moving types split in two) and leaves each (the parts go, the order
+# flips, a part's `optional` flips). The parent is the showcase, `rulesets/drover`; the parts
+# name no other key, so the army is kept. TS2's row retired here: its name is shown by boulder.
+def _has_shared(spec: dict) -> bool:
+    return any(
+        isinstance(piece, dict) and piece.get("control") == "shared"
+        for piece in spec.get("pieces") or []
+    )
+
+
+#
+# Generation 114 (TS4, `docs/plan-tessabi.md` §4): two names, a hop over a run and a hop that
+# displaces. `leap-a-row` enters each (a stepping piece gains a hop of mode move along its
+# vectors: over a run that displaces, over a run alone, or a leapfrog over one screen) and
+# leaves each (one key goes, and a hop left stating neither goes too). The parent is the
+# showcase, `rulesets/leapfrog`; the keys name no other key, so the army is kept. TS3's rows
+# retired here: their names are shown by drover.
+def _parent_leapfrog() -> dict:
+    """TS4's showcase, as committed: frogs that leap a row of pieces and push each back."""
+    return load_spec(RULESETS / "leapfrog.json")
+
+
+def _steps_forward(spec: dict) -> bool:
+    return any(
+        isinstance(move, dict) and move.get("kind") == "leap"
+        for piece in spec.get("pieces") or [] if isinstance(piece, dict)
+        for move in piece.get("moves") or []
+    ) and not any(
+        isinstance(piece, dict) and piece.get("royal") for piece in spec.get("pieces") or []
+    )
+
+
+#
+# Generation 115 (H1, `docs/plan-hunger.md` §2): three names, a move's cost and its promotion
+# reading. `charge-for-moves` enters each (a purse if none, `upkeep: true`, an upkeep by value on
+# each type a player moves; `"promotion": "new"` where a promotion exists) and leaves each (the
+# rule and every upkeep go, or the promotion reading flips back). The parent is chess with
+# Hunger's charges and the `"new"` reading (the showcase is H5's), so the army is kept. TS4's
+# rows retired here: their names are shown by leapfrog.
+def _parent_upkeep() -> dict:
+    """Chess whose moves cost their piece's upkeep per row from home, promotion `"new"`."""
+    spec = _chess()
+    for piece in spec["pieces"]:
+        if not piece.get("royal"):
+            piece["upkeep"] = 1 if piece.get("value", 1) <= 1.5 else 2
+    spec["rules"]["purse"] = {"start": 10, "upkeep": {"promotion": "new"}}
+    return spec
+
+
+def _has_promotion(spec: dict) -> bool:
+    return bool((spec.get("rules") or {}).get("promotion"))
+
+
+#
+# Generation 116 (H3, `docs/plan-hunger.md` §4): one name, the pass. `allow-passing` enters it
+# (``rules.pass: true``) and leaves it. The parent is chess with the pass (the showcase is H5's
+# Hunger Chess), so the army is kept. H1's rows retired here; their names went to
+# `_NO_SHOWCASE_ON_PURPOSE`, still owed by H5.
+def _parent_pass() -> dict:
+    """Chess in which a player may pass."""
+    spec = _chess()
+    spec["rules"]["pass"] = True
+    return spec
+
+
+#
+# Generation 117 (H2, `docs/plan-hunger.md` §3): three names, income and its two keys.
+# `pay-an-income` enters and leaves each (the rule in a purse game; the rate and the ground in an
+# income game). The parent is chess with H1's charges and an income of 2 a piece on the centre
+# (the showcase is H5's Hunger Chess), so the army is kept. H3's row retired here; its name went
+# to `_NO_SHOWCASE_ON_PURPOSE`, still owed by H5.
+def _parent_income() -> dict:
+    """Chess whose moves cost upkeep, paying 2 coins a turn for each piece on the centre."""
+    spec = _parent_upkeep()
+    spec["rules"]["income"] = {"per_piece": 2, "region": ["d4", "d5", "e4", "e5"]}
+    return spec
+
+
+def _has_purse(spec: dict) -> bool:
+    return isinstance((spec.get("rules") or {}).get("purse"), dict)
+
+
 _FEATURES: dict[str, _Feature] = {
-    "SR7n a held piece in rounds": _Feature(
-        # `keeps_army` False, as SR7f's: `gather-a-crowd` puts a type of its own on the board.
-        None, frozenset({"pieces.control.majority.simultaneous"}), False,
-        "simultaneous-held", _parent_held_in_rounds,
-        likely=lambda spec: bool((spec.get("rules") or {}).get("simultaneous"))
-        or any(isinstance(p, dict) and p.get("control") for p in spec.get("pieces") or []),
+    "H2 income": _Feature(
+        None, frozenset({"rules.income"}), True, "chess with upkeep and income", _parent_income,
+        likely=_has_purse,
+    ),
+    "H2 income per piece": _Feature(
+        "income", frozenset({"rules.income.per_piece"}), True, "chess with upkeep and income",
+        _parent_income, likely=_has_purse,
+    ),
+    "H2 income region": _Feature(
+        "income", frozenset({"rules.income.region"}), True, "chess with upkeep and income",
+        _parent_income, likely=_has_purse,
     ),
 }
 
@@ -4114,11 +4263,12 @@ _FEATURES: dict[str, _Feature] = {
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
 _SHOWCASE_OWED: dict[str, str] = {
-    # Generation 109 (SR7n): a held piece in rounds, owed by SR7s11 (a held piece in rounds,
-    # `docs/plan-schema-next.md` §3.2), usable after the replay that carries it.
-    "SR7n a held piece in rounds": (
-        "owed by SR7s11, a held piece in rounds (docs/plan-schema-next.md §3.2)"
-    ),
+    # Generation 111's `rules.reach.both` (TS1) went to `_NO_SHOWCASE_ON_PURPOSE` when TS2
+    # retired its `_FEATURES` row, still owed by TS5.
+    # Generation 110's name (SR11a) went to `_NO_SHOWCASE_ON_PURPOSE` when TS1 retired its
+    # `_FEATURES` row, its line owed by SR12.
+    # Generation 109's name (SR7n) went to `_NO_SHOWCASE_ON_PURPOSE` when SR11a retired its
+    # `_FEATURES` row, still owed by SR7s11.
     # Generation 108's name (SR7m) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7n retired its
     # `_FEATURES` row, still owed by SR7s10.
     # Generation 107 (SR7l) adds no name. Generation 106's name (SR7k) went to
@@ -4290,6 +4440,12 @@ _SHOWCASE_OWED: dict[str, str] = {
     # `-with-meek-pawns`, `-with-the-initiative`, `archive/watering-hole`).
     # Empty again at schema 25: its showcase, `archive/torus-less-extended.json`, is the
     # game the bump was for (Q869). Schema 24's fold is shown by `archive/crease.json` (Q844b).
+    # Generation 117 (H2): income's showcase is Hunger Chess, H5's (`docs/plan-hunger.md` §6),
+    # where pieces at home forage; its two keys are shown by arms of it (a richer forage, a
+    # foraging ground other than the home rank) or by game-ideas' *Mines* and *Plunder*.
+    "H2 income": "H5 (Q1129): rulesets/hunger.json",
+    "H2 income per piece": "H5 (Q1129): an arm of rulesets/hunger.json paying more a piece",
+    "H2 income region": "H5 (Q1129): an arm of rulesets/hunger.json foraging other ground",
 }
 
 
@@ -4462,6 +4618,14 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     107: frozenset(),
     108: frozenset({"rules.purse.market.spy"}),
     109: frozenset({"pieces.control.majority.simultaneous"}),
+    110: frozenset({"pieces.moves.lame.path"}),
+    111: frozenset({"rules.reach.removes", "rules.reach.count", "rules.reach.both"}),
+    112: frozenset({"pieces.control.shared"}),
+    113: frozenset({"rules.turn.parts", "rules.turn.parts.optional", "rules.turn.order.any"}),
+    114: frozenset({"pieces.moves.hop.run", "pieces.moves.hop.displace"}),
+    115: frozenset({"pieces.upkeep", "rules.purse.upkeep", "rules.purse.upkeep.promotion"}),
+    116: frozenset({"rules.pass"}),
+    117: frozenset({"rules.income", "rules.income.per_piece", "rules.income.region"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -4470,6 +4634,35 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 116's name (H3), owed in `_SHOWCASE_OWED` until generation 117 (H2) retired its
+    # `_FEATURES` row. Still owed by H5 (Q1129, `docs/plan-hunger.md` §6), Hunger Chess and its
+    # chess-plus-the-pass arm; the entry goes the day it lands.
+    "schema 116: rules.pass": "owed by H5 (Q1129): rulesets/hunger.json",
+    # Generation 115's names (H1), owed in `_SHOWCASE_OWED` until generation 116 (H3) retired
+    # their `_FEATURES` rows. Still owed by H5 (Q1129, `docs/plan-hunger.md` §6), Hunger Chess
+    # and its promotion "new" arm; the entries go the day it lands.
+    "schema 115: pieces.upkeep": "owed by H5 (Q1129): rulesets/hunger.json",
+    "schema 115: rules.purse.upkeep": "owed by H5 (Q1129): rulesets/hunger.json",
+    "schema 115: rules.purse.upkeep.promotion": (
+        "owed by H5 (Q1129): the promotion \"new\" arm of rulesets/hunger.json"
+    ),
+    # Generation 111's third name (TS1), `rules.reach.both`, went when TS5 (Q1135) landed
+    # `rulesets/tessabi.json` (Tessabi, from tessabi.com), which states `both: "draw"` and whose
+    # displacement can score for both (`docs/reference/tessabi.md`).
+    # Generation 110's name (SR11a), in `_SHOWCASE_OWED` until generation 111 (TS1) retired its
+    # `_FEATURES` row. The plan owes it no showcase of its own (`docs/plan-schema-next.md`
+    # §3.1: a rule no highlight game uses gets a line in
+    # `reference/schema-showcase-coverage.md`, written at the close, SR12).
+    "schema 110: pieces.moves.lame.path": (
+        "no showcase owed; SR12 writes its line in reference/schema-showcase-coverage.md "
+        "(docs/plan-schema-next.md §3.1)"
+    ),
+    # Generation 109's name (SR7n), owed in `_SHOWCASE_OWED` until generation 110 (SR11a)
+    # retired its `_FEATURES` row. Still owed by SR7s11 (`docs/plan-schema-next.md` §3.2), a
+    # held piece in rounds; the entry goes the day it lands.
+    "schema 109: pieces.control.majority.simultaneous": (
+        "owed by SR7s11, a held piece in rounds (docs/plan-schema-next.md §3.2)"
+    ),
     # Generation 108's name (SR7m), owed in `_SHOWCASE_OWED` until generation 109 (SR7n)
     # retired its `_FEATURES` row. Still owed by SR7s10 (`docs/plan-schema-next.md` §3.2), a spy
     # for sale; the entry goes the day it lands.
@@ -6148,7 +6341,10 @@ _PINNED_SCALES: dict[str, float] = {
     "npcs_pay": 1.0, "npcs_are_hard_to_kill": 1.0, "promotes_on_entry": 1.0,
     "no_repetition_draw": 1.0, "hex_lattice": 1.0, "promotion_zone_share": 1.0,
     "promotes_on_leaving": 1.0, "extinction_per_type": 1.0, "promotes_only_lost": 1.0,
-    "wins_by_leaving": 1.0, "reach_runners": 1.0, "portal_pairs": 1.0, "portals_move": 1.0, "portals_one_way": 1.0,
+    "wins_by_leaving": 1.0, "reach_runners": 1.0,
+    "reach_removes": 1.0, "reach_count": 1.0, "reach_both": 1.0,  # TS1
+    "turn_parts_named": 1.0, "turn_parts_optional": 1.0, "turn_order_any": 1.0,  # TS3
+    "portal_pairs": 1.0, "portals_move": 1.0, "portals_one_way": 1.0,
     "portals_no_back": 1.0, "portals_ring": 1.0, "portals_funnel": 1.0,
     "portals_other_map": 1.0, "portals_filtered": 1.0, "portals_fold": 1.0,
     "npcs_share_a_walk": 1.0, "lame_rider_share": 1.0, "turning_share": 1.0,
@@ -6161,6 +6357,7 @@ _PINNED_SCALES: dict[str, float] = {
     "duck_by_moves": 1.0,
     "nobody_share": 1.0, "majority_share": 1.0, "majority_geometry": 1.0,
     "majority_takes_royal": 1.0,
+    "shared_share": 1.0,  # TS2
     "bounty_share": 1.0,
     "has_purse": 1.0, "purse_start": 1.0, "purse_region": 1.0, "price_share": 1.0,
     "has_hire": 1.0, "has_bribe": 1.0, "bounty_to_loser": 1.0,
@@ -6181,6 +6378,14 @@ _PINNED_SCALES: dict[str, float] = {
     "push_weight": 9.0, "push_strength": 9.0,
     # Q1074bo: b6's no push back and b7's crushing walls, a flag each.
     "push_no_back": 1.0, "push_walls_crush": 1.0,
+    # TS4: the share of move entries over a run, and the share that displace.
+    "hop_run_share": 1.0, "hop_displace_share": 1.0,
+    # H1: a move's cost, its rates' mean and its promotion reading.
+    "has_upkeep": 1.0, "upkeep_mean": 1.0, "upkeep_new": 1.0,
+    # H3: the pass, a flag.
+    "passes": 1.0,
+    # H2: income, its rate and its ground.
+    "has_income": 1.0, "income_per_piece": 1.0, "income_region": 1.0,
 }
 
 
@@ -6258,14 +6463,19 @@ class TestDistanceIsPinnedToTheNumber:
         `push_walls_crush`: 0.0089; 139 since Q1077's `majority_takes_royal`: 0.0088; 140 since
         SR3b's `stock_is_uneven`: 0.0087; 141 since SR3c's `typed_screen_share`: 0.0087; 143
         since SR5a's `explodes_striking_target` and `explodes_striking_blast`: 0.0086; 144 since
-        SR6a's `path_sweep_share`: 0.0085."""
+        SR6a's `path_sweep_share`: 0.0085; 147 since TS1's `reach_removes`, `reach_count` and
+        `reach_both`: 0.0083; 150 since TS3's `turn_parts_named`, `turn_parts_optional` and
+        `turn_order_any`: 0.0081; 152 since TS4's `hop_run_share` and `hop_displace_share`:
+        0.0080; 155 since H1's `has_upkeep`, `upkeep_mean` and `upkeep_new`: 0.0079; 156 since
+        H3's `passes`: 0.0078; 159 since H2's `has_income`, `income_per_piece` and
+        `income_region`: 0.0077."""
         chess = _chess()
         chess["rules"].pop("insufficient_material")
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0085
+        assert distance(chess, twin) == 0.0077
 
 
 def _one_leap_beside_a_stone() -> dict:

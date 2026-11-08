@@ -6755,7 +6755,9 @@ class TestWhatReachesThePage:
         # 164 since Q1071: the choice of which kind of move a square means (`drawKinds`): the
         # head, each kind's words and the engine's text through `esc`, the piece and coin
         # drawers' own markup, numbers and constant words.
-        assert len(sites) == 164
+        # 165 since Q1099: the arrow of a move lost to a shot in a round of equal speeds
+        # (`animateRound`, `lostArrowHtml`'s numbers and token names, as the ordered round's).
+        assert len(sites) == 165
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -10608,8 +10610,10 @@ class TestManagingTheScores:
         before = app.get(f"/api/game/{digest}")
         assert before["score"] is None and before["staleness"] is None
 
-        # What the measurement the button starts leaves behind.
-        self._store(tmp_path, digest, self._current(tmp_path, digest))
+        # What the measurement the button starts leaves behind, written as its thread
+        # writes it: in process (`library.writing`, which no held listing outlives, C15a).
+        with library.writing():
+            self._store(tmp_path, digest, self._current(tmp_path, digest))
 
         after = app.get(f"/api/game/{digest}")
         assert after["score"] is not None, "the page that started it must see the result"
@@ -11329,8 +11333,13 @@ class TestBuildingAGameByHand:
         # `archive/the-free-companies` (the war chest and the levy retired first).
         # `push` (Q1074b2) joined it, and left on 2026-10-30 with Q1074bg1's
         # `rulesets/brink.json`.
+        # `turn` left it on 2026-11-07 with TS3's `rulesets/drover.json` (Q1133), a turn of parts.
+        # `pass` (generation 116, H3, Q1126) joined it; H5's `rulesets/hunger.json` takes it out.
+        # `income` (generation 117, H2, Q1127) joined it; H5's Hunger takes it out too.
         assert _RULES_KEYS - seen == {
-            "checkmate", "turn",
+            "checkmate",
+            "income",
+            "pass",
         },"the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(

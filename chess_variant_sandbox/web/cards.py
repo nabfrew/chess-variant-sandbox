@@ -95,6 +95,8 @@ PIECE_PATHS = frozenset({
     "rules.portals[].ends[].carries",
     "rules.reach.piece",
     "rules.extinction.pieces",
+    # TS3: the types a part of the turn admits, beside "own" and "shared".
+    "rules.turn.parts[].pieces",
     "rules.drops.no_doubled",
     "rules.drops.no_mate",
     "rules.explode_on_capture.immune",

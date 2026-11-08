@@ -143,3 +143,82 @@ def test_inert_where_nobody_is_bare() -> None:
     off = play_game(engine, ("minimax:nodes=400,mopup=0",) * 2, seed=5)
     assert on.moves == off.moves
     assert on.nodes == off.nodes
+
+
+class _Watched:
+    """The engine as the oracle's walk sees it, noting every position the walk walks from
+    (each is asked for its legal moves) and every step it plays."""
+
+    def __init__(self, engine: Engine) -> None:
+        self.engine = engine
+        self.walked: list[Any] = []
+        self.played: list[Any] = []
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.engine, name)
+
+    def legal_moves(self, state: Any) -> Any:
+        self.walked.append(state)
+        return self.engine.legal_moves(state)
+
+    def apply(self, state: Any, move: int) -> Any:
+        child = self.engine.apply(state, move)
+        self.played.append(child)
+        return child
+
+
+def _royals(engine: Engine, state: Any, player: int) -> int:
+    spec = engine.spec
+    royal = set(spec.royal_types)
+    return sum(
+        1 for v in state.board if v and spec.owner_of(v) == player and spec.type_of(v) in royal
+    )
+
+
+# Kyoto, a drops game where the bare side's walk meets steps that take the standing king
+# (Q1136, `docs/archive/bugs-resolved.md`): the first minimax's searches walk there.
+_KYOTO_GAME = (("minimax:nodes=400", "greedy"), 2)
+
+
+def test_the_walk_never_takes_the_standing_royal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Q1138: a step that takes a royal of the side standing still is no step of the walk,
+    so every position the walk walks from has one royal a side, as every position the rules
+    reach does (`compile._royalty_can_multiply`), and the core's one-royal hint holds there.
+    The game below offers such steps (some are played and refused), and the core walks as
+    the oracle does: the same moves and nodes."""
+    engine = Engine(_load("archive/kyoto.json"))
+    watched: list[_Watched] = []
+    walk = MinimaxAgent._bare_reach
+
+    def watching(self: MinimaxAgent, state: Any, bare: int, cap: int) -> int:
+        plain = self.engine
+        self.engine = _Watched(plain)
+        try:
+            return walk(self, state, bare, cap)
+        finally:
+            watched.append(self.engine)
+            self.engine = plain
+
+    monkeypatch.setattr(MinimaxAgent, "_bare_reach", watching)
+    agents, seed = _KYOTO_GAME
+    in_python = play_game_python(engine, agents, seed=seed)
+    native = play_game(engine, agents, seed=seed)
+    assert native.moves == in_python.moves
+    assert native.nodes == in_python.nodes
+    walked = [s for w in watched for s in w.walked]
+    played = [s for w in watched for s in w.played]
+    assert walked
+    assert any(_royals(engine, s, 0) == 0 or _royals(engine, s, 1) == 0 for s in played)
+    for state in walked:
+        assert _royals(engine, state, 0) == 1 and _royals(engine, state, 1) == 1
+
+
+@pytest.mark.skipif(not getattr(_core, "DEBUG_ASSERTIONS", False), reason="a checking build")
+@pytest.mark.parametrize("seed", range(6))
+def test_kyoto_plays_clean_on_a_checking_build(seed: int) -> None:
+    """On a core built with debug assertions (`.claude/rules/engine-and-spec.md`, *Royal hint
+    and check memo*), the games whose searches walk past the standing king run without the
+    royal hint's assert firing (Q1136 found it firing in the first)."""
+    engine = Engine(_load("archive/kyoto.json"))
+    for agents in (("greedy", "minimax:nodes=400"), ("minimax:nodes=400", "greedy")):
+        assert play_game(engine, agents, seed=seed).moves

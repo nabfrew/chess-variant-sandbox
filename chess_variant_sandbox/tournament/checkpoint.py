@@ -497,19 +497,38 @@ def run_tournament(
     Without a campaign it *is* ``runner.run_tournament``. With one, the games both of whose
     seats the core plays go through ``play_games`` (sealed pieces, a piece a thread, one
     core call a piece), the rest through the runner's own Python loop, and every record is
-    put back at its place in the schedule, as the runner's ``_play`` does. The runner
-    itself is left alone on purpose: it is in the engine fingerprint set
-    (``measurement.ENGINE_SOURCES``), and an edit there would stale every library score.
+    put back at its place in the schedule, as the runner's ``_play`` does. The campaign
+    path lives here, not in the runner, because the runner is in the engine fingerprint
+    set (``measurement.ENGINE_SOURCES``) and this file is not.
+    """
+    return run_schedules(spec, [config], progress=progress, on_progress=on_progress)[0]
+
+
+def run_schedules(
+    spec: dict[str, Any],
+    configs: Sequence[Any],
+    progress: bool = False,
+    on_progress: Callable[[int], None] | None = None,
+) -> list[Any]:
+    """``runner.run_schedules``, resumable inside a campaign directory (Q1117).
+
+    Several schedules of one game as one stage: the native games cut into pieces in the
+    runner's dispatch order (longest first), so the pieces are submitted longest first,
+    and each config's records put back in its own schedule order.
     """
     from chess_variant_sandbox.agents import native_spec
     from chess_variant_sandbox.engine import Engine
-    from chess_variant_sandbox.spec import spec_hash
     from chess_variant_sandbox.tournament import runner
     from chess_variant_sandbox.tournament.play import build_record, eval_values
 
+    configs = list(configs)
     if current() is None:
-        return runner.run_tournament(spec, config, progress=progress, on_progress=on_progress)
-    tasks = runner.schedule(config)
+        return runner.run_schedules(spec, configs, progress=progress, on_progress=on_progress)
+    if not configs:
+        return []
+    config = runner.merged_config(configs)
+    schedules = [runner.schedule(each) for each in configs]
+    tasks = [task for each in schedules for task in each]
     engine = Engine(spec)
     natives = [native_spec(agent, engine.spec.hash) for agent in config.agents]
     inside, outside = runner._split_by_native_form(
@@ -538,6 +557,8 @@ def run_tournament(
 
     placed: dict[int, Any] = {}
     if inside:
+        # Longest first (Q1117): the pieces are cut and submitted in this order.
+        inside = [inside[k] for k in runner.dispatch_order([tasks[index] for index in inside])]
         played = play_games(
             {"ruleset_hash": engine.spec.hash, "collect_series": config.collect_series},
             [agent for agent, _ in roster],
@@ -556,9 +577,6 @@ def run_tournament(
             done=len(inside), total=len(tasks), on_progress=on_progress,
         )
         placed.update(zip(outside, loop, strict=True))
-    return runner.TournamentResult(
-        ruleset_hash=spec_hash(spec),
-        ruleset_name=spec["name"],
-        config=config,
-        records=[placed[index] for index in range(len(tasks))],
+    return runner.results_by_config(
+        spec, configs, schedules, [placed[index] for index in range(len(tasks))]
     )

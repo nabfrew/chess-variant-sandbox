@@ -115,6 +115,12 @@ class NeutralOracle:
             if control == "stands":
                 continue
             self.majority[piece_type] = next_to(piece)
+        # TS2 (`docs/plan-tessabi.md` §2): the shared types, moved by the side to move whoever
+        # stands next to them; no count holds them (`holder` answers -1, as the core's does).
+        self.shared = {
+            piece_type for piece_type, piece in enumerate(spec["pieces"])
+            if piece.get("control") == "shared"
+        }
         # TC6: what a hire and a bribe cost, by type, and what *next to* means for them.
         purse = rules.get("purse") if isinstance(rules.get("purse"), dict) else None
         nobodys = {
@@ -167,7 +173,7 @@ class NeutralOracle:
         if not value or self.owner(value) != NOBODY_BLOCK:
             return -1
         near = self.majority.get(self.type_of(value))
-        if near is None:
+        if near is None or self.type_of(value) in self.shared:
             return -1
         count = [0, 0]
         for next_square in near[square]:
@@ -194,7 +200,10 @@ class NeutralOracle:
         player = state.side_to_move
         found: list[int] = []
         for square, value in enumerate(state.board):
-            if not value or self.holder(state, square) != player:
+            if not value:
+                continue
+            shared = self.owner(value) == NOBODY_BLOCK and self.type_of(value) in self.shared
+            if not shared and self.holder(state, square) != player:
                 continue
             takes_royal = self.type_of(value) in self.takers
             for target in self._twin_targets(state, square, player):

@@ -158,8 +158,9 @@ def _refused_with(spec: dict[str, Any], phrase: str) -> str:
 
 @pytest.mark.parametrize(("kind", "reason"), [
     ("leap", "a leap is one jump"),
-    ("lame", "a lame move's leg is fixed"),
-    ("hop", "a hop's screen is the first piece on a line"),
+    # SR11a (PA4) lifted the lame rider; a single lame leap (range 1, its default) never turns.
+    ("lame", "on a single lame leap (range 1) is one jump"),
+    ("hop","a hop's screen is the first piece on a line"),
     ("sweep", "a sweep removes what lies on a line"),
 ])
 def test_refusal_1_a_path_on_another_kind(kind: str, reason: str) -> None:

@@ -62,7 +62,8 @@ by name at load.
 same units and gather the same bytes, and a finished unit has one name however many
 workers made it. More units than workers also evens the load: the tournament's schedule
 runs from the cheapest pairings to the dearest, so a cut into four leaves the last worker
-with every 6,400-node game (B3 measured that unit at 30 s native against the others' few).
+with every top-rung game (B3 measured that unit at 30 s native against the others' few, when
+the top rung was 6,400 nodes; since the ladder shift it is 25,600, about four times that).
 """
 
 from __future__ import annotations

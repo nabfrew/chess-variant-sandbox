@@ -5,6 +5,7 @@
 //! so the corpus a tournament produces is identical whether it ran on one core or
 //! sixteen. Nothing is shared but the immutable tables.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
 use rayon::prelude::*;
@@ -72,7 +73,15 @@ pub fn perft(t: &Tables, snapshot: &Snapshot, depth: u32, threads: usize, stop_a
 }
 
 /// Play a whole schedule. `tasks` is `(seed, first agent index, second agent index)`,
-/// already ordered by the Python scheduler, and the results come back in that order.
+/// and the results come back in the order given.
+///
+/// Q1117 (C9): the games are also *started* in the order given. Every thread takes the
+/// next unstarted task from one shared cursor until none is left -- a list schedule --
+/// where `rayon`'s split handed each thread a contiguous run of the slice. So a caller
+/// that puts the longest games first (the runner orders by combined budget) gets the
+/// longest-first schedule, whose tail is one short game rather than one long one. Which
+/// thread plays a game, and when, decides nothing in it: its seed and players were fixed
+/// before any thread started, and each result is put back at its task's index.
 pub fn run_tournament(
     t: &Tables,
     tasks: &[(u64, usize, usize)],
@@ -86,10 +95,34 @@ pub fn run_tournament(
         play_game(t, &pair, values, task.0, collect_series)
     };
 
-    if threads <= 1 {
+    if threads <= 1 || tasks.len() <= 1 {
         return tasks.iter().map(play).collect();
     }
-    pool(threads).install(|| tasks.par_iter().map(play).collect())
+    in_order(threads.min(tasks.len()), tasks.len(), |index| play(&tasks[index]))
+}
+
+/// `one(0) .. one(count - 1)` on `threads` threads, started in index order from a shared
+/// cursor and returned in index order.
+fn in_order<T: Send>(threads: usize, count: usize, one: impl Fn(usize) -> T + Sync) -> Vec<T> {
+    let cursor = AtomicUsize::new(0);
+    let done: Vec<Vec<(usize, T)>> = pool(threads).broadcast(|_| {
+        let mut mine = Vec::new();
+        loop {
+            let index = cursor.fetch_add(1, Ordering::Relaxed);
+            if index >= count {
+                return mine;
+            }
+            mine.push((index, one(index)));
+        }
+    });
+    let mut slots: Vec<Option<T>> = (0..count).map(|_| None).collect();
+    for (index, value) in done.into_iter().flatten() {
+        slots[index] = Some(value);
+    }
+    slots
+        .into_iter()
+        .map(|slot| slot.expect("every task is taken from the cursor exactly once"))
+        .collect()
 }
 
 /// Q665 (archive/plan-teacher §8.2, T2v): the player's own root value on each position.
@@ -211,4 +244,27 @@ pub fn random_playouts(
         return (0..games).filter_map(one).collect();
     }
     pool(threads).install(|| (0..games).into_par_iter().filter_map(one).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::in_order;
+    use std::sync::Mutex;
+
+    #[test]
+    fn in_order_returns_every_index_once_in_index_order_at_any_thread_count() {
+        for threads in [1, 2, 3, 8] {
+            for count in [0, 1, 2, 7, 64] {
+                let out = in_order(threads, count, |index| index * 3);
+                assert_eq!(out, (0..count).map(|index| index * 3).collect::<Vec<_>>());
+            }
+        }
+    }
+
+    #[test]
+    fn in_order_starts_the_tasks_in_index_order() {
+        let started = Mutex::new(Vec::new());
+        in_order(1, 10, |index| started.lock().unwrap().push(index));
+        assert_eq!(*started.lock().unwrap(), (0..10).collect::<Vec<_>>());
+    }
 }

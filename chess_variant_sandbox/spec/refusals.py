@@ -365,22 +365,153 @@ PUSH_REFUSALS: tuple[Refusal, ...] = (
 )
 
 
+# H1 (`docs/plan-hunger.md` §2.4): what a move's cost is refused beside in its first build, each
+# prefixed ``upkeep.`` as the push's are. A lift deletes the row, and the plan's §2.4 says what
+# reading each lift would need.
+_UPKEEP = "rules.purse.upkeep"
+
+
+def _upkeep(rid: str, second: str, why: str) -> Refusal:
+    return Refusal(
+        f"upkeep.{rid}", _UPKEEP, second,
+        f"rules.purse.upkeep beside {second}: {why} (first build)",
+    )
+
+
+UPKEEP_REFUSALS: tuple[Refusal, ...] = (
+    _upkeep(
+        "U1", "rules.simultaneous",
+        "a round's collisions would need a rule for refunding a move that never arrived",
+    ),
+    _upkeep(
+        "U2", _LONG_TURN,
+        "whether a later move of the turn is paid from the purse the earlier ones left is unbuilt",
+    ),
+    _upkeep(
+        "U3", "rules.portals",
+        "a transit's exit and the square the move named disagree about where the piece arrives",
+    ),
+    _upkeep("U4", "rules.npcs", "a wild piece has no purse, and the pair is untested"),
+    _upkeep(
+        "U5", _COMMAND,
+        "a commanded piece's move is a foreign move, and whose purse pays for it is unsettled",
+    ),
+    _upkeep(
+        "U6", 'pieces[].control "majority" or "shared"',
+        "a held or shared piece's move is a foreign move, and whose purse pays for it is unsettled",
+    ),
+    _upkeep(
+        "U7", "rules.drops",
+        "a drop arrives and so pays for its square, but what a drop costs beside a placement "
+        "phase and a hand filled by captures is a design of its own",
+    ),
+    _upkeep(
+        "U8", 'board.lattice "hex"',
+        "rows from a player's first row need one row direction for both sides, which a hex "
+        "board does not have",
+    ),
+    _upkeep(
+        "U9", "rules.contacts",
+        "a contact may change the moving piece, and which type pays for its square is unsettled",
+    ),
+    _upkeep(
+        "U10", "rules.strike.switches_sides",
+        "a capturer that changes sides ends as the opponent's piece, and whose rows it pays "
+        "for is unsettled",
+    ),
+)
+
+# H3 (`docs/plan-hunger.md` §4): what the pass is refused beside in its first build, each
+# prefixed ``pass.`` as the upkeep's are. A lift deletes the row; §R3 names the later values.
+_PASS = "rules.pass"
+
+
+def _pass(rid: str, second: str, why: str) -> Refusal:
+    return Refusal(f"pass.{rid}", _PASS, second, f"rules.pass beside {second}: {why} (first build)")
+
+
+PASS_REFUSALS: tuple[Refusal, ...] = (
+    _pass(
+        "P1", "rules.simultaneous",
+        "a stand-still move in a round is a later value of the rule, unbuilt",
+    ),
+    _pass(
+        "P2", "rules.duck",
+        "the duck's move is half of every turn, and whether a pass skips it is unsettled",
+    ),
+    _pass(
+        "P3", "rules.turn (more than one move, or parts)",
+        "whether a pass ends a long turn early or spends one of its moves is a later value of "
+        "the rule, unbuilt",
+    ),
+    _pass(
+        "P4", "rules.must_capture",
+        "a pass would be the way out of every forced capture",
+    ),
+    _pass(
+        "P5", "rules.drops.placement",
+        "a placement phase allows nothing but a drop",
+    ),
+    _pass(
+        "P6", "rules.npcs",
+        "whether a pass sets the wild pieces' phase going is unsettled",
+    ),
+    _pass(
+        "P7", "rules.portals",
+        "a straight-back bar and a fold's own move each read the move before, and whether a "
+        "pass spends a bar is unsettled",
+    ),
+    _pass(
+        "P8", "pieces[].moves[].push",
+        "the push's bar lasts for the very next move, and whether a pass spends it (Go's ko "
+        "does) is unsettled",
+    ),
+)
+
+# H2 (`docs/plan-hunger.md` §3, §R2): what income is refused beside in its first build, each
+# prefixed ``income.`` as the upkeep's and the pass's are. A lift deletes the row.
+_INCOME = "rules.income"
+
+
+def _income(rid: str, second: str, why: str) -> Refusal:
+    return Refusal(
+        f"income.{rid}", _INCOME, second, f"rules.income beside {second}: {why} (first build)"
+    )
+
+
+INCOME_REFUSALS: tuple[Refusal, ...] = (
+    _income(
+        "I1", 'rules.scoring.count "points"',
+        "income into the points tally is a later value of the rule, and the tally is not in "
+        "the position's key, so a holder shuffling in place would repeat the position and draw "
+        "while it banked points",
+    ),
+    _income(
+        "I2", "rules.simultaneous",
+        "a round has no start of one player's turn to pay at, so when income lands in a round "
+        "is unsettled",
+    ),
+)
+
+_ALL = REFUSALS + PUSH_REFUSALS + UPKEEP_REFUSALS + PASS_REFUSALS + INCOME_REFUSALS
+
+
 def _index() -> dict[tuple[str, str], Refusal]:
     by: dict[tuple[str, str], Refusal] = {}
-    for row in REFUSALS + PUSH_REFUSALS:
+    for row in _ALL:
         assert (row.id, row.second) not in by, (row.id, row.second)
         by[row.id, row.second] = row
     return by
 
 
 _BY_ID_AND_KEY = _index()
-_BY_MESSAGE = {row.message: row for row in REFUSALS + PUSH_REFUSALS}
+_BY_MESSAGE = {row.message: row for row in _ALL}
 
 
 def refusal(rid: str, second: str | None = None) -> str:
     """The message of the refused pair ``rid`` (beside ``second``, for an id of several rows)."""
     rows = [
-        row for row in REFUSALS + PUSH_REFUSALS
+        row for row in _ALL
         if row.id == rid and (second is None or row.second == second)
     ]
     if len(rows) != 1:
@@ -390,7 +521,7 @@ def refusal(rid: str, second: str | None = None) -> str:
 
 def refusal_rows(rid: str) -> tuple[Refusal, ...]:
     """Every row the id ``rid`` holds, in the table's order (empty for an id not in it)."""
-    return tuple(row for row in REFUSALS + PUSH_REFUSALS if row.id == rid)
+    return tuple(row for row in _ALL if row.id == rid)
 
 
 def refused_ids(errors: Iterable[str]) -> set[str]:

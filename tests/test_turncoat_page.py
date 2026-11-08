@@ -265,10 +265,10 @@ class TestTheDesigner:
     def test_the_cards_offer_the_keys(self) -> None:
         model = cards.card_model()
         piece = {field["key"] for field in model["piece"]}
-        assert {"price", "bounty", "control"} <= piece
+        assert {"price", "bounty", "control", "upkeep"} <= piece
         purse = next(field for field in model["rules"] if field["key"] == "purse")
         assert [field["key"] for field in purse["fields"]] == [
-            "start", "market", "bribe", "bounty_to", "region"]
+            "start", "market", "bribe", "bounty_to", "upkeep", "region"]
 
     def test_a_turncoat_draft_is_a_game_and_its_refusals_are_the_validators(self) -> None:
         spec = _spec()

@@ -260,7 +260,26 @@ FROZEN_RATED = [
 ]
 
 
-@pytest.mark.parametrize(("name", "procedure", "count", "digest", "last"), FROZEN_RATED)
+# Q1120: the same freeze for every library game's rated net as of 2026-11-06, taken from
+# main's build f87129c534cb5815, before both dense layers became a sparse pass over the
+# non-zero inputs (`net.rs::sparse_layer`). Same form as `FROZEN_RATED`.
+FROZEN_RATED_Q1120 = [
+    ("antichess", "0a83806cb796", 319, "ccd16021a3cab514", [2034, 2414, 1630]),
+    ("dobutsu", "db5ef1bc938e", 27, "e6ab62a92c84a7de", [1058, 960, 401]),
+    ("gardner", "ae241123e674", 344, "37199b80d9b8d64a", [-4738, -219, 23]),
+    ("intransitive", "b14f1d190426", 832, "b947c2aa6cdd870d", [1432, -955, -1124]),
+    ("kingofthehill", "db5ef1bc938e", 536, "f8960a921b1bb0e9", [-3753, -3995, -3798]),
+    ("racingkings", "1851f0c2e373", 796, "c3e3375ead902900", [4122, 707, 1009]),
+    ("rps-v1", "b0b1d779058c", 372, "016e85983a7d4e94", [68, -1087, -283]),
+    ("rps-v2", "c30820cdf2de", 861, "be7e2e3c0e173054", [-2068, -2465, -3733]),
+    ("rps-v3", "9946eb49d8ae", 293, "8b259c7158d5fd99", [15, 245, 543]),
+    ("rps-v4", "ab3f11451433", 303, "f392cfd224b138a4", [147, 684, -626]),
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "procedure", "count", "digest", "last"), FROZEN_RATED + FROZEN_RATED_Q1120
+)
 def test_a_rated_net_evaluates_every_position_as_it_did_before_q961(
     name: str, procedure: str, count: int, digest: str, last: list[int]
 ) -> None:

@@ -30,17 +30,24 @@ from typing import Any
 
 from chess_variant_sandbox.spec.complexity import expand_symmetry, measure_complexity
 from chess_variant_sandbox.spec.schema import (
+    INCOME_PER_PIECE_MAX,
     PURSE_MAX,
+    REACH_COUNT_MAX,
     REPETITION_NEVER,
     REST_MAX,
     SIGHT_EFFECTS,
     STOCK_UNLIMITED,
+    UPKEEP_MAX,
     WRAP_PAIRS,
     absent_squares,
     duck_goes,
     duck_piece,
     facing_turns,
     hire_ids,
+    hop_displaces,
+    hop_run,
+    income_region_is_default,
+    income_rule,
     majority_ids,
     move_push,
     neutral_ids,
@@ -55,6 +62,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     piece_speeds,
     piece_strengths,
+    piece_upkeeps,
     piece_weights,
     player_stocks,
     portal_groups,
@@ -64,11 +72,14 @@ from chess_variant_sandbox.spec.schema import (
     purse_bribes,
     purse_pays_loser,
     purse_rule,
+    purse_upkeep,
     push_lists,
     push_rule,
     pushable_ids,
     pushing_ids,
     reach_pieces,
+    reach_scoring,
+    shared_ids,
     simultaneous_switch,
     spy_ids,
     strike_changes_anything,
@@ -176,6 +187,9 @@ _SCALES: dict[str, float] = {
     "has_territory": 1.0,
     "repaints_territory": 1.0,
     "must_capture": 1.0,
+    # H3 (`docs/plan-hunger.md` §4): the pass, a flag, so a game and its passing twin are
+    # not at distance zero.
+    "passes": 1.0,
     # Schema 5, and the same lesson a third time. A joined edge separates a kind of game
     # rather than a size of one, and the three flags are needed rather than one because
     # `cylinder`, `torus` and `onewaycylinder` differ in *nothing else* -- same board,
@@ -319,6 +333,19 @@ _SCALES: dict[str, float] = {
     # goal's own sentence, so it needs a feature or a race and its one-runner twin read as
     # one game.
     "reach_runners": 1.0,
+    # TS1 (`docs/plan-tessabi.md` §1): whether a goal banks its arrivals, how many it counts
+    # (a share of `REACH_COUNT_MAX`, so three and four read as near), and whether both at once
+    # is read other than as player 0's. Each is a feature, so a spec and its twin without the
+    # key never read as one game.
+    "reach_removes": 1.0,
+    "reach_count": 1.0,
+    "reach_both": 1.0,
+    # TS3 (`docs/plan-tessabi.md` §3): a turn written as parts (the share of its parts that
+    # name pieces other than "own", so a part list and its moves twin never read as one game),
+    # the share of parts that may be kept, and order "any".
+    "turn_parts_named": 1.0,
+    "turn_parts_optional": 1.0,
+    "turn_order_any": 1.0,
     # Schema 19 (Q771). How many portal pairs, as a share of the four a spec may have, so
     # one pair and two read as near and none as far; whether anyone moves an end; whether
     # any passage is one way or closed. The last two are charged in `complexity` only once
@@ -415,6 +442,9 @@ _SCALES: dict[str, float] = {
     # Q1077 (`docs/plan-turncoat.md` §4.7): the share of declared types whose held pieces take
     # royals, so a held neutral that checks and one that does not are not at distance zero.
     "majority_takes_royal": 1.0,
+    # TS2 (`docs/plan-tessabi.md` §2): the share of declared types either player moves, so a
+    # held and a shared neutral are not at distance zero.
+    "shared_share": 1.0,
     # TC4 (`docs/plan-turncoat.md` §5.8): the share of declared types carrying a bounty, so a
     # game and its bounty twin are not at distance zero.
     "bounty_share": 1.0,
@@ -433,6 +463,17 @@ _SCALES: dict[str, float] = {
     # TC9c (§5.10): a bounty paid to the player who lost the piece, a flag, so a purse game
     # and its twin paying the loser are not at distance zero.
     "bounty_to_loser": 1.0,
+    # H1 (`docs/plan-hunger.md` §2.5): a move's cost, its rates' mean and its promotion
+    # reading, so a purse game and its upkeep twin, or two upkeep games apart in a rate or the
+    # reading, are not at distance zero.
+    "has_upkeep": 1.0,
+    "upkeep_mean": 1.0,
+    "upkeep_new": 1.0,
+    # H2 (`docs/plan-hunger.md` §3): income, so a purse game and its income twin, or two income
+    # games apart in rate or ground, are not at distance zero.
+    "has_income": 1.0,
+    "income_per_piece": 1.0,
+    "income_region": 1.0,
     # Q1074b5 (`docs/plan-push.md` §4): the push, so a game and its pushing twin, or two push
     # games apart in one knob, are not at distance zero. The share of move entries that push;
     # over those entries, whose pieces they push (enemy 0, any 0.5, own 1), the share that also
@@ -455,6 +496,10 @@ _SCALES: dict[str, float] = {
     "push_walls_crush": 1.0,
     "push_weight": 9.0,
     "push_strength": 9.0,
+    # TS4 (`docs/plan-tessabi.md` §4): the share of move entries that hop over a run, and the
+    # share that displace, so a game and its leapfrogging twin are not at distance zero.
+    "hop_run_share": 1.0,
+    "hop_displace_share": 1.0,
 }
 
 
@@ -556,7 +601,8 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         ) / total_moves,
         "turning_share": sum(
             1 for piece in pieces for move in piece.get("moves", []) or []
-            if move.get("kind") == "slide" and move.get("path") in ("circle", "zigzag")
+            # SR11a: a turning lame rider turns as a slide does.
+            if move.get("kind") in ("slide", "lame") and move.get("path") in ("circle", "zigzag")
         ) / total_moves,
         "royal_types": float(sum(1 for piece in pieces if piece.get("royal"))),
         "royal_step": royal_step,
@@ -591,6 +637,7 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
             "mode"
         ) == "repaint" else 0.0,
         "must_capture": 1.0 if rules.get("must_capture") else 0.0,
+        "passes": 1.0 if rules.get("pass") is True else 0.0,
         **_wrap_features(rules.get("wrap"), board.get("shape")),
         **_explosion_features(rules.get("explode_on_capture")),
         "has_obstacles": 1.0 if (rules.get("obstacles") or {}).get("squares") else 0.0,
@@ -623,6 +670,8 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
             else 0.0
         ),
         "reach_runners": 1.0 if len(reach_pieces(rules.get("reach"))) > 1 else 0.0,
+        **_reach_scoring_features(rules.get("reach")),
+        **_turn_part_features(rules.get("turn")),
         **_portal_features(rules.get("portals")),
         **_simultaneous_features(spec),
         **_rest_features(spec),
@@ -631,6 +680,7 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         **_bounty_features(spec),
         **_purse_features(spec),
         **_push_features(spec, total_moves),
+        **_hop_run_features(spec, total_moves),
     }
 
 
@@ -638,6 +688,20 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
 _PUSH_WHOSE = {"enemy": 0.0, "any": 0.5, "own": 1.0}
 _PUSH_ALONG = {"move": 0.0, "rank": 0.5, "file": 1.0}
 _PUSH_CHAIN = {"one": 0.0, "row": 0.5, "weight": 1.0}
+
+
+def _hop_run_features(spec: dict[str, Any], total_moves: int) -> dict[str, float]:
+    """TS4: the share of move entries that hop over a run and the share that displace."""
+    moves = [
+        move for piece in spec.get("pieces") or [] if isinstance(piece, dict)
+        for move in piece.get("moves") or []
+    ]
+    if not total_moves:
+        return {"hop_run_share": 0.0, "hop_displace_share": 0.0}
+    return {
+        "hop_run_share": sum(1 for m in moves if hop_run(m) is not None) / total_moves,
+        "hop_displace_share": sum(1 for m in moves if hop_displaces(m)) / total_moves,
+    }
 
 
 def _push_features(spec: dict[str, Any], total_moves: int) -> dict[str, float]:
@@ -702,6 +766,7 @@ def _purse_features(spec: dict[str, Any]) -> dict[str, float]:
         if isinstance(piece, dict) and isinstance(piece.get("id"), str)
     ]
     start = purse.get("start", 0) if purse is not None else 0
+    income = income_rule(spec)
     return {
         "has_purse": 1.0 if purse is not None else 0.0,
         "purse_start": (
@@ -712,6 +777,23 @@ def _purse_features(spec: dict[str, Any]) -> dict[str, float]:
         "has_hire": 1.0 if hire_ids(spec) else 0.0,
         "has_bribe": 1.0 if purse_bribes(spec) else 0.0,
         "bounty_to_loser": 1.0 if purse_pays_loser(spec) else 0.0,
+        # H1: the move's cost as a flag, the upkeep vector's mean (a share of `UPKEEP_MAX`
+        # over the declared types) and the promotion reading.
+        "has_upkeep": 1.0 if purse_upkeep(spec) is not None else 0.0,
+        "upkeep_mean": (
+            sum(piece_upkeeps(spec).values()) / (UPKEEP_MAX * len(declared)) if declared else 0.0
+        ),
+        "upkeep_new": 1.0 if purse_upkeep(spec) == "new" else 0.0,
+        # H2 (`docs/plan-hunger.md` §3): income as a flag, its rate (a share of
+        # `INCOME_PER_PIECE_MAX`) and whether its region is other than the first rank.
+        "has_income": 1.0 if income is not None else 0.0,
+        "income_per_piece": (
+            income["per_piece"] / INCOME_PER_PIECE_MAX if income is not None else 0.0
+        ),
+        "income_region": (
+            1.0 if income is not None and income["region"] is not None
+            and not income_region_is_default(spec) else 0.0
+        ),
     }
 
 
@@ -744,6 +826,8 @@ def _neutral_features(spec: dict[str, Any]) -> dict[str, float]:
         "majority_takes_royal": (
             len(takes_royal_ids(spec)) / len(declared) if declared else 0.0
         ),
+        # TS2 (`docs/plan-tessabi.md` §2): the share of them either player moves.
+        "shared_share": len(shared_ids(spec)) / len(declared) if declared else 0.0,
     }
 
 
@@ -775,6 +859,29 @@ def _sight_features(spec: dict[str, Any]) -> dict[str, float]:
         / len(declared) if declared else 0.0
     )
     return out
+
+
+def _turn_part_features(turn: Any) -> dict[str, float]:
+    """TS3: a turn of parts, each zero for a turn without them."""
+    parts = turn.get("parts") if isinstance(turn, dict) else None
+    if not isinstance(parts, list) or not parts:
+        return {"turn_parts_named": 0.0, "turn_parts_optional": 0.0, "turn_order_any": 0.0}
+    dicts = [part for part in parts if isinstance(part, dict)]
+    return {
+        "turn_parts_named": sum(1 for p in dicts if p.get("pieces") != "own") / len(parts),
+        "turn_parts_optional": sum(1 for p in dicts if p.get("optional") is True) / len(parts),
+        "turn_order_any": 1.0 if turn.get("order") == "any" else 0.0,
+    }
+
+
+def _reach_scoring_features(reach: Any) -> dict[str, float]:
+    """TS1: the scoring goal's three keys, each zero at its off value."""
+    removes, count, both = reach_scoring(reach)
+    return {
+        "reach_removes": 1.0 if removes else 0.0,
+        "reach_count": (count - 1) / (REACH_COUNT_MAX - 1),
+        "reach_both": {"first": 0.0, "draw": 0.5, "mover": 1.0}[both],
+    }
 
 
 def _rest_features(spec: dict[str, Any]) -> dict[str, float]:

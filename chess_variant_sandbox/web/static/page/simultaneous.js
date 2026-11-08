@@ -83,8 +83,9 @@ function restNumbered(rests) {
 // stood there or had left), `win` and `lose` (one of two pieces that met on one square;
 // both `lose` where neither survived), `void` (it went for a piece that had moved, and
 // stayed), `drop` (a piece put down from the hand), `turn` (a piece turned where it stands,
-// or a move that goes nowhere). A void piece that was then taken where it stood is
-// `taken: true`. `taken` lists the other squares a piece was taken off -- a piece standing
+// or a move that goes nowhere), `shot` (SR7e: a capture that struck from where its piece
+// stands, which stays) and `lost` (a piece a shot struck before it could move; `taken` where
+// it is gone). A void piece that was then taken where it stood is `taken: true`. `taken` lists the other squares a piece was taken off -- a piece standing
 // where a move arrived, a blast's -- read off the two boards, since a piece missing after
 // the round is a fact of the positions, not a choice; `meeting` is the square two pieces
 // met on, with its winner (`-1` for none), or null.
@@ -99,9 +100,15 @@ function roundStory(before, after, reveal) {
   const collision = events.find(event => event.kind === 'collision') || null;
   const meeting = collision ? { square: collision.square, winner: collision.player } : null;
   const clash = roundClash({ reveal });
+  // SR7e (R11): a piece the other player's shot struck before it could move; its move is
+  // `lost`, as a slower move is in an ordered round.
+  const lost = new Set(events.filter(event => event.kind === 'lost').map(event => event.player));
   const moves = ((reveal && reveal.moves) || []).map(move => {
     const out = { player: move.player, from: move.from, to: move.to };
-    if (clash && move.from !== null && move.from !== undefined && !move.void) {
+    if (lost.has(move.player) && move.from !== null && move.from !== undefined) {
+      out.kind = 'lost';
+      out.taken = before[move.from] !== after[move.from];
+    } else if (clash && move.from !== null && move.from !== undefined && !move.void) {
       out.kind = clash.winner === move.player ? 'win' : 'lose';
       out.clash = true;
     } else if (move.from === null || move.from === undefined) {
@@ -115,14 +122,19 @@ function roundStory(before, after, reveal) {
       out.kind = 'turn';
     } else if (meeting && meeting.square === move.to) {
       out.kind = meeting.winner === move.player ? 'win' : 'lose';
+    } else if (after[move.from] && after[move.from] === before[move.from]) {
+      // SR7e: a shot -- the capture struck, and its piece is still where it was.
+      out.kind = 'shot';
     } else {
       out.kind = 'arrive';
     }
     return out;
   });
   // A square a moving piece left is not a capture there, nor is the meeting square; a void
-  // piece taken where it stood is its own move's story.
+  // piece taken where it stood is its own move's story, and a lost one's square is where the
+  // shot struck it, drawn as a capture.
   const left = new Set(moves.filter(m => m.kind !== 'void' && m.kind !== 'turn'
+                                         && m.kind !== 'lost' && m.kind !== 'shot'
                                          && m.from !== null).map(m => m.from));
   const voided = new Set(moves.filter(m => m.kind === 'void').map(m => m.from));
   const taken = [];
@@ -266,7 +278,9 @@ function roundRowHtml(number, first, second) {
   const said = move => {
     const result = move && move.result;
     if (!result) return '';
-    const mark = result === 'void' ? 'void' : result === 'won' ? 'won'
+    // SR7f: `missed`, a strike at a nobody's piece that lost to the other player's.
+    const mark = result === 'void' ? 'void' : result === 'missed' ? 'missed'
+      : result === 'won' ? 'won'
       : result === 'lost' ? '✕ lost' : result === 'unplayed' ? 'not played' : '✕ both lost';
     return ` <span class="muted small" data-result="${esc(result)}">${esc(mark)}</span>`;
   };
@@ -728,6 +742,25 @@ function animateRound(svg, before, after, reveal, cell, W, H, view) {
       blows.delete(move.from);
     }
   }
+  // SR7e: a move lost to a shot is the sealed move it never made, the ordered round's arrow
+  // (`lostArrowHtml`), fading as the shot strikes its piece; the struck piece is in `taken`.
+  for (const move of story.moves.filter(m => m.kind === 'lost' && m.taken
+                                           && m.from !== null && m.from !== m.to)) {
+    const group = document.createElementNS(SVGNS, 'g');
+    group.setAttribute('data-reveal', 'lost');
+    group.setAttribute('pointer-events', 'none');
+    group.setAttribute('stroke-linecap', 'round');
+    group.innerHTML = lostArrowHtml(move.from, move.to, cell, W, H,
+                                    wrapAllow(SESSION.ruleset.wrap, move.player), view);
+    svg.appendChild(group);
+    const span = PACE.beat + PACE.strike;
+    const gone = group.animate([
+      { opacity: 0.95 }, { opacity: 0.95, offset: PACE.beat / span }, { opacity: 0 },
+    ], { duration: span, easing: 'ease-in', fill: 'forwards' });
+    gone.onfinish = () => group.remove();
+    busy = Math.max(busy, span);
+    landed = Math.max(landed, PACE.beat);
+  }
   // A piece put down from the hand fades in, as in any game; one that lost a meeting was
   // drawn above.
   for (const move of story.moves.filter(m => m.from === null
@@ -926,9 +959,11 @@ function animateOrdered(svg, before, after, story, cell, W, H, view) {
 
 // ----- the spy (schema 27, Q935c, `docs/plan-spy.md` §3.6)
 //
-// A spy game is played by turns while both spies stand, then in rounds: **announced** ones
-// while one player alone has a spy (the other, the announcer, chooses first and in the open,
-// and the holder answers knowing the move), **blind** ones once both are lost. The phase is
+// A spy game is played by turns while both players have a spy, and in rounds otherwise:
+// **announced** ones while one player alone has a spy (the other, the announcer, chooses first
+// and in the open, and the holder answers knowing the move), **blind** ones while neither has.
+// Since SR7h (Y3) a spy can be gained (a promotion, a strike, a link, a hand, a market), so
+// the phase may go back as well as on, and nothing here says "from now on". The phase is
 // the core's (`SESSION.spy`, `Engine.phase`); the page words it and draws the announced move,
 // and works nothing out. A turn is the alternating board as it is; a round is this file's.
 
@@ -938,7 +973,7 @@ function animateOrdered(svg, before, after, story, cell, W, H, view) {
 function spyLine(spy, round, mover, names) {
   if (!spy) return '';
   const name = player => (names || [])[player] || `player ${player}`;
-  if (spy.phase === 'alternating') return 'Both spies stand: the players take turns.';
+  if (spy.phase === 'alternating') return 'Both players have a spy: they take turns.';
   if (spy.phase === 'reply') {
     const lost = name(mover);
     return `${lost}'s spy is lost. ${lost} replies with one ordinary move; then rounds begin, `
@@ -951,7 +986,7 @@ function spyLine(spy, round, mover, names) {
     return `Only ${holder} has a spy: ${announcer} announces a move first, and ${holder} `
       + 'answers knowing it.';
   }
-  if (spy.phase === 'blind') return 'Both spies are lost: both players choose in secret.';
+  if (spy.phase === 'blind') return 'Neither player has a spy: both choose in secret.';
   return '';
 }
 
@@ -1026,9 +1061,9 @@ function drawSpySend(slot) {
     ? `<b>${lost}'s spy is lost.</b> ${lost} replies with one ordinary move; then rounds
       begin.<span class="more"> Each round ${lost}, without a spy, announces a move first, and
       ${holder} answers knowing it.</span>`
-    : `<b>Both spies stand:</b> the players take turns.<span class="more"> Once a spy is lost,
-      play turns to rounds: the player without a spy announces each move first, and the other
-      answers knowing it.</span>`;
+    : `<b>Both players have a spy:</b> they take turns.<span class="more"> While a player has
+      no spy, play is in rounds: the player without one announces each move first, and the
+      other answers knowing it.</span>`;
   slot.innerHTML = `<div class="send-says" data-spy="${esc(SESSION.spy.phase)}">${says}</div>`;
 }
 

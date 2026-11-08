@@ -1,0 +1,64 @@
+{
+  "schema_version": 31,
+  "name": "crossings",
+  "summary": [
+    "Get three of your runners across the board to the far row.",
+    "A runner that gets there leaves the board and counts for you: it is home, and it no longer defends.",
+    "Runners step straight or diagonally forward, and take only diagonally forward.",
+    "A player with no legal move loses."
+  ],
+  "description": "A race in which every point costs a defender. Both armies are the same rows of runners that only go forward, and the first side to bring three of them home wins. A runner that crosses does not stand on the far row as a threat: it is taken off and banked, so each point scored is one fewer piece in your own wall. The question all game is when to spend: a runner sent early scores but leaves a hole the opponent's runners can pour through, while a wall kept whole scores nothing. Diagonal captures make every advance an exchange offer, and the race is usually decided by who can afford the last two crossings.",
+  "board": {
+    "width": 7,
+    "height": 7
+  },
+  "pieces": [
+    {
+      "id": "R",
+      "name": "runner",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[0, 1]],
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [[1, 1]],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": ["a1", "b1", "c1", "d1", "e1", "f1", "g1", "a2", "b2", "c2", "d2", "e2", "f2", "g2"]
+      }
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "max_plies": 300,
+    "reach": {
+      "squares": ["a7", "b7", "c7", "d7", "e7", "f7", "g7"],
+      "removes": true,
+      "count": 3
+    }
+  },
+  "appearance": {
+    "icons": {
+      "R": "pawn"
+    }
+  },
+  "provenance": {
+    "added": "2026-11-07",
+    "origin": "human",
+    "history": "Q1131 (TS1, docs/plan-tessabi.md section 1): the showcase for reach.removes and reach.count."
+  }
+}

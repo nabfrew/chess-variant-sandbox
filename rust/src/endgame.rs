@@ -30,7 +30,8 @@
 //!
 //! **What is refused, by name** (`refusal`): a capture hand or an endless stock (material never
 //! shrinks), the purse (coins buy pieces), rounds and spies (a position's value is not won, lost or
-//! drawn).
+//! drawn), TS1's bank (`reach.removes`: the banks are state a material set does not hold) and
+//! TS3's turn parts (`turn.parts`: the parts filled are state too).
 //!
 //! **Wild pieces and the duck** (N2) are the game's, never the set's. The wild pieces stand where
 //! the opening puts them, with their clocks and headings at rest, as the portal ends do, and the
@@ -162,6 +163,14 @@ pub fn refusal(t: &Tables) -> Option<String> {
     }
     if t.spy.is_some() {
         return Some("spies (pieces[].spy): a position is not a state the player knows".into());
+    }
+    if t.reach_removes {
+        return Some(
+            "a scoring goal that banks (rules.reach.removes): the banks are state a material set does not hold".into(),
+        );
+    }
+    if t.parts.is_some() {
+        return Some("turn parts (rules.turn.parts): the parts filled are state a material set does not hold".into());
     }
     if t.simultaneous.is_some() {
         return Some(

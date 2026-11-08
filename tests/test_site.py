@@ -233,7 +233,9 @@ def _local_routes(method: str) -> set[tuple[str, ...]]:
     function = next(
         node
         for node in app.body
-        if isinstance(node, ast.FunctionDef) and node.name == method.lower()
+        if isinstance(node, ast.FunctionDef)
+        # The POST routes are `App._post`'s: `App.post` only wraps it (C15a).
+        and node.name == {"GET": "get", "POST": "_post"}[method]
     )
     found: set[tuple[str, ...]] = set()
     for node in ast.walk(function):
@@ -538,7 +540,7 @@ class TestTheApp:
             raise AssertionError("the local application's dispatcher was reached")
 
         monkeypatch.setattr(App, "get", reached)
-        monkeypatch.setattr(App, "post", reached)
+        monkeypatch.setattr(App, "_post", reached)
         for method, path in FORBIDDEN:
             with pytest.raises(KeyError):
                 if method == "GET":
@@ -790,7 +792,7 @@ def _unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("the local application's dispatcher was reached")
 
     monkeypatch.setattr(App, "get", reached)
-    monkeypatch.setattr(App, "post", reached)
+    monkeypatch.setattr(App, "_post", reached)
 
 
 class TestTheCheapStepsNeedASignedInPerson:

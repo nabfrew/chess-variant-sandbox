@@ -256,6 +256,8 @@ class SiteApp(App):
     ) -> None:
         super().__init__(ruleset_dir, runs_dir, heuristics_dir, archive_dir, browser_dir)
         self.connect = connect or db.connect
+        # The connections kept between units of work (C15c); see `_connection`.
+        self._pool = db.Pool()
         # What an invitation from `/admin` is mailed through. Tests pass a recorder.
         self.send: mail.Sender = mail.send if send is None else send
         # Both of these are the local application's own objects replaced by readings of
@@ -486,7 +488,7 @@ class SiteApp(App):
             return found
         return super().get(path, asked)
 
-    def post(self, path: str, body: dict[str, Any]) -> Any:
+    def _post(self, path: str, body: dict[str, Any]) -> Any:
         self._registered("POST", path)
         parts = routes.split(path)
         if parts == ("api", "vote"):
@@ -574,7 +576,7 @@ class SiteApp(App):
             elif isinstance(show, dict):
                 usage.note("show=rule")
                 self.presses.press(self.viewer)
-        return super().post(path, body)
+        return super()._post(path, body)
 
     def _registered(self, method: str, path: str) -> None:
         """Whether this request is a route at all, for whoever is asking.
@@ -603,15 +605,20 @@ class SiteApp(App):
         `site/matches.py` and `site/rating.py` both refuse to commit, so that a finish
         and the ratings it moved land together. This is where together is decided.
         """
-        connection = self.connect()
+        # The connection itself is kept for the next unit of work (`db.Pool`, C15c) once
+        # this one has committed; one that rolled back is closed, as every one used to be.
+        connect = self.connect
+        connection = self._pool.take(connect)
         try:
             yield connection
             connection.commit()
         except BaseException:
-            connection.rollback()
+            try:
+                connection.rollback()
+            finally:
+                db.close_quietly(connection)
             raise
-        finally:
-            connection.close()
+        self._pool.give(connection, connect)
 
     # ------------------------------------------------ the games page, with the store on it
 
@@ -1289,14 +1296,21 @@ class SiteApp(App):
         rows: list[tuple[str, str]] = []
         for one in self.listed_pages():
             game = known.get(one.hash)
-            record = None if game is None else proven.load(self.runs_dir, one.hash, game.spec)
-            if record is None or not record.positions:
+            # The record's day and positions as `proven.load` gives them, read from the
+            # stored answers rather than replayed (C15f, `proven.listed`).
+            record = None if game is None else proven.listed(self.runs_dir, one.hash, game.spec)
+            if record is None or not record[1]:
                 continue
-            day = record.made[:10] if re.match(r"^\d{4}-\d{2}-\d{2}", record.made) else ""
+            made, ids = record
+            day = made[:10] if re.match(r"^\d{4}-\d{2}-\d{2}", made) else ""
             rows.append((game_drawing.proven_path(one.hash), day))
-            rows += [(game_drawing.proven_path(one.hash, found.id), day)
-                     for found in record.positions]
+            rows += [(game_drawing.proven_path(one.hash, found), day) for found in ids]
         return tuple(rows)
+
+    def warm_more(self) -> None:
+        """What `warm` reads after the library on the site (C15f): the proven positions'
+        addresses, so the first crawler after a deploy is not the one who replays them."""
+        self.proven_pages()
 
     def game_picture(self, digest: str, key: str) -> bytes | None:
         """G6: a game's link-preview picture, or `None` for the 404: a game a visitor cannot

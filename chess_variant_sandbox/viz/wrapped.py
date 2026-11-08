@@ -50,6 +50,7 @@ from chess_variant_sandbox.engine.compile import (
 )
 from chess_variant_sandbox.engine.engine import _square_name as square_name
 from chess_variant_sandbox.engine.moves import (
+    MOVE_DISPLACE,
     MOVE_PORTAL,
     move_fold,
     move_portal,
@@ -349,6 +350,21 @@ def push_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
     compiler's (`CompiledSpec.push_line`), as the move's text is.
     """
     spec = engine.spec
+    if move_type(move) == MOVE_DISPLACE:
+        # TS4 (`docs/plan-tessabi.md` §4): a displacement is read as a push of its jumped
+        # pieces, each one square back toward the hopper's origin (`CompiledSpec.displace_line`),
+        # so the pages slide them as they slide a pushed line; nothing falls off.
+        moved = spec.displace_line(state.board, move)
+        if not moved:
+            return None
+        square, onto = moved[0]
+        return {
+            "pushed": [[at, to] for at, to in moved],
+            "pushStep": [
+                spec.square_file(onto) - spec.square_file(square),
+                spec.square_rank(onto) - spec.square_rank(square),
+            ],
+        }
     line = spec.push_line(state.board, move)
     if not line or spec.push is None:
         return None

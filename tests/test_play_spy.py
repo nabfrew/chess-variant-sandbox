@@ -370,7 +370,8 @@ class TestThePage:
             f"const S = {json.dumps(shots)};",
             "S.map(s => spyLine(s.spy, s.round, s.sideToMove, s.ruleset.sides))",
         )
-        assert lines[0] == "Both spies stand: the players take turns."
+        # Since SR7h a spy can be gained, so no line says a phase lasts for good (Q1099).
+        assert lines[0] == "Both players have a spy: they take turns."
         assert lines[1] == ("black's spy is lost. black replies with one ordinary move; then "
                             "rounds begin, and black announces first.")
         assert lines[2] == ("Only white has a spy: black announces a move first, and white "
@@ -378,7 +379,7 @@ class TestThePage:
         text = shots[3]["round"]["announced"]["text"]
         assert lines[3] == f"black announced {text}; white answers."
         blind = _in_page("", "spyLine({phase: 'blind', announcer: null}, null, 0, ['A', 'B'])")
-        assert blind == "Both spies are lost: both players choose in secret."
+        assert blind == "Neither player has a spy: both choose in secret."
 
     def test_the_announced_arrow_is_a_function_of_the_round(self) -> None:
         shots = _hot_seat_snapshots()

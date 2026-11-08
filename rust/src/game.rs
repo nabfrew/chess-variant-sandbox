@@ -59,6 +59,15 @@ mod duck;
 // Q1074b2 (`docs/plan-push.md`): the push rule, a move that moves the piece it lands on.
 #[path = "push.rs"]
 mod push;
+
+#[path = "parts.rs"]
+mod parts;
+// H1 (`docs/plan-hunger.md` §2): a move's cost, `rules.purse.upkeep`.
+#[path = "upkeep.rs"]
+mod upkeep;
+// H3 (`docs/plan-hunger.md` §4): the pass, `rules.pass`.
+#[path = "pass.rs"]
+mod pass;
 use push::{PUSH_ARM_HOP, PUSH_ARM_LEAP, PUSH_ARM_SLIDE};
 
 /// What one entry of the phase log is (`Game::npc_log`'s fourth field): a wild piece's step
@@ -505,6 +514,12 @@ pub struct Game<'t> {
     /// read-back, because the cap makes a payment lossy: 98 and a bounty of 3 is 99, and
     /// 99 less 3 is not 98.
     purse_log: Vec<[u16; 2]>,
+    /// H2 (`docs/plan-hunger.md` §3): `purse` before each turn's income still on the undo stack,
+    /// oldest first: written only under `rules.income`, by every ply that passes the turn
+    /// (`collect_income`), and read back by `unmake` for every such ply. A log for the cap's sake,
+    /// as `purse_log` is; kept apart from it because a fold's, the duck's and a pass's plies pay
+    /// income without writing `purse_log`.
+    income_log: Vec<[u16; 2]>,
     /// Q1074b6 (K5, `rules.push.no_push_back`, `docs/plan-push.md` §3.12): the piece standing
     /// on `push_bar[0]` was pushed there from `push_bar[1]` by the last move, and no push on
     /// this one may carry it back onto `push_bar[1]`, as the mover or in the line (Q1078);
@@ -520,6 +535,24 @@ pub struct Game<'t> {
     /// `push_bar` before each move still on the undo stack, oldest first: empty and never
     /// touched without the rule.
     push_bar_log: Vec<[i16; 2]>,
+    /// TS1 (`rules.reach.removes`, `docs/plan-tessabi.md` §1): how many listed pieces each
+    /// player has banked, taken off their own goal by `write_bank`. `[0, 0]` in every game
+    /// without the rule. **In the key** (`ReachRule::bank_key`): one board reached with
+    /// different banks has a different future.
+    pub banked: [u16; 2],
+    /// The squares and bytes `write_bank` cleared, oldest first, and how many each move on
+    /// the undo stack cleared (`bank_counts`): written by `make` only under the rule, so
+    /// `Undo` does not grow. `unmake` puts them back and reads the banks back off them.
+    bank_log: Vec<(u16, u8)>,
+    bank_counts: Vec<u8>,
+    /// TS3 (`rules.turn.parts`, `docs/plan-tessabi.md` §3): the mask of the turn's parts
+    /// filled so far this turn, 0 at every turn's start and in every game without the rule.
+    /// **In the key** (`PartsRule::key`): under order `"any"` one board with different parts
+    /// filled has different moves.
+    pub parts_filled: u8,
+    /// `parts_filled` before each move still on the undo stack, oldest first: written by
+    /// `make` only under the rule, so `Undo` does not grow.
+    parts_log: Vec<u8>,
     /// Guard against infinite recursion in drop-mate checking.
     checking_drop_mate: bool,
     /// The key the move in progress is building. Scratch, not state: seeded from `key`
@@ -605,6 +638,10 @@ pub struct Snapshot {
     pub purse: [u16; 2],
     /// Q1074b6 (K5): the push-back bar, `NO_BAR` for none.
     pub push_bar: [i16; 2],
+    /// TS1: each player's banked pieces.
+    pub banked: [u16; 2],
+    /// TS3: the turn's parts filled so far.
+    pub parts_filled: u8,
 }
 
 /// Schema 26: who holds the initiative at the start, or -1 where the tie is not it.
@@ -671,8 +708,14 @@ impl<'t> Game<'t> {
             heading_log: Vec::new(),
             purse: t.purse.as_deref().map_or([0, 0], |purse| [purse.start, purse.start]),
             purse_log: Vec::new(),
+            income_log: Vec::new(),
             push_bar: NO_BAR,
             push_bar_log: Vec::new(),
+            banked: [0, 0],
+            bank_log: Vec::new(),
+            bank_counts: Vec::new(),
+            parts_filled: 0,
+            parts_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -686,9 +729,50 @@ impl<'t> Game<'t> {
             round_log: Vec::new(),
             spy_deals: Vec::new(),
         };
+        // H2 (`docs/plan-hunger.md` §3, D6): income lands at the start of each of a player's
+        // turns, the first mover's first turn included, so the opening position already holds it
+        // (and its key, computed next, includes it). Nothing to log: nothing takes this back.
+        if let (Some(_), Some(income)) = (t.purse.as_deref(), t.income.as_deref()) {
+            let earned = game.income_of(income, game.side);
+            game.purse[game.side] = (game.purse[game.side] + earned).min(PURSE_MAX);
+        }
         game.key = game.compute_hash();
         game.history.push(game.key);
         game
+    }
+
+    /// H2 (`docs/plan-hunger.md` §3): what `player` earns at the start of a turn on the board as
+    /// it stands: `per_piece` for each of their pieces in their region. One AND and one popcount
+    /// over the occupancy set; a piece nobody owns (owner 2) is in no player's set.
+    /// H4: the evaluator's income term reads the same count (`eval::Evaluator::score`).
+    #[inline]
+    pub(crate) fn income_of(&self, income: &IncomeTables, player: usize) -> u16 {
+        let standing = self.occupied()[player].intersection(&income.masks[player]).len();
+        income.per_piece.saturating_mul(standing.min(u16::MAX as usize) as u16)
+    }
+
+    /// H2 (`docs/plan-hunger.md` §3, D6): the turn has just passed to `self.side`; the bank pays
+    /// them their income into the purse, capped at `PURSE_MAX`, logged on `income_log` (the cap
+    /// is lossy) and moved in the returned key. Called by every ply that passes the turn
+    /// (`end_ply`, `make_fold`, `make_duck`), only under `rules.income`; `unmake` reads it back
+    /// whenever the ply it takes back passed the turn.
+    #[cold]
+    #[inline(never)]
+    fn collect_income(&mut self, key: u64) -> u64 {
+        let t = self.t;
+        let (Some(purse), Some(income)) = (t.purse.as_deref(), t.income.as_deref()) else {
+            return key;
+        };
+        self.income_log.push(self.purse);
+        let player = self.side;
+        let earned = self.income_of(income, player);
+        let before = self.purse[player];
+        let after = (before + earned).min(PURSE_MAX);
+        if after == before {
+            return key;
+        }
+        self.purse[player] = after;
+        key ^ purse.key(player, before) ^ purse.key(player, after)
     }
 
     pub fn from_snapshot(t: &'t Tables, snapshot: &Snapshot) -> Self {
@@ -740,8 +824,14 @@ impl<'t> Game<'t> {
             heading_log: Vec::new(),
             purse: snapshot.purse,
             purse_log: Vec::new(),
+            income_log: Vec::new(),
             push_bar: snapshot.push_bar,
             push_bar_log: Vec::new(),
+            banked: snapshot.banked,
+            bank_log: Vec::new(),
+            bank_counts: Vec::new(),
+            parts_filled: snapshot.parts_filled,
+            parts_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -787,6 +877,8 @@ impl<'t> Game<'t> {
             heading_back: self.heading_back,
             purse: self.purse,
             push_bar: self.push_bar,
+            banked: self.banked,
+            parts_filled: self.parts_filled,
         }
     }
 
@@ -839,8 +931,14 @@ impl<'t> Game<'t> {
         self.heading_log.clear();
         self.purse = snapshot.purse;
         self.purse_log.clear();
+        self.income_log.clear();
         self.push_bar = snapshot.push_bar;
         self.push_bar_log.clear();
+        self.banked = snapshot.banked;
+        self.bank_log.clear();
+        self.bank_counts.clear();
+        self.parts_filled = snapshot.parts_filled;
+        self.parts_log.clear();
         self.round_undo.clear();
         self.round_log.clear();
         // The check bits describe the position that just went away. The royal hint is
@@ -949,6 +1047,14 @@ impl<'t> Game<'t> {
         // Q1074b6 (K5): the push-back bar; zero without one and without the rule.
         if let Some(push) = t.push.as_deref() {
             digest ^= push.bar_key(t.n_squares, self.push_bar);
+        }
+        // TS1: the banks; zero without `reach.removes`.
+        if let Some(reach) = t.reach.as_ref().filter(|rule| rule.removes) {
+            digest ^= reach.bank_key(0, self.banked[0]) ^ reach.bank_key(1, self.banked[1]);
+        }
+        // TS3: the parts filled; zero without `turn.parts`.
+        if let Some(parts) = t.parts.as_deref() {
+            digest ^= parts.key(self.parts_filled);
         }
         digest
     }
@@ -1130,14 +1236,45 @@ impl<'t> Game<'t> {
     /// Whether `player` could capture a piece of `victim` type standing on `square`.
     ///
     /// `usize::MAX` means "any piece", which skips the capture-matrix filter.
+    ///
+    /// C6 (Q1112): walked by origin (`Tables::scan_of`), so an origin no source of its
+    /// group can stand on is passed on one byte and one mask test, not one compare per
+    /// source. The answer is a boolean of pure tests, so the order is not observable; a
+    /// checking build asks the table-order walk beside it.
     pub fn attacks_square_as(&self, player: usize, square: usize, victim: usize) -> bool {
         let t = self.t;
-        for source in t.attackers_of(player, square) {
-            if self.board[source.origin as usize] != source.piece_value {
-                continue;
+        let (groups, mut at) = t.scan_of(player, square);
+        let mut found = false;
+        for group in groups {
+            let len = group.len as usize;
+            let byte = self.board[group.origin as usize];
+            if group.mask & (1u64 << (byte & 63)) != 0
+                && t.scan_sources(at, len).any(|source| byte == source.piece_value && self.source_attacks(player, victim, source))
+            {
+                found = true;
+                break;
             }
+            at += len;
+        }
+        debug_assert_eq!(
+            found,
+            t.attackers_of(player, square)
+                .iter()
+                .any(|source| self.board[source.origin as usize] == source.piece_value
+                    && self.source_attacks(player, victim, source)),
+            "C6: the grouped scan disagrees with the table's order",
+        );
+        found
+    }
+
+    /// One source of `attacks_square_as` whose piece stands on its origin: whether it
+    /// attacks the square under the unmoved bit, the capture matrix and its path.
+    #[inline(always)]
+    fn source_attacks(&self, player: usize, victim: usize, source: &AttackSource) -> bool {
+        let t = self.t;
+        {
             if source.requires_unmoved && !self.unmoved.get(source.origin as usize) {
-                continue;
+                return false;
             }
             // Schema 3: an attacker that is not allowed to take this victim is not
             // attacking it. The attacker's type is already here, encoded in the value
@@ -1152,20 +1289,14 @@ impl<'t> Game<'t> {
                     Some(push) => self.push_game_attacks(push, source.dirs, attacker, victim),
                 };
                 if !reaches {
-                    continue;
+                    return false;
                 }
             }
             if source.sweep != 0 {
-                if self.sweep_attacks(player, source) {
-                    return true;
-                }
-                continue;
+                return self.sweep_attacks(player, source);
             }
-            if self.source_path_clear(player, source) {
-                return true;
-            }
+            self.source_path_clear(player, source)
         }
-        false
     }
 
     /// Whether `source`'s path lets it reach its square: the prefix empty and the window
@@ -2478,15 +2609,22 @@ impl<'t> Game<'t> {
         // Schema 22: a fold's own move touches no square of the board byte. Generation 42:
         // the duck's half is its own function too. One comparison on the hot path for both
         // (TC5: a range, since a buy, kind 10, is played here as a drop is).
-        if (MOVE_FOLD..=MOVE_DUCK).contains(&kind) {
+        if kind >= MOVE_FOLD && (kind <= MOVE_DUCK || kind == MOVE_KEEP || kind == MOVE_PASS) {
             if kind == MOVE_FOLD {
                 self.make_fold(m);
-            } else {
+            } else if kind == MOVE_DUCK {
                 self.make_duck(m);
+            } else if kind == MOVE_KEEP {
+                self.make_keep(m);
+            } else {
+                // H3: the pass writes no square either.
+                self.make_pass();
             }
             return;
         }
         let player = self.side;
+        // TS3: the part this move fills, read off the piece before it moves.
+        let part = if t.parts.is_some() { self.part_of(m) } else { 0 };
 
         let previous_unmoved = self.unmoved;
         let previous_ep = self.ep_target;
@@ -2500,12 +2638,21 @@ impl<'t> Game<'t> {
         // flip is undone further down when the same player moves again.
         self.working_key = self.key ^ t.zobrist_side;
 
+        // H1 (`docs/plan-hunger.md` §2.3): the move's cost, read off the board before it moves
+        // (`move_cost`, the filter's own question), spent in `write_payments` before the bounty.
+        let upkeep = match t.purse.as_deref() {
+            Some(purse) if !purse.upkeep.is_empty() => self.move_cost(purse, m),
+            _ => 0,
+        };
         let mut cleared: Vec<(usize, u8)> = Vec::new();
         let mut played = self.write_board(m, player, &mut cleared);
+        played.spent += upkeep;
         self.write_gate(m, &mut played);
         self.write_unmoved(&played, &cleared);
         self.write_ep_window(m, &played);
         self.write_payments(&played, &cleared);
+        // TS1: the bank, after every write of the player's own move and before the phase.
+        let banked_any = t.reach_removes && self.write_bank();
 
         // The phase (schema 9): every wild piece walks, after the player's move is
         // complete and the en passant window has been set, and before the hand, the
@@ -2543,12 +2690,16 @@ impl<'t> Game<'t> {
         self.count_check(player);
         let coloured = self.write_territory(&played, &mut key);
         let (irreversible, progress) = progress_of(
-            t, m, &played, phase_ate, !cleared.is_empty(), coloured.is_some(), rights_changed,
+            t, m, &played, phase_ate, !cleared.is_empty() || banked_any, coloured.is_some(),
+            rights_changed,
         );
         self.write_goal_left(&played);
         self.write_portal_bar(&played, &mut key);
         self.write_push_bar(m, &played, &mut key);
         self.write_rest(m, &played, &mut key);
+        if t.parts.is_some() {
+            self.write_parts(part, &mut key);
+        }
 
         self.undo.push(Undo {
             origin: played.origin,
@@ -2767,7 +2918,34 @@ impl<'t> Game<'t> {
             self.write(target, t.entering_value(played.player, move_promotion(m) as usize - 1));
         } else if kind == MOVE_PUSH {
             self.write_push(m, played);
+        } else if kind == MOVE_DISPLACE {
+            self.write_displace(m, played);
         }
+    }
+
+    /// TS4 (`docs/plan-tessabi.md` §4): a displacement's own writes, after the hopper has
+    /// landed. The hopper promotes by its landing (the type plus one); then every square
+    /// strictly between origin and target takes what stood on the next one, walking from the
+    /// origin, and the last of them empties (`Tables::displace_path`): each jumped piece one
+    /// square back, the nearest onto the origin. Every square written loses its `unmoved` bit.
+    #[inline(never)]
+    fn write_displace(&mut self, m: u32, played: &mut Played) {
+        let t = self.t;
+        if move_promotion(m) != 0 {
+            self.write(
+                played.target, t.entering_value(played.player, move_promotion(m) as usize - 1),
+            );
+        }
+        let mut back = played.origin;
+        for &square in t.displace_path(played.origin, played.target, played.moving) {
+            let square = square as usize;
+            let value = self.board[square];
+            self.write(back, value);
+            self.unmoved.clear(back);
+            back = square;
+        }
+        self.write(back, 0);
+        self.unmoved.clear(back);
     }
 
     /// Q1074b2 (`docs/plan-push.md` K1, K2): a push's own writes, after the pusher has
@@ -3552,6 +3730,54 @@ impl<'t> Game<'t> {
         foreign.map_or(self.side, |landing| landing.owner)
     }
 
+    /// TS1 (`rules.reach.removes`, `docs/plan-tessabi.md` §1): every listed piece standing
+    /// on its own side's goal once the move's board writes are done is taken off and banked
+    /// for its owner, player 0's first, each in ascending square order (move order is
+    /// tie-break order), whoever moved it there: a step, a push, a strike, a placement. Not
+    /// a capture: nobody takes it, nothing is paid, no hand fills. Its first-move bit goes
+    /// with it (`Undo` keeps the old set). Logged on `bank_log` for `unmake_bank`; the key
+    /// gains the bank's terms and loses the piece's (`write`). Returns whether anything was
+    /// banked.
+    #[cold]
+    #[inline(never)]
+    fn write_bank(&mut self) -> bool {
+        let t = self.t;
+        let reach = t.reach.as_ref().expect("reach_removes without a reach rule");
+        let mut cleared = 0u8;
+        for player in 0..2 {
+            let standing = self.occupied[player];
+            for square in standing.iter() {
+                let value = self.board[square];
+                if !reach.squares[player][square] || !reach.admits(t.type_of(value)) {
+                    continue;
+                }
+                self.bank_log.push((square as u16, value));
+                self.write(square, 0);
+                self.unmoved.clear(square);
+                let before = self.banked[player];
+                self.banked[player] = before + 1;
+                self.working_key ^=
+                    reach.bank_key(player, before) ^ reach.bank_key(player, before + 1);
+                cleared += 1;
+            }
+        }
+        self.bank_counts.push(cleared);
+        cleared != 0
+    }
+
+    /// TS1: `write_bank` walked back, newest first: each banked piece put back on its
+    /// square and taken off its owner's bank. The key comes back whole from `Undo`.
+    #[cold]
+    #[inline(never)]
+    fn unmake_bank(&mut self) {
+        let cleared = self.bank_counts.pop().expect("bank log shorter than the undo stack");
+        for _ in 0..cleared {
+            let (square, value) = self.bank_log.pop().expect("bank log shorter than its count");
+            self.put(square as usize, value);
+            self.banked[self.t.owner_of(value)] -= 1;
+        }
+    }
+
     /// Schema 18 (Q786): win by leaving. Read off the move's origin and the mover as it
     /// set out, never off the board, which the phase may have changed since; the ending
     /// reads the field in reach's slot. Every ruleset without the rule skips this on
@@ -3699,6 +3925,10 @@ impl<'t> Game<'t> {
             self.side = 1 - player;
             self.turns_taken += 1;
             self.remaining = t.turn.as_ref().map_or(1, |rule| rule.length_of(self.turns_taken));
+            // H2 (`docs/plan-hunger.md` §3): the new turn's income, on the board the ply left.
+            if t.income.is_some() {
+                self.key = self.collect_income(self.key);
+            }
         }
         // The key was computed with the side flipped unconditionally, which is right
         // exactly when it did flip. Undo it when the same player moves again, and swap
@@ -3723,11 +3953,22 @@ impl<'t> Game<'t> {
     pub fn unmake(&mut self) {
         let undo = self.undo.pop().expect("unmake without a matching make");
         self.history.pop();
-        if (MOVE_FOLD..=MOVE_DUCK).contains(&undo.kind) {
+        // H2 (`docs/plan-hunger.md` §3): a ply that passed the turn paid its income last, so it
+        // comes back first, whatever the kind (the key comes back with `undo.key`).
+        if self.t.income.is_some() && self.turns_taken != undo.turns_taken {
+            self.purse = self.income_log.pop().expect("income log shorter than the undo stack");
+        }
+        if undo.kind >= MOVE_FOLD
+            && (undo.kind <= MOVE_DUCK || undo.kind == MOVE_KEEP || undo.kind == MOVE_PASS)
+        {
             if undo.kind == MOVE_FOLD {
                 self.unmake_fold(&undo);
-            } else {
+            } else if undo.kind == MOVE_DUCK {
                 self.unmake_duck(&undo);
+            } else if undo.kind == MOVE_KEEP {
+                self.unmake_keep(&undo);
+            } else {
+                self.unmake_pass(&undo);
             }
             return;
         }
@@ -3737,6 +3978,10 @@ impl<'t> Game<'t> {
         // there is nowhere else it could be.
         if self.t.has_npcs {
             self.unmake_phase(undo.npc_log as usize);
+        }
+        // TS1: the bank, put back before the move's own writes are walked back.
+        if self.t.reach_removes {
+            self.unmake_bank();
         }
 
         // A survivor placed under `choose` or `home` stands on a square the generic restore
@@ -3786,6 +4031,16 @@ impl<'t> Game<'t> {
         } else {
             // Q1074b4 (K2): a row's middle, walked back before the generic restore writes
             // its two ends.
+            if undo.kind == MOVE_DISPLACE {
+                // TS4: `write_displace` walked back, from the target's end: each square of the
+                // line takes what stands one square nearer the origin (the origin's own piece,
+                // the nearest jumped one, last). The generic restore then writes the ends.
+                let path = self.t.displace_path(undo.origin, undo.target, undo.moving);
+                for index in (0..path.len()).rev() {
+                    let back = if index == 0 { undo.origin } else { path[index - 1] as usize };
+                    self.put(path[index] as usize, self.board[back]);
+                }
+            }
             if undo.kind == MOVE_PUSH
                 && self.t.push.as_deref().is_some_and(|push| push.chain != PUSH_CHAIN_ONE)
             {
@@ -3869,6 +4124,9 @@ impl<'t> Game<'t> {
         }
         if self.t.rest.is_some() {
             self.resting = self.rest_log.pop().expect("rest log shorter than the undo stack");
+        }
+        if self.t.parts.is_some() {
+            self.parts_filled = self.parts_log.pop().expect("parts log shorter than the undo stack");
         }
         self.ply -= 1;
         self.check_memo.set([-1, -1]);
@@ -3981,6 +4239,10 @@ impl<'t> Game<'t> {
             self.side = 1 - player;
             self.turns_taken += 1;
             self.remaining = t.turn.as_ref().map_or(1, |rule| rule.length_of(self.turns_taken));
+            // H2: a fold's own move passes the turn as any move does, so income lands.
+            if t.income.is_some() {
+                self.key = self.collect_income(self.key);
+            }
         }
         if self.side == player {
             self.key ^= t.zobrist_side;
@@ -4416,8 +4678,15 @@ impl<'t> Game<'t> {
         } = *piece;
         let ep_target = self.ep_target;
         let ep_victim = self.ep_victim;
-        for entry in t.hops.entries(slot) {
+        // TS4: the run codes, parallel to the entries; empty in every game without a run.
+        let runs = &t.hop_runs;
+        let first = if runs.is_empty() { 0 } else { t.hops.first(slot) };
+        for (k, entry) in t.hops.entries(slot).iter().enumerate() {
             if entry.requires_unmoved && !origin_unmoved {
+                continue;
+            }
+            if !runs.is_empty() && runs[first + k] != 0 {
+                self.push_hop_run(out, piece, entry, runs[first + k]);
                 continue;
             }
             let squares = t.hops.squares(entry);
@@ -4507,6 +4776,91 @@ impl<'t> Game<'t> {
                     );
                 }
                 break;
+            }
+        }
+    }
+
+    /// TS4 (`docs/plan-tessabi.md` §4): one hop entry of `piece` whose run code `code` is not
+    /// 0. Under a run (`HOP_RUN_MASK`) the line's first square must hold a piece, and the run
+    /// is every occupied square from it on, each one the screen allows, at most the cap long;
+    /// the hop lands on the first square past it if that square is on the line (no wall, no
+    /// edge) and its mode lets it land. Without a run it is the plain hop's screen and
+    /// landings, onto empty squares only (the validator holds the mode to `"move"`). Under
+    /// `HOP_DISPLACE` each landing is a `MOVE_DISPLACE` (the promotion field the promoted type
+    /// plus one), else the plain hop's word. Cold: a game without a run never calls it.
+    #[cold]
+    #[inline(never)]
+    fn push_hop_run(&self, out: &mut Vec<u32>, piece: &PieceAt, entry: &EntryRef, code: u8) {
+        let t = self.t;
+        let PieceAt {
+            origin, piece_type, player, low, high, promoting, leaving, promo_optional, ..
+        } = *piece;
+        let squares = t.hops.squares(entry);
+        let modes = t.hops.modes(entry);
+        let length = squares.len();
+        let run = code & HOP_RUN_MASK;
+        let displace = code & HOP_DISPLACE != 0;
+        let screens = |index: usize| {
+            screen_matches(
+                entry.screen_owner, self.board[squares[index] as usize] as u16, low, high,
+                &t.screen_types,
+            )
+        };
+        let mut landings: [usize; 16] = [0; 16];
+        let mut n_landings = 0;
+        if run != 0 {
+            let mut index = 0;
+            while index < length && self.board[squares[index] as usize] != 0 {
+                if !screens(index) || (run != HOP_RUN_ANY && index >= run as usize) {
+                    return;
+                }
+                index += 1;
+            }
+            if index == 0 || index >= length || modes[index] & 1 == 0 {
+                return;
+            }
+            landings[0] = index;
+            n_landings = 1;
+        } else {
+            let mut index = 0;
+            while index < length && self.board[squares[index] as usize] == 0 {
+                index += 1;
+            }
+            if index >= length || !screens(index) {
+                return;
+            }
+            index += 1;
+            let stop = if entry.screen_range == 0 {
+                length
+            } else {
+                length.min(index + entry.screen_range as usize)
+            };
+            while index < stop && self.board[squares[index] as usize] == 0 {
+                if modes[index] & 1 != 0 && n_landings < landings.len() {
+                    landings[n_landings] = index;
+                    n_landings += 1;
+                }
+                index += 1;
+            }
+        }
+        for &index in &landings[..n_landings] {
+            let target = squares[index] as usize;
+            let word = |kind: u32, promoted: u32| encode_move(origin, target, kind, promoted);
+            if promoting && (leaving || t.promotes_on(player, piece_type, target)) {
+                for &promoted in t.promotion_targets(player, piece_type) {
+                    if self.promotion_offered(player, piece_type, promoted) {
+                        out.push(if displace {
+                            word(MOVE_DISPLACE, promoted + 1)
+                        } else {
+                            word(MOVE_PROMOTION, promoted)
+                        });
+                    }
+                }
+                if promo_optional {
+                    out.push(word(if displace { MOVE_DISPLACE } else { MOVE_NORMAL }, 0));
+                }
+            } else {
+                out.push(word(if displace { MOVE_DISPLACE } else { MOVE_NORMAL }, 0));
             }
         }
     }
@@ -4771,12 +5125,14 @@ fn progress_of(
     // other end, so it is reversible unless it promoted.
     // Q1074b2 (K4): so is a push that removes nothing and promotes nothing, a step of two
     // pieces either of which may step back; one that removes is a material change.
+    // TS4: and so is a displacement that promotes nothing (each jumped piece may hop back).
     let promoted = kind == MOVE_PROMOTION
-        || ((kind == MOVE_PORTAL || kind == MOVE_PUSH) && move_promotion(m) != 0);
+        || ((kind == MOVE_PORTAL || kind == MOVE_PUSH || kind == MOVE_DISPLACE)
+            && move_promotion(m) != 0);
     let irreversible = material_changed
         || (kind != MOVE_NORMAL
             && kind != MOVE_ROTATE
-            && ((kind != MOVE_PORTAL && kind != MOVE_PUSH) || promoted))
+            && ((kind != MOVE_PORTAL && kind != MOVE_PUSH && kind != MOVE_DISPLACE) || promoted))
         || t.is_one_way(piece_type)
         || rights_changed
         || laid_colour;
@@ -5830,6 +6186,20 @@ impl<'t> Game<'t> {
                     saved.push((square, game.board[square]));
                     game.board[square] = value;
                 });
+        } else if kind == MOVE_DISPLACE {
+            // TS4: the line as `write_displace` plays it, every square saved.
+            if move_promotion(m) != 0 {
+                self.board[target] = t.entering_value(player, move_promotion(m) as usize - 1);
+            }
+            let mut back = origin;
+            for &square in t.displace_path(origin, target, moving) {
+                let square = square as usize;
+                saved.push((back, self.board[back]));
+                self.board[back] = self.board[square];
+                back = square;
+            }
+            saved.push((back, self.board[back]));
+            self.board[back] = 0;
         }
         // Q1059a: a gating move's piece stands on the origin it vacated, and may block a line.
         self.gate_for_filter(m, origin, origin, saved);
@@ -5960,6 +6330,47 @@ impl<'t> Game<'t> {
         let square = if move_gate_rook(m) { rook_from } else { origin };
         saved.push((square, self.board[square]));
         self.board[square] = t.arriving_value(self.side, move_gate(m) - 1, square);
+    }
+
+    /// C5 (Q1113): `leaves_royal_attacked` for a move of the single royal itself, from
+    /// `royal`, asked only where the pin shortcut's premise holds (no blast, no facing rule,
+    /// nothing wild, no sweep, no portal, no held neutral that takes a royal).
+    ///
+    /// A plain step or capture of the royal (`MOVE_NORMAL`, nothing gated in behind it, and
+    /// no strike to read where it takes) changes two bytes: the origin empties and the
+    /// target holds the royal. So the question is one attack query on the target with those
+    /// two bytes written, and none of the general path's bookkeeping: no `Saved`, no unmoved
+    /// mask (the two squares it clears hold no piece of the attacker's after the move, so no
+    /// source that reads them can match), and no board scan for the royal, which is where
+    /// the general path's `royal_square` misses its hint once the royal has moved. Every
+    /// other kind (castling, a promotion, a gate, a strike) keeps the general path. A
+    /// checking build asks the general path beside it on every call.
+    #[inline]
+    fn royal_move_attacked(&mut self, m: u32, royal: usize) -> bool {
+        let t = self.t;
+        let target = move_to(m);
+        let taken = self.board[target];
+        if move_kind(m) != MOVE_NORMAL || move_gate(m) != 0 || (taken != 0 && t.strike.is_some()) {
+            return self.leaves_royal_attacked(m);
+        }
+        let player = self.side;
+        let moving = self.board[royal];
+        self.scratch += 1;
+        self.board[royal] = 0;
+        self.board[target] = moving;
+        // `leaves_royal_attacked`'s first arm: a capture that leaves the opponent without a
+        // royal, where that loses, wins on the spot. Asked only of a capture.
+        let attacked = !(taken != 0 && t.royal_loss_ends_it(1 - player) && self.royal_gone(1 - player))
+            && self.threatened(1 - player, target);
+        self.board[target] = taken;
+        self.board[royal] = moving;
+        self.scratch -= 1;
+        debug_assert_eq!(
+            attacked,
+            self.leaves_royal_attacked(m),
+            "C5: the royal's one attack query disagrees with the filter's play"
+        );
+        attacked
     }
 
     /// Legality test that skips building a successor state: only the board and the
@@ -6135,25 +6546,206 @@ impl<'t> Game<'t> {
     /// held in. Each step is `player`'s legal move on the position with the side replaced and
     /// no en passant window, played with `make` (so the phase of wild pieces runs as it would);
     /// a position is told by its key after the move. Counted as a set, so the answer does not
-    /// depend on the order of the walk; past `cap` the walk stops and answers `cap`. The
-    /// position is put back as it was. `seen` is scratch. The oracle walks the same steps
-    /// through the engine (`agents/minimax.py::_bare_reach`).
-    pub fn bare_reach(&mut self, player: usize, cap: usize, seen: &mut Vec<u64>) -> usize {
+    /// depend on the order of the walk; past `cap` the walk stops and answers `cap`. A step
+    /// that takes a royal of the side standing still is not a step (Q1138,
+    /// `takes_standing_royal`). The position is put back as it was. `seen` is scratch. The
+    /// oracle walks the same steps through the engine (`agents/minimax.py::_bare_reach`).
+    ///
+    /// Answered with how many legal moves `player` has on the walk's first position:
+    /// `legal_count_as(player)`'s answer, from the list the walk generates there anyway
+    /// (neither reads the key; both replace the side and clear the window).
+    ///
+    /// C7 (`docs/plan-performance.md` §2): where `player` has a single piece, the walk is
+    /// `reach_eager`, which finds the same set by fewer generations, and skips the play of a
+    /// quiet royal step onto a square its layer already holds; otherwise `reach_from`, the
+    /// walk as N4 built it. A checking build runs N4's walk beside it and asserts the two
+    /// counts and the first list's length equal.
+    ///
+    /// Never inlined: it runs only at a stand pat where a side is bare, and inlined into
+    /// `mopup_term`, which every stand pat asks, it changed the search's hot text (shogi,
+    /// which never reaches the walk, read 10% slower; `docs/reference/perf-c7-mopup-walk.md`).
+    #[inline(never)]
+    pub fn bare_reach(
+        &mut self,
+        player: usize,
+        cap: usize,
+        seen: &mut Vec<u64>,
+    ) -> (usize, usize) {
         // `seen` is an open-addressed set of keys (0 is an empty slot; a key of 0 is told by
         // `zero_seen`), twice `cap` rounded up to a power of two, so a probe is short.
         let slots = (2 * cap.max(1)).next_power_of_two();
         seen.clear();
         seen.resize(slots, 0);
-        let mut walk = ReachWalk { cap, count: 0, zero_seen: false, moves: Vec::new() };
+        // Q1138: the standing side's royals, which no step of the walk may take.
+        let standing = 1 - player;
+        let royals = self.royal_count(standing);
+        let mut walk = ReachWalk {
+            cap,
+            count: 0,
+            zero_seen: false,
+            moves: Vec::new(),
+            first: 0,
+            standing,
+            royals,
+        };
         let (side, ep_target, ep_victim) = (self.side, self.ep_target, self.ep_victim);
         let key = self.key;
-        self.reach_from(player, seen, &mut walk);
+        if self.occupied()[player].len() == 1 {
+            let t = self.t;
+            let skips = !t.has_npcs
+                && t.territory.is_none()
+                && t.rest.is_none()
+                && t.portals.is_none()
+                && t.purse.is_none()
+                && t.push.is_none()
+                && !t.goal_event;
+            let mut layer = SquareSet::EMPTY;
+            self.reach_eager(player, seen, &mut walk, &mut layer, skips);
+        } else {
+            self.reach_from(player, seen, &mut walk);
+        }
         self.key = key;
         self.side = side;
         self.ep_target = ep_target;
         self.ep_victim = ep_victim;
         self.check_memo.set([-1, -1]);
-        walk.count
+        #[cfg(debug_assertions)]
+        {
+            let mut reference_seen = vec![0u64; slots];
+            let mut reference = ReachWalk {
+                cap,
+                count: 0,
+                zero_seen: false,
+                moves: Vec::new(),
+                first: 0,
+                standing,
+                royals,
+            };
+            self.reach_from(player, &mut reference_seen, &mut reference);
+            self.key = key;
+            self.side = side;
+            self.ep_target = ep_target;
+            self.ep_victim = ep_victim;
+            self.check_memo.set([-1, -1]);
+            debug_assert_eq!(walk.count, reference.count, "C7: the eager walk's count");
+            debug_assert_eq!(walk.first, reference.first, "C7: the walk's first list");
+            let mut scratch = Vec::new();
+            debug_assert_eq!(walk.first, self.legal_count_as(player, &mut scratch));
+        }
+        (walk.count, walk.first)
+    }
+
+    /// C7: the walk with every position's new children found before any is walked from.
+    ///
+    /// The answer is the size of a set, capped, so the order does not matter: N4's walk
+    /// walks from each position as soon as it is found, and generates even at a position
+    /// found when the cap was reached; this one plays each move of a position once to file
+    /// its key, then walks only from the positions that were new, and stops generating once
+    /// the cap is reached, so a box of `cap` positions costs a generation per position that
+    /// had new children rather than one per position. With a single piece no hidden state
+    /// tells two positions of one key apart where the walk can see it: the piece's own
+    /// `unmoved` bit is cleared by its first step and stays clear.
+    ///
+    /// `layer` holds the squares a quiet royal step has reached on this position's board less
+    /// the royal (the positions connected to it by such steps alone; any other move starts a
+    /// fresh layer). Under `skips` (no wild piece, territory, rest, portal, purse, push or goal
+    /// event: nothing a quiet step writes but the royal's two squares, so the key after it is a
+    /// function of its target on the layer's board), a quiet step onto a square the layer holds
+    /// leads to a position already filed, and is not played.
+    fn reach_eager(
+        &mut self,
+        player: usize,
+        seen: &mut [u64],
+        walk: &mut ReachWalk,
+        layer: &mut SquareSet,
+        skips: bool,
+    ) {
+        if self.side != player {
+            self.key ^= self.t.zobrist_side;
+        }
+        self.side = player;
+        self.ep_target = -1;
+        self.ep_victim = -1;
+        self.check_memo.set([-1, -1]);
+        let base = walk.moves.len();
+        let mut moves = std::mem::take(&mut walk.moves);
+        self.generate_legal(&mut moves);
+        let end = moves.len();
+        walk.moves = moves;
+        if base == 0 {
+            walk.first = end;
+        }
+        // File every child; keep, at the front of the range, the ones that were new.
+        let mut kept = base;
+        for index in base..end {
+            if walk.count >= walk.cap {
+                break;
+            }
+            let m = walk.moves[index];
+            let quiet = skips && self.quiet_royal_step(m);
+            if quiet && layer.get(move_to(m)) {
+                continue;
+            }
+            self.make(m);
+            let new = !self.takes_standing_royal(walk) && walk.insert(seen, self.key);
+            self.check_memo.set([-1, -1]);
+            self.unmake();
+            self.check_memo.set([-1, -1]);
+            if quiet {
+                layer.set(move_to(m));
+            }
+            if new {
+                walk.moves[kept] = m;
+                kept += 1;
+            }
+        }
+        walk.moves.truncate(kept);
+        for index in base..kept {
+            if walk.count >= walk.cap {
+                break;
+            }
+            let m = walk.moves[index];
+            let quiet = skips && self.quiet_royal_step(m);
+            self.make(m);
+            let key = self.key;
+            let (side, ep_target, ep_victim) = (self.side, self.ep_target, self.ep_victim);
+            if quiet {
+                self.reach_eager(player, seen, walk, layer, skips);
+            } else {
+                let mut fresh = SquareSet::EMPTY;
+                self.reach_eager(player, seen, walk, &mut fresh, skips);
+            }
+            self.key = key;
+            self.side = side;
+            self.ep_target = ep_target;
+            self.ep_victim = ep_victim;
+            self.check_memo.set([-1, -1]);
+            self.unmake();
+            self.check_memo.set([-1, -1]);
+        }
+        walk.moves.truncate(base);
+    }
+
+    /// Q1138: whether the step just made took a royal of the side that stands still. Such a
+    /// step is no step of the walk: the walk's positions stay inside the rules, where a side
+    /// never takes the other's royal and plays on (under `checkmate` it cannot be taken;
+    /// under `royal_capture` taking it ends the game), so the walker never holds a royal in
+    /// hand to drop as a second of its own, and the royal hint's one-royal premise holds.
+    /// One load on the single-royal path (the standing royal never moves, so its hint holds).
+    #[inline(always)]
+    fn takes_standing_royal(&self, walk: &ReachWalk) -> bool {
+        walk.royals > 0 && self.royal_count(walk.standing) < walk.royals
+    }
+
+    /// C7: a plain step of a royal onto an empty square: no tag, no promotion, not a foreign
+    /// move. Under `reach_eager`'s `skips` the position it leaves is its layer's board with the
+    /// royal on the target, whatever square it set out from.
+    #[inline(always)]
+    fn quiet_royal_step(&self, m: u32) -> bool {
+        let t = self.t;
+        m >> 16 == MOVE_NORMAL
+            && self.board[move_to(m)] == 0
+            && t.is_royal(t.type_of(self.board[move_from(m)]))
     }
 
     fn reach_from(&mut self, player: usize, seen: &mut [u64], walk: &mut ReachWalk) {
@@ -6171,6 +6763,9 @@ impl<'t> Game<'t> {
         self.generate_legal(&mut moves);
         let end = moves.len();
         walk.moves = moves;
+        if base == 0 {
+            walk.first = end;
+        }
         for index in base..end {
             if walk.count >= walk.cap {
                 break;
@@ -6178,7 +6773,7 @@ impl<'t> Game<'t> {
             let m = walk.moves[index];
             self.make(m);
             let key = self.key;
-            if walk.insert(seen, key) {
+            if !self.takes_standing_royal(walk) && walk.insert(seen, key) {
                 let (side, ep_target, ep_victim) = (self.side, self.ep_target, self.ep_victim);
                 self.reach_from(player, seen, walk);
                 self.key = key;
@@ -6222,6 +6817,15 @@ impl<'t> Game<'t> {
             self.rest_then_restrict(out, base);
         } else {
             self.restrict(out, base);
+        }
+        // TS3: the turn's parts, last, over the list every other rule has filtered.
+        if self.t.parts.is_some() {
+            self.parts_filter(out, base);
+        }
+        // H3 (`docs/plan-hunger.md` §4): the pass, after every filter, so it changes no other
+        // move's offer; one flag test in every other game.
+        if self.t.passes {
+            self.push_pass(out);
         }
     }
 
@@ -6315,18 +6919,26 @@ impl<'t> Game<'t> {
                     // squares join the hop lines below.
                     // * Q1077: a held neutral that `takes_royal` attacks for whoever holds
                     //   it, and any move next to one can change who that is.
-                    if t.explosion.is_some()
+                    //
+                    // C5 (Q1113): the same three loads say whether a royal's own plain step
+                    // may be asked as one attack query (`royal_step_attacked`), so the
+                    // in-check arm reads them once more rather than a new `Tables` field.
+                    let shortcut_premise = !(t.explosion.is_some()
                         || t.royal_facing_forbidden
                         || t.has_npcs
                         || t.has_sweep
                         || t.portals.is_some()
-                        || t.majority.as_deref().is_some_and(|m| m.threatens_royals)
-                        || self.in_check_at(player, royal)
-                    {
+                        || t.majority.as_deref().is_some_and(|m| m.threatens_royals));
+                    if !shortcut_premise || self.in_check_at(player, royal) {
                         let mut write = base;
                         for index in base..out.len() {
                             let m = out[index];
-                            if !self.leaves_royal_attacked(m) {
+                            let attacked = if shortcut_premise && move_from(m) == royal {
+                                self.royal_move_attacked(m, royal)
+                            } else {
+                                self.leaves_royal_attacked(m)
+                            };
+                            if !attacked {
                                 out[write] = m;
                                 write += 1;
                             }
@@ -6370,7 +6982,14 @@ impl<'t> Game<'t> {
                             let suspect = origin == royal
                                 || pinned.get(origin)
                                 || move_kind(m) == MOVE_EN_PASSANT
-                                || enters_play(move_kind(m))
+                                // C4 (Q1113): a piece entering play lands on an empty
+                                // square, so out of check it can only block a line onto the
+                                // royal. What it could open is a hop line (its target is on
+                                // `hop_lines` then, asked below), a sight's effect (its rays
+                                // are on `hop_lines` too) or a second royal; so only a royal's
+                                // entry is asked. A checking build asks the rest anyway.
+                                || (enters_play(move_kind(m))
+                                    && t.royal_types.contains(&(move_promotion(m) as usize)))
                                 || (has_push && move_kind(m) == MOVE_PUSH)
                                 || (hop_relevant && (hop_lines.get(origin) || hop_lines.get(move_to(m))))
                                 || (has_strike && self.board[move_to(m)] != 0)
@@ -6384,7 +7003,17 @@ impl<'t> Game<'t> {
                                     && t.castling.is_some_and(|(king, _, _)| {
                                         !t.royal_types.contains(&king)
                                     }));
-                            if suspect && self.leaves_royal_attacked(m) {
+                            debug_assert!(
+                                suspect || !enters_play(move_kind(m)) || !self.leaves_royal_attacked(m),
+                                "C4: a drop left unasked out of check exposes the royal"
+                            );
+                            if suspect
+                                && if origin == royal {
+                                    self.royal_move_attacked(m, royal)
+                                } else {
+                                    self.leaves_royal_attacked(m)
+                                }
+                            {
                                 continue;
                             }
                             out[write] = m;
@@ -6410,6 +7039,13 @@ impl<'t> Game<'t> {
                     }
                     out.truncate(write);
                 }
+            }
+        }
+        // H1 (`docs/plan-hunger.md` §2.3): a move the purse cannot pay for is not legal. After
+        // the check filter (so only legal moves pay the read) and before the rest and its lift.
+        if let Some(purse) = t.purse.as_deref() {
+            if !purse.upkeep.is_empty() {
+                self.upkeep_filter(purse, out, base);
             }
         }
     }
@@ -6502,7 +7138,7 @@ impl<'t> Game<'t> {
                     ),
                     // Schema 19: a transit that promotes carries the type plus one.
                     // Q1074b2: and so does a push that promotes the pusher.
-                    MOVE_PORTAL | MOVE_PUSH if move_promotion(m) != 0 => (
+                    MOVE_PORTAL | MOVE_PUSH | MOVE_DISPLACE if move_promotion(m) != 0 => (
                         move_promotion(m) as usize - 1,
                         t.frame_of_value(t.entering_value(player, move_promotion(m) as usize - 1)),
                     ),
@@ -6764,7 +7400,7 @@ impl<'t> Game<'t> {
         // Generation 42 (N4b): repetition is asked only at a turn's start, never with a duck
         // move owed.
         if !self.history.is_empty()
-            && !self.duck_owed()
+            && !self.mid_turn()
             && self.repetition_count() >= t.repetition_draw
         {
             return Some(Outcome {
@@ -6817,7 +7453,7 @@ impl<'t> Game<'t> {
         let t = self.t;
         // Generation 42 (N4b): the clocks are asked only at a turn's start (`max_plies` is
         // even beside the duck, so the ply limit falls there anyway).
-        if self.duck_owed() {
+        if self.mid_turn() {
             None
         } else if self.halfmove >= t.no_progress_draw {
             Some(Reason::NoProgress)
@@ -6826,6 +7462,16 @@ impl<'t> Game<'t> {
         } else {
             None
         }
+    }
+
+    /// C3 (Q1112): whether no clock can run out on the position one more move makes. A
+    /// move adds one to the ply and at most one to the no-progress count (`end_ply`, and
+    /// the duck half's own), so where both stay short of their limits `clock_run_out` is
+    /// `None` after it, whatever the move.
+    #[inline]
+    pub fn clocks_hold_one_more(&self) -> bool {
+        let t = self.t;
+        self.halfmove + 1 < t.no_progress_draw && self.ply + 1 < t.max_plies
     }
 
     /// Whether an empty move list here would be a checkmate rather than a stalemate.
@@ -6987,6 +7633,47 @@ impl<'t> Game<'t> {
         types.iter().any(|&piece_type| counts[piece_type] < min)
     }
 
+    /// TS1 (`docs/plan-tessabi.md` §1): the counting reach. Each side's tally is its banked
+    /// pieces plus its listed pieces standing on its own goal (under `safe`, not threatened
+    /// there), and a held piece's arrival (SR5k, `goal_left_by`) counts one; a side whose
+    /// tally reaches `count` has reached its goal. One side: it decides. Both at once:
+    /// `both` reads it -- player 0's instance (`"first"`, the loop's order), a draw, or the
+    /// side whose move made the position (`last_mover`).
+    #[cold]
+    #[inline(never)]
+    fn scoring_goal(&self, reach: &ReachRule) -> Option<Outcome> {
+        let t = self.t;
+        let mut reached = [false; 2];
+        for (side, mine) in self.occupied()[..2].iter().enumerate() {
+            let mut tally = u32::from(self.banked[side]) + u32::from(self.goal_left_by == side as i8);
+            if tally < reach.count {
+                for square in mine.iter() {
+                    if !reach.squares[side][square] || !reach.admits(t.type_of(self.board[square])) {
+                        continue;
+                    }
+                    if reach.safe && self.threatened(1 - side, square) {
+                        continue;
+                    }
+                    tally += 1;
+                    if tally >= reach.count {
+                        break;
+                    }
+                }
+            }
+            reached[side] = tally >= reach.count;
+        }
+        match reached {
+            [false, false] => None,
+            [true, false] => Some(decide(0, reach.result, Reason::Reached)),
+            [false, true] => Some(decide(1, reach.result, Reason::Reached)),
+            [true, true] => Some(match reach.both {
+                REACH_BOTH_DRAW => Outcome { winner: -1, reason: Reason::Reached },
+                REACH_BOTH_MOVER => decide(self.last_mover(), reach.result, Reason::Reached),
+                _ => decide(0, reach.result, Reason::Reached),
+            }),
+        }
+    }
+
     /// The side whose move made this position: the side to move while its turn still
     /// has moves left in it (schema 4's long turns), the other side once it has passed.
     /// At ply zero, where nobody has moved, the second player, by the same arithmetic.
@@ -7032,6 +7719,12 @@ impl<'t> Game<'t> {
             if reach.leaves {
                 if self.goal_left_by >= 0 {
                     return Some(decide(self.goal_left_by as usize, reach.result, Reason::Reached));
+                }
+            } else if reach.counts() {
+                // TS1: a bank, a count above one or a both-at-once reading. One flag for
+                // every ruleset before it, which keeps the first-arrival loop below.
+                if let Some(outcome) = self.scoring_goal(reach) {
+                    return Some(outcome);
                 }
             } else {
                 for (side, mine) in self.occupied()[..2].iter().enumerate() {
@@ -7352,6 +8045,11 @@ struct ReachWalk {
     count: usize,
     zero_seen: bool,
     moves: Vec<u32>,
+    /// C7: the length of the first position's list (`bare_reach`).
+    first: usize,
+    /// Q1138: the side that stands still, and how many royals it had when the walk began.
+    standing: usize,
+    royals: usize,
 }
 
 impl ReachWalk {

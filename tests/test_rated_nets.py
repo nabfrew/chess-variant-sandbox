@@ -42,7 +42,8 @@ from chess_variant_sandbox.web import opponents
 
 ROOT = Path(__file__).resolve().parent.parent
 DIGEST = spec_hash(SPEC)
-BUDGETS = (100, 200, 400, 800, 1600, 6400)
+# The alternating ladder since the shift (`docs/plan-ladder-shift.md`, 2026-11-05).
+BUDGETS = (400, 800, 1600, 3200, 6400, 25600)
 
 # The committed stores this task put in the roster, game by game (2026-10-14; Q969g's
 # generation 3c moved intransitive's and gardner's on 2026-10-20).
@@ -279,7 +280,7 @@ class TestTheRoster:
     def test_the_committed_games_read_their_net_ladders(self) -> None:
         for digest, procedure in ROLLED_OUT.items():
             basis = corpus.current_basis(digest)
-            assert basis.agents[-1] == f"minimax:net={procedure},nodes=6400"
+            assert basis.agents[-1] == f"minimax:net={procedure},nodes=25600"
             assert basis.net.startswith(f"{procedure}=net:")
         chess = corpus.current_basis(spec_hash(load_spec(ROOT / "rulesets" / "chess.json")))
         assert chess.agents == corpus.CANONICAL_AGENTS and chess.net == ""
@@ -318,7 +319,7 @@ class TestAMeasurementPlaysTheNetLadder:
 
             raise WeightsError("stand-in: nothing to score")
 
-        monkeypatch.setattr(corpus, "run_tournament", play)
+        monkeypatch.setattr(corpus, "run_schedules", lambda spec, configs, **_: [play(spec, c) for c in configs])
         monkeypatch.setattr(corpus, "analyse_corpus", analyse)
         monkeypatch.setattr(corpus, "score_ruleset", refuse)
 

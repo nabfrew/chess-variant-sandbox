@@ -103,6 +103,11 @@ FROZEN: dict[str, tuple[str, str]] = {
     # facing forward: a new game, `runs/ab865f3f954a-*` kept. was ab865f3f954a / db15f09d67ddd2d1
     "archive/crazyhouse-torus.json": ("9598e603241d", "5842b620af27402b"),
     "rulesets/crazyhouse.json": ("bb5d97520084", "97ab14ffca01037a"),
+    "rulesets/crossings.json": ("c538506f18e4", "a2126f2d4b05eef0"),  # TS1, 2026-11-07: three runners banked on the far row
+    "rulesets/boulder.json": ("b51b26942977", "b34f512ffd7c7e27"),  # TS2, 2026-11-07: a boulder either player moves
+    "rulesets/drover.json": ("643743c84589", "710c04f27ce06b46"),  # TS3, 2026-11-07: a runner and an optional boulder move a turn
+    "rulesets/leapfrog.json": ("1e6b3dbb8039", "a5f918c453eaec23"),  # TS4, 2026-11-07: frogs that leap a row and push it back
+    "rulesets/tessabi.json": ("684b14652b2b", "d54b1bb38db2b6f0"),  # TS5, 2026-11-07: Tessabi, from tessabi.com
     "rulesets/cylinder.json": ("a9306688fe57", "6a56433c2492eaf3"),
     "rulesets/dobutsu.json": ("a2f0c65ceedf", "d158e949aa940a34"),
     "rulesets/duck-chess.json": ("7acb867a99aa", "06ae7548db734adb"),  # Q1079, 2026-10-31: standard duck chess

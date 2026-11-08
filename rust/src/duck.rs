@@ -201,6 +201,11 @@ impl<'t> Game<'t> {
         key ^= t.zobrist_side;
         key ^= t.zobrist_remaining(previous_remaining);
         key ^= t.zobrist_remaining(self.remaining);
+        // H2 (`docs/plan-hunger.md` §3): the duck half ends the turn, so the next one's income
+        // lands here, on the board the phase left.
+        if t.income.is_some() {
+            key = self.collect_income(key);
+        }
         self.key = key;
         // The duck move itself is no progress and reversible; a phase that ate is both, and
         // one that cleared a right is irreversible, as after a piece move.

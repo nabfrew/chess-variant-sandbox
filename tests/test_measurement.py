@@ -601,7 +601,64 @@ class TestTheFingerprintsPointAtSomething:
 # pieces and a held piece in rounds, and the gained, priced and sold spy. Read only in games no
 # library game is; SR7r replayed the library on build 205d19bd6aea5a51
 # (`docs/reference/replay-2026-11-05b.md`). It was "5a9df6bcc63dfa8f" after SR5r.
-FROZEN_METRICS = "599b8777a79f2883"
+# **Moved 2026-11-06 by Q1119 (C11: the bootstrap's draws first, scored in a pool; the fit's
+# sweep tightened)**: `metrics/bootstrap.py` and `tournament/ratings.py`. Invisible: every
+# `index-v12.json` byte-identical on 48 library runs copied to scratch
+# (`docs/plan-performance.md` C11); the replay Q1124 re-scores. It was "599b8777a79f2883"
+# after SR7r.
+# **Moved 2026-11-07 by Q1146 (the measuring ladder's build, `docs/plan-ladder-shift.md` B;
+# Q1103 brought level by Q1139)**: the ladder moved, not a metric. `metrics/components.py`'s
+# `SPY_READINGS["skill_gradient"]` string now names 400 to 25600 and `_split_rung`'s docstring
+# its new fourth rung; no computation changed. Every library score was already stale on the
+# `players` basis by the ladder itself; the replay Q1104 re-scores. It was "db387bb30ecad1d1"
+# after Q1119.
+# **Moved 2026-11-07 by Q1131 (TS1, scoring goals)**: `engine/compile.py`, `engine.py`,
+# `state.py`, `spec/complexity.py` (`_reach_extras`, charged only where a goal states one of
+# the three keys) and `agents/evaluation.py` (`reach_tally`, only under `removes` or a count
+# past one). Read only in games that state a key, which no library game but the new crossings
+# does; the ladder replay (Q1104) re-scores. It was "7f911d25deff75ef" after Q1146.
+# **Moved 2026-11-07 by Q1149**: `metrics/index.py`'s `_unreadable_result` no longer defaults
+# a missing `ladder_monotonicity` to 0.0; only a violation's text moves, no score, verdict or
+# `measured` flag, so stored runs are not re-scored for it. It was "b6abf4ed3caa3c01" after Q1131.
+# **Moved 2026-11-07 by Q1133 (TS3, turn parts)**: `engine/compile.py`, `engine.py`, `moves.py`,
+# `state.py` (the parts mask and `MOVE_KEEP`), `spec/complexity.py` (`_turn_part_extras`, charged
+# only on a turn written as parts), `agents/minimax.py` (a keep is never loud) and
+# `tournament/analysis.py` (a keep takes nothing). Read only in a game whose turn has parts, which
+# no library game but the new drover has; the ladder replay (Q1104) re-scores. It was
+# "93343a087c1ebc4e" after Q1149.
+# **Moved 2026-11-07 by Q1134 (TS4, a hop over a run and displacement)**: `engine/compile.py`
+# (the run code on a hop entry, `displace_path`, no one-way type beside a displacement),
+# `engine.py` and `moves.py` (`MOVE_DISPLACE`), `spec/complexity.py` (`_hop_run_extras`,
+# charged only on a hop stating a key) and `agents/minimax.py` (a promoting displacement is
+# loud). Read only in a game with such a hop, which no library game but the new leapfrog has;
+# the ladder replay (Q1104) re-scores. It was "fc7e084dd26a7944" after Q1133.
+# **Moved 2026-11-07 by Q1125 (H1)**: `engine.py` (`Engine.move_cost`, the core's answer for the
+# page) and `spec/complexity.py` (`_upkeep_extras`, charged only under `rules.purse.upkeep`).
+# Read only in a game whose moves cost coins, which no library game has until H5's Hunger; the
+# ladder replay (Q1104) re-scores. It was "7e468d2a4dfa2bed" after Q1134.
+# **Moved 2026-11-07 by Q1150**: `metrics/components.py`'s `_normalised_entropy` returns +0.0,
+# not -0.0, when one held piece type moves. `-0.0 == 0.0` in every curve and comparison, so no
+# score, verdict or `measured` flag moves and nothing is re-scored; only the sign written to
+# JSON in `piece_utilisation` differs. It was "5b639b6be44e661c" after Q1125.
+# **Moved 2026-11-07 by Q1126 (H3)**: `engine.py` (`describe_move`'s "pass"), `spec/complexity.py`
+# (`pass` charged 1.0), `agents/minimax.py` (a pass is never loud) and `tournament/analysis.py` (a
+# pass takes nothing and moves no piece). Read only in a game with `rules.pass`, which no library
+# game has until H5's Hunger; the ladder replay (Q1104) re-scores. It was "9184bb2ddc8640db"
+# after Q1150.
+# **Moved 2026-11-07 by Q1127 (H2)**: `spec/complexity.py` (`income` charged 1.0, `{}` read as the
+# rule, 0.5 more for a written region). Read only in a game with `rules.income`, which no library
+# game has until H5's Hunger; the ladder replay (Q1104) re-scores. It was "1cd1916fad7eb069" after
+# Q1126.
+# **Moved 2026-11-07 by Q1128 (H4)**: `agents/evaluation.py` (the probe's ruler: `coin_value`'s
+# moves channel, `moves_rate`, `income_earned`, the income switch off by default) and
+# `engine/compile.py` (`PurseRule.upkeep_mean`). Read only in a game whose moves cost coins, which
+# no library game has until H5's Hunger (a purse game without upkeep plays and probes the same
+# bytes: `docs/reference/agents-and-eval-record.md` *A coin's worth without a market*); the ladder
+# replay (Q1104) re-scores. It was "c3846ede222031c2" after Q1127.
+# **Moved 2026-11-08 by Q1104**: `metrics/scoring.py`'s `DEFAULT_WEIGHTS` is `v13`. The library
+# was replayed on the 400-25,600 ladder and re-scored under `v13` on this value
+# (`docs/reference/v13-calibration.md`). It was "0ffc7a9c233fb907" after Q1128.
+FROZEN_METRICS = "c27f53099d8b7848"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -984,7 +1041,28 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # `FROZEN_METRICS` says), only in games no library game is: the library holds no spy game, and
 # its two round games have no purse and no piece nobody owns. SR7r replayed the library under
 # it, every canonical.json identical outside `basis`. It was "9185155861926832" after SR5r.
-FROZEN_ANALYSIS = "22032ebaf99740ac"
+# **Moved 2026-11-07 by Q1131 (TS1)**: the engine's Python side (as `FROZEN_METRICS` says: the
+# bank's state and keys), read only in a game whose goal states a key, which no library game
+# but the new crossings does; the ladder replay (Q1104) re-analyses. It was "22032ebaf99740ac"
+# after SR7r.
+# **Moved 2026-11-07 by Q1133 (TS3)**: the engine's Python side and `analysis.takes` (as
+# `FROZEN_METRICS` says), read only in a game whose turn has parts, which no library game but the
+# new drover has; the ladder replay (Q1104) re-analyses. It was "dc7cb0f2f0ed9b7e" after Q1131.
+# **Moved 2026-11-07 by Q1134 (TS4)**: the engine's Python side (as `FROZEN_METRICS` says: the
+# displacement's kind and line), read only in a game with a hop over a run or one that
+# displaces, which no library game but the new leapfrog has; the ladder replay (Q1104)
+# re-analyses. It was "b427d54ff6d777ee" after Q1133.
+# **Moved 2026-11-07 by Q1125 (H1)**: `engine.py`'s `Engine.move_cost` (as `FROZEN_METRICS`
+# says), read only in a game whose moves cost coins, which no library game has until H5; the
+# ladder replay (Q1104) re-analyses. It was "4fd09aeb1d597144" after Q1134.
+# **Moved 2026-11-07 by Q1126 (H3)**: `engine.py` and `tournament/analysis.py` (as
+# `FROZEN_METRICS` says), read only in a game with the pass, which no library game has until H5;
+# the ladder replay (Q1104) re-analyses. It was "3c6268b88b142dc9" after Q1125.
+# **Moved 2026-11-07 by Q1128 (H4)**: `agents/evaluation.py` and `engine/compile.py` (as
+# `FROZEN_METRICS` says), read only in a game whose moves cost coins, which no library game has
+# until H5; the ladder replay (Q1104) re-analyses. It was "ff808d0763410e21" after Q1126.
+# Q1104 (2026-11-08) replayed and re-analysed the whole library on this value: it did not move.
+FROZEN_ANALYSIS = "3d0d6621922c3e1c"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

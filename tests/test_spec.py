@@ -992,6 +992,7 @@ def _move_bounds(at: str) -> dict[str, dict[str, int]]:
         f"{move}/min_range": {"minimum": 1, "maximum": 16},
         f"{move}/screen_range": {"minimum": 0, "maximum": 16},
         f"{move}/sweep_range": {"minimum": 0, "maximum": 16},  # Q1063
+        f"{move}/run/anyOf[1]": {"minimum": 2, "maximum": 16},  # TS4: a run's cap
         f"{move}/legs": _AT_LEAST_ONE,  # SR1a: one list per vector, at most four squares
         **_vector_bounds(f"{move}/legs/items", {"minItems": 1, "maxItems": 4}),
         f"{move}/condition{_P}/from_rank": {"minimum": 0},
@@ -1011,6 +1012,7 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_PIECE}/rest": {"minimum": 1, "maximum": 4},
     f"{_PIECE}/bounty": {"minimum": 1, "maximum": 20},  # TC4
     f"{_PIECE}/price": {"minimum": 1, "maximum": 40},  # TC5
+    f"{_PIECE}/upkeep": {"minimum": 1, "maximum": 10},  # H1
     f"{_PIECE}/weight": {"minimum": 1, "maximum": 9},  # Q1074b2
     f"{_PIECE}/strength": {"minimum": 1, "maximum": 99},  # Q1074b4s
     # Schema 30 (Q999a): 1 to 4 lines of sight, each with a slide's geometry bounds.
@@ -1030,6 +1032,7 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_MOVE}/screen_range": {"minimum": 0, "maximum": 16},
     f"{_MOVE}/screen/anyOf[1]": _AT_LEAST_ONE,  # SR3c: a screen named by type
     f"{_MOVE}/sweep_range": {"minimum": 0, "maximum": 16},  # Q1063
+    f"{_MOVE}/run/anyOf[1]": {"minimum": 2, "maximum": 16},  # TS4: a run's cap
     f"{_MOVE}/legs": _AT_LEAST_ONE,  # SR1a: one list per vector, at most four squares
     **_vector_bounds(f"{_MOVE}/legs/items", {"minItems": 1, "maxItems": 4}),
     f"{_MOVE}/condition{_P}/from_rank": {"minimum": 0},
@@ -1052,6 +1055,11 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_PROMO_LIST}/to_by_player{_P}/1": _AT_LEAST_ONE,
     f"{_RULES}/castling{_P}/king_steps": {"minimum": 1, "maximum": 4},
     f"{_RULES}/check_limit": {"minimum": 1, "maximum": 20},
+    f"{_RULES}/income/anyOf[1]{_P}/per_piece": {"minimum": 1, "maximum": 5},  # H2
+    f"{_RULES}/reach{_P}/count": {"minimum": 1, "maximum": 64},
+    # TS3 (`docs/plan-tessabi.md` §3): one to MAX_MOVES_PER_TURN parts, a type list not empty.
+    f"{_RULES}/turn{_P}/parts": {"minItems": 1, "maxItems": 4},
+    f"{_RULES}/turn{_P}/parts/items{_P}/pieces/anyOf[1]": _AT_LEAST_ONE,
     f"{_RULES}/territory{_P}/win_at": {"minimum": 0},
     f"{_RULES}/turn{_P}/moves": {"minimum": 1, "maximum": 4},
     f"{_RULES}/turn{_P}/ramp": {"minItems": 1, "maxItems": 8},

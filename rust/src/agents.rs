@@ -21,8 +21,8 @@ use crate::game::{Game, Outcome, Snapshot};
 use crate::net::{Net, NetEvaluator};
 use crate::rng::PyRandom;
 use crate::tables::{
-    move_kind, move_from, move_promotion, move_to, Tables, DUCK_STEP, MOVE_CASTLE, MOVE_DROP,
-    MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_NORMAL, MOVE_PORTAL, MOVE_PROMOTION, MOVE_PUSH, MOVE_ROTATE,
+    move_kind, move_from, move_promotion, move_to, Tables, Win, DUCK_STEP, MOVE_CASTLE, MOVE_DROP,
+    MOVE_DISPLACE, MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_KEEP, MOVE_NORMAL, MOVE_PASS, MOVE_PORTAL, MOVE_PROMOTION, MOVE_PUSH, MOVE_ROTATE,
     MOVE_SWEEP, SIGHT_PATH_AURA, SIGHT_PATH_SQUARE,
 };
 
@@ -172,6 +172,12 @@ pub const TT_MOVE: u32 = 256;
 /// round, spy or long-turn game. Moves only the positions where a side is bare. On by default
 /// since its duel (0.5127 ± 0.0010 over 27 cells, `no-forced-mate.md` §10.4).
 pub const MOPUP: u32 = 512;
+/// H4 (`docs/plan-hunger.md` §5): **the income term.** Under `rules.income`, each coin a
+/// side's pieces earn as they stand counts `eval::INCOME_TURNS` coins at the coin's worth,
+/// mine minus theirs (`eval::Evaluator::with_income`). An evaluator term carried as a search
+/// bit so its duel can seat the player without it; built-in objective only, minimax only, and
+/// zero without income or a coin worth, so it moves no game without `rules.income`.
+pub const INCOME: u32 = 1024;
 /// Every bit a spec may carry. A bit outside it is a player nobody has defined.
 pub const REPAIRS: u32 = KEEP_TABLE
     | THREATS
@@ -182,7 +188,8 @@ pub const REPAIRS: u32 = KEEP_TABLE
     | DUCK_FRONT
     | DUCK_MOBILITY
     | TT_MOVE
-    | MOPUP;
+    | MOPUP
+    | INCOME;
 /// The repairs a minimax player that spells none of them searches with: the ones that won
 /// their pre-registered duel (`general-player.md` §4.3 E9, §6.7). `THREATS` won (0.542
 /// over twelve cells); `KEEP_TABLE` and `LOUD_DROPS` lost and stay off. WK2's pair
@@ -504,6 +511,39 @@ pub struct Player {
     /// N4: the box by position key, direct-mapped (`MOPUP_CACHE` slots, allocated on first
     /// use); `u32::MAX` is an empty slot.
     mopup_cache: Vec<(u64, u32)>,
+    /// C3 (Q1112, `docs/plan-performance.md` §2): whether no ending `terminal_prefix` asks
+    /// before the clocks can name the mover the winner after a quiet move
+    /// (`quiet_cannot_win`). Where it holds, the `threats` chase need not play a quiet move
+    /// below the horizon, and at the horizon asks only for check.
+    quiet_never_wins: bool,
+}
+
+/// C3 (Q1112): whether `terminal_prefix`, asked after a quiet move (one `is_loud` says
+/// takes nothing and promotes nothing), can never name the mover the winner before the
+/// clocks run out. Read off the endings it asks, in its order:
+///
+/// - **a royal off the board** names the other side; the mover wins only if the
+///   opponent's royal went, and a quiet move takes nothing, so only the wild phase that
+///   follows a move could take it (`has_npcs`);
+/// - **the illegal position** (checkmate games) names the side to move, which is the
+///   mover only where a move may leave the turn with its player (a long turn, the duck);
+/// - **annihilation** and **the schema-2 endings** (reach, territory, extinction, bare
+///   royal, check limit) can be won by arriving, leaving or checking, so not here;
+/// - insufficient material and repetition are draws;
+/// - **the clocks**, with a mate on their ply and scoring, are left to the chase, which
+///   asks only where neither clock can run out after one more move
+///   (`Game::clocks_hold_one_more`).
+///
+/// A spy game and a game in rounds keep the whole chase. A rule read here that is inert
+/// only keeps the chase playing, the search as it was.
+fn quiet_cannot_win(t: &Tables) -> bool {
+    let side_may_stay = t.turn.is_some() || t.duck.is_some();
+    t.spy.is_none()
+        && t.simultaneous.is_none()
+        && !t.has_npcs
+        && t.win != Win::Annihilation
+        && !t.has_v2_endings()
+        && !(t.win == Win::Checkmate && !t.royal_types.is_empty() && side_may_stay)
 }
 
 /// N4: slots in the mop-up term's box cache.
@@ -557,6 +597,13 @@ impl Player {
             ),
             _ => Objective::new(t, &spec.weights, &pair, mobility, goal, immune),
         };
+        // H4 (`INCOME`): the income term, a minimax player's on the built-in objective only.
+        let eval = match eval {
+            Objective::Builtin(evaluator) if spec.kind == Kind::Minimax && spec.repairs & INCOME != 0 => {
+                Objective::Builtin(evaluator.with_income(t))
+            }
+            other => other,
+        };
         let round_win = crate::eval::round_win(t, eval.values());
         let mopup = mopup_weight_for(t, &spec, &eval);
         let duck_history = if spec.repairs & DUCK_HISTORY != 0 && t.duck.is_some() {
@@ -588,6 +635,7 @@ impl Player {
             n_squares: t.n_squares,
             generation: 0,
             strategy: Vec::new(),
+            quiet_never_wins: quiet_cannot_win(t),
         }
     }
 
@@ -736,7 +784,21 @@ impl Player {
 
         for depth in 1..=self.spec.max_depth as i32 {
             match self.search_root::<SPY>(game, &ordered, depth) {
-                Err(Exhausted) => break,
+                Err(scored) => {
+                    // Q1105: a budget that ends inside the first ply plays the best root
+                    // move it scored, not `ordered[0]` of a shuffled list. Each score is
+                    // the child's whole quiescence under `(alpha, +inf)`, so the best so
+                    // far is exact and every other move only bounded below it. Deeper,
+                    // the last finished iteration's move stands. No depth finished, so
+                    // `stats.depth` and the value stay as they were (`search_value`
+                    // still answers `None`).
+                    if depth == 1 {
+                        if let Some(candidate) = scored {
+                            best_move = candidate;
+                        }
+                    }
+                    break;
+                }
                 Ok((candidate, value)) => {
                     best_move = candidate;
                     best_value = value;
@@ -792,15 +854,18 @@ impl Player {
 }
 
 impl Player {
-    /// The best move at `depth` and its score (`alpha` when the loop ends).
+    /// The best move at `depth` and its score (`alpha` when the loop ends). When the
+    /// budget runs out first, `Err` carries the best move among those already scored
+    /// (`None` when the first child ran out).
     fn search_root<const SPY: bool>(
         &mut self,
         game: &mut Game<'_>,
         moves: &[u32],
         depth: i32,
-    ) -> Result<(u32, f64), Exhausted> {
+    ) -> Result<(u32, f64), Option<u32>> {
         let mut alpha = f64::NEG_INFINITY;
         let mut best_move = moves[0];
+        let mut scored = false;
         let mut arena = std::mem::take(&mut self.arena);
         arena.clear();
         if self.spec.repairs & DUCK_MOBILITY != 0 {
@@ -827,6 +892,7 @@ impl Player {
                     break;
                 }
                 Ok(value) => {
+                    scored = true;
                     let score = if flipped { -value } else { value };
                     if score > alpha {
                         alpha = score;
@@ -838,7 +904,7 @@ impl Player {
 
         self.arena = arena;
         if exhausted {
-            Err(Exhausted)
+            Err(scored.then_some(best_move))
         } else {
             Ok((best_move, alpha))
         }
@@ -1196,11 +1262,6 @@ impl Player {
         } else {
             return 0.0;
         };
-        let moves = if bare == side {
-            count
-        } else {
-            game.legal_count_as(bare, &mut self.mopup_moves)
-        };
         let area = crate::eval::MOPUP_AREA;
         // The box is a function of the position alone (the key; no clock reads it), so it is
         // remembered by key: a cache changes no answer, only the time the walk takes.
@@ -1209,13 +1270,23 @@ impl Player {
         if self.mopup_cache.is_empty() {
             self.mopup_cache = vec![(0, u32::MAX); MOPUP_CACHE];
         }
-        let reach = if self.mopup_cache[slot].0 == key && self.mopup_cache[slot].1 != u32::MAX {
-            self.mopup_cache[slot].1 as f64
-        } else {
-            let found = game.bare_reach(bare, area as usize, &mut self.mopup_seen);
-            self.mopup_cache[slot] = (key, found as u32);
-            found as f64
-        };
+        // The bare side's legal count: its own list when it is to move; else, on a miss, the
+        // walk's first list, which is `legal_count_as`'s on this very position (C7); on a hit,
+        // `legal_count_as` itself (the count is not cached: the key does not carry `unmoved`).
+        let (reach, moves) =
+            if self.mopup_cache[slot].0 == key && self.mopup_cache[slot].1 != u32::MAX {
+                let moves = if bare == side {
+                    count
+                } else {
+                    game.legal_count_as(bare, &mut self.mopup_moves)
+                };
+                (self.mopup_cache[slot].1 as f64, moves)
+            } else {
+                let (found, first) =
+                    game.bare_reach(bare, area as usize, &mut self.mopup_seen);
+                self.mopup_cache[slot] = (key, found as u32);
+                (found as f64, if bare == side { count } else { first })
+            };
         let span = crate::eval::MOPUP_SPAN;
         let confined =
             0.5 * ((1.0 - reach.min(area) / area) + (1.0 - (moves as f64).min(span) / span));
@@ -1321,6 +1392,8 @@ impl Player {
             && kind != MOVE_CASTLE
             && kind != MOVE_FOLD
             && kind != MOVE_DUCK
+            && kind != MOVE_KEEP
+            && kind != MOVE_PASS
             && game.board[move_to(m)] != 0
         {
             return true;
@@ -1329,7 +1402,7 @@ impl Player {
         kind == MOVE_EN_PASSANT
             || kind == MOVE_PROMOTION
             || kind == MOVE_SWEEP
-            || (kind == MOVE_PORTAL && move_promotion(m) != 0)
+            || ((kind == MOVE_PORTAL || kind == MOVE_DISPLACE) && move_promotion(m) != 0)
     }
 
     /// Q502i: whether quiescence chases this quiet move under the player's repairs.
@@ -1346,6 +1419,26 @@ impl Player {
             return false;
         }
         let mover = game.side;
+        // C3 (Q1112): where no ending before the clocks can name the mover after a quiet
+        // move (`quiet_cannot_win`) and neither clock can run out on the next ply,
+        // *won at once* is false without playing the move: below the horizon nothing is
+        // asked, at it only the check. A checking build asks the whole chase beside it.
+        if !SPY && self.quiet_never_wins && game.clocks_hold_one_more() {
+            let fast = horizon && {
+                game.make(m);
+                let checks = game.in_check(1 - mover);
+                game.unmake();
+                checks
+            };
+            debug_assert_eq!(fast, self.chase_played::<SPY>(game, m, horizon, mover));
+            return fast;
+        }
+        self.chase_played::<SPY>(game, m, horizon, mover)
+    }
+
+    /// The chase as Q502i asked it: play the move, read the terminal verdict and, at the
+    /// horizon, the check. C3's shortcut is held to it in a checking build.
+    fn chase_played<const SPY: bool>(&self, game: &mut Game<'_>, m: u32, horizon: bool, mover: usize) -> bool {
         step::<SPY>(game, m);
         // Schema 27: a spy game's verdict is its phase's (a turn may leave a round).
         let verdict = if SPY { game.spy_terminal_prefix() } else { game.terminal_prefix() };
@@ -1620,7 +1713,13 @@ fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> f64 {
     // the target would order both ahead of every quiet move by the value of the mover's
     // own piece.
     let kind = move_kind(m);
-    if kind == MOVE_ROTATE || kind == MOVE_CASTLE || kind == MOVE_FOLD || kind == MOVE_DUCK {
+    if kind == MOVE_ROTATE
+        || kind == MOVE_CASTLE
+        || kind == MOVE_FOLD
+        || kind == MOVE_DUCK
+        || kind == MOVE_KEEP
+        || kind == MOVE_PASS
+    {
         return 0.0;
     }
     let victim = board[move_to(m)];

@@ -50,7 +50,9 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
    child of the worktree writing straight into the main checkout's `runs/opponents/` as
    `ladders.py --runs` does (`rate_ladder`). A ladder is never delivered: `rerate` moves
    the old one aside and puts it back if the rating fails. A rating that fails, or that
-   leaves the ladder still owing, is refused like a game, keyed on the ladder file.
+   leaves the ladder still owing, is refused like a game, keyed on the ladder file. The
+   ladders survey, like the proofs survey (point 9), is read whole once a pass and then
+   only for the game just repaired (Q1110, `Refresher._read`); the scores, every step.
 9. **Proven positions, after ladders** (Q993d, `docs/archive/plan-proven.md` §5). Only when no
    score and no ladder is owed does it read which Library and Baseline games are owed a
    proven-positions record (`proof_items`, `puzzles.survey`): none yet (`prove`), then one
@@ -725,18 +727,23 @@ def ladder_work(found: Any) -> tuple[str, str] | None:
     return "re-rate", "; ".join(why)
 
 
-def ladder_items(runs_dir: Path, root: Path | None = None) -> list[Item]:
+def ladder_items(runs_dir: Path, root: Path | None = None,
+                 only: Iterable[str] | None = None) -> list[Item]:
     """The ladder work this tree owes over ``runs_dir``, in order. Reads; spends nothing.
 
     The library is ``root``'s (default the working directory, as `corpus.survey` reads
     it); each game read by `ladders_check.ladder`, the check `deploy/ladders.py` acts on.
+    ``only`` reads those games alone (the loop's re-read of a game it just rated, Q1110).
     """
     checks = _deploy("ladders_check")
     if checks is None:
         return []
     root = Path(root) if root is not None else Path.cwd()
+    wanted = None if only is None else set(only)
     items = []
     for game in checks.library(root):
+        if wanted is not None and game.digest not in wanted:
+            continue
         found = checks.ladder(game, Path(runs_dir), root)
         work = ladder_work(found)
         if work is None:
@@ -817,24 +824,50 @@ def rate_ladder(
 # ------------------------------------------------------- proven positions (Q993d)
 
 
-def proof_items(runs_dir: Path, root: Path | None = None) -> list[Item]:
+def proof_items(runs_dir: Path, root: Path | None = None,
+                only: Iterable[str] | None = None) -> list[Item]:
     """The proven-positions work this tree owes over ``runs_dir``, in order. Reads (each
     record's positions replayed through the engine); proves nothing.
 
     The library is ``root``'s (default the working directory), read by `puzzles.survey`:
     a game with no record (`prove`) before one whose record no longer holds (`re-prove`),
-    then the launch set, the oldest record, the hash.
+    then the launch set, the oldest record, the hash. ``only`` reads those games alone
+    (the loop's re-read of a game it just proved, Q1110).
     """
     from chess_variant_sandbox import puzzles
 
     root = Path(root) if root is not None else Path.cwd()
+    if only is None:
+        found_all = puzzles.survey(runs_dir, root)
+    else:
+        wanted = set(only)
+        reference = puzzles.reference_spec(root)
+        found_all = [puzzles.standing(digest, game, spec, runs_dir, reference=reference)
+                     for digest, game, spec in puzzles.library(root) if digest in wanted]
     items = [
         Item(hash=found.hash, name=found.name, needs=found.needs, reason=found.reason,
              tier=value_tier(found.name, found.hash, set(), Stored()),
              measured=found.made, stored=found.stored)
-        for found in puzzles.survey(runs_dir, root) if found.owed
+        for found in found_all if found.owed
     ]
     return sorted(items, key=lambda item: item.key)
+
+
+def plan(runs_dir: Path, part: str, weights: str | None = None,
+         only: Iterable[str] | None = None) -> list[Item]:
+    """One part of the queue (`SCORES`, `LADDERS` or `PROOFS`), as `refresh --plan --part`
+    reads it; with ``only``, the ladders or proofs of those games alone. The scores have no
+    per-game reading: one game's repair can move another's value tier (`top_quarter`), so
+    the loop reads them whole again after each (`Refresher._read`)."""
+    if part == SCORES:
+        if only is not None:
+            raise ValueError("the scores are read whole: one game's repair can reorder them")
+        return queue(runs_dir, weights)
+    if part == LADDERS:
+        return ladder_items(runs_dir, only=only)
+    if part == PROOFS:
+        return proof_items(runs_dir, only=only)
+    raise ValueError(f"no part {part!r}")
 
 
 def prove_game(
@@ -875,12 +908,15 @@ def prove_game(
     needs = ""
     try:
         root = Path(root) if root is not None else Path.cwd()
+        # The library is walked once (Q1110): `retire` reads its hashes, and only this
+        # game's standing is read, before the work and after it.
+        walked = puzzles.library(root)
         # A record of a game no longer in the library (an in-place edit re-hashed it) is
         # moved beside its work first: the new hash is proved here, the old one is kept.
-        for gone in puzzles.retire(runs, root):
+        for gone in puzzles.retire(runs, root, games=[game[0] for game in walked]):
             note(f"retired {gone.parent.name}'s record, a game no longer in the library: "
                  f"kept as {gone.relative_to(runs).as_posix()}")
-        games = [game for game in puzzles.library(root) if game[0] == digest]
+        games = [game for game in walked if game[0] == digest]
         if not games:
             return done("", ERROR, f"no library game has the hash {digest}")
         _digest, name, spec = games[0]
@@ -1070,6 +1106,7 @@ class Machine(Protocol):
     def survey(self) -> list[Item]: ...  # the queue, at the worktree's commit
     def ladders(self) -> list[Item]: ...  # the ladder work, at the worktree's commit
     def proofs(self) -> list[Item]: ...  # the proven-positions work, at that commit
+    def resurvey(self, part: str, digest: str) -> list[Item]: ...  # one game's ladder or proofs
     def repair(self, item: Item) -> Outcome: ...  # one game, ladder or proof, at that commit
     def deliver(self, item: Item) -> None: ...  # `history.deliver` into main's runs/
     def changed(self) -> list[str]: ...  # committed files the last repair changed
@@ -1101,6 +1138,57 @@ class Refresher:
     # The weekly slow tier (point 7): ``None`` runs it exactly when watching.
     slow_tier: bool | None = None
     clock: Callable[[], datetime.datetime] = _utcnow
+    # The ladders and proofs surveys of this pass, by part, and the commit they were read at
+    # (Q1110, `docs/plan-performance.md` C1). Each is read once per pass, not once per
+    # step: it reads every library game (43 s and 39 s on the library of 2026-11), and
+    # between two steps of a pass only the game just repaired has moved, so after a repair
+    # that game alone is read again (`Machine.resurvey`). The scores survey is still read
+    # every step (3 s): it is how a score owed mid-pass takes priority over the next ladder
+    # or proof, and a score's repair can reorder the other scores (`top_quarter`). A score
+    # repaired drops the ladders and proofs surveys, since it changes the runs they read.
+    # The pass ends, and both are read afresh, when main moves and when the loop waits,
+    # halts or goes idle: whatever another job wrote in `runs/` meanwhile is read then. A
+    # survey a step reads stale costs at most one child that finds its game owes nothing
+    # (each repair reads its own game's standing first) or one game left to the next pass.
+    _surveys: dict[str, list[Item]] = field(default_factory=dict, init=False, repr=False)
+    _surveyed_at: str = field(default="", init=False, repr=False)
+
+    def _read(self, part: str) -> list[Item]:
+        """The survey of one part: the scores' afresh, the ladders' or proofs' from this
+        pass's where it has one at this commit."""
+        if part == SCORES:
+            return self.machine.survey()
+        head = self.machine.head()
+        if head != self._surveyed_at:
+            self._surveys.clear()
+            self._surveyed_at = head
+        if part not in self._surveys:
+            read = self.machine.ladders if part == LADDERS else self.machine.proofs
+            self._surveys[part] = read()
+        return list(self._surveys[part])
+
+    def _end_pass(self) -> None:
+        self._surveys.clear()
+
+    def _repaired(self, item: Item) -> None:
+        """Bring this pass's surveys up to date after one game's repair, refused or not."""
+        if item.part == SCORES:
+            self._surveys.clear()
+            return
+        if item.part == LADDERS:
+            # A rating can leave the proofs' survey nothing to read differently, but it is
+            # taken only while no ladder is owed, so dropping it costs nothing.
+            self._surveys.pop(PROOFS, None)
+        if item.part not in self._surveys:
+            return
+        try:
+            fresh = self.machine.resurvey(item.part, item.hash)
+        except Exception as error:  # noqa: BLE001 - read the part whole next step instead
+            self.say(f"re-reading {item.name} failed ({error}); the next step reads all")
+            self._surveys.pop(item.part, None)
+            return
+        kept = [other for other in self._surveys[item.part] if other.hash != item.hash]
+        self._surveys[item.part] = sorted([*kept, *fresh], key=lambda other: other.key)
 
     def run(self) -> int:
         """Until nothing is owed, or forever when watching. 1 if it stopped on a halt.
@@ -1145,16 +1233,18 @@ class Refresher:
                 self.say(f"rebuilt the core in {seconds:.0f}s")
             halted = False
         if halted:
+            self._end_pass()
             return "halted"
 
         why = self.machine.busy()
         if why is not None:
+            self._end_pass()
             self.ledger.update(state="waiting", waiting_for=why, doing=None)
             self.say(f"waiting: {why}")
             return "waiting"
 
         try:
-            items = self.machine.survey()
+            items = self._read(SCORES)
         except Exception as error:  # noqa: BLE001 - logged; main moving is the way on
             return self._halt(f"the survey failed: {error}", kind=ERROR)
         for record in self.ledger.lapse(items):
@@ -1186,6 +1276,7 @@ class Refresher:
                 except Exception as error:  # noqa: BLE001 - logged; main moving is the way on
                     return self._halt(f"the proofs survey failed: {error}", kind=ERROR)
         if not todo:
+            self._end_pass()
             if self._slow_tier_due():
                 return self._slow_tier()
             self.ledger.update(state="idle", doing=None)
@@ -1193,6 +1284,7 @@ class Refresher:
 
         item = todo[0]
         if not self.machine.acquire(item.lease, f"refresh {item.hash}"):
+            self._end_pass()
             self.ledger.update(state="waiting", waiting_for=f"a {item.lease} lease",
                                doing=None)
             return "waiting"
@@ -1202,11 +1294,16 @@ class Refresher:
             outcome = self.machine.repair(item)
         finally:
             self.machine.release()
-        return self._settle(item, outcome)
+        state = self._settle(item, outcome)
+        if state == "halted":
+            self._end_pass()
+        else:
+            self._repaired(item)
+        return state
 
     def _ladders(self) -> list[Item]:
         """Point 8: the ladder work owed, once no score is, written to the status file."""
-        items = self.machine.ladders()
+        items = self._read(LADDERS)
         for record in self.ledger.lapse(items, ladders=True):
             self.ledger.log("lapsed", hash=record.get("hash"), name=record.get("name"),
                             kind=record.get("kind"), stored=record.get("stored"))
@@ -1222,7 +1319,7 @@ class Refresher:
     def _proofs(self) -> list[Item]:
         """Point 9: the proven-positions work owed, once no score or ladder is, written to
         the status file."""
-        items = self.machine.proofs()
+        items = self._read(PROOFS)
         for record in self.ledger.lapse(items, part=PROOFS):
             self.ledger.log("lapsed", hash=record.get("hash"), name=record.get("name"),
                             kind=record.get("kind"), stored=record.get("stored"))
@@ -1471,6 +1568,16 @@ class GitMachine:
             raise RuntimeError(f"the proofs survey failed: {done.stderr.strip()[-400:]}")
         return [Item.from_dict(row) for row in json.loads(done.stdout)]
 
+    def resurvey(self, part: str, digest: str) -> list[Item]:
+        """One game's ladder or proofs work, read again after its repair (Q1110): this
+        module's own `plan` entry point, since `refresh --plan` reads every game."""
+        done = self.run([str(_python(self.worktree)), "-m", "chess_variant_sandbox.refresher",
+                         "plan", "--part", part, "--only", digest, "--runs", str(self.main_runs)],
+                        cwd=self.worktree, capture_output=True, text=True, check=False)
+        if done.returncode != 0:
+            raise RuntimeError(f"the {part} re-read failed: {done.stderr.strip()[-400:]}")
+        return [Item.from_dict(row) for row in json.loads(done.stdout)]
+
     def stage(self, digest: str) -> None:
         """Copy one game's stored measurement and runs from the main checkout's `runs/`."""
         stage_game(digest, self.main_runs, self.staging)
@@ -1674,3 +1781,25 @@ def plain_status(status: Mapping[str, Any] | None) -> list[str]:
     lines.append(f"slow tier: {tier.get('summary')}" if isinstance(tier, Mapping)
                  else "slow tier: not run here yet (weekly, when watching and idle)")
     return lines
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m chess_variant_sandbox.refresher plan --part P [--only HASH ...] --runs R`:
+    one part of the queue as JSON, the loop's per-game re-read (`GitMachine.resurvey`).
+    `refresh --plan` reads every game; this reads the named ones."""
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m chess_variant_sandbox.refresher")
+    parser.add_argument("command", choices=("plan",))
+    parser.add_argument("--part", choices=(SCORES, LADDERS, PROOFS), required=True)
+    parser.add_argument("--only", action="append", default=None, metavar="HASH")
+    parser.add_argument("--runs", type=Path, required=True)
+    parser.add_argument("--weights", default=None)
+    args = parser.parse_args(argv)
+    items = plan(args.runs, args.part, args.weights, only=args.only)
+    print(json.dumps([item.as_dict() for item in items]))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

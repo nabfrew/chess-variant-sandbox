@@ -27,6 +27,7 @@ from math import atan2, degrees, gcd
 from typing import Any
 
 from chess_variant_sandbox.engine.moves import (
+    MOVE_DISPLACE,
     MOVE_PUSH,
     MOVE_SWEEP,
     move_from,
@@ -61,6 +62,10 @@ from chess_variant_sandbox.spec.schema import (
     has_third_owner,
     hex_distance,
     hire_ids,
+    hop_displaces,
+    hop_run,
+    income_rule,
+    income_squares,
     insufficient_material_live,
     insufficient_material_roles,
     is_nobodys,
@@ -84,6 +89,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     piece_speeds,
     piece_strengths,
+    piece_upkeeps,
     piece_weights,
     player_stocks,
     portal_end_ids,
@@ -97,12 +103,14 @@ from chess_variant_sandbox.spec.schema import (
     purse_pays_loser,
     purse_rule,
     purse_squares,
+    purse_upkeep,
     push_lists,
     push_rule,
     reach_pieces,
     reach_reflection,
     reflect_square,
     screen_names_types,
+    shared_ids,
     sight_affected_ids,
     sight_affects_wild,
     simultaneous_switch,
@@ -111,8 +119,11 @@ from chess_variant_sandbox.spec.schema import (
     sweep_effects,
     sweep_length,
     takes_royal_ids,
+    turn_parts,
+    turn_parts_as_moves,
     turning_order,
     turns_less_than_half,
+    upkeep_rows,
     validate_or_raise,
     wild_type_ids,
     wrap_stated,
@@ -244,8 +255,24 @@ Entry = tuple[tuple[int, ...], tuple[int, ...], bool]
 
 # A hop also carries how far past its screen it may land -- 0 for the whole rest of the
 # ray, which is the xiangqi cannon, or n for the grasshopper family -- and whose piece
-# the screen has to be: SCREEN_ANY, SCREEN_OWN or SCREEN_ENEMY.
-HopEntry = tuple[tuple[int, ...], tuple[int, ...], bool, int, int]
+# the screen has to be: SCREEN_ANY, SCREEN_OWN or SCREEN_ENEMY. TS4: and its run code
+# (`hop_run_code`), 0 for every hop before it.
+HopEntry = tuple[tuple[int, ...], tuple[int, ...], bool, int, int, int]
+
+# TS4 (`docs/plan-tessabi.md` §4): a hop entry's run code, crossed per entry as `hop_runs`
+# (empty in every game without one). The low five bits are the run: 0 none, its cap 2 to 16,
+# or `HOP_RUN_ANY` for a run of any length; `HOP_DISPLACE` says every jumped piece moves one
+# square back. `rust/src/tables.rs` holds the same three.
+HOP_RUN_MASK = 0x1F
+HOP_RUN_ANY = 0x1F
+HOP_DISPLACE = 0x40
+
+
+def hop_run_code(descriptor: dict[str, Any]) -> int:
+    """TS4: one hop descriptor's run code (`HOP_RUN_MASK`, `HOP_DISPLACE`), 0 for a plain hop."""
+    run = hop_run(descriptor)
+    code = 0 if run is None else (HOP_RUN_ANY if run == 0 else run)
+    return code | (HOP_DISPLACE if hop_displaces(descriptor) else 0)
 
 # Q1063: a sweep also carries its sweep length, how many of the ray's first squares it
 # clears: 0 for the whole ray (the sweep with one length, which every sweep before Q1063
@@ -766,10 +793,27 @@ class ReachRule:
     # origin in ``make`` (``Game::goal_left_by``), and a piece standing on a goal decides
     # nothing. False is the arrival every game before it reads.
     leaves: bool = False
+    # TS1 (`docs/plan-tessabi.md` §1): ``reach.removes``, a listed piece standing on its own
+    # side's goal at the end of a move's board writes is taken off and banked for its owner
+    # (``Game::write_bank``); ``count``, a side wins when its banked pieces plus its listed
+    # pieces on its goal number this many; ``both``, how a goal reached by both players at
+    # once is read (``"first"``: player 0's instance, the loop's order every game before it
+    # reads). ``bank_zobrist`` is the banks' keys, ``[player * bank_stride + banked]``,
+    # drawn last and only under ``removes``.
+    removes: bool = False
+    count: int = 1
+    both: str = "first"
+    bank_zobrist: tuple[int, ...] = ()
 
     def admits(self, piece_type: int) -> bool:
         """Whether a piece of ``piece_type`` is one this goal is about."""
         return not self.piece_types or piece_type in self.piece_types
+
+    @property
+    def counts(self) -> bool:
+        """TS1: whether the goal is read by counting (``Game::scoring_goal``), not by the
+        first arrival every game before it reads."""
+        return self.removes or self.count > 1 or self.both != "first"
 
     @property
     def mask(self) -> int:
@@ -829,6 +873,29 @@ class TurnRule:
 
     def length_of(self, turn: int) -> int:
         return self.lengths[turn] if turn < len(self.lengths) else self.moves
+
+
+@dataclass(frozen=True)
+class PartsRule:
+    """TS3 (`docs/plan-tessabi.md` §3, ``rules.turn.parts``): the turn's parts. The compiled
+    turn is ``len(own)`` moves (`TurnRule`), so the core's turn machinery counts the parts;
+    this says which piece each admits (``own[part]``: a mask over type indices of the side to
+    move's own pieces; ``nobody[part]``: of nobody's pieces a player moves, held or shared),
+    which may be kept (``optional``, a bit per part), whether a move fills whichever unfilled
+    part admits it (``any_order``) or the next, and the keys of the mask of filled parts
+    (``zobrist``, ``1 << parts`` of them, drawn last and only under the rule)."""
+
+    own: tuple[int, ...]
+    nobody: tuple[int, ...]
+    optional: int
+    any_order: bool
+    zobrist: tuple[int, ...]
+
+    def admits(self, part: int, owner: int, side: int, piece_type: int) -> bool:
+        """Whether ``part`` admits a piece of ``piece_type`` in ``owner``'s block, ``side``
+        to move (`rust/src/tables.rs::PartsRule::admits`)."""
+        mask = self.own[part] if owner == side else self.nobody[part] if owner == WILD else 0
+        return bool(mask >> piece_type & 1)
 
 
 @dataclass(frozen=True)
@@ -1043,10 +1110,25 @@ class NeutralRule:
     kind: tuple[int, ...]
     neighbours: tuple[tuple[tuple[int, ...], ...], ...]
     takes_royal: tuple[int, ...] = ()
+    # TS2 (`docs/plan-tessabi.md` §2): the shared types (``control: "shared"``), moved by
+    # whichever player is to move. Each is ``CONTROL_MAJORITY`` in ``kind`` (the core's one
+    # foreign walk for a nobody's piece a player moves) with no neighbours; the core asks this
+    # list before counting. Empty in every game without the value.
+    shared: tuple[int, ...] = ()
 
     @property
     def has_majority(self) -> bool:
+        """Whether a player moves some nobody's type (the core's majority tables exist): held
+        by the count or (TS2) shared."""
         return CONTROL_MAJORITY in self.kind
+
+    @property
+    def has_count(self) -> bool:
+        """Whether some nobody's type is held by the count beside it (TC3), not shared."""
+        return any(
+            kind == CONTROL_MAJORITY and piece_type not in self.shared
+            for piece_type, kind in enumerate(self.kind)
+        )
 
 
 def _compile_neutrals(
@@ -1062,7 +1144,8 @@ def _compile_neutrals(
     placed = nobodys_ids(spec)
     if not placed:
         return None
-    held = majority_ids(spec)
+    shared = shared_ids(spec)
+    held = majority_ids(spec) | shared
     hex_lattice = spec["board"].get("lattice") == "hex"
     kind = [CONTROL_NONE] * len(pieces)
     neighbours: list[tuple[tuple[int, ...], ...]] = [() for _ in pieces]
@@ -1073,6 +1156,10 @@ def _compile_neutrals(
         kind[piece_type] = CONTROL_MAJORITY if pid in held else CONTROL_NEUTRAL
         if pid not in held:
             continue
+        if pid in shared:
+            # TS2: no count decides who moves it, so nothing is next to it.
+            neighbours[piece_type] = tuple(() for _ in range(width * height))
+            continue
         neighbours[piece_type] = _next_to(
             piece, hex_lattice, width, height, orientation, wrap, obstacles, radius,
         )
@@ -1081,6 +1168,9 @@ def _compile_neutrals(
         kind=tuple(kind), neighbours=tuple(neighbours),
         takes_royal=tuple(
             piece_type for piece_type, piece in enumerate(pieces) if piece["id"] in royal_takers
+        ),
+        shared=tuple(
+            piece_type for piece_type, piece in enumerate(pieces) if piece["id"] in shared
         ),
     )
 
@@ -1622,6 +1712,32 @@ def _compile_speeds(
 
 
 @dataclass(frozen=True)
+class IncomeRule:
+    """H2 (`docs/plan-hunger.md` §3, §R2): at the start of each of a player's turns the bank pays
+    them ``per_piece`` coins for each piece of theirs standing on one of ``squares[player]``
+    (``rules.income``'s region, reflected, less walls and absent cells: `schema.income_squares`),
+    into the purse, capped there. The first mover's first turn included: `Game::initial` pays
+    it, so the opening position holds it. The core counts (one AND and one popcount); nothing
+    here or downstream counts a piece."""
+
+    per_piece: int
+    squares: tuple[tuple[int, ...], tuple[int, ...]]
+
+
+def _compile_income(spec: dict[str, Any]) -> IncomeRule | None:
+    """``rules.income`` resolved into each player's squares, or ``None`` without the rule."""
+    rule = income_rule(spec)
+    if rule is None:
+        return None
+    return IncomeRule(
+        per_piece=int(rule["per_piece"]),
+        squares=(
+            tuple(sorted(income_squares(spec, 0))), tuple(sorted(income_squares(spec, 1)))
+        ),
+    )
+
+
+@dataclass(frozen=True)
 class PurseRule:
     """TC4 and TC5 (`docs/plan-turncoat.md` §5.2, §5.4): coins each player holds, part of the
     position, and the market they buy from (``rules.purse``).
@@ -1659,6 +1775,26 @@ class PurseRule:
     bribe: tuple[int, ...] = ()
     neighbours: tuple[tuple[tuple[int, ...], ...], ...] = ()
     to_loser: bool = False
+    # H1 (`docs/plan-hunger.md` §2.2, §R1): a move's cost, resolved into one table so nothing
+    # downstream computes a row. ``upkeep[(player * n_types + type) * n_squares + square]`` is
+    # what a move costs ``player`` that ends with its piece of ``type`` on ``square`` (the type's
+    # ``pieces[].upkeep`` times the ``rows`` measure, `schema.upkeep_rows`); **empty without
+    # ``rules.purse.upkeep``**. ``upkeep_new`` is ``"promotion": "new"``: a promotion pays the
+    # promoted type's arrival only, not the moved piece's as well.
+    upkeep: tuple[int, ...] = ()
+    upkeep_new: bool = False
+    # H4 (`docs/plan-hunger.md` §5, §R4): ``upkeep_mean[player * n_types + type]`` is the mean of
+    # that row of ``upkeep`` over the squares a piece of the type may stand on (not a wall,
+    # inside its own region), the type's mean move cost; the evaluator's moves channel reads it
+    # (`agents/evaluation.py::moves_rate`, `eval.rs::moves_rate`). **Empty without upkeep.**
+    upkeep_mean: tuple[float, ...] = ()
+
+    def move_cost(self, player: int, piece_type: int, square: int, n_squares: int) -> int:
+        """H1: one entry of ``upkeep``, 0 without the rule. A table read, never a measure."""
+        if not self.upkeep:
+            return 0
+        n_types = len(self.upkeep) // (2 * n_squares)
+        return self.upkeep[(player * n_types + piece_type) * n_squares + square]
 
     @property
     def bribes(self) -> bool:
@@ -1695,6 +1831,23 @@ def _compile_purse(
                 piece, hex_lattice, width, height, orientation, wrap, obstacles, radius,
             )
     contested = bool(hired or bribed)
+    # H1: the move-cost table under the `rows` measure, one entry per (player, type, square).
+    promotion = purse_upkeep(spec)
+    upkeep: tuple[int, ...] = ()
+    upkeep_mean: tuple[float, ...] = ()
+    if promotion is not None:
+        rates = piece_upkeeps(spec)
+        n_squares = width * height
+        upkeep = tuple(
+            rates.get(str(piece.get("id")), 0)
+            * upkeep_rows(square, player, width, height, orientation)
+            for player in (0, 1)
+            for piece in pieces
+            for square in range(n_squares)
+        )
+        upkeep_mean = _upkeep_means(
+            upkeep, pieces, n_squares, width, height, orientation, obstacles
+        )
     return PurseRule(
         start=int(purse["start"]),
         zobrist=zobrist,
@@ -1708,7 +1861,35 @@ def _compile_purse(
         bribe=tuple(bribe) if bribed else (),
         neighbours=tuple(neighbours) if contested else (),
         to_loser=purse_pays_loser(spec),
+        upkeep=upkeep,
+        upkeep_new=promotion == "new",
+        upkeep_mean=upkeep_mean,
     )
+
+
+def _upkeep_means(
+    upkeep: tuple[int, ...], pieces: list[dict[str, Any]], n_squares: int,
+    width: int, height: int, orientation: str, obstacles: frozenset[int],
+) -> tuple[float, ...]:
+    """H4 (`docs/plan-hunger.md` §R4): each (player, type)'s mean move cost, the mean of its row
+    of the move-cost table over the squares a piece of the type may stand on (not a wall, inside
+    the type's ``region`` for that player); 0.0 for a type that may stand nowhere. The table's
+    mean, not a formula in rows, so a later measure is read with no new code."""
+    n_types = len(pieces)
+    means: list[float] = []
+    for player in (0, 1):
+        for piece_type, piece in enumerate(pieces):
+            region = _region_squares(piece.get("region"), player, width, height, orientation)
+            row = (player * n_types + piece_type) * n_squares
+            total = 0
+            count = 0
+            for square in range(n_squares):
+                if square in obstacles or (region is not None and square not in region):
+                    continue
+                total += upkeep[row + square]
+                count += 1
+            means.append(total / count if count else 0.0)
+    return tuple(means)
 
 
 def _compile_bounties(
@@ -2455,11 +2636,20 @@ class CompiledSpec:
     # TC4 and TC5 (§5.2, §5.4): the purse and its market, from ``rules.purse``, or ``None``
     # -- every game without one. See ``PurseRule``.
     purse: PurseRule | None = None
+    # H2 (`docs/plan-hunger.md` §3): income at the start of each turn, from ``rules.income``,
+    # or ``None`` -- every game without it. See ``IncomeRule``.
+    income: IncomeRule | None = None
     # Q1069a: the draw by insufficient material, from ``rules.insufficient_material``, or
     # ``None`` -- every game without it. See ``InsufficientMaterialRule``.
     insufficient_material: InsufficientMaterialRule | None = None
+    # H3 (`docs/plan-hunger.md` §4): ``rules.pass``, the side to move may make no move
+    # (`MOVE_PASS`), offered where the null move survives the legality filter.
+    passes: bool = False
     # Q1074b1: the push rule's tables, or ``None`` -- every game no move of which pushes.
     push: PushRule | None = None
+    # TS3 (`docs/plan-tessabi.md` §3): the turn's parts, or ``None`` -- every game whose turn
+    # is not written as parts. See ``PartsRule``.
+    parts: PartsRule | None = None
     # R14 (`docs/plan-smells-rust.md`): where each square stands for the two features that
     # read the board's shape, so neither works out a rank or a file (rule 4). See
     # `_feature_geometry`. ``feature_rank[player][square]``: the square's row counted from
@@ -2520,6 +2710,43 @@ class CompiledSpec:
             if target in ray:
                 return ray[: ray.index(target)]
         return ()
+
+    def displace_path(self, board: bytes, move: int) -> tuple[int, ...]:
+        """TS4 (`docs/plan-tessabi.md` §4): the squares strictly between a ``MOVE_DISPLACE``'s
+        origin and target, in order from the origin, empty for any other word.
+
+        Read off the hop table for the piece standing on its origin, as
+        `Tables::displace_path` reads it in the core: the displacing hop entry whose ray
+        reaches the target where its mode lets it land (the validator and
+        `bridge.rust_supports` leave one per target)."""
+        if move_type(move) != MOVE_DISPLACE:
+            return ()
+        origin, target = move_from(move), move_to(move)
+        value = board[origin]
+        if not value:
+            return ()
+        return self.displace_path_of(value, origin, target)
+
+    def displace_path_of(self, value: int, origin: int, target: int) -> tuple[int, ...]:
+        """`displace_path` for the piece ``value`` moving from ``origin`` to ``target``."""
+        for ray, modes, _, _, _, code in self.hops[self.frame_at(value)][self.type_of(value)][origin]:
+            if code & HOP_DISPLACE and target in ray and modes[ray.index(target)] & MODE_MOVE:
+                return tuple(ray[: ray.index(target)])
+        return ()
+
+    def displace_line(self, board: bytes, move: int) -> list[tuple[int, int]]:
+        """TS4: what a ``MOVE_DISPLACE`` moves besides the hopper, read off the position it is
+        played in, as ``(square, onto)`` for each jumped piece in order from the origin, empty
+        for any other word. The one answer `Engine.describe_move` and the page's animation
+        (`viz.wrapped.push_transit`) read."""
+        path = self.displace_path(board, move)
+        line: list[tuple[int, int]] = []
+        back = move_from(move)
+        for square in path:
+            if board[square]:
+                line.append((square, back))
+            back = square
+        return line
 
     def sweep_victims(self, board: bytes, move: int) -> tuple[tuple[int, int], ...]:
         """The pieces ``move`` sweeps off ``board``, as ``(square, value)`` in ray order:
@@ -3039,7 +3266,7 @@ def _compile(
     simultaneous = rules.get("simultaneous")
     (
         zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim, zob_rest,
-        zob_respawn, zob_heading, zob_purse, zob_push_bar,
+        zob_respawn, zob_heading, zob_purse, zob_push_bar, zob_banked, zob_parts,
     ) = (
         _build_zobrist(
             digest, n_squares, n_types, width, n_facings, n_owners,
@@ -3048,7 +3275,7 @@ def _compile(
             simultaneous=isinstance(simultaneous, dict),
             initiative=isinstance(simultaneous, dict) and simultaneous.get("tie") == "initiative",
             rest_max=rest_layers(
-                max(piece_rests(spec).values(), default=0), _compile_turn(rules.get("turn")),
+                max(piece_rests(spec).values(), default=0), _compile_turn(_turn_as_written(spec)),
             ),
             respawn_keys=sum(every for every, _ in npcs.respawn) if npcs is not None else 0,
             heading_squares=tuple(
@@ -3056,6 +3283,12 @@ def _compile(
             ),
             purse=purse_rule(spec) is not None,
             push_bar=bool((push_rule(spec) or {}).get("no_push_back")),
+            bank_rows=(
+                bank_stride(rules.get("reach"))
+                if isinstance(rules.get("reach"), dict) and rules["reach"].get("removes")
+                else 0
+            ),
+            parts=len(read_parts[0]) if (read_parts := _live_parts(spec)) is not None else 0,
         )
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
@@ -3131,6 +3364,11 @@ def _compile(
         sweeps,
         facing_turns,
     )
+    # TS4 (`docs/plan-tessabi.md` §4): a displacement moves the jumped pieces back toward the
+    # hopper's origin, so in a game with one any piece may come back to a square it left by
+    # another's move, and no type is one-way. Every game without one keeps its set.
+    if _displaces(hops):
+        one_way_types = frozenset()
     portals = None
     if has_portals:
         portals = _compile_portals(
@@ -3220,7 +3458,7 @@ def _compile(
             for frame_hops in hops
             for type_hops in frame_hops
             for square_hops in type_hops
-            for _, modes, _, _, _ in square_hops
+            for _, modes, *_ in square_hops
         ),
         initial_board=board,
         initial_unmoved=unmoved,
@@ -3235,7 +3473,7 @@ def _compile(
         castling=_compile_castling(rules.get("castling"), index_of, width),
         bare_royal=rules.get("bare_royal") or "",
         check_limit=int(rules.get("check_limit", 0)),
-        reach=_compile_reach(rules.get("reach"), index_of, width, height),
+        reach=_compile_reach(rules.get("reach"), index_of, width, height, zob_banked),
         extinction=_compile_extinction(
             rules.get("extinction"), index_of, board, n_types, n_facings, rules.get("drops")
         ),
@@ -3243,7 +3481,8 @@ def _compile(
         territory=_compile_territory(rules.get("territory")),
         # Generation 42 (N4b): a duck game's turn is two moves, the piece's and the duck's
         # (the validator refuses `rules.turn` beside it).
-        turn=TurnRule(moves=2, lengths=()) if duck is not None else _compile_turn(rules.get("turn")),
+        turn=TurnRule(moves=2, lengths=()) if duck is not None else _compile_turn(_turn_as_written(spec)),
+        parts=_compile_parts(spec, index_of, zob_parts),
         wrap=wrap,
         obstacles=obstacles,
         absent=absent,
@@ -3268,6 +3507,7 @@ def _compile(
         forbid_immobility=bool(rules.get("forbid_immobility", False)),
         royal_facing_forbidden=rules.get("royal_facing") == "forbidden",
         forbid_check=bool(rules.get("forbid_check", False)),
+        passes=rules.get("pass") is True,
         checkmate=rules.get("checkmate", "loss"),
         orientation=orientation,
         multi_royal=multi_royal,
@@ -3311,6 +3551,7 @@ def _compile(
             spec, pieces, index_of, zob_purse,
             width, height, orientation, wrap, obstacles, radius,
         ),
+        income=_compile_income(spec),
         sight=_compile_sights(
             spec, pieces, index_of, n_types, n_facings, facing_axes, n_squares, width, height,
             orientation, wrap, obstacles, blocks_leaps, radius, royal_types, multi_royal,
@@ -3476,6 +3717,32 @@ def _lame_path(dx: int, dy: int) -> tuple[int, int]:
     return 0, (1 if dy > 0 else -1)
 
 
+def _jump_legs(
+    landing: Callable[[int, int], int | None],
+    at_file: int,
+    at_rank: int,
+    offsets: Legs,
+    target: int,
+    visited: set[int],
+    obstacles: frozenset[int],
+) -> list[int] | None:
+    """The squares of one lame jump's legs, from the square ``(at_file, at_rank)`` it starts
+    from, in ``offsets``' order; ``None`` where the jump can never be made: a leg off the board
+    or on a wall (a lame jump is *defined* by being stoppable at its leg), on the jump's own
+    landing, on a square already ridden (``visited``), or twice. Read by `_lame_ride` and by a
+    turning lame rider's `_turning_rides` (SR11a), so both read a leg one way."""
+    blocks: list[int] = []
+    for block_x, block_y in offsets:
+        block = landing(at_file + block_x, at_rank + block_y)
+        if (
+            block is None or block in obstacles or block == target or block in visited
+            or block in blocks
+        ):
+            return None
+        blocks.append(block)
+    return blocks
+
+
 def _lame_ride(
     landing: Callable[[int, int], int | None],
     file: int,
@@ -3530,23 +3797,14 @@ def _lame_ride(
         target = landing(at_file + step_x, at_rank + step_y)
         if target is None or target in visited or target in obstacles:
             break
-        blocks: list[int] = []
-        for block_x, block_y in offsets:
-            block = landing(at_file + block_x, at_rank + block_y)
-            if (
-                block is None or block in obstacles or block == target or block in visited
-                or block in blocks
-            ):
-                break
-            blocks.append(block)
-        else:
-            visited.update((*blocks, target))
-            path.extend((*blocks, target))
-            usable = jump >= min_range and (confine is None or target in confine)
-            modes.extend((*(0 for _ in blocks), mode if usable else 0))
-            at_file, at_rank = target % width, target // width
-            continue
-        break
+        blocks = _jump_legs(landing, at_file, at_rank, offsets, target, visited, obstacles)
+        if blocks is None:
+            break
+        visited.update((*blocks, target))
+        path.extend((*blocks, target))
+        usable = jump >= min_range and (confine is None or target in confine)
+        modes.extend((*(0 for _ in blocks), mode if usable else 0))
+        at_file, at_rank = target % width, target // width
     while modes and not modes[-1]:
         modes.pop()
         path.pop()
@@ -3569,6 +3827,7 @@ def _turning_rides(
     min_range: int,
     confine: frozenset[int] | None,
     obstacles: frozenset[int],
+    legs: Sequence[Legs] | None = None,
 ) -> list[tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]]:
     """Every path of one turning slide from one square (T1, `docs/archive/plan-pieces-moves.md` §5.2):
     ``(squares, modes, steps)`` per path, ``steps`` the index into ``steps`` of the direction
@@ -3586,6 +3845,15 @@ def _turning_rides(
     the first occupied landing ends it, taken if it may be. Paths that share a square are
     folded by the runtime dedup flag (`_needs_runtime_dedup`). Identical paths are kept
     once and the list is sorted, so the table is a function of the spec alone.
+
+    ``legs`` (SR11a, `docs/plan-schema-next.md` PA4) makes the path a turning *lame rider*:
+    ``legs[i]`` are the squares, as steps in the mover's frame, that block a jump along
+    ``steps[i]`` (stated, or `_lame_path`'s one leg), read from the square that jump starts
+    from. Each is written as a modeless square before its landing, as `_lame_ride` writes a
+    straight lame rider's, and carries its jump's step index (its momentum is 0, being
+    modeless). A leg ends the path where `_lame_ride` ends a ride: off the board, on a wall,
+    on the jump's own landing, or on a square the path has already been on, its origin, an
+    earlier leg or landing included. ``None`` is the turning slide, unchanged.
     """
     count = len(steps)
     # The longest a path can be: it never revisits a square.
@@ -3614,11 +3882,20 @@ def _turning_rides(
             target = landing(at_file + step_x, at_rank + step_y)
             if target is None or target in visited or target in obstacles:
                 break
+            blocks: list[int] = []
+            if legs is not None:
+                found = _jump_legs(
+                    landing, at_file, at_rank, legs[index], target, visited, obstacles
+                )
+                if found is None:
+                    break
+                blocks = found
+            visited.update(blocks)
             visited.add(target)
-            squares.append(target)
-            used.append(index)
+            squares.extend((*blocks, target))
+            used.extend(index for _ in range(len(blocks) + 1))
             usable = distance >= min_range and (confine is None or target in confine)
-            modes.append(mode if usable else 0)
+            modes.extend((*(0 for _ in blocks), mode if usable else 0))
             at_file, at_rank = target % width, target // width
         while modes and not modes[-1]:
             modes.pop()
@@ -3825,10 +4102,11 @@ def _compile_square_full(
     # T1: each turning slide's paths, and their momentum, built beside the lame rides.
     turning_entries: list[Entry] = []
     turning_momentum: list[tuple[int, ...]] = []
-    # (kind, step x, step y, needs an unmoved origin, screen range, screen owner).
-    # The last two are hop-only and are zero for everything else, which is what keeps a
-    # slide and a hop along the same vector from merging into one ray.
-    _RayKey = tuple[str, int, int, bool, int, int]
+    # (kind, step x, step y, needs an unmoved origin, screen range, screen owner, run code).
+    # The last three are hop-only and are zero for everything else, which is what keeps a
+    # slide and a hop along the same vector from merging into one ray. TS4: the run code
+    # (`hop_run_code`) is 0 for every hop before it, so no key's order moved.
+    _RayKey = tuple[str, int, int, bool, int, int, int]
     ray_groups: dict[_RayKey, dict[int, int]] = {}
     # The squares each ray actually visits, recorded as it is walked rather than
     # re-derived afterwards. Two descriptors sharing a key share an origin and a step,
@@ -3863,7 +4141,7 @@ def _compile_square_full(
         max_range = descriptor.get("range", DEFAULT_RANGE.get(kind, 1))
 
         turning = path_of(descriptor)
-        if kind == "slide" and turning != "straight":
+        if kind in ("slide", "lame") and turning != "straight":
             # T1: a turning path reads the whole set of directions at once, in the mover's
             # frame (the second player's reflection, as below), so it is built here rather
             # than one direction at a time. On a hex lattice (SR1c) the frame is axial and
@@ -3872,14 +4150,29 @@ def _compile_square_full(
             # map into the plane keeps every cross product's sign (its comment). The second
             # player's frame there is the half turn, which keeps a turn's sense, and every
             # landing (a hexagon's absent cell, a seam) is `landing`'s, as on a slide.
-            frame = [
-                (dx, dy) if player == 0 else (-dx, -dy) if orientation == "rotate" else (dx, -dy)
-                for dx, dy in _descriptor_directions(descriptor["vectors"], symmetry, facing)
-            ]
-            steps = turning_order(frame)
+            #
+            # SR11a (PA4): on a lame rider each jump also carries its own direction's legs,
+            # in the same frame: the stated ones as `_descriptor_legs` turns them for the
+            # straight lame (keyed by the first player's direction), else `_lame_path`'s one
+            # leg of the mover's step, exactly as `_lame_ride` is handed them below.
+            def mover(dx: int, dy: int) -> tuple[int, int]:
+                if player == 0:
+                    return dx, dy
+                return (-dx, -dy) if orientation == "rotate" else (dx, -dy)
+
+            directions = _descriptor_directions(descriptor["vectors"], symmetry, facing)
+            steps = turning_order([mover(dx, dy) for dx, dy in directions])
+            step_legs: list[Legs] | None = None
+            if kind == "lame":
+                stated = _descriptor_legs(descriptor, symmetry, facing, player, orientation)
+                by_step = {
+                    mover(dx, dy): stated.get((dx, dy), (_lame_path(*mover(dx, dy)),))
+                    for dx, dy in directions
+                }
+                step_legs = [by_step[step] for step in steps]
             for squares, path_modes, used in _turning_rides(
                 landing, file, rank, square, steps, turning, width, height, mode, max_range,
-                min_range, confine, obstacles,
+                min_range, confine, obstacles, step_legs,
             ):
                 turning_entries.append((squares, path_modes, requires_unmoved))
                 turning_momentum.append(tuple(
@@ -3986,6 +4279,7 @@ def _compile_square_full(
                 sweep_length(descriptor) if kind == "sweep"
                 else descriptor.get("screen_range", 0),
                 _screen_code(descriptor.get("screen", "any")),
+                hop_run_code(descriptor) if kind == "hop" else 0,
             )
             modes = ray_groups.setdefault(key, {})
             walked = ray_squares.setdefault(key, [])
@@ -4053,7 +4347,7 @@ def _compile_square_full(
     slide_push: list[tuple[tuple[int, int] | None, ...]] = []
     hop_push: list[tuple[tuple[int, int] | None, ...]] = []
     for key in sorted(ray_groups):
-        kind, step_x, step_y, requires_unmoved, screen_range, screen_owner = key
+        kind, step_x, step_y, requires_unmoved, screen_range, screen_owner, run_code = key
         ray = ray_squares.get(key, [])
         length = len(ray)
         if length == 0:
@@ -4084,7 +4378,7 @@ def _compile_square_full(
                 (*entry, screen_range if screen_range < length else 0)
             )
         else:
-            hop_entries.append((*entry, screen_range, screen_owner))
+            hop_entries.append((*entry, screen_range, screen_owner, run_code))
             hop_signs.append(ray_signs)
             hop_push.append(ray_steps)
 
@@ -4395,7 +4689,7 @@ def _needs_runtime_dedup(
     ] + [
         (ray, modes) for ray, modes, _ in slides
     ] + [
-        (ray, modes) for ray, modes, _, _, _ in hops
+        (ray, modes) for ray, modes, *_ in hops
     ] + [
         (ray, modes) for ray, modes, *_ in sweeps
     ]
@@ -4554,7 +4848,7 @@ def _build_attack_sources(
                         )
 
             for number, entry in enumerate(hops[frame][piece_type][origin]):
-                ray, modes, unmoved, screen_range, screen_owner = entry
+                ray, modes, unmoved, screen_range, screen_owner, _run = entry
                 for index, target in enumerate(ray):
                     if not modes[index] & _ATTACKS:
                         continue
@@ -4854,11 +5148,51 @@ def rest_layers(rest_max: int, turn: TurnRule | None) -> int:
 def _compile_turn(turn: Any) -> TurnRule | None:
     if not turn:
         return None
+    # TS3: a turn of parts is as many moves as it has parts, one part included (a part that
+    # admits fewer pieces than every one is a rule even alone).
+    if isinstance(turn.get("parts"), list):
+        return TurnRule(moves=len(turn["parts"]), lengths=())
     moves = int(turn.get("moves", 1))
     ramp = tuple(int(value) for value in turn.get("ramp") or ())
     if moves == 1 and all(value == 1 for value in ramp):
         return None  # a turn of one move is what every ruleset already does
     return TurnRule(moves=moves, lengths=ramp)
+
+
+def _turn_as_written(spec: dict[str, Any]) -> Any:
+    """TS3: ``rules.turn``, with parts that are only ``turn.moves`` written as parts
+    (`schema.turn_parts_as_moves`) read as that many moves, as the normal form writes them, so
+    the default spelling compiles to the game without it."""
+    turn = (spec.get("rules") or {}).get("turn")
+    moves = turn_parts_as_moves(spec)
+    return {"moves": moves} if moves is not None else turn
+
+
+def _live_parts(spec: dict[str, Any]) -> Any:
+    """TS3: `schema.turn_parts`, or ``None`` where the parts are only ``turn.moves``."""
+    return None if turn_parts_as_moves(spec) is not None else turn_parts(spec)
+
+
+def _compile_parts(
+    spec: dict[str, Any], index_of: dict[str, int], zobrist: tuple[int, ...]
+) -> PartsRule | None:
+    """TS3 (`docs/plan-tessabi.md` §3): ``rules.turn.parts`` as masks over type indices, read
+    through `schema.turn_parts` (the one reader)."""
+    read = _live_parts(spec)
+    if read is None:
+        return None
+    parts, any_order = read
+
+    def mask(ids: frozenset[str]) -> int:
+        return sum(1 << index_of[pid] for pid in ids if pid in index_of)
+
+    return PartsRule(
+        own=tuple(mask(part.own) for part in parts),
+        nobody=tuple(mask(part.nobody) for part in parts),
+        optional=sum(1 << index for index, part in enumerate(parts) if part.optional),
+        any_order=any_order,
+        zobrist=zobrist,
+    )
 
 
 def _compile_territory(territory: Any) -> TerritoryRule | None:
@@ -5380,8 +5714,22 @@ def _file_index(name: str) -> int:
     return ord(name.lower()) - ord("a")
 
 
+def bank_stride(reach: Any) -> int:
+    """TS1: one more than the most a player can have banked, the bank keys' row length.
+
+    The game ends on the move a side's bank reaches ``count``, and one move banks at most
+    one piece a goal square, so a bank never passes ``count - 1`` plus the goal's squares.
+    """
+    squares = reach.get("squares") if isinstance(reach, dict) else None
+    return int(reach.get("count", 1)) + len(squares or ())
+
+
 def _compile_reach(
-    reach: dict[str, Any] | None, index_of: dict[str, int], width: int, height: int
+    reach: dict[str, Any] | None,
+    index_of: dict[str, int],
+    width: int,
+    height: int,
+    bank_zobrist: tuple[int, ...] = (),
 ) -> ReachRule | None:
     if not reach:
         return None
@@ -5403,6 +5751,10 @@ def _compile_reach(
         result=reach.get("result", "win"),
         safe=bool(reach.get("safe", False)),
         leaves=reach.get("on", "arrive") == "leave",
+        removes=bool(reach.get("removes", False)),
+        count=int(reach.get("count", 1)),
+        both=str(reach.get("both", "first")),
+        bank_zobrist=bank_zobrist if reach.get("removes") else (),
     )
 
 
@@ -5613,6 +5965,15 @@ def _walk_back(
                     nxt.append(origin)
         frontier = nxt
     return distance
+
+
+def _displaces(hops: Any) -> bool:
+    """TS4: whether any hop entry of the compiled tables displaces (`HOP_DISPLACE`)."""
+    return any(
+        entry[5] & HOP_DISPLACE
+        for frame in hops for per_type in frame for per_square in per_type
+        for entry in per_square
+    )
 
 
 def _one_way_types(
@@ -6866,6 +7227,8 @@ def _build_zobrist(
     heading_squares: tuple[int, ...] = (),
     purse: bool = False,
     push_bar: bool = False,
+    bank_rows: int = 0,
+    parts: int = 0,
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
@@ -6875,6 +7238,8 @@ def _build_zobrist(
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, tuple[int, ...], tuple[int, ...]] | None,
+    tuple[int, ...],
+    tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
@@ -6963,7 +7328,14 @@ def _build_zobrist(
     push_bar_keys = (
         tuple(rng.getrandbits(64) for _ in range(2 * n_squares)) if push_bar else ()
     )
+    # TS1 (`docs/plan-tessabi.md` §1, ``rules.reach.removes``): the banks, one key per
+    # (player, banked), ``bank_rows`` a player, drawn last of all and only under the rule, so
+    # no other game's key moves.
+    banked = tuple(rng.getrandbits(64) for _ in range(2 * bank_rows))
+    # TS3 (`docs/plan-tessabi.md` §3, ``rules.turn.parts``): the mask of filled parts, one key
+    # per mask, drawn last of all and only under the rule, so no other game's key moves.
+    filled = tuple(rng.getrandbits(64) for _ in range(1 << parts)) if parts else ()
     return (
         pieces, side, ep, colours, turns, bar, fold, sim, resting, respawn, heading, coins,
-        push_bar_keys,
+        push_bar_keys, banked, filled,
     )

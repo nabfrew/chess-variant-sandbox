@@ -44,6 +44,7 @@ published as a baseline, run several seeds as well.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import random
 import statistics
@@ -190,8 +191,15 @@ def bootstrap_index(
     seed: int = 0,
     components_of_interest: tuple[str, ...] = (),
     analysis: CorpusAnalysis | None = None,
+    workers: int = 0,
 ) -> BootstrapResult | None:
     """Resample a finished tournament and re-score it, many times.
+
+    Every resample is drawn first, from the one ``random.Random(seed)`` and in the order
+    the serial loop drew them, then scored (in a process pool when the work is large
+    enough; ``workers`` 1 is serial, 0 decides, 2 or more forces a pool of that size), and
+    collected in draw order. How the scoring is divided changes no draw and no sum, so the
+    result is the same bytes on any number of workers (`tests/test_bootstrap_pool.py`).
 
     ``analysis`` must be passed whenever the weights ask for a component the second pass
     supplies, and it is resampled in step with the records rather than held fixed. Two
@@ -219,44 +227,26 @@ def bootstrap_index(
     if analysis is not None:
         by_game = {(g.seed, tuple(g.agents)): g for g in analysis.games}
 
-    # Every resample holds these same record objects, so each game is read once.
-    readings = GameReadings()
-    rng = random.Random(seed)
+    # The records in stratum order, so that a draw can name a game by its position in
+    # this list and a worker holding the same list rebuilds the same resample.
+    pool_records = [record for games in strata.values() for record in games]
+    draws = draw_resamples(
+        [len(games) for games in strata.values()],
+        len(analysis.blunders) if analysis is not None else None,
+        resamples,
+        seed,
+    )
+    scorer = _Scorer(spec, pool_records, weights, analysis, by_game, components_of_interest)
     totals: list[float] = []
     tracked: dict[str, list[float]] = {name: [] for name in components_of_interest}
 
-    for _ in range(resamples):
-        resampled: list[GameRecord] = []
-        for games in strata.values():
-            resampled.extend(rng.choices(games, k=len(games)))
-        drawn = None
-        if analysis is not None:
-            matched = [
-                by_game[(r.seed, r.agents)]
-                for r in resampled
-                if (r.seed, r.agents) in by_game
-            ]
-            trials = (
-                rng.choices(analysis.blunders, k=len(analysis.blunders))
-                if analysis.blunders
-                else []
-            )
-            drawn = CorpusAnalysis(games=matched, blunders=trials)
-        try:
-            measured = compute_components(
-                spec, resampled, rate(resampled), drawn, readings=readings
-            )
-            scores = weights.score_all(measured.raw)
-            total, _ = weights.combine(scores)
-        except Exception:
-            # A resample can be degenerate -- every game from one agent, no self-play,
-            # a rating table that will not fit. Dropping it biases the interval very
-            # slightly towards the well-behaved, which is the conservative direction.
+    for scored in _score_draws(scorer, draws, workers):
+        if scored is None:
             continue
+        total, readings_of_interest = scored
         totals.append(total)
-        for name in tracked:
-            if name in measured.raw:
-                tracked[name].append(measured.raw[name])
+        for name, value in readings_of_interest.items():
+            tracked[name].append(value)
 
     if len(totals) < 2:
         return None
@@ -291,6 +281,232 @@ def bootstrap_index(
         },
         stratum_correction=round(correction, 4),
     )
+
+
+# One resample: positions into the records in stratum order, and positions into the
+# analysis's blunder trials (``None`` when there is no analysis).
+Draw = tuple[list[int], list[int] | None]
+
+# Below this many drawn games (resamples times corpus size) the bootstrap scores in this
+# process: a pool's start-up (a spawned interpreter importing the package, the records
+# pickled to it) costs more than it saves. A canonical run is 200 x 256 = 51,200.
+POOL_MIN_DRAWN = 20_000
+# Four workers scored 48 library runs at 0.88 s a run and eight at 0.85 s (Q1119, against
+# 2.35 s serial): each worker reads every game once and pays its own start, so past four
+# the gain is nothing and the idle processes the pool keeps cost memory.
+POOL_MAX_WORKERS = 4
+
+
+def draw_resamples(
+    sizes: list[int], blunders: int | None, resamples: int, seed: int
+) -> list[Draw]:
+    """Every resample's draws, from one ``random.Random(seed)``, in the serial loop's order.
+
+    Per resample: each stratum's ``len(games)`` choices with replacement in stratum order,
+    then (with an analysis) the blunder trials' choices, none when there are none. Drawing
+    from a ``range`` population takes the same ``random()`` calls as drawing the objects
+    (`random.choices` indexes ``floor(random() * n)`` either way), so these are exactly
+    the draws the loop took before Q1119, as positions rather than objects.
+    """
+    rng = random.Random(seed)
+    starts: list[int] = []
+    offset = 0
+    for size in sizes:
+        starts.append(offset)
+        offset += size
+    draws: list[Draw] = []
+    for _ in range(resamples):
+        chosen: list[int] = []
+        for start, size in zip(starts, sizes, strict=True):
+            chosen.extend(rng.choices(range(start, start + size), k=size))
+        trials: list[int] | None = None
+        if blunders is not None:
+            trials = rng.choices(range(blunders), k=blunders) if blunders else []
+        draws.append((chosen, trials))
+    return draws
+
+
+class _Scorer:
+    """What one resample is scored against; the same in this process and in a worker."""
+
+    def __init__(
+        self,
+        spec: dict[str, Any],
+        records: list[GameRecord],
+        weights: Weights,
+        analysis: CorpusAnalysis | None,
+        by_game: dict[Any, Any],
+        components_of_interest: tuple[str, ...],
+    ) -> None:
+        self.spec = spec
+        self.records = records
+        self.weights = weights
+        self.analysis = analysis
+        self.by_game = by_game
+        self.components_of_interest = components_of_interest
+        # Every resample holds these same record objects, so each game is read once
+        # (per process: a worker reads its own copies once).
+        self.readings = GameReadings()
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = dict(self.__dict__)
+        del state["readings"]
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self.readings = GameReadings()
+
+    def score(self, draw: Draw) -> tuple[float, dict[str, float]] | None:
+        chosen, trials = draw
+        records = self.records
+        resampled = [records[position] for position in chosen]
+        drawn = None
+        if self.analysis is not None and trials is not None:
+            by_game = self.by_game
+            matched = [
+                by_game[(r.seed, r.agents)]
+                for r in resampled
+                if (r.seed, r.agents) in by_game
+            ]
+            blunders = self.analysis.blunders
+            drawn = CorpusAnalysis(
+                games=matched, blunders=[blunders[position] for position in trials]
+            )
+        try:
+            measured = compute_components(
+                self.spec, resampled, rate(resampled), drawn, readings=self.readings
+            )
+            scores = self.weights.score_all(measured.raw)
+            total, _ = self.weights.combine(scores)
+        except Exception:
+            # A resample can be degenerate -- every game from one agent, no self-play,
+            # a rating table that will not fit. Dropping it biases the interval very
+            # slightly towards the well-behaved, which is the conservative direction.
+            return None
+        return total, {
+            name: measured.raw[name]
+            for name in self.components_of_interest
+            if name in measured.raw
+        }
+
+
+# The scorer a worker holds, and the token of the call it came from.
+_WORKER_SCORER: tuple[str, _Scorer] | None = None
+
+
+def _score_chunk(task: tuple[str, str, list[Draw]]) -> list[tuple[float, dict[str, float]] | None]:
+    """One task in a worker: a run of draws, scored against the call's scorer.
+
+    The scorer travels as a file (the records, about 0.7 MB a canonical run), read once a
+    call by each worker: on a spawning platform an initializer's arguments go down a pipe
+    that the parent waits on, past its buffer, until the worker has imported the package,
+    so the workers started one a second, one after another (Q1119). A task names its
+    call's token, so a worker never scores against an earlier call's records.
+    """
+    global _WORKER_SCORER
+    token, path, chunk = task
+    if _WORKER_SCORER is None or _WORKER_SCORER[0] != token:
+        import pickle
+
+        with open(path, "rb") as handle:
+            scorer = pickle.load(handle)
+        assert isinstance(scorer, _Scorer)
+        _WORKER_SCORER = (token, scorer)
+    held = _WORKER_SCORER[1]
+    return [held.score(draw) for draw in chunk]
+
+
+def pool_workers(workers: int, drawn: int) -> int:
+    """How many processes score ``drawn`` resampled games: 1 means this one.
+
+    ``workers`` 1 or less than 0 is serial, 2 or more is that many; 0 decides, pooling
+    only past `POOL_MIN_DRAWN`, never where there are no processes (a browser), and never
+    inside a `multiprocessing` child: `measure` re-scores games in a pool of its own sized
+    to the worktree's lease (Q1118), and a pool in each of its workers would multiply that
+    by four; a daemonic worker may not have children at all.
+    """
+    if workers >= 2:
+        return workers
+    if workers != 0 or drawn < POOL_MIN_DRAWN:
+        return 1
+    import multiprocessing
+    import os
+    import sys
+
+    if sys.platform == "emscripten" or multiprocessing.parent_process() is not None:
+        return 1
+    return max(1, min(POOL_MAX_WORKERS, (os.cpu_count() or 2) - 1))
+
+
+# One pool for the life of the process, started by the first pooled bootstrap. A worker
+# costs a spawned interpreter importing the package (about 1 s on Windows, several at
+# once contending), which is most of one run's serial bootstrap; paid once, every later
+# run in the process (a game's four, a re-score's hundreds) gets the pool for its draws.
+_POOL: Any = None
+_POOL_SIZE = 0
+_CALLS = 0
+
+
+def _pool(size: int) -> Any:
+    global _POOL, _POOL_SIZE
+    if _POOL is not None and size != _POOL_SIZE:
+        _shutdown_pool()
+    if _POOL is None:
+        from concurrent.futures import ProcessPoolExecutor
+
+        _POOL, _POOL_SIZE = ProcessPoolExecutor(max_workers=size), size
+    return _POOL
+
+
+def _shutdown_pool() -> None:
+    global _POOL, _POOL_SIZE
+    if _POOL is not None:
+        with contextlib.suppress(Exception):
+            _POOL.shutdown(wait=True, cancel_futures=True)
+    _POOL, _POOL_SIZE = None, 0
+
+
+def _score_draws(
+    scorer: _Scorer, draws: list[Draw], workers: int
+) -> list[tuple[float, dict[str, float]] | None]:
+    """Each draw's score, in draw order, scored here or in the pool.
+
+    The draws are cut into runs in order, each run's scores come back as a list, and the
+    lists are joined in the order the runs were cut, so the answer is the serial one entry
+    by entry. A pool that cannot start or breaks (no ``__main__`` guard in a spawning
+    caller, a platform without processes) gives the serial answer instead, which is the
+    same one.
+    """
+    global _CALLS
+    drawn = sum(len(chosen) for chosen, _ in draws)
+    resolved = min(pool_workers(workers, drawn), len(draws))
+    if resolved > 1:
+        import os
+        import pickle
+        import tempfile
+
+        _CALLS += 1
+        token = f"{os.getpid()}-{_CALLS}"
+        size = max(1, math.ceil(len(draws) / (resolved * 4)))
+        handle, path = tempfile.mkstemp(prefix="bootstrap-", suffix=".pickle")
+        try:
+            with os.fdopen(handle, "wb") as out:
+                pickle.dump(scorer, out, protocol=pickle.HIGHEST_PROTOCOL)
+            tasks = [
+                (token, path, draws[start:start + size])
+                for start in range(0, len(draws), size)
+            ]
+            scored: list[tuple[float, dict[str, float]] | None] = []
+            for part in _pool(resolved).map(_score_chunk, tasks):
+                scored.extend(part)
+            return scored
+        except Exception:  # noqa: BLE001 -- no pool here; the serial answer is the same
+            _shutdown_pool()
+        finally:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+    return [scorer.score(draw) for draw in draws]
 
 
 def _outcome_key(record: GameRecord) -> tuple[int | None, int]:

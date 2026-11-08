@@ -39,7 +39,12 @@ from chess_variant_sandbox.loop.grid import (
     label,
 )
 from chess_variant_sandbox.measurement import ROOT as MEASUREMENT_ROOT
-from chess_variant_sandbox.measurement import Measurement, built_fingerprint, tables_cache_path
+from chess_variant_sandbox.measurement import (
+    Measurement,
+    built_fingerprint,
+    fold_crlf,
+    tables_cache_path,
+)
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
 from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.metrics.glossary import explain
@@ -141,6 +146,15 @@ class Game:
         if not hasattr(self, "_score_cache"):
             self._score_cache: dict[str, Any] | None = self._read_score()
         return self._score_cache
+
+    def shape(self) -> dict[str, Any]:
+        """The card's facts about the rules alone: the complexity counts and the behaviour
+        grid's cell. Memoised on the instance and on the spec's content (`_card_shape`), so a
+        listing works them out once a spec rather than once a card a listing (C15e)."""
+        if not hasattr(self, "_shape_cache"):
+            self._shape_cache: dict[str, Any] = _card_shape(
+                json.dumps(self.spec, sort_keys=True))
+        return self._shape_cache
 
     @property
     def current_score(self) -> dict[str, Any] | None:
@@ -292,7 +306,7 @@ class Game:
         from chess_variant_sandbox.site import stages
 
         board = self.spec.get("board", {})
-        complexity = measure_complexity(self.spec)
+        shape = self.shape()
         score = self.score
         return {
             "hash": self.hash,
@@ -313,9 +327,9 @@ class Game:
             "width": _int(board.get("width")),
             "height": _int(board.get("height")),
             "squares": _int(board.get("width")) * _int(board.get("height")),
-            "pieceTypes": complexity.piece_types,
-            "ruleMass": round(complexity.rule_mass, 1),
-            "specialRules": complexity.special_rules,
+            "pieceTypes": shape["pieceTypes"],
+            "ruleMass": shape["ruleMass"],
+            "specialRules": shape["specialRules"],
             # How each family of the index came out, and each component under it. Both
             # are already in the score; naming them on the card is what lets the list be
             # ordered by "whether thinking pays" rather than only by the total.
@@ -324,12 +338,12 @@ class Game:
             # Where it sits in a design run's tree, flattened to what a grouping needs:
             # the run, how many generations in, and what it was revised from.
             **self.ancestry(),
-            "cell": label(descriptor(self.spec)),
+            "cell": shape["cell"],
             # The same cell in words. `label` is an identifier -- it goes in filenames
             # and archives, and it grows a component only when the grid grows an axis,
             # never cosmetically -- and `1-1-0-0-1-0-0` is not something a person can
             # read, so both travel and the interface decides which to show.
-            "cellBins": list(bins_of(descriptor(self.spec))),
+            "cellBins": list(shape["cellBins"]),
             "index": None if score is None else score.get("index"),
             # Whether that number is current or provisional (EV2), what revision of the
             # scorer it was worked out under and when. Every card carries them, so no
@@ -466,6 +480,22 @@ class Game:
             },
             "descent": len(parents),
         }
+
+
+@lru_cache(maxsize=1024)
+def _card_shape(blob: str) -> dict[str, Any]:
+    """`Game.shape` for a spec's sorted JSON: plain numbers and strings, which nobody edits
+    (`summary` copies the one list out)."""
+    spec = json.loads(blob)
+    complexity = measure_complexity(spec)
+    cell = descriptor(spec)
+    return {
+        "pieceTypes": complexity.piece_types,
+        "ruleMass": round(complexity.rule_mass, 1),
+        "specialRules": complexity.special_rules,
+        "cell": label(cell),
+        "cellBins": tuple(bins_of(cell)),
+    }
 
 
 def certified_payload(basis: Any) -> dict[str, Any] | None:
@@ -698,10 +728,78 @@ def _remember(scan: _Scan, games: list[Game]) -> None:
     _LISTINGS[scan.roots] = (scan.key, games)
 
 
+# C15(a) (`docs/plan-performance.md`): the walk itself held between requests. `_scan` is
+# 1,339 `scandir` and 1,520 `stat` over the main checkout's runs, about 370 ms, and every
+# `/api/library`, `/api/graph` and `/api/graph/people` paid it to learn, almost always,
+# that nothing had moved. A caller that asks (`App.refresh`) may take the last listing
+# instead for `HOLD_SECONDS` after it was read, unless this process wrote meanwhile.
+#
+# **What counts as a write.** Out of process (the refresher, a `measure` in a terminal), a
+# new file reaches a listing at most `HOLD_SECONDS` late. In process, never late: every
+# writer in this process runs inside `writing()` -- each POST (`App.post`, `SiteApp.post`)
+# and each thread that writes under `runs/` or a spec directory (`keeping.Measurements`,
+# `evolving.Runs`, `legality.Checker.drain`) -- and while one is inside it nothing is held,
+# and when it leaves, what was held before it is dropped. A held listing is the very list
+# of `Game` objects the last walk produced, so it is the answer that walk gave.
+HOLD_SECONDS = 1.0
+
+_HELD: dict[tuple[str, str, str], tuple[int, float, list[Game]]] = {}
+_WRITES = threading.Lock()
+# How many writers are inside `writing()` now, and how many have entered or left it ever:
+# a held listing is good only while the first is nought and the second is what it was
+# when the listing was read.
+_writers = 0
+_moves = 0
+
+
+@contextlib.contextmanager
+def writing() -> Any:
+    """An in-process writer: nothing held is served while inside, nor after leaving."""
+    global _writers, _moves
+    with _WRITES:
+        _writers += 1
+        _moves += 1
+    try:
+        yield
+    finally:
+        with _WRITES:
+            _writers -= 1
+            _moves += 1
+
+
+def written(work: Callable[..., Any]) -> Callable[..., Any]:
+    """``work`` run inside `writing()`: a thread's target that writes."""
+
+    def run(*args: Any, **kwargs: Any) -> Any:
+        with writing():
+            return work(*args, **kwargs)
+
+    return run
+
+
+def _held(roots: tuple[str, str, str], hold: float) -> list[Game] | None:
+    with _WRITES:
+        found = _HELD.get(roots)
+        if found is None or _writers or found[0] != _moves:
+            return None
+    if time.monotonic() - found[1] >= hold:
+        return None
+    return list(found[2])
+
+
+def _hold(roots: tuple[str, str, str], moves: int, games: list[Game]) -> None:
+    with _WRITES:
+        _HELD.pop(roots, None)
+        while len(_HELD) >= _LISTINGS_KEPT:
+            _HELD.pop(next(iter(_HELD)))
+        _HELD[roots] = (moves, time.monotonic(), list(games))
+
+
 def discover(
     ruleset_dir: Path = RULESET_DIR,
     runs_dir: Path = RUNS_DIR,
     archive_dir: Path | None = None,
+    hold: float = 0.0,
 ) -> list[Game]:
     """Every game worth showing, in the order of how far along the ladder it is.
 
@@ -724,13 +822,25 @@ def discover(
     file opens. A moved stamp is a full re-read, which is why the freshness the web layer
     promises survives: a re-score rewrites `canonical.json` and the very next listing
     sees it.
+
+    ``hold`` above nought lets the walk itself be skipped: the last listing from these
+    roots is answered again if it was read under ``hold`` seconds ago and no in-process
+    writer has entered `writing()` since (C15a, `HOLD_SECONDS`).
     """
+    roots = (str(ruleset_dir), str(runs_dir), str(archive_dir))
+    if hold > 0:
+        held_games = _held(roots, hold)
+        if held_games is not None:
+            return held_games
+    with _WRITES:
+        moves = _moves
     scan = _scan(ruleset_dir, runs_dir, archive_dir)
     held = _cached(scan)
     if held is not None:
         # A copy, so a caller that sorts or filters the list it was handed cannot edit
         # what the next caller is given. The `Game` objects themselves are shared, and
         # everything they memoise is derived from the files just stamped.
+        _hold(roots, moves, held)
         return list(held)
 
     verdicts = _verdicts(runs_dir, scan.verdicts)
@@ -807,6 +917,7 @@ def discover(
         key=lambda game: (order.get(game.source, 5), game.name.lower()),
     )
     _remember(scan, found)
+    _hold(roots, moves, found)
     return list(found)
 
 
@@ -1240,23 +1351,41 @@ def _gap(game: Game, other: Game) -> dict[str, Any] | None:
 
 
 def _live_terms(spec: dict[str, Any]) -> list[str]:
-    """Never raised. A ruleset the evaluator cannot be built for still has a page."""
+    """Never raised. A ruleset the evaluator cannot be built for still has a page.
+
+    Memoised on the spec's content, as `piece_maps` is (C15b): each answer is a compile,
+    and a game's page asked both on every visit, 240 of its 429 warm milliseconds."""
+    return list(json.loads(_live_terms_cached(json.dumps(spec, sort_keys=True))))
+
+
+@lru_cache(maxsize=256)
+def _live_terms_cached(blob: str) -> str:
     from chess_variant_sandbox.web.designing import live_terms
 
     try:
-        return live_terms(spec)
+        found = live_terms(json.loads(blob))
     except Exception:  # noqa: BLE001 - a detail view must survive one odd spec
-        return []
+        found = []
+    return json.dumps(found)
 
 
 def _piece_values(spec: dict[str, Any]) -> list[dict[str, Any]]:
-    """Never raised, for the reason above: a detail view must survive one odd spec."""
+    """Never raised, for the reason above: a detail view must survive one odd spec.
+    Memoised on the spec's content, as `_live_terms` is; each caller gets its own copy."""
+    found: list[dict[str, Any]] = json.loads(
+        _piece_values_cached(json.dumps(spec, sort_keys=True)))
+    return found
+
+
+@lru_cache(maxsize=256)
+def _piece_values_cached(blob: str) -> str:
     from chess_variant_sandbox.web.designing import piece_values
 
     try:
-        return piece_values(spec)
+        found = piece_values(json.loads(blob))
     except Exception:  # noqa: BLE001
-        return []
+        found = []
+    return json.dumps(found)
 
 
 def keeping(
@@ -2309,12 +2438,17 @@ def card_sources() -> tuple[Path, ...]:
 
 def card_key(core: str, files: Iterable[tuple[str, bytes]]) -> str:
     """SHA-256 over the format, a core build fingerprint and ``files`` by repository path
-    and exact bytes: `card_answers_key` for any core and tree."""
+    and bytes read LF: `card_answers_key` for any core and tree.
+
+    Each body is folded CRLF to LF (`measurement.fold_crlf`, as the build fingerprint is):
+    raw bytes made a CRLF checkout of an LF commit (`core.autocrlf=true`, which git's
+    status reads as clean) key the same commit otherwise than `deploy/cards.py key_at`
+    reads it from the blobs, so `prepare` there took the tree for another (Q1151)."""
     import hashlib
 
     digest = hashlib.sha256(f"library-cards {_CARD_FORMAT}\0core {core}\0".encode())
     for name, body in files:
-        digest.update(name.encode("utf-8") + b"\0" + body + b"\0")
+        digest.update(name.encode("utf-8") + b"\0" + fold_crlf(body) + b"\0")
     return digest.hexdigest()
 
 

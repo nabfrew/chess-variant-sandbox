@@ -61,10 +61,13 @@ from chess_variant_sandbox.spec.schema import (
     PIECE_KEYED,
     PIECE_POSITIONS,
     PUSH_OFF_VALUES,
+    REACH_OFF_VALUES,
     absent_squares,
     en_passant_can_fire,
     format_square,
     has_sights,
+    hop_displaces,
+    hop_run,
     insufficient_material_roles,
     is_nobodys,
     move_push,
@@ -130,6 +133,10 @@ RULE_KINDS: dict[str, str] = {
     "duck": "wild",
     "turn": "turn",
     "simultaneous": "turn",
+    # H3 (`docs/plan-hunger.md` §4): a turn that may be no move.
+    "pass": "turn",
+    # H2 (`docs/plan-hunger.md` §3): coins into the purse each turn, the purse's kind.
+    "income": "hand",
 }
 
 # What each `rules` key is *about*, for the sentence on a link. Exhaustive over
@@ -172,6 +179,8 @@ RULE_WORDS: dict[str, str] = {
     "duck": "the neutral piece each turn ends by moving",
     "turn": "how many moves a turn is",
     "simultaneous": "whether both players move at once, and who survives a collision",
+    "pass": "whether a player may make no move",
+    "income": "the coins a player is paid each turn for pieces holding ground",
 }
 
 # The kinds, in the order a legend lists them. Every `Difference.kind` is one of these.
@@ -743,6 +752,12 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
         if move.get("kind") == "sweep" and move.get("effects") == "path":
             # SR6a: a sweep that strikes its path is another movement, added only there.
             attrs = (*attrs, ("effects", "path"))
+        if hop_run(move) is not None:
+            # TS4: a hop over a run is another movement, added only there.
+            attrs = (*attrs, ("run", hop_run(move)))
+        if hop_displaces(move):
+            # TS4: so is a hop that moves what it jumps, added only there.
+            attrs = (*attrs, ("displace", "back"))
         if isinstance(move.get("legs"), list):
             # SR1a: a jump blocked on stated legs is another movement than the same jump
             # on its computed leg, so each direction carries its legs.
@@ -830,7 +845,16 @@ def _live_rules(spec: dict[str, Any]) -> dict[str, Any]:
     shape of their own -- `wrap` per axis and per player, obstacles as the squares they
     actually mark -- and a raw comparison of either would read a spelling as a rule.
     """
-    rules = spec.get("rules") or {}
+    rules = dict(spec.get("rules") or {})
+    # TS1: a goal's scoring keys written at their off values are the goal without them.
+    if isinstance(rules.get("reach"), dict):
+        rules["reach"] = {
+            name: stated for name, stated in rules["reach"].items()
+            if name not in REACH_OFF_VALUES or REACH_OFF_VALUES[name] != stated
+        }
+    # TS3: a turn's ``order: "fixed"`` is the turn without the key.
+    if isinstance(rules.get("turn"), dict) and rules["turn"].get("order") == "fixed":
+        rules["turn"] = {name: stated for name, stated in rules["turn"].items() if name != "order"}
     return {
         key: value
         for key, value in rules.items()

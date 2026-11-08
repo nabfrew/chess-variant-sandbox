@@ -168,7 +168,7 @@ def test_the_round_teacher_prices_a_caught_or_resting_royal_as_the_oracle(varian
     two, under each early answer the term has -- a royal whose loss ends nothing (`win:
     "none"` beside a bare royal), a second royal, a royal in hand (drops). (A side with no
     royal on the board and one in hand is never asked: its royal is gone, which decides the
-    game first.)"""
+    game first.) The royal in hand is played in the two-king game, where one is reachable."""
     rules: dict[str, Any] = {}
     kings = False
     placement = dict(CAUGHT)
@@ -178,6 +178,11 @@ def test_the_round_teacher_prices_a_caught_or_resting_royal_as_the_oracle(varian
         kings = True
         placement["a1"] = ("K", 0)
     if variant == "royal in hand":
+        # Two kings a side at the start (a second on c1), so a king taken is the taker's
+        # to drop and the game plays on: a king on the board beside one in hand is a
+        # position the rules reach (Q1138; with one king a side it was not, and the
+        # core's one-royal hint guarded one king of two).
+        kings = True
         rules = {"drops": {"from_captures": True}}
     # The king rests two rounds, so it still rests in the positions a round leads to.
     engine = _round_game("_simultaneous_speed_resting", speeds=SPEEDS, kings=kings,

@@ -147,6 +147,11 @@ def _fold_crlf(body: bytes) -> bytes:
     return body.replace(b"\r\n", b"\n")
 
 
+# The fold's name for the other keys over file bytes: `library.card_key` and
+# `proven.proof_key`, which a CRLF checkout keyed apart from its own commit (Q1151).
+fold_crlf = _fold_crlf
+
+
 def _hash_files(paths: list[Path], reading: Callable[[bytes], bytes] = _fold_crlf) -> str:
     """Fingerprint a set of source files by name and content.
 

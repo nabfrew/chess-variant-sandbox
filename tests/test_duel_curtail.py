@@ -85,8 +85,11 @@ def test_the_acceptance_bar_at_its_full_size_is_quick_to_read() -> None:
 
 # Two small fixtures on the five-square game: a mixed duel (its pairs are 1, 1/2 and 0) and
 # the ceiling duel's shape, a player against itself at eight times the nodes (all lost).
+# The mixed fixture was `minimax:nodes=24` until Q1105 (2026-11-07): keeping the best scored
+# root move when the first ply runs out made 24 nodes win seven of eight pairs and draw one,
+# so 12 nodes now gives the three kinds of pair.
 DUELS = {
-    "mixed": ("minimax:nodes=24", "random"),
+    "mixed": ("minimax:nodes=12", "random"),
     "ceiling": ("minimax:nodes=24", "minimax:nodes=192"),
 }
 PAIRS = 8

@@ -19,9 +19,23 @@
 //! the rest. That mixed vector is what the committed `decision_criticality` numbers
 //! were measured from, so it is reproduced rather than tidied: a cleaner rule here
 //! would silently re-scale a published component.
+//!
+//! **It stops once every root move is decided** (Q1114, `plan-performance.md` C2a). After
+//! an iteration completes with every root score at least `DECIDED` in magnitude, every
+//! deeper iteration would return the same vector: such a score comes only from endings
+//! the search reached (the evaluator never comes near it), and a full-width search's
+//! distance to a forced ending does not move once found -- a faster one would already
+//! have been seen, and the loser's every way out was searched to that depth. So the
+//! early stop returns exactly what running out the budget returns, ragged edge included
+//! (the edge would only mix equal values), and the Python oracle, which runs out its
+//! budget, still agrees value for value.
 
 use crate::eval::{Evaluator, WIN_SCORE};
 use crate::game::Game;
+
+/// The least magnitude of a root score that only an ending gives: a win or loss within a
+/// thousand plies of the game's start. `puzzles.PROVEN` draws the same line.
+const DECIDED: f64 = WIN_SCORE - 1000.0;
 
 /// Raised in Python, returned here. Same job: abandon the iteration mid-flight.
 struct Exhausted;
@@ -73,6 +87,10 @@ pub fn root_scores(
         if exhausted || counter.used >= budget {
             break;
         }
+        // The iteration completed: if it decided every move, no deeper one can change it.
+        if scores.iter().all(|score| score.abs() >= DECIDED) {
+            break;
+        }
     }
     scores
 }
@@ -117,7 +135,10 @@ fn probe(
     if depth <= 0 {
         let move_count = end - base;
         arena.truncate(base);
-        return Ok(eval.evaluate(game, game.side, move_count));
+        let value = eval.evaluate(game, game.side, move_count);
+        // The early stop's premise: no evaluation reads as a decided score.
+        debug_assert!(value.abs() < DECIDED, "an evaluation of {value} reads as decided");
+        return Ok(value);
     }
 
     let mut best = f64::NEG_INFINITY;

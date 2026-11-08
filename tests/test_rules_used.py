@@ -64,7 +64,8 @@ def _stated_and_live(key: str, value: Any) -> bool:
         return isinstance(value, dict)  # `{}` is the whole rule (the default tie), not none
     if key == "turn":
         return isinstance(value, dict) and (
-            value.get("moves", 1) > 1 or any(length > 1 for length in value.get("ramp", []))
+            "parts" in value  # TS3: a turn of parts is a rule however many it has
+            or value.get("moves", 1) > 1 or any(length > 1 for length in value.get("ramp", []))
         )
     if key == "wrap":
         edges = [edge for name, edge in value.items() if not name.endswith("_by_player")]
@@ -108,8 +109,26 @@ def test_used_rule_keys_cost_the_same_as_count_special_rules(path: Path) -> None
         for key, on in (("rest", True), ("swap", "collision"), ("both", "score"))
         if isinstance(simultaneous, dict) and simultaneous.get(key) == on
     )
+    # TS1: a scoring goal's keys, charged beside `reach` by `_reach_extras` (a bank 0.5, a count
+    # past one 0.5, `both` 0.25); the first spec to state one is crossings.
+    reach = rules.get("reach")
+    scoring = (
+        0.5 * (reach.get("removes") is True) + 0.5 * (reach.get("count", 1) > 1)
+        + 0.25 * (reach.get("both", "first") != "first")
+        if isinstance(reach, dict) else 0.0
+    )
+    # TS3: a turn of parts, charged beside `turn` by `_turn_part_extras` (a part naming pieces
+    # other than its own 0.25, a part that may be kept 0.25, order "any" 0.25); the first spec
+    # to state one is drover.
+    turn = rules.get("turn")
+    parts = turn.get("parts", []) if isinstance(turn, dict) else []
+    turn_parts = (
+        0.25 * sum(part.get("pieces") != "own" for part in parts)
+        + 0.25 * sum(part.get("optional") is True for part in parts)
+        + 0.25 * (isinstance(turn, dict) and turn.get("order") == "any")
+    )
     assert complexity._count_special_rules(rules) == (
-        sum(COSTS[key] for key in expected_keys) + extras + switches
+        sum(COSTS[key] for key in expected_keys) + extras + switches + scoring + turn_parts
     )
 
 
@@ -149,13 +168,14 @@ def test_a_movement_kind_is_used_when_a_piece_declares_it() -> None:
     assert rules_used.used(spec) == {"slide"}
 
 
-def test_available_holds_thirty_four_names_today() -> None:
+def test_available_holds_thirty_six_names_today() -> None:
     # Thirty-one since schema 19 added `portals` (Q771); thirty-two since schema 26 added
     # `simultaneous` (Q918a); thirty-three since generation 42 added `duck` (N4b); thirty-four
-    # since TC5 added `purse`.
+    # since TC5 added `purse`; thirty-five since H3 added `pass` (Q1126); thirty-six since H2
+    # added `income` (Q1127).
     names = rules_used.available()
-    assert len(names) == 34
-    assert len(set(names)) == 34
+    assert len(names) == 36
+    assert len(set(names)) == 36
     assert names[: len(schema.MOVE_KINDS)] == schema.MOVE_KINDS
 
 

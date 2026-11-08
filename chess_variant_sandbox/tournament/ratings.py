@@ -14,6 +14,7 @@ the way anyone expects even though they were not produced the usual way.
 from __future__ import annotations
 
 import math
+import operator
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -153,36 +154,45 @@ def _fit_bradley_terry(
     # cannot be the measure: the prior's virtual opponent has strength 1 whatever the
     # scale, so every sweep moves the whole field by the same scale step and the raw
     # shift settles near 0.07, never under any tolerance (`perf-survey-2026-09.md` R3).
+    #
+    # Q1119 took the interpreter's work out of the sweep without moving a bit: the rows,
+    # numerators and players are zipped rather than indexed, a count is held as the float
+    # the division converted it to (exact: a count is far below 2**53), the module
+    # constants are locals, and the shift reads the centred logs it keeps rather than
+    # subtracting the mean twice (`(new - mean) - old` is the order the old line took).
     index = {name: position for position, name in enumerate(names)}
     rows = [
-        [(index[other], count) for other, count in opponents[name].items()] for name in names
+        [(index[other], float(count)) for other, count in opponents[name].items()]
+        for name in names
     ]
     numerators = [wins[name] + PRIOR_GAMES / 2.0 for name in names]
     strengths = [1.0] * len(names)
-    players = range(len(names))
+    sweep = list(zip(range(len(names)), rows, numerators, strict=True))
+    size = len(names)
+    prior = PRIOR_GAMES
+    log, exp, subtract = math.log, math.exp, operator.sub
 
-    logs = [0.0] * len(names)
+    logs = [0.0] * size
 
     for _ in range(MAX_ITERATIONS):
-        for player in players:
+        for player, row, numerator in sweep:
             own = strengths[player]
-            denominator = PRIOR_GAMES / (own + 1.0)
-            for other, count in rows[player]:
-                denominator += count / (own + strengths[other])
+            denominator = prior / (own + 1.0)
+            for other, played in row:
+                denominator += played / (own + strengths[other])
             if denominator <= 0.0:
                 continue
-            strengths[player] = numerators[player] / denominator
+            strengths[player] = numerator / denominator
 
         # Renormalise to a geometric mean of one, so that successive sweeps compare.
-        updated_logs = list(map(math.log, strengths))
-        log_mean = sum(updated_logs) / len(strengths)
-        scale = math.exp(-log_mean)
+        updated_logs = list(map(log, strengths))
+        log_mean = sum(updated_logs) / size
+        scale = exp(-log_mean)
         strengths = [s * scale for s in strengths]
 
-        shift = max(
-            abs(new - log_mean - old) for new, old in zip(updated_logs, logs, strict=True)
-        )
-        logs = [value - log_mean for value in updated_logs]
+        centred = [value - log_mean for value in updated_logs]
+        shift = max(map(abs, map(subtract, centred, logs)))
+        logs = centred
         if shift < TOLERANCE:
             break
 

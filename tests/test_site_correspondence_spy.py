@@ -1,10 +1,11 @@
 """A spy game between two people, by correspondence (schema 27, Q935e, `docs/plan-spy.md`
 §3.7).
 
-A spy game is played by turns while both spies stand; once a spy falls its player has one
-ordinary reply, and then the game is played in rounds: **announced** ones while one player
-alone has a spy (the other announces a move first, in the open, and the spy's holder answers
-it), **blind** ones once both are lost. What is proved here, on a spy spec built for it (Q935a's
+A spy game is played by turns while both players have a spy; when a spy falls in the turns its
+player has one ordinary reply, and then the game is played in rounds while either has none:
+**announced** ones while one player alone has a spy (the other announces a move first, in the
+open, and the spy's holder answers it), **blind** ones while neither has. Since SR7h a spy can
+be gained, so no sentence here says a phase lasts "from now on". What is proved here, on a spy spec built for it (Q935a's
 `tests/_spy_small.json` with a setup two moves from either kind of round), rather than on
 chess:
 
@@ -171,6 +172,17 @@ def _moved(store: Scratch, match_id: str) -> Any:
 
 
 # ------------------------------------------------------------------------- the phases
+
+
+def test_no_sentence_says_a_phase_lasts_for_good() -> None:
+    """Since SR7h (Y3) a spy can be gained back (a promotion, a strike, a link, a hand, a
+    market), so the game can return to turns or to announced rounds. The rules and the
+    emails say each phase as lasting *while* its spies are so, never "from now on" (Q1137,
+    as Q1099 did for web/)."""
+    said = [*c.SPY_RULES, *mail._ASKED_SAID.values()]
+    for line in said:
+        for claim in ("from now on", "once both", "both spies are lost", "for good"):
+            assert claim not in line.lower(), (claim, line)
 
 
 class TestThePhases:
@@ -449,7 +461,7 @@ class TestTheMails:
         assert [message.to for message in sent.messages] == ["bo@example.invalid"]
         assert sent.messages[0].body.startswith(
             f"ada played Ra4xc4 in your game of {NAME}. Your spy is lost, so it's your move: "
-            "one ordinary reply, and then the game is played in rounds:")
+            "one ordinary reply, and then rounds begin:")
         _post(app, store, found.id, bo, "Kd4xc4")
         assert len(sent.messages) == 1, "bo owes the announcement: nobody is mailed"
         _post(app, store, found.id, bo, "Kc4-c5")
@@ -480,8 +492,8 @@ class TestTheMails:
         _post(app, store, found.id, bo, "Kd4xc3")
         assert sent.messages[1].to == "ada@example.invalid"
         assert sent.messages[1].body.startswith(
-            f"bo played Kd4xc3 in your game of {NAME}. Both spies are lost, so from now on "
-            "each of you seals a move in secret. It's your move: seal yours")
+            f"bo played Kd4xc3 in your game of {NAME}. Neither of you has a spy, so each of "
+            "you seals a move in secret. It's your move: seal yours")
         _post(app, store, found.id, ada, "Ka1-a2")
         sealed = sent.messages[2]
         assert sealed.to == "bo@example.invalid"

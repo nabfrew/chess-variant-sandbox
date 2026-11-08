@@ -1,0 +1,68 @@
+{
+  "schema_version": 31,
+  "name": "leapfrog",
+  "summary": [
+    "Race a frog to the far row.",
+    "A frog steps one square straight or diagonally forward onto an empty square.",
+    "Or it leaps straight forward or sideways over a whole row of frogs next to it, yours or your opponent's, and lands on the first empty square past them.",
+    "Every frog it leaps over is pushed one square back, toward where the leaper started: your own frogs lose ground, your opponent's gain it.",
+    "Nothing is ever taken. A player with no legal move loses."
+  ],
+  "description": "A race in which every long jump is paid for by somebody. Frogs walk forward a square at a time, but a frog standing behind a row of others can leap the whole row at once and land just past it, and the row slides one square back to fill the gap it left. That is the whole tension: leaping your own frogs moves one of yours far ahead and every other one a square behind, and leaping your opponent's frogs gets you past them but carries each of them a square closer to your side of the board, which is exactly where they are trying to go. Since nothing is ever taken, the two armies stay on the board all game and grind through each other, and the question on every move is whether the ground a leap gains is worth the ground it gives away, and to whom.",
+  "board": {
+    "width": 7,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "F",
+      "name": "frog",
+      "value": 1,
+      "captures": [],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[0, 1], [1, 1]],
+          "symmetry": "lateral",
+          "mode": "move"
+        },
+        {
+          "kind": "hop",
+          "vectors": [[0, 1], [1, 0]],
+          "symmetry": "lateral",
+          "mode": "move",
+          "run": true,
+          "displace": "back"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "F",
+        "squares": ["a1", "b1", "c1", "d1", "e1", "f1", "g1", "a2", "b2", "c2", "d2", "e2", "f2", "g2"]
+      }
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "max_plies": 300,
+    "reach": {
+      "piece": "F",
+      "squares": ["a9", "b9", "c9", "d9", "e9", "f9", "g9"]
+    }
+  },
+  "appearance": {
+    "icons": {
+      "F": "pawn"
+    }
+  },
+  "provenance": {
+    "added": "2026-11-07",
+    "origin": "human",
+    "history": "Q1134 (TS4, docs/plan-tessabi.md section 4): the showcase for pieces[].moves[].run and pieces[].moves[].displace."
+  }
+}

@@ -25,6 +25,7 @@ from chess_variant_sandbox.engine.moves import (
     DUCK_PASS,
     MOVE_CASTLE,
     MOVE_DROP,
+    MOVE_PASS,
     MOVE_PROMOTION,
     decode_move,
     move_gate,
@@ -259,6 +260,17 @@ def uci_of(
     """
     origin, target, kind, promoted = decode_move(move)
     width = compiled.width
+    if kind == MOVE_PASS:
+        # H3: their pass is the side to move's king standing still (`pass = true`, translated
+        # only where the royal is their one king). Read off the board to spell, never to judge.
+        side = state.side_to_move
+        king = next(
+            square for square, value in enumerate(state.board)
+            if value and compiled.owner_of(value) == side
+            and compiled.type_of(value) in compiled.royal_types
+        )
+        text = format_square(king % width, king // width)
+        return text + text
     if kind == MOVE_DROP:
         face = promoted % compiled.n_types
         drops = compiled.drops

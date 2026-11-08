@@ -45,7 +45,10 @@ chess-variant-sandbox = "chess_variant_sandbox.cli:main"
 
 [build-system]
 requires = ["maturin>=1.7,<2"]
-build-backend = "maturin"
+# maturin's backend, with the core's PGO profile when it fits this compiler (Q1142,
+# rust/pgo/pgo_backend.py); declines with a `pgo:` line and builds as maturin alone otherwise.
+build-backend = "pgo_backend"
+backend-path = ["rust/pgo"]
 
 [tool.maturin]
 manifest-path = "rust/Cargo.toml"

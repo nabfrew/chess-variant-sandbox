@@ -43,15 +43,21 @@ from chess_variant_sandbox.spec.schema import (
     DEFAULT_RANGE,
     DUCK_OFF_VALUES,
     EXPLODE_OFF_VALUES,
+    INCOME_OFF_VALUES,
     MOVE_OFF_VALUES,
     NPC_OFF_VALUES,
+    PART_OFF_VALUES,
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
     PURSE_OFF_VALUES,
     PUSH_ENTRY_DEFAULTS,
     PUSH_OFF_VALUES,
+    REACH_OFF_VALUES,
     SIGHT_OFF_VALUES,
     SIMULTANEOUS_OFF_VALUES,
+    TURN_OFF_VALUES,
+    UPKEEP_OFF_VALUES,
+    income_region_is_default,
     insufficient_material_live,
     piece_weights,
     portal_stand_in_shape,
@@ -62,6 +68,7 @@ from chess_variant_sandbox.spec.schema import (
     stated_off,
     strike_is_live,
     sweep_range_stated_off,
+    turn_parts_as_moves,
     wrap_stated,
 )
 
@@ -73,7 +80,7 @@ _ABSENT_WHEN_EMPTY = frozenset({
     "promotion", "en_passant", "castling", "bare_royal", "check_limit", "reach",
     "extinction", "must_capture", "forbid_check", "drops", "explode_on_capture",
     "forbid_immobility", "scoring", "territory", "turn", "wrap", "obstacles", "strike",
-    "contacts", "npcs", "promote_on_entry", "portals", "insufficient_material",
+    "contacts", "npcs", "promote_on_entry", "portals", "insufficient_material", "pass",
 })
 _EMPTY: tuple[Any, ...] = (False, None, 0, "", [], {})
 
@@ -250,6 +257,32 @@ def drop_off_values(spec: dict[str, Any]) -> None:
         _drop_off(rules["duck"], DUCK_OFF_VALUES)
     if isinstance(rules.get("purse"), dict):
         _drop_off(rules["purse"], PURSE_OFF_VALUES)
+        # H1: ``{"promotion": "both"}`` (and ``{}``) is ``upkeep: true``, one game, one name.
+        upkeep = rules["purse"].get("upkeep")
+        if isinstance(upkeep, dict):
+            _drop_off(upkeep, UPKEEP_OFF_VALUES)
+            if not upkeep:
+                rules["purse"]["upkeep"] = True
+    # H2 (`docs/plan-hunger.md` §3): ``income: false`` is its absence; a coin per piece and a
+    # region that is the first rank are its defaults, and the object left empty (``{}`` too) is
+    # ``income: true``: one game, one name.
+    if rules.get("income") is False:
+        del rules["income"]
+    elif isinstance(rules.get("income"), dict):
+        income = rules["income"]
+        _drop_off(income, INCOME_OFF_VALUES)
+        if income_region_is_default(spec):
+            del income["region"]
+        elif isinstance(income.get("region"), list) and all(
+            isinstance(name, str) for name in income["region"]
+        ):
+            # A region is a set of squares: written in any order, one name.
+            income["region"] = sorted(income["region"])
+        if not income:
+            rules["income"] = True
+    # TS1: a goal that banks nothing, wins at one and reads both at once as player 0's.
+    if isinstance(rules.get("reach"), dict):
+        _drop_off(rules["reach"], REACH_OFF_VALUES)
     # SR5a (T1): a blast that strikes nothing is every blast before the switch.
     if isinstance(rules.get("explode_on_capture"), dict):
         _drop_off(rules["explode_on_capture"], EXPLODE_OFF_VALUES)
@@ -258,6 +291,34 @@ def drop_off_values(spec: dict[str, Any]) -> None:
         _drop_off(rules["push"], PUSH_OFF_VALUES)
         if not rules["push"]:
             del rules["push"]
+    _turn_off_values(spec, rules)
+
+
+def _turn_off_values(spec: dict[str, Any], rules: dict[str, Any]) -> None:
+    """TS3 (`docs/plan-tessabi.md` §3): a turn's parts in the order written and a part the mover
+    must fill are the turn without the keys; one part needs no order; a type list is a set
+    (sorted); and parts that are only ``turn.moves`` written as parts (`turn_parts_as_moves`)
+    are written as ``moves``, a turn of one move as no turn at all."""
+    turn = rules.get("turn")
+    if not isinstance(turn, dict):
+        return
+    _drop_off(turn, TURN_OFF_VALUES)
+    parts = turn.get("parts")
+    if isinstance(parts, list):
+        for part in _dicts(parts):
+            _drop_off(part, PART_OFF_VALUES)
+            pieces = part.get("pieces")
+            if isinstance(pieces, list) and all(isinstance(pid, str) for pid in pieces):
+                part["pieces"] = sorted(pieces)
+        if len(parts) == 1 and turn.get("order") == "any":
+            del turn["order"]
+    moves = turn_parts_as_moves(spec)
+    if moves is not None:
+        del turn["parts"]
+        turn.pop("order", None)
+        turn["moves"] = moves
+    if _one_move_turn(turn):
+        del rules["turn"]
 
 
 def _drop_off(where: dict[str, Any], off_values: dict[str, Any]) -> None:

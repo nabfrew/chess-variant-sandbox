@@ -44,11 +44,14 @@ from chess_variant_sandbox.engine.compile import SIGHT_PATH_AURA, WILD
 from chess_variant_sandbox.engine.moves import (
     DUCK_STEP,
     MOVE_CASTLE,
+    MOVE_DISPLACE,
     MOVE_DROP,
     MOVE_DUCK,
     MOVE_EN_PASSANT,
     MOVE_FOLD,
+    MOVE_KEEP,
     MOVE_NORMAL,
+    MOVE_PASS,
     MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_PUSH,
@@ -117,6 +120,11 @@ DUCK_REFUTE, DUCK_FRONT, DUCK_MOBILITY, TT_MOVE = 32, 64, 128, 256
 #   half each). On by default since its duel (§10.4). Built-in objective only;
 #   moves only positions where a side is bare.
 MOPUP = 512
+# * ``income`` (H4, `docs/plan-hunger.md` §5): under ``rules.income`` the evaluator reads the
+#   income term (``Evaluator.income``, ``INCOME_TURNS`` coins at the coin's worth for each coin a
+#   side's pieces earn as they stand, mine minus theirs). An evaluator term carried as a search
+#   bit so its duel can seat the player without it; built-in objective only, zero without income.
+INCOME = 1024
 # N4 (`docs/reference/no-forced-mate.md` §10): the mop-up term's weight in mean non-royal pieces,
 # and the legal-move count and box size at and above which a bare side reads as unconfined.
 # Here, not in `agents/evaluation.py`, because only a minimax player reads them and that file is
@@ -197,6 +205,7 @@ REPAIR_OPTIONS = {
     "duck_mobility": DUCK_MOBILITY,
     "tt_move": TT_MOVE,
     "mopup": MOPUP,
+    "income": INCOME,
 }
 # Which repairs a player that spells none of them searches with: the ones that won their
 # pre-registered duel (general-player.md §4.3 E9, graded in §6.7). ``threats`` won and is
@@ -239,6 +248,15 @@ class BudgetExhausted(Exception):
     """Raised mid-search to abandon an incomplete iteration."""
 
 
+class RootExhausted(BudgetExhausted):
+    """The root's iteration ran out; ``scored`` is the best root move it had scored
+    (``None`` when the first child ran out), as `agents.rs::search_root`'s ``Err``."""
+
+    def __init__(self, scored: int | None) -> None:
+        super().__init__()
+        self.scored = scored
+
+
 class MinimaxAgent:
     """Negamax with alpha-beta pruning, a transposition table, and capture ordering."""
 
@@ -261,6 +279,9 @@ class MinimaxAgent:
     ) -> None:
         self.engine = engine
         self.evaluator = objective_for(engine, mobility, goal, weights, values, immune, net)
+        if repairs & INCOME and isinstance(self.evaluator, Evaluator):
+            # H4 (``income``): the income term, on the built-in objective only.
+            self.evaluator = replace(self.evaluator, income=True)
         self._squares = engine.spec.n_squares
         self._killers: list[list[int]] = [[-1, -1] for _ in range(MAX_PLY)]
         self._history: dict[int, int] = {}
@@ -311,7 +332,12 @@ class MinimaxAgent:
         for depth in range(1, self.max_depth + 1):
             try:
                 candidate = self._search_root(state, ordered, depth)
-            except BudgetExhausted:
+            except RootExhausted as ran_out:
+                # Q1105: a budget that ends inside the first ply plays the best root move
+                # it scored, not ``ordered[0]`` of a shuffled list; deeper, the last
+                # finished iteration's move stands (`agents.rs::deepen`).
+                if depth == 1 and ran_out.scored is not None:
+                    best_move = ran_out.scored
                 break
             best_move = candidate
             reached = depth
@@ -574,14 +600,19 @@ class MinimaxAgent:
         best_move = moves[0]
         if self.repairs & DUCK_MOBILITY:
             self._note_turn(moves, 0)
+        scored = False
         for move in moves:
             # See ``_negamax``: the negation and the window flip are only right when the
             # side actually changed, which a turn longer than one move makes conditional.
             child = engine.apply(state, move)
-            if child.side_to_move != state.side_to_move:
-                score = -self._negamax(child, depth - 1, 1, -INFINITY, -alpha)
-            else:
-                score = self._negamax(child, depth - 1, 1, alpha, INFINITY)
+            try:
+                if child.side_to_move != state.side_to_move:
+                    score = -self._negamax(child, depth - 1, 1, -INFINITY, -alpha)
+                else:
+                    score = self._negamax(child, depth - 1, 1, alpha, INFINITY)
+            except BudgetExhausted:
+                raise RootExhausted(best_move if scored else None) from None
+            scored = True
             if score > alpha:
                 alpha, best_move = score, move
         return best_move
@@ -810,9 +841,21 @@ class MinimaxAgent:
         """N4: how many positions ``bare`` could reach moving again and again while the other
         player stands still, at most ``cap``, each told by its key after the move: the engine's
         answer for every step, on the position with the side replaced and no en passant
-        window. A set, so the walk's order does not matter. `Game::bare_reach`."""
+        window. A set, so the walk's order does not matter. A step that leaves the standing
+        player fewer royals on the board is not a step (Q1138): the walk stays inside the
+        rules, where a royal is never taken and played on. `Game::bare_reach`."""
         engine = self.engine
+        spec = engine.spec
         seen: set[int] = set()
+        standing = 1 - bare
+        royal = set(spec.royal_types)
+
+        def royals(board: bytes) -> int:
+            return sum(
+                1 for v in board if v and spec.owner_of(v) == standing and spec.type_of(v) in royal
+            )
+
+        before = royals(state.board)
 
         def walk(position: GameState) -> None:
             # The key follows the side, so a position reached in an odd and an even number
@@ -827,6 +870,8 @@ class MinimaxAgent:
                 if len(seen) >= cap:
                     return
                 child = engine.apply(flipped, move)
+                if royals(child.board) < before:
+                    continue
                 if child.key not in seen:
                     seen.add(child.key)
                     walk(child)
@@ -974,11 +1019,15 @@ class MinimaxAgent:
             # `agents.rs::is_loud` reads it.
             return promoted != 0 or self.engine.spec.push_takes(state.board, move)
         # Schema 22: a fold moved onto a piece takes nothing either.
-        if kind not in (MOVE_ROTATE, MOVE_CASTLE, MOVE_FOLD, MOVE_DUCK) and state.board[target]:
+        # TS3: nor does a keep, whose word names square 0; H3: nor a pass.
+        if kind not in (MOVE_ROTATE, MOVE_CASTLE, MOVE_FOLD, MOVE_DUCK, MOVE_KEEP, MOVE_PASS) and (
+            state.board[target]
+        ):
             return True
         # Schema 19: a transit that promotes at its exit, as `agents.rs::is_loud` reads it.
+        # TS4: and a displacement whose hopper promotes, as `agents.rs::is_loud` reads it.
         return kind in (MOVE_EN_PASSANT, MOVE_PROMOTION, MOVE_SWEEP) or (
-            kind == MOVE_PORTAL and promoted != 0
+            kind in (MOVE_PORTAL, MOVE_DISPLACE) and promoted != 0
         )
 
     def _chases(self, state: GameState, move: int, horizon: bool) -> bool:
@@ -1085,7 +1134,9 @@ class MinimaxAgent:
         on `weathervane` most of the move list is rotations, so the two searches would
         cut off in different places and play different games under one name.
         """
-        if move_type(move) in (MOVE_ROTATE, MOVE_CASTLE, MOVE_FOLD, MOVE_DUCK):
+        if move_type(move) in (
+            MOVE_ROTATE, MOVE_CASTLE, MOVE_FOLD, MOVE_DUCK, MOVE_KEEP, MOVE_PASS
+        ):
             return 0.0
         spec = self.engine.spec
         values = self.evaluator.values

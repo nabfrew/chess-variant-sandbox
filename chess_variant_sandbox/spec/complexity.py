@@ -113,6 +113,13 @@ _RULE_COSTS: dict[str, float] = {
     "royal_facing": 1.0,
     "explode_on_capture": 1.5,
     "forbid_immobility": 1.0,
+    # H3 (`docs/plan-hunger.md` §4): "you may pass instead of moving" is one sentence, an
+    # exception to "you must move", priced with the single flags.
+    "pass": 1.0,
+    # H2 (`docs/plan-hunger.md` §3): "at the start of your turn gain a coin for each piece on
+    # your first rank" is one sentence; a region other than the first rank is a second, charged
+    # in `_income_extras`, as `scoring`'s region is.
+    "income": 1.0,
     # Schema 3. "Whoever has more of this when the clock runs out wins" is one sentence
     # for material or a headcount; naming a region to hold is a second, because the
     # region has to be described as well as counted.
@@ -431,6 +438,23 @@ def _hire_extras(spec: dict[str, Any], pieces: Any) -> float:
     return (_HIRE if hired else 0.0) + (_BRIBE if purse.get("bribe") is True else 0.0)
 
 
+# H1 (`docs/plan-hunger.md` §2.5): a move's cost is one rule a player is taught (every move
+# pays its piece's rate times the rows from home, before the move, and an unaffordable move is
+# illegal), charged once for the game on top of the purse. The rates are the rule's numbers, as
+# a bounty's are, and the promotion reading a clause of it. Read off the spelling, as every
+# other extra here is: the rule is on when ``rules.purse.upkeep`` is ``true`` or an object.
+_UPKEEP = 1.0
+
+
+def _upkeep_extras(rules: Any) -> float:
+    """What a game's move cost costs: one rule, once."""
+    purse = rules.get("purse") if isinstance(rules, dict) else None
+    if not isinstance(purse, dict):
+        return 0.0
+    upkeep = purse.get("upkeep")
+    return _UPKEEP if upkeep is True or isinstance(upkeep, dict) else 0.0
+
+
 # T1 (`docs/archive/plan-pieces-moves.md` §5.5): a path that turns is one rule a player is taught
 # about the slide it rides on (how it turns, that it never comes back on itself, that two
 # paths to one square are one move), charged once per kind of turn the game uses, on top of
@@ -501,6 +525,28 @@ def _legs_extras(spec: dict[str, Any], pieces: Any) -> float:
         for piece in (pieces if isinstance(pieces, list) else []) if isinstance(piece, dict)
         for move in (piece.get("moves") or [] if isinstance(piece.get("moves"), list) else [])
     ) else 0.0
+
+
+# TS4 (`docs/plan-tessabi.md` §4): a hop over a run is one clause a player is taught about the
+# game's hops (a row, not one piece, and the landing just past it), half a rule; a hop that
+# displaces is a rule of its own (what happens to what it jumps, of either side or nobody's),
+# one rule. Each charged once for the game, as a bounty is, on top of the descriptor it counts
+# as; read off the spelling, at a value other than the key's off value. Neither is in any game
+# before generation 114, so no stored rule mass moves.
+_HOP_RUN = 0.5
+_HOP_DISPLACE = 1.0
+
+
+def _hop_run_extras(pieces: Any) -> float:
+    """What a game's hops over a run and displacing hops cost: each kind once."""
+    moves = [
+        move for piece in (pieces if isinstance(pieces, list) else []) if isinstance(piece, dict)
+        for move in (piece.get("moves") or [] if isinstance(piece.get("moves"), list) else [])
+        if isinstance(move, dict) and move.get("kind") == "hop"
+    ]
+    runs = any(move.get("run", False) not in (False, None) for move in moves)
+    displaces = any(move.get("displace") == "back" for move in moves)
+    return _HOP_RUN * runs + _HOP_DISPLACE * displaces
 
 
 # Q1074b5 (`docs/plan-push.md` §4): a push is one rule a player is taught (landing on a piece
@@ -647,12 +693,16 @@ _WRAP_KEYS = ("files", "ranks", "n_s", "ne_sw", "nw_se")
 # and `{"moves": 1, "ramp": [1, 1]}` are both the game that was already there, and the
 # compiler drops both.
 _RULE_ACTIVE: dict[str, Any] = {
+    # H2: ``{}`` is ``true``'s long spelling, which the truthiness test would read as absent.
+    "income": lambda value: value is True or isinstance(value, dict),
     # Schema 26: present as an object is the rule, and `{}` is its whole default spelling,
     # which the truthiness test below would read as absent.
     "simultaneous": lambda value: isinstance(value, dict),
     "turn": lambda value: isinstance(value, dict)
     and (
-        int(value.get("moves", 1)) > 1
+        # TS3: a turn of parts is a rule however many it has.
+        isinstance(value.get("parts"), list)
+        or int(value.get("moves", 1)) > 1
         or any(int(length) > 1 for length in value.get("ramp") or ())
     ),
     # Same shape as `turn`, and for the same reason: a board with edges has several
@@ -745,6 +795,51 @@ def _count_special_rules(rules: dict[str, Any]) -> float:
             total += cost
     total += _portal_extras(rules.get("portals"))
     total += _simultaneous_extras(rules.get("simultaneous"))
+    total += _reach_extras(rules.get("reach"))
+    total += _turn_part_extras(rules.get("turn"))
+    total += _income_extras(rules.get("income"))
+    return total
+
+
+def _income_extras(income: Any) -> float:
+    """H2 (`docs/plan-hunger.md` §3): a region written for income is a second sentence (where),
+    0.5 as a named region is elsewhere; ``per_piece`` is the rule's number, free. Read off the
+    spelling, as `_reach_extras` is (a region equal to the first rank is dropped by the normal
+    form)."""
+    return 0.5 if isinstance(income, dict) and income.get("region") else 0.0
+
+
+def _turn_part_extras(turn: Any) -> float:
+    """TS3 (`docs/plan-tessabi.md` §3): a turn of parts, beside ``turn``'s own charge. Each
+    part past the first that names its pieces other than ``"own"`` 0.25, a part that may be
+    kept 0.25 each, order ``"any"`` 0.25. Read off the spelling, as `_reach_extras` is; a turn
+    without parts is charged as it was."""
+    if not isinstance(turn, dict) or not isinstance(turn.get("parts"), list):
+        return 0.0
+    parts = [part for part in turn["parts"] if isinstance(part, dict)]
+    total = 0.25 * sum(1 for part in parts if part.get("pieces") != "own")
+    total += 0.25 * sum(1 for part in parts if part.get("optional") is True)
+    if turn.get("order") == "any":
+        total += 0.25
+    return total
+
+
+def _reach_extras(reach: Any) -> float:
+    """TS1 (`docs/plan-tessabi.md` §1): the scoring goal's keys, beside ``reach``'s own charge.
+
+    A bank (a piece leaves the board on arriving) 0.5, a count past one 0.5, a reading of
+    both at once other than player 0's 0.25. Read off the spelling here, as `_portal_extras`
+    is; each key at its off value is free, so every goal before them is charged as it was."""
+    if not isinstance(reach, dict):
+        return 0.0
+    total = 0.0
+    if reach.get("removes") is True:
+        total += 0.5
+    count = reach.get("count", 1)
+    if isinstance(count, int) and not isinstance(count, bool) and count > 1:
+        total += 0.5
+    if reach.get("both", "first") != "first":
+        total += 0.25
     return total
 
 
@@ -831,9 +926,9 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
     special_rules = (
         _count_special_rules(rules) + _spy_extras(pieces) + _speed_extras(pieces)
         + _rest_extras(pieces) + _sight_extras(pieces) + _path_extras(pieces)
-        + _legs_extras(spec, pieces)
+        + _legs_extras(spec, pieces) + _hop_run_extras(pieces)
         + _neutral_extras(spec, pieces) + _bounty_extras(pieces) + _hire_extras(spec, pieces)
-        + _push_extras(rules, pieces)
+        + _push_extras(rules, pieces) + _upkeep_extras(rules)
     )
     # Q1074b5: whom a pusher may push is a line of the rules table, as `captures` is.
     capture_restrictions += _push_lists(rules, pieces)

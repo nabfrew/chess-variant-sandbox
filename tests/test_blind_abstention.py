@@ -20,6 +20,7 @@ from chess_variant_sandbox.metrics.index import (
     NOT_MEASURED,
     NOT_VIABLE,
     VIABLE,
+    _unreadable_result,
     score_components,
     verdict_word,
 )
@@ -308,3 +309,27 @@ class TestTheReadersSayIt:
         assert "function notMeasuredSentence(" in PAGE
         # The page's readers of `viable === false` that would say *ruled out* ask first.
         assert PAGE.count("isNotMeasured(") >= 10
+
+
+class TestTheReasonAMissingMeasurementGives:
+    """Q1149: a missing `ladder_monotonicity` is not a ladder that orders 0% of its steps."""
+
+    def test_an_inverted_gradient_states_the_gradient_not_a_zero_share(self) -> None:
+        raw = _passing_raw()
+        raw["skill_gradient"] = -0.56
+        del raw["ladder_monotonicity"]
+        result = score_components("h", "g", Components(raw=raw), WEIGHTS)
+        text = result.violations[-1]
+        assert "0%" not in text
+        assert "rates *worse* here (-0.6 Elo per doubling)" in text
+
+    def test_a_hand_built_run_with_neither_field_says_it_was_not_measured(self) -> None:
+        raw = _passing_raw()
+        raw.pop("skill_gradient", None)
+        raw.pop("ladder_monotonicity")
+        result = _unreadable_result(
+            "h", "g", Components(raw=raw), WEIGHTS, ("lead_conversion",), None, ""
+        )
+        text = result.violations[-1]
+        assert "0%" not in text and "0.0 Elo" not in text
+        assert "gradient was not measured" in text

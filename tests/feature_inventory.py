@@ -33,6 +33,10 @@ from chess_variant_sandbox.spec.schema import (
     has_rests,
     has_speeds,
     hire_ids,
+    hop_displaces,
+    hop_run,
+    income_region_is_default,
+    income_rule,
     insufficient_material_live,
     keeping_link_holds,
     majority_ids,
@@ -44,17 +48,21 @@ from chess_variant_sandbox.spec.schema import (
     npc_respawn,
     npc_split,
     npc_turns_back,
+    passes,
     piece_bounties,
     piece_prices,
     piece_rests,
     piece_sights,
+    piece_upkeeps,
     player_stocks,
     promoting_piece_ids,
     purse_bribes,
     purse_pays_loser,
     purse_rule,
+    purse_upkeep,
     push_rule,
     reach_pieces,
+    shared_ids,
     sight_affects_wild,
     spy_drop_ids,
     spy_gain_routes,
@@ -65,13 +73,14 @@ from chess_variant_sandbox.spec.schema import (
     sweep_range_stated_off,
     takes_royal_ids,
     turn_is_long,
+    turn_parts_as_moves,
     uses_sweep,
     wild_type_ids,
     wrap_joins_an_edge,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 109
+LAST_BUMP = 117
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -2291,6 +2300,164 @@ def _schema_one_hundred_nine_uses(spec: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _schema_one_hundred_ten_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 110 added, by name (SR11a,
+    `docs/plan-schema-next.md` §2.13 row PA4; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``pieces.moves.lame.path`` -- a turning path (``circle`` or ``zigzag``) on a lame rider:
+      each jump blocked on the legs of its own direction, read from the square it jumps from.
+    """
+    for piece in _listed(spec.get("pieces")):
+        for move in _listed(piece.get("moves") if isinstance(piece, dict) else None):
+            if (
+                isinstance(move, dict) and move.get("kind") == "lame"
+                and move.get("path") in ("circle", "zigzag")
+            ):
+                return {"pieces.moves.lame.path"}
+    return set()
+
+
+def _schema_one_hundred_eleven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 111 added, by name (TS1, Q1131,
+    `docs/plan-tessabi.md` §1; numbered by order of landing, bumping no version). Three keys on
+    ``rules.reach``, each named only at a value other than its off value:
+
+    * ``rules.reach.removes`` -- a listed piece standing on its own goal is banked;
+    * ``rules.reach.count`` -- the goal counts more than one arrival;
+    * ``rules.reach.both`` -- a goal reached by both players at once is read as a draw or the
+      mover's.
+    """
+    reach = (spec.get("rules") or {}).get("reach") if isinstance(spec.get("rules"), dict) else None
+    if not isinstance(reach, dict):
+        return set()
+    names = set()
+    if reach.get("removes") is True:
+        names.add("rules.reach.removes")
+    count = reach.get("count", 1)
+    if isinstance(count, int) and not isinstance(count, bool) and count > 1:
+        names.add("rules.reach.count")
+    if reach.get("both", "first") != "first":
+        names.add("rules.reach.both")
+    return names
+
+
+def _schema_one_hundred_twelve_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 112 added, by name (TS2, Q1132,
+    `docs/plan-tessabi.md` §2; numbered by order of landing, bumping no version). One new
+    value of an old key:
+
+    * ``pieces.control.shared`` -- a type placed for nobody that either player may move as
+      their move (``control: "shared"``), named only where some placement puts it in nobody's
+      block, since elsewhere the validator refuses it.
+    """
+    pieces = spec.get("pieces")
+    if not isinstance(pieces, list):
+        return set()
+    if any(
+        isinstance(piece, dict) and piece.get("control") == "shared" for piece in pieces
+    ) and shared_ids(spec):
+        return {"pieces.control.shared"}
+    return set()
+
+
+def _schema_one_hundred_thirteen_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 113 added, by name (TS3, Q1133,
+    `docs/plan-tessabi.md` §3; numbered by order of landing, bumping no version). Two keys on
+    ``rules.turn``, named only where the parts are not ``turn.moves`` written as parts
+    (`schema.turn_parts_as_moves`, which the normal form rewrites):
+
+    * ``rules.turn.parts`` -- a turn written as parts, each naming the pieces it moves;
+    * ``rules.turn.parts.optional`` -- a part the mover may keep instead (a keep);
+    * ``rules.turn.order.any`` -- each move fills whichever unfilled part admits its piece.
+    """
+    rules = spec.get("rules")
+    turn = rules.get("turn") if isinstance(rules, dict) else None
+    if not isinstance(turn, dict) or not isinstance(turn.get("parts"), list):
+        return set()
+    if turn_parts_as_moves(spec) is not None:
+        return set()
+    names = {"rules.turn.parts"}
+    if any(isinstance(part, dict) and part.get("optional") is True for part in turn["parts"]):
+        names.add("rules.turn.parts.optional")
+    if turn.get("order") == "any" and len(turn["parts"]) > 1:
+        names.add("rules.turn.order.any")
+    return names
+
+
+def _schema_one_hundred_fourteen_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 114 added, by name (TS4, Q1134,
+    `docs/plan-tessabi.md` §4; numbered by order of landing, bumping no version). Two keys on a
+    hop, each named only at a value other than its off value (`schema.hop_run`,
+    `hop_displaces`):
+
+    * ``pieces.moves.hop.run`` -- a hop over a run of pieces, landing just past it;
+    * ``pieces.moves.hop.displace`` -- every piece a hop jumps moves one square back.
+    """
+    names: set[str] = set()
+    for piece in spec.get("pieces") or []:
+        if not isinstance(piece, dict):
+            continue
+        for move in piece.get("moves") or []:
+            if hop_run(move) is not None:
+                names.add("pieces.moves.hop.run")
+            if hop_displaces(move):
+                names.add("pieces.moves.hop.displace")
+    return names
+
+
+def _schema_one_hundred_fifteen_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 115 added, by name (H1, Q1125,
+    `docs/plan-hunger.md` §2; numbered by order of landing, bumping no version). A move's cost,
+    each name only at a value other than its off value (`schema.piece_upkeeps`,
+    `purse_upkeep`):
+
+    * ``pieces.upkeep`` -- a type whose moves cost its upkeep per row from home;
+    * ``rules.purse.upkeep`` -- moves are paid from the purse, and one it cannot pay is illegal;
+    * ``rules.purse.upkeep.promotion`` -- ``"new"``: a promotion pays the promoted type alone.
+    """
+    names: set[str] = set()
+    if piece_upkeeps(spec):
+        names.add("pieces.upkeep")
+    promotion = purse_upkeep(spec)
+    if promotion is not None:
+        names.add("rules.purse.upkeep")
+        if promotion == "new":
+            names.add("rules.purse.upkeep.promotion")
+    return names
+
+
+def _schema_one_hundred_sixteen_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 116 added, by name (H3, Q1126,
+    `docs/plan-hunger.md` §4; numbered by order of landing, bumping no version). The pass, only
+    at ``true`` (`schema.passes`; ``false`` is the off value):
+
+    * ``rules.pass`` -- the side to move may make no move, wherever that is legal.
+    """
+    return {"rules.pass"} if passes(spec) else set()
+
+
+def _schema_one_hundred_seventeen_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 117 added, by name (H2, Q1127,
+    `docs/plan-hunger.md` §3; numbered by order of landing, bumping no version). Income, only
+    where it states a rule (`schema.income_rule`; ``false`` is the off value), and each of its
+    keys only away from its default:
+
+    * ``rules.income`` -- coins at the start of each turn per piece standing on a region;
+    * ``rules.income.per_piece`` -- more than one coin a piece;
+    * ``rules.income.region`` -- ground other than each player's first rank.
+    """
+    rule = income_rule(spec)
+    if rule is None:
+        return set()
+    names = {"rules.income"}
+    if rule["per_piece"] != 1:
+        names.add("rules.income.per_piece")
+    if rule["region"] is not None and not income_region_is_default(spec):
+        names.add("rules.income.region")
+    return names
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -2393,4 +2560,12 @@ _COLLECTORS = {
     107: _schema_one_hundred_seven_uses,
     108: _schema_one_hundred_eight_uses,
     109: _schema_one_hundred_nine_uses,
+    110: _schema_one_hundred_ten_uses,
+    111: _schema_one_hundred_eleven_uses,
+    112: _schema_one_hundred_twelve_uses,
+    113: _schema_one_hundred_thirteen_uses,
+    114: _schema_one_hundred_fourteen_uses,
+    115: _schema_one_hundred_fifteen_uses,
+    116: _schema_one_hundred_sixteen_uses,
+    117: _schema_one_hundred_seventeen_uses,
 }

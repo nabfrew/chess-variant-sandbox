@@ -68,6 +68,16 @@ def rules_payload(engine: Any) -> dict[str, Any]:
         # and whether it is decided by leaving one rather than standing on it (schema 18).
         "goals": goal_payload(spec.reach),
         "goalLeaves": bool(spec.reach and spec.reach.leaves),
+        # TS1 (`docs/plan-tessabi.md` §1): whether an arrival is banked (taken off and counted),
+        # and how many a side needs; ``False`` and 1 for every goal before the keys.
+        "goalBanks": bool(spec.reach and spec.reach.removes),
+        "goalCount": spec.reach.count if spec.reach else 1,
+        # TS2 (`docs/plan-tessabi.md` §2): per type, whether either player may move a piece of
+        # it nobody owns (``control: "shared"``, compiled); empty without a shared type.
+        "shared": (
+            [t in spec.neutrals.shared for t in range(spec.n_types)]
+            if spec.neutrals is not None and spec.neutrals.shared else []
+        ),
         # Squares a piece promotes on, per player; ``None`` without promotion.
         "zones": zone_payload(spec.promotions),
         # The wrap rule, per player and per axis; ``None`` for a board with edges.
@@ -146,6 +156,22 @@ def market_payload(engine: Any) -> dict[str, Any] | None:
         ],
         "hire": list(purse.hire),
         "bribe": list(purse.bribe),
+        # H1 (`docs/plan-hunger.md` §2.5): whether moves cost coins, and a promotion's reading
+        # (`"both"` or `"new"`), off the compiled table; `None` without the rule. Each offered
+        # move's cost is the core's, on the move itself (`web.play.upkeep_entry`).
+        "upkeep": (
+            ("new" if purse.upkeep_new else "both") if purse.upkeep else None
+        ),
+        # H2 (`docs/plan-hunger.md` §3): income, off the compiled rule (`IncomeRule`): the coins
+        # a piece earns and each player's squares; `None` without the rule. What a turn earned
+        # is the core's (the purses on each position); the page never counts a piece.
+        "income": (
+            {
+                "perPiece": engine.spec.income.per_piece,
+                "squares": [list(engine.spec.income.squares[player]) for player in (0, 1)],
+            }
+            if engine.spec.income is not None else None
+        ),
     }
 
 

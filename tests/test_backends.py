@@ -270,6 +270,99 @@ def test_a_side_that_moves_twice_is_searched_the_same_way_on_both_sides(
     _assert_same_played(_turned("gardner", **turn), agents)
 
 
+@pytest.mark.parametrize(
+    "agents",
+    [("minimax:nodes=150", "greedy"), ("minimax:nodes=150", "minimax:nodes=150")],
+    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
+)
+def test_a_goal_that_banks_and_counts_is_searched_the_same_way_on_both_sides(
+    agents: tuple[str, str]
+) -> None:
+    """TS1 (`docs/plan-tessabi.md` §1): the bank (`GameState.banked`) is state the evaluator's
+    goal term reads (`reach_tally`, `eval.rs` and `agents/evaluation.py`), and the counting
+    goal the terminal the searches stop at. `rulesets/crossings` reaches both."""
+    _assert_same_played(_engine("crossings"), agents)
+
+
+@pytest.mark.parametrize(
+    "agents",
+    [("minimax:nodes=150", "greedy"), ("minimax:nodes=150", "minimax:nodes=150")],
+    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
+)
+def test_a_shared_piece_is_searched_the_same_way_on_both_sides(agents: tuple[str, str]) -> None:
+    """TS2 (`docs/plan-tessabi.md` §2): a shared piece is moved by both players, so both
+    searches meet its foreign moves at every ply. `rulesets/boulder` reaches it."""
+    _assert_same_played(_engine("boulder"), agents)
+
+
+@pytest.mark.parametrize(
+    "agents",
+    [("minimax:nodes=150", "greedy"), ("minimax:nodes=150", "minimax:nodes=150")],
+    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
+)
+def test_a_turn_of_parts_is_searched_the_same_way_on_both_sides(agents: tuple[str, str]) -> None:
+    """TS3 (`docs/plan-tessabi.md` §3): a turn of parts keeps the side for its first move and
+    offers a keep, which takes nothing, so both searches meet same-side children and keeps.
+    `rulesets/drover` reaches both."""
+    _assert_same_played(_engine("drover"), agents)
+
+
+@pytest.mark.parametrize(
+    "agents",
+    [("minimax:nodes=40", "greedy"), ("minimax:nodes=40", "minimax:nodes=40")],
+    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
+)
+def test_a_displacing_hop_is_searched_the_same_way_on_both_sides(agents: tuple[str, str]) -> None:
+    """TS4 (`docs/plan-tessabi.md` §4): a hop over a run that moves what it jumps back a square
+    (`MOVE_DISPLACE`) is quiet and takes nothing, so both searches order it and play it alike.
+    `rulesets/leapfrog` plays it most moves."""
+    _assert_same_played(_engine("leapfrog"), agents)
+
+
+@pytest.mark.parametrize(
+    "agents",
+    [("minimax:nodes=40", "greedy"), ("minimax:nodes=40", "minimax:nodes=40")],
+    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
+)
+def test_a_move_that_costs_is_searched_the_same_way_on_both_sides(agents: tuple[str, str]) -> None:
+    """H1 (`docs/plan-hunger.md` §2): a move the purse cannot pay for is not in the list, and
+    the payment is in the key, so both searches see one list and one position. No library game
+    charges moves until H5's Hunger, so `tests/_purse_upkeep.json` (chess with Hunger's charges)
+    stands in."""
+    _assert_same_played(Engine(load_spec(Path(__file__).parent / "_purse_upkeep.json")), agents)
+
+
+@pytest.mark.parametrize(
+    "agents",
+    [("minimax:nodes=40", "greedy"), ("minimax:nodes=40", "minimax:nodes=40")],
+    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
+)
+def test_a_pass_is_searched_the_same_way_on_both_sides(agents: tuple[str, str]) -> None:
+    """H3 (`docs/plan-hunger.md` §4): the pass is the list's last move, quiet, and takes nothing,
+    on both sides. No library game passes until H5's Hunger, so `tests/_purse_pass.json` (chess
+    with Hunger's charges, a short purse and the pass) stands in."""
+    _assert_same_played(Engine(load_spec(Path(__file__).parent / "_purse_pass.json")), agents)
+
+
+@pytest.mark.parametrize(
+    "agents",
+    [
+        ("minimax:nodes=40", "greedy"),
+        ("minimax:nodes=40", "minimax:nodes=40"),
+        ("minimax:nodes=150,income=1", "minimax:nodes=150,income=0"),
+    ],
+    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
+)
+def test_income_is_searched_the_same_way_on_both_sides(agents: tuple[str, str]) -> None:
+    """H2 (`docs/plan-hunger.md` §3): income lands where the turn passes, in the key and taken
+    back by `unmake`, so both searches see one purse at every node. No library game pays income
+    until H5's Hunger, so `tests/_purse_income.json` (chess with Hunger's charges, the pass and a
+    coin a turn per piece at home) stands in. H4 (§5): every player there reads the moves
+    channel's coin worth (no market), and the third pair seats the income term against the
+    player without it, `eval.rs::Evaluator::with_income` against `Evaluator.income`."""
+    _assert_same_played(Engine(load_spec(Path(__file__).parent / "_purse_income.json")), agents)
+
+
 def _promoting_on_leaving(flag: bool) -> Engine:
     """Shogi with schema 15's ``on_leaving`` on every promotion entry, or without it.
 

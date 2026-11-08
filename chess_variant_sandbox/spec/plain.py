@@ -106,6 +106,19 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "a square the path lands on ends it.",
     ),
     "pieces.moves.screen_range": ("how far past the piece it jumps", None),
+    "pieces.moves.run": (
+        "jumps a whole row of pieces",
+        "For a jump onto empty squares only. Yes: it jumps the whole row of pieces next to it, "
+        "of either side unless it says whose, and lands on the first square past them, which "
+        "must be empty, as a frog leaps the row in leapfrog. A number is the longest row it "
+        "may jump. No, the usual jump, is over one piece.",
+    ),
+    "pieces.moves.displace": (
+        "moves what it jumps back a square",
+        "For a jump onto empty squares only. Back: every piece it jumps moves one square back "
+        "toward where the jumper started, the nearest onto the square it left. Nothing is "
+        "taken, and jumping an opponent's piece carries it toward your side.",
+    ),
     "pieces.moves.sweep_range": (
         "how far it clears",
         "For a sweep only: how many steps along its line it removes what it passes. Past "
@@ -240,6 +253,42 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "coins go to the side behind and it can buy pieces back. Paid to the loser, a piece "
         "nobody owns pays nobody.",
     ),
+    # H3 (`docs/plan-hunger.md` §4): the pass.
+    "rules.pass": (
+        "a player may pass",
+        "On: instead of moving, a player may make no move at all, wherever that is legal (never "
+        "in check where the game has check), so no player is ever stuck without a move. Off: "
+        "every turn is a move.",
+    ),
+    # H1 (`docs/plan-hunger.md` §2.5): a move's cost.
+    "rules.purse.upkeep": (
+        "moves cost coins",
+        "On: every move costs its piece's upkeep for each row it ends from its owner's own "
+        "back row, paid before the move; a move a player cannot pay for may not be made. "
+        "Off: moves are free.",
+    ),
+    # H2 (`docs/plan-hunger.md` §3): income.
+    "rules.income": (
+        "coins each turn",
+        "On: at the start of each of a player's turns the bank pays them coins for each of their "
+        "pieces standing on a region, by default their own back row. Off: coins come only from "
+        "the start and from captures.",
+    ),
+    "rules.income.per_piece": (
+        "coins per piece",
+        "How many coins each piece standing on the region earns its player at the start of "
+        "their turn, 1 to 5.",
+    ),
+    "rules.income.region": (
+        "where pieces earn",
+        "The squares where a piece earns its income, written for the first player and turned "
+        "round for the second. Left out: each player's own back row.",
+    ),
+    "rules.purse.upkeep.promotion": (
+        "what a promotion pays for",
+        "Both: a promoting move pays for the piece arriving and for what it becomes. New: "
+        "only for what it becomes.",
+    ),
     "rules.duck.piece": (
         "the duck",
         "The piece every turn ends by moving: after each move the same player moves it to an "
@@ -261,6 +310,26 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "How many moves each of the first turns has, in order, before 'moves a turn' takes "
         "over. With two moves a turn whoever starts is a whole move ahead forever; two "
         "moves a turn with an opening turn of one levels it.",
+    ),
+    "rules.turn.parts": (
+        "parts of a turn",
+        "A turn made of parts, one move each, each moving only the pieces it names, written "
+        "in place of moves a turn. A move is allowed only if the rest of the turn can still "
+        "be played after it.",
+    ),
+    "rules.turn.parts.pieces": (
+        "which pieces",
+        "Your own pieces and any piece nobody owns that you hold, the pieces either player "
+        "may move, or only the pieces listed.",
+    ),
+    "rules.turn.parts.optional": (
+        "may be left",
+        "Yes lets the player leave this part of the turn: a move that moves nothing.",
+    ),
+    "rules.turn.order": (
+        "order of the parts",
+        "In the order written, or in any order, each move filling the part its piece belongs "
+        "to; in any order no piece may belong to two parts.",
     ),
     "rules.obstacles.squares": ("walled squares", None),
     "rules.obstacles.mirror": (
@@ -624,6 +693,13 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "owns standing next to one of yours, or (twice it) to bribe an enemy one. Leave it "
         "empty and it is not for sale.",
     ),
+    # H1 (`docs/plan-hunger.md` §2.5): what a move of the piece costs.
+    "pieces.upkeep": (
+        "upkeep",
+        "What a move of this kind costs, in coins, for each row it ends away from its "
+        "owner's own back row, where moves cost coins. Leave it empty and it moves for "
+        "nothing.",
+    ),
     # Q1074b2 (`docs/plan-push.md`): pushing, a shove in place of a capture.
     "pieces.moves.push": (
         "pushes",
@@ -825,6 +901,22 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "'arrive', the usual choice, decides the game when the piece stands on one of the "
         "squares; 'leave' decides it when the piece moves off one, so it must get there and "
         "then step away, as in Jeson Mor.",
+    ),
+    "rules.reach.removes": (
+        "the piece goes home",
+        "Yes takes a piece off the board when it arrives and counts it for its owner: it is "
+        "home, it is not captured, and it no longer defends. Not in a game with check, a "
+        "king that races, or play in rounds.",
+    ),
+    "rules.reach.count": (
+        "how many to win",
+        "How many pieces a player needs home, or standing on the squares, to win. One, the "
+        "usual choice, is the first arrival.",
+    ),
+    "rules.reach.both": (
+        "both at once",
+        "When one move brings both players home together: 'first' gives it to the first "
+        "player, 'draw' draws, 'mover' gives it to the player who moved.",
     ),
     "rules.extinction.pieces": ("which pieces", "'any' counts the whole army."),
     "rules.extinction.min_count": ("fewer than", None),

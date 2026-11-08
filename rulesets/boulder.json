@@ -1,0 +1,85 @@
+{
+  "schema_version": 31,
+  "name": "boulder",
+  "summary": [
+    "Race a runner to the far row.",
+    "The boulder in the middle belongs to nobody: on your turn you may move it instead of a runner.",
+    "The boulder steps one square any way and crushes an enemy runner it steps onto. Nothing can take it.",
+    "Runners step straight or diagonally forward, and take only diagonally forward.",
+    "A player with no legal move loses."
+  ],
+  "description": "A race with one piece that belongs to both players. Two rows of runners face each other, each trying to get one runner to the far row, and between them sits a boulder that either player may move on their turn instead of a runner. The boulder steps one square in any direction and crushes an enemy runner it steps onto, and nothing may take the boulder, so it is the only thing on the board that can go backwards and the only thing that can stop a runner nobody else can catch. The catch is that whatever you do with it, your opponent may do with it next: drive it into the enemy wall and it sits among their runners, where they can walk it straight back into yours. Every boulder move is a question of where it will be safest to leave it, and a tempo spent on it is a runner not advanced.",
+  "board": {
+    "width": 7,
+    "height": 7
+  },
+  "pieces": [
+    {
+      "id": "R",
+      "name": "runner",
+      "value": 1,
+      "captures": ["R"],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[0, 1]],
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [[1, 1]],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "boulder",
+      "value": 3,
+      "control": "shared",
+      "captures": ["R"],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[1, 0], [1, 1]],
+          "symmetry": "dihedral8"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": ["a1", "b1", "c1", "d1", "e1", "f1", "g1", "a2", "b2", "c2", "d2", "e2", "f2", "g2"]
+      },
+      {
+        "piece": "B",
+        "player": "nobody",
+        "squares": ["d4"]
+      }
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "max_plies": 300,
+    "reach": {
+      "piece": "R",
+      "squares": ["a7", "b7", "c7", "d7", "e7", "f7", "g7"]
+    }
+  },
+  "appearance": {
+    "icons": {
+      "R": "pawn",
+      "B": "rock"
+    }
+  },
+  "provenance": {
+    "added": "2026-11-07",
+    "origin": "human",
+    "history": "Q1132 (TS2, docs/plan-tessabi.md section 2): the showcase for pieces[].control \"shared\"."
+  }
+}

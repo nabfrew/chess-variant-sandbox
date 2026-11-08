@@ -72,6 +72,7 @@ from typing import Any
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import WILD, CompiledSpec, compile_spec
+from chess_variant_sandbox.engine.moves import MOVE_KEEP, MOVE_PASS, move_type
 from chess_variant_sandbox.loop.operators import OPERATORS, mutate
 from chess_variant_sandbox.spec.canonical import load_spec
 from chess_variant_sandbox.spec.complexity import _RULE_ACTIVE, _RULE_COSTS, _RULE_DEFAULTS
@@ -271,7 +272,10 @@ def case(seed: int, corpus: Path = CORPUS, hexagon_source: Path = HEXAGONS) -> C
 
 def legal_is_a_subset_of_pseudo_legal(engine: Engine, state: Any) -> None:
     legal, pseudo = set(engine.legal_moves(state)), set(engine.pseudo_legal_moves(state))
-    extra = legal - pseudo
+    # TS3: a keep (`MOVE_KEEP`) moves no piece and is offered by the parts filter, after the
+    # pseudo-legal list (`parts.rs::parts_filter`), so it is legal without being pseudo-legal.
+    # H3: so is a pass (`MOVE_PASS`), offered after every filter (`pass.rs::push_pass`).
+    extra = {move for move in legal - pseudo if move_type(move) not in (MOVE_KEEP, MOVE_PASS)}
     if extra:
         raise OracleFailure(f"{len(extra)} legal moves are not pseudo-legal")
 
@@ -335,7 +339,12 @@ def no_move_targets_an_obstacle(engine: Engine, state: Any) -> None:
     obstacles: frozenset[int] = getattr(engine.spec, "obstacles", frozenset())
     if not obstacles:
         return
-    bad = [move for move in engine.legal_moves(state) if ((move >> 8) & 0xFF) in obstacles]
+    # TS3's keep (`MOVE_KEEP`) names square 0 and lands nowhere, which on a hexagon is an absent
+    # corner; found when Q1125's new operator moved the fuzz's draws onto a turn of parts.
+    bad = [
+        move for move in engine.legal_moves(state)
+        if ((move >> 8) & 0xFF) in obstacles and move_type(move) not in (MOVE_KEEP, MOVE_PASS)
+    ]
     if bad:
         raise OracleFailure(f"{len(bad)} legal moves land on an obstacle")
 

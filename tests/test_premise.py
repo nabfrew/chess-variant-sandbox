@@ -115,12 +115,12 @@ class TestTheGamesOwnRoster:
         blob = rated_store(tmp_path, "000000000001")
         monkeypatch.setattr(corpus, "NETS_DIR", tmp_path)
         now = premise.PremiseBasis.current(DIGEST, SPEC)
-        assert now.player == "minimax:net=000000000001,nodes=6400"
+        assert now.player == "minimax:net=000000000001,nodes=25600"
         assert now.net == "000000000001=net:" + hashlib.sha256(blob).hexdigest()[:12]
-        assert premise.ceiling_of(now.player, 8) == "minimax:net=000000000001,nodes=51200"
-        assert premise.fairy_of(now.player) == "fairystockfish:nodes=6400"
+        assert premise.ceiling_of(now.player, 8) == "minimax:net=000000000001,nodes=204800"
+        assert premise.fairy_of(now.player) == "fairystockfish:nodes=25600"
         reasons = then.stale_against(now)
-        assert any("strongest player was minimax:nodes=6400" in reason for reason in reasons)
+        assert any("strongest player was minimax:nodes=25600" in reason for reason in reasons)
         assert any("its nets were none" in reason for reason in reasons)
 
     def test_on_the_library_the_stamp_moves_for_the_rated_net_games_alone(self) -> None:

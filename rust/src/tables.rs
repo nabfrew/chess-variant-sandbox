@@ -107,6 +107,29 @@ pub const MOVE_HIRE: u32 = 11;
 /// (`PushTables::next`'s row), since on a seam one landing can be pushed two ways from one
 /// origin. What moves and what falls off is recomputed from the board in `make` (`push.rs`).
 pub const MOVE_PUSH: u32 = 12;
+/// TS3 (`docs/plan-tessabi.md` §3, `rules.turn.parts`): a keep. The mover fills an optional
+/// part of the turn and moves nothing. Origin and target 0; the promotion field the part it
+/// fills (under order `"any"` the first unfilled optional one). Takes nothing; offered only
+/// in a parts game (`Game::parts_filter`).
+pub const MOVE_KEEP: u32 = 13;
+/// TS4 (`docs/plan-tessabi.md` §4, `moves[].displace`): a hop that displaces. The hopper goes
+/// from origin to target, and every square strictly between shifts one square back along the
+/// hop's line, toward the origin (the nearest onto the origin): every jumped piece moves back
+/// one and the last square of the run empties. The promotion field the hopper's promoted type
+/// plus one (0 none), as `MOVE_PUSH`'s. Takes nothing. The line is `Tables::displace_path`, the
+/// displacing hop entry of the hopper's slot that reaches the target, so `unmake` needs no log.
+pub const MOVE_DISPLACE: u32 = 14;
+/// H3 (`docs/plan-hunger.md` §4, `rules.pass`): the pass. The side to move makes no move: origin,
+/// target and promotion 0, nothing on the board changes, the ply is spent (`pass.rs`). Offered
+/// last, after every filter, where the null move survives the game's legality filter. Takes
+/// nothing. The last value the kind field's four bits hold.
+pub const MOVE_PASS: u32 = 15;
+/// TS4: a hop entry's run code (`Tables::hop_runs`, `compile.HOP_RUN_MASK`): the low five bits
+/// the run (0 none, a cap of 2 to 16, `HOP_RUN_ANY` any length), `HOP_DISPLACE` the jumped
+/// pieces moving back.
+pub const HOP_RUN_MASK: u8 = 0x1F;
+pub const HOP_RUN_ANY: u8 = 0x1F;
+pub const HOP_DISPLACE: u8 = 0x40;
 pub const DUCK_STEP: u32 = 0;
 pub const DUCK_PLACE: u32 = 1;
 pub const DUCK_PASS: u32 = 2;
@@ -148,6 +171,11 @@ pub struct NeutralTables {
     takes_royal: Vec<bool>,
     /// Whether any type may: the one test `threatened` and the check filter pay.
     pub threatens_royals: bool,
+    /// TS2 (`docs/plan-tessabi.md` §2): per type, whether either player moves it as their
+    /// move (`control: "shared"`). Such a type is `CONTROL_MAJORITY` with no neighbours, so
+    /// `controller_of` answers -1 (nobody holds it) and `push_held` asks this first. Empty in
+    /// every game without the value.
+    shared: Vec<bool>,
 }
 
 impl NeutralTables {
@@ -155,6 +183,12 @@ impl NeutralTables {
     #[inline]
     pub fn takes_royal(&self, piece_type: usize) -> bool {
         self.takes_royal.get(piece_type).copied().unwrap_or(false)
+    }
+
+    /// TS2: whether either player may move a piece of `piece_type` as their move.
+    #[inline]
+    pub fn shared(&self, piece_type: usize) -> bool {
+        self.shared.get(piece_type).copied().unwrap_or(false)
     }
 
     /// The squares next to `square` for a majority piece of `piece_type`.
@@ -182,9 +216,9 @@ pub const SWEEP_LENGTH_SHIFT: u8 = 2;
 /// |-------|-----------|------------------------------------------------------------------|
 /// | 0-7   | origin    | every kind                                                       |
 /// | 8-15  | target    | every kind                                                       |
-/// | 16-19 | kind      | every kind (`MOVE_NORMAL` .. `MOVE_PUSH`, 0 to 12 of 16)         |
-/// | 20-24 | promotion | `MOVE_PROMOTION` (the type); `MOVE_PORTAL`, `MOVE_PUSH` (type    |
-/// |       |           | + 1, 0 none);                                                    |
+/// | 16-19 | kind      | every kind (`MOVE_NORMAL` .. `MOVE_DISPLACE`, 0 to 14 of 16)     |
+/// | 20-24 | promotion | `MOVE_PROMOTION` (the type); `MOVE_PORTAL`, `MOVE_PUSH`,         |
+/// |       |           | `MOVE_DISPLACE` (type + 1, 0 none);                              |
 /// |       |           | `MOVE_DROP`, `MOVE_BUY` (the type); `MOVE_ROTATE` (the facing);  |
 /// |       |           | `MOVE_DUCK` (`DUCK_*`)                                           |
 /// | 25-29 | landing   | a strike's capture under `position: "choose"`: the landing's     |
@@ -287,7 +321,7 @@ pub const MOVE_FIELDS: [(&str, u32, u32); 13] = [
 
 /// Every move kind by name, for `lib.rs` to export and a test to pin `engine/moves.py`'s
 /// `MOVE_*` to.
-pub const MOVE_KINDS: [(&str, u32); 13] = [
+pub const MOVE_KINDS: [(&str, u32); 16] = [
     ("MOVE_NORMAL", MOVE_NORMAL),
     ("MOVE_EN_PASSANT", MOVE_EN_PASSANT),
     ("MOVE_CASTLE", MOVE_CASTLE),
@@ -301,6 +335,9 @@ pub const MOVE_KINDS: [(&str, u32); 13] = [
     ("MOVE_BUY", MOVE_BUY),
     ("MOVE_HIRE", MOVE_HIRE),
     ("MOVE_PUSH", MOVE_PUSH),
+    ("MOVE_KEEP", MOVE_KEEP),
+    ("MOVE_DISPLACE", MOVE_DISPLACE),
+    ("MOVE_PASS", MOVE_PASS),
 ];
 
 #[inline(always)]
@@ -698,6 +735,18 @@ impl EntryTable {
         self.index.len()
     }
 
+    /// TS4: the index of `slot`'s first entry among every entry of the table, so a table
+    /// parallel to the entries (`Tables::hop_runs`) reads entry `k` of the slot at `first + k`.
+    #[inline(always)]
+    pub fn first(&self, slot: usize) -> usize {
+        self.index[slot] as usize
+    }
+
+    /// How many entries the table holds, over every slot.
+    pub fn n_entries(&self) -> usize {
+        self.refs.len()
+    }
+
     #[inline(always)]
     pub fn entries(&self, slot: usize) -> &[EntryRef] {
         let lo = self.index[slot] as usize;
@@ -818,6 +867,17 @@ pub struct AttackSource {
     /// `compile.PORTAL_DIRECTIONS` entry, for an attack through a portal. Zero in every
     /// game without portals. The struct's last padding byte.
     pub dirs: u8,
+}
+
+/// C6 (Q1112): the attack sources of one square that share an origin, for the attack
+/// scan. `mask` has bit `value & 63` set for each source's `piece_value`, so a scan rejects
+/// an origin whose byte no source of the group matches (an empty square, most often) on
+/// one test; the bit is a filter, and each source still compares its value exactly.
+#[derive(Clone, Copy)]
+pub struct ScanGroup {
+    pub mask: u64,
+    pub origin: u16,
+    pub len: u16,
 }
 
 /// Schema 19: groups of portals, as the compiler resolved them (`compile.PortalRule`);
@@ -1202,13 +1262,54 @@ pub struct ReachRule {
     /// in `Game::goal_left_by`; a piece standing on a goal decides nothing. False for
     /// every ruleset before it, which is the boundary's inert default.
     pub leaves: bool,
+    /// TS1 (`docs/plan-tessabi.md` §1, `reach.removes`): a listed piece standing on its own
+    /// side's goal at the end of a move's board writes is taken off and banked for its owner
+    /// (`Game::banked`, `Game::write_bank`). False for every ruleset before it.
+    pub removes: bool,
+    /// TS1 (`reach.count`): a side wins when its banked pieces plus its listed pieces
+    /// standing on its goal number this many. 1 for every ruleset before it.
+    pub count: u32,
+    /// TS1 (`reach.both`): when the goal fires for both players at once, `REACH_BOTH_FIRST`
+    /// (player 0's instance decides, the loop order every ruleset before it reads),
+    /// `REACH_BOTH_DRAW` or `REACH_BOTH_MOVER` (the side whose move made the position).
+    pub both: u8,
+    /// TS1: the banked count's keys, `[player * bank_stride + banked]`, drawn last and only
+    /// under `removes`; empty otherwise.
+    pub bank_zobrist: Vec<u64>,
+    /// TS1: one more than the most a player can have banked (`bank_zobrist`'s row length).
+    pub bank_stride: usize,
 }
+
+/// TS1 (`reach.both`): the off value, player 0's instance decides (the loop's order).
+pub const REACH_BOTH_FIRST: u8 = 0;
+/// TS1: a goal reached by both players at once is a draw.
+pub const REACH_BOTH_DRAW: u8 = 1;
+/// TS1: a goal reached by both players at once goes to the side that moved.
+pub const REACH_BOTH_MOVER: u8 = 2;
 
 impl ReachRule {
     /// Whether a piece of `piece_type` is one the rule is about.
     #[inline(always)]
     pub fn admits(&self, piece_type: usize) -> bool {
         self.types & (1u32 << piece_type) != 0
+    }
+
+    /// TS1: whether the goal is read by the counting arm (`Game::scoring_goal`): a bank, a
+    /// count above one, or a both-at-once reading other than the loop's. False for every
+    /// ruleset before it, which keeps the first-arrival loop.
+    #[inline(always)]
+    pub fn counts(&self) -> bool {
+        self.removes || self.count > 1 || self.both != REACH_BOTH_FIRST
+    }
+
+    /// TS1: the key of `player` having banked `banked` pieces (0 without the rule).
+    #[inline(always)]
+    pub fn bank_key(&self, player: usize, banked: u16) -> u64 {
+        if self.bank_zobrist.is_empty() {
+            0
+        } else {
+            self.bank_zobrist[player * self.bank_stride + (banked as usize).min(self.bank_stride - 1)]
+        }
     }
 }
 
@@ -1226,6 +1327,89 @@ pub struct DuckRule {
     /// The squares a duck may stand on: every square of the board but a wall or an absent
     /// cell, which the compiler knows and the core does not.
     pub squares: SquareSet,
+}
+
+/// TS3 (`docs/plan-tessabi.md` §3, `rules.turn.parts`): the turn's parts. The compiled turn
+/// is `own.len()` moves (`TurnRule::moves`), so `remaining` counts the unfilled parts; this
+/// says which piece each part admits and which parts may be kept. `Game::parts_filled` is the
+/// mask of parts filled this turn, in the key (`zobrist`).
+pub struct PartsRule {
+    /// Per part, the types it admits among the side to move's own pieces (a mask over
+    /// declared types).
+    pub own: Vec<u64>,
+    /// Per part, the types it admits among nobody's pieces the mover may move (held or
+    /// shared types; a mask over types).
+    pub nobody: Vec<u64>,
+    /// A bit per part the mover may keep instead of filling with a move.
+    pub optional: u8,
+    /// A bit per part the mover must fill.
+    pub mandatory: u8,
+    /// Order `"any"`: a move fills whichever unfilled part admits its piece (the parts are
+    /// disjoint, so exactly one). False is `"fixed"`: the first unfilled part.
+    pub any_order: bool,
+    /// One key per mask of filled parts, `1 << parts` of them.
+    pub zobrist: Vec<u64>,
+}
+
+impl PartsRule {
+    /// The number of parts.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.own.len()
+    }
+
+    /// Whether part `part` admits a piece of `piece_type` whose byte is in `owner`'s block,
+    /// the side to move being `side`.
+    #[inline]
+    pub fn admits(&self, part: usize, owner: usize, side: usize, piece_type: usize) -> bool {
+        let mask = if owner == side {
+            self.own[part]
+        } else if owner == WILD {
+            self.nobody[part]
+        } else {
+            0
+        };
+        mask & (1u64 << piece_type) != 0
+    }
+
+    /// The part a move of a piece of `piece_type` in `owner`'s block fills, given the parts
+    /// already filled; `None` where no unfilled part admits it.
+    #[inline]
+    pub fn part_for(&self, filled: u8, owner: usize, side: usize, piece_type: usize) -> Option<usize> {
+        if self.any_order {
+            (0..self.len()).find(|&part| filled & (1 << part) == 0 && self.admits(part, owner, side, piece_type))
+        } else {
+            let part = filled.count_ones() as usize;
+            (part < self.len() && self.admits(part, owner, side, piece_type)).then_some(part)
+        }
+    }
+
+    /// The part a keep fills, given the parts already filled; `None` where no keep is
+    /// offered. Fixed order: the next part, if optional. Any order: the first unfilled
+    /// optional part.
+    #[inline]
+    pub fn keep_part(&self, filled: u8) -> Option<usize> {
+        if self.any_order {
+            (0..self.len()).find(|&part| filled & (1 << part) == 0 && self.optional & (1 << part) != 0)
+        } else {
+            let part = filled.count_ones() as usize;
+            (part < self.len() && self.optional & (1 << part) != 0).then_some(part)
+        }
+    }
+
+    /// The key of a mask of filled parts.
+    #[inline]
+    pub fn key(&self, filled: u8) -> u64 {
+        self.zobrist[filled as usize]
+    }
+
+    /// The mask after filling `part` from `filled`: every part filled is the turn's end, and
+    /// the next turn starts with none.
+    #[inline]
+    pub fn after(&self, filled: u8, part: usize) -> u8 {
+        let next = filled | (1 << part);
+        if next.count_ones() as usize == self.len() { 0 } else { next }
+    }
 }
 
 /// Turn rule: how many moves a turn is, and how the opening ramps up to it.
@@ -1527,6 +1711,16 @@ pub struct RespawnHalf {
     pub key_base: usize,
 }
 
+/// H2 (`docs/plan-hunger.md` §3, §R2): income. At the start of each of a player's turns the bank
+/// pays them `per_piece` coins for each of their pieces standing in `masks[player]` (the region,
+/// reflected, resolved by the compiler), into the purse, capped at `PURSE_MAX`
+/// (`Game::collect_income`). `None` without `rules.income`, so every other game pays one
+/// `Option` test where a turn passes.
+pub struct IncomeTables {
+    pub per_piece: u16,
+    pub masks: [SquareSet; 2],
+}
+
 /// TC4 (`docs/plan-turncoat.md` §5.2): the purse, coins each player holds. The state is
 /// `Game::purse`; a bounty paid under the rule also fills the payee's purse, capped at
 /// `PURSE_MAX`. No spec key yet (TC5's `rules.purse`); a test hook compiles one.
@@ -1556,6 +1750,18 @@ pub struct PurseTables {
     /// TC9c (`docs/plan-turncoat.md` §5.10): `rules.purse.bounty_to: "loser"`, a capture's
     /// bounty paid to the player who owned the piece taken (`Tables::bounty_payee`).
     pub to_loser: bool,
+    /// H1 (`docs/plan-hunger.md` §2.2, §R1): a move's cost,
+    /// `[(player * n_types + type) * n_squares + square]`, what a move costs `player` that ends
+    /// with its piece of `type` on `square`. The compiler resolved the measure; the core reads
+    /// a number. **Empty without `rules.purse.upkeep`**: the one test every other game pays.
+    pub upkeep: Vec<u16>,
+    /// H1: `"promotion": "new"`, a promotion pays the promoted type's arrival only.
+    pub upkeep_new: bool,
+    /// H4 (`docs/plan-hunger.md` §5, §R4): `[player * n_types + type]`, the mean of that row of
+    /// `upkeep` over the squares a piece of the type may stand on, as the compiler resolved it
+    /// (`compile._upkeep_means`): the evaluator's moves channel (`eval::moves_rate`). Read
+    /// nowhere in play. **Empty without `rules.purse.upkeep`.**
+    pub upkeep_mean: Vec<f64>,
 }
 
 impl PurseTables {
@@ -1581,6 +1787,13 @@ impl PurseTables {
     pub fn near(&self, n_squares: usize, piece_type: usize, square: usize) -> &[u8] {
         let slot = piece_type * n_squares + square;
         &self.near_squares[self.near_index[slot] as usize..self.near_index[slot + 1] as usize]
+    }
+
+    /// H1: what a move costs `player` that ends with its piece of `piece_type` on `square`.
+    /// Asked only where `upkeep` is not empty.
+    #[inline]
+    pub fn upkeep_at(&self, n_types: usize, n_squares: usize, player: usize, piece_type: usize, square: usize) -> u16 {
+        self.upkeep[(player * n_types + piece_type) * n_squares + square]
     }
 
     #[inline]
@@ -1920,6 +2133,10 @@ pub struct Tables {
     /// SR3c: `[k]` -> the board values a hop whose screen code is `SCREEN_TYPES + k` may
     /// vault, from `hop_screen_types`. Empty in every game whose screens name no type.
     pub screen_types: Vec<ScreenMask>,
+    /// TS4 (`docs/plan-tessabi.md` §4): each hop entry's run code (`HOP_RUN_MASK`,
+    /// `HOP_DISPLACE`), parallel to `hops`' entries (`EntryTable::first`). Empty in every game
+    /// whose hops state no run and no displacement, which `push_hops` tests once per entry.
+    pub hop_runs: Vec<u8>,
     /// Schema 13: the fourth move table, shaped as `slides`. Empty and never indexed
     /// unless `has_sweep`.
     pub sweeps: EntryTable,
@@ -1941,6 +2158,14 @@ pub struct Tables {
 
     attack_index: Vec<u32>,
     attack_sources: Vec<AttackSource>,
+    /// C6 (Q1112): `attack_sources` grouped by origin, for the attack scan alone
+    /// (`scan_of`). `scan_index[slot]..scan_index[slot + 1]` are the slot's groups;
+    /// `scan_entries`, parallel to the slot's own range of `attack_sources`, holds the
+    /// index of each source in group order. Derived at load, so nothing new crosses and the
+    /// table every other reader walks keeps its order.
+    scan_index: Vec<u32>,
+    scan_groups: Vec<ScanGroup>,
+    scan_entries: Vec<u32>,
     attack_paths: Vec<u16>,
     /// Schema 13: the mode of every `attack_paths` square, read only for a sweep source.
     /// Empty unless `has_sweep`.
@@ -2063,6 +2288,9 @@ pub struct Tables {
     pub reach_held: bool,
     /// `reach_leaves || reach_held`: whether `make` keeps `Game::goal_left_by` and its log.
     pub goal_event: bool,
+    /// TS1 (`reach.removes`): whether `make` banks the listed pieces standing on their own
+    /// goal (`Game::write_bank`). One flag on the hot path; false for every ruleset before it.
+    pub reach_removes: bool,
     /// `[player * n_types * n_squares + piece_type * n_squares + square]` -> how many
     /// moves that piece needs, on an empty board, to reach a square a `reach` rule wins
     /// on. `GOAL_UNREACHABLE` where it cannot. Empty when there is no reach rule.
@@ -2131,6 +2359,8 @@ pub struct Tables {
     pub pays: bool,
     /// TC4: the purse, `None` for every game without one (every game until TC5).
     pub purse: Option<Box<PurseTables>>,
+    /// H2 (`docs/plan-hunger.md` §3): income at the start of each turn, `None` without it.
+    pub income: Option<Box<IncomeTables>>,
     /// Whether any route carries more than one wild piece at ply zero (schema 23's
     /// `also_at`). Derived here from the opening board and `npc_next`, so nothing new
     /// crosses the boundary. Only then can one wild piece wait for another, and only then
@@ -2169,6 +2399,9 @@ pub struct Tables {
     /// (`ATTACK_BY_CAPTURE`, `ATTACK_BY_PUSH`): portals, which read it as directions, are
     /// refused beside a push.
     pub push: Option<Box<PushTables>>,
+    /// TS3 (`docs/plan-tessabi.md` §3): the turn's parts, `None` for every game whose turn
+    /// is not written as parts.
+    pub parts: Option<Box<PartsRule>>,
     /// TC3 (`docs/plan-turncoat.md` §4): the majority types' neighbours, `None` for every
     /// game in which no piece nobody owns may be moved by the majority.
     pub majority: Option<Box<NeutralTables>>,
@@ -2201,6 +2434,8 @@ pub struct Tables {
     pub must_capture: bool,
     pub forbid_check: bool,
     pub forbid_immobility: bool,
+    /// H3 (`docs/plan-hunger.md` §4): `rules.pass`, the side to move may make no move.
+    pub passes: bool,
     pub royal_facing_forbidden: bool,
     pub check_limit: u32,
     /// `None` when the rule is off; otherwise tri-state from the point of view of the
@@ -2485,6 +2720,59 @@ impl Tables {
         &self.attack_sources[lo..hi]
     }
 
+    /// C6 (Q1112): the groups of `attackers_of(player, square)` by origin, and where their
+    /// entries start in `scan_entries` (the slot's own start in the attack table).
+    #[inline(always)]
+    pub fn scan_of(&self, player: usize, square: usize) -> (&[ScanGroup], usize) {
+        let slot = player * self.n_squares + square;
+        let lo = self.scan_index[slot] as usize;
+        let hi = self.scan_index[slot + 1] as usize;
+        (&self.scan_groups[lo..hi], self.attack_index[slot] as usize)
+    }
+
+    /// C6: the sources of one group, `len` entries of `scan_entries` from `at`.
+    #[inline(always)]
+    pub fn scan_sources(&self, at: usize, len: usize) -> impl Iterator<Item = &AttackSource> {
+        self.scan_entries[at..at + len]
+            .iter()
+            .map(move |&index| &self.attack_sources[index as usize])
+    }
+
+    /// C6: group every slot's sources by origin, origins in ascending order and sources
+    /// in table order within each, for `scan_of`.
+    fn build_scan_groups(&mut self) {
+        let slots = self.attack_index.len() - 1;
+        let mut index = Vec::with_capacity(slots + 1);
+        let mut groups = Vec::new();
+        let mut entries = Vec::with_capacity(self.attack_sources.len());
+        let mut order: Vec<u32> = Vec::new();
+        for slot in 0..slots {
+            index.push(groups.len() as u32);
+            let lo = self.attack_index[slot] as usize;
+            let hi = self.attack_index[slot + 1] as usize;
+            order.clear();
+            order.extend(lo as u32..hi as u32);
+            order.sort_by_key(|&at| self.attack_sources[at as usize].origin); // stable
+            let mut start = 0;
+            while start < order.len() {
+                let origin = self.attack_sources[order[start] as usize].origin;
+                let mut end = start;
+                let mut mask = 0u64;
+                while end < order.len() && self.attack_sources[order[end] as usize].origin == origin {
+                    mask |= 1u64 << (self.attack_sources[order[end] as usize].piece_value & 63);
+                    end += 1;
+                }
+                groups.push(ScanGroup { mask, origin, len: (end - start) as u16 });
+                start = end;
+            }
+            entries.extend_from_slice(&order);
+        }
+        index.push(groups.len() as u32);
+        self.scan_index = index;
+        self.scan_groups = groups;
+        self.scan_entries = entries;
+    }
+
     /// SR5g: where `attackers_of(player, square)` starts in the whole attack table, so a
     /// table parallel to it (`PortalTables::wide_dirs`) is read at the same source.
     #[inline(always)]
@@ -2516,6 +2804,29 @@ impl Tables {
     ///
     /// SR6e (W8): a sweep through a fold (`move_through` non-zero) names its ray in any game,
     /// and its path is that ray's squares before the fold; the target is the far end.
+    /// TS4 (`docs/plan-tessabi.md` §4): the squares strictly between a `MOVE_DISPLACE`'s
+    /// `origin` and `target`, in order from the origin, for the hopper `moving` (its byte as it
+    /// set out): the ray of the displacing hop entry of its slot that reaches `target` where it
+    /// may land, which `bridge.rust_supports` leaves unique. `make`, `unmake` and the filter
+    /// read it; `CompiledSpec.displace_path_of` is Python's copy.
+    pub(crate) fn displace_path(&self, origin: usize, target: usize, moving: u8) -> &[u16] {
+        let slot = self.slot(self.frame_of_value(moving), self.type_of(moving), origin);
+        let first = self.hops.first(slot);
+        for (k, entry) in self.hops.entries(slot).iter().enumerate() {
+            if self.hop_runs.get(first + k).is_none_or(|code| code & HOP_DISPLACE == 0) {
+                continue;
+            }
+            let squares = self.hops.squares(entry);
+            let modes = self.hops.modes(entry);
+            if let Some(index) = squares.iter().position(|&square| square as usize == target) {
+                if modes[index] & 1 != 0 {
+                    return &squares[..index];
+                }
+            }
+        }
+        &[]
+    }
+
     pub(crate) fn sweep_path(&self, m: u32, moving: u8) -> &[u16] {
         if !self.has_sweep || moving == 0 {
             return &[];
@@ -2904,7 +3215,9 @@ impl Tables {
     pub fn has_goal_terms(&self) -> bool {
         self.territory.as_ref().is_some_and(|t| t.win_at > 0)
             || self.scoring.is_some()
-            || self.reach.as_ref().is_some_and(|rule| self.reach_is_priceable(rule))
+            || self.reach.as_ref().is_some_and(|rule| {
+                self.reach_is_priceable(rule) || rule.removes || rule.count > 1
+            })
             || self.check_limit > 0
             || self.extinction.as_ref().is_some_and(|rule| rule.result != 0)
     }
@@ -3043,12 +3356,16 @@ impl Tables {
             slides: Self::entry_table(source, [keys::SLIDE_INDEX, keys::SLIDE_REFS, keys::SLIDE_SQUARES, keys::SLIDE_MODES])?,
             hops: Self::entry_table(source, [keys::HOP_INDEX, keys::HOP_REFS, keys::HOP_SQUARES, keys::HOP_MODES])?,
             screen_types: Self::screen_types(source, n_types, &value_type)?,
+            hop_runs: field(source, keys::HOP_RUNS)?,
             sweeps: Self::entry_table(source, [keys::SWEEP_INDEX, keys::SWEEP_REFS, keys::SWEEP_SQUARES, keys::SWEEP_MODES])?,
             has_sweep: field(source, keys::HAS_SWEEP)?,
             sweep_rays: false,
             fold_sweeps: false,
             attack_index: field(source, keys::ATTACK_INDEX)?,
             attack_sources,
+            scan_index: Vec::new(),
+            scan_groups: Vec::new(),
+            scan_entries: Vec::new(),
             attack_paths: field(source, keys::ATTACK_PATHS)?,
             attack_path_modes: field(source, keys::ATTACK_PATH_MODES)?,
             dedup: flags(source, keys::DEDUP)?,
@@ -3085,6 +3402,7 @@ impl Tables {
             reach_leaves: reach.as_ref().is_some_and(|rule| rule.leaves),
             reach_held: majority.is_some() && reach.as_ref().is_some_and(|rule| !rule.leaves),
             goal_event: reach.is_some() && (majority.is_some() || reach.as_ref().is_some_and(|rule| rule.leaves)),
+            reach_removes: reach.as_ref().is_some_and(|rule| rule.removes),
             reach,
             goal_distance,
             goal_diameter,
@@ -3104,6 +3422,7 @@ impl Tables {
             piece_bounty: Vec::new(),
             pays: false,
             purse: None,
+            income: None,
             npc_queues: false,
             npc_shield: false,
             npc_tamed: false,
@@ -3114,6 +3433,7 @@ impl Tables {
             rest: None,
             sight: None,
             push: None,
+            parts: None,
             majority,
             respawn: None,
             npc_lines: None,
@@ -3124,6 +3444,7 @@ impl Tables {
             must_capture: field(source, keys::MUST_CAPTURE)?,
             forbid_check: field(source, keys::FORBID_CHECK)?,
             forbid_immobility: field(source, keys::FORBID_IMMOBILITY)?,
+            passes: field(source, keys::PASSES)?,
             royal_facing_forbidden: field(source, keys::ROYAL_FACING_FORBIDDEN)?,
             check_limit: field(source, keys::CHECK_LIMIT)?,
             capture_allowed,
@@ -3146,6 +3467,7 @@ impl Tables {
         tables.settle_wild_bounties();
         Self::bounty_rule(&mut tables, source)?;
         tables.purse = Self::purse_rule(&tables, source)?;
+        tables.income = Self::income_rule(&tables, source)?;
         // Read before the respawning halves, which walk a line to its end.
         tables.npc_lines = Self::turning_back_rule(&tables, source)?;
         tables.respawn = Self::respawn_rule(&tables, source)?;
@@ -3156,6 +3478,7 @@ impl Tables {
         tables.simultaneous = Self::simultaneous_rule(&tables, source)?;
         tables.rest = Self::rest_rule(&tables, source)?;
         tables.push = Self::push_rule(&tables, source)?;
+        tables.parts = Self::parts_rule(&tables, source)?;
         tables.sight = Self::sight_rule(&tables, source)?;
         // SR5e (V7): beside a command a player's list also holds the pieces the opponent's
         // commands rested, so it takes twice the slots, and the filter reads both lists.
@@ -3176,6 +3499,51 @@ impl Tables {
         if tables.purse.as_deref().is_some_and(PurseTables::contested) && tables.simultaneous.is_some() {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "a purse that hires or bribes beside rounds; the validator refuses them together",
+            ));
+        }
+        // H2 (`docs/plan-hunger.md` §3): income is paid where one player's turn starts, which a
+        // round has not (the validator's `income.I2`).
+        if tables.income.is_some() && tables.simultaneous.is_some() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "income beside rounds; the validator refuses them together",
+            ));
+        }
+        // H1 (`docs/plan-hunger.md` §2.4): the move's cost is read off the word and the board
+        // before the move (`Game::move_cost`), so nothing whose arrival is not the word's
+        // target or origin, nor a move another player makes, stands beside it.
+        if tables.purse.as_deref().is_some_and(|purse| !purse.upkeep.is_empty())
+            && (tables.simultaneous.is_some()
+                || tables.portals.is_some()
+                || tables.has_npcs
+                || tables.majority.is_some()
+                || tables.push.is_some()
+                || tables.parts.is_some()
+                || tables.sight.as_ref().is_some_and(|sight| sight.has_command))
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a move's upkeep beside rounds, portals, wild pieces, a held piece, a push, \
+                 turn parts or a command; the validator refuses them together (drops too, \
+                 held by `bridge.rust_supports`)",
+            ));
+        }
+        // H3 (`docs/plan-hunger.md` §4): the pass is a whole turn of one move that writes no
+        // square, so nothing that reads a turn as more than one move, plays a phase after the
+        // move, or keeps a bar for the very next move stands beside it. `must_capture` and a
+        // placement phase are the validator's alone (refusals P4, P5): `make_pass` reads
+        // neither, and a read here would make every holder of the tables a reader of a field
+        // an inert-rule refusal is proven against.
+        if tables.passes
+            && (tables.simultaneous.is_some()
+                || tables.duck.is_some()
+                || tables.turn.is_some()
+                || tables.parts.is_some()
+                || tables.has_npcs
+                || tables.portals.is_some()
+                || tables.push.is_some())
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a pass beside rounds, the duck, a long turn, turn parts, wild pieces, portals \
+                 or a push; the validator refuses them together",
             ));
         }
         tables.hop_lines = tables.build_hop_lines();
@@ -3202,6 +3570,7 @@ impl Tables {
                 )));
             }
         }
+        tables.build_scan_groups();
         Ok(tables)
     }
 }
@@ -3784,6 +4153,21 @@ impl Tables {
         let reach_result: i8 = field(source, keys::REACH_RESULT)?;
         let reach_safe: bool = field(source, keys::REACH_SAFE)?;
         let reach_leaves: bool = field(source, keys::REACH_LEAVES)?;
+        let removes: bool = field(source, keys::REACH_REMOVES)?;
+        let count: u32 = field(source, keys::REACH_COUNT)?;
+        let both: u8 = field(source, keys::REACH_BOTH)?;
+        let bank_zobrist: Vec<u64> = field(source, keys::ZOBRIST_BANKED)?;
+        if count == 0 || both > REACH_BOTH_MOVER || (removes && reach_leaves) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "reach_count, reach_both or reach_removes says no rule the core plays",
+            ));
+        }
+        if removes == bank_zobrist.is_empty() || !bank_zobrist.len().is_multiple_of(2) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "zobrist_banked must be two rows exactly under reach_removes",
+            ));
+        }
+        let bank_stride = (bank_zobrist.len() / 2).max(1);
         let squares: [Vec<bool>; 2] = [
             reach_squares_raw[..n_squares].iter().map(|v| *v != 0).collect(),
             reach_squares_raw[n_squares..].iter().map(|v| *v != 0).collect(),
@@ -3806,6 +4190,11 @@ impl Tables {
             result: reach_result,
             safe: reach_safe,
             leaves: reach_leaves,
+            removes,
+            count,
+            both,
+            bank_zobrist,
+            bank_stride,
         }))
     }
 
@@ -3820,6 +4209,40 @@ impl Tables {
         } else {
             None
         })
+    }
+
+    /// TS3 (`docs/plan-tessabi.md` §3): the turn's parts, read only where they cross; the
+    /// combinations the validator refuses (a ramp, the duck, rounds, a spy) refused here too.
+    fn parts_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<PartsRule>>> {
+        let own: Vec<u64> = field(source, keys::TURN_PARTS_OWN)?;
+        let nobody: Vec<u64> = field(source, keys::TURN_PARTS_NOBODY)?;
+        let optional: u8 = field(source, keys::TURN_PARTS_OPTIONAL)?;
+        let any_order: bool = field(source, keys::TURN_PARTS_ANY)?;
+        let zobrist: Vec<u64> = field(source, keys::ZOBRIST_PARTS)?;
+        if own.is_empty() {
+            if !nobody.is_empty() || optional != 0 || any_order || !zobrist.is_empty() {
+                return Err(pyo3::exceptions::PyValueError::new_err("turn parts' keys without parts"));
+            }
+            return Ok(None);
+        }
+        let n = own.len();
+        let full: u8 = ((1u16 << n) - 1) as u8;
+        let fits = tables.turn.as_ref().is_some_and(|turn| turn.moves as usize == n && turn.ramp.is_empty());
+        if n > MAX_TURN_MOVES
+            || nobody.len() != n
+            || zobrist.len() != 1 << n
+            || optional & !full != 0
+            || optional == full
+            || !fits
+            || tables.duck.is_some()
+            || tables.simultaneous.is_some()
+            || tables.spy.is_some()
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "turn parts that do not fit this ruleset's turn, or beside the duck, rounds or a spy",
+            ));
+        }
+        Ok(Some(Box::new(PartsRule { own, nobody, optional, mandatory: full & !optional, any_order, zobrist })))
     }
 
     /// Territory (schema 4): whether a square repaints, and the share that wins.
@@ -4094,12 +4517,35 @@ impl Tables {
                  is unread; the validator refuses the two together",
             ));
         }
+        // TS2: which held types either player moves, empty where none does. A shared type
+        // has no neighbours (nobody holds it by a count) and never takes a royal.
+        let shared_bytes: Vec<u8> = field(source, keys::NEUTRAL_SHARED)?;
+        let shared: Vec<bool> = shared_bytes.iter().map(|&b| b == 1).collect();
+        if !shared.is_empty()
+            && (!has_majority
+                || shared.len() != n_types
+                || shared_bytes.iter().any(|&b| b > 1)
+                || shared.iter().zip(&takes_royal).any(|(&s, &t)| s && t)
+                || (0..n_types).any(|piece_type| {
+                    shared[piece_type]
+                        && (0..n_squares).any(|square| {
+                            let slot = piece_type * n_squares + square;
+                            neighbour_index[slot] != neighbour_index[slot + 1]
+                        })
+                }))
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "neutral_shared does not fit this board's majority types (a shared type has no \
+                 neighbours and takes no royal)",
+            ));
+        }
         Ok(has_majority.then(|| {
             Box::new(NeutralTables {
                 index: neighbour_index,
                 squares: neighbour_squares,
                 takes_royal,
                 threatens_royals,
+                shared,
             })
         }))
     }
@@ -4219,6 +4665,22 @@ impl Tables {
         {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "a hop's screen names a type list hop_screen_types does not hold",
+            ));
+        }
+        // TS4: the run codes are one per hop entry, or none at all; a run's cap is 2 to 16 or
+        // any length, and only those two bits are read.
+        if !self.hop_runs.is_empty()
+            && (self.hop_runs.len() != self.hops.n_entries()
+                || self.hop_runs.iter().any(|&code| {
+                    let run = code & HOP_RUN_MASK;
+                    code & !(HOP_RUN_MASK | HOP_DISPLACE) != 0
+                        || run == 1
+                        || (run > 16 && run != HOP_RUN_ANY)
+                }))
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "hop_runs must hold one run code per hop entry (a run of 2 to 16, any, or none, \
+                 and the displace bit)",
             ));
         }
         if self.dedup.len() != expected - 1 || self.immobile_squares.len() != expected - 1 {
@@ -4349,6 +4811,35 @@ impl Tables {
     }
 
     /// The purse (TC4, §5.2), the market (TC5) and hiring and bribing (TC6).
+    /// H2 (`docs/plan-hunger.md` §3): income, read from `income_per_piece` (0 without it) and
+    /// `income_squares` (`player * n_squares + square`). Needs the purse it pays into, and is
+    /// refused beside rounds, which have no one player's turn to start (the validator's
+    /// `income.I2`).
+    fn income_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<IncomeTables>>> {
+        let per_piece: u16 = field(source, keys::INCOME_PER_PIECE)?;
+        let squares: Vec<u32> = field(source, keys::INCOME_SQUARES)?;
+        if per_piece == 0 {
+            if !squares.is_empty() {
+                return Err(pyo3::exceptions::PyValueError::new_err("income squares without income"));
+            }
+            return Ok(None);
+        }
+        if tables.purse.is_none() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "income without a purse to pay it into; the validator refuses it",
+            ));
+        }
+        let mut masks = [SquareSet::EMPTY; 2];
+        for square in squares {
+            let (player, square) = (square as usize / tables.n_squares, square as usize % tables.n_squares);
+            if player > 1 {
+                return Err(pyo3::exceptions::PyValueError::new_err("an income square past the board"));
+            }
+            masks[player].set(square);
+        }
+        Ok(Some(Box::new(IncomeTables { per_piece, masks })))
+    }
+
     fn purse_rule(tables: &Tables, source: &Bound<'_, PyDict>) -> PyResult<Option<Box<PurseTables>>> {
         let purse_start: i32 = field(source, keys::PURSE_START)?;
         let zobrist_purse: Vec<u64> = field(source, keys::ZOBRIST_PURSE)?;
@@ -4392,6 +4883,29 @@ impl Tables {
         let near_squares: Vec<u8> = field(source, keys::PURSE_NEIGHBOUR_SQUARES)?;
         // TC9c (§5.10): who a capture's bounty is paid to.
         let to_loser: bool = field(source, keys::PURSE_TO_LOSER)?;
+        // H1 (`docs/plan-hunger.md` §2.2): the move-cost table, empty without upkeep. The rules
+        // whose arrival `Game::move_cost` cannot read off the word are refused beside it
+        // (`bridge._upkeep_holds`); the structural ones are refused here too.
+        let upkeep: Vec<u16> = field(source, keys::PURSE_UPKEEP)?;
+        let upkeep_new: bool = field(source, keys::PURSE_UPKEEP_NEW)?;
+        if !upkeep.is_empty() && upkeep.len() != 2 * tables.n_types * tables.n_squares {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a move-cost table that is not two players' types by squares",
+            ));
+        }
+        if upkeep.is_empty() && upkeep_new {
+            return Err(pyo3::exceptions::PyValueError::new_err("upkeep_new without a move-cost table"));
+        }
+        // H4 (`docs/plan-hunger.md` §R4): each (player, type)'s mean move cost, the evaluator's
+        // moves channel; empty exactly when the move-cost table is.
+        let upkeep_mean: Vec<f64> = field(source, keys::PURSE_UPKEEP_MEAN)?;
+        if upkeep_mean.len() != if upkeep.is_empty() { 0 } else { 2 * tables.n_types }
+            || upkeep_mean.iter().any(|mean| !mean.is_finite() || *mean < 0.0)
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a move-cost mean that is not one per player and type beside the move-cost table",
+            ));
+        }
         let contested = !hire.is_empty() || !bribe.is_empty();
         if (!hire.is_empty() && hire.len() != tables.n_types)
             || (!bribe.is_empty() && bribe.len() != tables.n_types)
@@ -4417,6 +4931,9 @@ impl Tables {
             near_index,
             near_squares,
             to_loser,
+            upkeep,
+            upkeep_new,
+            upkeep_mean,
         })))
     }
 
@@ -5388,6 +5905,7 @@ pub mod keys {
         FACING_PATHS => "facing_paths",
         FORBID_CHECK => "forbid_check",
         FORBID_IMMOBILITY => "forbid_immobility",
+        PASSES => "passes",
         GOAL_DIAMETER => "goal_diameter",
         GOAL_DISTANCE => "goal_distance",
         GOAL_DISTANCE_EACH => "goal_distance_each",
@@ -5431,6 +5949,7 @@ pub mod keys {
         NEIGHBOUR_SQUARES => "neighbour_squares",
         NEUTRAL_CONTROL => "neutral_control",
         NEUTRAL_TAKES_ROYAL => "neutral_takes_royal",
+        NEUTRAL_SHARED => "neutral_shared",
         NO_PROGRESS_DRAW => "no_progress_draw",
         NPC_BOUNTY => "npc_bounty",
         PIECE_BOUNTY => "piece_bounty",
@@ -5444,6 +5963,11 @@ pub mod keys {
         PURSE_NEIGHBOUR_INDEX => "purse_neighbour_index",
         PURSE_NEIGHBOUR_SQUARES => "purse_neighbour_squares",
         PURSE_TO_LOSER => "purse_to_loser",
+        PURSE_UPKEEP => "purse_upkeep",
+        PURSE_UPKEEP_NEW => "purse_upkeep_new",
+        PURSE_UPKEEP_MEAN => "purse_upkeep_mean",
+        INCOME_PER_PIECE => "income_per_piece",
+        INCOME_SQUARES => "income_squares",
         ZOBRIST_PURSE => "zobrist_purse",
         NPC_NEXT => "npc_next",
         ONE_WAY_TYPES => "one_way_types",
@@ -5464,9 +5988,12 @@ pub mod keys {
         PROMO_SQUARES => "promo_squares",
         PROMO_TARGETS_FLAT => "promo_targets_flat",
         PROMO_TARGETS_INDEX => "promo_targets_index",
+        REACH_BOTH => "reach_both",
+        REACH_COUNT => "reach_count",
         REACH_LEAVES => "reach_leaves",
         REACH_PIECE_TYPE => "reach_piece_type",
         REACH_PIECE_TYPES => "reach_piece_types",
+        REACH_REMOVES => "reach_removes",
         REACH_RESULT => "reach_result",
         REACH_SAFE => "reach_safe",
         REACH_SQUARES => "reach_squares",
@@ -5494,6 +6021,10 @@ pub mod keys {
         TERRITORY_REPAINTS => "territory_repaints",
         TERRITORY_WIN_AT => "territory_win_at",
         TURN_MOVES => "turn_moves",
+        TURN_PARTS_ANY => "turn_parts_any",
+        TURN_PARTS_NOBODY => "turn_parts_nobody",
+        TURN_PARTS_OPTIONAL => "turn_parts_optional",
+        TURN_PARTS_OWN => "turn_parts_own",
         TURN_RAMP => "turn_ramp",
         WIDTH => "width",
         WIN => "win",
@@ -5523,6 +6054,8 @@ pub mod keys {
         PUSH_STRENGTH => "push_strength",
         PUSH_STAND => "push_stand",
         ZOBRIST_PUSH_BAR => "zobrist_push_bar",
+        ZOBRIST_BANKED => "zobrist_banked",
+        ZOBRIST_PARTS => "zobrist_parts",
         NPC_RESPAWN => "npc_respawn",
         ZOBRIST_RESPAWN => "zobrist_respawn",
         NPC_PREV => "npc_prev",
@@ -5538,6 +6071,7 @@ pub mod keys {
         POUNCE_SPLIT => "pounce_split",
         POUNCE_REACH_SCREEN => "pounce_reach_screen",
         HOP_SCREEN_TYPES => "hop_screen_types",
+        HOP_RUNS => "hop_runs",
         ZOBRIST_SIM => "zobrist_sim",
         ZOBRIST_PIECES => "zobrist_pieces",
         ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",

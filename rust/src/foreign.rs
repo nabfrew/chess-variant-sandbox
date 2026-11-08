@@ -8,7 +8,7 @@
 //! | candidates | frame | may land on |
 //! |---|---|---|
 //! | the opponent's pieces a command sight covers (Q1007c, `docs/archive/plan-schema-31.md` §3) | the owner's | empty squares; under `captures_own` without disarm, the owner's own non-royal pieces |
-//! | nobody's `MAJORITY` pieces the mover holds (TC3, `docs/plan-turncoat.md` §4) | frame 0 | empty squares; the mover's opponent's non-royal pieces its `captures` allow |
+//! | nobody's `MAJORITY` pieces the mover holds (TC3, `docs/plan-turncoat.md` §4), and every shared one (TS2, `docs/plan-tessabi.md` §2) | frame 0 | empty squares; the mover's opponent's non-royal pieces its `captures` allow |
 //!
 //! Both feed the same per-piece walk, `push_foreign_piece`. Every foreign move excludes
 //! castling, en passant, drops and promotion, and every one is verified for the mover's royal
@@ -108,10 +108,14 @@ impl<'t> Game<'t> {
         let rule = t.majority.as_deref().expect("checked above");
         for origin in self.occupied()[WILD].iter() {
             let value = self.board[origin];
-            if t.kind_of(value) != CONTROL_MAJORITY || self.controller_of(origin) != player as i8 {
+            if t.kind_of(value) != CONTROL_MAJORITY {
                 continue;
             }
             let piece_type = t.type_of(value);
+            // TS2: a shared type is the side to move's whoever stands next to it.
+            if !rule.shared(piece_type) && self.controller_of(origin) != player as i8 {
+                continue;
+            }
             let royals = rule.takes_royal(piece_type);
             self.push_foreign_piece(origin, piece_type, 0, player, Some((low, high)), royals, out);
         }

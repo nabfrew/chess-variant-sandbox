@@ -302,11 +302,15 @@ class TestTheRoundRoster:
         )
 
     def test_the_round_ladder_has_the_alternating_ladders_shape(self) -> None:
-        """Eight places, the alternating ladder's budgets at sixteen times (Q944a,
-        `round-roster-budgets.md` §6), the same factor the design loop's roster maps by."""
+        """Eight places, `ROUND_LADDER_BUDGETS` at sixteen times (Q944a,
+        `round-roster-budgets.md` §6), the same factor the design loop's roster maps by.
+        The budgets are the alternating ladder's before its shift (`plan-ladder-shift.md`
+        §2): the round ladder stayed where it was, so it no longer reads `LADDER_BUDGETS`."""
         from chess_variant_sandbox.loop.screen import ROUND_BUDGET_FACTOR, round_roster
 
-        budgets = [int(a.split("nodes=")[1]) for a in corpus.CANONICAL_AGENTS if "nodes=" in a]
+        budgets = list(corpus.ROUND_LADDER_BUDGETS)
+        assert len(budgets) == len(corpus.LADDER_BUDGETS)
+        assert corpus.LADDER_BUDGETS == (400, 800, 1600, 3200, 6400, 25600)
         assert ("random", "greedy") + tuple(
             f"matrix:nodes={budget * ROUND_BUDGET_FACTOR}" for budget in budgets
         ) == corpus.ROUND_AGENTS

@@ -866,7 +866,7 @@ const MARK_KINDS = {
   // the position on screen (`Engine.controller_of`, the snapshot's `held`). A tie, zero
   // against zero included, is nobody's and draws no ring.
   holder: { colour: 'var(--holder)', inset: 0.06, corner: 'bottom', name: 'gold ring',
-            label: "a piece nobody owns, held by the side of its bead: more of that side's pieces stand next to it, so that side may move it" },
+            label: "a piece nobody owns, held by the side of its bead: more of that side's pieces stand next to it (or, shared, it is that side's turn), so that side may move it" },
   // A promotion zone: hatched ground, with no beads. Whose zone it is goes in the legend
   // line (`zoneWords`), because a bead on a square was read as a dot, a pick or a piece.
   zone: { colour: 'var(--zone)', inset: 0, corner: 'bottom', shape: 'hatch',
@@ -2913,5 +2913,9 @@ function purseWords(n) {
 
 function purseTitle(rule) {
   const spend = (rule.bribe || []).some(Boolean) ? 'buy, hire or bribe' : 'buy or hire';
-  return `coins to ${spend} pieces with; taking a piece with a bounty fills it, up to ${rule.cap}`;
+  // H2 (`docs/plan-hunger.md` §3): income fills it too, at the start of each turn.
+  const income = rule.income
+    ? `; each turn starts by paying ${coinsWord(rule.income.perPiece)} for each of its pieces on the squares that earn`
+    : '';
+  return `coins to ${spend} pieces with; taking a piece with a bounty fills it${income}, up to ${rule.cap}`;
 }

@@ -68,7 +68,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.engine import Engine
-from chess_variant_sandbox.measurement import ROOT, built_fingerprint, tables_cache_path
+from chess_variant_sandbox.measurement import ROOT, built_fingerprint, fold_crlf, tables_cache_path
 from chess_variant_sandbox.puzzles import (
     FORMATS,
     LOST,
@@ -324,11 +324,73 @@ def offered(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> i
             answer = 0 if found is None else len(found.positions)
             with _LOCK:
                 _CACHE[key] = (stamp, found)
-            _PROOFS.put(digest, record_digest, spec_digest, answer)
+            _PROOFS.put(digest, record_digest, spec_digest, answer, _listing(found))
             _PROOFS.save()
         with _LOCK:
             _COUNTED[key] = (stamp, answer)
         return answer
+
+
+Listing = tuple[str, tuple[str, ...]]
+"""What the sitemap reads of a record (`listed`): the day it was made as the record says it,
+and the offered positions' ids in the page's order."""
+
+
+def _listing(found: Record | None) -> Listing | None:
+    return None if found is None else (found.made, tuple(one.id for one in found.positions))
+
+
+_LISTED: dict[tuple[str, str], tuple[tuple[int, int, str], Listing | None]] = {}
+"""`listed`'s answers this process took from the store or from a replay, by record version."""
+
+
+def listed(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> Listing | None:
+    """The record's `made` and its offered positions' ids, or None where `load` is None.
+
+    Exactly `load`'s record cut down to what the sitemap prints, and kept on disk beside
+    `offered`'s count under the same key (C15f, `docs/plan-performance.md`): a process's
+    first `/sitemap.xml` used to replay every record, 7,626 positions and 102 compiles, 31 s,
+    and now reads the answers a library listing (`offered`) or an earlier process stored. A
+    record the store has no listing for is replayed once (`load`) and its listing stored.
+    """
+    if spec is None:
+        return None
+    where = path(runs_dir, digest)
+    try:
+        held = where.stat()
+    except OSError:
+        return None
+    stamp = (held.st_mtime_ns, held.st_size, json.dumps(spec, sort_keys=True))
+    key = (str(where), digest)
+    with _LOCK:
+        cached = _CACHE.get(key)
+        if cached is not None and cached[0] == stamp:
+            return _listing(cached[1])
+        known = _LISTED.get(key)
+        if known is not None and known[0] == stamp:
+            return known[1]
+    try:
+        body = where.read_bytes()
+    except OSError:
+        return None
+    record_digest = hashlib.sha256(body).hexdigest()
+    spec_digest = hashlib.sha256(stamp[2].encode("utf-8")).hexdigest()
+    stored = _PROOFS.listing(digest, record_digest, spec_digest)
+    if stored is not None:
+        answer = stored[0]
+    else:
+        # These bytes, as `offered` replays them, so what is stored answers the digest it is
+        # stored under; the replay is left for the game page as `offered` leaves one.
+        found = _replayed(body, digest, spec)
+        with _LOCK:
+            _CACHE[key] = (stamp, found)
+        answer = _listing(found)
+        _PROOFS.put(digest, record_digest, spec_digest,
+                    0 if found is None else len(found.positions), answer)
+        _PROOFS.save()
+    with _LOCK:
+        _LISTED[key] = (stamp, answer)
+    return answer
 
 
 # ------------------------------------------------------- the replay's answers' store
@@ -340,7 +402,7 @@ def offered(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> i
 
 PROOF_ANSWERS_NAME = "library-proven.json"
 # Moves when the file's shape does, what a stored answer means, or how the key is read.
-_PROOF_FORMAT = 1
+_PROOF_FORMAT = 2  # 2 (C15f): an entry carries `listed`, the sitemap's reading
 _HERE = "chess_variant_sandbox/site/proven.py"
 _PUZZLES = "chess_variant_sandbox/puzzles.py"
 
@@ -420,10 +482,12 @@ def proof_files_in(
 
 def proof_key(core: str, files: Iterable[tuple[str, bytes]]) -> str:
     """SHA-256 over `_PROOF_FORMAT`, a core build fingerprint and ``files`` by repository
-    path and exact bytes: `proof_answers_key` for any core and tree."""
+    path and bytes read LF: `proof_answers_key` for any core and tree. Folded CRLF to LF
+    as `library.card_key` is, so a CRLF checkout keys its commit as `deploy/proven.py
+    key_at` reads it from the blobs (Q1151)."""
     digest = hashlib.sha256(f"library-proven {_PROOF_FORMAT}\0core {core}\0".encode())
     for name, body in files:
-        digest.update(name.encode("utf-8") + b"\0" + body + b"\0")
+        digest.update(name.encode("utf-8") + b"\0" + fold_crlf(body) + b"\0")
     return digest.hexdigest()
 
 
@@ -496,9 +560,33 @@ class ProofAnswers:
             return None
         return int(entry["offered"])
 
-    def put(self, game: str, record: str, spec: str, offered: int) -> None:
+    def listing(self, game: str, record: str, spec: str) -> tuple[Listing | None] | None:
+        """`listed`'s answer stored for these bytes and spec, in a one-tuple (its answer can
+        be None), or None where none is stored (an entry from before C15f has none)."""
         with self._lock:
-            self._current()[game] = {"record": record, "spec": spec, "offered": int(offered)}
+            entry = self._current().get(game)
+        if entry is None or entry["record"] != record or entry["spec"] != spec:
+            return None
+        if "listed" not in entry:
+            return None
+        held = entry["listed"]
+        if held is None:
+            return (None,)
+        if (isinstance(held, dict) and isinstance(held.get("made"), str)
+                and isinstance(held.get("ids"), list)
+                and all(isinstance(one, str) for one in held["ids"])
+                and len(held["ids"]) == entry["offered"]):
+            return ((held["made"], tuple(held["ids"])),)
+        return None
+
+    def put(self, game: str, record: str, spec: str, offered: int,
+            listed: Listing | None = None) -> None:
+        with self._lock:
+            self._current()[game] = {
+                "record": record, "spec": spec, "offered": int(offered),
+                "listed": None if listed is None
+                else {"made": listed[0], "ids": list(listed[1])},
+            }
             self._added = True
 
     def save(self) -> None:

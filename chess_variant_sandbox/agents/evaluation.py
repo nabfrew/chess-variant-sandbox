@@ -182,6 +182,16 @@ RESTED_ROYAL_PIECES = ROUND_WIN_PIECES / 2.0
 # as ``_core.SPY_PIECES`` and held to this one by ``tests/test_spy_term.py``.
 SPY_PIECES = 1.0
 
+# H4 (`docs/plan-hunger.md` §5, §R4): the income term's horizon, in turns. Under
+# ``rules.income`` each coin a side's pieces earn as they stand (at the start of its turn) counts
+# this many coins at the coin's worth (``coin_value``), mine minus theirs, so the evaluator sees
+# the income a developing move gives up. One constant for the shape of quantity (a flow read as
+# a stock), never per rule. Read only where ``Evaluator.income`` is on, which only a minimax
+# player under the ``income`` search bit sets, so the analysis probe's ruler is unchanged.
+# ``rust/src/eval.rs::INCOME_TURNS`` is the core's copy, exported as ``_core.INCOME_TURNS`` and
+# held to this one by ``tests/test_coin_worth.py``.
+INCOME_TURNS = 4.0
+
 # The move kinds that take what stands on their target square (`engine-and-spec.md`, *what
 # counts as a capture*, less en passant, whose victim is elsewhere): normal, promotion,
 # sweep, portal. A drop never lands on a piece, a fold's own move takes nothing, and a
@@ -340,6 +350,10 @@ class Evaluator:
     # per-player copy (every player on the built-in objective reads it); a field here so a test
     # and the term's duel can hold a player without it.
     coins: bool = True
+    # H4 (`docs/plan-hunger.md` §5): whether the income term is read. Off unless a minimax player
+    # under the ``income`` search bit turns it on (`minimax.MinimaxAgent`, as
+    # `agents.rs::Player::new` calls `Evaluator::with_income`).
+    income: bool = False
     # The denominator of the prey share, derived rather than passed. Not a constructor
     # argument on purpose: a value table and the pool it is scaled against are one fact
     # about one ruleset, and a caller able to hand in a mismatched pair would be a
@@ -790,6 +804,14 @@ class Evaluator:
             # TC5 (`docs/plan-turncoat.md` §5.6): the purse, mine minus theirs, at the
             # market's best rate (`eval.rs`'s `coin_weight`).
             score += coins * float(state.purse[player] - state.purse[1 - player])
+            if self.income and self.spec.income is not None:
+                # H4: what each side's pieces earn as they stand, mine minus theirs, over
+                # ``INCOME_TURNS`` turns at the coin's worth (`eval.rs`'s `income_weight`).
+                edge = income_earned(self.spec, state, player) - income_earned(
+                    self.spec, state, 1 - player
+                )
+                if edge:
+                    score += coins * INCOME_TURNS * float(edge)
         if self.spy_pieces and self.spec.spy is not None:
             edge = self.spy_edge(state.board, player)
             if edge:
@@ -927,6 +949,16 @@ class Evaluator:
                 # says nor when it decides anything.
                 clock = min(state.ply / spec.max_plies, 1.0)
                 total += _clamp((mine_score - theirs_score) / spread) * clock
+
+        # TS1 (`docs/plan-tessabi.md` §1): a goal counted to more than one arrival, or one
+        # that banks: each side's tally as a share of the count, all of the goal weight.
+        reach = spec.reach
+        if reach is not None and (reach.removes or reach.count > 1):
+            count = float(reach.count)
+            mine_tally = reach_tally(spec, state, player) / count
+            theirs_tally = reach_tally(spec, state, 1 - player) / count
+            direction = {"win": 1.0, "draw": 0.0, "loss": -1.0}[reach.result]
+            total += _clamp(mine_tally - theirs_tally) * direction
 
         return total
 
@@ -1126,11 +1158,68 @@ def coin_value(spec: CompiledSpec, values: tuple[float, ...]) -> float:
         for piece_type, cost in enumerate(costs):
             if cost:
                 best = max(best, values[piece_type] / cost)
-    return best
+    # H4 (`docs/plan-hunger.md` §5, §R4): and over moves under upkeep, last.
+    return max(best, moves_rate(spec, values))
+
+
+def moves_rate(spec: CompiledSpec, values: tuple[float, ...]) -> float:
+    """H4 (`docs/plan-hunger.md` §R4): **the moves channel**, what a coin buys in moves:
+    ``mean value / mean move cost``, both over the opening position's non-royal pieces of
+    either player whose type has a move cost, a piece's move cost its type's mean over the
+    squares it may stand on (``PurseRule.upkeep_mean``, the compiler's). One count under both
+    means, so the rate is the sum of values over the sum of costs, added in square order. 0.0
+    without upkeep. ``rust/src/eval.rs::moves_rate`` is the same function."""
+    purse = spec.purse
+    if purse is None or not purse.upkeep_mean:
+        return 0.0
+    value = 0.0
+    cost = 0.0
+    for raw in spec.initial_board:
+        if raw == 0:
+            continue
+        owner = spec.owner_of(raw)
+        piece_type = spec.type_of(raw)
+        if owner > 1 or piece_type in spec.royal_types:
+            continue
+        mean = purse.upkeep_mean[owner * spec.n_types + piece_type]
+        if mean == 0.0:
+            continue
+        value += values[piece_type]
+        cost += mean
+    return value / cost if cost > 0.0 else 0.0
+
+
+def income_earned(spec: CompiledSpec, state: GameState, player: int) -> int:
+    """H2/H4: what ``player`` would be paid at the start of a turn on this board: ``per_piece``
+    for each of their pieces on their income squares (a piece nobody owns earns for nobody).
+    0 without income. `game.rs::Game::income_of` is the same count."""
+    income = spec.income
+    if income is None:
+        return 0
+    board = state.board
+    standing = sum(
+        1 for square in income.squares[player]
+        if board[square] and spec.owner_of(board[square]) == player
+    )
+    return income.per_piece * standing
 
 
 def _clamp(value: float) -> float:
     return max(-1.0, min(1.0, value))
+
+
+def reach_tally(spec: CompiledSpec, state: GameState, player: int) -> float:
+    """TS1: ``player``'s tally towards a counted goal, its banked pieces plus its listed pieces
+    standing on its own goal. ``rust/src/eval.rs::reach_tally`` is the same reading."""
+    reach = spec.reach
+    assert reach is not None
+    board = state.board
+    standing = sum(
+        1 for square in sorted(reach.squares[player])
+        if board[square] and spec.owner_of(board[square]) == player
+        and reach.admits(spec.type_of(board[square]))
+    )
+    return float(state.banked[player] + standing)
 
 
 def has_goal_terms(spec: CompiledSpec) -> bool:
@@ -1145,7 +1234,14 @@ def has_goal_terms(spec: CompiledSpec) -> bool:
     return bool(
         (spec.territory is not None and spec.territory.win_at > 0)
         or spec.scoring is not None
-        or (spec.reach is not None and _reach_is_priceable(spec, spec.reach))
+        or (
+            spec.reach is not None
+            and (
+                _reach_is_priceable(spec, spec.reach)
+                or spec.reach.removes
+                or spec.reach.count > 1
+            )
+        )
         or spec.check_limit
         or (spec.extinction is not None and spec.extinction.result != "draw")
     )

@@ -2229,17 +2229,20 @@ function withHeld(options, held) {
     ? options : options.concat([[held, String(held)]]);
 }
 
-// The pieces a sight may name in *only these pieces*: every piece of the draft but the wild
-// pieces, which nothing affects, and any it already names.
+// The pieces a sight may name in *only these pieces*: every piece of the draft, and any it
+// already names. A wild piece is offered only where a sight may reach one (SR5f, generation 84,
+// `schema.sight_affects_wild`): under `whose` "any" and an effect other than a command, since
+// a wild piece has no side and nobody commands for it.
 function sightTargets(sight) {
   const wild = new Set(((DRAFT.rules || {}).npcs || []).map(npc => npc && npc.piece));
   const named = Array.isArray(sight.affects) ? sight.affects : [];
   // Q1007d: a royal is never commanded (the validator refuses one named), so a command's row
   // offers none, unless the draft already names one, which stays beside its refusal.
   const command = sight.effect === 'command';
+  const tames = sight.whose === 'any' && !command;
   return (DRAFT.pieces || [])
     .filter((piece, index) => piece && piece.id && (named.includes(piece.id)
-      || (!wild.has(piece.id) && !(command && piece.royal === true))))
+      || ((tames || !wild.has(piece.id)) && !(command && piece.royal === true))))
     .map(piece => [piece.id, piece.name || piece.id]);
 }
 

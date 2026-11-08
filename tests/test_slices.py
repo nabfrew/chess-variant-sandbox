@@ -573,7 +573,7 @@ def test_a_sliced_measurement_plays_the_games_own_roster_by_default(
     with pytest.raises(RuntimeError, match="stopped"):
         slices.measure_in_slices(dull_spec, tmp_path)
     assert seen[0] == slices.roster_for(dull_spec)
-    assert "minimax:net=0123456789ab,nodes=100" in seen[0].agents
+    assert "minimax:net=0123456789ab,nodes=400" in seen[0].agents
 
 
 class TestAUnitAsText:

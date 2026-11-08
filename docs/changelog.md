@@ -12,6 +12,65 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-08
+
+### Scores now come from stronger computer players
+
+Every game in the library was replayed with the measuring players searching four times further: 400 to 25,600 positions a move instead of 100 to 6,400, so even the weakest player now looks ahead on nearly every game. Games whose old score leaned on a near-random weakest player fell: crazyhouse from 0.937 to 0.847, circe from 0.932 to 0.847, torus chess from 0.858 to 0.775 and shogi from 0.887 to 0.858. Rear guard torus chess, first at 0.954, is now level with chess (0.937 against 0.938); chess rose from 0.907. The new top three are the herd (0.982), one-way cylinder chess (0.956) and one-way torus chess (0.956). Four games are no longer viable (demotion chess, shut wormhole, divide and ferry), and jeson mor now is. Tessabi's score is no longer provisional and reads 0.469.
+
+The computer players also got faster, and a searching player that runs out of time before finishing its first look at the position now plays the best move it found rather than the first one it tried.
+
+## 2026-11-07
+
+### A new game: Tessabi
+
+Tessabi, from tessabi.com, is in the library: runners race to bank pieces past a shared gatekeeper, each turn a runner move and an optional gatekeeper move in either order, with leaps over whole rows that push the jumped pieces back. Its score is provisional until the library is re-measured on the new ladder. Two rule lines that the pages of Tessabi, Boulder, Drover and Dohyo stated wrongly are gone.
+
+### A new game: Leapfrog
+
+A piece can now leap a whole row of pieces in one move, and the leap can push each piece it jumps one square back. In Leapfrog, frogs race across the board this way. Nothing is ever captured, so close to half its games end drawn.
+
+### A new game: Drover
+
+A turn can now come in parts. In Drover each turn is a runner move plus an optional boulder move, made in either order, and the play page has a button to skip the boulder move.
+
+### A new game: Boulder
+
+A piece can now belong to both players: either side may move it on their turn. Boulder is the first game to use this. Two sides race their runners across the board, as in Breakthrough, past a shared boulder that either player can push onto an opposing runner to crush it, and that nobody can capture.
+
+### A new game: Crossings
+
+Games can now score by getting pieces home: a runner that reaches the far row leaves the board and counts for its side, and
+the first to bring a set number home wins. Crossings is the first such game in the library, first to three, and its page
+shows how many each side has banked.
+
+## 2026-11-06
+
+### A blockable jumper can follow a turning path
+
+A piece whose jump can be blocked, like the xiangqi horse, can now be given a range and a circling or zigzag path: it keeps
+jumping, turning at each jump, and a piece standing in the way of any jump stops it there.
+
+### The learned players are quicker too
+
+The computer players that judge positions with a learned network now play about a fifth faster, choosing exactly the
+same moves as before.
+
+### The computer players think faster
+
+The computer players now find the same moves in less time. Games with drops, such as shogi and crazyhouse, take about
+half as long to play as before, and most chess-like games are 10 to 40% quicker. Every move they choose is unchanged.
+
+### Pages load faster
+
+The games list, a game's page and the designer now answer three to thirty times faster, with exactly the same content.
+
+### Clearer move lists in games played in rounds
+
+In a game where both players move at once, the move list now says when a piece was shot, when a strike at a piece nobody
+owns missed, and names a bought piece correctly. In the designer, a piece's sight can now be limited to wild pieces too.
+A spy game's rules and move emails no longer say a phase lasts for the rest of the game, since a spy can now be won back.
+
 ## 2026-11-05
 
 ### Longer turns, rounds and spies that change hands

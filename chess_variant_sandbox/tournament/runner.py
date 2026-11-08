@@ -30,7 +30,7 @@ from __future__ import annotations
 import math
 import os
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -233,6 +233,41 @@ def _paired_schedule(config: TournamentConfig) -> list[tuple[int, str, str]]:
     return tasks
 
 
+def seat_budget(agent: str) -> int:
+    """What one seat costs to play, as the dispatch order reads it: its ``nodes``.
+
+    A proxy, never a measurement: ``greedy`` searches one ply (1) and ``random`` nothing
+    (0); any other player without a budget counts as one ply.
+    """
+    config = parse_agent(agent)
+    nodes = dict(config.options).get("nodes")
+    if isinstance(nodes, int | float):
+        return int(nodes)
+    return 0 if config.kind == "random" else 1
+
+
+def combined_budget(first: str, second: str) -> int:
+    """Both seats' budgets: how long a game of this pairing is expected to take."""
+    return seat_budget(first) + seat_budget(second)
+
+
+def dispatch_order(tasks: list[tuple[int, str, str]]) -> list[int]:
+    """The positions of ``tasks`` in the order the core should start them (Q1117, C9).
+
+    Longest first by combined budget, ties in schedule order, so a pool's last game is a
+    short one rather than a top-rung self-play (`docs/reference/perf-c9-one-schedule.md`).
+    A pure function of the schedule; it decides when a game starts and nothing in it.
+    """
+    budgets: dict[str, int] = {}
+
+    def cost(agent: str) -> int:
+        if agent not in budgets:
+            budgets[agent] = seat_budget(agent)
+        return budgets[agent]
+
+    return sorted(range(len(tasks)), key=lambda i: -(cost(tasks[i][1]) + cost(tasks[i][2])))
+
+
 def run_tournament(
     spec: dict[str, Any],
     config: TournamentConfig,
@@ -248,17 +283,68 @@ def run_tournament(
     then once per outside game (Q446). It is told, never asked: nothing it does can
     change which games are played or their seeds.
     """
-    tasks = schedule(config)
-    engine = Engine(spec)
-    natives = [native_spec(agent, engine.spec.hash) for agent in config.agents]
-    records = _play(engine, config, tasks, natives, progress, on_progress)
+    return run_schedules(spec, [config], progress, on_progress)[0]
 
-    return TournamentResult(
-        ruleset_hash=spec_hash(spec),
-        ruleset_name=spec["name"],
-        config=config,
-        records=records,
-    )
+
+def merged_config(configs: list[TournamentConfig]) -> TournamentConfig:
+    """One config that can play every schedule of ``configs`` as one.
+
+    Its roster is every config's players, in first appearance; the rest is the first's.
+    Configs that disagree on what a game keeps (`collect_series`) or on the threads are
+    refused: one core call plays every game alike.
+    """
+    first = configs[0]
+    for config in configs[1:]:
+        if (config.collect_series, config.workers) != (first.collect_series, first.workers):
+            raise ValueError(
+                "schedules played as one schedule must agree on collect_series and workers"
+            )
+    roster = tuple(dict.fromkeys(agent for config in configs for agent in config.agents))
+    return replace(first, agents=roster)
+
+
+def run_schedules(
+    spec: dict[str, Any],
+    configs: list[TournamentConfig],
+    progress: bool = False,
+    on_progress: Callable[[int], None] | None = None,
+) -> list[TournamentResult]:
+    """Several schedules of one game played as one, a result per config (Q1117, C9).
+
+    Each config's schedule is what it would be alone (seeds by its own position), so each
+    result's records are the records its own `run_tournament` writes, in its own schedule
+    order. Played together, the core dispatches all of them longest first, and the pool's
+    tail is one game of the whole set rather than one per schedule.
+    """
+    if not configs:
+        return []
+    merged = merged_config(configs)
+    schedules = [schedule(config) for config in configs]
+    tasks = [task for tasks in schedules for task in tasks]
+    engine = Engine(spec)
+    natives = [native_spec(agent, engine.spec.hash) for agent in merged.agents]
+    records = _play(engine, merged, tasks, natives, progress, on_progress)
+    return results_by_config(spec, configs, schedules, records)
+
+
+def results_by_config(
+    spec: dict[str, Any],
+    configs: list[TournamentConfig],
+    schedules: list[list[tuple[int, str, str]]],
+    records: list[GameRecord],
+) -> list[TournamentResult]:
+    """``records``, the concatenated schedules' games, cut back into one result a config."""
+    results: list[TournamentResult] = []
+    start = 0
+    for config, tasks in zip(configs, schedules, strict=True):
+        results.append(TournamentResult(
+            ruleset_hash=spec_hash(spec),
+            ruleset_name=spec["name"],
+            config=config,
+            records=records[start : start + len(tasks)],
+        ))
+        start += len(tasks)
+    return results
 
 
 def _split_by_native_form(
@@ -365,10 +451,14 @@ def _run_native(
     workers = min(config.resolved_workers(), max(1, len(tasks)))
     size = max(workers, math.ceil(len(tasks) / PROGRESS_CHUNKS)) if progress else len(tasks)
     total = len(tasks) if total is None else total
+    # Q1117 (C9): the core starts games in the order it is handed them, so hand it the
+    # longest first; the records are put back in schedule order below.
+    order = dispatch_order(tasks)
+    dispatched = [tasks[index] for index in order]
 
     records: list[GameRecord] = []
-    for start in range(0, len(tasks), size):
-        chunk = tasks[start : start + size]
+    for start in range(0, len(dispatched), size):
+        chunk = dispatched[start : start + size]
         results = engine.core.run_tournament(
             specs,
             values,
@@ -384,7 +474,10 @@ def _run_native(
             print(f"  {len(records)}/{total} games", flush=True)
         if on_progress is not None:
             on_progress(len(records))
-    return records
+    placed: list[GameRecord | None] = [None] * len(tasks)
+    for index, record in zip(order, records, strict=True):
+        placed[index] = record
+    return [record for record in placed if record is not None]
 
 
 def _run_python(

@@ -88,12 +88,14 @@ class TestTheFiveGames:
 
     def test_its_agent_string_is_the_measuring_rosters_top_rung(self) -> None:
         """The player the site rates is the player the score is measured with at 6,400
-        nodes (`corpus.canonical_agents`), one identity, one string."""
+        nodes (`corpus.canonical_agents`), one identity, one string. Since the ladder shift
+        (`docs/plan-ladder-shift.md`, 2026-11-05) 6,400 is the fifth rung, not the top, and
+        still a measuring rung, so the net's acceptance budget stays a rated player."""
         from chess_variant_sandbox import corpus
 
         for digest, procedure in ROLLED_OUT.items():
             (entry,) = opponents.learned_for(digest, NETS)
-            assert entry.agent == corpus.canonical_agents(digest, NETS)[-1]
+            assert entry.agent in corpus.canonical_agents(digest, NETS)[2:]
             assert entry.agent == f"minimax:net={procedure},nodes=6400"
 
     def test_another_games_net_is_never_rated_here(self) -> None:

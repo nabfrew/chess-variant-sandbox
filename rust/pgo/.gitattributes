@@ -1,0 +1,2 @@
+# The PGO profile is llvm-profdata's binary format: byte for byte, never line-translated.
+*.profdata -text

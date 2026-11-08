@@ -1458,7 +1458,7 @@ def sweep(
     for found in waiting:
         position = session(connection, found.id)
         if position.engine.is_round(position.state):
-            # A round (Q918f; a spy game's once its rounds begin, Q935e): whoever has not
+            # A round (Q918f; a spy game's while it is in rounds, Q935e): whoever has not
             # sealed this round, or a draw if neither has; in an announced round, whichever
             # one owes. `correspondence`'s to read off the sealed move.
             from chess_variant_sandbox.site import correspondence

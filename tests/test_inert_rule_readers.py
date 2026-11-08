@@ -184,6 +184,8 @@ READERS: dict[str, dict[str, str]] = {
         "`MOVE_SWEEP` arm, so only after a capture",
         "game.rs::sweep_blast_for_filter": "SR6c: the filter's sweep blast, reached only from "
         "a `MOVE_SWEEP`, so only from a capture",
+        "upkeep.rs::strike_stays": "H1: whether a capture explodes rather than a strike keeping "
+        "its mover, behind `captured != 0`, which no move reaches when nothing can be taken",
     },
     # -- cases 5 and 6.
     "drops": {
@@ -252,6 +254,8 @@ READERS: dict[str, dict[str, str]] = {
         "no move allowed to give check (case 11, which excludes an explosion)",
         "game.rs::make_fold": "schema 22: `make`'s `delivered` for a fold's own move, the same "
         "count under the same two cases",
+        "pass.rs::make_pass": "H3: `make`'s `delivered` for a pass, the same count under the "
+        "same two cases",
         "game.rs::schema_two_ending": "the ending, on a count that never advances",
         "tables.rs::has_v2_endings": "the gate; see `bare_royal`",
         "tables.rs::has_goal_terms": "the evaluator's gate, a disjunction matching "
@@ -264,6 +268,8 @@ READERS: dict[str, dict[str, str]] = {
     "forbid_check": {
         "game.rs::restrict": "guarded by `!t.royal_types.is_empty()` in the core itself "
         "(case 9); in case 11 it is the rule, not the refused one",
+        "pass.rs::push_pass": "H3: the same filter asked of the null move, guarded by "
+        "`!t.royal_types.is_empty()` (case 9); in case 11 it is the rule",
     },
     # -- case 10.
     "royal_facing_forbidden": {
@@ -319,6 +325,14 @@ READERS: dict[str, dict[str, str]] = {
         "rounds.rs::held_arrivals": "SR7n (R20, O11's reading in rounds): whether a held "
         "piece's arrival stands on its holder's goal, read only under `reach_held`, of the "
         "type standing on the target after the round",
+        "game.rs::write_bank": "`make`'s bank, TS1 (`reach.removes`): takes off a listed piece "
+        "standing on its goal, so a piece that never stands is never banked",
+        "game.rs::compute_hash": "TS1: the banks' key, a constant while nothing is banked, "
+        "which a piece that never stands never is",
+        "eval.rs::goal_progress": "TS1's reach tally: the bank and the listed pieces standing on "
+        "their goal, neither of which a piece that never stands fills",
+        "endgame.rs::refusal": "TS1: the solver refuses a bank (`reach_removes`), a refusal "
+        "named by the rule's flag, never by who stands",
     },
     "goal_distance": {
         "eval.rs::goal_distance_of": "the distance of a piece that stands, for the race and "
@@ -338,6 +352,9 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::ending_before_the_clocks": "gates `schema_two_ending`, whose arms are the "
         "ones above",
         "rounds.rs::round_goal_ending": "schema 26's gate on the same arms",
+        "agents.rs::quiet_cannot_win": "C3 (Q1112): an inert ending only keeps the chase "
+        "playing its moves, which is the search as it was; it picks how the chase is asked, "
+        "never what it answers (a checking build asserts the two agree)",
     },
     # -- case 13, the `promotion` half: keyed on a piece standing on, arriving on or
     # leaving a square, which a piece that can never exist does not do.
@@ -375,6 +392,8 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::generate_pseudo_legal_as": "asked of a moving piece's origin",
         "game.rs::push_arrival": "asked of a moving piece's target",
         "game.rs::push_hops": "asked of a hop's empty landing, behind `promoting` (CS4)",
+        "game.rs::push_hop_run": "asked of a run's or displacing hop's empty landing, behind "
+        "`promoting`, as `push_hops` asks it (TS4)",
         "game.rs::push_transits": "asked of a moving piece's exit (schema 19)",
         "game.rs::push_portal_moves": "asked of a moving piece's origin (schema 19)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
@@ -401,6 +420,8 @@ READERS: dict[str, dict[str, str]] = {
     },
     "promotion_targets()": {
         "game.rs::push_hops": "asked of the moving piece at a hop's empty landing (CS4)",
+        "game.rs::push_hop_run": "asked of the moving piece at a run's or displacing hop's "
+        "empty landing, as `push_hops` asks it (TS4)",
         "game.rs::push_arrival": "asked of the moving piece",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
         "push.rs::push_offered": "asked of the pushing piece, as `push_arrival` asks it (Q1074b2)",
@@ -409,6 +430,8 @@ READERS: dict[str, dict[str, str]] = {
     "arriving_value()": {
         "game.rs::write_entry": "`make`'s phase (CS8): the value of a piece entering play "
         "by drop or buy",
+        "upkeep.rs::move_cost": "H1: the type a bought piece arrives as, whose square's cost "
+        "the buy pays, as `write_entry` writes it",
         "game.rs::write_gate": "`make`'s phase (CS8): a gated piece's value, reached only "
         "under `drops.gating`",
         "game.rs::strike_writes": "the value a struck piece becomes where it lands",
@@ -471,6 +494,9 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::compute_in_check": "the same, memoised",
         "game.rs::count_check": "`make`'s phase (CS8): `delivered`, over standing royals",
         "game.rs::make_fold": "schema 22: the same `delivered` after a fold's own move",
+        "pass.rs::make_pass": "H3: the same `delivered` after a pass",
+        "pass.rs::push_pass": "H3: whether the pass gives check under `forbid_check`, over "
+        "standing royals",
         "game.rs::leaves_royal_attacked": "the legality filter, over standing royals",
         "game.rs::generate_checked": "the pin shortcut's single-royal premise",
         "game.rs::restrict": "`forbid_check`'s filter, over standing royals",
@@ -676,6 +702,9 @@ BRIDGE_READERS: dict[str, str] = {
     # Q1074b2: `rust_supports`' push arm, which reads a refused rule only to hold it shut
     # beside a push; it sends nothing across the boundary either.
     "_push_holds": "a support check that refuses the rule beside a push and sends nothing",
+    # H1: `rust_supports`' upkeep arm, which reads drops only to hold it shut beside a move's
+    # cost; it sends nothing across the boundary.
+    "_upkeep_holds": "a support check that refuses the rule beside upkeep and sends nothing",
 }
 
 # Where `bridge.py` may spell the refused keys, and why.
@@ -686,7 +715,7 @@ _INERT_ROWS = (
 BRIDGE_SPELLERS: dict[str, str] = {
     **{
         name: "writes them" for name in BRIDGE_READERS
-        if name not in ("rust_supports", "_push_holds")
+        if name not in ("rust_supports", "_push_holds", "_upkeep_holds")
     },
     "_ENDING_INERT": _INERT_ROWS,
     "_BARE_ROYAL_INERT": _INERT_ROWS,

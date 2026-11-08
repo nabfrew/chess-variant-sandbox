@@ -718,7 +718,7 @@ class TestSeedBySeed:
             calls["score"].append(_Scored(analysis=analysis, weights_version=weights.version))
             return calls["score"][-1]
 
-        monkeypatch.setattr(corpus, "run_tournament", play)
+        monkeypatch.setattr(corpus, "run_schedules", lambda spec, configs, **_: [play(spec, c) for c in configs])
         monkeypatch.setattr(corpus, "analyse_corpus", analyse)
         monkeypatch.setattr(corpus, "score_ruleset", score)
         return calls
@@ -1189,6 +1189,9 @@ class TestAPooledRescoreIsTheSerialOne:
             return real(candidate, *args, **kwargs)
 
         monkeypatch.setattr(corpus, "refresh", counted)
+        # Pool both, the re-analysis too: `pool_plan` would run a lone one serially, and
+        # this test is about what a pool worker writes (the plan is held below).
+        monkeypatch.setattr(cli, "pool_plan", lambda owed, size: dict(owed))
         before = self._tree(library["serial"])
         assert before == self._tree(library["pooled"])
 
@@ -1233,6 +1236,67 @@ class TestAPooledRescoreIsTheSerialOne:
         assert not corpus.poolable(candidate, library["serial"])
         stamp.unlink()
         assert not corpus.poolable(candidate, library["serial"])
+
+
+class TestThePoolIsBoundedByTheLease:
+    """Q-C10: `measure`'s re-score pool never runs wider than the lease its worktree holds."""
+
+    def test_the_size_is_the_ask_or_the_cores_less_one_within_the_lease(self) -> None:
+        from chess_variant_sandbox.cli import measure_pool_size
+
+        assert measure_pool_size(0, None, 16) == 15
+        assert measure_pool_size(0, 10, 16) == 10
+        assert measure_pool_size(12, 10, 16) == 10
+        assert measure_pool_size(3, 10, 16) == 3
+        assert measure_pool_size(0, None, 1) == 1
+        assert measure_pool_size(0, 4, None) == 1
+
+    def test_a_re_analysis_is_pooled_only_when_enough_fill_the_pool(self) -> None:
+        from chess_variant_sandbox.cli import pool_plan
+
+        owed = {"a": "rescore", "b": "reanalyse", "c": "rescore"}
+        assert pool_plan(owed, 10) == {"a": "rescore", "c": "rescore"}
+        assert pool_plan(owed, 1) == {}
+        assert pool_plan({"a": "rescore", "b": "reanalyse"}, 10) == {}
+        many = {str(i): "reanalyse" for i in range(4)} | {"x": "rescore"}
+        assert pool_plan(many, 4) == many
+        assert list(pool_plan(many, 4)) == list(many)
+        assert pool_plan(many, 5) == {}
+
+    def test_the_lease_read_is_the_file_the_script_writes(self, tmp_path: Path) -> None:
+        import importlib.util
+        import subprocess
+        import sys
+        import time
+
+        from chess_variant_sandbox.cli import held_lease_slots
+
+        script = Path(__file__).resolve().parents[1] / ".claude" / "scripts" / "compute_lease.py"
+        found = importlib.util.spec_from_file_location("compute_lease_q_c10", script)
+        assert found is not None and found.loader is not None
+        lease = importlib.util.module_from_spec(found)
+        sys.modules["compute_lease_q_c10"] = lease
+        found.loader.exec_module(lease)
+
+        repo = tmp_path / "a repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        assert held_lease_slots(repo) is None
+
+        leases = lease.lease_dir(repo)
+        root = lease.worktree_root(repo)
+        assert leases is not None and root is not None
+        file = leases / f"{lease.slug(root)}.json"
+        now = time.time()
+        record = {"worktree": str(root), "profile": "heavy", "slots": 10, "tag": "t",
+                  "acquired": now, "expires": now + 600}
+        file.write_text(json.dumps(record), "utf-8")
+        assert held_lease_slots(repo) == 10
+
+        file.write_text(json.dumps({**record, "expires": now - 1}), "utf-8")
+        assert held_lease_slots(repo) is None
+        file.write_text("not json", "utf-8")
+        assert held_lease_slots(repo) is None
 
 
 def _stamp_at(runs: Path, digest: str, name: str, basis: dict[str, Any]) -> None:

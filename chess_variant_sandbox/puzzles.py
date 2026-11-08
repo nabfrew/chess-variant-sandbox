@@ -218,7 +218,42 @@ def reached(engine: Engine, moves: Iterable[Any]) -> GameState | None:
     return state
 
 
-def replays(engine: Engine, row: dict[str, Any]) -> GameState | None:
+class _Walk:
+    """`reached` over many prefixes in turn, each move of a prefix the last one shared put
+    to the engine once (Q1110). A record's rows are in (seed, game, ply) order, so a row
+    shares all but its last few plies with the row before it; the engine is asked the same
+    questions `reached` asks, about the same positions, and answers each once."""
+
+    def __init__(self, engine: Engine) -> None:
+        self.engine = engine
+        self.moves: list[int] = []
+        # `states[i]` is the position after the first `i` of `moves`, each found legal.
+        self.states: list[GameState] = [engine.initial_state()]
+
+    def reach(self, moves: Iterable[Any]) -> GameState | None:
+        try:
+            prefix = [int(move) for move in moves]
+        except (TypeError, ValueError):
+            return None
+        shared = 0
+        while (shared < len(prefix) and shared < len(self.moves)
+               and prefix[shared] == self.moves[shared]):
+            shared += 1
+        del self.moves[shared:]
+        del self.states[shared + 1:]
+        state = self.states[shared]
+        for move in prefix[shared:]:
+            if move not in self.engine.legal_moves(state):
+                return None
+            state = self.engine.apply(state, move)
+            self.moves.append(move)
+            self.states.append(state)
+        return state
+
+
+def replays(
+    engine: Engine, row: dict[str, Any], walk: _Walk | None = None,
+) -> GameState | None:
     """The position a record's row proved, if the engine still reaches it as the row says;
     None where it does not.
 
@@ -231,7 +266,8 @@ def replays(engine: Engine, row: dict[str, Any]) -> GameState | None:
     try:
         side = int(row["side"])
         scores = [int(entry["move"]) for entry in row["scores"]]
-        state = reached(engine, row["moves"])
+        state = (reached(engine, row["moves"]) if walk is None
+                 else walk.reach(row["moves"]))
     except (KeyError, TypeError, ValueError):
         return None
     if state is None:
@@ -259,11 +295,12 @@ def holding(
     kept: list[tuple[int, str, dict[str, Any]]] = []
     named: set[str] = set()
     failing = 0
+    walk = _Walk(engine)
     for order, row in enumerate(rows):
         if isinstance(row, dict) and row.get("result") == LOST:
             continue
         won = isinstance(row, dict) and row.get("result") == WON
-        state = replays(engine, row) if won else None
+        state = replays(engine, row, walk) if won else None
         called = None if state is None else name(state)
         if called is None or called in named:
             failing += 1
@@ -1362,6 +1399,13 @@ def unaimed(data: Any, seen: Distinction) -> str | None:
     endings (Q1084); an aimed one asks only positions that hold the game's own."""
     if not isinstance(data, dict) or not aims(seen):
         return None
+    return _unaimed_reason(data)
+
+
+def _unaimed_reason(data: dict[str, Any]) -> str | None:
+    """`unaimed`'s reading of the record alone, before the game's `Distinction` is asked:
+    where this is None `unaimed` is None whatever the game has, so `standing` compiles the
+    game and its twins only where this names a reason (Q1110)."""
     basis = data.get("basis")
     version = basis.get("aim") if isinstance(basis, dict) else None
     version = version if isinstance(version, int) and not isinstance(version, bool) else 0
@@ -1410,7 +1454,12 @@ def basis_owes(engine: Engine, data: Any, now: dict[str, str]) -> str | None:
 def _unread(engine: Engine, data: Any) -> str | None:
     """Why a record cannot stand for this game's code at all: not its record, no format or
     an older one, an older probe. No sample stands in for any of these (`certifiable`)."""
-    if not isinstance(data, dict) or data.get("ruleset_hash") != engine.spec.hash:
+    return _unread_of(engine.spec.hash, data)
+
+
+def _unread_of(digest: str, data: Any) -> str | None:
+    """`_unread` for the game whose hash is ``digest``: the record alone is read."""
+    if not isinstance(data, dict) or data.get("ruleset_hash") != digest:
         return "the record cannot be read as this game's"
     written = data.get("format")
     if not isinstance(written, int) or isinstance(written, bool):
@@ -1501,8 +1550,17 @@ def standing(
     `reference_spec`) (`REPROVE`). A game of
     rounds is never owed (a round has no position to prove move by move), nor one whose
     runs are not all there yet: `measure` writes them, and then it is.
+
+    Reads no more than the answer needs (Q1110, `docs/plan-performance.md` C1): the game is
+    compiled only where it declares rounds (to ask whether it plays them) or where a record
+    must have its rows replayed, which the core alone answers; and the game's `Distinction`
+    (its twins, each a compile) only where the record itself could be owed an aimed sample
+    (`_unaimed_reason`). A game with no record, or a record that is not this game's or is
+    from older code, compiles nothing.
     """
     from chess_variant_sandbox.corpus import LIBRARY_SEEDS
+    from chess_variant_sandbox.metrics.components import plays_in_rounds
+    from chess_variant_sandbox.spec.canonical import spec_hash
 
     seeds = tuple(LIBRARY_SEEDS if seeds is None else seeds)
     stored = stored_of(runs_dir, digest)
@@ -1510,8 +1568,16 @@ def standing(
     def stands(needs: str, reason: str, made: str = "") -> Standing:
         return Standing(digest, game, needs, reason, stored, made)
 
-    engine = Engine(spec)
-    if engine.simultaneous or engine.spy:
+    compiled: list[Engine] = []
+
+    def engine() -> Engine:
+        if not compiled:
+            compiled.append(Engine(spec))
+        return compiled[0]
+
+    # A game that declares no `rules.simultaneous` compiles to neither rounds nor a spy (a
+    # spy game must declare it), so only a game that does is asked of its compile.
+    if plays_in_rounds(spec) and (engine().simultaneous or engine().spy):
         return stands("", "a game of rounds: no position to prove move by move")
     path = record_path(runs_dir, digest)
     data: Any = None
@@ -1522,11 +1588,17 @@ def standing(
             data = None
         made = str(data.get("made") or "") if isinstance(data, dict) else ""
         now = work_basis(spec)
-        why = owes(engine, data, now)
+        # `owes` and `certifiable`, read in their own order, with the rows replayed (the one
+        # question that needs the engine) only once the record is this game's and current
+        # code's.
+        unread = _unread_of(spec_hash(spec), data)
+        stale = stale_basis(data, now) if unread is None else None
+        dropped = _dropped(engine(), data) if unread is None else None
+        why = unread or stale or dropped
         # Q1090: owed only because the core or the compile moved, a sample re-proved on
         # this core may stand in (`recertify`); read on as though it held, so a record that
         # owes anything else is owed that instead.
-        moved = certifiable(engine, data, now) if why is not None else None
+        moved = stale if unread is None and dropped is None else None
         if moved is not None:
             why = None
         if why is None and not is_sifted(data):
@@ -1536,8 +1608,10 @@ def standing(
                                   "and chess lacks", made)
         if why is None and (data.get("set_aside") or (data.get("basis") or {}).get("aim")):
             # Only a record the sift left bare is read against the reference (Q1088).
-            why = unaimed(data, distinction(
-                spec, reference if reference is not None else reference_spec()))
+            reason = _unaimed_reason(data)
+            if reason is not None and aims(distinction(
+                    spec, reference if reference is not None else reference_spec())):
+                why = reason
         if why is not None:
             needs, reason = REPROVE, why
         elif moved is not None:
@@ -1578,6 +1652,7 @@ def survey(
 
 def retire(
     runs_dir: Path | str, root: Path | str = ".", today: datetime.date | None = None,
+    games: Iterable[str] | None = None,
 ) -> list[Path]:
     """Move every delivered record of a game that is not in ``root``'s library out of what
     is offered, and return where each went. Moves; proves and deletes nothing.
@@ -1587,12 +1662,14 @@ def retire(
     kept, and so is its record: beside its work as `work/<hash>/record-<day>-retired.json`,
     as a record a format replaced is kept, never over a file already there. The site reads
     only a library game's record, and `runs/puzzles/` holds only those (`tests/test_puzzles.py`).
+    ``games`` is the library's hashes where the caller has already walked it (Q1110).
     """
     today = today or datetime.date.today()
     folder = Path(runs_dir) / DIRECTORY
     if not folder.is_dir():
         return []
-    games = {digest for digest, _name, _spec in library(root)}
+    games = (set(games) if games is not None
+             else {digest for digest, _name, _spec in library(root)})
     moved: list[Path] = []
     for path in sorted(folder.glob("*.json")):
         if path.stem in games:
@@ -1999,13 +2076,19 @@ def refilter(
 
 # ------------------------------------------------- re-certified from a sample (Q1090)
 
-CERTIFY_VERSION = 1
+CERTIFY_VERSION = 2
 """The sample and agreement rule `recertify` applies, pre-registered in
-`docs/reference/proven-positions.md` §7.6 before any record was re-certified. A new rule is
-a new version, never an edit."""
+`docs/reference/proven-positions.md` §7.6 (version 1: every offered row and 16 of the rest)
+and §7.7 (version 2, Q1115: 16 offered rows and 16 of the rest, drawn by the build). A new
+rule is a new version, never an edit, and a record certified under an older one stays
+certified until its core or compile moves (`stale_basis` reads no rule)."""
+CERTIFY_OFFERED = 16
+"""Offered rows re-proved: all of them where a record offers this many or fewer, else this
+many drawn by the build (`certify_sample`)."""
 CERTIFY_OTHERS = 16
-"""Rows re-proved beside every offered one: of the rows a record holds and does not offer
-(too easy, set aside, proved lost), evenly through the record's order (`certify_sample`)."""
+"""Rows re-proved beside the offered ones, of the rows a record holds and does not offer
+(too easy, set aside, proved lost): all where there are this many or fewer, else this many
+drawn by the build (`certify_sample`)."""
 VERDICT = ("side", "result", "ends_in", "winning", "single", "others_lost")
 """What a re-proof must give again of a row: every field of its verdict the site or the
 tests read. A root score itself is not compared where the move is open: it is the
@@ -2024,19 +2107,34 @@ def certify_dir(runs_dir: Path | str, digest: str) -> Path:
     return Path(runs_dir) / DIRECTORY / CERTIFY_DIR / digest
 
 
-def certify_sample(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """The rows `recertify` re-proves (§7.6): every row the record offers, then
-    `CERTIFY_OTHERS` of the rest (every row it holds and does not offer, in the record's
-    order, positions then set aside), the i-th at ``i * len(rest) // CERTIFY_OTHERS``, or all
-    of them where there are no more. Fixed by the record alone."""
+def _drawn(rows: list[dict[str, Any]], built: str, size: int) -> list[dict[str, Any]]:
+    """``size`` of ``rows`` drawn by ``built``, in the record's order, or all of them where
+    there are no more: the rows whose ``sha256(built, n, id)`` is least. A pure function of
+    the record and the build (no random stream), so a re-run on one core re-proves the same
+    rows and the next core draws others."""
+    if len(rows) <= size:
+        return rows
+
+    def key(n: int) -> str:
+        text = f"{built}\0{n}\0{rows[n].get('id')}"
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    chosen = sorted(sorted(range(len(rows)), key=key)[:size])
+    return [rows[n] for n in chosen]
+
+
+def certify_sample(data: dict[str, Any], built: str) -> list[dict[str, Any]]:
+    """The rows `recertify` re-proves on core build ``built`` (§7.7, `CERTIFY_VERSION` 2):
+    `CERTIFY_OFFERED` of the rows the record offers, then `CERTIFY_OTHERS` of the rest
+    (every row it holds and does not offer, positions then set aside), each drawn by the
+    build (`_drawn`) and kept in the record's order, or all of a part that has no more.
+    Fixed by the record and the build alone."""
     held = [row for row in data.get("positions") or [] if isinstance(row, dict)]
     aside = [row for row in data.get("set_aside") or [] if isinstance(row, dict)]
     offered = [row for row in held if row.get("result") == WON and not trivial(row)]
     rest = [row for row in held if not (row.get("result") == WON and not trivial(row))]
     rest += aside
-    if len(rest) > CERTIFY_OTHERS:
-        rest = [rest[i * len(rest) // CERTIFY_OTHERS] for i in range(CERTIFY_OTHERS)]
-    return offered + rest
+    return _drawn(offered, built, CERTIFY_OFFERED) + _drawn(rest, built, CERTIFY_OTHERS)
 
 
 def differs(
@@ -2149,7 +2247,8 @@ def recertify(
     else). Its `certify_sample` is re-proved on this core (`differs`); a record with no row
     has its runs counted again, and agrees where they still hold no position to sample.
     Where every sampled row agrees, the record is written again with `basis.certified`
-    (this core's build and compile, the day, the rule, how many rows of how many and which),
+    (this core's build and compile, the day, the rule, how many rows of how many and which,
+    and how many of the offered rows the sample held: since rule 2 a sample, not all),
     every row exactly as it was proved, and the record before is kept as
     `work/<hash>/record-<day>.json`. Any disagreement leaves the record as it is and is
     kept in `certify/<hash>/verdict.json`, which makes the game owed its full re-proof
@@ -2195,10 +2294,12 @@ def recertify(
         if say is not None:
             say(f"{game}: an earlier sample's work moved aside to {aside.name}")
     folder.mkdir(parents=True, exist_ok=True)
-    rows = certify_sample(data)
+    rows = certify_sample(data, now["built"])
     total = len(data.get("positions") or []) + len(data.get("set_aside") or [])
-    offered = sum(1 for row in data.get("positions") or []
-                  if row.get("result") == WON and not trivial(row))
+    offers = {id(row) for row in data.get("positions") or []
+              if isinstance(row, dict) and row.get("result") == WON and not trivial(row)}
+    offered = len(offers)
+    offered_sampled = sum(1 for row in rows if id(row) in offers)
     disagrees: list[str] = []
     if not rows:
         missing = runs_missing(runs_dir, digest, seeds)
@@ -2255,13 +2356,14 @@ def recertify(
         disagrees = [line for unit, _row in units for line in answers[unit] or []]
     agreed = not disagrees
     verdict = {**key, "made": today.isoformat(), "agreed": agreed, "sample": len(rows),
-               "rows": total, "offered": offered, "ids": [row.get("id") for row in rows],
-               "was": moved, "disagrees": disagrees}
+               "rows": total, "offered": offered, "offered_sampled": offered_sampled,
+               "ids": [row.get("id") for row in rows], "was": moved, "disagrees": disagrees}
     write(folder / VERDICT_FILE, verdict)
     if agreed:
         stamp = {"built": now["built"], "tables": now["tables"], "made": today.isoformat(),
                  "rule": CERTIFY_VERSION, "sample": len(rows), "rows": total,
-                 "offered": offered, "ids": [row.get("id") for row in rows]}
+                 "offered": offered, "offered_sampled": offered_sampled,
+                 "ids": [row.get("id") for row in rows]}
         old = path.read_text(encoding="utf-8")
         work.mkdir(parents=True, exist_ok=True)
         kept_as = work / f"record-{today.isoformat()}.json"

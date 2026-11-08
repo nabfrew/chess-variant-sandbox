@@ -175,8 +175,10 @@ def test_a_freezing_queen_and_a_disarming_queen_measure_apart() -> None:
     # Q1011; T1, A1, N1, N2, N5, N3b, N3c and N3d added one each, N4b two, TC3 three, TC4 one,
     # TC5 four, TC6 two; 126 since SR1a, SR1b, Q1059a, Q1063, TC9c and Q1069a added one each;
     # 136 since Q1074b5's ten push features; 141 since Q1074bo's two, Q1077's, SR3b's and
-    # SR3c's `typed_screen_share`)
-    assert distance(freezing, disarming) == pytest.approx(2 * (1 / 6) / 141, abs=1e-4)
+    # SR3c's `typed_screen_share`; 148 since SR5a's two, SR6a's, TS1's three and TS2's
+    # `shared_share`; 155 since TS3's three, TS4's two and H1's three; 156 since H3's `passes`;
+    # 159 since H2's three)
+    assert distance(freezing, disarming) == pytest.approx(2 * (1 / 6) / 159, abs=1e-4)
 
 
 # --------------------------------------------------------------------------- relate.py

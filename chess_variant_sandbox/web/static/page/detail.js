@@ -1452,7 +1452,7 @@ const LADDER_SCALE = 'in the tournament';
 // engine. Now the difference between the roster and the table is named, both ways.
 //
 // Only for the picker's own table. The rated ladder's rows are the canonical agents --
-// `minimax:nodes=6400` and its rungs -- which are not picker entries at all, so
+// `minimax:nodes=25600` and the rungs below it -- which are not picker entries at all, so
 // a diff against the roster there would call the whole ladder "no longer offered" and
 // the whole picker "not rated yet"; its note says the honest thing in one sentence.
 //

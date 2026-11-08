@@ -46,6 +46,7 @@ NOT_A_PIECE = frozenset({
     "rules.portals.ends.at",
     "rules.purse.region", "rules.duck.start", "rules.scoring.region", "rules.reach.squares",
     "rules.drops.gating.squares",  # Q1059a: the gate squares
+    "rules.income.region",  # H2 (Q1127): where a piece earns
     "rules.drops.region.*",  # a dropped piece's squares, under the id that keys them
 })
 # Piece ids outside `rules` and the piece fields, which `drop_piece` handles itself: a

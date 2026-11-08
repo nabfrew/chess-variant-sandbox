@@ -990,6 +990,10 @@ _CANNOT = {
         # TC5: the generated purse card arrives with an empty market (TC7's purse card fills
         # and prices it).
         "purse": "nothing to spend on",
+        # H3: the skirmish forces captures, and a pass would be the way out of every one.
+        "pass": "the way out of every forced capture",
+        # H2: income is paid into a purse, which no template has.
+        "income": "without rules.purse",
     },
     "kingly": {
         "en_passant": "the promoting piece it is defined against, has none",
@@ -998,6 +1002,7 @@ _CANNOT = {
         # TC5: the generated purse card arrives with an empty market (TC7's purse card fills
         # and prices it).
         "purse": "nothing to spend on",
+        "income": "without rules.purse",
     },
     "race": {
         "bare_royal": "no piece is marked royal",
@@ -1009,6 +1014,7 @@ _CANNOT = {
         # TC5: the generated purse card arrives with an empty market (TC7's purse card fills
         # and prices it).
         "purse": "nothing to spend on",
+        "income": "without rules.purse",
     },
 }
 

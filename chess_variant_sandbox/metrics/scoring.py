@@ -119,7 +119,12 @@ WEIGHTS_DIR = Path(__file__).parent / "weights"
 # pinned; `anchor` no longer writes ends. Every weight, family, curve kind and gate is v11's,
 # so a v11-to-v12 move is the scale changing source. Pre-registration, read and grading in
 # docs/reference/v12-calibration.md.
-DEFAULT_WEIGHTS = "v12"
+#
+# v13 is v12 on the shifted measuring ladder (minimax:nodes=400 to 25600, docs/plan-ladder-shift.md):
+# every reference end re-read by v12's own rules from Q1104's library replay on the new roster,
+# every domain, gate and meaning end, weight, family, curve kind and gate v12's to the digit.
+# Pre-registration, read and grading in docs/reference/v13-calibration.md.
+DEFAULT_WEIGHTS = "v13"
 
 # Floor applied to a family score before it enters the geometric mean. Without it a
 # single zeroed family collapses the index to zero for every candidate that has one,

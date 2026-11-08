@@ -334,6 +334,10 @@ class App:
         self._stories: dict[str, Any] | None = None
         self._stories_from: tuple[Any, ...] | None = None
         self._stories_lock = threading.Lock()
+        # C15d: `/api/design`'s corpus answers and what they were read from
+        # (`_design_corpus`).
+        self._design_held: tuple[Any, dict[str, Any]] | None = None
+        self._design_lock = threading.Lock()
 
     def known(self) -> dict[str, library.Game]:
         """The last listing, read now if none has been.
@@ -357,7 +361,7 @@ class App:
         spec = game.spec if game is not None else None
         return opponents.for_game(ruleset_hash, self.heuristics_dir, spec=spec)
 
-    def refresh(self) -> list[library.Game]:
+    def refresh(self, fresh: bool = False) -> list[library.Game]:
         """Re-read the library from disk.
 
         Called on every listing rather than cached for the process's lifetime, because a
@@ -369,9 +373,16 @@ class App:
         One reader at a time. Requests are threads, and two of them reading the same
         unmoved tree at once would each pay the whole read; the second waits and is
         served by the first. The lock is only ever held by this method.
+
+        The walk behind `discover` is skipped for `library.HOLD_SECONDS` after the last one
+        unless this process wrote since (C15a, `library.writing`); ``fresh`` always walks,
+        for a caller looking for a file it has reason to think is new.
         """
         with self._reading:
-            games = library.discover(self.ruleset_dir, self.runs_dir, self.archive_dir)
+            games = library.discover(
+                self.ruleset_dir, self.runs_dir, self.archive_dir,
+                hold=0.0 if fresh else library.HOLD_SECONDS,
+            )
             self._games = {game.hash: game for game in games}
             self._read = True
             return games
@@ -388,6 +399,10 @@ class App:
                 landing.use(rendered["stories"])
                 self._stories, self._stories_from = rendered, found
             return self._stories
+
+    def warm_more(self) -> None:
+        """What `warm` reads after the library and the stories; nothing here (the site's
+        reads its proven positions)."""
 
     def stories_payload(self) -> dict[str, Any]:
         """`GET /api/stories`: each holding story's two games, replayed through the engine,
@@ -501,7 +516,7 @@ class App:
         """
         game = self.known().get(digest)
         if game is None:
-            self.refresh()
+            self.refresh(fresh=True)
             game = self.known().get(digest)
             if game is None:
                 raise KeyError(f"no ruleset with hash {digest}")
@@ -678,16 +693,15 @@ class App:
         if parts == ["api", "design"]:
             # Everything the editor needs before it can draw anything: what a new game
             # can start from, and what an opponent can be told to care about.
-            corpus_specs = cards.corpus_specs(self.ruleset_dir, self.archive_dir)
-            model = cards.card_model(corpus_specs)
+            corpus = self._design_corpus()
             return {
                 "templates": designing.templates(),
                 "vocabulary": designing.vocabulary(),
                 "schema": designing.schema_note(),
-                "cards": model,
+                "cards": corpus["cards"],
                 # LP7: `#/design?rule=<key>`, a door at each rule the designer has a
                 # control for, opening on a copy of chess (`designing.doors`).
-                "doors": designing.doors(model, self._door_start()),
+                "doors": corpus["doors"],
                 # What a rule is called and what it does, in words. The schema describes
                 # thirteen of the twenty-eight keys and names all of them, so a menu
                 # built from the schema alone can only show the key.
@@ -695,7 +709,7 @@ class App:
                 "ruleChoices": describe.rule_choices(),
                 # Every distinct piece the library holds, with its moves, for the tray
                 # to lift one out of a game that already plays.
-                "palette": designing.piece_palette(corpus_specs),
+                "palette": corpus["palette"],
                 "rungs": candidacy.rungs(self.measurements.last_seconds),
                 "nominations": candidacy.nominations(
                     self.runs_dir, self.ruleset_dir, self.archive_dir),
@@ -871,6 +885,32 @@ class App:
     # game everybody knows, so the one rule added is the one thing that is new.
     DOOR_START = "chess.json"
 
+    def _design_corpus(self) -> dict[str, Any]:
+        """`/api/design`'s answers read off the corpus: the card model, the doors and the
+        piece palette (C15d). Held on the stamps of every spec file the corpus is read from
+        and on the game the doors copy, so an edited, added or removed ruleset is read again
+        at the next request and an unmoved corpus costs a listing of two directories rather
+        than nine compiles and every spec re-read. The answer is shared between requests,
+        and nothing downstream edits it: the handler serialises it."""
+        start = self._door_start()
+        key = (
+            _spec_stamps(self.ruleset_dir, self.archive_dir),
+            json.dumps(start, sort_keys=True),
+        )
+        with self._design_lock:
+            if self._design_held is not None and self._design_held[0] == key:
+                return self._design_held[1]
+        corpus_specs = cards.corpus_specs(self.ruleset_dir, self.archive_dir)
+        model = cards.card_model(corpus_specs)
+        found = {
+            "cards": model,
+            "doors": designing.doors(model, start),
+            "palette": designing.piece_palette(corpus_specs),
+        }
+        with self._design_lock:
+            self._design_held = (key, found)
+        return found
+
     def _door_start(self) -> dict[str, Any] | None:
         """The library's chess, as a door copies it, or None where this library has none."""
         path = (self.ruleset_dir / self.DOOR_START).resolve()
@@ -880,6 +920,12 @@ class App:
         return None
 
     def post(self, path: str, body: dict[str, Any]) -> Any:
+        """One POST, dispatched by path, as an in-process writer (`library.writing`): no
+        listing is held across it (C15a), whatever it writes."""
+        with library.writing():
+            return self._post(path, body)
+
+    def _post(self, path: str, body: dict[str, Any]) -> Any:
         parts = [part for part in path.strip("/").split("/") if part]
         if parts == ["api", "session"]:
             return self._start_session(body)
@@ -1431,6 +1477,21 @@ class App:
         return run.as_dict()
 
 
+def _spec_stamps(*dirs: Path) -> tuple[tuple[str, int, int], ...]:
+    """Every `*.json` directly in ``dirs`` (what `cards.corpus_specs` reads), by name, mtime
+    and size: a file added, removed or rewritten moves it."""
+    found: list[tuple[str, int, int]] = []
+    for directory in dirs:
+        for path in sorted(Path(directory).glob("*.json")):
+            try:
+                held = path.stat()
+            except OSError:
+                found.append((str(path), -1, -1))
+                continue
+            found.append((str(path), held.st_mtime_ns, held.st_size))
+    return tuple(found)
+
+
 def _watching(seats: list[Any], roster: list[opponents.Opponent]) -> str:
     """Who is playing a draft, in plain words, or "" when a person is at the board.
 
@@ -1845,6 +1906,12 @@ def warm(app: App) -> threading.Thread:
             app.stories()
         except Exception as error:  # noqa: BLE001 - a story that fails must not kill the server
             print(f"the landing's stories could not be read: {error}")
+        # C15f: whatever else the server's first visitors would wait on (the site's
+        # proven positions for its sitemap; nothing on the local application).
+        try:
+            app.warm_more()
+        except Exception as error:  # noqa: BLE001 - a warm that fails must not kill the server
+            print(f"the rest of the warm read failed: {error}")
 
     thread = threading.Thread(target=read, name="library", daemon=True)
     thread.start()

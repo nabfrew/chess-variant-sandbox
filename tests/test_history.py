@@ -67,7 +67,7 @@ def stubbed(world, monkeypatch) -> dict[str, list[Any]]:  # noqa: F811
         return scored
 
     monkeypatch.setattr(corpus, "EXPECTED_LIBRARY_SEEDS", corpus.LIBRARY_SEEDS)
-    monkeypatch.setattr(corpus, "run_tournament", play)
+    monkeypatch.setattr(corpus, "run_schedules", lambda spec, configs, **_: [play(spec, c) for c in configs])
     monkeypatch.setattr(corpus, "analyse_corpus", analyse)
     monkeypatch.setattr(corpus, "score_ruleset", score)
     return calls

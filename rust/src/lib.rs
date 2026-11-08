@@ -52,9 +52,10 @@ type StateIn = (
 );
 /// Slot 11's twelfth and last element, the group every later state field joins (PyO3
 /// converts a tuple of at most twelve, and slot 11 is at twelve): TC4's purse, each
-/// player's coins, then Q1074b6's push-back bar (`Game::push_bar`, `(-1, -1)` for none).
-/// The next field is its third element.
-type Tail = ((u16, u16), (i16, i16));
+/// player's coins, then Q1074b6's push-back bar (`Game::push_bar`, `(-1, -1)` for none),
+/// then TS1's banks (`Game::banked`, `(0, 0)` without `reach.removes`), then TS3's parts
+/// filled (`Game::parts_filled`, 0 without `turn.parts`). The next field is its fifth element.
+type Tail = ((u16, u16), (i16, i16), (u16, u16), u8);
 /// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element.
 type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
 /// Schema 29 (Q983a): each player's resting pieces, `(square, turns left)` by square, slot
@@ -183,6 +184,15 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         // Q1074b6 (K5): read only under the rule, and only a bar on the board, so a
         // hand-built position cannot key off the end of the table; `NO_BAR` otherwise.
         push_bar: push_bar_in(t, state.11.11.1),
+        // TS1: read only under `reach.removes`; `[0, 0]` in every other game, whatever
+        // Python sent, so a hand-built position cannot key a bank no rule keeps.
+        banked: if t.reach_removes { [state.11.11.2.0, state.11.11.2.1] } else { [0, 0] },
+        // TS3: read only under `turn.parts`, and only a mask of parts the turn has (never
+        // every one: a full turn has passed); 0 in every other game.
+        parts_filled: t.parts.as_deref().map_or(0, |parts| {
+            let mask = state.11.11.3 & (((1u16 << parts.len()) - 1) as u8);
+            if mask.count_ones() as usize >= parts.len() { 0 } else { mask }
+        }),
     }
 }
 
@@ -219,7 +229,7 @@ fn endgame_position(t: &Tables, board: &[u8], side: usize, unmoved: [u8; 32]) ->
             (Vec::new(), Vec::new()),
             Vec::new(),
             Vec::new(),
-            ((0, 0), (NO_SQUARE, NO_SQUARE)),
+            ((0, 0), (NO_SQUARE, NO_SQUARE), (0, 0), 0),
         ),
     );
     let mut snapshot = snapshot_from(t, &state);
@@ -297,7 +307,12 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
             (game.resting_of(0), game.resting_of(1)),
             game.respawn.clone(),
             game.heading_back.iter().map(|square| square as u16).collect(),
-            ((game.purse[0], game.purse[1]), (game.push_bar[0], game.push_bar[1])),
+            (
+                (game.purse[0], game.purse[1]),
+                (game.push_bar[0], game.push_bar[1]),
+                (game.banked[0], game.banked[1]),
+                game.parts_filled,
+            ),
         ),
     )
 }
@@ -744,6 +759,14 @@ impl Core {
         }
         let snapshot = snapshot_from(&self.tables, &state);
         Ok(Game::from_snapshot(&self.tables, &snapshot).controller_of(square))
+    }
+
+    /// H1 (`docs/plan-hunger.md` §2.5): what `m` costs the side to move under
+    /// `rules.purse.upkeep` (a buy's price not included), 0 without the rule. The page and the
+    /// oracle's checks ask this; Python never reads a row (rule 3).
+    fn move_cost(&self, state: StateIn, m: u32) -> u16 {
+        let snapshot = snapshot_from(&self.tables, &state);
+        Game::from_snapshot(&self.tables, &snapshot).upkeep_cost(m)
     }
 
     fn in_check(&self, state: StateIn, player: u8) -> bool {
@@ -1337,6 +1360,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("MOPUP_PIECES", crate::eval::MOPUP_PIECES)?;
     m.add("MOPUP_SPAN", crate::eval::MOPUP_SPAN)?;
     m.add("MOPUP_AREA", crate::eval::MOPUP_AREA)?;
+    // H4: the income term's horizon, for the same reason.
+    m.add("INCOME_TURNS", crate::eval::INCOME_TURNS)?;
     // Q502i: the search repairs a minimax player takes unless it spells them, for the
     // same reason again.
     m.add("DEFAULT_REPAIRS", crate::agents::DEFAULT_REPAIRS)?;

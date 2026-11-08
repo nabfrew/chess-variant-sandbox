@@ -327,6 +327,32 @@ class TestTheDesigner:
             " writeSightField(u, 'affects', []); return [s, t, u]; })()")
         assert written == [{}, {"through": True}, {}]
 
+    def test_the_picker_offers_a_wild_type_only_where_a_sight_may_reach_it(self) -> None:
+        """SR5f (generation 84): a sight reaches a wild piece only where `affects` names it
+        under `whose: "any"` and an effect other than a command (`schema.sight_affects_wild`),
+        so *only these pieces* offers the wild type there, and nowhere else (Q1099)."""
+        from tests.test_sight_on_wild import _tamed
+
+        spec = _tamed("freeze")
+        assert validate_spec(spec) == []
+        warden = next(i for i, piece in enumerate(spec["pieces"]) if piece["id"] == "G")
+        del spec["pieces"][warden]["sight"][0]["affects"]
+
+        def offered(**sight: Any) -> list[str]:
+            row = dict(spec["pieces"][warden]["sight"][0], **sight)
+            return _designer(f"(DRAFT = {json.dumps(spec)}, "
+                             f"sightTargets({json.dumps(row)}).map(([id]) => id))")
+
+        assert "W" in offered()
+        assert "W" not in offered(whose="enemy")
+        assert "W" not in offered(whose="own")
+        assert "W" not in offered(effect="command")
+        # A wild type a draft already names stays beside its refusal.
+        assert "W" in offered(whose="enemy", affects=["W"])
+        # Ticked under "any", the picker's draft is one the validator takes.
+        spec["pieces"][warden]["sight"][0]["affects"] = ["W"]
+        assert validate_spec(spec) == []
+
     def test_a_new_line_of_sight_is_a_game_and_a_full_piece_takes_no_more(self) -> None:
         new = _designer("NEW_SIGHT")
         spec = _chess()
