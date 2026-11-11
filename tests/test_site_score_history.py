@@ -100,3 +100,43 @@ class TestTheScoreHistoryOnTheSite:
         assert row["current"]["status"] == "provisional"
         assert row["current"]["revision"] == DEFAULT_WEIGHTS
         assert DEFAULT_WEIGHTS not in row["points"]
+
+
+class TestThePageOnTheSite:
+    """SH3: `/score-history` is the single page with its own head, for anybody, and
+    `/admin` links to it beside *Earlier scores*."""
+
+    def test_a_visitor_reaches_the_page(self, scored_site: Site) -> None:
+        from chess_variant_sandbox.web.page import front
+
+        answer = scored_site.browser().get(front.HISTORY_PATH)
+        assert answer.status == 200, answer.text
+        assert f"<title>{front.HISTORY_TITLE}</title>" in answer.text
+        assert f'{front.HISTORY_PATH}">' in answer.text and "history." in answer.text
+
+    def test_admin_links_to_it(self, scored_site: Site) -> None:
+        boss = scored_site.signed_in("boss", admin.ADMIN)
+        assert 'href="/score-history"' in boss.get("/admin").text
+
+
+class TestTheGamePagesChart:
+    """SH4: a game page's *earlier scores* fold draws, for a visitor, from `for_visitors`'
+    lines alone (`earlier`), each carrying its version; the ledger stays the admin's."""
+
+    def test_a_visitor_is_sent_for_visitors_lines_and_no_ledger(
+        self, scored_site: Site, world  # noqa: F811
+    ) -> None:
+        answer = scored_site.browser().get(f"/api/game/{world['hash']}")
+        assert answer.status == 200, answer.text
+        sent = dict(answer.payload)
+        assert sent["history"] == []
+        # The replacement that moved the players, with its version; the one that moved only
+        # the engine is no line for a visitor.
+        assert sent["earlier"] == [
+            {"index": 0.7, "runs": 4, "measured": "2026-11-05", "weights_version": "v12"}]
+
+    def test_an_admin_is_sent_the_ledger_too(self, scored_site: Site, world) -> None:  # noqa: F811
+        boss = scored_site.signed_in("boss", admin.ADMIN)
+        sent = dict(boss.get(f"/api/game/{world['hash']}").payload)
+        assert sorted(line["index"] for line in sent["history"]) == [0.7, 0.75]
+        assert [line["index"] for line in sent["earlier"]] == [0.7]

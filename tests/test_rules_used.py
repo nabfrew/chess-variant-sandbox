@@ -46,6 +46,8 @@ COSTS: dict[str, float] = {
     "purse": 2.0,
     # Generation 116 (H3); its first library spec is H5's archive/no-zugzwang (Q1129).
     "pass": 1.0,
+    # Generation 117 (H2); its first library spec is rulesets/hunger.json (Q1159).
+    "income": 1.0,
 }
 # A chase switch (`rest`, `swap`, `both`), each on top of `simultaneous` (schema 27).
 SWITCH_COST = 1.0
@@ -90,6 +92,7 @@ def _independent_keys(spec: dict[str, Any]) -> set[str]:
     }
 
 
+@pytest.mark.new_game
 @pytest.mark.parametrize("path", ALL_SPECS, ids=lambda path: path.stem)
 def test_used_rule_keys_cost_the_same_as_count_special_rules(path: Path) -> None:
     spec = load_spec(path)
@@ -129,8 +132,13 @@ def test_used_rule_keys_cost_the_same_as_count_special_rules(path: Path) -> None
         + 0.25 * sum(part.get("optional") is True for part in parts)
         + 0.25 * (isinstance(turn, dict) and turn.get("order") == "any")
     )
+    # H2: an income written with a region of its own is a second sentence, 0.5 beside `income`
+    # (`_income_extras`); Hunger says `true`, so no library spec states one yet.
+    income = rules.get("income")
+    forage = 0.5 if isinstance(income, dict) and income.get("region") else 0.0
     assert complexity._count_special_rules(rules) == (
         sum(COSTS[key] for key in expected_keys) + extras + switches + scoring + turn_parts
+        + forage
     )
 
 

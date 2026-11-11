@@ -79,6 +79,21 @@ NEWS_PATH = "/whats-new"
 """*What's new* as a page of its own, drawn on the server (G11, `news_page.py`). The same
 view is still `#/whats-new` of the single page, for a person with script."""
 
+HISTORY_PATH = "/score-history"
+"""How the library's scores have moved (SH3, `docs/plan-score-history.md` §2.1): the single
+page, which `history.js` draws from `GET /api/library/history`. Public on both servers (D1,
+the user's answer of 2026-11-08); `#/score-history` names the same view."""
+
+HISTORY_TITLE = titled("How the scores have moved")
+"""Its title, as `core.js`'s `viewTitle` names the view and `setTitle` writes it."""
+
+HISTORY_DESCRIPTION = (
+    "How the scores of chess variants free online in your browser have moved, under "
+    "each version of the scoring rules since v3: every score kept, drawn."
+)
+
+HISTORY_NEEDS_SCRIPT = "The charts and the table of every number need JavaScript switched on."
+
 GAMES_FEED = "/feeds/games.atom"
 """The Atom feed of new games, library and published (G11, `site/feeds.py`)."""
 
@@ -227,6 +242,21 @@ def games_view(listed: Sequence[Listed]) -> str:
         + (f'<ul class="drawnList">{items}</ul>' if items else "")
         + "<p>Choosing, sorting and playing them needs JavaScript switched on.</p>"
         "</section></noscript>"
+    )
+
+
+def history(base: str = "") -> str:
+    """`/score-history`: the single page with its own head, and a sentence for a reader
+    without script, which the router replaces once it draws."""
+    return page(
+        HISTORY_TITLE,
+        head_lines(HISTORY_TITLE, HISTORY_DESCRIPTION, base + HISTORY_PATH,
+                   image=picture_address(base)),
+        '<noscript><section class="history">'
+        '<h2>How the scores have moved</h2>'
+        f"<p>{escape(HISTORY_DESCRIPTION)}</p>"
+        f'<p class="muted">{escape(HISTORY_NEEDS_SCRIPT)}</p>'
+        "</section></noscript>",
     )
 
 

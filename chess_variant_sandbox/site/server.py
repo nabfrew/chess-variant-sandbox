@@ -3504,6 +3504,9 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                 self._html(app.home_page())
             elif path == front.GAMES_PATH:
                 self._html(app.games_page())
+            elif path == front.HISTORY_PATH:
+                # SH3: how the library's scores have moved; public (D1), no cookie read.
+                self._html(front.history(seo.site_base()))
             elif path == seo.ROBOTS_PATH:
                 base = seo.base_for(self.headers.get("Host"))
                 self._send(200, seo.robots(base).encode("utf-8"), seo.ROBOTS_TYPE,

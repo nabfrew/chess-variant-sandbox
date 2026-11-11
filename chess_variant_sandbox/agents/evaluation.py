@@ -45,7 +45,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from chess_variant_sandbox.engine import Engine, GameState
-from chess_variant_sandbox.engine.compile import UNREACHABLE, WILD, CompiledSpec, ReachRule
+from chess_variant_sandbox.engine.compile import (
+    PURSE_MAX,
+    UNREACHABLE,
+    WILD,
+    CompiledSpec,
+    ReachRule,
+)
 from chess_variant_sandbox.engine.moves import (
     MOVE_BUY,
     MOVE_DROP,
@@ -354,6 +360,30 @@ class Evaluator:
     # under the ``income`` search bit turns it on (`minimax.MinimaxAgent`, as
     # `agents.rs::Player::new` calls `Evaluator::with_income`).
     income: bool = False
+    # T1 (`docs/plan-player-weaknesses.md`, Q1169): whether a purse counts in full only up to its
+    # player's ``coin_margins`` and at nothing above. Off unless a minimax player under the
+    # ``margin`` search bit turns it on (`minimax.MinimaxAgent`, as `agents.rs::Player::new` calls
+    # `Evaluator::with_margin`).
+    margin: bool = False
+    # T1b (`docs/plan-player-weaknesses.md`, Q1178): whether the moves channel's rate is scaled by
+    # ``coin_scarcity``. Off unless a minimax player under the ``scarcity`` search bit turns it on
+    # (`minimax.MinimaxAgent`, as `agents.rs::Player::new` calls `Evaluator::with_scarcity`).
+    scarcity: bool = False
+    # T1c (`docs/plan-player-weaknesses.md`, Q1181): whether a purse counts in full only up to its
+    # player's ``coin_reserves`` and at nothing above, in place of ``margin``'s bound. Off unless a
+    # minimax player under the ``reserve`` search bit turns it on (`minimax.MinimaxAgent`, as
+    # `agents.rs::Player::new` calls `Evaluator::with_reserve`).
+    reserve: bool = False
+    # T5 (`docs/plan-player-weaknesses.md`, Q1173): whether a goal counted to more than one arrival
+    # races every racer it still needs (``_racers_to_goal``) rather than the nearest. Off unless a
+    # minimax player under the ``racers`` search bit turns it on (`minimax.MinimaxAgent`, as
+    # `agents.rs::Player::new` calls `Evaluator::with_racers`); read only where ``reach.count`` > 1.
+    # Each side's sum is over its own ``k x goal_diameter`` (Q1173b), so the last runner weighs
+    # what today's nearest racer does.
+    racers: bool = False
+    # Q1173b: under ``racers``, Q1173's fixed ``count x goal_diameter`` scale for both sides (the
+    # ``racers_fixed`` bit, the arm that lost its duel, kept as the rescaled arm's control).
+    racers_fixed: bool = False
     # The denominator of the prey share, derived rather than passed. Not a constructor
     # argument on purpose: a value table and the pool it is scaled against are one fact
     # about one ruleset, and a caller able to hand in a mismatched pair would be a
@@ -800,10 +830,29 @@ class Evaluator:
         coins = (
             coin_value(self.spec, self.values) if self.coins and self.material_sign > 0 else 0.0
         )
+        if coins and self.scarcity:
+            # T1b: the moves channel only for the share of a move the income does not pay
+            # (`eval.rs`'s `with_scarcity`).
+            scarcity = coin_scarcity(self.spec)
+            if scarcity is not None:
+                coins = max(bought_rate(self.spec, self.values),
+                            moves_rate(self.spec, self.values) * scarcity)
         if coins:
             # TC5 (`docs/plan-turncoat.md` §5.6): the purse, mine minus theirs, at the
             # market's best rate (`eval.rs`'s `coin_weight`).
-            score += coins * float(state.purse[player] - state.purse[1 - player])
+            margins = (
+                coin_reserves(self.spec) if self.reserve
+                else coin_margins(self.spec) if self.margin
+                else None
+            )
+            if margins is None:
+                score += coins * float(state.purse[player] - state.purse[1 - player])
+            else:
+                # T1: each purse counted only up to the margin it buys (`eval.rs`'s
+                # `coin_margin`).
+                mine = min(float(state.purse[player]), margins[player])
+                theirs = min(float(state.purse[1 - player]), margins[1 - player])
+                score += coins * (mine - theirs)
             if self.income and self.spec.income is not None:
                 # H4: what each side's pieces earn as they stand, mine minus theirs, over
                 # ``INCOME_TURNS`` turns at the coin's worth (`eval.rs`'s `income_weight`).
@@ -977,12 +1026,64 @@ class Evaluator:
         if reach is None or not _reach_is_priceable(spec, reach):
             return 0.0
         sealed = self.sealed_goals(state)
+        direction = {"win": 1.0, "draw": 0.0, "loss": -1.0}[reach.result]
+        if self.racers and reach.count > 1:
+            # T5: every racer the counted goal still needs.
+            mine_left, mine_k = self._racers_to_goal(state, player, sealed[player])
+            theirs_left, theirs_k = self._racers_to_goal(state, 1 - player, sealed[1 - player])
+            if self.racers_fixed:
+                # Q1173's arm: both sums over ``count`` diameters.
+                progress = (theirs_left - mine_left) / (reach.count * spec.goal_diameter)
+            else:
+                # Q1173b: each side's sum over its own ``k`` diameters.
+                progress = (
+                    _per_racer(theirs_left, theirs_k) - _per_racer(mine_left, mine_k)
+                ) / spec.goal_diameter
+            return _clamp(progress) * direction
         mine = self._nearest_to_goal(state, player, reach.mask, sealed[player])
         theirs = self._nearest_to_goal(state, 1 - player, reach.mask, sealed[1 - player])
         # Stated for the side that arrives, so a rule whose result is a *loss* for the
         # arriving side -- which the schema allows -- is a race to run away from.
-        direction = {"win": 1.0, "draw": 0.0, "loss": -1.0}[reach.result]
         return _clamp((theirs - mine) / spec.goal_diameter) * direction
+
+    def _racers_to_goal(self, state: GameState, player: int, sealed: int) -> tuple[float, int]:
+        """T5 (`docs/plan-player-weaknesses.md`, Q1173): the moves ``player`` still needs to
+        finish a goal counted to more than one arrival: the summed distances of its
+        ``count - tally`` nearest eligible pieces not already counted (a listed piece standing on
+        its own goal is in the tally), each capped at ``goal_diameter``, and ``goal_diameter`` for
+        each racer it no longer has; and ``k = count - tally``, the racers it still needs.
+        ``rust/src/eval.rs::Evaluator::racers_to_goal`` is the same function; integers are
+        summed, so the two floats agree to the bit.
+        """
+        spec = self.spec
+        reach = spec.reach
+        assert reach is not None
+        diameter = int(spec.goal_diameter)
+        needed = max(0, reach.count - int(reach_tally(spec, state, player)))
+        if needed == 0:
+            return 0.0, 0
+        goals = seal_goals(spec) if sealed else None
+        distances = []
+        for square, value in enumerate(state.board[: spec.n_squares]):
+            if not value or spec.owner_of(value) != player:
+                continue
+            piece_type = spec.type_of(value)
+            if not reach.admits(piece_type) or square in reach.squares[player]:
+                continue
+            if not sealed:
+                distance = spec.goal_distance[player][piece_type][square]
+            else:
+                assert goals is not None
+                distance = UNREACHABLE
+                for goal in range(len(goals[player])):
+                    if not sealed & (1 << goal):
+                        distance = min(
+                            distance, spec.goal_distance_each[player][goal][piece_type][square]
+                        )
+            distances.append(diameter if distance == UNREACHABLE else min(distance, diameter))
+        distances.sort()
+        nearest = distances[:needed]
+        return float(sum(nearest) + (needed - len(nearest)) * diameter), needed
 
     def _nearest_to_goal(
         self, state: GameState, player: int, types: int, sealed: int = 0
@@ -1146,20 +1247,115 @@ def coin_value(spec: CompiledSpec, values: tuple[float, ...]) -> float:
     bribes (TC6); 0.0 without a purse. Read off the evaluator's own
     values rather than the declared ones, so a coin is counted in the units material is.
     ``rust/src/eval.rs::coin_value`` is the same function, in the same order."""
+    if spec.purse is None:
+        return 0.0
+    # H4 (`docs/plan-hunger.md` §5, §R4): and over moves under upkeep, last.
+    return max(bought_rate(spec, values), moves_rate(spec, values))
+
+
+def bought_rate(spec: CompiledSpec, values: tuple[float, ...]) -> float:
+    """The coin's rate over what it buys outright: the market at the price, then (TC6, §5.6) a
+    hire at its price and a bribe at twice it, per type, in type order, hires first. 0.0 where
+    nothing is for sale. ``rust/src/eval.rs::bought_rate`` is the same function."""
     purse = spec.purse
     if purse is None:
         return 0.0
     best = 0.0
     for piece_type, price in zip(purse.market, purse.price, strict=True):
         best = max(best, values[piece_type] / price)
-    # TC6 (§5.6): what a hire buys at its price and a bribe at twice it, per type, in type
-    # order, hires first.
     for costs in (purse.hire, purse.bribe):
         for piece_type, cost in enumerate(costs):
             if cost:
                 best = max(best, values[piece_type] / cost)
-    # H4 (`docs/plan-hunger.md` §5, §R4): and over moves under upkeep, last.
-    return max(best, moves_rate(spec, values))
+    return best
+
+
+def _opening_income(spec: CompiledSpec, player: int) -> float:
+    """What ``player`` earns at the start of a turn in the opening position: ``per_piece`` for
+    each of their pieces on their income region there (`eval.rs`'s `opening_income`)."""
+    income = spec.income
+    assert income is not None
+    board = spec.initial_board
+    standing = sum(
+        1 for square in income.squares[player]
+        if board[square] and spec.owner_of(board[square]) == player
+    )
+    return float(income.per_piece) * float(standing)
+
+
+def coin_scarcity(spec: CompiledSpec) -> float | None:
+    """T1b (`docs/plan-player-weaknesses.md`, Q1178): **how scarce a coin is for moves**,
+    ``max(0, 1 - income / mean move cost)``: ``income`` the mean of the two players' opening
+    incomes, ``mean move cost`` the moves channel's denominator over its count (``moves_rate``'s
+    pieces). The share of a turn's move the income does not already pay. ``None`` without income
+    or a move cost. ``rust/src/eval.rs::coin_scarcity`` is the same function."""
+    purse = spec.purse
+    if purse is None or spec.income is None or not purse.upkeep_mean:
+        return None
+    cost = 0.0
+    count = 0
+    for raw in spec.initial_board:
+        if raw == 0:
+            continue
+        owner = spec.owner_of(raw)
+        piece_type = spec.type_of(raw)
+        if owner > 1 or piece_type in spec.royal_types:
+            continue
+        mean = purse.upkeep_mean[owner * spec.n_types + piece_type]
+        if mean == 0.0:
+            continue
+        cost += mean
+        count += 1
+    if count == 0:
+        return None
+    earned = (_opening_income(spec, 0) + _opening_income(spec, 1)) / 2.0
+    return max(0.0, 1.0 - earned / (cost / count))
+
+
+def coin_margins(spec: CompiledSpec) -> tuple[float, float] | None:
+    """T1 (`docs/plan-player-weaknesses.md`, Q1169): **the margin a coin buys**, per player:
+    ``max(dearest, PURSE_MAX - INCOME_TURNS * income)``, ``income`` what the player earns at the
+    start of a turn in the opening position (fixed per game, so no positional term) and
+    ``dearest`` the largest single price in the tables (a move cost, a market price, a hire, a
+    bribe). ``None`` without a purse or income, where the margin is the cap.
+    ``rust/src/eval.rs::coin_margins`` is the same function."""
+    purse = spec.purse
+    income = spec.income
+    if purse is None or income is None:
+        return None
+    dearest = _dearest_price(spec)
+    margins = []
+    for player in (0, 1):
+        earned = _opening_income(spec, player)
+        margins.append(max(float(dearest), float(PURSE_MAX) - INCOME_TURNS * earned))
+    return margins[0], margins[1]
+
+
+def _dearest_price(spec: CompiledSpec) -> int:
+    """The largest single price in the tables: a move cost, a market price, a hire, a bribe
+    (`eval.rs`'s `dearest_price`)."""
+    purse = spec.purse
+    assert purse is not None
+    return max((*purse.upkeep, *purse.price, *purse.hire, *purse.bribe, 0))
+
+
+def coin_reserves(spec: CompiledSpec) -> tuple[float, float] | None:
+    """T1c (`docs/plan-player-weaknesses.md`, Q1181): **the reserve a coin is worth in**, per
+    player: ``INCOME_TURNS * max(0, dearest - income)``, ``income`` what the player earns at the
+    start of a turn in the opening position and ``dearest`` the largest single price
+    (``coin_margins``' two reads). The coins a side needs before ``INCOME_TURNS`` turns of income
+    cover its dearest move. ``None`` without a purse or income, where the purse reads linearly.
+    Held at most ``PURSE_MAX`` and whole, as the core's ``u16``.
+    ``rust/src/eval.rs::coin_reserves`` is the same function."""
+    if spec.purse is None or spec.income is None:
+        return None
+    dearest = float(_dearest_price(spec))
+    reserves = []
+    for player in (0, 1):
+        earned = _opening_income(spec, player)
+        reserve = INCOME_TURNS * max(0.0, dearest - earned)
+        reserves.append(float(int(min(reserve, float(PURSE_MAX)))))
+    return reserves[0], reserves[1]
 
 
 def moves_rate(spec: CompiledSpec, values: tuple[float, ...]) -> float:
@@ -1202,6 +1398,12 @@ def income_earned(spec: CompiledSpec, state: GameState, player: int) -> int:
         if board[square] and spec.owner_of(board[square]) == player
     )
     return income.per_piece * standing
+
+
+def _per_racer(total: float, needed: int) -> float:
+    """Q1173b: a side's summed racer distance per racer it still needs (zero when it needs
+    none). ``rust/src/eval.rs::per_racer`` is the same division."""
+    return total / needed if needed else 0.0
 
 
 def _clamp(value: float) -> float:

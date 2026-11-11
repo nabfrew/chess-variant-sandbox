@@ -143,6 +143,7 @@ def occupants(engine: Engine, state: Any) -> dict[str, str]:
 # --------------------------------------------------------------------- inertness
 
 
+@pytest.mark.new_game
 def test_the_bump_moved_no_committed_hash() -> None:
     """Every committed and archived ruleset still hashes to what it hashed to.
 
@@ -545,6 +546,7 @@ def test_the_validator_refuses_a_reach_goal_exactly_where_the_compiler_puts_one_
     assert refused == (square(wall) in second_goal), errors
 
 
+@pytest.mark.new_game
 def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None:
     """Which of the committed and archived specs the two reflections tell apart.
 
@@ -557,51 +559,14 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     paths = sorted((root / "rulesets").glob("*.json")) + sorted(
         (root / "archive").glob("*.json")
     )
-    # 77 since Q540's four schema-17 showcases, none of which declares `reach`; 80 since
-    # Q787's three gap showcases, none of which does either; 82 since Q781's two schema-18
-    # showcases, which do not either; 84 since Q783's two schema-18c showcases, likewise;
-    # 86 since Q784's two placement showcases, likewise; 87 since Q785's `kyoto`, likewise;
-    # 88 since Q786's `jeson-mor`, which does, aiming both sides at e5 (so the two
-    # readings agree); 90 since Q782's two hex-symmetry showcases, which declare none;
-    # 97 since Q772a's seven portal showcases, which declare none either; 98 since Q807's
-    # Ferry with no straight back, which does not either; 99 since Q850's `wolves-patrol`,
-    # which does not either; 100 since Q772e's `divide-two-way`, which does not either; 101
-    # since Q772f's `divide-fixed`, which does not either; 87 since the library audit
-    # (Q868, 2026-10-12) retired fourteen near copies, none of which declared `reach`; 84
-    # since its second pass (Q870) retired four hexagon variants for `pinwheel`, which
-    # declares none; 87 since Q844b's three portal showcases, which declare none either; 91
-    # since Q918e's four round showcases, of which `watering-hole` does, sending both sides
-    # to d4 (`mirror: false`, so the two readings agree); 95 since Q942c's four chase-remedy
-    # showcases, which declare none; 97 since Q935f's two spy showcases, which declare none
-    # either; 98 since Q936s's `riders-and-leapers`, which declares none
-    # either; 92 since Q962b retired six previews (`docs/reference/previews-2026-10-18.md`),
-    # none of which declared `reach`; 91 since Q962c retired gardner in rounds resting, which
-    # declared none either; 94 since Q943c's three speed showcases, of which
-    # `watering-hole-by-speed` does, as the watering hole does (`mirror: false`); 95 since
-    # Q798's `circe-mortal-diagonals`, which declares none; 97 since Q994p's two blind-trial
-    # designs, `the-golem-well` and `kraken-ford`, which declare none either; 100 since Q983d's
-    # three rest showcases, which declare none either; 101 since Q999b's opposite colours,
-    # which declares none; 104 since Q999d's three sight showcases, which declare none; 98
-    # since Q1005 retired six previews (`docs/reference/preview-call-2026-10.md`), of which
-    # `watering-hole-by-speed` declared one; 99 since Q1007e's chess with nightriders, which
-    # declares none (its opposite colours replaced the first under the same file); 100 since
-    # T2's crooked bishops, which declares none; 101 since T3's circling queen, which declares
-    # none; 102 since A2's horse archers, which declares none;
-    # 103 since I3's anchors, which declares none; 104 since N6's shepherds duck, which declares none;
-    # 105 since N7's hydra, which declares none; 106 since N9's herd, which declares none;
-    # 107 since LPD's short sweeping bishop chess, which declares none; 108 since Q1023's chess
-    # with galloping knights, which declares none; 109 since Q1024's chess with preaching
-    # bishops, which declares none; 110 since Q1059b's seirawan, which declares none; 111 since
-    # TC8's crowd, which declares none; 112 since TC10b's free companies, which declares none;
-    # 113 since Q1074bg1's brink, which declares none; 114 since Q1074bg2's dohyo, which declares none;
-    # 119 since Q1074bs's rock paper shove and four push previews, which declare none;
-    # 120 since Q1079's duck chess, which declares none; 121 since SR3s1's runners, which does,
-    # sending each side to the other's whole back rank (both readings agree on a whole rank);
-    # 122 since TS1's crossings, which does too, the same whole far row; 123 since TS2's
-    # boulder, which does too, the same whole far row; 124 since TS3's drover, the same again;
-    # 125 since TS4's leapfrog, the same again; 126 since TS5's tessabi, the same again on
-    # files b to d, beside walls on files a and e; 127 since H5's no zugzwang, which declares none.
-    assert len(paths) == 127
+    # Q1154: a literal count of these paths stood here (131 at the end), with a history of
+    # which game moved it and whether it declares `reach`; it restated the corpus, and every
+    # game added edited it (`docs/reference/corpus-pins.md`). So did the list of which games
+    # declare `reach` (thirteen at the end: boulder, crossings, dobutsu, drover, intransitive,
+    # jeson-mor, kingofthehill, leapfrog, racingkings, rps-v3, runners, tessabi,
+    # watering-hole). What the test says is the `differ` line: of all of them, only
+    # intransitive's two readings part, and a new game whose readings part fails there.
+    assert {path.parent.name for path in paths} == {"rulesets", "archive"}
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:
@@ -624,12 +589,7 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
             by_orientation = compiled.reach.squares[0]
         with_reach[path.stem] = (compiled.reach.squares[1], by_orientation)
 
-    assert sorted(with_reach) == [
-        "boulder", "crossings", "dobutsu", "drover", "intransitive", "jeson-mor", "kingofthehill",
-        "leapfrog", "racingkings",
-        "rps-v3",
-        "runners", "tessabi", "watering-hole",
-    ]
+    assert {"intransitive", "dobutsu"} <= set(with_reach)
     differ = sorted(name for name, (built, other) in with_reach.items() if built != other)
     assert differ == ["intransitive"]
     assert with_reach["intransitive"][0] == {square("a1", 9)}

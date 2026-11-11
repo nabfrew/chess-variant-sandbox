@@ -28,8 +28,8 @@
 
 use crate::game::Game;
 use crate::tables::{
-    DropRule, EntryTable, ExtinctionRule, PurseTables, ReachRule, Tables, GOAL_UNREACHABLE,
-    MAX_PIECE_TYPES, WILD,
+    DropRule, EntryTable, ExtinctionRule, IncomeTables, PurseTables, ReachRule, Tables, GOAL_UNREACHABLE,
+    MAX_PIECE_TYPES, PURSE_MAX, WILD,
 };
 
 pub const WIN_SCORE: f64 = 1_000_000.0;
@@ -246,8 +246,206 @@ pub const INCOME_TURNS: f64 = 4.0;
 /// N4: the mop-up term's weight in the units of an evaluator whose piece values are
 /// `values`: `MOPUP_PIECES` mean non-royal pieces, as `round_win` is. `agents/minimax.py::
 /// mopup_weight` is the oracle (which also says where the term is defined).
+/// T3 (Q1171, `docs/plan-player-weaknesses.md`): what a repetition reached in the search costs
+/// the side that completes it, in mean non-royal pieces, under the `CONTEMPT` search bit
+/// (`agents.rs`). A diagnostic only, never on by default. Mirrors `CONTEMPT_PIECES` in
+/// `chess_variant_sandbox/agents/minimax.py`; the module exports it so a test holds them together.
+pub const CONTEMPT_PIECES: f64 = 0.5;
+
+/// T3: the repetition contempt in the units of an objective whose piece values are `values`.
+pub fn contempt_weight(t: &Tables, values: &[f64]) -> f64 {
+    CONTEMPT_PIECES * mean_non_royal(values, &t.royal_types, t.drops.as_ref())
+}
+
 pub fn mopup_weight(t: &Tables, values: &[f64]) -> f64 {
     MOPUP_PIECES * mean_non_royal(values, &t.royal_types, t.drops.as_ref())
+}
+
+/// T7's P6 (`docs/plan-player-weaknesses.md` §T7, Q1175b): the reach half of
+/// `Evaluator.for_spec`'s blend, `1 - DECLARED_WEIGHT`, which a transit's reach is added at.
+pub const PORTAL_REACH_SHARE: f64 = 0.75;
+
+/// A set of squares, one bit each (`MAX_SQUARES` is 256).
+#[derive(Clone, Copy, Default)]
+struct Squares([u64; 4]);
+
+impl Squares {
+    fn insert(&mut self, square: usize) {
+        self.0[square >> 6] |= 1 << (square & 63);
+    }
+    fn count_outside(&self, other: &Squares) -> u32 {
+        self.0.iter().zip(other.0.iter()).map(|(a, b)| (a & !b).count_ones()).sum()
+    }
+    fn len(&self) -> u32 {
+        self.0.iter().map(|word| word.count_ones()).sum()
+    }
+}
+
+/// Every capture-mode landing of one slot over the four movement tables: the squares
+/// `evaluation._measured_values` counts for it.
+fn capture_landings(t: &Tables, slot: usize) -> Squares {
+    let mut targets = Squares::default();
+    let tables: &[&EntryTable] = if t.has_sweep {
+        &[&t.leaps, &t.slides, &t.hops, &t.sweeps]
+    } else {
+        &[&t.leaps, &t.slides, &t.hops]
+    };
+    for table in tables {
+        for entry in table.entries(slot) {
+            for (&square, &mode) in table.squares(entry).iter().zip(table.modes(entry)) {
+                if mode & 2 != 0 {
+                    targets.insert(square as usize);
+                }
+            }
+        }
+    }
+    targets
+}
+
+/// T7's P6 for the players (Q1175b): the derived table with each priced type's capture reach
+/// through the portals added, the `PORTAL_REACH` search bit's table. `agents/portal_reach.py`
+/// is the declared oracle and states the reading in full: per player, declared type and origin
+/// not holding a momentum end, on a board of only the ends where they **start**, a leap's landing
+/// on a momentum end or the first end on a slide's ray is entered as `Game::push_transits` enters
+/// it, and each capture-mode momentum direction comes out one step past the end it leads to; a
+/// capture-mode landing on a fold that admits the piece goes through to the far fold. Squares not
+/// already among the origin's capture landings are added; hops and sweeps add nothing. The count,
+/// over both players and every origin, over `2 x n_squares`, is added to every type that is not
+/// royal or an unlimited drop at `PORTAL_REACH_SHARE` over the derived table's scale (the cheapest
+/// priced type's empty-board reach), so a type no transit reaches keeps its value bit for bit.
+/// `derived` unchanged without portals. Run once per player, at `Player::new`; cold.
+#[inline(never)]
+pub fn portal_reach_values(t: &Tables, derived: &[f64]) -> Vec<f64> {
+    let mut out = derived.to_vec();
+    let Some(portals) = t.portals.as_deref() else {
+        return out;
+    };
+    let n_squares = t.n_squares;
+    let n_dirs = portals.n_dirs;
+    let mask: u32 = (1 << n_dirs) - 1;
+    let first = portals.first_type;
+    let mut end_at = vec![usize::MAX; n_squares];
+    let mut square_of = [usize::MAX; MAX_PIECE_TYPES];
+    for (square, slot) in end_at.iter_mut().enumerate() {
+        let value = t.initial_board[square];
+        if value != 0 && t.is_portal_end(value) {
+            let end = t.type_of(value);
+            *slot = end;
+            square_of[end] = square;
+        }
+    }
+    let mut fold_at = vec![usize::MAX; n_squares];
+    let mut fold_square = [usize::MAX; MAX_PIECE_TYPES];
+    if let Some(folds) = portals.folds.as_ref() {
+        for (end, &start) in folds.starts.iter().enumerate().take(portals.n_ends) {
+            if start >= 0 {
+                fold_at[start as usize] = first + end;
+                fold_square[first + end] = start as usize;
+            }
+        }
+    }
+    let mut extra = [0u32; MAX_PIECE_TYPES];
+    for player in 0..2 {
+        let frame = player * t.n_facings;
+        for (piece_type, count) in extra.iter_mut().enumerate().take(first) {
+            let admits = |end: usize| (portals.admits[end][player] >> piece_type) & 1 != 0;
+            for origin in 0..n_squares {
+                if end_at[origin] != usize::MAX {
+                    continue;
+                }
+                let lands = |square: i64| -> bool {
+                    square >= 0
+                        && square as usize != origin
+                        && end_at[square as usize] == usize::MAX
+                        && portals.may_stand(player, piece_type, square as usize)
+                };
+                let mut added = Squares::default();
+                let enter = |end: usize, bits: u32, added: &mut Squares| {
+                    let taking = (bits >> n_dirs) & mask;
+                    if taking == 0 || !admits(end) {
+                        return;
+                    }
+                    let to = portals.dest[end];
+                    if to < 0 || square_of[to as usize] == usize::MAX {
+                        return;
+                    }
+                    let far = square_of[to as usize];
+                    for direction in 0..n_dirs {
+                        if (taking >> direction) & 1 != 0 {
+                            let exit = portals.exit(n_squares, player, far, direction);
+                            if lands(i64::from(exit)) {
+                                added.insert(exit as usize);
+                            }
+                        }
+                    }
+                };
+                let through = |end: usize, added: &mut Squares| {
+                    if !admits(end) {
+                        return;
+                    }
+                    let to = portals.dest[end];
+                    if to < 0 || fold_square[to as usize] == usize::MAX {
+                        return;
+                    }
+                    let far = fold_square[to as usize];
+                    if lands(far as i64) {
+                        added.insert(far);
+                    }
+                };
+                let slot = t.slot(frame, piece_type, origin);
+                for entry in t.leaps.entries(slot) {
+                    let modes = t.leaps.modes(entry);
+                    for (index, &square) in t.leaps.squares(entry).iter().enumerate() {
+                        let square = square as usize;
+                        if end_at[square] != usize::MAX {
+                            enter(end_at[square], portals.leap_dirs[entry.start as usize + index], &mut added);
+                        } else if modes[index] & 2 != 0 && fold_at[square] != usize::MAX {
+                            through(fold_at[square], &mut added);
+                        }
+                    }
+                }
+                for entry in t.slides.entries(slot) {
+                    let modes = t.slides.modes(entry);
+                    for (index, &square) in t.slides.squares(entry).iter().enumerate() {
+                        let square = square as usize;
+                        if end_at[square] != usize::MAX {
+                            enter(end_at[square], portals.slide_dirs[entry.start as usize + index], &mut added);
+                            break;
+                        }
+                        if modes[index] & 2 != 0 && fold_at[square] != usize::MAX {
+                            through(fold_at[square], &mut added);
+                        }
+                    }
+                }
+                if added.len() != 0 {
+                    *count += added.count_outside(&capture_landings(t, slot));
+                }
+            }
+        }
+    }
+    // The derived table's scale, as `Evaluator.for_spec` takes it: the cheapest priced type's
+    // empty-board capture reach, frame 0, or 1 where none has any.
+    let unlimited = |piece_type: usize| t.drops.as_ref().is_some_and(|drops| drops.is_unlimited(piece_type));
+    let priced = |piece_type: usize| !t.royal_types.contains(&piece_type) && !unlimited(piece_type);
+    let mut scale = f64::INFINITY;
+    let mut any = false;
+    for piece_type in (0..t.n_types).filter(|&piece_type| priced(piece_type)) {
+        let mut reachable = 0u32;
+        for square in 0..n_squares {
+            reachable += capture_landings(t, t.slot(0, piece_type, square)).len();
+        }
+        let reach = f64::from(reachable) / n_squares as f64;
+        scale = scale.min(reach);
+        any = true;
+    }
+    let scale = if any && scale > 0.0 { scale } else { 1.0 };
+    let squares = (2 * n_squares) as f64;
+    for (piece_type, value) in out.iter_mut().enumerate() {
+        if priced(piece_type) {
+            *value += PORTAL_REACH_SHARE * ((f64::from(extra[piece_type]) / squares) / scale);
+        }
+    }
+    out
 }
 
 /// The two value tables an objective needs, so neither can be passed as the other.
@@ -399,6 +597,21 @@ pub struct Evaluator {
     /// `with_income` set it (a minimax player under the `INCOME` bit, in a game with income
     /// and a coin worth), so every other evaluator costs one comparison per node.
     income_weight: f64,
+    /// T1 (`docs/plan-player-weaknesses.md`, Q1169): per player, the purse up to which a coin
+    /// counts in full, `coin_margins`; none unless `with_margin` set it (a minimax player
+    /// under the `MARGIN` bit, in a game with income and a coin worth), and then the coin
+    /// term reads the purse linearly as it always did. Coins, at most `PURSE_MAX` (a purse
+    /// never holds more), so the evaluator stays small.
+    coin_margin: Option<[u16; 2]>,
+    /// T5 (`docs/plan-player-weaknesses.md`, Q1173): whether a goal counted to more than one
+    /// arrival races every racer it still needs (`racers_to_goal`) rather than the nearest.
+    /// False unless `with_racers` set it (a minimax player under the `RACERS` bit), and read
+    /// only where `reach.count` is above 1, so every other game runs today's race.
+    racers: bool,
+    /// Q1173b: under `racers`, Q1173's fixed scale (both sides' sums over `count x
+    /// goal_diameter`) in place of each side's own `k x goal_diameter`. False unless
+    /// `with_racers(true)` set it (the `RACERS_FIXED` bit, the old arm kept as a control).
+    racers_fixed: bool,
 }
 
 /// Q466 (F2): which pieces the opponent can never capture, read off the capture relation.
@@ -595,7 +808,62 @@ impl Evaluator {
             seal: Seal::of(t).map(Box::new),
             coin_weight,
             income_weight: 0.0,
+            coin_margin: None,
+            racers: false,
+            racers_fixed: false,
         }
+    }
+
+    /// T1b (`docs/plan-player-weaknesses.md`, Q1178): the same evaluator with the moves channel
+    /// priced only for the share of a turn's move the income does not pay: the coin's worth is
+    /// `max(bought_rate, moves_rate x coin_scarcity)`. Unchanged without `rules.income`, without
+    /// a move cost, or where a coin is worth nothing (a negative material sign). Applied before
+    /// `with_margin`, which reads the worth. `agents/evaluation.py::Evaluator.scarcity` is the
+    /// oracle's switch.
+    pub fn with_scarcity(mut self, t: &Tables) -> Self {
+        if self.coin_weight != 0.0 {
+            if let (Some(purse), Some(scarcity)) = (t.purse.as_deref(), coin_scarcity(t)) {
+                self.coin_weight = f64::max(
+                    bought_rate(purse, &self.values),
+                    moves_rate(t, purse, &self.values) * scarcity,
+                );
+            }
+        }
+        self
+    }
+
+    /// T1 (`docs/plan-player-weaknesses.md`, Q1169): the same evaluator with the coin priced at
+    /// the margin it buys: each purse counts in full up to its player's `coin_margins` and at
+    /// nothing above. Unchanged without `rules.income` or where a coin is worth nothing.
+    /// `agents/evaluation.py::Evaluator.margin` is the oracle's switch.
+    pub fn with_margin(mut self, t: &Tables) -> Self {
+        if self.coin_weight != 0.0 {
+            self.coin_margin = coin_margins(t);
+        }
+        self
+    }
+
+    /// T1c (`docs/plan-player-weaknesses.md`, Q1181): the same evaluator with each purse
+    /// counted in full up to its player's `coin_reserves` and at nothing above, in place of
+    /// `with_margin`'s bound. Unchanged without `rules.income` or where a coin is worth
+    /// nothing. `agents/evaluation.py::Evaluator.reserve` is the oracle's switch.
+    pub fn with_reserve(mut self, t: &Tables) -> Self {
+        if self.coin_weight != 0.0 {
+            self.coin_margin = coin_reserves(t);
+        }
+        self
+    }
+
+    /// T5 (`docs/plan-player-weaknesses.md`, Q1173): the same evaluator racing every racer a
+    /// counted goal still needs (`racers_to_goal`). Unchanged where `reach.count` is 1 or no
+    /// race is priced. `fixed` keeps Q1173's `count x goal_diameter` scale (the control arm);
+    /// otherwise each side's sum is over its own `k x goal_diameter` (Q1173b), so the last
+    /// runner weighs what today's nearest racer does. `agents/evaluation.py::Evaluator.racers`
+    /// and `racers_fixed` are the oracle's switches.
+    pub fn with_racers(mut self, fixed: bool) -> Self {
+        self.racers = true;
+        self.racers_fixed = fixed;
+        self
     }
 
     /// H4 (`docs/plan-hunger.md` §5): the same evaluator with the income term: each coin a
@@ -1068,7 +1336,15 @@ impl Evaluator {
         }
         if self.coin_weight != 0.0 {
             // TC5: the purse, mine minus theirs, at the market's best rate.
-            let coins = f64::from(game.purse[player]) - f64::from(game.purse[1 - player]);
+            let (mine, theirs) = match self.coin_margin {
+                // T1: each purse counted only up to the margin it buys.
+                Some(margin) => (
+                    game.purse[player].min(margin[player]),
+                    game.purse[1 - player].min(margin[1 - player]),
+                ),
+                None => (game.purse[player], game.purse[1 - player]),
+            };
+            let coins = f64::from(mine) - f64::from(theirs);
             score += self.coin_weight * coins;
         }
         if self.income_weight != 0.0 {
@@ -1173,6 +1449,21 @@ impl Evaluator {
     fn race_progress(&self, game: &Game<'_>, player: usize) -> f64 {
         let t = game.t;
         match t.reach.as_ref().filter(|rule| t.reach_is_priceable(rule)) {
+            Some(rule) if self.racers && rule.count > 1 => {
+                let sealed = self.sealed_goals(game);
+                let (mine, mine_k) = self.racers_to_goal(game, rule, player, sealed[player]);
+                let (theirs, theirs_k) =
+                    self.racers_to_goal(game, rule, 1 - player, sealed[1 - player]);
+                let progress = if self.racers_fixed {
+                    // Q1173's arm: both sums over `count` diameters.
+                    (theirs - mine) / (f64::from(rule.count) * t.goal_diameter)
+                } else {
+                    // Q1173b: each side's sum over its own `k` diameters, the mean racer's
+                    // distance, so one runner left weighs what today's nearest racer does.
+                    (per_racer(theirs, theirs_k) - per_racer(mine, mine_k)) / t.goal_diameter
+                };
+                clamp(progress) * f64::from(rule.result)
+            }
             Some(rule) => {
                 let sealed = self.sealed_goals(game);
                 let mine = self.nearest_to_goal(game, player, rule.types, sealed[player]);
@@ -1203,6 +1494,71 @@ impl Evaluator {
         } else {
             f64::from(best).min(t.goal_diameter)
         }
+    }
+
+    /// T5 (`docs/plan-player-weaknesses.md`, Q1173): the moves `player` still needs to finish a
+    /// goal counted to more than one arrival, under the `RACERS` bit: the summed distances of its
+    /// `count - tally` nearest eligible pieces not already counted (a listed piece standing on
+    /// its own goal is in the tally), each capped at `goal_diameter`, and `goal_diameter` for
+    /// each racer it no longer has, with `k = count - tally`, the racers it still needs.
+    /// Integers summed, so the oracle's sum is the same float.
+    /// `agents/evaluation.py::Evaluator._racers_to_goal` is the same function.
+    fn racers_to_goal(
+        &self,
+        game: &Game<'_>,
+        rule: &ReachRule,
+        player: usize,
+        sealed: u64,
+    ) -> (f64, u32) {
+        let t = game.t;
+        let diameter = t.goal_diameter as u32;
+        let tally = reach_tally(game, rule, player) as u32;
+        let needed = rule.count.saturating_sub(tally) as usize;
+        if needed == 0 {
+            return (0.0, 0);
+        }
+        // The `needed` smallest distances, ascending (`needed` is at most `REACH_COUNT_MAX`).
+        let mut nearest = [0u32; 64];
+        let mut held = 0usize;
+        let open = rule.goals[player].len();
+        for square in game.occupied()[player].iter() {
+            let piece_type = t.type_of(game.board[square]);
+            if !rule.admits(piece_type) || rule.squares[player][square] {
+                continue;
+            }
+            let distance = if sealed == 0 {
+                t.goal_distance[t.goal_slot(player, piece_type, square)]
+            } else if sealed.count_ones() as usize == open {
+                GOAL_UNREACHABLE
+            } else {
+                let mut best = GOAL_UNREACHABLE;
+                for goal in 0..open {
+                    if sealed & (1 << goal) == 0 {
+                        let slot = t.goal_each_slot(rule, player, goal, piece_type, square);
+                        best = best.min(t.goal_distance_each[slot]);
+                    }
+                }
+                best
+            };
+            let distance = if distance == GOAL_UNREACHABLE {
+                diameter
+            } else {
+                u32::from(distance).min(diameter)
+            };
+            if held < needed {
+                held += 1;
+            } else if distance >= nearest[needed - 1] {
+                continue;
+            }
+            let mut at = held - 1;
+            while at > 0 && nearest[at - 1] > distance {
+                nearest[at] = nearest[at - 1];
+                at -= 1;
+            }
+            nearest[at] = distance;
+        }
+        let sum: u32 = nearest[..held].iter().sum::<u32>() + (needed - held) as u32 * diameter;
+        (f64::from(sum), needed as u32)
     }
 
     /// How far `player` is towards running out, as a share of the way there.
@@ -1252,20 +1608,124 @@ fn reach_tally(game: &Game<'_>, rule: &ReachRule, player: usize) -> f64 {
 /// hires first (`PurseTables::hire`, `PurseTables::bribe`).
 /// H4 (`docs/plan-hunger.md` §5, §R4): and over moves under upkeep (`moves_rate`), last.
 pub fn coin_value(t: &Tables, values: &[f64]) -> f64 {
-    t.purse.as_deref().map_or(0.0, |purse| {
-        let market = purse
-            .market
-            .iter()
-            .map(|&(piece_type, price)| values[piece_type as usize] / f64::from(price))
-            .fold(0.0, f64::max);
-        let bought = [&purse.hire, &purse.bribe]
-            .into_iter()
-            .flat_map(|costs| costs.iter().enumerate())
-            .filter(|(_, cost)| **cost != 0)
-            .map(|(piece_type, cost)| values[piece_type] / f64::from(*cost))
-            .fold(market, f64::max);
-        f64::max(bought, moves_rate(t, purse, values))
-    })
+    t.purse
+        .as_deref()
+        .map_or(0.0, |purse| f64::max(bought_rate(purse, values), moves_rate(t, purse, values)))
+}
+
+/// The coin's rate over what it buys outright: the market at the price, a hire at its price
+/// and a bribe at twice it, in type order, hires first. 0.0 where nothing is for sale.
+fn bought_rate(purse: &PurseTables, values: &[f64]) -> f64 {
+    let market = purse
+        .market
+        .iter()
+        .map(|&(piece_type, price)| values[piece_type as usize] / f64::from(price))
+        .fold(0.0, f64::max);
+    [&purse.hire, &purse.bribe]
+        .into_iter()
+        .flat_map(|costs| costs.iter().enumerate())
+        .filter(|(_, cost)| **cost != 0)
+        .map(|(piece_type, cost)| values[piece_type] / f64::from(*cost))
+        .fold(market, f64::max)
+}
+
+/// T1b (`docs/plan-player-weaknesses.md`, Q1178): **how scarce a coin is for moves**,
+/// `max(0, 1 - income / mean move cost)`: `income` the mean of the two players' opening incomes
+/// (`opening_income`, the count `coin_margins` reads), `mean move cost` the moves channel's
+/// own denominator over its count (`moves_rate`'s pieces). The share of a turn's move the
+/// income does not already pay. `None` without income or without a move cost, where the
+/// coin reads as it always did. `agents/evaluation.py::coin_scarcity` is the same function.
+pub fn coin_scarcity(t: &Tables) -> Option<f64> {
+    let purse = t.purse.as_deref()?;
+    let income = t.income.as_deref()?;
+    if purse.upkeep_mean.is_empty() {
+        return None;
+    }
+    let mut cost = 0.0;
+    let mut count = 0usize;
+    for square in 0..t.n_squares {
+        let raw = t.initial_board[square];
+        if raw == 0 {
+            continue;
+        }
+        let owner = t.owner_of(raw);
+        let piece_type = t.type_of(raw);
+        if owner > 1 || t.royal_types.contains(&piece_type) {
+            continue;
+        }
+        let mean = purse.upkeep_mean[owner * t.n_types + piece_type];
+        if mean == 0.0 {
+            continue;
+        }
+        cost += mean;
+        count += 1;
+    }
+    if count == 0 {
+        return None;
+    }
+    let earned = (opening_income(t, income, 0) + opening_income(t, income, 1)) / 2.0;
+    Some(f64::max(0.0, 1.0 - earned / (cost / count as f64)))
+}
+
+/// What `player` earns at the start of a turn in the opening position: `per_piece` for each
+/// of their pieces on their income region there.
+fn opening_income(t: &Tables, income: &IncomeTables, player: usize) -> f64 {
+    let standing = (0..t.n_squares)
+        .filter(|&square| {
+            let raw = t.initial_board[square];
+            raw != 0 && t.owner_of(raw) == player && income.masks[player].get(square)
+        })
+        .count();
+    f64::from(income.per_piece) * standing as f64
+}
+
+/// T1 (`docs/plan-player-weaknesses.md`, Q1169): **the margin a coin buys**, per player:
+/// `max(dearest, PURSE_MAX - INCOME_TURNS * income)`, where `income` is what the player earns
+/// at the start of a turn in the opening position (fixed per game, so no positional term) and
+/// `dearest` the largest single price in the tables (a move cost, a market price, a hire, a
+/// bribe). A coin above it cannot be spent before income would overflow the cap. `None`
+/// without a purse or income: there the margin is the cap and the purse reads linearly.
+/// Held at most `PURSE_MAX`, which a purse never passes, so a margin above it reads the same.
+/// `agents/evaluation.py::coin_margins` is the same function.
+pub fn coin_margins(t: &Tables) -> Option<[u16; 2]> {
+    let purse = t.purse.as_deref()?;
+    let income = t.income.as_deref()?;
+    let dearest = dearest_price(purse);
+    Some([0, 1].map(|player| {
+        let earned = opening_income(t, income, player);
+        let margin = f64::max(f64::from(dearest), f64::from(PURSE_MAX) - INCOME_TURNS * earned);
+        margin.min(f64::from(PURSE_MAX)) as u16
+    }))
+}
+
+/// The largest single price in the tables: a move cost, a market price, a hire, a bribe.
+fn dearest_price(purse: &PurseTables) -> u16 {
+    purse
+        .upkeep
+        .iter()
+        .copied()
+        .chain(purse.market.iter().map(|&(_, price)| price))
+        .chain(purse.hire.iter().copied())
+        .chain(purse.bribe.iter().copied())
+        .fold(0u16, u16::max)
+}
+
+/// T1c (`docs/plan-player-weaknesses.md`, Q1181): **the reserve a coin is worth in**, per
+/// player: `INCOME_TURNS * max(0, dearest - income)`, where `income` is what the player earns
+/// at the start of a turn in the opening position and `dearest` the largest single price
+/// (`coin_margins`' two reads). The coins a side needs before `INCOME_TURNS` turns of income
+/// cover its dearest move; a coin beyond them buys nothing income would not. `None` without a
+/// purse or income: there the purse reads linearly. Held at most `PURSE_MAX`.
+/// `agents/evaluation.py::coin_reserves` is the same function.
+pub fn coin_reserves(t: &Tables) -> Option<[u16; 2]> {
+    let purse = t.purse.as_deref()?;
+    let income = t.income.as_deref()?;
+    let dearest = f64::from(dearest_price(purse));
+    Some([0, 1].map(|player| {
+        let earned = opening_income(t, income, player);
+        let reserve = INCOME_TURNS * f64::max(0.0, dearest - earned);
+        reserve.min(f64::from(PURSE_MAX)) as u16
+    }))
 }
 
 /// H4 (`docs/plan-hunger.md` §R4): **the moves channel**, what a coin buys in moves:
@@ -1310,6 +1770,16 @@ pub fn spy_edge(game: &Game<'_>, player: usize) -> i32 {
 }
 
 #[inline]
+/// Q1173b: a side's summed racer distance per racer it still needs (zero when it needs none).
+/// `agents/evaluation.py::_per_racer` is the same division.
+fn per_racer(sum: f64, needed: u32) -> f64 {
+    if needed == 0 {
+        0.0
+    } else {
+        sum / f64::from(needed)
+    }
+}
+
 fn clamp(value: f64) -> f64 {
     value.clamp(-1.0, 1.0)
 }

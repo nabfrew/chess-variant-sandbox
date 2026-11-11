@@ -298,15 +298,19 @@ def _first_child(
     found: Callable[[dict, dict], bool],
     operators: tuple[Any, ...] = OPERATORS,
     likely: Callable[[dict], bool] = lambda spec: False,
+    possible: Callable[[dict], bool] = lambda spec: True,
 ) -> str | None:
     """Where one of ``operators`` first makes a child ``found`` holds of, corpus-wide.
 
     Every committed spec (`_cheap_first`'s order, the ``likely`` ones before the rest) at
     the sweep's seeds, stopping at the first ``found(parent, child)``, so an existence
     question costs what it takes to answer and a missing answer costs the whole corpus.
+    A spec ``possible`` rules out is skipped: the caller's statement that ``found`` holds
+    of none of its children, so skipping it changes the cost and never the answer.
     ``None`` when no child satisfies it.
     """
-    for name, parent in sorted(_cheap_first(), key=lambda pair: not likely(pair[1])):
+    candidates = [pair for pair in _cheap_first() if possible(pair[1])]
+    for name, parent in sorted(candidates, key=lambda pair: not likely(pair[1])):
         for operator in operators:
             for seed in _SWEEP_SEEDS:
                 child = copy.deepcopy(parent)
@@ -3778,7 +3782,7 @@ def _parent_riders_in_hand() -> dict:
 # crowd placed that checks) and leaves it (switched off). The one committed game with a majority
 # type, the crowd, already carries it, so from the corpus it is entered only by placing a new
 # type: like TC3's rows, it does not keep the army. Generation 57's row (SR3a's runners) retired
-# with the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `add-a-runner`
+# with the generation, in no game (`_IN_NO_GAME`); `add-a-runner`
 # still crosses it.
 #
 # Generation 59 (SR3b, `docs/plan-schema-next.md` §1 rank 6): one name, each player's own
@@ -3789,21 +3793,21 @@ def _parent_riders_in_hand() -> dict:
 # Generation 60 (SR3c, `docs/plan-schema-next.md` §1 rank 7): one name, a hop's screen named by
 # type. It rides on a piece's move, so it has no `rules` host. `spare-its-own-kind` enters it (a
 # hop that may jump every piece but its own kind, Janggi's cannon) and leaves it (the screen
-# back to any), keeping the army. Generation 59's row (SR3b) retired with the generation, its
-# showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `give-a-handicap` still crosses it.
+# back to any), keeping the army. Generation 59's row (SR3b) retired with the generation, in
+# no game (`_IN_NO_GAME`); `give-a-handicap` still crosses it.
 #
 # Generation 61 (SR3d, `docs/plan-schema-next.md` §2.9 K2): one name, the duck beside portals,
 # a lifted refusal. `open-a-portal` enters it (a pair on a duck game) and leaves it (every
 # portal taken away), keeping the army; `loose-a-duck` crosses it too, but its duck is a type
-# of its own. Generation 60's row (SR3c) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `spare-its-own-kind` still crosses it.
+# of its own. Generation 60's row (SR3c) retired with the generation, in no game
+# (`_IN_NO_GAME`); `spare-its-own-kind` still crosses it.
 #
 # Generation 62 (SR3e, `docs/plan-schema-next.md` §2.9 K3): one name, the duck beside a blast,
 # a strike or contacts, a lifted refusal. `set-the-blast` enters it (atomic's blast on a duck
 # game) and leaves it (the blast taken off), keeping the army; `soften-the-capture`,
 # `become-what-you-take`, `merge-your-own` and `leave-something-behind` cross it too, and
 # `loose-a-duck` with a duck of its own. Generation 61's row (SR3d) retired with the generation,
-# its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `open-a-portal` still crosses it.
+# in no game (`_IN_NO_GAME`); `open-a-portal` still crosses it.
 #
 # Generation 63 (SR3f, `docs/plan-schema-next.md` §2.11 O1, O2): two names, a placement for
 # nobody beside wild pieces and beside the duck, two lifted refusals. `gather-a-crowd` enters
@@ -3811,59 +3815,59 @@ def _parent_riders_in_hand() -> dict:
 # its own; `set-a-patrol` crosses the first keeping the army (a wild type the game had, on a
 # game with a crowd), and `loose-a-duck` the second with a duck of its own, so the duck's row
 # does not ask for the army kept (as SR2's W9 did not). Generation
-# 62's row (SR3e) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` still crosses it.
+# 62's row (SR3e) retired with the generation, in no game
+# (`_IN_NO_GAME`); `set-the-blast` still crosses it.
 #
 # Generation 64 (SR3g, `docs/plan-schema-next.md` §2.10 P9, P10): two names, a purse beside
 # portals and a placement for nobody beside portals, two lifted refusals. `open-a-portal`
 # enters each (a pair on a market or crowd game) and leaves it (every portal taken away),
 # keeping the army; `open-a-market` crosses the first from a portal game, and `gather-a-crowd`
-# the second with a type of its own. Generation 63's rows (SR3f) retired with the generation, their showcase still
-# owed (`_NO_SHOWCASE_ON_PURPOSE`); `gather-a-crowd` still crosses both.
+# the second with a type of its own. Generation 63's rows (SR3f) retired with the generation, in no game
+# (`_IN_NO_GAME`); `gather-a-crowd` still crosses both.
 #
 # Generation 65 (SR1d, `docs/plan-schema-next.md` §1 rank 8, Z2): one name, a castling piece
 # that is not royal beside royals, a lifted refusal. No operator enters it: none adds castling,
 # names another castling piece or moves royalty (`_CANNOT_ENTER`); `toggle-a-rule` leaves it
 # (castling taken away), keeping the army. Generation 64's rows (SR3g) retired with the
-# generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `open-a-portal` still
+# generation, in no game (`_IN_NO_GAME`); `open-a-portal` still
 # crosses both.
 #
 # Generation 66 (SR4b, `docs/plan-schema-next.md` §2.6 W4): one name, a sweep beside a hand, a
 # lifted refusal. `hand-the-pieces-back` enters it on a sweep game and leaves it (the hand
 # taken away); `sweep-a-slider` crosses it from a hand game, keeping the army. Generation 65's
-# row (SR1d) retired with the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`),
+# row (SR1d) retired with the generation, in no game (`_IN_NO_GAME`),
 # and with it its `_CANNOT_ENTER` row.
 #
 # Generation 67 (SR4e, `docs/plan-schema-next.md` §2.4 T6, T7): two names, a strike and a
 # contact table beside wild pieces, two lifted refusals. `soften-the-capture` and
 # `leave-something-behind` enter the first on a wolves game, `become-what-you-take` the second, and
 # `set-a-patrol` both from a strike or contacts game; each leaves by taking its rule or the
-# wild pieces away. Generation 66's row (SR4b) retired with the generation, its showcase still
-# owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# wild pieces away. Generation 66's row (SR4b) retired with the generation, in no game
+# (`_IN_NO_GAME`).
 #
 # Generation 68 (SR4c, `docs/plan-schema-next.md` §2.6 W5): one name, a sweep beside wild pieces,
 # a lifted refusal. `set-a-patrol` enters it on a sweep game and `sweep-a-slider` on a wolves
 # game, keeping the army; each leaves by taking the wild pieces or the sweep away. Generation
-# 67's rows (SR4e) retired with the generation, their showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`).
+# 67's rows (SR4e) retired with the generation, in no game
+# (`_IN_NO_GAME`).
 #
 # Generation 69 (SR4d, `docs/plan-schema-next.md` §2.5 H11): one name, `"per_type": "own"`
 # beside a hand, a lifted refusal. `hand-the-pieces-back` enters it on an own game and leaves it
 # (the hand taken away), keeping the army; `count-each-kind` crosses it from a hand game.
-# Generation 68's row (SR4c) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `set-a-patrol` and `sweep-a-slider` still cross it.
+# Generation 68's row (SR4c) retired with the generation, in no game
+# (`_IN_NO_GAME`); `set-a-patrol` and `sweep-a-slider` still cross it.
 #
 # Generation 70 (SR4f, `docs/plan-schema-next.md` §2.4 T8): one name, a blast beside wild
 # pieces, a lifted refusal. `set-the-blast` enters it on a wolves game and `set-a-patrol` on a
 # blast game, keeping the army; each leaves by taking the blast or the wild pieces away.
-# Generation 69's row (SR4d) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `hand-the-pieces-back` and `count-each-kind` still cross it.
+# Generation 69's row (SR4d) retired with the generation, in no game
+# (`_IN_NO_GAME`); `hand-the-pieces-back` and `count-each-kind` still cross it.
 #
 # Generation 71 (SR4g, `docs/plan-schema-next.md` §2.8 N17): one name, a wild immunity beside a
 # hand, a lifted refusal. `hand-the-pieces-back` enters it on a game whose wild pieces are
 # immune, `hunt-the-wild` and `set-a-patrol` on a hand game; each leaves by taking the hand,
 # the immunity or the wild pieces away. Generation 70's row (SR4f) retired with the
-# generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` and
+# generation, in no game (`_IN_NO_GAME`); `set-the-blast` and
 # `set-a-patrol` still cross it.
 #
 # Generation 72 (SR4h, `docs/plan-schema-next.md` §2.4 V5, V6, V9): three names, a command that
@@ -3871,33 +3875,33 @@ def _parent_riders_in_hand() -> dict:
 # `soften-the-capture`, `become-what-you-take` and `hand-the-pieces-back` enter them on a game
 # whose command `captures_own`, `turn-the-gaze` on a strike, contacts or hand game with a
 # command; each leaves by taking the rule, the `captures_own` or the command away. Generation
-# 71's row (SR4g) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `hand-the-pieces-back`, `hunt-the-wild` and `set-a-patrol` still
+# 71's row (SR4g) retired with the generation, in no game
+# (`_IN_NO_GAME`); `hand-the-pieces-back`, `hunt-the-wild` and `set-a-patrol` still
 # cross it.
 #
 # Generation 73 (SR4i, `docs/plan-schema-next.md` §2.4 T9): one name, an own contact link beside
 # compulsory capture, a lifted refusal. `merge-your-own` enters it on a `must_capture` game and
 # leaves it by taking the merge away. Generation 72's rows (SR4h) retired with the generation,
-# their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `soften-the-capture`,
+# in no game (`_IN_NO_GAME`); `soften-the-capture`,
 # `become-what-you-take`, `hand-the-pieces-back` and `turn-the-gaze` still cross them.
 #
 # Generation 74 (SR4j, `docs/plan-schema-next.md` §2.4 T10): one name, a strike's `by` beside its
 # `switches_sides`, a lifted refusal. `leave-something-behind` enters it on a shooting game (a
 # switch added to a strike with `by`) and leaves it by taking `by` or the switch away.
-# Generation 73's row (SR4i) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `merge-your-own` still crosses it.
+# Generation 73's row (SR4i) retired with the generation, in no game
+# (`_IN_NO_GAME`); `merge-your-own` still crosses it.
 #
 # Generation 75 (SR4k, `docs/plan-schema-next.md` §2.11 O3, O4): two names, a piece nobody owns
 # beside a strike and beside contacts, two lifted refusals. `soften-the-capture` and
 # `leave-something-behind` enter the strike, `become-what-you-take` and `merge-your-own` the
 # contacts, on a game with a piece nobody owns; each leaves by taking the rule (or the pieces
 # nobody owns, `gather-a-crowd`) away. Generation 74's row (SR4j) retired with the generation,
-# its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `leave-something-behind` still crosses it.
+# in no game (`_IN_NO_GAME`); `leave-something-behind` still crosses it.
 #
 # Generation 76 (SR4l, `docs/plan-schema-next.md` §2.11 O22): one name, the purse beside a blast,
 # a lifted refusal. `set-the-blast` enters it on a purse game and `open-a-market` on a blast
 # game; each leaves by taking its own rule away. Generation 75's rows (SR4k) retired with the
-# generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `soften-the-capture`,
+# generation, in no game (`_IN_NO_GAME`); `soften-the-capture`,
 # `become-what-you-take`, `merge-your-own`, `leave-something-behind` and `gather-a-crowd` still
 # cross them.
 #
@@ -3905,84 +3909,84 @@ def _parent_riders_in_hand() -> dict:
 # beside portals, two lifted refusals. `soften-the-capture` and `leave-something-behind` enter the
 # strike, `become-what-you-take` and `merge-your-own` the contacts, on a portal game, and
 # `open-a-portal` puts portals beside either; each leaves by taking its own rule away. Generation
-# 76's row (SR4l) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` and `open-a-market` still cross it.
+# 76's row (SR4l) retired with the generation, in no game
+# (`_IN_NO_GAME`); `set-the-blast` and `open-a-market` still cross it.
 #
 # Generation 78 (SR5a, `docs/plan-schema-next.md` §2.4 T1, T4): three names, a strike and contacts
 # beside a blast (two lifted refusals) and the switch `explode_on_capture.strikes`.
 # `set-the-blast` enters each: a blast narrowed to one capturer beside a strike or contacts, and
 # the switch beside a strike placed `stay` or `home`; it leaves the switch by taking it away and
 # the pairs by taking the blast away. Generation 77's rows (SR4m) retired with the generation,
-# their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `soften-the-capture`,
+# in no game (`_IN_NO_GAME`); `soften-the-capture`,
 # `leave-something-behind`, `become-what-you-take`, `merge-your-own` and `open-a-portal` still
 # cross them.
 #
 # Generation 79 (SR5b, `docs/plan-schema-next.md` §2.7 V2): one name, a line of sight beside a
 # blast, a lifted refusal. `set-the-blast` enters it on a game with a sight and `cast-a-gaze` on
 # a game with a blast; each leaves by taking its own rule away. Generation 78's rows (SR5a)
-# retired with the generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# retired with the generation, in no game (`_IN_NO_GAME`);
 # `set-the-blast` still crosses them.
 #
 # Generation 80 (SR5c, `docs/plan-schema-next.md` §2.7 V1): one name, a line of sight beside
 # portals, a lifted refusal (a command beside portals stays refused). `open-a-portal` enters it
 # on a game with a sight and `cast-a-gaze` on a game with portals; each leaves by taking its own
-# rule away. Generation 79's row (SR5b) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` and `cast-a-gaze` still cross it.
+# rule away. Generation 79's row (SR5b) retired with the generation, in no game
+# (`_IN_NO_GAME`); `set-the-blast` and `cast-a-gaze` still cross it.
 #
 # Generation 81 (SR5d, `docs/plan-schema-next.md` §2.7 V3, V4): two names, a command beside a
 # goal and beside a territory, two lifted refusals. `cast-a-gaze` enters each on a game with the
 # rule, and the goal's and territory's own operators on a game with a command; each leaves by
-# taking its own rule away. Generation 80's row (SR5c) retired with the generation, its showcase
-# still owed (`_NO_SHOWCASE_ON_PURPOSE`); `open-a-portal` and `cast-a-gaze` still cross it.
+# taking its own rule away. Generation 80's row (SR5c) retired with the generation, in no game
+# (`_IN_NO_GAME`); `open-a-portal` and `cast-a-gaze` still cross it.
 #
 # Generation 82 (SR5c2, `docs/plan-schema-next.md` §2.7 V1, its command arm): one name, a command
 # beside portals, a lifted refusal. `open-a-portal` enters it on a game with a command and
 # `cast-a-gaze` on a game with portals; each leaves by taking its own rule away. Generation 81's
-# rows (SR5d) retired with the generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# rows (SR5d) retired with the generation, in no game (`_IN_NO_GAME`);
 # `cast-a-gaze` and the goal's and territory's own operators still cross them.
 #
 # Generation 83 (SR5e, `docs/plan-schema-next.md` §2.7 V7): one name, a command beside a rest, a
 # lifted refusal. `tire-a-piece` enters it on a game with a command and `cast-a-gaze` on a game
 # with a rest; each leaves by taking its own rule away. Generation 82's row (SR5c2) retired with
-# the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `open-a-portal` and
+# the generation, in no game (`_IN_NO_GAME`); `open-a-portal` and
 # `cast-a-gaze` still cross it.
 #
 # Generation 84 (SR5f, `docs/plan-schema-next.md` §2.7 V11, V15): two names, a sight on a wild
 # piece or the duck and a sight on a nobody's piece, lifted refusals. `cast-a-gaze` enters both
 # (naming the wild types at even odds; `whose: "any"` on a nobody's type) and `blind-a-piece`
-# leaves both. Generation 83's row (SR5e) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `tire-a-piece` and `cast-a-gaze` still cross it.
+# leaves both. Generation 83's row (SR5e) retired with the generation, in no game
+# (`_IN_NO_GAME`); `tire-a-piece` and `cast-a-gaze` still cross it.
 #
 # Generation 85 (SR5g, `docs/plan-schema-next.md` §2.10 P1): one name, portals on a hex
 # lattice, a lifted refusal. `open-a-portal` enters it on a hex game (a pair on two cells that
 # are each other's image) and leaves it by taking every portal away. Generation 84's rows
-# (SR5f) retired with the generation, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# (SR5f) retired with the generation, in no game (`_IN_NO_GAME`);
 # `cast-a-gaze` and `blind-a-piece` still cross them.
 #
 # Generation 86 (SR5h, `docs/plan-schema-next.md` §2.10 P5): one name, a blast beside portals,
 # a lifted refusal. `set-the-blast` enters it on a game with portals and `open-a-portal` on a
 # game with a blast; each leaves by taking its own rule away. Generation 85's row (SR5g)
-# retired with the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# retired with the generation, in no game (`_IN_NO_GAME`);
 # `open-a-portal` still crosses it.
 #
 # Generation 87 (SR5j, `docs/plan-schema-next.md` §2.11 O12): one name, a blast beside majority
 # control, a lifted refusal. `set-the-blast` enters it on a game with a held piece and
 # `gather-a-crowd` on a game with a blast; each leaves by taking its own rule away. Generation
-# 86's row (SR5h) retired with the generation, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `set-the-blast` and `open-a-portal` still cross it.
+# 86's row (SR5h) retired with the generation, in no game
+# (`_IN_NO_GAME`); `set-the-blast` and `open-a-portal` still cross it.
 #
 # Generation 88 (SR5i, `docs/plan-schema-next.md` §2.10 P6, P7): two names, territory and a
 # region beside portals, two lifted refusals. `claim-the-ground` enters the first on a game
 # with portals and `open-a-portal` on a game with a territory; `open-a-portal` enters the
 # second on a game with a region; each leaves by taking a rule away. Generation 87's row
-# (SR5j) retired with the generation, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`);
+# (SR5j) retired with the generation, in no game (`_IN_NO_GAME`);
 # `set-the-blast` and `gather-a-crowd` still cross it.
 #
 # Generation 89 (SR5k, `docs/plan-schema-next.md` §2.11 O10, O11): two names, territory and a
 # goal beside majority control, two lifted refusals. `claim-the-ground` and the goal's operator
 # enter them on a game with a held piece, `gather-a-crowd` on a game with either rule; each
-# leaves by taking a rule away. Generation 88's rows (SR5i) retired with the generation, their
-# showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`); `claim-the-ground` and `open-a-portal` still
+# leaves by taking a rule away. Generation 88's rows (SR5i) retired with the generation, in
+# no game (`_IN_NO_GAME`); `claim-the-ground` and `open-a-portal` still
 # cross them.
 #
 # Generation 90 (SR6a, `docs/plan-schema-next.md` §2.6 W1): two names, a sweep beside a strike
@@ -3992,90 +3996,90 @@ def _parent_riders_in_hand() -> dict:
 # `sweep-a-slider`'s way back to a slide drops `effects`, `soften-the-capture` writes no
 # `choose` beside a sweep (W1's narrower row), and a strike taken from under a path sweep takes
 # the switch with it (`operators._settle_sweep_effects`).
-# Generation 89's rows (SR5k) retired with the generation, their showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`); `claim-the-ground` and `gather-a-crowd` still cross them.
+# Generation 89's rows (SR5k) retired with the generation, in no game
+# (`_IN_NO_GAME`); `claim-the-ground` and `gather-a-crowd` still cross them.
 #
 # Generation 91 (SR6b, §2.6 W2): two names, a sweep beside contacts and the switch at `"path"`
 # beside them. Registered in the inventory by SR6b, whose areas left this file out, and
 # raised here with generation 92 (SR6c): `become-what-you-take` and `merge-your-own` write a
 # table beside a sweep (W2's narrower row: never a chosen square), `strike-the-path` enters
 # and leaves the switch beside contacts. Generation 90's and 91's rows retire with
-# generation 92, their showcases still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# generation 92, in no game (`_IN_NO_GAME`).
 #
 # Generation 92 (SR6c, §2.6 W3): two names, a sweep beside a blast (a lifted refusal) and the
 # switch at `"path"` beside one. The first is entered as any blast or sweep is (`set-the-blast`
 # on a sweeping game, `sweep-a-slider` on an exploding one, neither beside a strike or contacts,
 # W3's narrower row); `strike-the-path` enters and leaves the second, and a blast narrowed past
 # the sweeper takes the switch with it (`operators._settle_sweep_effects`). Generation 92's rows
-# retire with generation 93, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# retire with generation 93, in no game (`_IN_NO_GAME`).
 #
 # Generation 93 (SR6d, §2.6 W6): one name, a sweep on a wrapped board (a lifted refusal; where
 # two rays reach one target the word names its ray). `join-the-edges` enters it on a sweeping
 # game and leaves it, and `sweep-a-slider` enters it on a wrapped one. Its row retires with
-# generation 94, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# generation 94, in no game (`_IN_NO_GAME`).
 #
 # Generation 94 (SR6e, §2.6 W8): one name, a sweep beside portals (a lifted refusal; a fold
 # propagates a sweep and a momentum end ends its ray). `open-a-portal` enters it on a sweeping
 # game and takes it away, and `sweep-a-slider` enters it beside portals (it declined there
-# until now). Its row retires with generation 95, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`).
+# until now). Its row retires with generation 95, in no game
+# (`_IN_NO_GAME`).
 #
 # Generation 95 (SR6f, §2.7 V8): one name, a command beside a sweep (a lifted refusal; a
 # commanded sweep removes only what the command lets it take). `cast-a-gaze` enters it on a
 # sweeping game and `sweep-a-slider` beside a command (it declined there until now);
 # `blind-a-piece` and `sweep-a-slider`'s way back leave it. Its row retires with generation
-# 96, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# 96, in no game (`_IN_NO_GAME`).
 #
 # Generation 96 (SR6g, §2.7 W10): one name, a shield beside a sweep (a lifted refusal; a
 # shielded piece ends a sweep's ray). `cast-a-gaze` enters it on a sweeping game (it drew no
 # shield there until now) and `sweep-a-slider` beside a shield (it declined there until now);
 # `blind-a-piece` and `sweep-a-slider`'s way back leave it. Its row retires with generation
-# 97, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# 97, in no game (`_IN_NO_GAME`).
 #
 # Generation 97 (SR7a, §2.2 L1): one name, en passant beside a long turn (a lifted refusal;
 # the window is the opponent's, opened by the mover's last double step of the turn).
 # `lengthen-the-turn` enters it on a game with en passant (it took the rule away until now)
 # and `toggle-a-rule` beside a long turn (it declined there until now); `toggle-a-rule`'s
-# removal and `lengthen-the-turn`'s way back leave it. Its row retires with generation 98, its
-# showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# removal and `lengthen-the-turn`'s way back leave it. Its row retires with generation 98, in
+# no game (`_IN_NO_GAME`).
 #
 # Generation 98 (SR7b, §2.2 L3): one name, wild pieces beside a long turn (a lifted refusal; a
 # phase follows every move of the turn). `lengthen-the-turn` enters it on a game with wild
 # pieces (it declined there until now) and `set-a-patrol` beside a long turn (it declined
 # there until now); `set-a-patrol`'s removal and `lengthen-the-turn`'s way back leave it. Its
-# row retires with generation 99, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# row retires with generation 99, in no game (`_IN_NO_GAME`).
 #
 # Generation 99 (SR7d, §2.2 L2): one name, a rest beside a long turn (a lifted refusal; a piece
 # that moved this turn is not offered again this turn, then rests its turns).
 # `lengthen-the-turn` enters it on a game that rests (it took every rest away until now) and
 # `tire-a-piece` beside a long turn (it declined there until now); `tire-a-piece`'s removal and
-# `lengthen-the-turn`'s way back leave it. Its row retires with generation 100, its showcase
-# still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# `lengthen-the-turn`'s way back leave it. Its row retires with generation 100, in no game
+# (`_IN_NO_GAME`).
 #
 # Generation 100 (SR7e, §2.3 R11): one name, a strike placed "stay" in rounds (a lifted refusal;
 # a shot does not move the shooter and resolves before the round's moves). `soften-the-capture`
 # and `leave-something-behind` offer a strike that stays in rounds (they declined there until now). Its
-# row retires with generation 101, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# row retires with generation 101, in no game (`_IN_NO_GAME`).
 #
 # Generation 101 (SR7f, §2.3 R18): one name, a placement for nobody in rounds (a lifted
 # refusal; two players' moves onto a nobody's piece's square are a collision as any other).
 # `play-at-once` enters it on a game with pieces nobody owns that stand (it declined there
 # until now) and `gather-a-crowd` in rounds; `gather-a-crowd`'s removal and `play-at-once`'s
-# way back leave it. Its row retires with generation 102, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`).
+# way back leave it. Its row retires with generation 102, in no game
+# (`_IN_NO_GAME`).
 #
 # Generation 102 (SR7g, §2.3 R19): one name, a purse in rounds (a lifted refusal for the
 # market; a buy is an arrival with the round's moves and collides as any arrival does; a hire
 # or a bribe stays refused). `play-at-once` enters it on a game with a market (it declined
 # beside every purse until now) and `open-a-market` in rounds; `open-a-market`'s closing and
-# `play-at-once`'s way back leave it. Its row retires with generation 103, its showcase still
-# owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# `play-at-once`'s way back leave it. Its row retires with generation 103, in no game
+# (`_IN_NO_GAME`).
 #
 # Generation 103 (SR7h, §2.12 Y3): one name, a promotion into a spy (a lifted refusal; the
 # promoting player gains a spy and the phase is read afresh both ways). `plant-a-spy` enters it
 # on a game whose promotion reaches the type it flags (the validator refused that flag until
 # now), and its way out (every flag taken away) leaves it. Its row retires with generation 104,
-# its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# in no game (`_IN_NO_GAME`).
 #
 # Generation 104 (SR7i, §2.12 Y4 to Y6): three names, a strike chain into a spy, a spy in a
 # strike's `switches_sides` and a contact link into a spy (three lifted refusals; the piece's
@@ -4085,7 +4089,7 @@ def _parent_riders_in_hand() -> dict:
 # `leave-something-behind` and `become-what-you-take` on a spy game (they declined in one until
 # now; `_spy_gain_guarded` declines only a gain into the other player's spy type);
 # `plant-a-spy`'s way out and each operator's own removal leave them. Their rows retire with
-# generation 105, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# generation 105, in no game (`_IN_NO_GAME`).
 #
 # Generation 105 (SR7j, §2.12 Y7, Y8): two names, a spy in a stock and a spy taken into a hand
 # (two lifted refusals; a spy in the hand counts for nobody until it is dropped, and dropping it
@@ -4093,14 +4097,14 @@ def _parent_riders_in_hand() -> dict:
 # until now), and `hand-the-pieces-back`, `place-a-stone` and `place-the-army` run on a spy
 # game (they declined in one until now; `_spy_gain_guarded` and the validator decline only a
 # spy for nobody); `plant-a-spy`'s way out and each operator's own removal leave them. Their
-# rows retire with generation 106, their showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# rows retire with generation 106, in no game (`_IN_NO_GAME`).
 #
 # Generation 106 (SR7k, §2.11 O6): one name, a spy nobody owns (a lifted refusal; it gives
 # nobody secrecy, and taken it is gone or the taker's to drop under a capture hand).
 # `gather-a-crowd` enters it on a spy game (half the time it places one of the game's spy types
 # for nobody, in place of a new type), and its own removal (every nobody's placement goes) or
-# `plant-a-spy`'s way out (every flag goes) leaves it. Its row retires with generation 107, its
-# showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# `plant-a-spy`'s way out (every flag goes) leaves it. Its row retires with generation 107, in
+# no game (`_IN_NO_GAME`).
 #
 # Generation 107 (SR7l, §2.11 O24): no name. The refusal of a price on a spy moved to the
 # purse's own *nothing charges it*, and in a spy game nothing can charge it until generation
@@ -4111,15 +4115,15 @@ def _parent_riders_in_hand() -> dict:
 # a spy gained when it stands). `open-a-market` may now put a spy game's spy on sale (it
 # skipped spies until now; the validator refuses a spy type a buyer does not start with), and
 # `plant-a-spy` flags a type a market sells; the market's closing and `plant-a-spy`'s way out
-# leave it. Its row retires with generation 109, its showcase still owed
-# (`_NO_SHOWCASE_ON_PURPOSE`).
+# leave it. Its row retires with generation 109, in no game
+# (`_IN_NO_GAME`).
 #
 # Generation 109 (SR7n, §2.3 R20): one name, a held piece in rounds (a lifted refusal; the
 # holder is read on the round's board, and a held move is that player's move of the round).
 # `play-at-once` enters it on a game with a held type (it declined there until now) and
 # `gather-a-crowd` on a game in rounds (it placed only standing pieces there); `play-at-once`'s
 # way back, `gather-a-crowd`'s removal and its taking control away leave it. Its row retires
-# with generation 110, its showcase still owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# with generation 110, in no game (`_IN_NO_GAME`).
 #
 # Generation 110 (SR11a, §2.13 PA4): one name, a turning lame rider (a lifted refusal; each jump
 # blocked on its own direction's legs, read from the square it jumps from). `bend-a-line` enters
@@ -4127,7 +4131,7 @@ def _parent_riders_in_hand() -> dict:
 # `ride-a-leap` stopping the rider (a single lame leap never turns, so its path goes with its
 # range); `add-a-piece` straightens a copied path its new directions cannot turn. The parent is
 # xiangqi whose horses circle; the path names no type, so the army is kept. Its row retires
-# with generation 111, its showcase not owed (`_NO_SHOWCASE_ON_PURPOSE`).
+# with generation 111, in no game (`_IN_NO_GAME`).
 #
 # Generation 111 (TS1, `docs/plan-tessabi.md` §1): three names, the scoring goal's keys on
 # `rules.reach`. `bank-the-arrivals`, `count-the-arrivals` and `settle-both-at-once` each enter
@@ -4262,109 +4266,15 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850). Generation 52's
 # gating row went when Q1059b put `rulesets/seirawan.json`, its showcase, in the library.
+# A row of `docs/plan-schema-next.md`'s update never comes here: since 2026-11-11 it owes no
+# game, and a rule of it that is in no game is listed in `_IN_NO_GAME`.
 _SHOWCASE_OWED: dict[str, str] = {
     # Generation 111's `rules.reach.both` (TS1) went to `_NO_SHOWCASE_ON_PURPOSE` when TS2
     # retired its `_FEATURES` row, still owed by TS5.
-    # Generation 110's name (SR11a) went to `_NO_SHOWCASE_ON_PURPOSE` when TS1 retired its
-    # `_FEATURES` row, its line owed by SR12.
-    # Generation 109's name (SR7n) went to `_NO_SHOWCASE_ON_PURPOSE` when SR11a retired its
-    # `_FEATURES` row, still owed by SR7s11.
-    # Generation 108's name (SR7m) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7n retired its
-    # `_FEATURES` row, still owed by SR7s10.
-    # Generation 107 (SR7l) adds no name. Generation 106's name (SR7k) went to
-    # `_NO_SHOWCASE_ON_PURPOSE` when SR7l retired its `_FEATURES` row, still owed by SR7s9.
-    # Generation 105's names (SR7j) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7k retired their
-    # `_FEATURES` rows, still owed by SR7s8.
-    # Generation 104's names (SR7i) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7j retired their
-    # `_FEATURES` rows, still owed by SR7s8.
-    # Generation 103's name (SR7h) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7i retired its
-    # `_FEATURES` row, still owed by SR7s8.
-    # Generation 102's name (SR7g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7h retired its
-    # `_FEATURES` row, still owed by SR7s7.
-    # Generation 101's name (SR7f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7g retired its
-    # `_FEATURES` row, still owed by SR7s6.
-    # Generation 100's name (SR7e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7f retired its
-    # `_FEATURES` row, still owed by SR7s5.
-    # Generation 99's name (SR7d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7e retired its
-    # `_FEATURES` row, still owed by SR7s3.
-    # Generation 98's name (SR7b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7d retired its
-    # `_FEATURES` row, still owed by SR7s2.
-    # Generation 97's name (SR7a) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7b retired its
-    # `_FEATURES` row, still owed by SR7s1.
-    # Generation 96's name (SR6g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR7a retired its
-    # `_FEATURES` row, still owed by SR6s7.
-    # Generation 95's name (SR6f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6g retired its
-    # `_FEATURES` row, still owed by SR6s6.
-    # Generation 94's name (SR6e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6f retired its
-    # `_FEATURES` row, still owed by SR6s5.
-    # Generation 93's name (SR6d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6e retired its
-    # `_FEATURES` row, still owed by SR6s4.
-    # Generation 92's names (SR6c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6d retired their
-    # `_FEATURES` rows, still owed by SR6s3.
-    # Generation 90's names (SR6a) and 91's (SR6b) went to `_NO_SHOWCASE_ON_PURPOSE` when
-    # SR6c retired their `_FEATURES` rows, still owed by SR6s1 and SR6s2.
-    # Generation 89's names (SR5k) went to `_NO_SHOWCASE_ON_PURPOSE` when SR6a retired their
-    # `_FEATURES` rows, still owed by SR5s9.
-    # Generation 88's names (SR5i) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5k retired their
-    # `_FEATURES` rows, still owed by SR5s12.
-    # Generation 87's name (SR5j) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5i retired its
-    # `_FEATURES` row, still owed by SR5s11.
-    # Generation 86's name (SR5h) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5j retired its
-    # `_FEATURES` row, still owed by SR5s8.
-    # Generation 85's name (SR5g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5h retired its
-    # `_FEATURES` row, still owed by SR5s7.
-    # Generation 84's names (SR5f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5g retired their
-    # `_FEATURES` rows, still owed by SR5s6.
-    # Generation 83's name (SR5e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5f retired its
-    # `_FEATURES` row, still owed by SR5s5.
-    # Generation 82's name (SR5c2) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5e retired its
-    # `_FEATURES` row, still owed by SR5s10.
-    # Generation 81's names (SR5d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5c2 retired their
-    # `_FEATURES` rows, still owed by SR5s4.
-    # Generation 80's name (SR5c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5d retired its
-    # `_FEATURES` row, still owed by SR5s3.
-    # Generation 79's name (SR5b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5c retired its
-    # `_FEATURES` row, still owed by SR5s2.
-    # Generation 78's names (SR5a) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5b retired their
-    # `_FEATURES` rows, still owed by SR5s1.
-    # Generation 77's names (SR4m) went to `_NO_SHOWCASE_ON_PURPOSE` when SR5a retired their
-    # `_FEATURES` rows, still owed by SR4s13.
-    # Generation 76's name (SR4l) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4m retired its
-    # `_FEATURES` row, still owed by SR4s12.
-    # Generation 75's names (SR4k) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4l retired their
-    # `_FEATURES` rows, still owed by SR4s11.
-    # Generation 74's name (SR4j) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4k retired its
-    # `_FEATURES` row, still owed by SR4s10.
-    # Generation 73's name (SR4i) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4j retired its
-    # `_FEATURES` row, still owed by SR4s9.
-    # Generation 72's names (SR4h) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4i retired their
-    # `_FEATURES` rows, still owed by SR4s8.
-    # Generation 71's name (SR4g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4h retired its
-    # `_FEATURES` row, still owed by SR4s7.
-    # Generation 70's name (SR4f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4g retired its
-    # `_FEATURES` row, still owed by SR4s6.
-    # Generation 69's name (SR4d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4f retired its
-    # `_FEATURES` row, still owed by SR4s4.
-    # Generation 68's name (SR4c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4d retired its
-    # `_FEATURES` row, still owed by SR4s3.
-    # Generation 67's names (SR4e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4c retired their
-    # `_FEATURES` rows, still owed by SR4s5.
-    # Generation 66's name (SR4b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4e retired its
-    # `_FEATURES` row, still owed by SR4s2.
-    # Generation 65's name (SR1d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR4b retired its
-    # `_FEATURES` row, still owed by SR1s4.
-    # Generation 64's names (SR3g) went to `_NO_SHOWCASE_ON_PURPOSE` when SR1d retired their
-    # `_FEATURES` rows, still owed by SR3s7.
-    # Generation 63's names (SR3f) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3g retired their
-    # `_FEATURES` rows, still owed by SR3s6.
-    # Generation 62's name (SR3e) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3f retired its
-    # `_FEATURES` row, still owed by SR3s5.
-    # Generation 61's name (SR3d) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3e retired its
-    # `_FEATURES` row, still owed by SR3s4.
-    # Generation 60's name (SR3c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3d retired its
-    # `_FEATURES` row, still owed by SR3s3.
-    # Generation 59's name (SR3b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR3c retired its
-    # `_FEATURES` row, still owed by SR3s2.
+    # Generations 59 to 110 (SR3b to SR11a, `docs/plan-schema-next.md`'s batches A to E and
+    # SR11a): each name went to `_NO_SHOWCASE_ON_PURPOSE` when the next generation retired its
+    # `_FEATURES` row, owed by a per-rule candidate (SR3s2 to SR7s11, SR1s4), and on 2026-11-11
+    # to `_IN_NO_GAME`: the user, *"highlights only"*, dropped those candidates (Q1190).
     # Generation 58 (Q1077) owes none: `archive/the-crowd.json` states it and reaches it (its
     # condottieri give check from the opening's scrum on).
     # Generation 57 (SR3a) owes none since 2026-11-03: SR3s1 put `rulesets/runners.json` (a
@@ -4387,16 +4297,8 @@ _SHOWCASE_OWED: dict[str, str] = {
     # `_FEATURES` row, still owed.
     # Generation 53's name (Q1063) went to `_NO_SHOWCASE_ON_PURPOSE` when TC9c retired its
     # `_FEATURES` row: Q1064's twin was measured and not taken.
-    # Generation 51's names (SR2b) went to `_NO_SHOWCASE_ON_PURPOSE` when Q1059a retired
-    # their `_FEATURES` rows, still owed by SR2s1.
-    # Generation 50's names (SR2) went to `_NO_SHOWCASE_ON_PURPOSE` when SR2b retired their
-    # `_FEATURES` rows, still owed by SR2s1.
-    # Generation 49's name (SR1c) went to `_NO_SHOWCASE_ON_PURPOSE` when SR2 retired its
-    # `_FEATURES` row, still owed by SR1s3.
-    # Generation 48's name (SR1b) went to `_NO_SHOWCASE_ON_PURPOSE` when SR1c retired its
-    # `_FEATURES` row, still owed by SR1s2.
-    # Generation 47's names (SR1a) went to `_NO_SHOWCASE_ON_PURPOSE` when SR1b retired their
-    # `_FEATURES` rows, still owed by SR1s1.
+    # Generations 47 to 51 (SR1a to SR2b) went the same way, their candidates SR1s1 to SR1s3
+    # and SR2s1 dropped on 2026-11-11, their names now in `_IN_NO_GAME`.
     # Generation 46's names (TC6) went to `_NO_SHOWCASE_ON_PURPOSE` when SR1a retired their
     # `_FEATURES` rows, still owed by TC10.
     # Generation 45's names (TC5) went to `_NO_SHOWCASE_ON_PURPOSE` when TC6 retired their
@@ -4440,13 +4342,12 @@ _SHOWCASE_OWED: dict[str, str] = {
     # `-with-meek-pawns`, `-with-the-initiative`, `archive/watering-hole`).
     # Empty again at schema 25: its showcase, `archive/torus-less-extended.json`, is the
     # game the bump was for (Q869). Schema 24's fold is shown by `archive/crease.json` (Q844b).
-    # Generation 117 (H2): income's showcase was to be Hunger Chess, H5's. H5 (Q1129,
-    # `docs/plan-hunger.md` §6.2) measured it at 0.709, under the user's 0.8 bar for the library,
-    # so it stays a candidate (`docs/reference/hunger-candidate.json`, its arms beside it) and a
-    # follow-up design task owes the game, and with it these three (§6.3).
-    "H2 income": "the Hunger redesign after Q1129 (docs/plan-hunger.md §6.3)",
-    "H2 income per piece": "the Hunger redesign after Q1129 (docs/plan-hunger.md §6.3)",
-    "H2 income region": "the Hunger redesign after Q1129 (docs/plan-hunger.md §6.3)",
+    # Generation 117 (H2): `H2 income` went on 2026-11-08, when Q1159 brought
+    # `rulesets/hunger.json` into the library (0.873 on the fixed player,
+    # `docs/plan-hunger.md` §6.4). Hunger says `"income": true`, so its two keys went the same
+    # day, when Q1179 archived the arms stating them (§6.6): `per_piece` by
+    # `archive/hunger-chess-with-rich-forage` (A8, 2 a piece, 0.913) and `region` by
+    # `archive/hunger-chess-where-pawns-forage` (A9, the second rank, 0.892). Empty again.
 }
 
 
@@ -4633,391 +4534,24 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # so. Exact in both directions: an entry whose feature gains a game fails the test until
 # its row goes. Empty since Q787 closed rows 16b, 21 and 32b, the last three gaps of the
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
-# whose schema 6 rows come from `_schema_6_uses` (Q795).
+# whose schema 6 rows come from `_schema_6_uses` (Q795). It also holds the features of an
+# earlier schema whose showcase is still owed, each naming what owes it. The rules of
+# `docs/plan-schema-next.md`'s update (generations 47 to 51 and 59 to 110) owe none and
+# moved to `_IN_NO_GAME` on 2026-11-11 (Q1190), below.
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # Generation 116's name (H3) went on 2026-11-08, when H5 (Q1129) archived
     # `archive/no-zugzwang.json` (chess plus the pass) as a preview. Generation 115's names (H1),
     # owed in `_SHOWCASE_OWED` until generation 116 (H3) retired their `_FEATURES` rows: H5
     # measured Hunger Chess at 0.709, under the user's 0.8 bar for the library, so it and its
     # promotion "new" arm stay candidates in `docs/reference/` and the Hunger redesign owes them
-    # (`docs/plan-hunger.md` §6.3).
-    "schema 115: pieces.upkeep": "owed by the Hunger redesign after Q1129 (plan-hunger §6.3)",
-    "schema 115: rules.purse.upkeep": "owed by the Hunger redesign after Q1129 (plan-hunger §6.3)",
-    "schema 115: rules.purse.upkeep.promotion": (
-        "owed by the Hunger redesign after Q1129 (plan-hunger §6.3)"
-    ),
+    # (`docs/plan-hunger.md` §6.3). `pieces.upkeep` and `rules.purse.upkeep` went on 2026-11-08,
+    # when Q1159 brought `rulesets/hunger.json` into the library (0.873 on the fixed player,
+    # §6.4). Hunger says `"upkeep": true`, the `"both"` reading; the promotion key went the
+    # same day, when Q1179 archived its `"new"` arm, `archive/hunger-chess-with-cheap-promotion`
+    # (A5, 0.871 on the fixed player, §6.6).
     # Generation 111's third name (TS1), `rules.reach.both`, went when TS5 (Q1135) landed
     # `rulesets/tessabi.json` (Tessabi, from tessabi.com), which states `both: "draw"` and whose
     # displacement can score for both (`docs/reference/tessabi.md`).
-    # Generation 110's name (SR11a), in `_SHOWCASE_OWED` until generation 111 (TS1) retired its
-    # `_FEATURES` row. The plan owes it no showcase of its own (`docs/plan-schema-next.md`
-    # §3.1: a rule no highlight game uses gets a line in
-    # `reference/schema-showcase-coverage.md`, written at the close, SR12).
-    "schema 110: pieces.moves.lame.path": (
-        "no showcase owed; SR12 writes its line in reference/schema-showcase-coverage.md "
-        "(docs/plan-schema-next.md §3.1)"
-    ),
-    # Generation 109's name (SR7n), owed in `_SHOWCASE_OWED` until generation 110 (SR11a)
-    # retired its `_FEATURES` row. Still owed by SR7s11 (`docs/plan-schema-next.md` §3.2), a
-    # held piece in rounds; the entry goes the day it lands.
-    "schema 109: pieces.control.majority.simultaneous": (
-        "owed by SR7s11, a held piece in rounds (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 108's name (SR7m), owed in `_SHOWCASE_OWED` until generation 109 (SR7n)
-    # retired its `_FEATURES` row. Still owed by SR7s10 (`docs/plan-schema-next.md` §3.2), a spy
-    # for sale; the entry goes the day it lands.
-    "schema 108: rules.purse.market.spy": (
-        "owed by SR7s10, a spy for sale (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 106's name (SR7k), owed in `_SHOWCASE_OWED` until generation 107 (SR7l)
-    # retired its `_FEATURES` row. Still owed by SR7s9 (`docs/plan-schema-next.md` §3.2), a spy
-    # nobody owns; the entry goes the day it lands.
-    "schema 106: setup.placements.nobody.spy": (
-        "owed by SR7s9, a spy nobody owns (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 105's names (SR7j), owed in `_SHOWCASE_OWED` until generation 106 (SR7k)
-    # retired their `_FEATURES` rows. Still owed by SR7s8 (`docs/plan-schema-next.md` §3.2), a
-    # gained spy; the entries go the day it lands.
-    "schema 105: rules.drops.stock.spy": (
-        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 105: rules.drops.from_captures.spy": (
-        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 104's names (SR7i), owed in `_SHOWCASE_OWED` until generation 105 (SR7j)
-    # retired their `_FEATURES` rows. Still owed by SR7s8 (`docs/plan-schema-next.md` §3.2), a
-    # gained spy; the entries go the day it lands.
-    "schema 104: rules.strike.chain.spy": (
-        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 104: rules.strike.switches_sides.spy": (
-        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 104: rules.contacts.spy": (
-        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 103's name (SR7h), owed in `_SHOWCASE_OWED` until generation 104 (SR7i) retired
-    # its `_FEATURES` row. Still owed by SR7s8 (`docs/plan-schema-next.md` §3.2), a gained spy;
-    # the entry goes the day it lands.
-    "schema 103: rules.promotion.spy": (
-        "owed by SR7s8, a gained spy (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 102's name (SR7g), owed in `_SHOWCASE_OWED` until generation 103 (SR7h) retired
-    # its `_FEATURES` row. Still owed by SR7s7 (`docs/plan-schema-next.md` §3.2), a market in
-    # rounds; the entry goes the day it lands.
-    "schema 102: rules.purse.simultaneous": (
-        "owed by SR7s7, a market in rounds (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 101's name (SR7f), owed in `_SHOWCASE_OWED` until generation 102 (SR7g) retired
-    # its `_FEATURES` row. Still owed by SR7s6 (`docs/plan-schema-next.md` §3.2), nobody's pieces
-    # in rounds; the entry goes the day it lands.
-    "schema 101: setup.placements.nobody.simultaneous": (
-        "owed by SR7s6, nobody's pieces in rounds (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 100's name (SR7e), owed in `_SHOWCASE_OWED` until generation 101 (SR7f) retired
-    # its `_FEATURES` row. Still owed by SR7s5 (`docs/plan-schema-next.md` §3.2), a shooter in
-    # rounds; the entry goes the day it lands.
-    "schema 100: rules.strike.stay.simultaneous": (
-        "owed by SR7s5, a shooter in rounds (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 99's name (SR7d), owed in `_SHOWCASE_OWED` until generation 100 (SR7e) retired
-    # its `_FEATURES` row. Still owed by SR7s3 (`docs/plan-schema-next.md` §3.2), rest in a long
-    # turn; the entry goes the day it lands.
-    "schema 99: pieces.rest.turn": (
-        "owed by SR7s3, rest in a long turn (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 98's name (SR7b), owed in `_SHOWCASE_OWED` until generation 99 (SR7d) retired
-    # its `_FEATURES` row. Still owed by SR7s2 (`docs/plan-schema-next.md` §3.2), wild pieces in
-    # a long turn; the entry goes the day it lands.
-    "schema 98: rules.npcs.turn": (
-        "owed by SR7s2, wild pieces in a long turn (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 97's name (SR7a), owed in `_SHOWCASE_OWED` until generation 98 (SR7b) retired
-    # its `_FEATURES` row. Still owed by SR7s1 (`docs/plan-schema-next.md` §3.2), en passant in
-    # a long turn; the entry goes the day it lands.
-    "schema 97: rules.en_passant.turn": (
-        "owed by SR7s1, en passant in a long turn (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 96's name (SR6g), owed in `_SHOWCASE_OWED` until generation 97 (SR7a) retired
-    # its `_FEATURES` row. Still owed by SR6s7 (`docs/plan-schema-next.md` §3.2), a sweep
-    # stopped by a shield; the entry goes the day it lands.
-    "schema 96: pieces.sight.shield.sweep": (
-        "owed by SR6s7, a sweep stopped by a shield (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 95's name (SR6f), owed in `_SHOWCASE_OWED` until generation 96 (SR6g) retired
-    # its `_FEATURES` row. Still owed by SR6s6 (`docs/plan-schema-next.md` §3.2), a commanded
-    # sweeper; the entry goes the day it lands.
-    "schema 95: pieces.sight.command.sweep": (
-        "owed by SR6s6, a commanded sweeper (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 94's name (SR6e), owed in `_SHOWCASE_OWED` until generation 95 (SR6f) retired
-    # its `_FEATURES` row. Still owed by SR6s5 (`docs/plan-schema-next.md` §3.2), a sweep
-    # through a fold; the entry goes the day it lands.
-    "schema 94: rules.portals.sweep": (
-        "owed by SR6s5, a sweep through a fold (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 93's name (SR6d), owed in `_SHOWCASE_OWED` until generation 94 (SR6e) retired
-    # its `_FEATURES` row. Still owed by SR6s4 (`docs/plan-schema-next.md` §3.2), a sweeper on a
-    # cylinder; the entry goes the day it lands.
-    "schema 93: rules.wrap.sweep": (
-        "owed by SR6s4, a sweeper on a cylinder (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 92's names (SR6c), owed in `_SHOWCASE_OWED` until generation 93 (SR6d) retired
-    # their `_FEATURES` rows. Still owed by SR6s3 (`docs/plan-schema-next.md` §3.2), a sweep
-    # that explodes; the entries go the day it lands.
-    "schema 92: rules.explode_on_capture.sweep": (
-        "owed by SR6s3, a sweep that explodes (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 92: pieces.moves.sweep.effects.explode_on_capture": (
-        "owed by SR6s3, a sweep that explodes (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 91's names (SR6b), registered in the inventory by SR6b and retired with
-    # generation 92 (SR6c) on the day `LAST_BUMP` reached them. Still owed by SR6s2
-    # (`docs/plan-schema-next.md` §3.2), a sweep that meets its path; the entries go the day it
-    # lands.
-    "schema 91: rules.contacts.sweep": (
-        "owed by SR6s2, a sweep that meets its path (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 91: pieces.moves.sweep.effects.contacts": (
-        "owed by SR6s2, a sweep that meets its path (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 90's names (SR6a), owed in `_SHOWCASE_OWED` until generation 92 (SR6c) retired
-    # their `_FEATURES` rows. Still owed by SR6s1 (`docs/plan-schema-next.md` §3.2), a sweep
-    # that strikes its path; the entries go the day it lands.
-    "schema 90: rules.strike.sweep": (
-        "owed by SR6s1, a sweep that strikes its path (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 90: pieces.moves.sweep.effects": (
-        "owed by SR6s1, a sweep that strikes its path (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 89's names (SR5k), owed in `_SHOWCASE_OWED` until generation 90 (SR6a) retired
-    # their `_FEATURES` rows. Still owed by SR5s9 (`docs/plan-schema-next.md` §3.2), a neutral
-    # runner or claim; the entries go the day it lands.
-    "schema 89: pieces.control.majority.territory": (
-        "owed by SR5s9, a neutral runner or claim (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 89: pieces.control.majority.reach": (
-        "owed by SR5s9, a neutral runner or claim (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 88's names (SR5i), owed in `_SHOWCASE_OWED` until generation 89 (SR5k) retired
-    # their `_FEATURES` rows. Still owed by SR5s12 (`docs/plan-schema-next.md` §3.2), a claim or
-    # a region through a portal; the entries go the day it lands.
-    "schema 88: rules.portals.territory": (
-        "owed by SR5s12, a claim or a region through a portal (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 88: rules.portals.region": (
-        "owed by SR5s12, a claim or a region through a portal (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 87's name (SR5j), owed in `_SHOWCASE_OWED` until generation 88 (SR5i) retired
-    # its `_FEATURES` row. Still owed by SR5s11 (`docs/plan-schema-next.md` §3.2), a held
-    # piece's blast; the entry goes the day it lands.
-    "schema 87: pieces.control.majority.explode_on_capture": (
-        "owed by SR5s11, a held piece's blast (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 86's name (SR5h), owed in `_SHOWCASE_OWED` until generation 87 (SR5j) retired
-    # its `_FEATURES` row. Still owed by SR5s8 (`docs/plan-schema-next.md` §3.2), a blast at a
-    # portal's exit; the entry goes the day it lands.
-    "schema 86: rules.portals.explode_on_capture": (
-        "owed by SR5s8, a blast at a portal's exit (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 85's name (SR5g), owed in `_SHOWCASE_OWED` until generation 86 (SR5h) retired
-    # its `_FEATURES` row. Still owed by SR5s7 (`docs/plan-schema-next.md` §3.2), portals on a
-    # hex board; the entry goes the day it lands.
-    "schema 85: rules.portals.hex": (
-        "owed by SR5s7, portals on a hex board (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 84's names (SR5f), owed in `_SHOWCASE_OWED` until generation 85 (SR5g) retired
-    # their `_FEATURES` rows. Still owed by SR5s6 (`docs/plan-schema-next.md` §3.2), a tamed
-    # wild piece; each entry goes the day it lands.
-    "schema 84: pieces.sight.wild": (
-        "owed by SR5s6, a tamed wild piece (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 84: pieces.sight.nobodys": (
-        "owed by SR5s6, a tamed wild piece (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 83's name (SR5e), owed in `_SHOWCASE_OWED` until generation 84 (SR5f) retired
-    # its `_FEATURES` row. Still owed by SR5s5 (`docs/plan-schema-next.md` §3.2), a commanded
-    # piece that rests; the entry goes the day it lands.
-    "schema 83: pieces.sight.command.rest": (
-        "owed by SR5s5, a commanded piece that rests (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 82's name (SR5c2), owed in `_SHOWCASE_OWED` until generation 83 (SR5e) retired
-    # its `_FEATURES` row. Still owed by SR5s10 (`docs/plan-schema-next.md` §3.2), a command
-    # through a portal; the entry goes the day it lands.
-    "schema 82: pieces.sight.command.portals": (
-        "owed by SR5s10, a command through a portal (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 81's names (SR5d), owed in `_SHOWCASE_OWED` until generation 82 (SR5c2) retired
-    # their `_FEATURES` rows. Still owed by SR5s4 (`docs/plan-schema-next.md` §3.2), a commanded
-    # runner or claim; each entry goes the day it lands.
-    "schema 81: pieces.sight.command.reach": (
-        "owed by SR5s4, a commanded runner or claim (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 81: pieces.sight.command.territory": (
-        "owed by SR5s4, a commanded runner or claim (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 80's name (SR5c), owed in `_SHOWCASE_OWED` until generation 81 (SR5d) retired
-    # its `_FEATURES` row. Still owed by SR5s3 (`docs/plan-schema-next.md` §3.2), sight through a
-    # fold; the entry goes the day it lands.
-    "schema 80: pieces.sight.portals": (
-        "owed by SR5s3, sight through a fold (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 79's name (SR5b), owed in `_SHOWCASE_OWED` until generation 80 (SR5c) retired
-    # its `_FEATURES` row. Still owed by SR5s2 (`docs/plan-schema-next.md` §3.2), a shield
-    # against a blast; the entry goes the day it lands.
-    "schema 79: pieces.sight.explode_on_capture": (
-        "owed by SR5s2, a shield against a blast (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 78's names (SR5a), owed in `_SHOWCASE_OWED` until generation 79 (SR5b) retired
-    # their `_FEATURES` rows. Still owed by SR5s1 (`docs/plan-schema-next.md` §3.2), the blast's
-    # strike switch; each entry goes the day it lands.
-    "schema 78: rules.explode_on_capture.strike": (
-        "owed by SR5s1, the blast's strike switch (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 78: rules.explode_on_capture.contacts": (
-        "owed by SR5s1, the blast's strike switch (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 78: rules.explode_on_capture.strikes": (
-        "owed by SR5s1, the blast's strike switch (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 77's names (SR4m), owed in `_SHOWCASE_OWED` until generation 78 (SR5a) retired
-    # their `_FEATURES` rows. Still owed by SR4s13 (`docs/plan-schema-next.md` §3.2), a shot
-    # through a portal; each entry goes the day it lands.
-    "schema 77: rules.portals.strike": (
-        "owed by SR4s13, a shot through a portal (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 77: rules.portals.contacts": (
-        "owed by SR4s13, a shot through a portal (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 76's name (SR4l), owed in `_SHOWCASE_OWED` until generation 77 (SR4m) retired
-    # its `_FEATURES` row. Still owed by SR4s12 (`docs/plan-schema-next.md` §3.2), a blast that
-    # pays; the entry goes the day it lands.
-    "schema 76: rules.purse.explode_on_capture": (
-        "owed by SR4s12, a blast that pays (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 75's names (SR4k), owed in `_SHOWCASE_OWED` until generation 76 (SR4l) retired
-    # their `_FEATURES` rows. Still owed by SR4s11 (`docs/plan-schema-next.md` §3.2), a neutral
-    # piece struck into something else; each entry goes the day it lands.
-    "schema 75: rules.strike.nobodys": (
-        "owed by SR4s11, a neutral piece struck into something else (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 75: rules.contacts.nobodys": (
-        "owed by SR4s11, a neutral piece struck into something else (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 74's name (SR4j), owed in `_SHOWCASE_OWED` until generation 75 (SR4k) retired
-    # its `_FEATURES` row. Still owed by SR4s10 (`docs/plan-schema-next.md` §3.2), a strike's
-    # `by` beside `switches_sides`; the entry goes the day it lands.
-    "schema 74: rules.strike.by.switches_sides": (
-        "owed by SR4s10, a strike's by beside switches_sides (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 73's name (SR4i), owed in `_SHOWCASE_OWED` until generation 74 (SR4j) retired
-    # its `_FEATURES` row. Still owed by SR4s9 (`docs/plan-schema-next.md` §3.2), an own contact
-    # beside `must_capture`; the entry goes the day it lands.
-    "schema 73: rules.must_capture.contacts.own": (
-        "owed by SR4s9, an own contact beside must_capture (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 72's names (SR4h), owed in `_SHOWCASE_OWED` until generation 73 (SR4i) retired
-    # their `_FEATURES` rows. Still owed by SR4s8 (`docs/plan-schema-next.md` §3.2), the
-    # commander's hand and a commanded capture; each entry goes the day it lands.
-    "schema 72: pieces.sight.command.captures_own.strike": (
-        "owed by SR4s8, the commander's hand and a commanded capture (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 72: pieces.sight.command.captures_own.contacts": (
-        "owed by SR4s8, the commander's hand and a commanded capture (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 72: pieces.sight.command.captures_own.drops": (
-        "owed by SR4s8, the commander's hand and a commanded capture (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 71's name (SR4g), owed in `_SHOWCASE_OWED` until generation 72 (SR4h) retired
-    # its `_FEATURES` row. Still owed by SR4s7 (`docs/plan-schema-next.md` §3.2), an immunity
-    # only while wild; the entry goes the day it lands.
-    "schema 71: rules.npcs.immune.drops": (
-        "owed by SR4s7, an immunity only while wild (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 70's name (SR4f), owed in `_SHOWCASE_OWED` until generation 71 (SR4g) retired
-    # its `_FEATURES` row. Still owed by SR4s6 (`docs/plan-schema-next.md` §3.2), wild pieces
-    # beside a blast; the entry goes the day it lands.
-    "schema 70: rules.npcs.explode_on_capture": (
-        "owed by SR4s6, wild pieces beside a blast (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 69's name (SR4d), owed in `_SHOWCASE_OWED` until generation 70 (SR4f) retired
-    # its `_FEATURES` row. Still owed by SR4s4 (`docs/plan-schema-next.md` §3.2), a held kind
-    # counts; the entry goes the day it lands.
-    "schema 69: rules.extinction.per_type.own.drops": (
-        "owed by SR4s4, a held kind counts (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 68's name (SR4c), owed in `_SHOWCASE_OWED` until generation 69 (SR4d) retired
-    # its `_FEATURES` row. Still owed by SR4s3 (`docs/plan-schema-next.md` §3.2), swept
-    # bounties; the entry goes the day it lands.
-    "schema 68: rules.npcs.sweep": (
-        "owed by SR4s3, swept bounties (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 67's names (SR4e), owed in `_SHOWCASE_OWED` until generation 68 (SR4c) retired
-    # their `_FEATURES` rows. Still owed by SR4s5 (`docs/plan-schema-next.md` §3.2), wild pieces
-    # beside a strike or contacts; the entries go the day it lands.
-    "schema 67: rules.strike.npcs": (
-        "owed by SR4s5, wild pieces beside a strike or contacts (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 67: rules.contacts.npcs": (
-        "owed by SR4s5, wild pieces beside a strike or contacts (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 66's name (SR4b), owed in `_SHOWCASE_OWED` until generation 67 (SR4e) retired
-    # its `_FEATURES` row. Still owed by SR4s2 (`docs/plan-schema-next.md` §3.2), swept pieces
-    # into the hand; the entry goes the day it lands.
-    "schema 66: rules.drops.sweep": (
-        "owed by SR4s2, swept pieces into the hand (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 65's name (SR1d), owed in `_SHOWCASE_OWED` until generation 66 (SR4b) retired
-    # its `_FEATURES` row. Still owed by SR1s4 (`docs/plan-schema-next.md` §3.2), castling with
-    # a non-royal king; the entry goes the day it lands.
-    "schema 65: rules.castling.common_king": (
-        "owed by SR1s4, castling with a non-royal king (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 64's names (SR3g), owed in `_SHOWCASE_OWED` until generation 65 (SR1d)
-    # retired their `_FEATURES` rows. Still owed by SR3s7 (`docs/plan-schema-next.md` §3.2),
-    # buying beside portals, usable after SR3r; the entries go the day it lands.
-    "schema 64: rules.purse.portals": (
-        "owed by SR3s7, buying beside portals (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 64: rules.portals.nobodys": (
-        "owed by SR3s7, beside buying beside portals: pieces nobody owns beside portals "
-        "(docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 63's names (SR3f), owed in `_SHOWCASE_OWED` until generation 64 (SR3g)
-    # retired their `_FEATURES` rows. Still owed by SR3s6 (`docs/plan-schema-next.md` §3.2), a
-    # neutral piece a wild piece eats, usable after SR3r; the entries go the day it lands.
-    "schema 63: rules.npcs.nobodys": (
-        "owed by SR3s6, a neutral piece a wild piece eats (docs/plan-schema-next.md §3.2)"
-    ),
-    "schema 63: rules.duck.nobodys": (
-        "owed by SR3s6, beside a neutral piece a wild piece eats: the duck beside pieces "
-        "nobody owns (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 62's name (SR3e), owed in `_SHOWCASE_OWED` until generation 63 (SR3f) retired
-    # its `_FEATURES` row. Still owed by SR3s5 (`docs/plan-schema-next.md` §3.2), the duck
-    # beside a blast, a strike or contacts, usable after SR3r; the entry goes the day it lands.
-    "schema 62: rules.duck.untouched": (
-        "owed by SR3s5, the duck beside a blast, a strike or contacts "
-        "(docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 61's name (SR3d), owed in `_SHOWCASE_OWED` until generation 62 (SR3e) retired
-    # its `_FEATURES` row. Still owed by SR3s4 (`docs/plan-schema-next.md` §3.2), the duck
-    # beside portals, usable after SR3r; the entry goes the day it lands.
-    "schema 61: rules.duck.portals": (
-        "owed by SR3s4, the duck beside portals (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 60's name (SR3c), owed in `_SHOWCASE_OWED` until generation 61 (SR3d) retired
-    # its `_FEATURES` row. Still owed by SR3s3 (`docs/plan-schema-next.md` §3.2), a hop that
-    # may not jump its own kind, usable after SR3r; the entry goes the day it lands.
-    "schema 60: pieces.moves.hop.screen.types": (
-        "owed by SR3s3, a screen by type (docs/plan-schema-next.md §3.2)"
-    ),
-    # Generation 59's name (SR3b), owed in `_SHOWCASE_OWED` until generation 60 (SR3c) retired
-    # its `_FEATURES` row. Still owed by SR3s2 (`docs/plan-schema-next.md` §3.2), a handicap
-    # game, usable after SR3r; the entry goes the day it lands.
-    "schema 59: rules.drops.stock_by_player": (
-        "owed by SR3s2, a stock per player (docs/plan-schema-next.md §3.2)"
-    ),
     # Generation 54's name (TC9c), owed in `_SHOWCASE_OWED` until generation 55 (Q1069a)
     # retired its `_FEATURES` row: *the indemnity* (§8.6) and *the quartermaster* (§8.7, TC9d)
     # both retired, so a successor is still owed.
@@ -5031,40 +4565,6 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # (`docs/reference/short-sweeping-bishop-twin.md`).
     "schema 53: pieces.moves.sweep.sweep_range": (
         "Q1064's twin measured and not taken (not viable); no showcase yet"
-    ),
-    # Generation 51's names (SR2b), owed in `_SHOWCASE_OWED` until generation 52 (Q1059a)
-    # retired their `_FEATURES` rows. Still owed by SR2s1 (`docs/plan-schema-next.md` §3.2).
-    **{
-        f"schema 51: {name}": "owed by SR2s1, the lifts SR2b landed (§3.2)"
-        for name in ("pieces.sight.command.strike", "pieces.sight.command.contacts")
-    },
-    # Generation 50's names (SR2), owed in `_SHOWCASE_OWED` until generation 51 (SR2b) retired
-    # their `_FEATURES` rows. Still owed by SR2s1 (`docs/plan-schema-next.md` §3.2), which
-    # decides a showcase or a written *Not a task* per row family; each entry goes the day its
-    # showcase lands.
-    **{
-        f"schema 50: {name}": "owed by SR2s1, the lifts SR2 landed (§3.2)"
-        for name in (
-            "pieces.control.majority.turn", "rules.purse.turn", "rules.strike.drops",
-            "rules.contacts.drops", "rules.promotion.only_lost.drops",
-            "rules.promotion.only_lost.home", "rules.drops.either_face.explode",
-            "rules.duck.sweep", "pieces.moves.slide.path.pounce",
-        )
-    },
-    # Generation 49's name (SR1c), owed in `_SHOWCASE_OWED` until generation 50 (SR2) retired
-    # its `_FEATURES` row. Still owed by SR1s3 (`docs/plan-schema-next.md` §3.2), and the entry
-    # goes the day it lands.
-    "schema 49: pieces.moves.slide.path.hex": "owed by SR1s3, a turning path on a hex lattice (§3.2)",
-    # Generation 48's name (SR1b), owed in `_SHOWCASE_OWED` until generation 49 (SR1c) retired
-    # its `_FEATURES` row. Still owed by SR1s2 (`docs/plan-schema-next.md` §3.2), and the entry
-    # goes the day it lands.
-    "schema 48: rules.explode_on_capture.blast": "owed by SR1s2, a blast's stated shape (§3.2)",
-    # Generation 47's names (SR1a), owed in `_SHOWCASE_OWED` until generation 48 (SR1b) retired
-    # their `_FEATURES` rows. Still owed by SR1s1 (`docs/plan-schema-next.md` §3.2), and each
-    # entry goes the day it lands.
-    "schema 47: pieces.moves.legs": "owed by SR1s1, stated legs (§3.2)",
-    "schema 47: pieces.moves.legs.leap": (
-        "owed by SR1s1, or no showcase on purpose with its reason (§3.2)"
     ),
     # Generation 46's names (TC6) and generation 45's `rules.purse` and `pieces.price` (TC5),
     # owed in `_SHOWCASE_OWED` until the next generation retired their `_FEATURES` rows, went on
@@ -5168,6 +4668,111 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
         "starting layouts failed to fix it, Q996). A speed game in which the slower side can "
         "still defend is owed, and this entry goes the day it lands"
     ),
+}
+
+
+# The rules of `docs/plan-schema-next.md`'s update (generations 47 to 110: SR1a to SR11a)
+# that no committed or archived game uses, each with the highlight candidate it would have
+# had. None owes a game: the user, 2026-11-11, *"highlights only"* (`docs/archive/decisions.md`,
+# `docs/plan-schema-next.md` §3.1). Three highlight games (SRH1 to SRH3) combine some of
+# them; the per-rule candidates were dropped. Every rule here is still built and tested in
+# its own file. Exact in both directions, as `_NO_SHOWCASE_ON_PURPOSE` is, so the list stays
+# true: a game that starts using one fails `test_every_feature_of_every_schema_has_a_showcase`
+# until its row goes, and a rule of the update that loses its last game fails it until a row
+# is added. A rule of a later generation of the update that lands in no game goes here too,
+# never in `_SHOWCASE_OWED`.
+#
+# The generations that update numbered: SR1a to SR2b (47 to 51) and SR3b to SR11a (59 to
+# 110). 52 to 58 between them are other plans' (Seirawan's gating, Q1063, the turncoat's
+# TC9c, Q1069a, the push, Q1077), save 57, SR3a, whose rule *runners* shows. A later
+# generation of the update joins this set when it lands.
+_SCHEMA_NEXT_GENERATIONS = frozenset(range(47, 52)) | frozenset(range(57, 111)) - {58}
+_IN_NO_GAME: dict[str, str] = {
+    "schema 110: pieces.moves.lame.path": "SR11a, a turning lame rider; never a candidate",
+    "schema 109: pieces.control.majority.simultaneous": "SR7s11, a held piece in rounds",
+    "schema 108: rules.purse.market.spy": "SR7s10, a spy for sale",
+    "schema 106: setup.placements.nobody.spy": "SR7s9, a spy nobody owns",
+    "schema 105: rules.drops.stock.spy": "SR7s8, a gained spy",
+    "schema 105: rules.drops.from_captures.spy": "SR7s8, a gained spy",
+    "schema 104: rules.strike.chain.spy": "SR7s8, a gained spy",
+    "schema 104: rules.strike.switches_sides.spy": "SR7s8, a gained spy",
+    "schema 104: rules.contacts.spy": "SR7s8, a gained spy",
+    "schema 103: rules.promotion.spy": "SR7s8, a gained spy",
+    "schema 102: rules.purse.simultaneous": "SR7s7, a market in rounds",
+    "schema 101: setup.placements.nobody.simultaneous": "SR7s6, nobody's pieces in rounds",
+    "schema 100: rules.strike.stay.simultaneous": "SR7s5, a shooter in rounds",
+    "schema 99: pieces.rest.turn": "SR7s3, rest in a long turn",
+    "schema 98: rules.npcs.turn": "SR7s2, wild pieces in a long turn",
+    "schema 97: rules.en_passant.turn": "SR7s1, en passant in a long turn",
+    "schema 96: pieces.sight.shield.sweep": "SR6s7, a sweep stopped by a shield",
+    "schema 95: pieces.sight.command.sweep": "SR6s6, a commanded sweeper",
+    "schema 94: rules.portals.sweep": "SR6s5, a sweep through a fold",
+    "schema 93: rules.wrap.sweep": "SR6s4, a sweeper on a cylinder",
+    "schema 92: rules.explode_on_capture.sweep": "SR6s3, a sweep that explodes",
+    "schema 92: pieces.moves.sweep.effects.explode_on_capture": "SR6s3, a sweep that explodes",
+    "schema 91: rules.contacts.sweep": "SR6s2, a sweep that meets its path",
+    "schema 91: pieces.moves.sweep.effects.contacts": "SR6s2, a sweep that meets its path",
+    "schema 90: rules.strike.sweep": "SR6s1, a sweep that strikes its path",
+    "schema 90: pieces.moves.sweep.effects": "SR6s1, a sweep that strikes its path",
+    "schema 89: pieces.control.majority.territory": "SR5s9, a neutral runner or claim",
+    "schema 89: pieces.control.majority.reach": "SR5s9, a neutral runner or claim",
+    "schema 88: rules.portals.territory": "SR5s12, a claim or a region through a portal",
+    "schema 88: rules.portals.region": "SR5s12, a claim or a region through a portal",
+    "schema 87: pieces.control.majority.explode_on_capture": "SR5s11, a held piece's blast",
+    "schema 86: rules.portals.explode_on_capture": "SR5s8, a blast at a portal's exit",
+    "schema 85: rules.portals.hex": "SR5s7, portals on a hex board",
+    "schema 84: pieces.sight.wild": "SR5s6, a tamed wild piece",
+    "schema 84: pieces.sight.nobodys": "SR5s6, a tamed wild piece",
+    "schema 83: pieces.sight.command.rest": "SR5s5, a commanded piece that rests",
+    "schema 82: pieces.sight.command.portals": "SR5s10, a command through a portal",
+    "schema 81: pieces.sight.command.reach": "SR5s4, a commanded runner or claim",
+    "schema 81: pieces.sight.command.territory": "SR5s4, a commanded runner or claim",
+    "schema 80: pieces.sight.portals": "SR5s3, sight through a fold",
+    "schema 79: pieces.sight.explode_on_capture": "SR5s2, a shield against a blast",
+    "schema 78: rules.explode_on_capture.strike": "SR5s1, the blast's strike switch",
+    "schema 78: rules.explode_on_capture.contacts": "SR5s1, the blast's strike switch",
+    "schema 78: rules.explode_on_capture.strikes": "SR5s1, the blast's strike switch",
+    "schema 77: rules.portals.strike": "SR4s13, a shot through a portal",
+    "schema 77: rules.portals.contacts": "SR4s13, a shot through a portal",
+    "schema 76: rules.purse.explode_on_capture": "SR4s12, a blast that pays",
+    "schema 75: rules.strike.nobodys": "SR4s11, a neutral piece struck into something else",
+    "schema 75: rules.contacts.nobodys": "SR4s11, a neutral piece struck into something else",
+    "schema 74: rules.strike.by.switches_sides": "SR4s10, a strike's by beside switches_sides",
+    "schema 73: rules.must_capture.contacts.own": "SR4s9, an own contact beside must_capture",
+    "schema 72: pieces.sight.command.captures_own.strike": "SR4s8, the commander's hand and a commanded capture",
+    "schema 72: pieces.sight.command.captures_own.contacts": "SR4s8, the commander's hand and a commanded capture",
+    "schema 72: pieces.sight.command.captures_own.drops": "SR4s8, the commander's hand and a commanded capture",
+    "schema 71: rules.npcs.immune.drops": "SR4s7, an immunity only while wild",
+    "schema 70: rules.npcs.explode_on_capture": "SR4s6, wild pieces beside a blast",
+    "schema 69: rules.extinction.per_type.own.drops": "SR4s4, a held kind counts",
+    "schema 68: rules.npcs.sweep": "SR4s3, swept bounties",
+    "schema 67: rules.strike.npcs": "SR4s5, wild pieces beside a strike or contacts",
+    "schema 67: rules.contacts.npcs": "SR4s5, wild pieces beside a strike or contacts",
+    "schema 66: rules.drops.sweep": "SR4s2, swept pieces into the hand",
+    "schema 65: rules.castling.common_king": "SR1s4, castling with a non-royal king",
+    "schema 64: rules.purse.portals": "SR3s7, buying beside portals",
+    "schema 64: rules.portals.nobodys": "SR3s7, pieces nobody owns beside portals",
+    "schema 63: rules.npcs.nobodys": "SR3s6, a neutral piece a wild piece eats",
+    "schema 63: rules.duck.nobodys": "SR3s6, the duck beside pieces nobody owns",
+    "schema 62: rules.duck.untouched": "SR3s5, the duck beside a blast, a strike or contacts",
+    "schema 61: rules.duck.portals": "SR3s4, the duck beside portals",
+    "schema 60: pieces.moves.hop.screen.types": "SR3s3, a screen by type",
+    "schema 59: rules.drops.stock_by_player": "SR3s2, a stock per player",
+    "schema 49: pieces.moves.slide.path.hex": "SR1s3, a turning path on a hex lattice",
+    "schema 48: rules.explode_on_capture.blast": "SR1s2, a blast's stated shape",
+    "schema 47: pieces.moves.legs": "SR1s1, stated legs",
+    "schema 47: pieces.moves.legs.leap": "SR1s1, stated legs on a leap under blocks_leaps",
+    "schema 51: pieces.sight.command.strike": "SR2s1, the lifts SR2b landed",
+    "schema 51: pieces.sight.command.contacts": "SR2s1, the lifts SR2b landed",
+    "schema 50: pieces.control.majority.turn": "SR2s1, the lifts SR2 landed",
+    "schema 50: rules.purse.turn": "SR2s1, the lifts SR2 landed",
+    "schema 50: rules.strike.drops": "SR2s1, the lifts SR2 landed",
+    "schema 50: rules.contacts.drops": "SR2s1, the lifts SR2 landed",
+    "schema 50: rules.promotion.only_lost.drops": "SR2s1, the lifts SR2 landed",
+    "schema 50: rules.promotion.only_lost.home": "SR2s1, the lifts SR2 landed",
+    "schema 50: rules.drops.either_face.explode": "SR2s1, the lifts SR2 landed",
+    "schema 50: rules.duck.sweep": "SR2s1, the lifts SR2 landed",
+    "schema 50: pieces.moves.slide.path.pounce": "SR2s1, the lifts SR2 landed",
 }
 
 
@@ -5450,6 +5055,7 @@ class TestEveryFeatureOfThisSchemaIsReachable:
             "Then set `_FEATURES_ARE_FOR_SCHEMA` to the new version."
         )
 
+    @pytest.mark.new_game
     def test_every_feature_of_this_schema_has_a_showcase(self) -> None:
         """The third gate, and the one a bump owes the corpus rather than the operators.
 
@@ -5474,13 +5080,21 @@ class TestEveryFeatureOfThisSchemaIsReachable:
             for label, feature in _FEATURES.items()
         }
         unshown = {label for label, games in shown.items() if not games}
-        assert unshown == set(_SHOWCASE_OWED), (
+        # A row of `docs/plan-schema-next.md`'s update owes no game (2026-11-11): it is in no
+        # game when every name it has is listed in `_IN_NO_GAME`.
+        in_no_game = {
+            label for label, feature in _FEATURES.items()
+            if all(f"schema {LAST_BUMP}: {name}" in _IN_NO_GAME for name in feature.names)
+        }
+        assert unshown == set(_SHOWCASE_OWED) | in_no_game, (
             f"a feature of schema {LAST_BUMP} has no committed or archived ruleset "
             "that uses it, so nothing has ever played it and the leave arm tests it only on "
             f"a parent this file built: {shown}. `_SHOWCASE_OWED` names "
-            f"{sorted(_SHOWCASE_OWED)}; a showcase that has landed deletes its row there"
+            f"{sorted(_SHOWCASE_OWED)} and `_IN_NO_GAME` {sorted(in_no_game)}; a showcase "
+            "that has landed deletes its row there"
         )
 
+    @pytest.mark.new_game
     def test_every_feature_of_every_schema_has_a_showcase(self) -> None:
         """The third gate, for the schemas that have already passed (Q791).
 
@@ -5513,12 +5127,30 @@ class TestEveryFeatureOfThisSchemaIsReachable:
             f"schema {LAST_BUMP}: {name}" for row in _SHOWCASE_OWED for name in _FEATURES[row].names
         }
         exempt = set(_NO_SHOWCASE_ON_PURPOSE) | owed
-        assert unshown == exempt, (
+        listed_in_no_game = set(_IN_NO_GAME)
+        assert unshown == exempt | listed_in_no_game, (
             "a rule feature is used by no committed or archived ruleset, so nothing has "
-            f"ever played it: {sorted(unshown - exempt)}. Write a showcase "
-            "(`new-move-primitive`) or, if the audit says it owes none, name it in "
-            f"`_NO_SHOWCASE_ON_PURPOSE`. Exempt but now shown: {sorted(exempt - unshown)}"
+            f"ever played it: {sorted(unshown - exempt - listed_in_no_game)}. Write a "
+            "showcase (`new-move-primitive`); or name it in `_NO_SHOWCASE_ON_PURPOSE` if the "
+            "audit says it owes none, or in `_IN_NO_GAME` if it is a rule of "
+            "`docs/plan-schema-next.md`'s update. Listed but now in a game, so delete its "
+            f"row: {sorted((exempt | listed_in_no_game) - unshown)}"
         )
+
+    def test_the_in_no_game_list_holds_only_the_schema_next_update(self) -> None:
+        """Only `docs/plan-schema-next.md`'s rules were released from owing a game (Q1190).
+
+        The user, 2026-11-11: *"highlights only"*, for that update. A debt older than it
+        (the turncoat's `bounty_to`, the spy, speed) stays in `_NO_SHOWCASE_ON_PURPOSE`
+        naming what owes it, and may not move here; a name in both tables is one of them
+        wrong.
+        """
+        generations = {int(key.split(":")[0].removeprefix("schema ")) for key in _IN_NO_GAME}
+        assert generations <= _SCHEMA_NEXT_GENERATIONS, (
+            f"`_IN_NO_GAME` lists generations {sorted(generations - _SCHEMA_NEXT_GENERATIONS)}, "
+            "which are not `docs/plan-schema-next.md`'s; their debt stands"
+        )
+        assert not set(_IN_NO_GAME) & set(_NO_SHOWCASE_ON_PURPOSE)
 
     def test_the_every_schema_table_agrees_with_the_current_features(self) -> None:
         """The table above is hand-written, so the bump that adds a schema must add its row."""
@@ -5654,6 +5286,16 @@ class TestEveryFeatureOfThisSchemaIsReachable:
                 return False
             return not refusal(parent, child)
 
+        def lacks(spec: dict) -> bool:
+            """Whether a child of ``spec`` could gain one of the names: one already using
+            them all gains none, so `entered` holds of none of its children. Q1157: the
+            library's four Hunger games all have income, and searching each one's 96
+            operators at six seeds for an entry none can make was 4.6 s of this test."""
+            try:
+                return not names <= _inventory(spec)
+            except Exception:  # noqa: BLE001 -- a spec the collector cannot read: search it
+                return True
+
         # A spec that already carries the host rule is searched first, since a modifier is
         # entered most cheaply where its host stands; any order finds the same answer.
         host = _FEATURES[feature].host
@@ -5661,6 +5303,7 @@ class TestEveryFeatureOfThisSchemaIsReachable:
             entered,
             likely=lambda spec: bool(host and (spec.get("rules") or {}).get(host))
             or _FEATURES[feature].likely(spec),
+            possible=lacks,
         )
         who = [first] if first else []
         gap = _CANNOT_ENTER.get(feature)
@@ -5757,9 +5400,13 @@ class TestTheOwnLinkIsReachable:
             if parent["rules"].get("must_capture") or any(
                 parent["rules"].get(key)
                 for key in ("strike", "explode_on_capture", "drops", "npcs")
-            ) or push_bars(parent, "contacts") or schema.duck_piece(parent["rules"]):
+            ) or push_bars(parent, "contacts") or schema.duck_piece(parent["rules"]) or (
+                schema.purse_upkeep(parent) is not None
+            ):
                 # Where the operator declines before asking `merge_links`; the duck since
                 # Q1079 put `rulesets/duck-chess.json` in the corpus (contacts are refused beside it).
+                # A move's cost since Q1159 put `rulesets/hunger.json` in it: contacts are refused
+                # beside upkeep (U9), and `_upkeep_guarded` keeps no child the validator refuses.
                 continue
             for link in merge_links(parent):
                 child = set_own_link(copy.deepcopy(parent), link)
@@ -6261,6 +5908,7 @@ class TestDistance:
         for name in ("chess", "shogi", "dull"):
             assert distance(specs[name], specs[name]) == 0.0
 
+    @pytest.mark.new_game
     def test_no_two_committed_rulesets_measure_identical(self, specs) -> None:
         """Zero has to mean "the same description", or nothing downstream can use it.
 

@@ -109,6 +109,10 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/leapfrog.json": ("1e6b3dbb8039", "a5f918c453eaec23"),  # TS4, 2026-11-07: frogs that leap a row and push it back
     "rulesets/tessabi.json": ("684b14652b2b", "d54b1bb38db2b6f0"),  # TS5, 2026-11-07: Tessabi, from tessabi.com
     "archive/no-zugzwang.json": ("1cb062a21f06", "ee38137f86850a6e"),  # H5 (Q1129), 2026-11-08: chess plus the pass
+    "rulesets/hunger.json": ("feab18e258db", "7cfc0f510cbdbdfc"),  # Q1159, 2026-11-08: Hunger Chess, the designer's, into the library
+    "archive/hunger-chess-with-cheap-promotion.json": ("9e34937a3cb1", "668b167219e0846d"),  # Q1179, 2026-11-08: Hunger's A5, promotion "new"
+    "archive/hunger-chess-with-rich-forage.json": ("beb7faafde7a", "3571d8417be3583b"),  # Q1179, 2026-11-08: Hunger's A8, 2 coins a piece
+    "archive/hunger-chess-where-pawns-forage.json": ("5ef0203555c0", "5cfce1da720c4286"),  # Q1179, 2026-11-08: Hunger's A9, the second rank's income
     "rulesets/cylinder.json": ("a9306688fe57", "6a56433c2492eaf3"),
     "rulesets/dobutsu.json": ("a2f0c65ceedf", "d158e949aa940a34"),
     "rulesets/duck-chess.json": ("7acb867a99aa", "06ae7548db734adb"),  # Q1079, 2026-10-31: standard duck chess
@@ -615,6 +619,7 @@ def _square(name: str, width: int = 8) -> int:
 # ------------------------------------------------------------------ the bump moved nothing
 
 
+@pytest.mark.new_game
 class TestTheBumpMovedNothing:
     @pytest.mark.parametrize("path", sorted(FROZEN), ids=lambda p: Path(p).stem)
     def test_every_ruleset_compiles_to_the_tables_it_did_before_schema_nine(

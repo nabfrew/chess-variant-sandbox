@@ -113,6 +113,7 @@ def test_icons_can_be_turned_off(chess_spec: dict, tmp_path: Path) -> None:
     assert data["credits"] == []
 
 
+@pytest.mark.new_game
 @pytest.mark.parametrize("path", sorted(RULESETS.glob("*.json")), ids=lambda p: p.stem)
 def test_committed_rulesets_draw_every_piece(path: Path) -> None:
     """A published game the library covers should never fall back to its letters.

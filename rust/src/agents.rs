@@ -17,11 +17,12 @@ use std::sync::Arc;
 
 use crate::eval::{PieceValues, WIN_SCORE};
 use crate::features::{Objective, VOCABULARY_LEN};
-use crate::game::{Game, Outcome, Snapshot};
+use crate::game::{Game, Outcome, Reason, Snapshot};
 use crate::net::{Net, NetEvaluator};
 use crate::rng::PyRandom;
 use crate::tables::{
-    move_kind, move_from, move_promotion, move_to, Tables, Win, DUCK_STEP, MOVE_CASTLE, MOVE_DROP,
+    move_foreign, move_kind, move_from, move_promotion, move_to, StrikePosition, Tables, Win, WILD,
+    DUCK_STEP, MOVE_CASTLE, MOVE_DROP,
     MOVE_DISPLACE, MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_KEEP, MOVE_NORMAL, MOVE_PASS, MOVE_PORTAL, MOVE_PROMOTION, MOVE_PUSH, MOVE_ROTATE,
     MOVE_SWEEP, SIGHT_PATH_AURA, SIGHT_PATH_SQUARE,
 };
@@ -178,6 +179,80 @@ pub const MOPUP: u32 = 512;
 /// bit so its duel can seat the player without it; built-in objective only, minimax only, and
 /// zero without income or a coin worth, so it moves no game without `rules.income`.
 pub const INCOME: u32 = 1024;
+/// T1 (`docs/plan-player-weaknesses.md`, Q1169): **a coin at the margin it buys.** Under
+/// `rules.income` each purse counts in full only up to its player's margin, `max(dearest
+/// price, PURSE_MAX - INCOME_TURNS x opening income)`, and at nothing above
+/// (`eval::Evaluator::with_margin`, `eval::coin_margins`). An evaluator term carried as a
+/// search bit so its duel can seat the player without it; built-in objective only, minimax
+/// only, and unread without income or a coin worth, so it moves no game without `rules.income`.
+/// On by default since its duel (0.948 ± 0.003 over six cells); the player before T1 is
+/// `margin=0`.
+pub const MARGIN: u32 = 2048;
+/// T1b (`docs/plan-player-weaknesses.md`, Q1178): **a coin worth only the moves income does
+/// not pay for.** Under `rules.income` and a move cost, the moves channel's rate is scaled by
+/// `eval::coin_scarcity`, `max(0, 1 - opening income / mean move cost)`
+/// (`eval::Evaluator::with_scarcity`); a market's, hire's or bribe's rate is untouched. An
+/// evaluator term carried as a search bit so its duel can seat the player without it; built-in
+/// objective only, minimax only, unread without income and upkeep. Applied before `INCOME` and
+/// `MARGIN`, which read the worth.
+pub const SCARCITY: u32 = 4096;
+/// T3 (`docs/plan-player-weaknesses.md`, Q1171): **repetition contempt, a diagnostic.** A
+/// draw by repetition reached in the search scores `eval::CONTEMPT_PIECES` mean non-royal
+/// pieces against the side that completed it (the side not to move in the repeated
+/// position), so a side repeats only when it reads itself worse by more than that. Minimax
+/// only, on the built-in objective or a net (`contempt_weight_for`); undefined, so never read,
+/// in a round or spy game. **Never on by default and never on a measured player** (the user,
+/// 2026-11-08): a draw a side can force by waiting is the game's flaw and the score must keep
+/// seeing it. The bit is a probe that tells those games apart from ones where the players
+/// merely drift (`docs/reference/repetition-diagnostic.md`).
+pub const CONTEMPT: u32 = 8192;
+/// T1c (`docs/plan-player-weaknesses.md`, Q1181): **a coin worth what it must still buy.**
+/// Under `rules.income` each purse counts in full only up to its player's reserve,
+/// `INCOME_TURNS x max(0, dearest price - opening income)`, and at nothing above
+/// (`eval::Evaluator::with_reserve`, `eval::coin_reserves`): the coins a side needs before
+/// income covers its dearest move. It replaces `MARGIN`'s bound where both are on. An
+/// evaluator term carried as a search bit so its duel can seat the player without it; built-in
+/// objective only, minimax only, unread without income or a coin worth. On by default since its
+/// duel (0.918 ± 0.003 over twelve cells, every budget won); the player before T1c is `reserve=0`.
+pub const RESERVE: u32 = 16384;
+/// T5 (`docs/plan-player-weaknesses.md`, Q1173, rescaled by Q1173b): **the race over every
+/// racer a counted goal still needs.** Where `rules.reach.count` is above 1, the race term sums
+/// the distances of each side's `k = count - tally` nearest eligible pieces over its own
+/// `k x goal_diameter`, in place of the nearest piece's over the diameter
+/// (`eval::Evaluator::with_racers`, `Evaluator::racers_to_goal`). An evaluator term carried as a
+/// search bit so its duel can seat the player without it; built-in objective only, minimax
+/// only, unread at `count` 1.
+pub const RACERS: u32 = 32768;
+/// Q1173b: under `RACERS`, Q1173's fixed scale (`count x goal_diameter` for both sides) in
+/// place of each side's `k`: the arm that lost its duel, kept so the rescaled one can be duelled
+/// against it. Unread without `RACERS`; off.
+pub const RACERS_FIXED: u32 = 65536;
+/// T1d's second arm (`docs/plan-player-weaknesses.md` §T1d, Q1186b): **a side that cannot pay
+/// for its dearest move is not quiet.** At a quiescence node with depth left, in a game with
+/// `rules.income` and a moves channel (`rules.purse.upkeep`), where the side to move's purse is
+/// below the dearest cost among its pseudo-legal moves as the purse filter reads it
+/// (`Game::short_of_dearest`), the node takes no stand pat and searches every legal move, not
+/// only the loud ones. No constant. Minimax on the built-in objective only (`afford_for`);
+/// unread without income or upkeep, so it moves no other game.
+pub const AFFORD: u32 = 131072;
+/// T6 (`docs/plan-player-weaknesses.md` §T6, Q1174): **a strike priced by what it leaves.** In
+/// a game with `rules.strike` or `rules.contacts`, move ordering (`capture_gain`, the main
+/// search's and quiescence's alike) reads a meeting's gain off the compiled strike tables
+/// (`strike_gain`): the victim's value less what its side keeps standing (the type it becomes,
+/// where the position leaves it on the board), plus the attacker's change of type, less twice
+/// the attacker's value where it changes sides; a meeting with the mover's own piece is the
+/// mover's loss. In place of the victim's whole value, which over-prices a demotion and gives a
+/// gift the wrong sign. Ordering only, so every objective reads it (a net's search orders by the
+/// derived table too); unread without a strike table. On by default since its duel (0.551 ±
+/// 0.0035 pooled over eleven cells of four strike games, none lost).
+pub const STRIKE_GAIN: u32 = 262144;
+/// T7's P6 (`docs/plan-player-weaknesses.md` §T7, Q1175b): **portal-aware capture reach in the
+/// derived piece values.** In a portal game a minimax player on the built-in objective or a net
+/// plays with `eval::portal_reach_values`' table in place of the derived one (`Player::new`):
+/// each priced type's mean capture reach counts the squares it takes on through the ends where
+/// they start. Material, its normalisation, capture ordering and every weight in mean pieces read
+/// it. Unread without portals and for a heuristic or searched-values player (a weight vector).
+pub const PORTAL_REACH: u32 = 524288;
 /// Every bit a spec may carry. A bit outside it is a player nobody has defined.
 pub const REPAIRS: u32 = KEEP_TABLE
     | THREATS
@@ -189,7 +264,16 @@ pub const REPAIRS: u32 = KEEP_TABLE
     | DUCK_MOBILITY
     | TT_MOVE
     | MOPUP
-    | INCOME;
+    | INCOME
+    | MARGIN
+    | SCARCITY
+    | CONTEMPT
+    | RESERVE
+    | RACERS
+    | RACERS_FIXED
+    | AFFORD
+    | STRIKE_GAIN
+    | PORTAL_REACH;
 /// The repairs a minimax player that spells none of them searches with: the ones that won
 /// their pre-registered duel (`general-player.md` §4.3 E9, §6.7). `THREATS` won (0.542
 /// over twelve cells); `KEEP_TABLE` and `LOUD_DROPS` lost and stay off. WK2's pair
@@ -197,10 +281,26 @@ pub const REPAIRS: u32 = KEEP_TABLE
 /// §7.3; `DUCK_REFUTE` alone was a null) and is on: inert without a duck. WK3's
 /// `DUCK_MOBILITY` won its duel (0.542 ± 0.009 over the same six cells, `wakwak.md` §8.3)
 /// and is on: inert without a duck. N4's `MOPUP` won its duel (0.5127 ± 0.0010 over 27 cells,
-/// `no-forced-mate.md` §10.4) and is on: inert where nobody is bare. Python sends the bits explicitly and holds its copy to
+/// `no-forced-mate.md` §10.4) and is on: inert where nobody is bare. T1's `MARGIN` won its duel
+/// (0.948 ± 0.003 over six Hunger cells, `plan-player-weaknesses.md` T1) and is on: unread
+/// without `rules.income`. T1c's `RESERVE` won its duel at every budget (0.918 ± 0.003 over
+/// twelve Hunger cells, `plan-player-weaknesses.md` T1c) and is on: unread without `rules.income`,
+/// it replaces `MARGIN`'s bound there. T5b's `RACERS` (Q1173b) lost no cell of its duel (held at
+/// every budget on Tessabi and Crossings) and is on: unread at `count` 1; the player before T5b is
+/// `racers=0`. T6's `STRIKE_GAIN` (Q1174) won its duel (0.551 ± 0.0035 pooled over eleven
+/// cells of four strike games, none lost) and is on: unread without a strike table; the player
+/// before T6 is `strike_gain=0`. Python sends the bits explicitly and holds its copy to
 /// this one by a test, so the core keeps no default of its own -- this constant is here so
 /// that moving it moves the build fingerprint.
-pub const DEFAULT_REPAIRS: u32 = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY | MOPUP;
+pub const DEFAULT_REPAIRS: u32 = THREATS
+    | DUCK_REFUTE
+    | DUCK_FRONT
+    | DUCK_MOBILITY
+    | MOPUP
+    | MARGIN
+    | RESERVE
+    | RACERS
+    | STRIKE_GAIN;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -504,6 +604,12 @@ pub struct Player {
     /// N4 (`MOPUP`): the mop-up term's weight in this player's evaluator units, zero where
     /// the bit is off or the term is undefined (`mopup_weight_for`).
     mopup: f64,
+    /// T3 (`CONTEMPT`): what completing a repetition costs its completer in the search, in
+    /// the objective's units; 0 without the bit (`contempt_weight_for`).
+    contempt: f64,
+    /// T1d's second arm (`AFFORD`): whether quiescence asks if the side to move can pay for its
+    /// dearest move (`afford_for`); false without the bit, income or upkeep.
+    afford: bool,
     /// N4: scratch for the bare side's legal list when it is not to move.
     mopup_moves: Vec<u32>,
     /// N4: scratch for the keys of the bare side's box (`Game::bare_reach`).
@@ -570,6 +676,40 @@ fn mopup_weight_for(t: &Tables, spec: &AgentSpec, eval: &Objective) -> f64 {
     }
 }
 
+/// T3 (`CONTEMPT`): the repetition contempt in the units of the player's objective, or zero
+/// where the bit is off or the term is undefined: a player other than minimax, a heuristic
+/// vector, or a round or spy game. `agents/minimax.py::contempt_weight` is the oracle.
+fn contempt_weight_for(t: &Tables, spec: &AgentSpec, eval: &Objective) -> f64 {
+    if spec.kind != Kind::Minimax || spec.repairs & CONTEMPT == 0 || t.simultaneous.is_some() || t.spy.is_some() {
+        return 0.0;
+    }
+    match eval {
+        Objective::Builtin(_) | Objective::Net(_) => crate::eval::contempt_weight(t, eval.values()),
+        Objective::Heuristic(_) => 0.0,
+    }
+}
+
+/// T7's P6 (`PORTAL_REACH`): whether this player plays with `eval::portal_reach_values`' table. A
+/// minimax player under the bit, in a portal game, without a weight vector (a heuristic or a
+/// searched table prices its own pieces); `MinimaxAgent`'s oracle asks the same.
+fn portal_reach_for(t: &Tables, spec: &AgentSpec) -> bool {
+    spec.kind == Kind::Minimax
+        && spec.repairs & PORTAL_REACH != 0
+        && t.portals.is_some()
+        && spec.weights.is_empty()
+}
+
+/// T1d's second arm (`AFFORD`): whether this player's quiescence reads the purse guard. A
+/// minimax player on the built-in objective, in a game with `rules.income` and a moves channel
+/// (`rules.purse.upkeep`); false everywhere else, so no other game runs it.
+fn afford_for(t: &Tables, spec: &AgentSpec, eval: &Objective) -> bool {
+    spec.kind == Kind::Minimax
+        && spec.repairs & AFFORD != 0
+        && matches!(eval, Objective::Builtin(_))
+        && t.income.is_some()
+        && t.purse.as_deref().is_some_and(|purse| !purse.upkeep.is_empty())
+}
+
 /// How many plies from the root the killer table has room for. `MAX_DEPTH` is 64 and a
 /// quiescence search runs past it, so this is the sum with a little room.
 const MAX_PLY: usize = 96;
@@ -589,6 +729,16 @@ impl Player {
         // them here is the only place the two meet. Refused at the boundary rather than
         // here, where there is nothing to return an error to; the rule itself is
         // `AgentSpec::check_against`, one function above.
+        // T7's P6 (`PORTAL_REACH`, Q1175b): a minimax player on the built-in objective or a net
+        // plays a portal game with the transits' reach in its derived table; every reader below
+        // takes it from here.
+        let portal_values;
+        let values = if portal_reach_for(t, &spec) {
+            portal_values = crate::eval::portal_reach_values(t, values);
+            &portal_values[..]
+        } else {
+            values
+        };
         let pair = PieceValues::of(values, &spec.values, t)
             .expect("AgentSpec::check_against refuses this at the boundary");
         let eval = match &spec.net {
@@ -597,6 +747,15 @@ impl Player {
             ),
             _ => Objective::new(t, &spec.weights, &pair, mobility, goal, immune),
         };
+        // T1b (`SCARCITY`): the moves channel only for what income does not pay, a minimax
+        // player's on the built-in objective only; before the income term and the margin,
+        // which read the worth.
+        let eval = match eval {
+            Objective::Builtin(evaluator) if spec.kind == Kind::Minimax && spec.repairs & SCARCITY != 0 => {
+                Objective::Builtin(evaluator.with_scarcity(t))
+            }
+            other => other,
+        };
         // H4 (`INCOME`): the income term, a minimax player's on the built-in objective only.
         let eval = match eval {
             Objective::Builtin(evaluator) if spec.kind == Kind::Minimax && spec.repairs & INCOME != 0 => {
@@ -604,8 +763,32 @@ impl Player {
             }
             other => other,
         };
+        // T1 (`MARGIN`): the coin at the margin it buys, a minimax player's on the built-in
+        // objective only.
+        let eval = match eval {
+            Objective::Builtin(evaluator) if spec.kind == Kind::Minimax && spec.repairs & MARGIN != 0 => {
+                Objective::Builtin(evaluator.with_margin(t))
+            }
+            other => other,
+        };
+        // T1c (`RESERVE`): the coin worth what it must still buy, in place of the margin.
+        let eval = match eval {
+            Objective::Builtin(evaluator) if spec.kind == Kind::Minimax && spec.repairs & RESERVE != 0 => {
+                Objective::Builtin(evaluator.with_reserve(t))
+            }
+            other => other,
+        };
+        // T5 (`RACERS`): the race over every racer a counted goal still needs.
+        let eval = match eval {
+            Objective::Builtin(evaluator) if spec.kind == Kind::Minimax && spec.repairs & RACERS != 0 => {
+                Objective::Builtin(evaluator.with_racers(spec.repairs & RACERS_FIXED != 0))
+            }
+            other => other,
+        };
         let round_win = crate::eval::round_win(t, eval.values());
         let mopup = mopup_weight_for(t, &spec, &eval);
+        let contempt = contempt_weight_for(t, &spec, &eval);
+        let afford = afford_for(t, &spec, &eval);
         let duck_history = if spec.repairs & DUCK_HISTORY != 0 && t.duck.is_some() {
             vec![0; 2 * t.n_squares]
         } else {
@@ -614,6 +797,8 @@ impl Player {
         Self {
             round_win,
             mopup,
+            contempt,
+            afford,
             mopup_moves: Vec::new(),
             mopup_seen: Vec::new(),
             mopup_cache: Vec::new(),
@@ -942,7 +1127,7 @@ impl Player {
         // not a territorial problem and never was. Ungating it moves fifteen committed
         // rulesets, which is why it waited for this phase and its campaign.
         if let Some(outcome) = game.terminal_prefix() {
-            return Ok(terminal_value(outcome, game));
+            return Ok(self.searched_terminal(outcome, game));
         }
 
         let key = self.table_key(game);
@@ -1116,7 +1301,7 @@ impl Player {
             return self.round_leaf(game, arena);
         }
         if let Some(outcome) = game.terminal_prefix() {
-            return Ok(terminal_value(outcome, game));
+            return Ok(self.searched_terminal(outcome, game));
         }
 
         let base = arena.len();
@@ -1160,6 +1345,11 @@ impl Player {
             } else {
                 self.turn_moves[ply.min(MAX_PLY - 1)] = count;
             }
+        }
+        // T1d's second arm (`AFFORD`): a side whose purse is below its dearest pseudo-legal
+        // move's cost is not quiet: no stand pat, every legal move searched.
+        if self.afford && depth > 0 && game.short_of_dearest(arena) {
+            return self.quiesce_every::<SPY>(game, arena, base, depth, ply, alpha, beta);
         }
         let mut stand_pat = self.eval.evaluate(game, game.side, count);
         if self.mopup != 0.0 {
@@ -1291,6 +1481,64 @@ impl Player {
         let confined =
             0.5 * ((1.0 - reach.min(area) / area) + (1.0 - (moves as f64).min(span) / span));
         sign * (self.mopup * confined)
+    }
+
+    /// T1d's second arm (`AFFORD`, `docs/plan-player-weaknesses.md` §T1d): quiescence at a node
+    /// whose side to move cannot pay for its dearest pseudo-legal move. `arena[base..]` is the
+    /// position's legal list, the node counted and known not to be over, `depth > 0`. No stand
+    /// pat: every legal move, ordered as any list is, searched at `depth - 1`, the node's value
+    /// the best of them. Truncates the arena back to `base` on every return. Mirrored by
+    /// `agents/minimax.py::_quiesce_every`.
+    #[allow(clippy::too_many_arguments)]
+    #[cold]
+    #[inline(never)]
+    fn quiesce_every<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        arena: &mut Vec<u32>,
+        base: usize,
+        depth: i32,
+        ply: usize,
+        alpha: f64,
+        beta: f64,
+    ) -> Result<f64, Exhausted> {
+        let end = arena.len();
+        self.order(game, arena, base, end, ply);
+
+        let mut best = f64::NEG_INFINITY;
+        let mut alpha = alpha;
+        for index in base..end {
+            let m = arena[index];
+            let mover = game.side;
+            step::<SPY>(game, m);
+            let flipped = game.side != mover;
+            let child = if flipped {
+                self.quiesce::<SPY>(game, arena, depth - 1, ply + 1, -beta, -alpha)
+            } else {
+                self.quiesce::<SPY>(game, arena, depth - 1, ply + 1, alpha, beta)
+            };
+            unstep::<SPY>(game);
+            let score = match child {
+                Err(Exhausted) => {
+                    arena.truncate(base);
+                    return Err(Exhausted);
+                }
+                Ok(value) => if flipped { -value } else { value },
+            };
+            if score > best {
+                best = score;
+            }
+            if best > alpha {
+                alpha = best;
+            }
+            if alpha >= beta {
+                self.refuters[ply.min(MAX_PLY - 1)] = m;
+                break;
+            }
+        }
+
+        arena.truncate(base);
+        Ok(best)
     }
 
     /// WK1 (`DUCK_QUIESCE`, `docs/reference/wakwak.md` §3 A): quiescence at an owed duck half.
@@ -1471,8 +1719,12 @@ impl Player {
             let duck_history = &self.duck_history;
             let duck_slot = game.side * self.n_squares;
             let n_squares = self.n_squares;
+            let strikes = self.spec.repairs & STRIKE_GAIN != 0 && t.strike.is_some();
             for &m in &arena[base..end] {
-                let gain = capture_gain(t, board, m, values);
+                let gain = match strikes.then(|| strike_gain(t, board, m, values)).flatten() {
+                    Some(gain) => gain,
+                    None => capture_gain(t, board, m, values),
+                };
                 let killer: u8 = if m == killers[0] {
                     2
                 } else if m == killers[1] {
@@ -1579,6 +1831,20 @@ fn unstep<const SPY: bool>(game: &mut Game<'_>) {
 /// Discounted by ply so a forced win found sooner is preferred and a loss is delayed.
 /// Without it the search is indifferent between mate now and mate in six, and games
 /// drift instead of finishing.
+impl Player {
+    /// A finished position's value in the main search and quiescence: `terminal_value`, and
+    /// under `CONTEMPT` a repetition draw scored `contempt` for the side to move (the side
+    /// that did not complete it). Without the bit `contempt` is 0 and this is
+    /// `terminal_value` exactly.
+    #[inline]
+    fn searched_terminal(&self, outcome: Outcome, game: &Game<'_>) -> f64 {
+        if self.contempt != 0.0 && outcome.reason == Reason::Repetition {
+            return self.contempt;
+        }
+        terminal_value(outcome, game)
+    }
+}
+
 fn terminal_value(outcome: Outcome, game: &Game<'_>) -> f64 {
     if outcome.winner < 0 {
         return 0.0;
@@ -1740,6 +2006,72 @@ fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> f64 {
         }
     }
     gain
+}
+
+/// T6 (`STRIKE_GAIN`, `docs/plan-player-weaknesses.md` §T6): a meeting's gain read off the
+/// compiled strike tables, as `Game::strike_writes` would play it, or `None` where
+/// `capture_gain`'s reading stands: no strike table, a move other than a plain, promoting or
+/// portal capture (en passant, a sweep, a push, a drop or a buy keep theirs), a foreign move,
+/// or a piece nobody owns on either end. Mover's material change less the opponent's, in the
+/// derived table's values:
+///
+/// - the victim's side loses its value and keeps the type it `becomes` where the survivor
+///   stands (`Stay`, `Swap`, `Choose`; `Home` only onto an empty home that is not the target,
+///   the origin counted empty; never under `Advance`, `-1` or `REMOVED_IN_PLACE`);
+/// - the attacker gains its change of type (`mover_to`), and where it switches sides
+///   (Andernach) the mover loses it and the opponent gains it: twice its value, as it now is;
+/// - a meeting with the mover's own piece (an `own` link) is the mover's loss of the victim
+///   less what it keeps, plus the attacker's change.
+///
+/// Mirrored by `agents/minimax.py::_strike_gain`.
+fn strike_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> Option<f64> {
+    let strike = t.strike.as_ref()?;
+    let kind = move_kind(m);
+    if !(kind == MOVE_NORMAL || kind == MOVE_PROMOTION || kind == MOVE_PORTAL) || move_foreign(m) {
+        return None;
+    }
+    let (origin, target) = (move_from(m), move_to(m));
+    let (attacker, victim) = (board[origin], board[target]);
+    if attacker == 0 || victim == 0 {
+        return None;
+    }
+    let (me, them) = (t.owner_of(attacker), t.owner_of(victim));
+    if me >= WILD || them >= WILD {
+        return None;
+    }
+    let (mover, prey) = (t.type_of(attacker), t.type_of(victim));
+    let cell = mover * strike.n_types + prey;
+    let own = me == them;
+    if own && strike.own_to.is_empty() {
+        return None;
+    }
+    let (becomes, mover_becomes) = if own {
+        (strike.own_to[cell], strike.own_mover_to[cell])
+    } else {
+        (strike.to[cell], strike.mover_to[cell])
+    };
+    let stands = becomes >= 0
+        && match strike.position {
+            StrikePosition::Stay | StrikePosition::Swap | StrikePosition::Choose => true,
+            StrikePosition::Advance => false,
+            StrikePosition::Home => {
+                let home = strike.rebirth_square(them, becomes as usize, target);
+                home >= 0
+                    && home as usize != target
+                    && (board[home as usize] == 0 || home as usize == origin)
+            }
+        };
+    let kept = if stands { values[becomes as usize] } else { 0.0 };
+    let lost = values[prey] - kept;
+    let now = if mover_becomes >= 0 { values[mover_becomes as usize] } else { values[mover] };
+    let changed = now - values[mover];
+    Some(if own {
+        changed - lost
+    } else if strike.flips(cell) {
+        lost + changed - 2.0 * now
+    } else {
+        lost + changed
+    })
 }
 
 impl Player {

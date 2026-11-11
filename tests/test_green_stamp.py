@@ -736,6 +736,21 @@ def test_the_coordinators_own_documents_are_ones_nothing_reads(path: str) -> Non
     assert green_stamp.unread(REPOSITORY, path)
 
 
+def test_the_delete_rules_tests_never_read_the_real_queue() -> None:
+    """`clean_runs.py` and its tests are `NOT_READERS` only because no test's outcome depends on
+    this tree's `docs/queue.md` (Q1191). The script's `main` reads the main checkout's queue,
+    never the tree under test, and `gather` reads the root it is given. Were a test to call
+    `main`, or `gather` on anything but its scratch directory, delete both entries instead."""
+    import re
+
+    source = (REPOSITORY / "tests" / "test_clean_runs.py").read_text(encoding="utf-8")
+    assert "clean.main(" not in source
+    calls = re.findall(r"clean\.gather\(([^,)]*)", source)
+    assert calls and all(first.strip() == "tmp_path" for first in calls), calls
+    script = (REPOSITORY / ".claude" / "scripts" / "clean_runs.py").read_text(encoding="utf-8")
+    assert "root = campaign_status.main_checkout(Path(__file__))" in script
+
+
 def test_the_store_is_ignored_so_a_stamp_cannot_move_a_tree() -> None:
     """Were it tracked, writing a stamp would change the next run's content tree."""
     probe = (green_stamp.STORE / "0123.json").as_posix()

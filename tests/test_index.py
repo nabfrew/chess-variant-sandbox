@@ -232,7 +232,8 @@ def test_score_ruleset_names_the_result_after_the_first_record(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        index, "compute_components", lambda *args: Components(raw={"a": 0.2, "b": 0.4})
+        index, "compute_components",
+        lambda *args, **_kwargs: Components(raw={"a": 0.2, "b": 0.4}),
     )
     records: Any = [
         SimpleNamespace(ruleset_hash=f"h{i}", ruleset_name=f"n{i}") for i in range(3)

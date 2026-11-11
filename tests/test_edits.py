@@ -19,6 +19,8 @@ import pytest
 from chess_variant_sandbox.spec import edits, load_spec, spec_hash
 from tests import retired_specs
 
+pytestmark = pytest.mark.new_game
+
 ROOT = Path(__file__).resolve().parents[1]
 FROZEN_SOURCE = ROOT / "tests" / "test_schema_nine.py"
 _ROW = re.compile(r'^"([^"]+)": \("([0-9a-f]{12})", "[0-9a-f]{16}"\),?\s*(#.*)?$')

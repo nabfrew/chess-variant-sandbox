@@ -177,7 +177,7 @@ def test_an_alternating_layout_is_unchanged(path: str) -> None:
     """No round segment on a game that alternates, so its layout, its stored nets and
     every procedure digest are what they were; the core says the same."""
     _alternating_layout_is_unchanged(ROOT / path)
-    assert DEFAULT.digest == "db5ef1bc938e"
+    assert DEFAULT.digest_at(1) == "db5ef1bc938e"
 
 
 @pytest.mark.slow
@@ -566,8 +566,8 @@ def test_a_round_label_is_the_round_players_value_squashed() -> None:
 
 
 def test_the_round_recipe_and_its_control_are_pinned() -> None:
-    assert ROUND_DEFAULT.digest == ROUND_DEFAULT_DIGEST
-    assert ROUND_CONTROL.digest == ROUND_CONTROL_DIGEST
+    assert ROUND_DEFAULT.digest_at(1) == ROUND_DEFAULT_DIGEST
+    assert ROUND_CONTROL.digest_at(1) == ROUND_CONTROL_DIGEST
     assert ROUND_DEFAULT.rounds and ROUND_DEFAULT.searcher == "matrix"
     assert not DEFAULT.rounds and DEFAULT.searcher == "minimax"
     assert (ROUND_DEFAULT.agents, ROUND_DEFAULT.label_search, ROUND_DEFAULT.label_nodes) == (
@@ -582,8 +582,8 @@ def test_the_round_recipe_and_its_control_are_pinned() -> None:
 
 
 def test_the_score_arm_and_the_outcome_arm_are_pinned() -> None:
-    assert ROUND_SCORE.digest == ROUND_SCORE_DIGEST
-    assert ROUND_OUTCOME.digest == ROUND_OUTCOME_DIGEST
+    assert ROUND_SCORE.digest_at(1) == ROUND_SCORE_DIGEST
+    assert ROUND_OUTCOME.digest_at(1) == ROUND_OUTCOME_DIGEST
     assert ROUND_CONTROL.with_(round_payoff="score") == ROUND_SCORE
     assert ROUND_SCORE.teacher == "player:score" and ROUND_CONTROL.teacher == "player"
     assert ROUND_DEFAULT.with_(result_weight=1.0, td_lambda=0.0, label_nodes=0) == ROUND_OUTCOME

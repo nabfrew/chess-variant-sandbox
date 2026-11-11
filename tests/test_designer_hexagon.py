@@ -451,6 +451,7 @@ class TestASquareGameMadeHexagonsIsAGame:
                    for piece in made["pieces"] for move in piece["moves"])
         assert made["setup"]["orientation"] == "rotate"
 
+    @pytest.mark.new_game
     def test_every_library_game_made_hexagons_validates_but_what_has_no_twin(self) -> None:
         """Pinned from below: what has no hex twin stays a refusal in words."""
         refused = {}
@@ -461,9 +462,13 @@ class TestASquareGameMadeHexagonsIsAGame:
                 refused[path.stem] = problems
         assert len(refused) <= 2, sorted(refused)
         for problems in refused.values():
-            # SR1a: a hex lame is refused only until it states its legs.
+            # SR1a: a hex lame is refused only until it states its legs. H1's U8: a move's
+            # cost counts rows from home, which a hex board has no one direction for
+            # (`rulesets/hunger`, Q1159).
             assert all("must state its legs" in line or "facing.axes 4" in line
-                       or "schema_version" in line for line in problems), problems
+                       or "schema_version" in line
+                       or line.startswith('rules.purse.upkeep beside board.lattice "hex"')
+                       for line in problems), problems
 
     def test_a_rank_zone_becomes_the_cells_it_was(self) -> None:
         spec = load_spec(RULESETS / "chess.json")

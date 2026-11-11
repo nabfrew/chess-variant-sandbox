@@ -39,10 +39,12 @@ from chess_variant_sandbox.agents.nets import require_net
 from chess_variant_sandbox.agents.objective import objective_for
 from chess_variant_sandbox.agents.objective_options import objective_values as _values
 from chess_variant_sandbox.agents.objective_options import objective_weights as _objective
+from chess_variant_sandbox.agents.portal_reach import portal_reach_values
 from chess_variant_sandbox.engine import Engine, GameState, Outcome
 from chess_variant_sandbox.engine.compile import SIGHT_PATH_AURA, WILD
 from chess_variant_sandbox.engine.moves import (
     DUCK_STEP,
+    MOVE_BUY,
     MOVE_CASTLE,
     MOVE_DISPLACE,
     MOVE_DROP,
@@ -58,6 +60,8 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_ROTATE,
     MOVE_SWEEP,
     decode_move,
+    move_foreign,
+    move_promotion,
     move_to,
     move_type,
 )
@@ -125,6 +129,68 @@ MOPUP = 512
 #   side's pieces earn as they stand, mine minus theirs). An evaluator term carried as a search
 #   bit so its duel can seat the player without it; built-in objective only, zero without income.
 INCOME = 1024
+# * ``margin`` (T1, `docs/plan-player-weaknesses.md`, Q1169): under ``rules.income`` each purse
+#   counts in full only up to its player's margin (``evaluation.coin_margins``: the dearest
+#   price, or the cap less ``INCOME_TURNS`` turns of the opening's income) and at nothing above
+#   (``Evaluator.margin``). A search bit so its duel can seat the player without it; built-in
+#   objective only, unread without income. On by default since its duel (0.948 +/- 0.003 over six
+#   Hunger cells); the player before T1 is ``margin=0``.
+MARGIN = 2048
+# * ``scarcity`` (T1b, `docs/plan-player-weaknesses.md`, Q1178): under ``rules.income`` and a move
+#   cost, the moves channel's rate counts only for the share of a turn's move the income does not
+#   pay (``evaluation.coin_scarcity``, ``max(0, 1 - opening income / mean move cost)``); a market's,
+#   hire's or bribe's rate is untouched (``Evaluator.scarcity``). A search bit so its duel can seat
+#   the player without it; built-in objective only, unread without income and upkeep.
+SCARCITY = 4096
+# * ``contempt`` (T3, `docs/plan-player-weaknesses.md`, Q1171): a draw by repetition reached in the
+#   search scores ``CONTEMPT_PIECES`` mean non-royal pieces against the side that completed it (the
+#   side not to move in the repeated position). Minimax on the built-in objective or a net; zero in a
+#   round or spy game. **A diagnostic, never on by default and never on a measured player** (the
+#   user, 2026-11-08: a draw a side can force by waiting is the game's flaw, and the score must keep
+#   seeing it). `docs/reference/repetition-diagnostic.md` is its probe.
+CONTEMPT = 8192
+# * ``reserve`` (T1c, `docs/plan-player-weaknesses.md`, Q1181): under ``rules.income`` each purse
+#   counts in full only up to its player's reserve (``evaluation.coin_reserves``: ``INCOME_TURNS``
+#   turns of the dearest price less the opening's income, never below 0) and at nothing above
+#   (``Evaluator.reserve``), in place of ``margin``'s bound. A search bit so its duel can seat the
+#   player without it; built-in objective only, unread without income. On by default since its duel
+#   (0.918 +/- 0.003 over twelve Hunger cells, every budget won); the player before T1c is
+#   ``reserve=0``.
+RESERVE = 16384
+# * ``racers`` (T5, `docs/plan-player-weaknesses.md`, Q1173, rescaled by Q1173b): where
+#   ``rules.reach.count`` is above 1, the race term sums each side's ``k = count - tally`` nearest
+#   eligible racers' distances over its own ``k`` goal diameters (``Evaluator.racers``), in place of
+#   the nearest racer's over one. A search bit so its duel can seat the player without it; built-in
+#   objective only, unread at ``count`` 1.
+RACERS = 32768
+# * ``racers_fixed`` (Q1173b): under ``racers``, Q1173's fixed ``count`` diameters for both sides
+#   (``Evaluator.racers_fixed``), the arm that lost its duel, kept as the control. Unread alone.
+RACERS_FIXED = 65536
+# * ``afford`` (T1d's second arm, `docs/plan-player-weaknesses.md` §T1d, Q1186b): at a quiescence
+#   node with depth left, in a game with ``rules.income`` and a moves channel (upkeep), where the
+#   side to move's purse is below the dearest cost among its pseudo-legal moves as the purse filter
+#   reads it (``_short_of_dearest``), the node takes no stand pat and searches every legal move
+#   (``_quiesce_every``). No constant. Minimax on the built-in objective only; unread without
+#   income or upkeep.
+AFFORD = 131072
+# * ``strike_gain`` (T6, `docs/plan-player-weaknesses.md` §T6, Q1174): in a game with a strike or
+#   contacts, move ordering reads a meeting's gain off the compiled strike tables (``_strike_gain``):
+#   the victim's value less what its side keeps standing, plus the attacker's change of type, less
+#   twice the attacker's value where it changes sides; an own link is the mover's loss. Ordering
+#   only, so every objective reads it; unread without a strike table. On by default since its duel
+#   (0.551 +/- 0.0035 pooled over eleven cells of four strike games, none lost); the player before
+#   T6 is ``strike_gain=0``.
+STRIKE_GAIN = 262144
+# * ``portal_reach`` (T7's P6, `docs/plan-player-weaknesses.md` §T7, Q1175b): in a portal game, the
+#   player's derived table counts each priced type's capture reach through the ends where they
+#   start (``portal_reach.portal_reach_values``, ``eval.rs::portal_reach_values``): material, its
+#   normalisation, capture ordering and every weight in mean pieces read it. The built-in objective
+#   and a net (whose search orders by the derived table); unread without portals and beside a
+#   weight vector (``h=``, ``values=``).
+PORTAL_REACH = 524288
+# T3: the contempt's weight in mean non-royal pieces; ``rust/src/eval.rs``'s copy is exported as
+# ``_core.CONTEMPT_PIECES`` and held to this by ``tests/test_contempt.py``.
+CONTEMPT_PIECES = 0.5
 # N4 (`docs/reference/no-forced-mate.md` §10): the mop-up term's weight in mean non-royal pieces,
 # and the legal-move count and box size at and above which a bare side reads as unconfined.
 # Here, not in `agents/evaluation.py`, because only a minimax player reads them and that file is
@@ -154,6 +220,21 @@ def mopup_weight(spec: Any, evaluator: object) -> float:
         return 0.0
     return MOPUP_PIECES * _mean_non_royal(
         evaluator.values, spec.royal_types, inexhaustible_types(spec)
+    )
+
+
+def contempt_weight(spec: Any, evaluator: object) -> float:
+    """T3: the repetition contempt's weight in the units of ``evaluator``, or zero where it is
+    undefined: a heuristic vector, or a round or spy game. ``rust/src/agents.rs::
+    contempt_weight_for`` is the same rule (the search bit is the caller's)."""
+    from chess_variant_sandbox.agents.nets import NetEvaluator
+
+    if not isinstance(evaluator, (Evaluator, NetEvaluator)):
+        return 0.0
+    if spec.simultaneous is not None or spec.spy is not None:
+        return 0.0
+    return CONTEMPT_PIECES * _mean_non_royal(
+        tuple(evaluator.values), spec.royal_types, inexhaustible_types(spec)
     )
 
 
@@ -206,6 +287,15 @@ REPAIR_OPTIONS = {
     "tt_move": TT_MOVE,
     "mopup": MOPUP,
     "income": INCOME,
+    "margin": MARGIN,
+    "scarcity": SCARCITY,
+    "contempt": CONTEMPT,
+    "reserve": RESERVE,
+    "racers": RACERS,
+    "racers_fixed": RACERS_FIXED,
+    "afford": AFFORD,
+    "strike_gain": STRIKE_GAIN,
+    "portal_reach": PORTAL_REACH,
 }
 # Which repairs a player that spells none of them searches with: the ones that won their
 # pre-registered duel (general-player.md §4.3 E9, graded in §6.7). ``threats`` won and is
@@ -218,8 +308,19 @@ REPAIR_OPTIONS = {
 # won its duel (§8.3) and is on, inert without a duck; the duck player before WK3 is
 # ``duck_mobility=0``, and before WK2 ``duck_refute=0,duck_front=0,duck_mobility=0``. N4's
 # ``mopup`` won its duel (`no-forced-mate.md` §10.4) and is on, inert where nobody is bare; the
-# player before N4 is ``mopup=0``.
-DEFAULT_REPAIRS = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY | MOPUP
+# player before N4 is ``mopup=0``. T1's ``margin`` won its duel (`plan-player-weaknesses.md` T1) and
+# is on, unread without ``rules.income``; the player before T1 is ``margin=0``. T1c's ``reserve`` won
+# its duel at every budget (0.918 +/- 0.003 over twelve Hunger cells) and is on, unread without
+# ``rules.income``, in place of the margin's bound there; the player before T1c is ``reserve=0``.
+# T5b's ``racers`` (Q1173b, the race over ``k`` diameters) lost no cell of its duel (held at every
+# budget on Tessabi and Crossings, Tessabi pooled 0.5075 +/- 0.012) and is on by the rule set before
+# it, unread at ``count`` 1; the player before T5b is ``racers=0``. T6's ``strike_gain`` (Q1174) won
+# its duel (0.551 +/- 0.0035 pooled over eleven cells of four strike games, none lost) and is on,
+# unread without a strike table; the player before T6 is ``strike_gain=0``.
+DEFAULT_REPAIRS = (
+    THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY | MOPUP | MARGIN | RESERVE | RACERS
+    | STRIKE_GAIN
+)
 
 # Every option a minimax player reads; any other is refused (`refuse_unknown_options`).
 OPTIONS = (
@@ -279,9 +380,33 @@ class MinimaxAgent:
     ) -> None:
         self.engine = engine
         self.evaluator = objective_for(engine, mobility, goal, weights, values, immune, net)
+        if repairs & PORTAL_REACH and engine.spec.portals is not None and not weights:
+            # T7's P6 (``portal_reach``): the transits' reach in the derived table, which the
+            # built-in objective prices material by and a net's search orders captures by.
+            portal = portal_reach_values(engine.spec, tuple(self.evaluator.values))
+            if isinstance(self.evaluator, Evaluator):
+                self.evaluator = replace(self.evaluator, values=portal)
+            else:
+                from chess_variant_sandbox.agents.nets import NetEvaluator
+
+                self.evaluator = NetEvaluator(engine, net, portal)
         if repairs & INCOME and isinstance(self.evaluator, Evaluator):
             # H4 (``income``): the income term, on the built-in objective only.
             self.evaluator = replace(self.evaluator, income=True)
+        if repairs & SCARCITY and isinstance(self.evaluator, Evaluator):
+            # T1b (``scarcity``): the moves channel only for what income does not pay.
+            self.evaluator = replace(self.evaluator, scarcity=True)
+        if repairs & MARGIN and isinstance(self.evaluator, Evaluator):
+            # T1 (``margin``): the coin at the margin it buys, on the built-in objective only.
+            self.evaluator = replace(self.evaluator, margin=True)
+        if repairs & RESERVE and isinstance(self.evaluator, Evaluator):
+            # T1c (``reserve``): the coin worth what it must still buy, in place of the margin.
+            self.evaluator = replace(self.evaluator, reserve=True)
+        if repairs & RACERS and isinstance(self.evaluator, Evaluator):
+            # T5 (``racers``): the race over every racer a counted goal still needs.
+            self.evaluator = replace(
+                self.evaluator, racers=True, racers_fixed=bool(repairs & RACERS_FIXED)
+            )
         self._squares = engine.spec.n_squares
         self._killers: list[list[int]] = [[-1, -1] for _ in range(MAX_PLY)]
         self._history: dict[int, int] = {}
@@ -306,6 +431,21 @@ class MinimaxAgent:
         # N4 (``mopup``): the term's weight, zero where the bit is off or it is undefined.
         self._mopup = mopup_weight(engine.spec, self.evaluator) if repairs & MOPUP else 0.0
         self._mopup_cache: dict[int, int] = {}
+        # T3 (``contempt``): what completing a repetition costs its completer, zero without the bit.
+        self._contempt = contempt_weight(engine.spec, self.evaluator) if repairs & CONTEMPT else 0.0
+        # T1d's second arm (``afford``): whether quiescence reads the purse guard; the built-in
+        # objective, ``rules.income`` and upkeep (`agents.rs::afford_for`).
+        purse = engine.spec.purse
+        self._afford = bool(
+            repairs & AFFORD
+            and isinstance(self.evaluator, Evaluator)
+            and engine.spec.income is not None
+            and purse is not None
+            and purse.upkeep
+        )
+        self._prices: dict[int, int] = (
+            dict(zip(purse.market, purse.price, strict=True)) if purse is not None else {}
+        )
         # Which search this is, for ``keep``'s aging; the core's is a wrapping u16 and
         # only equality with this search and the previous one is ever asked.
         self._generation = 0
@@ -392,7 +532,11 @@ class MinimaxAgent:
         for depth in range(1, self.max_depth + 1):
             try:
                 best_move = self._announce_root(state, seat, ordered, answers, depth)
-            except BudgetExhausted:
+            except RootExhausted as ran_out:
+                # Q1158, as `select_move` since Q1105: a first ply that runs out plays the
+                # best announcement it scored; deeper, the last finished iteration's stands.
+                if depth == 1 and ran_out.scored is not None:
+                    best_move = ran_out.scored
                 break
             reached = depth
             ordered.remove(best_move)
@@ -422,7 +566,10 @@ class MinimaxAgent:
         for depth in range(1, self.max_depth + 1):
             try:
                 best_move = self._answer_root(state, 1 - seat, announced, ordered, depth)
-            except BudgetExhausted:
+            except RootExhausted as ran_out:
+                # Q1158: the best answer scored when the first ply runs out.
+                if depth == 1 and ran_out.scored is not None:
+                    best_move = ran_out.scored
                 break
             reached = depth
             ordered.remove(best_move)
@@ -458,10 +605,19 @@ class MinimaxAgent:
     def _announce_root(
         self, state: GameState, announcer: int, moves: list[int], answers: list[int], depth: int
     ) -> int:
+        """The announcer's best move at ``depth``; out of budget, `RootExhausted` carries
+        the best already scored (`spy_players.rs::announce_root`, Q1158)."""
         alpha = -INFINITY
         best_move = moves[0]
+        scored = False
         for move in moves:
-            value = -self._answer_row(state, announcer, move, answers, depth, 1, -INFINITY, -alpha)
+            try:
+                value = -self._answer_row(
+                    state, announcer, move, answers, depth, 1, -INFINITY, -alpha
+                )
+            except BudgetExhausted:
+                raise RootExhausted(best_move if scored else None) from None
+            scored = True
             if value > alpha:
                 alpha, best_move = value, move
         return best_move
@@ -469,15 +625,22 @@ class MinimaxAgent:
     def _answer_root(
         self, state: GameState, announcer: int, announced: int, moves: list[int], depth: int
     ) -> int:
+        """The answerer's best reply at ``depth``; out of budget, `RootExhausted` carries
+        the best already scored (`spy_players.rs::answer_root`, Q1158)."""
         alpha = -INFINITY
         best_move = moves[0]
+        scored = False
         for move in moves:
             child = self.engine.apply_round(state, *_pair(announcer, announced, move))
             # SR7h: a gain may hand the move over; the child's value is then the other's.
-            if child.side_to_move != state.side_to_move:
-                score = -self._negamax(child, depth - 1, 1, -INFINITY, -alpha)
-            else:
-                score = self._negamax(child, depth - 1, 1, alpha, INFINITY)
+            try:
+                if child.side_to_move != state.side_to_move:
+                    score = -self._negamax(child, depth - 1, 1, -INFINITY, -alpha)
+                else:
+                    score = self._negamax(child, depth - 1, 1, alpha, INFINITY)
+            except BudgetExhausted:
+                raise RootExhausted(best_move if scored else None) from None
+            scored = True
             if score > alpha:
                 alpha, best_move = score, move
         return best_move
@@ -775,6 +938,10 @@ class MinimaxAgent:
                 count = self._turn_moves[min(max(ply - 1, 0), MAX_PLY - 1)]
             else:
                 self._turn_moves[min(ply, MAX_PLY - 1)] = count
+        # T1d's second arm (``afford``): a side whose purse is below its dearest pseudo-legal
+        # move's cost is not quiet: no stand pat, every legal move searched.
+        if self._afford and depth > 0 and self._short_of_dearest(state):
+            return self._quiesce_every(state, moves, depth, ply, alpha, beta)
         stand_pat = self.evaluator.evaluate(engine, state, state.side_to_move, count)
         if self._mopup != 0.0:
             stand_pat += self._mopup_term(state, count)
@@ -794,6 +961,46 @@ class MinimaxAgent:
         best = stand_pat
         alpha = max(alpha, stand_pat)
         for move in loud:
+            child = engine.apply(state, move)
+            if child.side_to_move != state.side_to_move:
+                score = -self._quiesce(child, depth - 1, ply + 1, -beta, -alpha)
+            else:
+                score = self._quiesce(child, depth - 1, ply + 1, alpha, beta)
+            if score > best:
+                best = score
+            if best > alpha:
+                alpha = best
+            if alpha >= beta:
+                self._refuters[min(ply, MAX_PLY - 1)] = move
+                break
+        return best
+
+    def _short_of_dearest(self, state: GameState) -> bool:
+        """T1d's second arm (``afford``): whether the side to move's purse is below the dearest
+        cost among its pseudo-legal moves, each priced as the purse filter prices it (the
+        engine's ``move_cost``, and a buy's price as well). `Game::short_of_dearest`."""
+        engine = self.engine
+        coins = state.purse[state.side_to_move]
+        for move in engine.pseudo_legal_moves(state):
+            cost = engine.move_cost(state, move)
+            if move_type(move) == MOVE_BUY:
+                cost += self._prices[move_promotion(move)]
+            if cost > coins:
+                return True
+        return False
+
+    def _quiesce_every(
+        self, state: GameState, moves: list[int], depth: int, ply: int, alpha: float, beta: float
+    ) -> float:
+        """T1d's second arm (``afford``): quiescence at a node whose side to move cannot pay for
+        its dearest pseudo-legal move. No stand pat: every legal move, ordered as any list is,
+        searched at ``depth - 1``, the node's value the best of them.
+        `agents.rs::quiesce_every`."""
+        engine = self.engine
+        ordered = list(moves)
+        self._order(state, ordered, ply)
+        best = -INFINITY
+        for move in ordered:
             child = engine.apply(state, move)
             if child.side_to_move != state.side_to_move:
                 score = -self._quiesce(child, depth - 1, ply + 1, -beta, -alpha)
@@ -1062,6 +1269,7 @@ class MinimaxAgent:
         squares = self._squares
         ducks = bool(self.repairs & DUCK_HISTORY)
         duck_slot = state.side_to_move * squares
+        strikes = bool(self.repairs & STRIKE_GAIN) and self.engine.spec.strike is not None
 
         def rank(move: int) -> tuple[float, int, int]:
             origin, target, kind, _ = decode_move(move)
@@ -1070,7 +1278,10 @@ class MinimaxAgent:
                 heard = self._duck_history.get(duck_slot + target, 0)
             else:
                 heard = self._history.get(origin * squares + target, 0)
-            return (-self._capture_gain(board, move), -killer, -heard)
+            gain = self._strike_gain(board, move) if strikes else None
+            if gain is None:
+                gain = self._capture_gain(board, move)
+            return (-gain, -killer, -heard)
 
         moves.sort(key=rank)
 
@@ -1092,14 +1303,17 @@ class MinimaxAgent:
         index = origin * self._squares + target
         self._history[index] = self._history.get(index, 0) + weight
 
-    @staticmethod
-    def _terminal_value(outcome: Outcome, state: GameState) -> float:
+    def _terminal_value(self, outcome: Outcome, state: GameState) -> float:
         """A finished position's value, from the side to move's point of view.
 
         Discounted by ply so a forced win found sooner is preferred and a loss is
         delayed. Without it the search is indifferent between mate now and mate in six,
-        and games drift instead of finishing.
+        and games drift instead of finishing. Under ``contempt`` (T3) a repetition is worth
+        the contempt to the side to move, who did not complete it (`agents.rs`'s
+        ``searched_terminal``).
         """
+        if self._contempt != 0.0 and outcome.reason == "repetition":
+            return self._contempt
         if outcome.is_draw:
             return 0.0
         signed = WIN_SCORE - state.ply
@@ -1153,6 +1367,53 @@ class MinimaxAgent:
         for _, swept in spec.sweep_victims(board, move):
             gain += values[spec.type_of(swept)]
         return gain
+
+    def _strike_gain(self, board: bytes, move: int) -> float | None:
+        """T6 (``strike_gain``): a meeting's gain read off the compiled strike tables, or
+        ``None`` where `_capture_gain`'s reading stands. The mirror of
+        `agents.rs::strike_gain`, which says it in full: the mover's material change less the
+        opponent's, the victim's side keeping what it ``becomes`` where the survivor stands, the
+        attacker's change of type counted, a side switch twice the attacker's value as it now is,
+        an own link the mover's loss."""
+        spec = self.engine.spec
+        strike = spec.strike
+        if strike is None:
+            return None
+        origin, target, kind, _ = decode_move(move)
+        if kind not in (MOVE_NORMAL, MOVE_PROMOTION, MOVE_PORTAL) or move_foreign(move):
+            return None
+        attacker, victim = board[origin], board[target]
+        if not attacker or not victim:
+            return None
+        me, them = spec.owner_of(attacker), spec.owner_of(victim)
+        if me >= WILD or them >= WILD:
+            return None
+        mover, prey = spec.type_of(attacker), spec.type_of(victim)
+        cell = mover * strike.n_types + prey
+        own = me == them
+        if own and not strike.own_onto_to:
+            return None
+        if own:
+            becomes, mover_becomes = strike.own_onto_to[cell], strike.own_mover_to[cell]
+        else:
+            becomes, mover_becomes = strike.onto_to[cell], strike.mover_to[cell]
+        stands = False
+        if becomes >= 0:
+            if strike.position in ("stay", "swap", "choose"):
+                stands = True
+            elif strike.position == "home":
+                home = strike.rebirth[(them * strike.n_types + becomes) * spec.n_squares + target]
+                stands = home >= 0 and home != target and (board[home] == 0 or home == origin)
+        values = self.evaluator.values
+        kept = values[becomes] if stands else 0.0
+        lost = values[prey] - kept
+        now = values[mover_becomes] if mover_becomes >= 0 else values[mover]
+        changed = now - values[mover]
+        if own:
+            return changed - lost
+        if strike.mover_flips and strike.mover_flips[cell]:
+            return lost + changed - 2.0 * now
+        return lost + changed
 
 
 def _pair(announcer: int, announced: int, answer: int) -> tuple[int, int]:

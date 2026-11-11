@@ -1109,7 +1109,7 @@ def trust_line(game: Game, people: Any = None, *, maintainer: bool = True) -> di
     could play the rules at all. ``maintainer`` false leaves the numbers out. ``None``
     on a provisional estimate (EV2): trust reads evidence against the current basis,
     and a provisional estimate has none (`docs/archive/plan-evolving-score.md` §5.1)."""
-    from chess_variant_sandbox import history, trust
+    from chess_variant_sandbox import trust
 
     found = game.trust
     # A preview's score is not yet trusted, and its own sentence says so (Q931).
@@ -1117,15 +1117,21 @@ def trust_line(game: Game, people: Any = None, *, maintainer: bool = True) -> di
         return None
     if people is not None:
         found = trust.with_people(found, people)
-    entries = [history.Entry.from_dict(line) for line in game.history]
-    score = game.score or {}
     return trust.shown(
         found,
-        was=history.for_visitors(entries, score.get("index")),
+        was=_earlier(game),
         fairy_translates=_fairy(game.spec).get("fairyTranslates"),
         premise_words=str((game.premise or {}).get("words") or ""),
         maintainer=maintainer,
     )
+
+
+def _earlier(game: Game) -> list[dict[str, Any]]:
+    """`history.for_visitors` over this game's ledger, against its present number."""
+    from chess_variant_sandbox import history
+
+    entries = [history.Entry.from_dict(line) for line in game.history]
+    return history.for_visitors(entries, (game.score or {}).get("index"))
 
 
 def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
@@ -1166,6 +1172,12 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
         # Never a headline; the site keeps it from a visitor (`SiteApp`'s game page),
         # who reads each one as a *was* line under the trust line's *more*.
         "history": game.history,
+        # The same earlier scores as a visitor is sent them (`history.for_visitors`: value,
+        # run count, date and version, only where the players changed), which a visitor's
+        # *earlier scores* fold draws and lists (SH4, `docs/plan-score-history.md` §2.1).
+        # Sent whatever the present score's status: each is a past value, dated, and the
+        # library's history page already sends a visitor every one.
+        "earlier": _earlier(game),
         # The trust line under the score (Q647): the level word, one sentence, the *more*
         # list and the maintainer's numbers. The site sends a visitor no `numbers` and
         # folds in people's counts (`SiteApp`'s game page).

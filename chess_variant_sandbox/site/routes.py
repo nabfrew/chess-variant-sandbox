@@ -549,6 +549,10 @@ MAIL_OFF = "/mail/off/"
 # - `/whats-new`, *What's new* drawn on the server (G11, `web/page/news_page.py`), and
 #   `/feeds/`, the two Atom feeds (`site/feeds.py`): the changelog's entries and the new
 #   games. Read from the changelog file and the store, never from a cookie.
+# - `/score-history`, how the library's scores have moved (SH3 of
+#   `docs/plan-score-history.md`, `web/page/front.py`'s `history`): the single page with its
+#   own head, which `history.js` draws from `GET /api/library/history`. Public (D1, the
+#   user's answer of 2026-11-08); no cookie is read.
 # - `/static/style/`, the pages' stylesheets, which the code writes (G12,
 #   `web/page/assets.py`). Every script above under `/static/page/`, `/static/site/`,
 #   `/static/shell.js` and `/static/story.js` (LP6, the landing's draw) is answered under a
@@ -563,7 +567,7 @@ STATIC: tuple[str, ...] = (
     "/static/fonts/", "/static/shell.js", "/static/story.js", "/favicon.svg", "/favicon.ico",
     "/apple-touch-icon.png",
     "/static/picture/", "/rules.md", "/robots.txt", "/sitemap.xml", "/llms.txt", "/rules",
-    "/whats-new", "/feeds/", "/static/style/",
+    "/whats-new", "/feeds/", "/static/style/", "/score-history",
 )
 
 # The pages whose answer depends on who is asking, and so the only ones the cookie is

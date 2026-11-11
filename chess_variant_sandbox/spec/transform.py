@@ -1327,6 +1327,12 @@ def never_forced(spec: dict[str, Any]) -> dict[str, Any]:
     # Nor can a keeping link (schema 18, Q781): it overrides a promotion, and none is left.
     if settle_keeping_links(spec) and not (rules.get("contacts") or {}).get("links"):
         rules.pop("contacts", None)
+    # Nor can a promotion reading of a move's cost (H1): with no promotion left, `"new"`
+    # reads as the default, as `settle_inert_rules` settles it (Q1179, the first library
+    # spec to say `"new"`, `archive/hunger-chess-with-cheap-promotion`).
+    purse = rules.get("purse")
+    if isinstance(purse, dict) and purse_upkeep(spec) == "new":
+        purse["upkeep"] = True
     low, high = CLOCK_BOUNDS["no_progress_draw"]
     limit = min(high, max(low, int(rules.get("max_plies", 400))))
     rules["no_progress_draw"] = limit

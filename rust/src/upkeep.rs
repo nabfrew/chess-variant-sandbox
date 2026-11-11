@@ -105,6 +105,40 @@ impl<'t> Game<'t> {
         table.get(cell).copied().unwrap_or(-1) != -1
     }
 
+    /// What the purse filter charges `m`: `move_cost`, and a buy's price as well. The one
+    /// reading of a move's price that `upkeep_filter` and `short_of_dearest` share.
+    #[inline(always)]
+    fn purse_cost(&self, purse: &PurseTables, m: u32) -> u16 {
+        let mut cost = self.move_cost(purse, m);
+        if move_kind(m) == MOVE_BUY {
+            cost += purse.price[move_promotion(m) as usize];
+        }
+        cost
+    }
+
+    /// T1d's second arm (`agents::AFFORD`, `docs/plan-player-weaknesses.md` §T1d): whether the
+    /// side to move's purse is below the dearest cost, as the purse filter reads it
+    /// (`purse_cost`), among its **pseudo-legal** moves (`generate_pseudo_legal`: before the
+    /// check filter and the purse filter). `scratch` is appended to and truncated back to its
+    /// length. False without `rules.income` or upkeep. Mirrored by
+    /// `agents/minimax.py::_short_of_dearest`.
+    #[inline(never)]
+    pub fn short_of_dearest(&self, scratch: &mut Vec<u32>) -> bool {
+        let t = self.t;
+        let Some(purse) = t.purse.as_deref() else {
+            return false;
+        };
+        if purse.upkeep.is_empty() || t.income.is_none() {
+            return false;
+        }
+        let coins = self.purse[self.side];
+        let base = scratch.len();
+        self.generate_pseudo_legal(scratch);
+        let short = scratch[base..].iter().any(|&m| self.purse_cost(purse, m) > coins);
+        scratch.truncate(base);
+        short
+    }
+
     /// The side to move's moves from `base` less those its purse cannot pay for (a buy its
     /// price as well). No lift: a move the purse cannot pay for is never offered back.
     #[inline(never)]
@@ -113,10 +147,7 @@ impl<'t> Game<'t> {
         let mut write = base;
         for index in base..out.len() {
             let m = out[index];
-            let mut cost = self.move_cost(purse, m);
-            if move_kind(m) == MOVE_BUY {
-                cost += purse.price[move_promotion(m) as usize];
-            }
+            let cost = self.purse_cost(purse, m);
             if cost <= coins {
                 out[write] = m;
                 write += 1;

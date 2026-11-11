@@ -575,6 +575,30 @@ const GLOSS = {
     "Which measurements count, and how they are weighed into one number. Versions are"
     + " never edited, only added, so a number always says which rules produced it, and"
     + " its page lists what that version measures. Two versions never share a table."],
+  // SH3 (`docs/plan-score-history.md` §2.5): the score history page's four words, in a
+  // visitor's words on both servers, since the page is public (D1).
+  weightsVersion: ['A version of the scoring rules',
+    "The scoring rules say which measurements make up a game's score and how much each one"
+    + " counts. Each time they change, the change is a new numbered version, and every"
+    + " score says which version produced it. A new version can lift or lower every score"
+    + " at once, so a score is only comparable with the others under the same version:"
+    + " here, within one column." + SCORE_MORE, { link: SCORE_LINK }],
+  snapshot: ['A snapshot',
+    "The scores of the games as they stood on one day under one version of the scoring"
+    + " rules. The early ones are what each calibration of the scorer recorded, one run"
+    + " a game; the later ones are the library's own scores, each the mean of four runs."
+    + " A version that stayed current for weeks has two columns: the day it was adopted,"
+    + " and each game's last score under it."],
+  refusedScore: ['Refused',
+    "When it was measured, the game failed a basic test of a working game, such as games"
+    + " that never finish, or a stronger computer player doing no better than a random"
+    + " one. Its number is still on record and shown, hollow, but it is not counted in the"
+    + " library's lowest, median or highest score for that column."],
+  historyProvisional: ['Provisional',
+    "A score worked out before the latest change to the scorer, waiting to be measured"
+    + " again. It is the best estimate there is until then, but it is not drawn on this"
+    + " page as a point and not counted in any column: it is listed with the version and"
+    + " the day it came from." + SCORE_MORE, { link: SCORE_LINK }],
   elo: ['How strong, in this game',
     "It uses the chess rating scale, where 100 points is roughly a 64% score and 400"
     + " points about 91%. It is fitted per game, because a search budget is not a"
@@ -1498,6 +1522,7 @@ function viewTitle(parts) {
   const named = {
     map: 'The map of games', 'whats-new': "What's new · Free chess variants online in your browser",
     round: 'The round', score: 'How the score works',
+    'score-history': 'How the scores have moved',
     play: 'A game in progress', design: `Build a game ${FREE_SAID}`,
     opponent: 'Build an opponent', run: 'Inventing a game',
   };
@@ -1594,6 +1619,11 @@ function render() {
   if (!parts.length && location.hash.replace(/^#/, '') !== '/' && pathProven()) {
     parts = ['proven', ...pathProven()];
   }
+  // SH3: the library's score history, `/score-history` (`history.js`), and `#/score-history`.
+  if (!parts.length && location.hash.replace(/^#/, '') !== '/'
+      && typeof onHistoryPath === 'function' && onHistoryPath()) {
+    parts = ['score-history'];
+  }
   // LP3: an id the landing's score sections had (`#landing-score`, `#landingIngredients`)
   // is *How the score works* now, scrolled to it, said as `#/score/<id>`.
   if (parts.length === 1 && typeof scoreAnchor === 'function' && scoreAnchor(parts[0])) {
@@ -1623,6 +1653,8 @@ function render() {
   if (parts[0] === 'score') return showScore(parts[1] || '');
   // The changelog, which both servers hold and neither needs an account for.
   if (parts[0] === 'whats-new') return showWhatsNew().catch(fail);
+  // SH3: every score the library has kept, drawn; public on both servers.
+  if (parts[0] === 'score-history') return showHistory().catch(fail);
   // The monthly round (Q503h): the latest, or one by the 1st of its month. The site's.
   if (parts[0] === 'round') return showRound(parts[1] || '').catch(fail);
   if (parts[0] === 'play' && parts[1]) {

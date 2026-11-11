@@ -232,12 +232,12 @@ def test_only_a_minimax_player_has_a_search_value(engine: Engine) -> None:
 def test_label_search_enters_the_name_only_when_it_is_the_player() -> None:
     assert LABEL_SEARCHES == ("probe", "player", "parent")  # "parent": Q677, tests/test_generation.py
     assert DEFAULT.label_search == "probe" and "label_search" not in DEFAULT.as_dict()
-    assert DEFAULT.digest == DEFAULT_DIGEST and Q502F2.digest == Q502F2_DIGEST
-    assert Q637.digest == Q637_DIGEST
-    assert DEFAULT.with_(label_search="probe").digest == DEFAULT_DIGEST
-    assert Q637.with_(label_search="probe").digest == Q637_DIGEST
+    assert DEFAULT.digest_at(1) == DEFAULT_DIGEST and Q502F2.digest_at(1) == Q502F2_DIGEST
+    assert Q637.digest_at(1) == Q637_DIGEST
+    assert DEFAULT.with_(label_search="probe").digest_at(1) == DEFAULT_DIGEST
+    assert Q637.with_(label_search="probe").digest_at(1) == Q637_DIGEST
     assert T2V.as_dict()["label_search"] == "player"
-    assert T2V.digest == T2V_DIGEST
+    assert T2V.digest_at(1) == T2V_DIGEST
     assert Procedure.from_dict(T2V.as_dict()) == T2V
     assert Procedure.from_dict(DEFAULT.as_dict()).label_search == "probe"
     with pytest.raises(ValueError, match="label_search"):

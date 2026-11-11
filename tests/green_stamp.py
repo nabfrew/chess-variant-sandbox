@@ -124,6 +124,10 @@ XDIST_KEY = "green_stamp"
 # `prune_worktrees.py branches` reads the *main checkout's* queue when a coordinator closes,
 # never the tree under test, and its tests give it inline text or a scratch repository's
 # (Q845), so neither makes the suite's outcome depend on this tree's queue.
+#
+# `clean_runs.py` (Q1188) is the same case: run, it reads the *main checkout's* queue as proof a
+# campaign is not yet delivered; its tests hand `gather` a scratch root or build `Facts` inline,
+# and name the queue only in an expected reason (Q1191; `test_green_stamp` holds them to that).
 NOT_READERS = (
     "tests/green_stamp.py",
     "tests/test_green_stamp.py",
@@ -132,6 +136,8 @@ NOT_READERS = (
     "tests/test_export_public.py",
     ".claude/scripts/prune_worktrees.py",
     "tests/test_prune_worktrees.py",
+    ".claude/scripts/clean_runs.py",
+    "tests/test_clean_runs.py",
 )
 # Where Markdown can be cleared as unread (`unread`).
 PROSE = ("docs/", ".claude/")

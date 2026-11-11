@@ -43,6 +43,11 @@ from chess_variant_sandbox.metrics.seat import (
     sign_test,
     transcript_digest,
 )
+from chess_variant_sandbox.metrics.waiting import (
+    FORCED_REPETITION,
+    WAITING_DETAIL,
+    forced_repetition,
+)
 from chess_variant_sandbox.spec.canonical import canonical_json
 from chess_variant_sandbox.spec.complexity import SpecComplexity, measure_complexity
 from chess_variant_sandbox.spec.reachability import pieces_a_player_can_hold
@@ -306,8 +311,13 @@ def compute_components(
     analysis: CorpusAnalysis | None = None,
     heuristics: HeuristicReport | None = None,
     readings: GameReadings | None = None,
+    waiting: list[GameRecord] | None = None,
 ) -> Components:
     """Measure a ruleset from its spec and the corpus its tournament produced.
+
+    ``waiting`` is the run's waiting schedule (`metrics/waiting.py`, Q1184): its own games,
+    never among ``records``, read for ``forced_repetition`` and nothing else. Absent, so is
+    the measurement.
 
     ``analysis`` carries the engine-derived second pass. It is optional because a
     corpus measured before that pass existed is still a valid corpus: the components
@@ -479,6 +489,12 @@ def compute_components(
         # What each scored component means on a game played in rounds, carried in the
         # score itself so no reader takes a round game's number for an alternating one's.
         diagnostics["round_readings"] = dict(ROUND_READINGS)
+
+    if waiting:
+        value, waiting_detail = forced_repetition(waiting)
+        if value is not None:
+            raw[FORCED_REPETITION] = value
+            diagnostics[WAITING_DETAIL] = waiting_detail
 
     if analysis is not None:
         raw.update(_analysis_components(analysis, diagnostics, spec))

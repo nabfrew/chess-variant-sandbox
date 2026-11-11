@@ -200,7 +200,7 @@ class TestWhereThePlayersCannotBeRead:
         blind = Basis.current(
             stored.ruleset_hash, stored.weights_version, stored.agents,
             stored.games_per_pairing, stored.seeds, tables=stored.tables,
-            verdict_rule=stored.verdict_rule,
+            verdict_rule=stored.verdict_rule, waiting=stored.waiting,
         )
         assert blind.players == ""
         assert stored.stale_against(blind).current

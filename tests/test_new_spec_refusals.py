@@ -111,6 +111,7 @@ def test_the_escape_is_that_one_refusal() -> None:
     assert REFUSAL in stored_spec_errors(spec) and len(stored_spec_errors(spec)) == 2
 
 
+@pytest.mark.new_game
 @pytest.mark.parametrize("path", LIBRARY, ids=lambda path: f"{path.parent.name}/{path.stem}")
 def test_every_library_spec_is_admitted(path: Path) -> None:
     assert validate_spec(load_spec(path)) == []

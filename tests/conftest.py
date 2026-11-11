@@ -45,8 +45,9 @@ one_core_per_worker()
 # `--skip-if-green`, and the stamp every green fast-suite run leaves for it. `pytester`
 # is how `test_green_stamp.py` runs a suite inside a suite. `node_session` releases the
 # session's node when the module that used it is done. `duration_guard` names every fast
-# test over two seconds and fails the run on one that spends them itself.
-pytest_plugins = ("green_stamp", "pytester", "node_session", "duration_guard")
+# test over two seconds and fails the run on one that spends them itself. `new_game` is the
+# mark on the corpus-reading checks, and `--games` narrows them (`tests/check_new_game.py`).
+pytest_plugins = ("green_stamp", "pytester", "node_session", "duration_guard", "new_game")
 
 
 class CompileMemo:
@@ -311,6 +312,18 @@ def the_tracked_stores_do_not_move() -> Iterator[None]:
         removed = sorted(before[name] - after[name])
         assert not added, f"the suite wrote into the tracked {name}/ store: {added}"
         assert not removed, f"the suite deleted from the tracked {name}/ store: {removed}"
+
+
+@pytest.fixture(autouse=True)
+def waiting_schedule_only_where_a_test_asks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A library measurement plays the waiting schedule beside each run (Q1184): 32 games at
+    the roster's top rung, 25,600 nodes. A corpus test that stands in for the tournament
+    would still play those for real, and count them, so the fast suite measures without
+    it unless the test says so (`monkeypatch.setattr(corpus, "PLAY_WAITING", True)`, as
+    `tests/test_waiting.py` does)."""
+    from chess_variant_sandbox import corpus
+
+    monkeypatch.setattr(corpus, "PLAY_WAITING", False)
 
 
 @pytest.fixture(autouse=True)

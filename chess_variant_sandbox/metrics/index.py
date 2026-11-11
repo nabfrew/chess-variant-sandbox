@@ -38,6 +38,7 @@ from chess_variant_sandbox.metrics.scoring import (
     load_weights,
 )
 from chess_variant_sandbox.metrics.seat import seat_violations
+from chess_variant_sandbox.metrics.waiting import waiting_violations
 from chess_variant_sandbox.tournament.analysis import ANALYSIS_COMPONENTS, CorpusAnalysis
 from chess_variant_sandbox.tournament.heuristics import HeuristicReport
 from chess_variant_sandbox.tournament.ratings import RatingTable
@@ -234,6 +235,7 @@ def score_ruleset(
     analysis: CorpusAnalysis | None = None,
     heuristics: HeuristicReport | None = None,
     interval: bool = True,
+    waiting: list[GameRecord] | None = None,
 ) -> IndexResult:
     """Measure a ruleset and score it under one weights version.
 
@@ -245,6 +247,9 @@ def score_ruleset(
     ``components.SpecFacts`` quotes 41.8 s for the same stage, which was true before the
     memoisation that docstring describes and has not been true since.
 
+    ``waiting`` is the run's waiting schedule (Q1184), read for ``forced_repetition`` and
+    its gate alone; the interval resamples the tournament and never these games.
+
     ``heuristics`` carries the third pass. Nothing it produces is scored under any
     weights version, so it changes no total -- it travels in ``raw`` and in the
     diagnostics, beside ``ladder_monotonicity``, which is the other measurement here
@@ -253,7 +258,9 @@ def score_ruleset(
     if isinstance(weights, str):
         weights = load_weights(weights)
 
-    components = compute_components(spec, records, ratings, analysis, heuristics)
+    components = compute_components(
+        spec, records, ratings, analysis, heuristics, waiting=waiting
+    )
     resampled = (
         bootstrap_index(
             spec,
@@ -418,11 +425,13 @@ def readable_gate_violations(
         if gate.component not in blind and gate.component in components.raw
     ]
     failures = (gate.check(components.raw[gate.component]) for gate in readable)
-    return [failure for failure in failures if failure]
+    # The waiting gate reads the top rung's own games against itself and a contempt
+    # player, which assumes nothing about how the ladder orders (Q1184): readable here.
+    return [failure for failure in failures if failure] + waiting_violations(components.raw)
 
 
 def gate_violations(components: Components, weights: Weights) -> list[str]:
-    """The weights' gates, then the seat gates.
+    """The weights' gates, then the seat gates, then the waiting gate (Q1184).
 
     The seat gates stand under every weights version because they read no curve: they are
     findings about this roster's strongest rungs and these games, the same standing as
@@ -432,6 +441,7 @@ def gate_violations(components: Components, weights: Weights) -> list[str]:
     """
     violations = weights.check_gates(components.raw)
     violations.extend(seat_violations(components.raw, components.diagnostics))
+    violations.extend(waiting_violations(components.raw))
     return violations
 
 

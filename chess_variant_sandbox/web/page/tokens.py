@@ -293,6 +293,15 @@ LIGHT: dict[str, str] = {
     # red (S4) and of the other seven (`tests/test_marks.py`).
     "mk-1": "#8c2b4a", "mk-2": "#2c4f9e", "mk-3": "#673a8c", "mk-4": "#8a5f12",
     "mk-5": "#6e4a33", "mk-6": "#1d6377", "mk-7": "#5f6a12", "mk-8": "#7a3f6e",
+    # The score history (SH3, `docs/plan-score-history.md` §2.4): a game you picked out,
+    # first, second, third. A pick keeps its hue while it is picked (D4), and nothing else
+    # wears these. 20 CIE76 apart from each other and from `--muted`, `--ink`, `--bg` and
+    # `--panel`, and 3 : 1 on the panel (`FLOORS`, `tests/test_pick_hues.py`); blue, orange
+    # and a green-teal, run through the colour-vision validator in both themes.
+    "pick-1": "#2a6fd0", "pick-2": "#c75a12", "pick-3": "#0b846d",
+    # A game not picked: the ink at a low opacity, a faint line among a hundred others.
+    # Not `--dot`, which means *where it may go* (§2.4).
+    "trace": "rgba(43, 36, 32, .16)",
 }
 
 DARK: dict[str, str] = {
@@ -344,6 +353,8 @@ DARK: dict[str, str] = {
     "community-7": "#9085e9", "community-8": "#e66767",
     "mk-1": "#e88aa6", "mk-2": "#8ea7f2", "mk-3": "#c09df0", "mk-4": "#d9ab52",
     "mk-5": "#d0a585", "mk-6": "#78bfd6", "mk-7": "#bfc35e", "mk-8": "#e39bd2",
+    "pick-1": "#4a8ee8", "pick-2": "#d2672a", "pick-3": "#1fa98a",
+    "trace": "rgba(239, 231, 219, .16)",
 }
 
 # Names kept for what still reads them by their old names: `viz/wrapped.js` draws a
@@ -417,6 +428,8 @@ FLOORS: tuple[tuple[str, str, float], ...] = (
     *((f"walk-{n}", "walk-edge", 3.0) for n in range(1, 5)),
     # A member's mark (R3): each of its eight hues, a graphic, on the page and a panel.
     *((f"mk-{n}", back, 3.0) for n in range(1, 9) for back in ("panel", "bg")),
+    # A picked game's line and marker on the score history (SH3): a graphic on its card.
+    *((f"pick-{n}", "panel", 3.0) for n in range(1, 4)),
 )
 # A chosen chip or toggle: text over the action's translucent tint, each (text, tint,
 # floor), read composed over the panel and the ground. (A quiet button under the pointer

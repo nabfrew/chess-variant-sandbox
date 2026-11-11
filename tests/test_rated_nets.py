@@ -55,7 +55,13 @@ ROLLED_OUT = {
     "71912ea8ba7f": "db5ef1bc938e",  # kingofthehill: generation 0, accepted and confirmed
     # L2's batch 2 (plan-teacher §10.11, 2026-10-24): generation 0, accepted and confirmed;
     # LG's child of dobutsu was accepted and confirmed but not kept (G-P2), so gen 0 stays.
-    "a2f0c65ceedf": "db5ef1bc938e",  # dobutsu
+    "a2f0c65ceedf": "e31e979d535a",  # dobutsu: Q1170 net campaign (docs/handover-Q1170.md)
+    "684b14652b2b": "e31e979d535a",  # tessabi: Q1170
+    "b51b26942977": "e31e979d535a",  # boulder: Q1170
+    "e72a8715217c": "e31e979d535a",  # los alamos with crushing pillars: Q1170
+    "c2925e027455": "840fae6c24b7",  # cannonade: Q1170, the 6,000-game recipe
+    "b1f536573c22": "e31e979d535a",  # three-check: Q1170
+    "559e947e585a": "840fae6c24b7",  # dohyo: Q1170, the 6,000-game recipe
     # LG (plan-teacher §10.12-§10.13, 2026-10-29): generation 1, kept (twelve games; three of
     # them, antichess, circe and rifle, on a refused generation-0 parent).
     "0be72e61ef24": "c68907df8d4a",  # marchfield

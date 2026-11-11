@@ -371,6 +371,7 @@ class TestTheFallback:
                 assert "(" in descriptor and ")" in descriptor
             assert piece.as_dict()["descriptors"] == list(piece.descriptors)
 
+    @pytest.mark.new_game
     @pytest.mark.parametrize("path", RULESETS, ids=lambda p: p.stem)
     def test_every_committed_move_is_phrased(self, path: Path) -> None:
         """Nothing in `rulesets/` or `archive/` falls back today.
@@ -621,6 +622,7 @@ def test_no_game_and_no_piece_is_named_in_the_prose() -> None:
         assert found is None, f"describe.py says {found.group()!r} in {text!r}"
 
 
+@pytest.mark.new_game
 @pytest.mark.parametrize("path", RULESETS, ids=lambda p: p.stem)
 def test_no_sentence_borrows_a_word_from_a_game(path: Path) -> None:
     """The same rule read off the output, which is where it would actually show."""

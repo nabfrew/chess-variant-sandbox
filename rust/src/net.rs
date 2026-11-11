@@ -26,7 +26,7 @@
 //! player without a net pays nothing for this file.
 
 use crate::game::Game;
-use crate::tables::Tables;
+use crate::tables::{Tables, PURSE_MAX};
 
 /// The largest `|sum|` of one dense-layer dot product any accepted store can reach: at most
 /// `MAX_ACCUMULATOR` terms (the first layer; the second has at most `MAX_HIDDEN`), each an
@@ -131,7 +131,18 @@ pub const MAGIC: &[u8; 8] = b"CVSNET01";
 /// differently, and every alternating layout, store and procedure digest stays as it was
 /// (`tests/test_round_nets.py` holds it). A later change to a segment a store exists for
 /// is a bump.
-pub const INPUTS_VERSION: u32 = 1;
+///
+/// **Version 2** (Q1172, W4, `docs/plan-player-weaknesses.md` §T4) appends three segments
+/// after `bars`, each only on tables that carry its rule: the purse (`rules.purse`), the
+/// bank (`rules.reach.removes`) and the filled-parts mask (`rules.turn.parts` under order
+/// `"any"`). On tables with none of the three, layout 2 is layout 1 input for input, so a
+/// store of version 1 is still read there (`OLDEST_INPUTS_VERSION`), and refused by
+/// `Net::check_against` on tables that carry one: no stored byte is read differently.
+/// Stores are written as 2, so a procedure trained from now on is a new name.
+pub const INPUTS_VERSION: u32 = 2;
+/// The oldest store version this core reads, where the tables carry none of the segments
+/// added since (`Layout::since_v1`).
+pub const OLDEST_INPUTS_VERSION: u32 = 1;
 
 /// Thermometer lengths for the counted state.
 pub const HAND_CAP: usize = 16;
@@ -139,6 +150,14 @@ pub const CHECK_CAP: usize = 8;
 pub const POINTS_CAP: usize = 16;
 pub const CLOCK_BUCKETS: usize = 8;
 pub const TURN_CAP: usize = 4;
+/// Layout 2's purse (Q1172): each player's coins as `PURSE_UNITS` unit inputs (one per coin
+/// up to 16, where one coin is the margin a move costs) and then the scalar scaled by
+/// `tables::PURSE_MAX` as `PURSE_BUCKETS` thermometer inputs, the clocks' rule (bucket `k`
+/// on once `purse * PURSE_BUCKETS >= (k + 1) * PURSE_MAX`).
+pub const PURSE_UNITS: usize = 16;
+pub const PURSE_BUCKETS: usize = 8;
+/// Layout 2's bank (Q1172): each player's banked pieces as a thermometer of `BANK_CAP`.
+pub const BANK_CAP: usize = 16;
 
 /// The hidden layer after the accumulator is `(sum >> WEIGHT_SHIFT)` clipped to
 /// `[0, ACTIVATION_MAX]`.
@@ -188,6 +207,17 @@ pub struct Layout {
     pub void: usize,
     /// `bars`: `2 * n_squares`, every barred pair's squares, player 0's then player 1's.
     pub bars: usize,
+    /// Layout 2 (Q1172), after `bars`, each only where its rule is on. `purse`:
+    /// `2 * (PURSE_UNITS + PURSE_BUCKETS)` under `rules.purse`, player 0's units then
+    /// buckets, then player 1's. `bank`: `2 * BANK_CAP` under `rules.reach.removes`.
+    /// `parts`: one input per part, on while that part is filled, under `rules.turn.parts`
+    /// with order `"any"` (under `"fixed"` the mask is the moves left, which `turn` carries).
+    pub purse: usize,
+    pub bank: usize,
+    pub parts: usize,
+    pub has_purse: bool,
+    pub has_bank: bool,
+    pub n_parts: usize,
     pub has_initiative: bool,
     pub has_rest: bool,
     pub rounds: bool,
@@ -223,7 +253,15 @@ impl Layout {
         let rest = initiative + if has_initiative { 2 } else { 0 };
         let void = rest + 2 * n_squares * rest_turns;
         let bars = void + if rounds { 2 * n_squares } else { 0 };
-        let n_inputs = bars + if rounds { 2 * n_squares } else { 0 };
+        // Q1172 (layout 2): the purse, the bank and the parts mask, each only where its
+        // rule is on, so a layout with none of them is layout 1's.
+        let has_purse = t.purse.is_some();
+        let has_bank = t.reach_removes;
+        let n_parts = t.parts.as_deref().map_or(0, |parts| if parts.any_order { parts.len() } else { 0 });
+        let purse = bars + if rounds { 2 * n_squares } else { 0 };
+        let bank = purse + if has_purse { 2 * (PURSE_UNITS + PURSE_BUCKETS) } else { 0 };
+        let parts = bank + if has_bank { 2 * BANK_CAP } else { 0 };
+        let n_inputs = parts + n_parts;
         Self {
             n_squares,
             n_values,
@@ -243,6 +281,12 @@ impl Layout {
             rest_turns,
             void,
             bars,
+            purse,
+            bank,
+            parts,
+            has_purse,
+            has_bank,
+            n_parts,
             has_initiative,
             has_rest,
             rounds,
@@ -252,9 +296,44 @@ impl Layout {
         }
     }
 
+    /// Whether these tables carry a segment layout 1 did not have, where a store of
+    /// version 1 is refused (`Net::check_against`).
+    pub fn since_v1(&self) -> bool {
+        self.has_purse || self.has_bank || self.n_parts > 0
+    }
+
     /// The active inputs of `game`, ascending, appended to `out` (which is cleared).
     pub fn features(&self, game: &Game<'_>, out: &mut Vec<u32>) {
         out.clear();
+        self.layout_one(game, out);
+        // Q1172 (layout 2), after every segment of layout 1, so ascending.
+        if self.has_purse {
+            for player in 0..2 {
+                let base = self.purse + player * (PURSE_UNITS + PURSE_BUCKETS);
+                let coins = game.purse[player] as usize;
+                for k in 0..coins.min(PURSE_UNITS) {
+                    out.push((base + k) as u32);
+                }
+                push_scaled(out, base + PURSE_UNITS, PURSE_BUCKETS, coins as u64, PURSE_MAX as u64);
+            }
+        }
+        if self.has_bank {
+            for player in 0..2 {
+                let base = self.bank + player * BANK_CAP;
+                for k in 0..(game.banked[player] as usize).min(BANK_CAP) {
+                    out.push((base + k) as u32);
+                }
+            }
+        }
+        for part in 0..self.n_parts {
+            if game.parts_filled >> part & 1 == 1 {
+                out.push((self.parts + part) as u32);
+            }
+        }
+    }
+
+    /// Layout 1's segments with the round and rest segments, ascending.
+    fn layout_one(&self, game: &Game<'_>, out: &mut Vec<u32>) {
         let s = self.n_squares;
         for square in 0..s {
             let byte = game.board[square] as usize;
@@ -355,11 +434,17 @@ impl Layout {
 /// `CLOCK_BUCKETS` thermometer inputs: bucket `k` is on once `value` has run
 /// `(k + 1) / CLOCK_BUCKETS` of `limit`. Nothing when the clock is off.
 fn push_clock(out: &mut Vec<u32>, base: usize, value: u32, limit: u32) {
+    push_scaled(out, base, CLOCK_BUCKETS, value as u64, limit as u64);
+}
+
+/// `buckets` thermometer inputs from `base`: bucket `k` is on once `value` has run
+/// `(k + 1) / buckets` of `limit`. Nothing when `limit` is 0.
+fn push_scaled(out: &mut Vec<u32>, base: usize, buckets: usize, value: u64, limit: u64) {
     if limit == 0 {
         return;
     }
-    for k in 0..CLOCK_BUCKETS {
-        if value as u64 * CLOCK_BUCKETS as u64 >= (k as u64 + 1) * limit as u64 {
+    for k in 0..buckets {
+        if value * buckets as u64 >= (k as u64 + 1) * limit {
             out.push((base + k) as u32);
         }
     }
@@ -388,6 +473,8 @@ pub struct Head {
 /// A parsed store.
 #[derive(Clone, Debug)]
 pub struct Net {
+    /// The store's input layout version, `OLDEST_INPUTS_VERSION` to `INPUTS_VERSION`.
+    pub version: u32,
     pub n_inputs: usize,
     pub accumulator: usize,
     pub hidden1: usize,
@@ -441,10 +528,11 @@ impl Net {
             return Err("the net store does not start with the CVSNET01 magic".to_string());
         }
         let version = r.u32()?;
-        if version != INPUTS_VERSION {
+        if !(OLDEST_INPUTS_VERSION..=INPUTS_VERSION).contains(&version) {
             return Err(format!(
                 "the net store was written for input layout {version} and this core reads \
-                 layout {INPUTS_VERSION}; it is refused rather than reinterpreted"
+                 layouts {OLDEST_INPUTS_VERSION} to {INPUTS_VERSION}; it is refused rather than \
+                 reinterpreted"
             ));
         }
         let n_inputs = r.u32()? as usize;
@@ -475,12 +563,21 @@ impl Net {
                 bytes.len() - r.at
             ));
         }
-        Ok(Self { n_inputs, accumulator, hidden1, hidden2, w0, b0, heads })
+        Ok(Self { version, n_inputs, accumulator, hidden1, hidden2, w0, b0, heads })
     }
 
     /// Whether this net was laid out for these tables.
     pub fn check_against(&self, t: &Tables) -> Result<(), String> {
-        let want = Layout::of(t).n_inputs;
+        let layout = Layout::of(t);
+        if self.version < INPUTS_VERSION && layout.since_v1() {
+            return Err(format!(
+                "the net was written for input layout {} and this ruleset carries a segment \
+                 layout {INPUTS_VERSION} added (the purse, the bank or the parts mask); it is \
+                 refused rather than reinterpreted",
+                self.version
+            ));
+        }
+        let want = layout.n_inputs;
         if self.n_inputs != want {
             return Err(format!(
                 "the net reads {} inputs and this ruleset's layout has {want}; it was \

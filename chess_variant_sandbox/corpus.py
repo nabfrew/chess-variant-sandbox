@@ -37,7 +37,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox import history
+from chess_variant_sandbox import history, waiting
 from chess_variant_sandbox.agents.nets import STORE_DIR, rated_net
 from chess_variant_sandbox.loop.archive import Archive
 from chess_variant_sandbox.loop.screen import ROUND_BUDGET_FACTOR
@@ -478,17 +478,20 @@ def current_basis(
     **The roster is this game's** (`canonical_agents`, Q502h), read from `nets/`.
     """
     agents = canonical_agents(digest, spec=spec)
+    expected = EXPECTED_LIBRARY_SEEDS if seeds is None else tuple(seeds)
     return Basis.current(
         ruleset_hash=digest,
         weights_version=weights,
         agents=agents,
         games_per_pairing=CANONICAL_GAMES,
-        seeds=EXPECTED_LIBRARY_SEEDS if seeds is None else tuple(seeds),
+        seeds=expected,
         tables=tables_fingerprint(spec) if spec is not None else "",
         verdict_rule=VERDICT_RULE,
         known_seed_sets=KNOWN_SEED_SETS,
         # What the runner would hand the core (Q631); `""`, *cannot say*, without a spec.
         players=players_fingerprint(spec, agents) if spec is not None else "",
+        # A library reading expects each run's waiting schedule (Q1184); a one-run one none.
+        waiting=waiting.schedule_id() if len(expected) > 1 else "",
     )
 
 
@@ -902,7 +905,8 @@ def rescore_kept(
         records, analysis = corpora[seed], analyses[seed]
         try:
             result = score_ruleset(
-                candidate.spec, records, rate(records), weights=weighting, analysis=analysis
+                candidate.spec, records, rate(records), weights=weighting, analysis=analysis,
+                waiting=waiting.load(Path(kept) / f"{candidate.hash}-{seed}"),
             )
         except WeightsError:
             totals.append(None)
@@ -991,6 +995,17 @@ def _adopt_seed(
     return taken.origin
 
 
+# Whether a library measurement plays the waiting schedule beside its runs (Q1184). Off only
+# in the fast suite (`tests/conftest.py`), whose stand-in tournaments would otherwise sit
+# beside a real one at the top rung; `tests/test_waiting.py` turns it back on.
+PLAY_WAITING = True
+
+
+def _plays_waiting(candidate: Candidate) -> bool:
+    """Whether this game's runs carry the waiting schedule: a library game's do."""
+    return PLAY_WAITING and len(expected_seeds(candidate.stage)) > 1
+
+
 def _run_seed(
     candidate: Candidate,
     seed: int,
@@ -1018,6 +1033,17 @@ def _run_seed(
         return _play_seeds(
             candidate, [seed], runs_dir, weighting, workers, say, {seed: origin}
         )[seed]
+
+    if _plays_waiting(candidate) and not waiting.played(out):
+        # A library run whose own games stand but which lacks today's waiting schedule
+        # (Q1184): the schedule is played beside them, and the run is scored again.
+        behind = stale_build()
+        if behind is not None:
+            raise CorpusError(behind)
+        say(f"  seed {seed}: the waiting schedule at the top rung")
+        agents = canonical_agents(candidate.hash, spec=candidate.spec)
+        waiting.save(waiting.play(candidate.spec, agents, seed, workers), out)
+        need = need or "rescore"
 
     if not need:
         reading = _read_seed(candidate, seed, out, weighting, total, say, origin)
@@ -1074,6 +1100,12 @@ def _play_seeds(
     )
     for seed, tournament in zip(seeds, tournaments, strict=True):
         tournament.save(outs[seed])
+    if _plays_waiting(candidate):
+        # The waiting schedule beside each library run (Q1184, `waiting.py`), before the
+        # scoring, which reads it from the run's directory.
+        say("  the waiting schedule at the top rung")
+        for seed in seeds:
+            waiting.save(waiting.play(candidate.spec, agents, seed, workers), outs[seed])
 
     say(f"  {sum(len(t.records) for t in tournaments)} games; the analysis pass")
     analyses = analyse_seeds(candidate.spec, [t.records for t in tournaments], workers)
@@ -1387,6 +1419,7 @@ def _score_run(
     try:
         result = score_ruleset(
             candidate.spec, records, ratings, weights=weighting, analysis=analysis,
+            waiting=waiting.load(out),
         )
     except WeightsError as error:
         say(f"  run {seed} has no score: {error}")

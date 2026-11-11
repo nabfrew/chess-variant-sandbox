@@ -12,6 +12,44 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-11
+
+### Every game re-measured on stronger computer players; Hunger Chess gets its score
+
+The computer players were improved over the past week: they handle coins, races between several runners and capture
+choices in strike games better, and seven games (Tessabi, Dobutsu, Boulder, Los Alamos with crushing pillars,
+Cannonade, Three-check and Dohyo) are now played by a trained player. Every game in the library has been played again
+with them. Hunger Chess scores 0.893 on its first full measurement. Most scores did not move: 105 games played out
+exactly as before, and twelve moved by more than 0.02, six strike games among them, all upward.
+
+Better players also exposed some games. Three now fail a new check for games where one side can simply wait, Los
+Alamos with crushing pillars turned one-sided under its trained player, and Three-check could not be measured this
+time. Those five are no longer counted as viable, and the two with trained players are being looked into.
+
+## 2026-11-09
+
+### Tessabi, Dobutsu and Boulder get new learned players
+
+A training run is working through the games whose computer players improve least with more thinking time. Twelve games
+have been read so far. On Tessabi, Dobutsu and Boulder the newly trained player beat the built-in one in two separate
+sets of test games, so it now plays those games' stronger opponents. On eight games the trained player did not win and
+nothing changed. These games' scores will be re-measured at the next library replay.
+
+### The computer players in Tessabi and Crossings count every runner a goal still needs
+
+In games won by getting a set number of pieces to a goal, the computer players used to price only the single nearest runner.
+They now weigh the race over every runner the goal still needs, with the last one counted at full weight. In its test games
+the new player held even with the old one at every strength and won at the lowest, so it plays differently without playing
+weaker. The two games' scores will be re-measured at the next library replay.
+
+### The computer players in Hunger Chess stop hoarding coins
+
+In Hunger Chess, where every piece costs upkeep each turn and a player who cannot pay loses pieces, the computer players
+used to sit on a pile of coins they would never need, about sixty-seven, and decline spends that would have won material.
+They now keep only what the next few turns of upkeep can cost beyond their income, about twenty-four coins on the standard
+board, and spend the rest. The new player beat the old one at every strength we measure, by a wide margin, and the game's
+preliminary score rose from 0.87 to 0.89. The library's stored scores are re-measured on the next full replay.
+
 ## 2026-11-08
 
 ### The game map's groups hold together

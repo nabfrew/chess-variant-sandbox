@@ -39,15 +39,24 @@ from typing import Any
 
 from chess_variant_sandbox.engine import Engine, GameState
 from chess_variant_sandbox.engine.compile import TIE_INITIATIVE
+from chess_variant_sandbox.spec.schema import PURSE_MAX
 
 # Mirrors `rust/src/net.rs`; `tests/test_nets.py` holds the two together.
 MAGIC = b"CVSNET01"
-INPUTS_VERSION = 1
+# Layout 2 (Q1172, W4): the purse, the bank and the filled-parts mask after ``bars``, each
+# only where its rule is on; a store of layout 1 is read where the spec carries none of them
+# (``Layout.since_v1``), where the two layouts are the same inputs.
+INPUTS_VERSION = 2
+OLDEST_INPUTS_VERSION = 1
+READ_VERSIONS = frozenset(range(OLDEST_INPUTS_VERSION, INPUTS_VERSION + 1))
 HAND_CAP = 16
 CHECK_CAP = 8
 POINTS_CAP = 16
 CLOCK_BUCKETS = 8
 TURN_CAP = 4
+PURSE_UNITS = 16
+PURSE_BUCKETS = 8
+BANK_CAP = 16
 WEIGHT_SHIFT = 6
 ACTIVATION_MAX = 127
 OUTPUT_LIMIT = 1 << 27
@@ -103,6 +112,17 @@ class Layout:
     has_initiative: bool = False
     has_rest: bool = False
     rounds: bool = False
+    # Q1172 (layout 2, `docs/plan-player-weaknesses.md` §T4), after ``bars``, each only where
+    # its rule is on: the purse (2 x (PURSE_UNITS + PURSE_BUCKETS) under ``rules.purse``:
+    # per player one input a coin up to PURSE_UNITS, then the coins over PURSE_MAX as a
+    # PURSE_BUCKETS thermometer), the bank (2 x BANK_CAP under ``rules.reach.removes``) and
+    # the filled-parts mask (one input a part under ``rules.turn.parts`` with order "any").
+    purse: int = 0
+    bank: int = 0
+    parts: int = 0
+    has_purse: bool = False
+    has_bank: bool = False
+    n_parts: int = 0
 
     @classmethod
     def of(cls, spec: Any) -> Layout:
@@ -128,6 +148,14 @@ class Layout:
         rest = initiative + (2 if has_initiative else 0)
         void = rest + 2 * s * rest_turns
         bars = void + (2 * s if rounds else 0)
+        has_purse = getattr(spec, "purse", None) is not None
+        reach = getattr(spec, "reach", None)
+        has_bank = reach is not None and bool(reach.removes)
+        parts_rule = getattr(spec, "parts", None)
+        n_parts = len(parts_rule.own) if parts_rule is not None and parts_rule.any_order else 0
+        purse = bars + (2 * s if rounds else 0)
+        bank = purse + (2 * (PURSE_UNITS + PURSE_BUCKETS) if has_purse else 0)
+        parts = bank + (2 * BANK_CAP if has_bank else 0)
         return cls(
             n_squares=s,
             n_values=n_values,
@@ -141,7 +169,7 @@ class Layout:
             halfmove=halfmove,
             ply=ply,
             turn=turn,
-            n_inputs=bars + (2 * s if rounds else 0),
+            n_inputs=parts + n_parts,
             no_progress=int(spec.no_progress_draw),
             max_plies=int(spec.max_plies),
             initiative=initiative,
@@ -152,10 +180,37 @@ class Layout:
             has_initiative=has_initiative,
             has_rest=has_rest,
             rounds=rounds,
+            purse=purse,
+            bank=bank,
+            parts=parts,
+            has_purse=has_purse,
+            has_bank=has_bank,
+            n_parts=n_parts,
         )
+
+    @property
+    def since_v1(self) -> bool:
+        """Whether the spec carries a segment layout 1 lacked, where a layout 1 store is refused."""
+        return self.has_purse or self.has_bank or self.n_parts > 0
 
     def features(self, state: GameState) -> list[int]:
         """The active inputs of ``state``, ascending -- ``net.rs::Layout::features``."""
+        out = self._layout_one(state)
+        if self.has_purse:
+            for player in range(2):
+                base = self.purse + player * (PURSE_UNITS + PURSE_BUCKETS)
+                coins = state.purse[player]
+                out.extend(base + k for k in range(min(coins, PURSE_UNITS)))
+                out.extend(_scaled(base + PURSE_UNITS, PURSE_BUCKETS, coins, PURSE_MAX))
+        if self.has_bank:
+            for player in range(2):
+                base = self.bank + player * BANK_CAP
+                out.extend(base + k for k in range(min(state.banked[player], BANK_CAP)))
+        out.extend(self.parts + part for part in range(self.n_parts) if state.parts >> part & 1)
+        return out
+
+    def _layout_one(self, state: GameState) -> list[int]:
+        """Layout 1's segments with the round and rest segments, ascending."""
         out: list[int] = []
         s = self.n_squares
         for square in range(s):
@@ -208,9 +263,15 @@ class Layout:
 
 
 def _clock(base: int, value: int, limit: int) -> list[int]:
+    return _scaled(base, CLOCK_BUCKETS, value, limit)
+
+
+def _scaled(base: int, buckets: int, value: int, limit: int) -> list[int]:
+    """``buckets`` thermometer inputs: bucket ``k`` on once ``value`` has run ``(k + 1) / buckets``
+    of ``limit`` -- ``net.rs::push_scaled``."""
     if limit == 0:
         return []
-    return [base + k for k in range(CLOCK_BUCKETS) if value * CLOCK_BUCKETS >= (k + 1) * limit]
+    return [base + k for k in range(buckets) if value * buckets >= (k + 1) * limit]
 
 
 # ------------------------------------------------------------------ the net
@@ -237,6 +298,7 @@ class Net:
     w0: tuple[int, ...]
     b0: tuple[int, ...]
     heads: tuple[Head, Head]
+    version: int = INPUTS_VERSION
 
     @classmethod
     def parse(cls, data: bytes) -> Net:
@@ -245,7 +307,7 @@ class Net:
         if len(data) < 28:
             raise NetError("the net store is truncated")
         version, n_inputs, acc, h1, h2 = struct.unpack_from("<5I", data, 8)
-        if version != INPUTS_VERSION:
+        if version not in READ_VERSIONS:
             raise NetError(f"the net store was written for input layout {version}")
         if not (1 <= acc <= MAX_ACCUMULATOR and 1 <= h1 <= MAX_HIDDEN and 1 <= h2 <= MAX_HIDDEN):
             raise NetError(f"the net's widths ({acc}, {h1}, {h2}) are out of range")
@@ -276,7 +338,7 @@ class Net:
             )
         if at != len(data):
             raise NetError(f"the net store has {len(data) - at} bytes after its last layer")
-        return cls(n_inputs, acc, h1, h2, w0, b0, (heads[0], heads[1]))
+        return cls(n_inputs, acc, h1, h2, w0, b0, (heads[0], heads[1]), version)
 
     def accumulate(self, features: list[int]) -> list[int]:
         """A fresh ``i16`` accumulator: the wrapping sum of the bias and the rows."""
@@ -366,6 +428,12 @@ class NetEvaluator:
     def __init__(self, engine: Engine, net: bytes, values: tuple[float, ...]) -> None:
         self.net = Net.parse(net)
         self.layout = Layout.of(engine.spec)
+        if self.net.version < INPUTS_VERSION and self.layout.since_v1:
+            raise NetError(
+                f"the net was written for input layout {self.net.version} and this ruleset "
+                f"carries a segment layout {INPUTS_VERSION} added (the purse, the bank or the "
+                f"parts mask); it is refused rather than reinterpreted"
+            )
         if self.net.n_inputs != self.layout.n_inputs:
             raise NetError(
                 f"the net reads {self.net.n_inputs} inputs and this ruleset's layout has "
@@ -475,7 +543,7 @@ def load_net(
     data = json.loads(meta.read_text(encoding="utf-8"))
     if data.get("procedure") != procedure or data.get("ruleset_hash") != ruleset_hash:
         raise NetError(f"{meta} is filed under {ruleset_hash}/{procedure} and says otherwise")
-    if data.get("inputs_version") != INPUTS_VERSION:
+    if data.get("inputs_version") not in READ_VERSIONS:
         raise NetError(f"{meta} was trained on input layout {data.get('inputs_version')}")
     blob = weights.read_bytes() if weights.exists() else b""
     if data.get("verdict") == ACCEPTED and hashlib.sha256(blob).hexdigest() != data.get(

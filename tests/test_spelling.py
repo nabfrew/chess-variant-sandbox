@@ -54,6 +54,7 @@ def _tables(spec: dict[str, Any]) -> dict[str, Any]:
 # ------------------------------------------------------------------------- the library
 
 
+@pytest.mark.new_game
 class TestTheLibraryIsInTheCurrentSpelling:
     @pytest.mark.parametrize("path", LIBRARY, ids=lambda p: Path(p).stem)
     def test_each_file_is_already_current(self, path: str) -> None:

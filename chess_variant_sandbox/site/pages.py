@@ -1574,7 +1574,8 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "was, when it was measured and replaced, what it was measured with, and why it "
         "was replaced. The current score is the one on the game's page; these are kept "
         "under <code>runs/&lt;hash&gt;/previous/</code> and are never shown as a score. "
-        "Visitors do not see them.</p>\n"
+        "Visitors do not see them. The whole library's history, drawn, is "
+        '<a href="/score-history">how the scores have moved</a>, which visitors do see.</p>\n'
         '<div class="scroller"><table><thead><tr><th>game</th><th>was</th>'
         "<th>measured</th><th>replaced</th><th>measured with</th><th>why</th>"
         "<th>convergence</th></tr></thead>\n"

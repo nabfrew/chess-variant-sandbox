@@ -1,0 +1,262 @@
+{
+  "schema_version": 31,
+  "name": "hunger chess with cheap promotion",
+  "summary": [
+    "Every move costs coins: the further from your back rank a piece lands, the more it pays. A pawn pays 1 coin a rank, a knight, bishop, rook or queen 2 a rank, the king nothing.",
+    "A pawn that promotes pays only for the piece it becomes: 14 coins for a queen on the far rank.",
+    "At the start of each of your turns you collect 1 coin for every piece of yours on your back rank. You start with 10.",
+    "A move you cannot pay for cannot be made. Instead of moving you may pass, unless you are in check.",
+    "Taking a piece earns you its booty from the bank: 1 coin for a pawn, 2 for any other piece.",
+    "Otherwise it is chess."
+  ],
+  "description": "Chess with supply lines, and a promotion you can afford. Every move is paid for out of a purse, and a piece costs more the further from home it lands, while the coins come from the pieces still standing on your back rank, so the pieces doing nothing pay for the ones that fight. The question here is what a pawn's last step should cost. A pawn that reaches the far rank pays only for the piece it becomes, fourteen coins for a queen, not for its own arrival as well, so a passed pawn is a threat the purse can carry through sooner, and holding coins back for the final push matters less than it would if the promotion were the dearest move on the board. It answers one of the questions the game's designer asked about their own rules.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "upkeep": 1,
+      "bounty": 1
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "upkeep": 2,
+      "bounty": 2
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "upkeep": 2,
+      "bounty": 2
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "upkeep": 2,
+      "bounty": 2
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "upkeep": 2,
+      "bounty": 2
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "insufficient_material": true,
+    "purse": {
+      "start": 10,
+      "upkeep": {
+        "promotion": "new"
+      }
+    },
+    "pass": true,
+    "income": true
+  },
+  "provenance": {
+    "added": "2026-11-08",
+    "origin": "human",
+    "note": "A variation of Hunger Chess, a playtested variant sent in to this project by its designer.",
+    "history": "Q1129 (H5, docs/plan-hunger.md section 6): an arm of rulesets/hunger.json, the designer's question 5 (rules.purse.upkeep.promotion \"new\"), and that key's showcase. Q1179 (2026-11-08, docs/plan-hunger.md section 6.6): archived as the showcase for rules.purse.upkeep.promotion \"new\" (the library's Hunger Chess states \"both\"), a preview, 0.871 on the fixed player (four runs, v13, section 6.4); its library-style score is Q1177's replay.",
+    "preview": "A preview: one variation of Hunger Chess, kept to show one of its rules. Play it against the computer for practice; it is on no leaderboard yet, and any score it has is a first reading, not yet trusted."
+  }
+}

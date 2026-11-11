@@ -1597,6 +1597,14 @@ class Basis:
     # The code reading of `AGENTS_SOURCES` when this was stamped. Compared only where the
     # players cannot be read now, so it is the old rule exactly where the new one is blind.
     agents_source: str = ""
+    # The waiting schedule a library measurement plays beside each run (Q1184,
+    # `chess_variant_sandbox/waiting.py`: `waiting.schedule_id`), handed over by
+    # `corpus.current_basis` for a library reader and `""` for every other. Compared only
+    # where both the stamp and the reader name more than one run, so a visitor's one-run
+    # stamp, which plays none, never reads stale for it. Absent or different there is a
+    # *re-score*: the run's own games stand, and `corpus._run_seed` plays the schedule a run
+    # lacks (`waiting.played`) before scoring it again.
+    waiting: str = ""
     # The sample that re-certified these games on code that did not play them (C6,
     # `Certificate`), or ``None``: every stamp a played or re-scored measurement writes,
     # and every stamp before the field, so no stored file changes shape. Present, its
@@ -1629,6 +1637,7 @@ class Basis:
         verdict_rule: str = "",
         known_seed_sets: tuple[tuple[int, ...], ...] = (),
         players: str = "",
+        waiting: str = "",
     ) -> Basis:
         """The basis a measurement taken right now would carry.
 
@@ -1658,6 +1667,7 @@ class Basis:
             net=net_players(tuple(agents), ruleset_hash),
             players=players,
             agents_source=source_fingerprint("agents"),
+            waiting=waiting,
             engine_bytes=bytes_fingerprint("engine") + "-" + built,
             metrics_bytes=bytes_fingerprint("metrics"),
             analysis_bytes=bytes_fingerprint("analysis"),
@@ -1738,6 +1748,9 @@ class Basis:
             stamp["players"] = self.players
         if self.agents_source:
             stamp["agents_source"] = self.agents_source
+        # Only where a schedule was played, so every stamp before Q1184 keeps its shape.
+        if self.waiting:
+            stamp["waiting"] = self.waiting
         # Only on a stamp a sample re-certified, so every played one keeps its shape.
         if self.certified is not None:
             stamp["certified"] = self.certified.as_dict()
@@ -1810,6 +1823,8 @@ class Basis:
                 # Absent on every stamp before Q631, where it means *not recorded*.
                 players=str(data.get("players") or ""),
                 agents_source=str(data.get("agents_source") or ""),
+                # Absent on every stamp before Q1184, where it means *none played*.
+                waiting=str(data.get("waiting") or ""),
                 certified=certified,
             )
         except (KeyError, TypeError, ValueError):
@@ -1958,6 +1973,15 @@ class Basis:
             # already said so more precisely; this is the scorer, the ladder or the
             # heuristics moving on their own.
             reasons.append("the metrics changed since it was scored")
+            needs = needs or "rescore"
+        # The waiting schedule (Q1184), on a library stamp read as one only. Its games sit
+        # beside each run's own, which stand: the repair plays the schedule and re-scores.
+        if len(self.seeds) > 1 and len(current.seeds) > 1 and self.waiting != current.waiting:
+            reasons.append(
+                "it was scored with another waiting schedule"
+                if self.waiting
+                else "it was scored before the waiting schedule, which a library run carries"
+            )
             needs = needs or "rescore"
         if len(self.seeds) > 1 and self.verdict_rule != current.verdict_rule:
             # Only where there was a vote. A game with one run has the run's own verdict,

@@ -1,0 +1,69 @@
+{
+  "procedure": "840fae6c24b7",
+  "ruleset_hash": "78130df01edd",
+  "inputs_version": 2,
+  "verdict": "refused",
+  "weights_sha256": "ab9e9e19fc4c0736bd2f08aaf09bd7c99a03439e61f846698f433245aa86f9ec",
+  "build": "c4bbbd7db2396ef1",
+  "digest": "ab9e9e19fc4c",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:nodes=1600"
+    ],
+    "games": 6000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 1200,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0
+  },
+  "data": {
+    "digest": "b5c5853e4948af41e276f86874ef622d0cd6dca948be581807a25082ff2f3a4c",
+    "games": 6000,
+    "positions": 546761,
+    "most_active": 64
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.03668822,
+      0.01200147,
+      0.01056944,
+      0.00986056,
+      0.00919427,
+      0.00874908,
+      0.00837084,
+      0.00795752
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.093769
+  },
+  "acceptance": {
+    "candidate": "minimax:net=840fae6c24b7,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.39625,
+    "error": 0.019028,
+    "games": 400,
+    "identical": 0,
+    "openings": 172,
+    "candidate_nodes": 123968704,
+    "reference_nodes": 126526400,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": false,
+    "decided_after": 200,
+    "planned_pairs": 200
+  }
+}

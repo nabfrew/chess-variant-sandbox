@@ -41,18 +41,27 @@ from chess_variant_sandbox.web.server import App
 ARCHIVE = Path(__file__).resolve().parent.parent / "archive"
 RULESETS = Path(__file__).resolve().parent.parent / "rulesets"
 
-ARCHIVED_PREVIEWS: dict[str, str] = {
-    "los-alamos-with-a-closed-edge.json": "daa6917bd359",
-    "los-alamos-with-shove-or-take.json": "1fced818630e",
-    "los-alamos-with-crushing-pillars.json": "e72a8715217c",
-    "gardner-with-bishops-that-shove-straight.json": "e271933cd127",
-    "no-zugzwang.json": "1cb062a21f06",
-}
-"""The previews in `archive/`: Q1074bs's four push showcases (2026-10-31, `docs/plan-push.md`
-§6.3), and H5's no zugzwang (Q1129, 2026-11-08: chess plus the pass, `docs/plan-hunger.md` §6). None from Q1005 (2026-10-23, `docs/reference/preview-call-2026-10.md`), which made a
-call on each of the eleven the user asked about, until then. Five joined the library
-(`JOINED_TURNS`, four since Q1007e retired one) and six left for `tests/_retired_*.json`, as
-Q962b's six and Q962c's one had (`docs/reference/previews-2026-10-18.md`)."""
+def _archived_previews() -> dict[str, str]:
+    found: dict[str, str] = {}
+    for path in sorted(ARCHIVE.glob("*.json")):
+        spec = load_spec(path)
+        if library.preview_sentence(spec) is not None:
+            found[path.name] = spec_hash(spec)
+    return found
+
+
+ARCHIVED_PREVIEWS: dict[str, str] = _archived_previews()
+"""The previews in `archive/`, read off the files (Q1154: it was a hand list with each hash,
+which every preview archived edited, and `tests/test_schema_nine.py::FROZEN` already freezes
+every archived file's hash; `docs/reference/corpus-pins.md`). Eight on 2026-11-08: Q1074bs's
+four push showcases (2026-10-31, `docs/plan-push.md` §6.3), H5's no zugzwang (Q1129: chess
+plus the pass, `docs/plan-hunger.md` §6), and Hunger's three key arms (Q1179, §6.6). None from
+Q1005 (2026-10-23, `docs/reference/preview-call-2026-10.md`), which made a call on each of the
+eleven the user asked about, until then. Five joined the library (`JOINED_TURNS`, four since
+Q1007e retired one) and six left for `tests/_retired_*.json`, as Q962b's six and Q962c's one
+had (`docs/reference/previews-2026-10-18.md`). Every one is played by turns (`TURN_PREVIEWS`):
+an archived preview in rounds fails `test_a_previews_page_says_so_and_compares_it_with_nothing`
+until it is named a round preview."""
 
 RETIRED_PREVIEW_FILES = {
     # Q935f's SP2 (`plan-spy.md` §5): a spy game starts by turns and ends in rounds once a
@@ -163,11 +172,9 @@ class TestTheFiles:
     def test_no_baseline_game_is_a_preview_and_archive_holds_the_listed_ones(self) -> None:
         for path in sorted(RULESETS.glob("*.json")):
             assert library.preview_sentence(load_spec(path)) is None, path.name
-        marked = {
-            path.name for path in ARCHIVE.glob("*.json")
-            if library.preview_sentence(load_spec(path)) is not None
-        }
-        assert marked == set(ARCHIVED_PREVIEWS)
+        # `ARCHIVED_PREVIEWS` is read off `archive/` (Q1154), so what is left to say is that
+        # it found some: the listing tests below would pass vacuously on none.
+        assert ARCHIVED_PREVIEWS
 
     def test_the_games_that_joined_say_nothing_and_keep_their_hashes(self) -> None:
         for name, digest in JOINED.items():
@@ -215,19 +222,23 @@ class TestTheListing:
         listing = app.get("/api/library")
         assert not {card["hash"] for card in listing["newGames"]} & set(PREVIEWS.values())
 
-    def test_a_previews_page_says_so_and_compares_it_with_nothing(self, app: App) -> None:
-        for name, digest in PREVIEWS.items():
-            game = app.get(f"/api/game/{digest}")
-            assert game["preview"] and game["level"] == stages.PREVIEW
-            assert game["levelSays"] == stages.SAYS[stages.PREVIEW]
-            assert game["links"] == [] and game["band"] is None and game["trust"] is None
-            agents = {entry["agent"] for entry in game["opponents"]}
-            if name in SPY_PREVIEWS or name in TURN_PREVIEWS:
-                assert game["rounds"] is False
-                assert ROUND_AGENT not in agents and any(a.startswith("minimax:") for a in agents)
-            else:
-                assert game["rounds"] is True
-                assert agents >= {ROUND_AGENT}
+    # One test per preview (Q1155): the walk was one test of 6.3 s wall, 4.1 s processor, once
+    # Q1129 and Q1179 had doubled the archived previews, and the duration guard failed it.
+    @pytest.mark.parametrize("name", sorted(PREVIEWS))
+    def test_a_previews_page_says_so_and_compares_it_with_nothing(
+        self, app: App, name: str
+    ) -> None:
+        game = app.get(f"/api/game/{PREVIEWS[name]}")
+        assert game["preview"] and game["level"] == stages.PREVIEW
+        assert game["levelSays"] == stages.SAYS[stages.PREVIEW]
+        assert game["links"] == [] and game["band"] is None and game["trust"] is None
+        agents = {entry["agent"] for entry in game["opponents"]}
+        if name in SPY_PREVIEWS or name in TURN_PREVIEWS:
+            assert game["rounds"] is False
+            assert ROUND_AGENT not in agents and any(a.startswith("minimax:") for a in agents)
+        else:
+            assert game["rounds"] is True
+            assert agents >= {ROUND_AGENT}
 
     def test_a_round_game_that_joined_is_a_library_page_played_in_rounds(self, app: App) -> None:
         for digest in JOINED_ROUNDS.values():

@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import corpus_pins
 import pytest
 from retired_specs import hex_glinski_promoting
 
@@ -322,6 +323,10 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/leapfrog": "f488b38ed4a8d399",  # TS4 (Q1134), 2026-11-07
     "rulesets/tessabi": "b7a4d9f5c88277a7",  # TS5 (Q1135), 2026-11-07: Tessabi, from tessabi.com
     "archive/no-zugzwang": "9dce8118e1cc99ff",  # H5 (Q1129), 2026-11-08
+    "rulesets/hunger": "89631aa5be077bd7",  # Q1159, 2026-11-08: Hunger Chess
+    "archive/hunger-chess-with-cheap-promotion": "08a6b7fa1774b4d9",  # Q1179, 2026-11-08: Hunger's arm
+    "archive/hunger-chess-with-rich-forage": "00c36ee8c662452c",  # Q1179, 2026-11-08: Hunger's arm
+    "archive/hunger-chess-where-pawns-forage": "c2e1e7619efe2184",  # Q1179, 2026-11-08: Hunger's arm
     "rulesets/rock-paper-shove": "cc56261d19467597",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "2c67ec37c9123078",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "2702b1dee85bfe5c",  # Q1074bs, 2026-10-31
@@ -397,24 +402,43 @@ _WORDED_SINCE: tuple[tuple[str, str], ...] = (
 )
 
 
-class TestEveryDescriptionIsUnchanged:
-    def test_the_freeze_covers_the_library(self) -> None:
-        assert set(_DESCRIPTIONS_BEFORE_THE_HEXAGON) == {_key(path) for path in LIBRARY}
+def frozen_digest(path: Path) -> str:
+    """The digest a row of the freeze holds: `describe_spec` with the wordings since put back."""
+    text = describe_spec(_load(path))
+    # Worded on purpose since the freeze, and nothing else: Q610 (G4 of
+    # `docs/archive/plan-understanding.md` §3.3) counts the clocks in turns and says the
+    # capture ending plainly. Put back, the text is the frozen one. Q614 (W7) rewrote
+    # nineteen descriptions for a player and re-froze those rows, the describer unchanged.
+    for now, then in _WORDED_SINCE:
+        text = text.replace(now, then)
+    # Q1069a's rule, said by the games that switched it on: a sentence of its own, taken
+    # out, leaves the frozen text.
+    text = re.sub(r"\n *The game is drawn at once when too little[^\n]*", "", text)
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
+
+# The rows above are written by hand and carry their history; a game added since Q1154 gets
+# its row from `uv run python tests/corpus_pins.py`, in `tests/corpus_pins.json`.
+_GENERATED_DESCRIPTIONS = corpus_pins.load()["descriptions"]
+_DESCRIPTIONS = {**_DESCRIPTIONS_BEFORE_THE_HEXAGON, **_GENERATED_DESCRIPTIONS}
+
+
+class TestEveryDescriptionIsUnchanged:
+    @pytest.mark.new_game
+    def test_the_freeze_covers_the_library(self) -> None:
+        library = {_key(path) for path in LIBRARY}
+        assert set(_DESCRIPTIONS) == library, corpus_pins.coverage_message(
+            "description", set(_DESCRIPTIONS), library
+        )
+
+    def test_a_generated_row_never_shadows_a_written_one(self) -> None:
+        assert not set(_GENERATED_DESCRIPTIONS) & set(_DESCRIPTIONS_BEFORE_THE_HEXAGON)
+
+    @pytest.mark.new_game
     @pytest.mark.parametrize("path", LIBRARY, ids=_key)
     def test_every_committed_spec(self, path: Path) -> None:
-        text = describe_spec(_load(path))
-        # Worded on purpose since the freeze, and nothing else: Q610 (G4 of
-        # `docs/archive/plan-understanding.md` §3.3) counts the clocks in turns and says the
-        # capture ending plainly. Put back, the text is the frozen one. Q614 (W7) rewrote
-        # nineteen descriptions for a player and re-froze those rows, the describer unchanged.
-        for now, then in _WORDED_SINCE:
-            text = text.replace(now, then)
-        # Q1069a's rule, said by the games that switched it on: a sentence of its own, taken
-        # out, leaves the frozen text.
-        text = re.sub(r"\n *The game is drawn at once when too little[^\n]*", "", text)
-        digest = hashlib.sha256(text.encode()).hexdigest()[:16]
-        assert digest == _DESCRIPTIONS_BEFORE_THE_HEXAGON[_key(path)]
+        assert _key(path) in _DESCRIPTIONS, f"no row: run `{corpus_pins.COMMAND}`"
+        assert frozen_digest(path) == _DESCRIPTIONS[_key(path)]
 
 
 # ------------------------------------------------------------------------ distance
@@ -456,6 +480,7 @@ class TestDistance:
         joined = features(_twin({"n_s_by_player": {"0": "n", "1": "s"}}))
         assert joined["wraps_n_s"] == joined["wraps_asymmetrically"] == 1.0
 
+    @pytest.mark.new_game
     @pytest.mark.parametrize("path", LIBRARY, ids=_key)
     def test_no_committed_spec_joins_a_pair(self, path: Path) -> None:
         measured = features(_load(path))

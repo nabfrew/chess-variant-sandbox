@@ -33,6 +33,7 @@ from chess_variant_sandbox.tournament import (
     read_records,
 )
 from chess_variant_sandbox.tournament.analysis import BLUNDER_SAMPLE
+from chess_variant_sandbox.waiting import load as load_waiting
 
 DEFAULT_AGENTS = ("random", "greedy", "minimax:nodes=800", "minimax:nodes=3200")
 RUNS_DIR = Path("runs")
@@ -992,6 +993,7 @@ def _cmd_score(args: argparse.Namespace) -> int:
         analysis=analysis,
         heuristics=heuristics,
         interval=not args.no_interval,
+        waiting=load_waiting(run) if run.is_dir() else None,
     )
 
     if args.json:

@@ -30,6 +30,19 @@ tests that share it, by whichever runs first, and is named on its own line when 
 the limit. So `warm_library`'s ten seconds on one core fail no test, and a module fixture
 that grows to a minute (as `test_operators.py`'s sweep did) is still named.
 
+**A trip is re-timed once alone before it fails (Q1157).** Processor time is not immune to
+load: on 2026-11-08 a booked fast suite beside a ten-core replay failed twice on five tests
+this branch never touched, four of them under `FAIL_S` alone, because a shared core, a
+lower clock and a colder cache stretch processor time too, and at fourteen of sixteen slots
+by more than the "about twice" above. So when the loop ends, each test charged over `FAIL_S`
+(at most `RETIME_MAX` of them, the cheapest first) runs again, alone, in a fresh serial
+pytest (`retime_alone`), and what fails the run is the smaller of the two charges. The
+re-time is the stricter half of the bargain: it pays the process's cold start (a module
+cache, an import) that the whole run spread over many tests, so it can only rescue a test
+the load inflated, never fail one the run passed. A test that fails or cannot be timed
+alone keeps its charge from the run. The summary says which tests were re-timed and what
+alone made of them.
+
 Not judged when the run is traced (coverage, a profiler), which multiplies both clocks; the
 names are still printed. A test the run deselects or marks `slow` is not timed.
 
@@ -41,9 +54,14 @@ names are printed, and the next whole run, at most a few gates away, judges.
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -54,6 +72,44 @@ LIMIT_S = 2.0
 FAIL_S = 2 * LIMIT_S
 WIDE = ("session", "package", "module", "class")
 _KEY = "duration_guard"
+# At most this many trips are re-timed alone; any beyond keep the run's charge. Each costs a
+# pytest start (a few seconds here), and more trips than this is drift, not a busy machine.
+RETIME_MAX = 8
+RETIME_TIMEOUT_S = 300.0
+# Set in a re-time's child: the file it writes each test's own clocks to, and the sign that
+# it is a child, which judges nothing and re-times nothing.
+RETIME_ENV = "DURATION_GUARD_RETIME"
+
+
+def retime_alone(nodeid: str, rootdir: Path) -> tuple[float, float] | None:
+    """One test's own (wall, processor) seconds, run again alone in a fresh serial pytest.
+
+    ``None`` when it could not be timed: it failed there, did not run, or took too long.
+    """
+    with tempfile.TemporaryDirectory() as scratch:
+        out = Path(scratch) / "clocks.json"
+        here = str(Path(__file__).resolve().parent)
+        path = os.environ.get("PYTHONPATH")
+        env = {
+            **os.environ,
+            RETIME_ENV: str(out),
+            "PYTHONPATH": here + (os.pathsep + path if path else ""),
+        }
+        env.pop("PYTEST_XDIST_WORKER", None)
+        command = [
+            sys.executable, "-m", "pytest", nodeid, "-q", "-p", "duration_guard",
+            "-p", "no:cacheprovider",
+        ]
+        try:
+            done = subprocess.run(
+                command, cwd=rootdir, env=env, capture_output=True, timeout=RETIME_TIMEOUT_S
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if done.returncode != 0 or not out.exists():
+            return None
+        clocks = json.loads(out.read_text()).get(nodeid)
+        return None if clocks is None else (float(clocks[0]), float(clocks[1]))
 
 
 def traced() -> bool:
@@ -86,6 +142,8 @@ class DurationGuard:
         self.own: dict[str, tuple[float, float]] = {}
         self.fixtures: dict[str, tuple[str, float]] = {}
         self.judged = True
+        self.child = bool(os.environ.get(RETIME_ENV))
+        self.retimed: dict[str, tuple[float, float] | None] = {}
         self.failed: list[str] = []
         self.narrowed: list[str] = []  # what would fail a whole run, in a run that is not one
 
@@ -159,6 +217,10 @@ class DurationGuard:
         yield
         if self.worker:
             return  # an xdist worker: its reports reach the controller, which decides
+        if self.child:
+            # A re-time's child: report the clocks to the run that asked, and judge nothing.
+            Path(os.environ[RETIME_ENV]).write_text(json.dumps(self.own))
+            return
         over = sorted(n for n in self.own if self.charge(n) > FAIL_S)
         stamp = session.config.pluginmanager.get_plugin("green-stamp")
         if stamp is not None and stamp.narrowed():
@@ -168,8 +230,19 @@ class DurationGuard:
             self.narrowed = over
             return
         if self.judged:
-            self.failed = over
+            self.failed = self._after_retiming(over, session.config.rootpath)
         session.testsfailed += len(self.failed)
+
+    def _after_retiming(self, over: list[str], rootdir: Path) -> list[str]:
+        """Which of ``over`` still cost over `FAIL_S` once the cheapest are re-timed alone."""
+        for nodeid in sorted(over, key=self.charge)[:RETIME_MAX]:
+            self.retimed[nodeid] = retime_alone(nodeid, rootdir)
+        still = []
+        for nodeid in over:
+            alone = self.retimed.get(nodeid)
+            if alone is None or min(alone) > FAIL_S:
+                still.append(nodeid)
+        return still
 
     def pytest_terminal_summary(self, terminalreporter: Any) -> None:
         if self.worker:
@@ -191,15 +264,30 @@ class DurationGuard:
             if nodeid in self.own:
                 wall, cpu = self.own[nodeid]
                 mine = f" (its own: {wall:.1f} s wall, {cpu:.1f} s processor)"
+            alone = ""
+            if nodeid in self.retimed:
+                clocks = self.retimed[nodeid]
+                alone = (
+                    "; re-timed alone: could not be timed" if clocks is None
+                    else f"; re-timed alone: {clocks[0]:.1f} s wall, {clocks[1]:.1f} s processor"
+                )
             verdict = (
-                f"  FAILS, over {FAIL_S:g} s by both clocks: speed it or mark it slow"
+                f"  FAILS, over {FAIL_S:g} s by both clocks{alone}: speed it or mark it slow"
                 if nodeid in self.failed
                 else f"  over {FAIL_S:g} s by both clocks, in a narrowed run"
-                if nodeid in self.narrowed else ""
+                if nodeid in self.narrowed
+                else f"  over {FAIL_S:g} s by both clocks in the run, not failed{alone}"
+                if nodeid in self.retimed else ""
             )
             write(f"{self.wall.get(nodeid, 0.0):6.1f} s{mine}  {nodeid}{verdict}")
         for key, (nodeid, spent) in sorted(self.fixtures.items(), key=lambda kv: -kv[1][1]):
             write(f"{spent:6.1f} s  shared fixture {key}, set up for {nodeid}")
+        rescued = [nodeid for nodeid in self.retimed if nodeid not in self.failed]
+        if rescued:
+            write(
+                f"{len(rescued)} fast test(s) over {FAIL_S:g} s by both clocks in the run came"
+                " under it re-timed alone: a busy machine, not failed"
+            )
         if self.failed:
             write(
                 f"{len(self.failed)} fast test(s) cost over {FAIL_S:g} s by both clocks:"

@@ -20,6 +20,7 @@ Vanilla everything: one HTML document, its stylesheet a file the code writes
 ``board.js``       drawing a position, animating a move, playing one
 ``runs.js``        a design run, watched while it goes
 ``whatsnew.js``    the changelog, day by day
+``history.js``     how the library's scores have moved, by weights version
 ``round.js``       the monthly round: its entrants, the yes and no, what became of each
 ``landing.js``     the landing page: what a visitor meets first, and its opening board
 ``boot.js``        the lines that start the page, last because they *run*
@@ -105,7 +106,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent.parent / "static" / "page"
 _ORDER = (
     "core", "wrapped", "wood", "stillboard", "motion", "browse", "graph", "explorer", "upkeep", "detail",
     "design", "teaching", "cards", "portals", "measure", "board", "simultaneous", "runs", "whatsnew",
-    "round", "proven", "landing",
+    "history", "round", "proven", "landing",
     "boot",
 )
 

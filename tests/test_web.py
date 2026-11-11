@@ -6757,7 +6757,14 @@ class TestWhatReachesThePage:
         # drawers' own markup, numbers and constant words.
         # 165 since Q1099: the arrow of a move lost to a shot in a round of equal speeds
         # (`animateRound`, `lostArrowHtml`'s numbers and token names, as the ordered round's).
-        assert len(sites) == 165
+        # 173 since Q1162: the score history (`history.js`) writes its view, lead, body,
+        # chips, legends, tooltips, table and note; every game name, old name, snapshot
+        # label, basis and date goes through `esc`, every number through `historyFigure`
+        # or a count, the rest constant words and token names.
+        # 174 since Q1163: a game's own chart redrawn at its fold's width (`wireEarlier`):
+        # `gameHistorySvg`'s markup, every attribute value and word through `esc`, every
+        # number through `toFixed` or `historyFigure`.
+        assert len(sites) == 174
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -10150,7 +10157,25 @@ class TestWhatBecomesOfACandidate:
 
         return app, digest, measured
 
-    def test_the_page_is_told_which_rung_it_is_on_and_why_it_cannot_climb(self, tmp_path) -> None:
+    @pytest.fixture(scope="class")
+    def candidates_page_once(self, tmp_path_factory: pytest.TempPathFactory) -> None:
+        """Serve a candidate's page once in this process, in setup, before a timed test does.
+
+        The first `/api/game` in a process pays what the process then remembers by what it
+        is a function of, not by the server or its runs directory: the map over this
+        library drawn cold (`graphing._DRAWS`), the engines' verdict on the candidate's
+        hash (`fairy._PLAYABLE`), the Rust sources fingerprinted (`stale_build`). Alone that
+        was 7.5 s of wall, 6 of processor, inside whichever of this class's page tests ran
+        first (Q1181), and about 0.3 s every time after. So it is paid here, once for the
+        tests that read the page, by a world of its own; each test still serves its own
+        world's page whole and asserts on that.
+        """
+        app, digest, _ = self._world(tmp_path_factory.mktemp("candidate"))
+        app.get(f"/api/game/{digest}")
+
+    def test_the_page_is_told_which_rung_it_is_on_and_why_it_cannot_climb(
+        self, tmp_path, candidates_page_once
+    ) -> None:
         app, digest, _ = self._world(tmp_path)
         keeping = app.get(f"/api/game/{digest}")["keeping"]
         assert keeping["stage"] == "candidate"
@@ -10160,7 +10185,7 @@ class TestWhatBecomesOfACandidate:
         # And what "tested" would even mean, which is the whole point of the rung.
         assert keeping["roster"] == list(__import__("chess_variant_sandbox").corpus.CANONICAL_AGENTS)
 
-    def test_archiving_moves_it_and_the_library_says_so(self, tmp_path) -> None:
+    def test_archiving_moves_it_and_the_library_says_so(self, tmp_path, candidates_page_once) -> None:
         app, digest, _ = self._world(tmp_path)
         kept = app.post("/api/archive", {"hash": digest, "name": "Kept", "note": "worth it"})
 
@@ -10185,7 +10210,9 @@ class TestWhatBecomesOfACandidate:
         with pytest.raises(ValueError, match="needs a reason"):
             app.post("/api/promote", {"hash": digest, "reason": "  "})
 
-    def test_a_promoted_game_reads_as_committed_and_offers_nothing_further(self, tmp_path) -> None:
+    def test_a_promoted_game_reads_as_committed_and_offers_nothing_further(
+        self, tmp_path, candidates_page_once
+    ) -> None:
         """A promotion writes into the app's `rulesets/`, so this one gets a copy of it.
 
         It used to write into the checkout's own and unlink the file after, which under
@@ -11285,6 +11312,7 @@ class TestBuildingAGameByHand:
         assert report["hash"] == spec_hash({**draft, "schema_version": 6})
         assert any("walls" in line for line in report["ruleLines"])
 
+    @pytest.mark.new_game
     def test_no_ruleset_in_the_library_is_refused_for_its_version_stamp(self) -> None:
         """The exit criterion, taken over the corpus rather than over a hand-written list.
 
@@ -11336,12 +11364,15 @@ class TestBuildingAGameByHand:
         # `turn` left it on 2026-11-07 with TS3's `rulesets/drover.json` (Q1133), a turn of parts.
         # `pass` (generation 116, H3, Q1126) joined it, and left on 2026-11-08 with H5's
         # `archive/no-zugzwang` (Q1129).
-        # `income` (generation 117, H2, Q1127) joined it; H5's Hunger scored under the library's
-        # bar (`docs/plan-hunger.md` §6.2), so the Hunger redesign takes it out.
-        assert _RULES_KEYS - seen == {
+        # `income` (generation 117, H2, Q1127) joined it, and left on 2026-11-08 with Q1159's
+        # `rulesets/hunger.json`.
+        # Q1154: a bound, not an equality. The set shrinking is a game using a key for the
+        # first time, which restates the corpus and owes this test nothing; the set growing
+        # is a rule key the corpus cannot vouch for, which the hand-built test below must
+        # take first (`docs/reference/corpus-pins.md`).
+        assert _RULES_KEYS - seen <= {
             "checkmate",
-            "income",
-        },"the rule keys nothing in the library uses have changed"
+        }, "a rule key no library spec uses: build it by hand in the test below, then name it here"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(
         self,
@@ -14267,6 +14298,7 @@ class TestEveryGameWeHaveOpensInTheDesigner:
     because every other committed game names one icon per piece.
     """
 
+    @pytest.mark.new_game
     def test_every_committed_and_archived_spec_draws_a_form(self) -> None:
         paths = sorted(Path(RULESETS).glob("*.json")) + sorted(
             Path(library.ARCHIVE_DIR).glob("*.json")

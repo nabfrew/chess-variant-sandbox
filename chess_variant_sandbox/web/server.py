@@ -52,7 +52,15 @@ from chess_variant_sandbox.web.evolving import Runs
 from chess_variant_sandbox.web.human import HUMAN, HumanGame, HumanRecord, picker_ratings
 from chess_variant_sandbox.web.keeping import Measurements
 from chess_variant_sandbox.web.opponents import Ratings
-from chess_variant_sandbox.web.page import SCRIPTS, assets, page, picture, rules_page, shell
+from chess_variant_sandbox.web.page import (
+    SCRIPTS,
+    assets,
+    front,
+    page,
+    picture,
+    rules_page,
+    shell,
+)
 from chess_variant_sandbox.web.page import game as game_page
 from chess_variant_sandbox.web.play import Session, Sessions, seed_asked
 
@@ -1569,6 +1577,10 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
                 # carries the landing drawn from the stories as they read now (LP4).
                 app.stories()
                 self._send(200, page().encode("utf-8"), "text/html; charset=utf-8")
+                return
+            if parsed.path == front.HISTORY_PATH:
+                # SH3: how the library's scores have moved, the page with its own head.
+                self._send(200, front.history().encode("utf-8"), "text/html; charset=utf-8")
                 return
             held = assets.answer(parsed.path)
             if held is not None:

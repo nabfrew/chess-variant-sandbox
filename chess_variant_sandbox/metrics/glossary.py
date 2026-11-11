@@ -36,6 +36,7 @@ from typing import Any
 from chess_variant_sandbox.metrics import scoring
 from chess_variant_sandbox.metrics.scoring import DEFAULT_WEIGHTS, Weights, load_weights
 from chess_variant_sandbox.metrics.seat import SEAT_GATE, TOP_THREE_SEAT_GATE
+from chess_variant_sandbox.metrics.waiting import WAITING_GATE
 
 
 @dataclass(frozen=True)
@@ -246,6 +247,24 @@ MEASUREMENTS: dict[str, Measurement] = {
                 "A game competent players almost always draw is not a contest, and "
                 "averaging in the games their weaker opponents lost outright does not "
                 "make it one. The dull control is thrown out here.",
+    ),
+    "forced_repetition": Measurement(
+        title="forced repetition",
+        what="Whether one side can always draw by waiting: shuffling back and forth until "
+             "the position repeats, with the other side unable to make progress.",
+        how="Beside each run of a library game, the strongest computer player plays itself "
+            "16 times, and plays 16 more games against a copy of itself that refuses every "
+            "repetition it could avoid. If the refusing copy wins clearly, the repetitions "
+            "were the players drifting, a better player escapes them, and this reads 0. "
+            "Otherwise it is the share of the strongest player's own games that ended by "
+            "repetition.",
+        reading="A gate rather than a component: above 0.8 the ruleset is disqualified. "
+                "A game where the strongest player draws four games in five by waiting, "
+                "and refusing to wait only loses, has a side that never has to play: that "
+                "is the game's flaw, not the players'. Chess-like games, whose weaker side "
+                "sometimes escapes into a repeated position, read well below the line, and "
+                "their draws are what the decisive rate already reads. Absent for a game "
+                "measured once, played in rounds, or measured before the test existed.",
     ),
     # -------------------------------------------------------------------- pacing
     "mean_plies": Measurement(
@@ -713,7 +732,7 @@ def explain(version: str = DEFAULT_WEIGHTS) -> dict[str, Any]:
                 "maximum": gate.maximum,
                 "reason": gate.reason,
             }
-            for gate in (*weights.gates, SEAT_GATE, TOP_THREE_SEAT_GATE)
+            for gate in (*weights.gates, SEAT_GATE, TOP_THREE_SEAT_GATE, WAITING_GATE)
         ],
         "measurements": {
             name: measurement.as_dict() for name, measurement in MEASUREMENTS.items()
@@ -870,9 +889,9 @@ HOW_IT_WORKS: list[dict[str, str]] = [
 SITE_HOW_IT_WORKS: list[dict[str, str]] = [
     {
         "heading": "Some failings rule a game out",
-        "body": "A game that never finishes, or where a player who thinks is no better than "
-                "one who moves at random, is not a mediocre game, and a strong showing "
-                "elsewhere must not make up for it. So it is ruled out rather than marked "
+        "body": "A game that never finishes, where a player who thinks is no better than "
+                "one who moves at random, or where one side can always draw by waiting, is "
+                "not a mediocre game, and a strong showing elsewhere must not make up for it. So it is ruled out rather than marked "
                 "down. A game that is ruled out still shows its score, and the score means "
                 "nothing.",
     },

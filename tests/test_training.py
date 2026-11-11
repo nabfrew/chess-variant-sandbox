@@ -36,6 +36,7 @@ from chess_variant_sandbox import measurement  # noqa: E402
 from chess_variant_sandbox.agents import nets  # noqa: E402
 from chess_variant_sandbox.agents.nets import (  # noqa: E402
     ACCEPTED,
+    INPUTS_VERSION,
     REFUSED,
     Layout,
     NetRecord,
@@ -82,6 +83,7 @@ GARDNER = ROOT / "rulesets" / "gardner.json"
 # one (Q502f2's); their digests are the `net=` names the stores carry, so a change to a
 # recipe, the layout or the trainer must be seen.
 DEFAULT_DIGEST = "db5ef1bc938e"
+DEFAULT_DIGEST_V2 = "e31e979d535a"
 Q637_DIGEST = "1d160257b8e5"
 Q502F2_DIGEST = "1c193cc56c76"
 # The accepted net (archive/plan-teacher §8.6.3-§8.6.4): Intransitive's, under the default's name.
@@ -125,13 +127,16 @@ def _data(spec: dict, procedure: Procedure = TINY) -> Dataset:
 
 
 def test_the_default_procedure_is_pinned() -> None:
-    assert DEFAULT.digest == DEFAULT_DIGEST, (
+    assert DEFAULT.digest_at(1) == DEFAULT_DIGEST, (
         "the default training procedure's digest moved; every stored net under the old "
         "name is now another procedure's. If that was the point, bump TRAINER_VERSION "
         "or the recipe on purpose and pin the new digest here"
     )
-    assert Q637.digest == Q637_DIGEST, "Q637's stores no longer name their recipe"
-    assert Q502F2.digest == Q502F2_DIGEST, "Q502f2's stores no longer name their recipe"
+    assert Q637.digest_at(1) == Q637_DIGEST, "Q637's stores no longer name their recipe"
+    assert Q502F2.digest_at(1) == Q502F2_DIGEST, "Q502f2's stores no longer name their recipe"
+    # Q1172: input layout 2 renames every recipe trained from now on; the stores above keep
+    # their layout-1 names (`digest_at(1)`), which still play where layout 2 adds nothing.
+    assert DEFAULT.digest == DEFAULT_DIGEST_V2 and INPUTS_VERSION == 2
     assert TRAINER_VERSION == 1
     assert DEFAULT.result_weight == 0.0 and DEFAULT.opening_plies > 0
     # Q671: the default is Q637's recipe at TD(lambda 0.7), and nothing else.
@@ -142,7 +147,7 @@ def test_the_default_procedure_is_pinned() -> None:
 def test_the_accepted_net_is_the_default_procedures() -> None:
     """`nets/d93e28d09a33-db5ef1bc938e.json`, the first accepted net, is the default's."""
     payload = json.loads(ACCEPTED_NET.read_text(encoding="utf-8"))
-    assert payload["procedure"] == DEFAULT.digest == DEFAULT_DIGEST
+    assert payload["procedure"] == DEFAULT.digest_at(1) == DEFAULT_DIGEST
     assert payload["verdict"] == ACCEPTED
     assert payload["recipe"] == DEFAULT.as_dict()
     assert Procedure.from_dict(payload["recipe"]) == DEFAULT
@@ -155,7 +160,8 @@ def test_every_stored_net_still_names_its_recipe() -> None:
     for path in stores:
         payload = json.loads(path.read_text(encoding="utf-8"))
         recipe = Procedure.from_dict(payload["recipe"])
-        assert recipe.digest == payload["procedure"] == path.stem.split("-")[1], path.name
+        named = recipe.digest_at(payload["inputs_version"])
+        assert named == payload["procedure"] == path.stem.split("-")[1], path.name
 
 
 def test_a_recipe_written_before_the_random_opening_reads_back_without_one() -> None:
@@ -196,10 +202,10 @@ def test_every_field_of_a_procedure_is_in_its_name() -> None:
 def test_td_lambda_enters_the_name_only_when_selected() -> None:
     """Q658: at 0 the field is absent, so every recipe named before it keeps its name."""
     assert "td_lambda" not in Q637.as_dict() and "td_lambda" not in Q502F2.as_dict()
-    assert Q637.with_(td_lambda=0.0).digest == Q637_DIGEST
-    assert Q502F2.with_(td_lambda=0.0).digest == Q502F2_DIGEST
+    assert Q637.with_(td_lambda=0.0).digest_at(1) == Q637_DIGEST
+    assert Q502F2.with_(td_lambda=0.0).digest_at(1) == Q502F2_DIGEST
     td = Q637.with_(td_lambda=0.7)
-    assert td.as_dict()["td_lambda"] == 0.7 and td.digest == DEFAULT_DIGEST != Q637_DIGEST
+    assert td.as_dict()["td_lambda"] == 0.7 and td.digest_at(1) == DEFAULT_DIGEST != Q637_DIGEST
     assert Procedure.from_dict(td.as_dict()) == td
     # A recipe without the key was written at 0, never today's default.
     assert Procedure.from_dict(Q637.as_dict()).td_lambda == 0.0

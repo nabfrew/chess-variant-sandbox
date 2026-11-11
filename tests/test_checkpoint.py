@@ -319,6 +319,28 @@ def test_the_stall_check_tells_running_stalled_and_ended_apart(
     assert "no campaign" in capsys.readouterr().out
 
 
+def test_the_stall_check_reads_a_superseded_campaign_as_ended_for_good(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """Q1189: a campaign killed for good holds a one-line `SUPERSEDED` file; it reads
+    SUPERSEDED (finished, never resumed), not STALLED, and does not set the exit code."""
+    status = _status_script()
+    root = tmp_path / "runs"
+    campaign = Campaign.open(root / "q2" / "checkpoint-old", build=BUILD, command=["train"])
+    campaign.stage("games", {"ruleset_hash": "r"}, list(range(4))).save(0, b"x")
+    directory = root / "q2" / "checkpoint-old"
+    (directory / "SUPERSEDED").write_text(
+        "killed across a build change; docs/archive/handover-q2.md\n", encoding="utf-8"
+    )
+    old = time.time() - 3600
+    os.utime(directory / "progress.log", (old, old))
+    assert status.main([str(root)]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("SUPERSEDED")
+    assert "superseded: killed across a build change; docs/archive/handover-q2.md" in out
+    assert status.report(directory, 20.0, time.time())[0] in status.FINISHED
+
+
 # ------------------------------------------------------------------ killed for real (slow)
 
 

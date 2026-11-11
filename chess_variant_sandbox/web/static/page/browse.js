@@ -742,8 +742,10 @@ function pillLegendHtml() {
        player${info('unbeaten')}, and what the checks found`
     : `what it scored out of 1${info('index')} and how far to trust it${info('trust')}, where
        it is kept${info('committed')}, and what the checks found`;
+  // SH3: the score's own history, from the line that names the score.
   return `<div class="muted small u-mb-10">The words under a game's
-    name say ${said}. Tap or point at one for what it means.</div>`;
+    name say ${said}. Tap or point at one for what it means. The scores' past is
+    <a href="/score-history">how the scores have moved</a>.</div>`;
 }
 
 // What a card says about the game (Q1085c): its short description, the lines its page

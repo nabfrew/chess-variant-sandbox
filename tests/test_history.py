@@ -345,7 +345,10 @@ class TestTheSiteKeepsItFromVisitors:
     def test_a_visitor_reads_the_value_and_date_alone(self, monkeypatch) -> None:
         entries = [history.Entry.from_dict(line) for line in self.LINES]
         assert history.for_visitors(entries, 0.6) == [
-            {"index": 0.8, "runs": 4, "measured": "2026-09-28"}]
+            {"index": 0.8, "runs": 4, "measured": "2026-09-28", "weights_version": ""}]
+        # The version word rides with each line, for the game page's chart (SH4).
+        versioned = [history.Entry.from_dict({**self.LINES[0], "weights_version": "v12"})]
+        assert history.for_visitors(versioned, 0.6)[0]["weights_version"] == "v12"
         # A replacement that moved no player is no *was* line for a visitor.
         other = [history.Entry.from_dict({**self.LINES[0], "moved": ["engine"]})]
         assert history.for_visitors(other, 0.6) == []
@@ -355,8 +358,81 @@ class TestTheSiteKeepsItFromVisitors:
     def test_the_page_draws_was_lines_from_the_payload_only(self) -> None:
         from page_text import PAGE
 
-        assert "function wasHtml(lines)" in PAGE
-        assert "${wasHtml(game.history)}" in PAGE
+        assert "function wasHtml(lines, game)" in PAGE
+        assert "${earlierHtml(game)}" in PAGE
+
+    # SH4: a visitor's game page as the site sends it (`history_shown` empties `history`),
+    # with `for_visitors`' two lines, and a decoy beside them that the chart must not read.
+    VISITOR = {
+        "history": [], "status": "current", "index": 0.61, "measuredAt": "2026-11-08T09:00:00Z",
+        "weights": "v13", "viable": True,
+        "earlier": [{"index": 0.8, "runs": 4, "measured": "2026-10-20", "weights_version": "v13"},
+                    {"index": 0.5, "runs": 4, "measured": "2026-09-28", "weights_version": "v12"}],
+        "trust": {"more": ["Was 0.333 (4 runs) when measured by the earlier computer players."]},
+        "score": {"index": 0.61, "interval": {"low": 0.2, "high": 0.9}},
+    }
+
+    @staticmethod
+    def _fold(game: dict[str, Any]) -> str:
+        """`detail.js`'s fold run in node with `history.js` under it, its markup printed."""
+        import node_session
+        import page_text
+
+        detail = page_text.text("/static/page/detail.js")
+        names = ("earlierLines", "earlierHtml", "earlierNow", "earlierChartHtml", "earlierLinkHtml",
+                 "visitorsWasHtml", "wasHtml")
+        pieces = []
+        for name in names:
+            start = detail.index(f"function {name}(")
+            pieces.append(detail[start:detail.index("\n}\n", start) + 3])
+        stub = """
+          const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/"/g, '&quot;');
+          const info = key => '(' + key + ')';
+          const countWord = n => String(n);
+          const rulesVersion = v => 'scoring rules ' + v;
+          const isProvisional = e => !!e && e.status === 'provisional';
+          const location = { search: '', pathname: '/', hash: '' };
+        """
+        source = (stub + page_text.text("/static/page/history.js") + "\n".join(pieces)
+                  + f"\nconsole.log(JSON.stringify(earlierHtml({json.dumps(game)})));")
+        done = node_session.run(source)
+        assert done.returncode == 0, done.stderr
+        return str(json.loads(done.stdout.strip().splitlines()[-1]))
+
+    def test_a_visitors_chart_draws_from_for_visitors_lines_only(self) -> None:
+        """Every point a visitor's chart draws is one of `earlier`'s lines (`for_visitors`)
+        or the present current score; nothing else the payload carries becomes a point."""
+        fold = self._fold(self.VISITOR)
+        points = re.findall(r"<circle[^>]*><title>([^<]*)</title>", fold)
+        assert [point.split(",")[0] for point in points] == ["0.500", "0.800", "0.610"]
+        assert points[-1].endswith("the present score")
+        assert "0.333" not in fold.split("<ul")[0]
+        # The version is written beside each change, and the line is not joined across it.
+        assert ">version 12<" in fold and ">version 13<" in fold
+        assert 'stroke-dasharray="3 3"' in fold
+        assert 'href="/score-history"' in fold and 'id="earlierScores"' in fold
+        assert "weights v" not in fold.lower()
+
+    def test_a_provisional_present_score_is_no_point(self) -> None:
+        fold = self._fold({**self.VISITOR, "status": "provisional"})
+        points = re.findall(r"<circle[^>]*><title>([^<]*)</title>", fold)
+        assert [point.split(",")[0] for point in points] == ["0.500", "0.800"]
+        assert "The present score is provisional" in fold
+
+    def test_the_maintainer_draws_the_ledger(self) -> None:
+        """With the ledger sent (the local application, an admin), the chart draws it and
+        `earlier` is not read; a refused line is hollow."""
+        ledger = [{"index": 0.3, "runs": 4, "measured": "2026-10-01", "weights_version": "v13",
+                   "viable": False, "reasons": ["why"]}]
+        fold = self._fold({**self.VISITOR, "history": ledger})
+        points = re.findall(r"<circle([^>]*)><title>([^<]*)</title>", fold)
+        assert [title.split(",")[0] for _, title in points] == ["0.300", "0.610"]
+        assert 'fill="var(--panel)"' in points[0][0] and "refused" in points[0][1]
+        assert "(refusedScore)" in fold
+
+    def test_a_game_with_no_earlier_score_has_no_fold(self) -> None:
+        assert self._fold({**self.VISITOR, "earlier": []}) == ""
 
     def test_admin_lists_earlier_scores(self, tmp_path: Path) -> None:
         from chess_variant_sandbox.site import pages

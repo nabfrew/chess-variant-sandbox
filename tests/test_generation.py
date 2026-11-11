@@ -193,9 +193,10 @@ def test_search_values_searches_on_a_net_player(engine: Engine, parent: Parent) 
 
 def test_every_existing_digest_holds_and_parent_is_absent_until_set() -> None:
     for digest, procedure in PINNED.items():
-        assert procedure.digest == digest
+        # Layout-1 names (Q1172): the stores trained under them keep them.
+        assert procedure.digest_at(1) == digest
         assert "parent" not in procedure.as_dict()
-        assert procedure.with_(parent=None).digest == digest
+        assert procedure.with_(parent=None).digest_at(1) == digest
 
 
 def test_a_parent_named_digest_moves_with_the_parents_weights() -> None:

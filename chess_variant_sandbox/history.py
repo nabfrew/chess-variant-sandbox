@@ -381,12 +381,15 @@ def admin_rows(runs_dir: Path, names: Mapping[str, str] | None = None) -> list[d
 
 def for_visitors(entries: Iterable[Entry], current_index: float | None) -> list[dict[str, Any]]:
     """What a visitor is sent (§5 Q1, answered A): a value, its date and that the players
-    were earlier ones, only where the players changed and the number differs.
+    were earlier ones, only where the players changed and the number differs, and the
+    version of the scoring rules it was worked out under, which the game page's chart
+    writes beside each change of version (SH4, `docs/plan-score-history.md` §2.1).
     Empty while `SHOW_WAS_TO_VISITORS` is ``False``; `trust.shown` words each one."""
     if not SHOW_WAS_TO_VISITORS:
         return []
     return [
-        {"index": entry.index, "runs": entry.runs, "measured": entry.measured}
+        {"index": entry.index, "runs": entry.runs, "measured": entry.measured,
+         "weights_version": entry.weights_version}
         for entry in sorted(entries, key=lambda entry: entry.n, reverse=True)
         if entry.index is not None and entry.index != current_index
         and set(entry.moved) & set(PLAYER_FIELDS)

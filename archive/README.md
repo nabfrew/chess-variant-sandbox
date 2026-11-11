@@ -1551,8 +1551,23 @@ player scored better (the first scored 0.43 against 0.52).
 
 A **preview**, the one-feature showcase of `rules.pass` (generation 116, H3): chess plus the pass, which a player
 not in check may play instead of a move. It was measured as an arm of Hunger Chess (`docs/plan-hunger.md` §6), whose
-showcase stayed a candidate under the user's 0.8 bar (`docs/reference/hunger-candidate.json`). Passes are 5.4% of the
+showcase stayed a candidate under the user's 0.8 bar then (since Q1159, on the fixed player, `rulesets/hunger.json`). Passes are 5.4% of the
 plies between computer players, 95% of games still end in checkmate, and the score is chess's to
 within a hundredth (0.939 on a patched analysis pass against chess's 0.938, `v13`): the pass on its own changes chess
 too little for this roster to see, which is its pre-registered failure, recorded rather than hidden. Hash
 `1cb062a21f06`.
+
+## Hunger Chess's three key arms (Q1179, 2026-11-08)
+
+Three **previews**, each one key of Hunger Chess (`rulesets/hunger.json`) moved off its default, kept as the showcase
+for that key. They were built and measured as arms of Hunger (`docs/plan-hunger.md` §6.1), kept in
+`docs/reference/hunger-arms/` while Hunger was under the user's 0.8 bar, and moved here once each scored over it on
+the fixed player (§6.4, four runs, `v13`, a preview basis; Q1177's replay measures them on the current build).
+
+- `hunger-chess-with-cheap-promotion.json` (`9e34937a3cb1`), for `rules.purse.upkeep.promotion` `"new"`: a pawn that
+  promotes pays only for the new piece (14 for a queen, not 21), the designer's question 5. 0.871, inside Hunger's
+  own spread: the promotion's price does not move this game, and the arm shows the key rather than a better game.
+- `hunger-chess-with-rich-forage.json` (`beb7faafde7a`), for `rules.income.per_piece` 2: each home piece pays two
+  coins a turn. 0.913; on the player before the fix (§6.2) the opening's passing halved (early passes 0.49 against 0.98).
+- `hunger-chess-where-pawns-forage.json` (`5ef0203555c0`), for `rules.income.region` on the second rank: the pawns
+  are the farm, so each push gives up income. 0.892.

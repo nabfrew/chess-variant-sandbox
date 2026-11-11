@@ -150,9 +150,10 @@ def lineage(engine: Engine, clean: None) -> tuple[Procedure, Procedure]:
 
 
 def test_the_field_is_absent_until_set_and_no_stored_name_moves() -> None:
-    assert DEFAULT.digest == "db5ef1bc938e" and "replay" not in DEFAULT.as_dict()
+    assert DEFAULT.digest_at(1) == "db5ef1bc938e" and "replay" not in DEFAULT.as_dict()
     for meta in sorted((ROOT / "nets").glob("*.json")):
-        recipe = json.loads(meta.read_text("utf-8")).get("recipe")
+        stored = json.loads(meta.read_text("utf-8"))
+        recipe = stored.get("recipe")
         if recipe is None:
             continue
         procedure = Procedure.from_dict(recipe)
@@ -165,7 +166,7 @@ def test_the_field_is_absent_until_set_and_no_stored_name_moves() -> None:
             assert procedure.replay is not None and "replay" in recipe, meta.name
         else:
             assert procedure.replay is None and "replay" not in procedure.as_dict(), meta.name
-        assert procedure.digest == name, meta.name
+        assert procedure.digest_at(stored["inputs_version"]) == name, meta.name
 
 
 def test_a_replay_is_a_new_recipe_named_by_its_schedule_and_its_nets_weights() -> None:
@@ -227,9 +228,9 @@ def test_e1s_child_is_generation_one_with_its_own_games_replayed() -> None:
     one, zero = _store("df1148b26ff6"), _store("db5ef1bc938e")
     parent_recipe = Procedure.from_dict(one["recipe"])
     plain = generation(Parent("df1148b26ff6", one["weights_sha256"]))
-    assert plain.digest == "70b6ece08506"  # generation 2's name, unmoved by the field
+    assert plain.digest_at(1) == "70b6ece08506"  # generation 2's name, unmoved by the field
     child = replayed(plain, parent_recipe)
-    assert (child.digest, control(child).digest) == (E1_CHILD, E1_C)
+    assert (child.digest_at(1), control(child).digest_at(1)) == (E1_CHILD, E1_C)
     assert child.replay == Replay(
         agents=("minimax:net=db5ef1bc938e,nodes=1600", "minimax:nodes=1600"),
         games=5_000,
@@ -351,15 +352,21 @@ def test_train_replay_names_e1s_child_and_c(
     one = ROOT / "nets" / f"{INTRANSITIVE}-df1148b26ff6"
     args = ["train", ruleset, "--parent", f"{one}.net", "--replay", f"{one}.json",
             "--store", str(tmp_path), "--duel-only"]
+    # The recipe is E1's child (`E1_CHILD` its layout-1 name); trained today it takes its
+    # layout-2 name (Q1172).
+    stored = _store("df1148b26ff6")
+    child = replayed(generation(Parent("df1148b26ff6", stored["weights_sha256"])),
+                     Procedure.from_dict(stored["recipe"]))
+    assert (child.digest_at(1), control(child).digest_at(1)) == (E1_CHILD, E1_C)
     assert main(args) == 2
-    assert f"{INTRANSITIVE}-{E1_CHILD}.net" in capsys.readouterr().err
+    assert f"{INTRANSITIVE}-{child.digest}.net" in capsys.readouterr().err
     assert main([*args, "--label-search", "probe", "--label-nodes", "1200"]) == 2
-    assert f"{INTRANSITIVE}-{E1_C}.net" in capsys.readouterr().err
+    assert f"{INTRANSITIVE}-{control(child).digest}.net" in capsys.readouterr().err
     # --replay-net registers the replay roster's net by its bytes (a guard's refused
     # generation 0 lies outside nets/); the name does not move.
     zero = ROOT / "nets" / f"{INTRANSITIVE}-db5ef1bc938e.net"
     assert main([*args, "--replay-net", str(zero)]) == 2
-    assert f"{INTRANSITIVE}-{E1_CHILD}.net" in capsys.readouterr().err
+    assert f"{INTRANSITIVE}-{child.digest}.net" in capsys.readouterr().err
     assert main([*args, "--replay-net", f"{one}.net"]) == 2
     assert "not the replay roster's net" in capsys.readouterr().err
 

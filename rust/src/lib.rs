@@ -1030,6 +1030,18 @@ impl Core {
         net::Layout::of(&self.tables).n_inputs
     }
 
+    /// T7's P6 (Q1175b): the derived table `values` as a `portal_reach=1` minimax player plays
+    /// it (`eval::portal_reach_values`), `values` itself without portals. Asked by the oracle's
+    /// test (`tests/test_portal_reach.py`), never by a player.
+    fn portal_reach_values(&self, values: Vec<f64>) -> PyResult<Vec<f64>> {
+        if values.len() != self.tables.n_types {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "{} values for {} piece types", values.len(), self.tables.n_types
+            )));
+        }
+        Ok(crate::eval::portal_reach_values(&self.tables, &values))
+    }
+
     /// Score every legal move at a full window: the analysis probe, not a player.
     ///
     /// Returns one value per legal move, in the order `legal_moves` produced them.
@@ -1360,6 +1372,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("MOPUP_PIECES", crate::eval::MOPUP_PIECES)?;
     m.add("MOPUP_SPAN", crate::eval::MOPUP_SPAN)?;
     m.add("MOPUP_AREA", crate::eval::MOPUP_AREA)?;
+    // T3: the repetition contempt's weight, for the same reason.
+    m.add("CONTEMPT_PIECES", crate::eval::CONTEMPT_PIECES)?;
     // H4: the income term's horizon, for the same reason.
     m.add("INCOME_TURNS", crate::eval::INCOME_TURNS)?;
     // Q502i: the search repairs a minimax player takes unless it spells them, for the

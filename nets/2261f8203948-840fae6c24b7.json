@@ -1,0 +1,87 @@
+{
+  "procedure": "840fae6c24b7",
+  "ruleset_hash": "2261f8203948",
+  "inputs_version": 2,
+  "verdict": "accepted",
+  "weights_sha256": "d47415d9bbd9d74e98439f0ee64d250c2f4f00ad3b78d859708149c3a5e3704c",
+  "build": "c4bbbd7db2396ef1",
+  "digest": "d47415d9bbd9",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:nodes=1600"
+    ],
+    "games": 6000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 1200,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0
+  },
+  "data": {
+    "digest": "d9a771ed64e66eeb5510ab1945e90678256811d54768b05be13867a466be5378",
+    "games": 6000,
+    "positions": 902662,
+    "most_active": 18
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.01689935,
+      0.00964595,
+      0.0025124,
+      0.00156235,
+      0.00125368,
+      0.00107675,
+      0.00095788,
+      0.00087023
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.107531
+  },
+  "acceptance": {
+    "candidate": "minimax:net=840fae6c24b7,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.53125,
+    "error": 0.013947,
+    "games": 400,
+    "identical": 0,
+    "openings": 171,
+    "candidate_nodes": 193421805,
+    "reference_nodes": 193641389,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200
+  },
+  "confirmation": {
+    "candidate": "minimax:net=840fae6c24b7,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 2000000,
+    "opening_plies": 8,
+    "score": 0.55,
+    "error": 0.013727,
+    "games": 400,
+    "identical": 0,
+    "openings": 157,
+    "candidate_nodes": 197345310,
+    "reference_nodes": 197528911,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200,
+    "gate": "G-A2, plan-teacher.md \u00a78.3 (Q1170, plan-player-weaknesses.md \u00a7T2)"
+  }
+}

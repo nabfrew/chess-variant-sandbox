@@ -223,6 +223,10 @@ READERS: dict[str, dict[str, str]] = {
         "eval.rs::with_immunity": "the same `mean_non_royal`, the same answer",
         "eval.rs::round_win": "Q986b: the same `mean_non_royal`, the same answer",
         "eval.rs::mopup_weight": "N4: the same `mean_non_royal`, the same answer",
+        "eval.rs::contempt_weight": "T3: the same `mean_non_royal`, the same answer",
+        "eval.rs::portal_reach_values": "T7's P6 (Q1175b): skips unlimited types from the "
+        "derived table's scale, as `Evaluator.for_spec` does; the refusals need no stock, so "
+        "none is unlimited (and the table is the derived one without portals)",
         "eval.rs::of": "`Immunity::of` skips unlimited drop types, of which there are none",
         "features.rs::new": "copies `has_drops` for `HAND_MATERIAL`",
         "endgame.rs::refusal": "N1: refuses a capture hand or an endless stock; the refusals "
@@ -338,12 +342,15 @@ READERS: dict[str, dict[str, str]] = {
         "eval.rs::goal_distance_of": "the distance of a piece that stands, for the race and "
         "for an immune racer",
         "features.rs::reach_progress": "the same, for `REACH_PROGRESS`",
+        "eval.rs::racers_to_goal": "T5 (`racers`): the distances of pieces of the named type that "
+        "stand, under a count above 1; a piece that never stands adds the diameter to both sides",
     },
     "goal_diameter": {
         "eval.rs::race_progress": "a normaliser, multiplied by a distance nobody has",
         "eval.rs::nearest_to_goal": "the same normaliser, of a distance nobody has",
         "eval.rs::immunity": "the same normaliser, of a distance nobody has",
         "features.rs::reach_progress": "the same normaliser, of a distance nobody has",
+        "eval.rs::racers_to_goal": "the same cap and fill, equal for both sides when nobody stands",
     },
     "has_goal_terms()": {
         "eval.rs::score": "gates `goal_progress`, whose terms are the ones above",

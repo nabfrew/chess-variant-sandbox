@@ -1,0 +1,5 @@
+{
+  "_written_by": "uv run python tests/corpus_pins.py",
+  "descriptions": {},
+  "features": {}
+}

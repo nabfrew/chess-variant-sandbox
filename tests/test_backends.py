@@ -349,7 +349,10 @@ def test_a_pass_is_searched_the_same_way_on_both_sides(agents: tuple[str, str]) 
     [
         ("minimax:nodes=40", "greedy"),
         ("minimax:nodes=40", "minimax:nodes=40"),
-        ("minimax:nodes=150,income=1", "minimax:nodes=150,income=0"),
+        ("minimax:nodes=150,income=1,margin=0,reserve=0", "minimax:nodes=150,income=0,margin=0,reserve=0"),
+        ("minimax:nodes=150,margin=1,reserve=0", "minimax:nodes=150,margin=0,reserve=0"),
+        ("minimax:nodes=150,reserve=1", "minimax:nodes=150,reserve=0"),
+        ("minimax:nodes=150,reserve=1,margin=0", "minimax:nodes=150,reserve=0,margin=0"),
     ],
     ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
 )
@@ -359,8 +362,106 @@ def test_income_is_searched_the_same_way_on_both_sides(agents: tuple[str, str]) 
     until H5's Hunger, so `tests/_purse_income.json` (chess with Hunger's charges, the pass and a
     coin a turn per piece at home) stands in. H4 (§5): every player there reads the moves
     channel's coin worth (no market), and the third pair seats the income term against the
-    player without it, `eval.rs::Evaluator::with_income` against `Evaluator.income`."""
-    _assert_same_played(Engine(load_spec(Path(__file__).parent / "_purse_income.json")), agents)
+    player without it, `eval.rs::Evaluator::with_income` against `Evaluator.income`. T1 (Q1169):
+    the third pair is spelled as the player before it (`margin=0,reserve=0`), whose games it was timed on,
+    and the fourth seats the coin at its margin, `eval.rs::Evaluator::with_margin` against
+    `Evaluator.margin`. T1c (Q1181): the last two seat the coin at its reserve,
+    `eval.rs::Evaluator::with_reserve` against `Evaluator.reserve`, over the margin and alone.
+    Those two play `_COIN_SEED`'s shorter games, and their seed-5 games are the slow tier's."""
+    engine = Engine(load_spec(Path(__file__).parent / "_purse_income.json"))
+    seed = _COIN_SEED.get(agents, 5)
+    if seed != 5:
+        _assert_the_first_seat_is_heard(engine, agents, seed)
+    _assert_same_played(engine, agents, seed=seed)
+
+
+# The coin arms whose game at the shared seed is too long for the fast suite (Q1181), and the
+# seed each plays there instead. The Python side of a 150-node income game costs about 13 ms
+# a ply, so the two reserve arms' seed-5 games (195 and 167 plies, both mates) took 2.4-2.6 s
+# alone, over the duration guard's 2 s. Seed 3 is a 47-ply and a 31-ply mate, and at both the
+# reserve player's choice departs from the player without it at ply 2, as at seed 5, so the
+# reserve's clamp is read and decides moves on both sides (`_assert_the_first_seat_is_heard`
+# holds that). The seed-5 games move to the slow tier whole
+# (`test_the_coin_games_cut_for_time_agree_whole`), so no game is dropped.
+_COIN_SEED: dict[tuple[str, str], int] = {
+    ("minimax:nodes=150,reserve=1", "minimax:nodes=150,reserve=0"): 3,
+    ("minimax:nodes=150,reserve=1,margin=0", "minimax:nodes=150,reserve=0,margin=0"): 3,
+}
+
+# The ply limit the scarce coin's corner arms are cut to (Q1181). Uncut, the first arm is a
+# 400-ply game at the limit, 2.7 s alone, and the second 245 plies, 1.8 s. The first seat's
+# term first decides a move at ply 122 and 82 there (`_assert_the_first_seat_is_heard`); the
+# uncut games are the slow tier's.
+_CORNERS_PLIES = 160
+
+
+def _assert_the_first_seat_is_heard(
+    engine: Engine, agents: tuple[str, str], seed: int
+) -> None:
+    """The game ``agents`` play differs from the one the second seat's player plays against
+    itself: the first seat's term changes a move, so a game cut short for time still reaches
+    the term it was seated for. Both games are the core's, a few hundredths of a second."""
+    heard = play_game(engine, agents, seed=seed).moves
+    unheard = play_game(engine, (agents[1], agents[1]), seed=seed).moves
+    assert heard != unheard, f"{agents[0]} plays as {agents[1]} at seed {seed}"
+
+
+@pytest.mark.parametrize(
+    ("corners", "agents"),
+    [
+        (True, ("minimax:nodes=60,scarcity=1,reserve=0", "minimax:nodes=60,scarcity=0,reserve=0")),
+        (True, ("minimax:nodes=60,scarcity=1,income=1,reserve=0", "minimax:nodes=60,scarcity=0,margin=0,reserve=0")),
+        (False, ("minimax:nodes=60,scarcity=1,reserve=0", "minimax:nodes=60,scarcity=0,reserve=0")),
+    ],
+    ids=lambda value: "-vs-".join(value) if isinstance(value, tuple) else f"corners={value}",
+)
+def test_a_scarce_coin_is_searched_the_same_way_on_both_sides(
+    corners: bool, agents: tuple[str, str]
+) -> None:
+    """T1b (Q1178): `eval.rs::Evaluator::with_scarcity` against `Evaluator.scarcity`. With
+    income from the two corners only, two coins a turn pay about two fifths of a move, so the
+    coin is worth a fraction of the moves channel's rate, read alike by `coin_scarcity` on both
+    sides and by the income term and the margin after it. With the whole home rank earning, a
+    coin is worth nothing (no margin, no income term); that arm's game is cut to 120 plies,
+    since players who never pass to save play long. The corner arms are cut to
+    `_CORNERS_PLIES` for the same reason (Q1181), and play whole in the slow tier."""
+    spec = _scarce_coin(corners, cut=True)
+    engine = Engine(spec)
+    if corners:
+        _assert_the_first_seat_is_heard(engine, agents, 5)
+    _assert_same_played(engine, agents)
+
+
+def _scarce_coin(corners: bool, cut: bool) -> dict[str, Any]:
+    spec = load_spec(Path(__file__).parent / "_purse_income.json")
+    if corners:
+        spec["rules"]["income"] = {"region": ["a1", "h1"]}
+        if cut:
+            spec["rules"]["max_plies"] = _CORNERS_PLIES
+    else:
+        spec["rules"]["max_plies"] = 120
+    return spec
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "agents",
+    sorted(_COIN_SEED)
+    + [
+        ("minimax:nodes=60,scarcity=1,reserve=0", "minimax:nodes=60,scarcity=0,reserve=0"),
+        ("minimax:nodes=60,scarcity=1,income=1,reserve=0", "minimax:nodes=60,scarcity=0,margin=0,reserve=0"),
+    ],
+    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
+)
+def test_the_coin_games_cut_for_time_agree_whole(agents: tuple[str, str]) -> None:
+    """The games `_COIN_SEED` and `_CORNERS_PLIES` keep out of the fast suite, as they were
+    played there before Q1181: the reserve arms at seed 5, the scarce coin's corner arms to
+    the fixture's own 400-ply limit."""
+    if agents in _COIN_SEED:
+        engine = Engine(load_spec(Path(__file__).parent / "_purse_income.json"))
+    else:
+        engine = Engine(_scarce_coin(corners=True, cut=False))
+    _assert_same_played(engine, agents)
 
 
 def _promoting_on_leaving(flag: bool) -> Engine:
@@ -1410,10 +1511,20 @@ def test_an_override_equal_to_the_derived_table_changes_no_bit(name: str) -> Non
     assert first.material == second.material
 
 
-@pytest.mark.parametrize("name", VALUE_ARMS)
-@pytest.mark.parametrize(
-    "opponent", ["greedy", "minimax:nodes=150"], ids=lambda o: f"vs-{o}"
-)
+# Chess against minimax is a 148-ply game at seed 5, 2.0-2.5 s of the Python oracle alone, and no seed
+# in 0-5 is shorter without being a 10-ply stub (Q1182), so that one case is slow.
+PRICED_CASES = [
+    pytest.param(
+        name, opponent,
+        id=f"vs-{opponent}-{name}",
+        marks=[pytest.mark.slow] if (name, opponent) == ("chess", "minimax:nodes=150") else [],
+    )
+    for name in VALUE_ARMS
+    for opponent in ["greedy", "minimax:nodes=150"]
+]
+
+
+@pytest.mark.parametrize(("name", "opponent"), PRICED_CASES)
 def test_a_priced_objective_is_searched_the_same_way_on_both_sides(
     name: str, opponent: str
 ) -> None:
@@ -2396,11 +2507,24 @@ def test_an_alternating_rest_game_is_played_the_same_way_on_both_sides(name: str
 SIGHT_ARMS = ["_sight_madrasi", "_sight_daunting_knights", "_sight_wardens"]
 
 
-@pytest.mark.parametrize("name", SIGHT_ARMS)
-def test_a_sight_game_is_played_the_same_way_on_both_sides(name: str) -> None:
+# Daunting knights at seed 5 is a game, 1.9-2.5 s of the Python oracle
+# alone (Q1182); seed 1 is a 78-ply game, 0.55 s, in which an effect binds 58 times (seed 5: once),
+# so it takes the fast slot and the seed-5 game moves to the slow tier whole.
+SIGHT_CASES = [
+    pytest.param("_sight_madrasi", 5, id="_sight_madrasi"),
+    pytest.param("_sight_daunting_knights", 1, id="_sight_daunting_knights"),
+    pytest.param(
+        "_sight_daunting_knights", 5, id="_sight_daunting_knights-seed5", marks=pytest.mark.slow
+    ),
+    pytest.param("_sight_wardens", 5, id="_sight_wardens"),
+]
+
+
+@pytest.mark.parametrize(("name", "seed"), SIGHT_CASES)
+def test_a_sight_game_is_played_the_same_way_on_both_sides(name: str, seed: int) -> None:
     engine = Engine(load_spec(Path(__file__).parent / f"{name}.json"))
-    _assert_same_played(engine, ("minimax:nodes=150", "greedy"))
-    played = play_game(engine, ("minimax:nodes=150", "greedy"), seed=5)
+    _assert_same_played(engine, ("minimax:nodes=150", "greedy"), seed=seed)
+    played = play_game(engine, ("minimax:nodes=150", "greedy"), seed=seed)
     state = engine.initial_state()
     bound = 0
     for move in played.moves:

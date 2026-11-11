@@ -1,0 +1,260 @@
+{
+  "schema_version": 31,
+  "name": "hunger chess",
+  "summary": [
+    "Every move costs coins: the further from your back rank a piece lands, the more it pays. A pawn pays 1 coin a rank, a knight, bishop, rook or queen 2 a rank, the king nothing.",
+    "At the start of each of your turns you collect 1 coin for every piece of yours on your back rank. You start with 10.",
+    "A move you cannot pay for cannot be made. Instead of moving you may pass, unless you are in check.",
+    "Taking a piece earns you its booty from the bank: 1 coin for a pawn, 2 for any other piece.",
+    "A pawn that promotes pays for its own arrival and the new piece's: 21 coins for a queen.",
+    "Otherwise it is chess."
+  ],
+  "description": "Chess with supply lines. Every move is paid for out of a purse, and a piece costs more the further from home it lands: a pawn one coin for each rank it stands from your back rank, any other piece two, the king nothing, so castling is free. The coins come from home. At the start of each turn you collect one for every piece still standing on your back rank, which means the pieces doing nothing are the ones paying for the ones that fight. That is the trade the game keeps asking you to make: develop a knight and you lose its coin for every turn it is away, keep the rooks at home and they fund an attack you can afford to push. A move the purse cannot cover is not a move at all, so a deep raid can strand itself, and a king in check whose every escape is too dear is mated. You may pass to let the purse refill, but not out of check. Taking a piece pays a little booty from the bank, and a pawn's march to promotion is the dearest move of all. The game was sent to this project by its designer, who had playtested it.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "upkeep": 1,
+      "bounty": 1
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "upkeep": 2,
+      "bounty": 2
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "upkeep": 2,
+      "bounty": 2
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "upkeep": 2,
+      "bounty": 2
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "upkeep": 2,
+      "bounty": 2
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "insufficient_material": true,
+    "purse": {
+      "start": 10,
+      "upkeep": true
+    },
+    "pass": true,
+    "income": true
+  },
+  "provenance": {
+    "added": "2026-11-08",
+    "origin": "human",
+    "source": "a playtested variant sent in by its designer",
+    "note": "Hunger Chess, a playtested variant sent in to this project by its designer.",
+    "history": "Q1129 (H5, docs/plan-hunger.md section 6): the designer's Hunger Chess, spelled with the general rules H1 to H3 built for it (pieces.upkeep with rules.purse.upkeep, rules.income, rules.pass) and played by H4's coin worth. Measured at 0.709 under weights v13 (a preview score: the analysis pass was patched, plan-hunger section 6.2), under the user's 0.8 bar for the library, so it was kept as a candidate (docs/reference/hunger-candidate.json), its arms in docs/reference/hunger-arms/. Q1169 (plan-hunger section 6.4) re-measured it on the fixed player (the coin margin, on by default) at 0.873 +/- 0.011, a preview of four runs under v13, over the bar. Q1159 (2026-11-08) brought the base spec into the library unchanged: the pre-registration of section 6 graded the arms against the base and fixed no rule for choosing an arm in its place, so the base, the designer's own game, went in. Its library score is the replay's (Q1177); under 0.8 there, it goes back to a redesign."
+  }
+}

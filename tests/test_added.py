@@ -36,6 +36,7 @@ _spec.loader.exec_module(backfill)
 LIBRARY = sorted(path for folder in ("rulesets", "archive") for path in (ROOT / folder).glob("*.json"))
 
 
+@pytest.mark.new_game
 class TestEveryLibraryFileSaysWhenItJoined:
     @pytest.mark.parametrize("path", LIBRARY, ids=lambda p: f"{p.parent.name}/{p.stem}")
     def test_a_day_and_a_real_one(self, path: Path) -> None:

@@ -347,7 +347,7 @@ def _net(digest: str, played: str, nets_dir: Path) -> Item:
     score does not play still finds more, so a kept generation questions the score the
     moment it lands, until the score is measured with it.
     """
-    from chess_variant_sandbox.agents.nets import ACCEPTED, INPUTS_VERSION, REFUSED, rated_net
+    from chess_variant_sandbox.agents.nets import ACCEPTED, READ_VERSIONS, REFUSED, rated_net
 
     paths = sorted(Path(nets_dir).glob(f"{digest}-*.json"))
     if not paths:
@@ -369,7 +369,7 @@ def _net(digest: str, played: str, nets_dir: Path) -> Item:
             continue
         # A store trained on another input layout is no player this checkout can sit
         # down: its verdict was made on older players, and stands as a stale reading.
-        state = CURRENT if store.get("inputs_version") == INPUTS_VERSION else STALE
+        state = CURRENT if store.get("inputs_version") in READ_VERSIONS else STALE
         acceptance = store.get("acceptance")
         acceptance = acceptance if isinstance(acceptance, dict) else {}
         count = _games(acceptance.get("score"), acceptance.get("games"))

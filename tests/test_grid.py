@@ -36,6 +36,7 @@ class TestDescriptors:
         """The check the plan named, and the cheapest thing that could have gone wrong."""
         assert len({cells["chess"], cells["shogi"], cells["xiangqi"]}) == 3
 
+    @pytest.mark.new_game
     def test_the_corpus_spreads_across_the_grid(self, cells) -> None:
         counts = Counter(cells.values())
         assert len(counts) >= 10, f"{len(CORPUS)} rulesets in {len(counts)} cells"
@@ -66,8 +67,15 @@ class TestDescriptors:
         # So when this fails, the question is which of the two it is. If the answer is a
         # facing rule, `chess_variant_sandbox/loop/grid.py`'s module docstring has already made that
         # call and says what to do.
+        #
+        # **Seven since Q1159 (2026-11-08)**, when `rulesets/hunger.json` joined the chess cell
+        # on its own: chess with a coin economy (a move's cost, income, the pass), which no
+        # axis reads. One game, not a batch, so no axis; the ceiling moves by the one game, as
+        # it did for `chess-oriented-pawns`, and would still fire on the wrapped boards, which without
+        # the edges axis would take this cell well past seven.
+        # An economy axis is the answer when a second committed purse game lands in this cell.
         worst, crowd = counts.most_common(1)[0]
-        assert crowd <= 6, (
+        assert crowd <= 7, (
             f"{crowd} of {len(CORPUS)} rulesets share cell {grid.label(worst)}: "
             f"{sorted(name for name, cell in cells.items() if cell == worst)}"
         )
@@ -100,6 +108,7 @@ class TestDescriptors:
         assert cells["crazyhouse"] != cells["chess"]
         assert cells["shogi"][2] == 1 and cells["chess"][2] == 0
 
+    @pytest.mark.new_game
     def test_a_restricted_capture_rule_is_a_different_kind_of_game(self, cells) -> None:
         """The axis schema 3 added, and the only one that separates a *kind* of game
         rather than a size of one.

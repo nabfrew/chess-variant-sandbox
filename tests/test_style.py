@@ -145,6 +145,9 @@ class TestTheTokens:
         # Nor this: where the tip of a move-kind choice points (Q1071), set on the card by
         # `board.js`'s `placeAtSquare` at its square, and read with a fallback.
         set_ |= {"tip"}
+        # Nor this: a picked game's swatch on the score history (SH3), set by its own rules
+        # (`.historyKey`, and `.historyPick1` to 3, each naming a pick token).
+        set_ |= {"sw"}
         assert read - set_ == set()
 
     def test_dark_sets_only_what_light_sets(self) -> None:

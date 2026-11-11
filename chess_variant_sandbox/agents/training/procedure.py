@@ -26,6 +26,7 @@ from chess_variant_sandbox.agents.nets import (
     INPUTS_VERSION,
     MAX_ACCUMULATOR,
     MAX_HIDDEN,
+    READ_VERSIONS,
 )
 
 # Bumped whenever the trainer's arithmetic changes what a procedure produces: the loss,
@@ -462,16 +463,25 @@ class Procedure:
     @property
     def digest(self) -> str:
         """The ``net=`` name: 12 hex over the recipe, the input layout and the trainer."""
+        return self.digest_at(INPUTS_VERSION)
+
+    def digest_at(self, inputs_version: int) -> str:
+        """The name this recipe had under another input layout (Q1172): a store trained on
+        layout 1 is named by ``digest_at(1)``, and still plays where layout 2 adds nothing."""
         blob = json.dumps(
             {
                 "procedure": self.as_dict(),
-                "inputs_version": INPUTS_VERSION,
+                "inputs_version": inputs_version,
                 "trainer_version": TRAINER_VERSION,
             },
             sort_keys=True,
             separators=(",", ":"),
         )
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:HASH_LENGTH]
+
+    def names(self, procedure: str) -> bool:
+        """Whether ``procedure`` is this recipe's name under an input layout the core reads."""
+        return any(self.digest_at(version) == procedure for version in READ_VERSIONS)
 
 
 DEFAULT = Procedure()
@@ -559,7 +569,7 @@ def replayed(child: Procedure, parent_recipe: Procedure) -> Procedure:
     """
     if child.parent is None:
         raise ValueError("a replay set is a generation's; the child names no parent")
-    if parent_recipe.digest != child.parent.procedure:
+    if not parent_recipe.names(child.parent.procedure):
         raise ValueError(
             f"the recipe given is {parent_recipe.digest}, not the parent "
             f"{child.parent.procedure}'s: a replay set is the parent's own games"

@@ -102,7 +102,7 @@ def test_a_one_link_replay_keeps_its_name() -> None:
     stored = _stored("5fe1cb87d4c9")
     child = generation(Parent("5fe1cb87d4c9", stored["weights_sha256"]))
     one = replayed(child, Procedure.from_dict(stored["recipe"]))
-    assert one.digest == F3 and one.replay is not None and one.replay.prior is None
+    assert one.digest_at(1) == F3 and one.replay is not None and one.replay.prior is None
     assert "prior" not in one.as_dict()["replay"]
     assert one.replay.links == (one.replay,)
     # A parent without a replay set of its own: the chain is one link, E1's child.
@@ -111,7 +111,7 @@ def test_a_one_link_replay_keeps_its_name() -> None:
     recipe = Procedure.from_dict(e1["recipe"])
     assert recipe.replay is None
     assert replayed_deep(plain, recipe) == replayed(plain, recipe)
-    assert replayed_deep(plain, recipe).digest == "5fe1cb87d4c9"
+    assert replayed_deep(plain, recipe).digest_at(1) == "5fe1cb87d4c9"
 
 
 def test_f3b_chains_generation_one_then_generation_zero() -> None:
@@ -134,7 +134,7 @@ def test_f3b_chains_generation_one_then_generation_zero() -> None:
     )
     assert f3b.teacher == "parent:317025dfb035"
     assert Procedure.from_dict(json.loads(json.dumps(f3b.as_dict()))) == f3b
-    assert {s: _f3b(s).digest for s in F3B} == F3B
+    assert {s: _f3b(s).digest_at(1) for s in F3B} == F3B
     assert len({*F3B.values(), F3}) == 4
 
 
@@ -372,16 +372,22 @@ def test_train_chain_names_f3b(tmp_path: Path, clean: None, capsys: pytest.Captu
             "--store", str(tmp_path), "--duel-only"]
     assert main([*args, "--chain"]) == 2
     captured = capsys.readouterr()
-    assert f"{GARDNER_HASH}-{F3B[0]}.net" in captured.err
+    # F3b's recipe; trained today it takes its layout-2 name (Q1172).
+    assert _f3b(0).digest_at(1) == F3B[0]
+    assert f"{GARDNER_HASH}-{_f3b(0).digest}.net" in captured.err
     assert "replay link 2: net=db5ef1bc938e" in captured.out
     assert main([*args, "--chain", "--init-seed", "2"]) == 2
-    assert f"{GARDNER_HASH}-{F3B[2]}.net" in capsys.readouterr().err
+    assert f"{GARDNER_HASH}-{_f3b(2).digest}.net" in capsys.readouterr().err
     assert main(args) == 2
-    assert f"{GARDNER_HASH}-{F3}.net" in capsys.readouterr().err
+    stored = _stored("5fe1cb87d4c9")
+    f3 = replayed(generation(Parent("5fe1cb87d4c9", stored["weights_sha256"])),
+                  Procedure.from_dict(stored["recipe"]))
+    assert f3.digest_at(1) == F3
+    assert f"{GARDNER_HASH}-{f3.digest}.net" in capsys.readouterr().err
     # --replay-net registers any link's net by its bytes, and refuses a net no link names.
     one = ROOT / "nets" / f"{GARDNER_HASH}-e03365fe43e7.net"
     assert main([*args, "--chain", "--replay-net", str(one)]) == 2
-    assert f"{GARDNER_HASH}-{F3B[0]}.net" in capsys.readouterr().err
+    assert f"{GARDNER_HASH}-{_f3b(0).digest}.net" in capsys.readouterr().err
     assert main([*args, "--chain", "--replay-net", str(one), f"{parent}.net"]) == 2
     assert "not the replay roster's net" in capsys.readouterr().err
 

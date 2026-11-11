@@ -646,6 +646,7 @@ class TestGlossary:
         from chess_variant_sandbox.metrics.components import KEYED_COMPONENTS, compute_components
         from chess_variant_sandbox.metrics.glossary import MEASUREMENTS
         from chess_variant_sandbox.metrics.scoring import WEIGHTS_DIR, load_weights
+        from chess_variant_sandbox.metrics.waiting import FORCED_REPETITION
         from chess_variant_sandbox.tournament.analysis import ANALYSIS_COMPONENTS
         from chess_variant_sandbox.tournament.heuristics import HEURISTIC_COMPONENTS
         from chess_variant_sandbox.tournament.ratings import rate
@@ -655,6 +656,8 @@ class TestGlossary:
         produced = set(
             compute_components(chess_spec, records, rate(records)).raw
         ) | set(ANALYSIS_COMPONENTS) | set(KEYED_COMPONENTS) | set(HEURISTIC_COMPONENTS)
+        # Read only off a run's waiting schedule (Q1184), which these records do not carry.
+        produced.add(FORCED_REPETITION)
         for path in Path(WEIGHTS_DIR).glob("*.json"):
             produced |= set(load_weights(path.stem).components())
 

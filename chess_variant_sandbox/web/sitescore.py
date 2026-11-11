@@ -79,6 +79,12 @@ SITE_GATES: dict[str, dict[str, str]] = {
                   "players; a game they win from one side far more often than the other is "
                   "decided by the side and not by play",
     },
+    "forced_repetition": {
+        "title": "a side can always wait",
+        "reason": "the strongest computer player draws four games in five by repeating "
+                  "the position, and a copy of it that refuses to repeat cannot win; a game "
+                  "where one side can always draw by waiting is not a contest",
+    },
 }
 
 _WORDS = ("no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",

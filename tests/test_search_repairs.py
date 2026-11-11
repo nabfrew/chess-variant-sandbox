@@ -32,7 +32,11 @@ from chess_variant_sandbox.agents.minimax import (
     DUCK_REFUTE,
     KEEP_TABLE,
     LOUD_DROPS,
+    MARGIN,
     MOPUP,
+    RACERS,
+    RESERVE,
+    STRIKE_GAIN,
     THREATS,
     repairs_of,
 )
@@ -45,10 +49,18 @@ RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 REPAIRS_SLOT = 11
 # The search before Q502i, every repair spelled off (WK2's duck orderings, on by default
 # since `wakwak.md` §7.3, included).
-BEFORE = "duck_front=0,duck_mobility=0,duck_refute=0,keep=0,loud_drops=0,mopup=0,threats=0"
+BEFORE = (
+    "duck_front=0,duck_mobility=0,duck_refute=0,keep=0,loud_drops=0,margin=0,mopup=0,racers=0,"
+    "reserve=0,strike_gain=0,threats=0"
+)
 # The default: `threats` (E9), WK2's two duck-half orderings and WK3's duck mobility, which are
-# inert without a duck, and N4's mop-up term, inert where nobody is bare.
-DEFAULT = THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY | MOPUP
+# inert without a duck, N4's mop-up term, inert where nobody is bare, and T1's coin margin, unread
+# without income, T1c's coin reserve, unread without income, and T5b's race over every racer a
+# counted goal still needs, unread at `count` 1, and T6's strike gain, unread without a strike table.
+DEFAULT = (
+    THREATS | DUCK_REFUTE | DUCK_FRONT | DUCK_MOBILITY | MOPUP | MARGIN | RESERVE | RACERS
+    | STRIKE_GAIN
+)
 
 
 def _engine(name: str) -> Engine:
@@ -69,8 +81,8 @@ def test_the_default_is_the_cores_and_is_the_duels_winner() -> None:
     assert _core.DEFAULT_REPAIRS == DEFAULT_REPAIRS == DEFAULT
     plain = native_spec("minimax:nodes=150")
     spelled = native_spec(
-        "minimax:duck_front=1,duck_mobility=1,duck_refute=1,keep=0,loud_drops=0,mopup=1,"
-        "nodes=150,threats=1"
+        "minimax:duck_front=1,duck_mobility=1,duck_refute=1,keep=0,loud_drops=0,margin=1,mopup=1,"
+        "nodes=150,racers=1,reserve=1,strike_gain=1,threats=1"
     )
     assert plain is not None and plain == spelled
     assert plain[REPAIRS_SLOT] == DEFAULT
@@ -87,7 +99,7 @@ def test_every_repair_off_is_the_search_before_them() -> None:
 def test_each_option_is_its_own_bit() -> None:
     off = {
         "keep": 0, "threats": 0, "loud_drops": 0, "duck_refute": 0, "duck_front": 0,
-        "duck_mobility": 0, "mopup": 0,
+        "duck_mobility": 0, "mopup": 0, "margin": 0, "reserve": 0, "racers": 0, "strike_gain": 0,
     }
     assert repairs_of({**off, "keep": 1}) == KEEP_TABLE
     assert repairs_of({**off, "threats": 1}) == THREATS

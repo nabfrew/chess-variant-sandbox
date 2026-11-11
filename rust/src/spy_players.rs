@@ -251,7 +251,17 @@ impl Player {
         let mut best_move = ordered[0];
         for depth in 1..=self.spec.max_depth as i32 {
             match self.announce_root(game, announcer, &ordered, answers, depth) {
-                Err(Exhausted) => break,
+                Err(scored) => {
+                    // Q1158, as `deepen` since Q1105: a budget that ends inside the first
+                    // ply plays the best announcement it scored; deeper, the last finished
+                    // iteration's stands.
+                    if depth == 1 {
+                        if let Some(candidate) = scored {
+                            best_move = candidate;
+                        }
+                    }
+                    break;
+                }
                 Ok(candidate) => {
                     best_move = candidate;
                     self.stats.depth = depth as u32;
@@ -266,6 +276,10 @@ impl Player {
         best_move
     }
 
+    /// The announcer's best move at `depth`. When the budget runs out first, `Err` carries
+    /// the best among those already scored (`None` when the first ran out), as
+    /// `agents.rs::search_root`'s does: each scored row is searched under `(alpha, +inf)`
+    /// from the announcer's seat, so the best so far is exact and the rest bounded below it.
     fn announce_root(
         &mut self,
         game: &mut Game<'_>,
@@ -273,21 +287,23 @@ impl Player {
         moves: &[u32],
         answers: &[u32],
         depth: i32,
-    ) -> Result<u32, Exhausted> {
+    ) -> Result<u32, Option<u32>> {
         let mut arena = std::mem::take(&mut self.arena);
         arena.clear();
         arena.extend_from_slice(answers);
         let row = (0, arena.len());
         let mut alpha = f64::NEG_INFINITY;
         let mut best_move = moves[0];
-        let mut outcome = Ok(());
+        let mut scored = false;
+        let mut exhausted = false;
         for &a in moves {
             match self.answer_row(game, &mut arena, announcer, a, row, depth, 1, f64::NEG_INFINITY, -alpha) {
                 Err(Exhausted) => {
-                    outcome = Err(Exhausted);
+                    exhausted = true;
                     break;
                 }
                 Ok(value) => {
+                    scored = true;
                     if -value > alpha {
                         alpha = -value;
                         best_move = a;
@@ -297,7 +313,11 @@ impl Player {
         }
         arena.clear();
         self.arena = arena;
-        outcome.map(|()| best_move)
+        if exhausted {
+            Err(scored.then_some(best_move))
+        } else {
+            Ok(best_move)
+        }
     }
 
     /// `minimax:nodes=N` as the answerer (§3.2): the best reply to `announced`, the announced
@@ -320,7 +340,15 @@ impl Player {
         let mut best_move = ordered[0];
         for depth in 1..=self.spec.max_depth as i32 {
             match self.answer_root(game, 1 - answerer, announced, &ordered, depth) {
-                Err(Exhausted) => break,
+                Err(scored) => {
+                    // Q1158: the best answer scored when the first ply runs out.
+                    if depth == 1 {
+                        if let Some(candidate) = scored {
+                            best_move = candidate;
+                        }
+                    }
+                    break;
+                }
                 Ok(candidate) => {
                     best_move = candidate;
                     self.stats.depth = depth as u32;
@@ -335,6 +363,8 @@ impl Player {
         best_move
     }
 
+    /// The answerer's best reply to `announced` at `depth`; out of budget, `Err` carries
+    /// the best reply already scored, as `announce_root`'s does.
     fn answer_root(
         &mut self,
         game: &mut Game<'_>,
@@ -342,12 +372,13 @@ impl Player {
         announced: u32,
         moves: &[u32],
         depth: i32,
-    ) -> Result<u32, Exhausted> {
+    ) -> Result<u32, Option<u32>> {
         let mut arena = std::mem::take(&mut self.arena);
         arena.clear();
         let mut alpha = f64::NEG_INFINITY;
         let mut best_move = moves[0];
-        let mut outcome = Ok(());
+        let mut scored = false;
+        let mut exhausted = false;
         for &b in moves {
             let mover = game.side;
             game.make_round(seat_pair(announcer, announced, b));
@@ -361,10 +392,11 @@ impl Player {
             game.unmake_round();
             match child {
                 Err(Exhausted) => {
-                    outcome = Err(Exhausted);
+                    exhausted = true;
                     break;
                 }
                 Ok(score) => {
+                    scored = true;
                     if score > alpha {
                         alpha = score;
                         best_move = b;
@@ -373,7 +405,11 @@ impl Player {
             }
         }
         self.arena = arena;
-        outcome.map(|()| best_move)
+        if exhausted {
+            Err(scored.then_some(best_move))
+        } else {
+            Ok(best_move)
+        }
     }
 
     /// `greedy` as the announcer (§3.3): the one-round maximin over the whole matrix, every

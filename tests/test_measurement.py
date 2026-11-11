@@ -18,6 +18,7 @@ import ast
 import json
 import os
 import random
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -660,7 +661,21 @@ class TestTheFingerprintsPointAtSomething:
 # (`docs/reference/v13-calibration.md`). It was "0ffc7a9c233fb907" after Q1128.
 # **Moved 2026-11-08 by Q1167**: `tournament/analysis.py` (see `FROZEN_ANALYSIS`). It was
 # "c27f53099d8b7848" after Q1104.
-FROZEN_METRICS = "6bb1874a3e53ff1f"
+# **Moved 2026-11-08 by Q1169**: `agents/evaluation.py` (see `FROZEN_ANALYSIS`). It was
+# "6bb1874a3e53ff1f" after Q1167.
+# **Moved 2026-11-08 by Q1178**: `agents/evaluation.py` (see `FROZEN_ANALYSIS`). It was
+# "4e137c88461a3f3d" after Q1169.
+# **Moved 2026-11-08 by Q1184**: `metrics/waiting.py` (new: `forced_repetition` and its gate),
+# read by `metrics/components.py` and `metrics/index.py`. Runs without a waiting schedule score
+# as before (the measurement is absent and the gate unread); the library's replay (Q1180)
+# plays the schedule. It was "390e7656e53b844a" after Q1178.
+# **Moved 2026-11-08 by Q1181**: `agents/evaluation.py` (see `FROZEN_ANALYSIS`). It was
+# "8f36739c937c6d99" after Q1184.
+# **Moved 2026-11-09 by Q1173**: `agents/evaluation.py` (see `FROZEN_ANALYSIS`). It was
+# "8f1d93d6fc5462c9" after Q1181.
+# **Moved 2026-11-09 by Q1173b**: `agents/evaluation.py` (see `FROZEN_ANALYSIS`). It was
+# "2c62c6fc8a59730b" after Q1173.
+FROZEN_METRICS = "22cb2f9c558aec1b"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -1069,7 +1084,31 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # a pass reads differently (drover, tessabi, `archive/no-zugzwang`); every other `analysis.json`
 # is the same bytes. Q1167 re-analysed those three; the rest re-stamp on the refresher's
 # re-analysis. It was "3d0d6621922c3e1c" after Q1104.
-FROZEN_ANALYSIS = "a33aea600f785471"
+# **Moved 2026-11-08 by Q1169** (T1, `docs/plan-player-weaknesses.md`): `agents/evaluation.py` gains
+# `coin_margins` and `Evaluator.margin`, read only by a minimax player under the `margin` bit, never
+# by the probe's ruler (`margin` defaults off on the evaluator), so no `analysis.json` reads
+# differently; the core's build moved with it, and the library replays on the refresher. It was
+# "a33aea600f785471" after Q1167.
+# **Moved 2026-11-08 by Q1178** (T1b, `docs/plan-player-weaknesses.md`): `agents/evaluation.py` gains
+# `coin_scarcity`, `bought_rate` (split out of `coin_value`, the same sums in the same order) and
+# `Evaluator.scarcity`, read only by a minimax player under the `scarcity` bit, which lost its duel
+# and is off; never by the probe's ruler, so no `analysis.json` reads differently. The core's build
+# moved with it; Q1180's one replay re-stamps the library. It was "5cf1724cb809c1cf" after Q1169.
+# **Moved 2026-11-08 by Q1181** (T1c, `docs/plan-player-weaknesses.md`): `agents/evaluation.py` gains
+# `coin_reserves`, `_dearest_price` (split out of `coin_margins`, the same max) and
+# `Evaluator.reserve`, read only by a minimax player under the `reserve` bit; never by the probe's
+# ruler (`reserve` defaults off on the evaluator), so no `analysis.json` reads differently. The
+# core's build moved with it; Q1180's one replay re-stamps the library. It was "99d11cbf15df2684"
+# after Q1178.
+# **Moved 2026-11-09 by Q1173** (T5, `docs/plan-player-weaknesses.md`): `agents/evaluation.py` gains
+# `Evaluator.racers` and `_racers_to_goal`, read only by a minimax player under the `racers` bit
+# and only where `reach.count` is above 1; never by the probe's ruler (`racers` defaults off on the
+# evaluator), so no `analysis.json` reads differently. It was "085654337e4876ee" after Q1181.
+# **Moved 2026-11-09 by Q1173b** (T5, same plan): the `racers` race rescaled to each side's own
+# `k x goal_diameter` (`_per_racer`), with `Evaluator.racers_fixed` keeping Q1173's scale as the
+# control; still read only under the `racers` bit, never by the probe's ruler, so no
+# `analysis.json` reads differently. It was "67a8d963d3adcd52" after Q1173.
+FROZEN_ANALYSIS = "85400362f0da30c4"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:
@@ -2371,31 +2410,57 @@ class TestTheTablesCacheOnDisk:
         assert compiles.calls == 0
 
 
-def _ast_module(dotted: str) -> Path | None:
+def _ast_module(dotted: str, known: dict[str, Path | None] | None = None) -> Path | None:
     """The file a dotted name imports, spelled exactly, or ``None`` for a name in a module.
 
     The independent half of `TestTheImportClosure`: `os.listdir`, not `measurement`'s
-    listing, so the two share no code.
+    listing, so the two share no code. ``known`` remembers each name's answer for one
+    closure: the package's files name the same few hundred modules thousands of times, and
+    listing and resolving them afresh each time was most of this oracle's 3.5 s (Q1157).
     """
+    if known is not None and dotted in known:
+        return known[dotted]
     *parents, last = dotted.split(".")
     folder = measurement.ROOT.joinpath(*parents)
     try:
         names = set(os.listdir(folder))
     except OSError:
-        return None
+        names = set()
+    found = None
     if f"{last}.py" in names:
-        return (folder / f"{last}.py").resolve()
-    if last in names and "__init__.py" in os.listdir(folder / last):
-        return (folder / last / "__init__.py").resolve()
-    return None
+        found = (folder / f"{last}.py").resolve()
+    elif last in names and "__init__.py" in os.listdir(folder / last):
+        found = (folder / last / "__init__.py").resolve()
+    if known is not None:
+        known[dotted] = found
+    return found
 
 
-def _ast_imports(path: Path) -> set[Path]:
+_BLOCKS = ("body", "orelse", "finalbody", "handlers", "cases")
+
+
+def _statements(nodes: list[ast.AST]) -> Iterator[ast.AST]:
+    """Every statement in ``nodes`` and the blocks nested in them, deferred imports included.
+
+    An import is a statement, so it sits only in a statement list: a module's, or the
+    ``body``/``orelse``/``finalbody`` of a compound statement, an ``except`` handler's or a
+    ``match`` case's. Expressions hold none, and skipping them is most of `ast.walk`'s nodes
+    (Q1157).
+    """
+    for node in nodes:
+        yield node
+        for block in _BLOCKS:
+            inner = getattr(node, block, None)
+            if isinstance(inner, list):
+                yield from _statements(inner)
+
+
+def _ast_imports(path: Path, known: dict[str, Path | None] | None = None) -> set[Path]:
     """Every package file one source's import statements reach, read off its syntax tree,
     the parent packages each import runs included."""
     package = path.parent.relative_to(measurement.ROOT.resolve()).parts
     found: set[Path] = set()
-    for node in ast.walk(ast.parse(path.read_bytes())):
+    for node in _statements(ast.parse(path.read_bytes()).body):
         if isinstance(node, ast.Import):
             names = [alias.name for alias in node.names]
         elif isinstance(node, ast.ImportFrom):
@@ -2411,13 +2476,14 @@ def _ast_imports(path: Path) -> set[Path]:
             if parts[0] != "chess_variant_sandbox":
                 continue
             for end in range(1, len(parts) + 1):
-                target = _ast_module(".".join(parts[:end]))
+                target = _ast_module(".".join(parts[:end]), known)
                 if target is not None:
                     found.add(target)
     return found
 
 
 def _ast_closure(entries: tuple[str, ...]) -> set[Path]:
+    known: dict[str, Path | None] = {}
     queue = []
     for entry in entries:
         path = (measurement.ROOT / entry).resolve()
@@ -2426,14 +2492,14 @@ def _ast_closure(entries: tuple[str, ...]) -> set[Path]:
         queue += [
             target
             for end in range(1, len(parts) + 1)
-            if (target := _ast_module(".".join(parts[:end]))) is not None
+            if (target := _ast_module(".".join(parts[:end]), known)) is not None
         ]
     found: set[Path] = set()
     while queue:
         path = queue.pop()
         if path not in found:
             found.add(path)
-            queue += _ast_imports(path)
+            queue += _ast_imports(path, known)
     return found
 
 
@@ -2488,6 +2554,26 @@ class TestTheImportClosure:
             "e.py", "f.py", "g/__init__.py", "g/seven.py", "h.py", "nine.py",
             "pkg/__init__.py", "pkg/inner.py", "eleven.py",
         }
+
+    def test_an_import_in_any_block_is_followed(self, tmp_path, monkeypatch) -> None:
+        """Both walks find an import nested in every kind of block (`_statements`, Q1157)."""
+        found = self._tree(tmp_path, monkeypatch, {
+            "__init__.py": "",
+            "entry.py": (
+                "try:\n    from chess_variant_sandbox import a\n"
+                "except ImportError:\n    from chess_variant_sandbox import b\n"
+                "else:\n    from chess_variant_sandbox import c\n"
+                "finally:\n    from chess_variant_sandbox import d\n"
+                "if x:\n    pass\nelif y:\n    from chess_variant_sandbox import e\n"
+                "class K:\n    def m(self):\n"
+                "        with o:\n            from chess_variant_sandbox import f\n"
+                "for i in z:\n    pass\nelse:\n    from chess_variant_sandbox import g\n"
+                "match q:\n    case 1:\n        from chess_variant_sandbox import h\n"
+                "async def n():\n    async with o:\n        from chess_variant_sandbox import i\n"
+            ),
+            **{f"{name}.py": "" for name in "abcdefghij"},
+        })
+        assert found == {"__init__.py", "entry.py", *(f"{name}.py" for name in "abcdefghi")}
 
     def test_a_name_is_a_module_only_spelled_exactly(self, tmp_path, monkeypatch) -> None:
         """`Path.is_file` is case-blind on Windows: `import Grid` (a class) is no `grid.py`."""

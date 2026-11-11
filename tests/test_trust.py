@@ -22,7 +22,7 @@ import pytest
 from test_corpus import SPEC
 
 from chess_variant_sandbox import corpus, measurement, premise, trust
-from chess_variant_sandbox.agents.nets import INPUTS_VERSION
+from chess_variant_sandbox.agents.nets import INPUTS_VERSION, READ_VERSIONS
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
 from chess_variant_sandbox.spec import spec_hash
 
@@ -366,9 +366,19 @@ class TestATrainedPlayer:
         _net(world)
         assert _read(world).item(trust.NET).reading == trust.FINDS_MORE
 
-    def test_a_net_on_an_older_layout_is_a_stale_finding_and_still_questions(self, world) -> None:
+    def test_a_net_on_an_older_layout_the_build_still_reads_is_current(self, world) -> None:
+        older = sorted(READ_VERSIONS - {INPUTS_VERSION})
+        assert older, "no older layout is read"
         _measured(world)
-        _net(world, inputs_version=INPUTS_VERSION - 1)
+        _net(world, inputs_version=older[0])
+        assert _read(world).item(trust.NET).state == trust.CURRENT
+
+    def test_a_net_on_a_layout_the_build_does_not_read_is_a_stale_finding_and_still_questions(
+        self, world
+    ) -> None:
+        unread = min(READ_VERSIONS) - 1
+        _measured(world)
+        _net(world, inputs_version=unread)
         read = _read(world)
         assert read.item(trust.NET).state == trust.STALE
         assert read.level == trust.QUESTIONED

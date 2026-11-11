@@ -784,6 +784,7 @@ RULESET_PATHS = sorted(
 )
 
 
+@pytest.mark.new_game
 @pytest.mark.parametrize("path", RULESET_PATHS, ids=lambda p: p.stem)
 def test_every_rule_a_player_is_charged_for_is_a_rule_they_are_told(path) -> None:
     """The invariant that would have caught two schema bumps' worth of silence.
@@ -846,6 +847,7 @@ STATING_PATHS = [
 ]
 
 
+@pytest.mark.new_game
 @pytest.mark.parametrize("path", STATING_PATHS, ids=lambda p: p.stem)
 def test_every_piece_property_is_stated(path) -> None:
     """The same check one level down, where `captures` and `region` went missing."""
@@ -1553,6 +1555,7 @@ _LIBRARY = sorted(
 
 
 class TestTheContractAdmitsWhatTheValidatorAdmits:
+    @pytest.mark.new_game
     @pytest.mark.parametrize("path", _LIBRARY, ids=lambda p: f"{p.parent.name}/{p.stem}")
     def test_every_library_spec_satisfies_the_schema(self, path: Path) -> None:
         spec = json.loads(path.read_text(encoding="utf-8"))

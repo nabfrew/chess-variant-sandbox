@@ -92,7 +92,7 @@ async function showGame(hash) {
           <div id="keepState">${measuringHtml(game)}</div>
           ${provisionalHtml(game)}
           ${scoreHtml(game.score, game.scoreGuide, game.band, game.trust)}
-          ${wasHtml(game.history)}
+          ${earlierHtml(game)}
         </div>`, true)}
         ${whereHtml(game)}
         ${verdictHtml(game.verdict)}
@@ -134,6 +134,7 @@ async function showGame(hash) {
 
   document.getElementById('back').onclick = () => { pending('Loading the library…'); go('#/'); };
   document.getElementById('fork').onclick = () => go('#/design/' + hash);
+  wireEarlier(game);
   const buildBot = document.getElementById('buildBot');
   if (buildBot) buildBot.onclick = () => go('#/opponent/' + hash);
   // A retired game has no play panel, so there are no three buttons to wire.
@@ -362,7 +363,89 @@ function endingsHtml(sheet) {
 // reads each earlier score as a *was* line under the trust line's *more* (`trustHtml`;
 // §5 Q1, answered A on 2026-10-03).
 
-function wasHtml(lines) {
+// SH4 (`docs/plan-score-history.md` §2.1): the fold draws the game's own history above its
+// list (`history.js` `gameHistorySvg`) and links to the whole library's. The maintainer and
+// an admin are sent the ledger (`history`) and the chart draws from it; a visitor is sent
+// none of it and `for_visitors`' lines instead (`earlier`: value, run count, date and
+// version, only where the players changed), and the chart draws from those alone.
+function earlierLines(game) {
+  const ledger = Array.isArray(game.history) ? game.history : [];
+  if (ledger.length) return ledger;
+  return Array.isArray(game.earlier) ? game.earlier : [];
+}
+
+function earlierHtml(game) {
+  const lines = earlierLines(game);
+  return lines === game.history ? wasHtml(lines, game) : visitorsWasHtml(lines, game);
+}
+
+// The fold is closed when the page is drawn, so the chart is drawn again at its own width
+// when it opens, from the same lines.
+function wireEarlier(game) {
+  const fold = document.getElementById('earlierScores');
+  const plot = fold && fold.querySelector('.gameHistory');
+  if (!plot) return;
+  fold.addEventListener('toggle', () => {
+    if (!fold.open || !plot.clientWidth) return;
+    plot.innerHTML = gameHistorySvg(
+      gameHistorySteps(earlierLines(game), earlierNow(game)), plot.clientWidth);
+  });
+}
+
+// The game's present score as the chart's end point reads it: only a current one is drawn.
+function earlierNow(game) {
+  return { status: game.status, index: game.index, measured: game.measuredAt,
+    version: game.weights, viable: game.viable };
+}
+
+function earlierChartHtml(lines, game) {
+  const now = earlierNow(game);
+  const steps = gameHistorySteps(lines, now);
+  const width = typeof window !== 'undefined' && window.innerWidth
+    ? Math.min(560, Math.max(280, window.innerWidth - 64)) : 480;
+  const svg = gameHistorySvg(steps, width);
+  if (!svg) return '';
+  const versions = new Set(steps.points.concat(steps.end ? [steps.end] : [])
+    .map(point => point.version));
+  const across = versions.size > 1
+    ? ` A dashed line is a new version of the scoring rules${info('weightsVersion')}: each
+      sets its own scale, so the line is not joined across it.` : '';
+  const hollow = steps.points.some(point => point.refused)
+    ? ` A hollow point was refused${info('refusedScore')}.` : '';
+  const present = steps.end ? ' The last dot is the present score.'
+    : isProvisional(now) ? ' The present score is provisional, worked out before the scorer'
+      + ' last changed, and is not drawn until it is measured again.'
+    : '';
+  return `<div class="gameHistory u-mt-6">${svg}</div>
+    <p class="muted small u-mt-6">Each step is a stored score of this game, from the day it
+      was measured until the next; a dot marks where it changed.${across}${hollow}${
+      present}</p>`;
+}
+
+function earlierLinkHtml() {
+  return `<p class="small u-mt-6"><a href="/score-history">the whole library's history</a></p>`;
+}
+
+// A visitor's fold: the chart and one line a score, from `for_visitors`' lines only.
+function visitorsWasHtml(lines, game) {
+  if (!lines.length) return '';
+  const said = lines.map(was => {
+    const runs = was.runs ? `${countWord(was.runs)} run${was.runs === 1 ? '' : 's'}` : '';
+    const version = was.weights_version ? rulesVersion(was.weights_version) : '';
+    const rests = [runs, version].filter(Boolean).join(', ');
+    const when = was.measured ? `, measured ${historyDay(was.measured, true)}` : '';
+    return `<li>Was ${esc(Number(was.index).toFixed(3))}${rests ? ` (${esc(rests)})` : ''}${
+      esc(when)} by the earlier computer players.</li>`;
+  }).join('');
+  return `<details class="was u-mt-10" id="earlierScores">
+    <summary class="muted small">earlier scores (${lines.length})</summary>
+    ${earlierChartHtml(lines, game)}
+    <ul class="rules muted small u-mt-6">${said}</ul>
+    ${earlierLinkHtml()}
+  </details>`;
+}
+
+function wasHtml(lines, game) {
   if (!Array.isArray(lines) || !lines.length) return '';
   const said = lines.map(was => {
     const number = was.index === null || was.index === undefined
@@ -377,9 +460,11 @@ function wasHtml(lines) {
     return `<li>Was ${esc(number)}${esc(runs)}${esc(when)}${esc(how)}${esc(replaced)}${
       esc(why)}.${esc(held)}</li>`;
   }).join('');
-  return `<details class="was u-mt-10">
+  return `<details class="was u-mt-10" id="earlierScores">
     <summary class="muted small">earlier scores (${lines.length})</summary>
+    ${game ? earlierChartHtml(lines, game) : ''}
     <ul class="rules muted small u-mt-6">${said}</ul>
+    ${earlierLinkHtml()}
   </details>`;
 }
 

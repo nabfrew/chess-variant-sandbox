@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import corpus_pins
 import hex_geometry as oracle
 import pytest
 from retired_specs import hex_glinski_promoting
@@ -181,12 +182,14 @@ class TestAbsentSquares:
     def test_empty_on_anything_else(self, board: Any) -> None:
         assert absent_squares(board) == frozenset()
 
+    @pytest.mark.new_game
     def test_every_committed_board_has_none(self) -> None:
         for path in LIBRARY:
             assert absent_squares(_load(path)["board"]) == frozenset(), path.name
 
 
 class TestWrapStated:
+    @pytest.mark.new_game
     @pytest.mark.parametrize("path", LIBRARY, ids=_key)
     def test_every_committed_spec_reads_as_before(self, path: Path) -> None:
         spec = _load(path)
@@ -351,6 +354,10 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/leapfrog": "533fad75aaeecd45",  # TS4 (Q1134), 2026-11-07
     "rulesets/tessabi": "7b92c066aa2bdb5f",  # TS5 (Q1135), 2026-11-07: Tessabi, from tessabi.com
     "archive/no-zugzwang": "cca02b4d69cf1272",  # H5 (Q1129), 2026-11-08
+    "rulesets/hunger": "e227d5e11e3fe866",  # Q1159, 2026-11-08: Hunger Chess
+    "archive/hunger-chess-with-cheap-promotion": "e227d5e11e3fe866",  # Q1179, 2026-11-08: Hunger's arm
+    "archive/hunger-chess-with-rich-forage": "e227d5e11e3fe866",  # Q1179, 2026-11-08: Hunger's arm
+    "archive/hunger-chess-where-pawns-forage": "43c6a5d5bb12fc6f",  # Q1179, 2026-11-08: Hunger's arm
     "rulesets/rock-paper-shove": "43142f6be2e63c9b",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-a-closed-edge": "019f4704a5c0d78c",  # Q1074bs, 2026-10-31
     "archive/los-alamos-with-shove-or-take": "3510f2fd444cf5f9",  # Q1074bs, 2026-10-31
@@ -485,15 +492,34 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
 }
 
 
-class TestFeaturesAreUnchanged:
-    def test_the_freeze_covers_the_library(self) -> None:
-        assert set(_FEATURES_BEFORE_THE_RESOLVER) == {_key(path) for path in LIBRARY}
+def frozen_digest(path: Path) -> str:
+    """The digest a row of the freeze holds: the features the resolver predates."""
+    measured = {
+        name: value for name, value in features(_load(path)).items()
+        if name not in _ADDED_SINCE
+    }
+    return hashlib.sha256(json.dumps(measured, sort_keys=True).encode()).hexdigest()[:16]
 
+
+# The rows above are written by hand and carry their history; a game added since Q1154 gets
+# its row from `uv run python tests/corpus_pins.py`, in `tests/corpus_pins.json`.
+_GENERATED_FEATURES = corpus_pins.load()["features"]
+_FEATURES = {**_FEATURES_BEFORE_THE_RESOLVER, **_GENERATED_FEATURES}
+
+
+class TestFeaturesAreUnchanged:
+    @pytest.mark.new_game
+    def test_the_freeze_covers_the_library(self) -> None:
+        library = {_key(path) for path in LIBRARY}
+        assert set(_FEATURES) == library, corpus_pins.coverage_message(
+            "feature", set(_FEATURES), library
+        )
+
+    def test_a_generated_row_never_shadows_a_written_one(self) -> None:
+        assert not set(_GENERATED_FEATURES) & set(_FEATURES_BEFORE_THE_RESOLVER)
+
+    @pytest.mark.new_game
     @pytest.mark.parametrize("path", LIBRARY, ids=_key)
     def test_every_committed_spec(self, path: Path) -> None:
-        measured = {
-            name: value for name, value in features(_load(path)).items()
-            if name not in _ADDED_SINCE
-        }
-        digest = hashlib.sha256(json.dumps(measured, sort_keys=True).encode()).hexdigest()
-        assert digest[:16] == _FEATURES_BEFORE_THE_RESOLVER[_key(path)]
+        assert _key(path) in _FEATURES, f"no row: run `{corpus_pins.COMMAND}`"
+        assert frozen_digest(path) == _FEATURES[_key(path)]

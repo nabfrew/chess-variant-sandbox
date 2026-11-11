@@ -1151,10 +1151,12 @@ class TestASupplyThatNeverRunsOutIsNotMaterial:
             state.board, mover
         ), "the board alone, which the term used to read, still pays for it"
 
+    @pytest.mark.new_game
     def test_the_walk_below_reads_the_whole_corpus(self) -> None:
         assert len(CORPUS_PATHS) > 50, "the corpus moved out from under this test"
 
     # One test per spec (Q749): the walk was one test of 3.3 s in the gate.
+    @pytest.mark.new_game
     @pytest.mark.parametrize("path", CORPUS_PATHS, ids=lambda path: path.stem)
     def test_the_price_moves_only_where_a_spec_says_unlimited(self, path: Path) -> None:
         """Inertness, over every committed and archived spec rather than by argument.
@@ -1222,11 +1224,16 @@ class TestTheGoalWeightIsStatedInPiecesThatAreMaterial:
         )
         assert diluted * GOAL_PIECES == pytest.approx(plain_eval.goal_weight * 5 / 6)
 
+    @pytest.mark.new_game
     def test_the_corpus_is_the_one_the_count_below_reads(self) -> None:
-        assert len(CORPUS_PATHS) == 127, "the corpus moved out from under this test"  # 127 since H5's no zugzwang; 126 since TS5's tessabi; 125 since TS4's leapfrog; 124 since TS3's drover; 123 since TS2's boulder; 122 since TS1's crossings; 121 since SR3s1's runners; 120 since Q1079's duck chess; 119 since Q1074bs's rock paper shove and four push previews; 114 since Q1074bg2's dohyo; 113 since Q1074bg1's brink; 112 since TC10b's free companies; 111 since TC8's crowd; 110 since Q1059b's seirawan; 109 since Q1024's chess with preaching bishops; 108 since Q1023's chess with galloping knights; 107 since LPD's short sweeping bishop chess; 106 since N9's herd; 105 since N7's hydra; 104 since N6's shepherds duck; 103 since I3's anchors; 102 since A2's horse archers; 101 since T3's circling queen; 100 since T2's crooked bishops; 99 since Q1007e's chess with nightriders; 98 since Q1005 retired six previews; 104 since Q999d's three sight showcases; 101 since Q999b's opposite colours; 100 since Q983d's three rest showcases; 97 since Q994p's two blind-trial designs; 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more; 94 since Q943c's three speed showcases; 95 since Q798's circe-mortal-diagonals
+        # Q1154: a literal count of the corpus stood here, edited by every game added or
+        # retired (131 at the end; `docs/reference/corpus-pins.md`). What it guarded is that the
+        # walk reads both directories, which is said directly instead.
+        assert {path.parent.name for path in CORPUS_PATHS} == {"rulesets", "archive"}, "the corpus moved out from under this test"
 
     # One test per spec (Q749): the walk was one test of 2.9 s in the gate. `stones` is
     # the only spec with an inexhaustible type, asked of each spec by name.
+    @pytest.mark.new_game
     @pytest.mark.parametrize("path", CORPUS_PATHS, ids=lambda path: path.stem)
     def test_the_unit_is_untouched_wherever_nothing_is_endless(self, path: Path) -> None:
         """Inert on 69 of 70, and on the stone game for a reason rather than by luck.
@@ -1496,14 +1503,22 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
         "three-stones",
     )
 
+    @pytest.mark.new_game
     def test_the_three_kinds_are_counted_on_the_whole_corpus(self) -> None:
-        assert len(CORPUS_PATHS) == 127, "the corpus moved out from under this test"  # 127 since H5's no zugzwang; 126 since TS5's tessabi; 125 since TS4's leapfrog; 124 since TS3's drover; 123 since TS2's boulder; 122 since TS1's crossings; 121 since SR3s1's runners; 120 since Q1079's duck chess; 119 since Q1074bs's rock paper shove and four push previews; 114 since Q1074bg2's dohyo; 113 since Q1074bg1's brink; 112 since TC10b's free companies; 111 since TC8's crowd; 110 since Q1059b's seirawan; 109 since Q1024's chess with preaching bishops; 108 since Q1023's chess with galloping knights; 107 since LPD's short sweeping bishop chess; 106 since N9's herd; 105 since N7's hydra; 104 since N6's shepherds duck; 103 since I3's anchors; 102 since A2's horse archers; 101 since T3's circling queen; 100 since T2's crooked bishops; 99 since Q1007e's chess with nightriders; 98 since Q1005 retired six previews; 104 since Q999d's three sight showcases; 101 since Q999b's opposite colours; 100 since Q983d's three rest showcases; 97 since Q994p's two blind-trial designs; 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more; 94 since Q943c's three speed showcases; 95 since Q798's circe-mortal-diagonals
+        # Q1154: a literal count of the corpus stood here, edited by every game added or
+        # retired (131 at the end; `docs/reference/corpus-pins.md`). What it guarded is that the
+        # walk reads both directories, which is said directly instead.
+        assert {path.parent.name for path in CORPUS_PATHS} == {"rulesets", "archive"}, "the corpus moved out from under this test"
         stems = {path.stem for path in CORPUS_PATHS}
         assert set(self.INERT) | set(self.MOVED) <= stems
-        assert len(stems) - len(self.INERT) - len(self.MOVED) == 115  # 114 until H5's no zugzwang, which holds no hand; 113 until TS5's tessabi, which holds no hand; 112 until TS4's leapfrog, which holds no hand; 111 until TS3's drover, which holds no hand; 110 until TS2's boulder, which holds no hand; 109 until TS1's crossings, which holds no hand; 108 until SR3s1's runners, which holds no hand; 107 until Q1079's duck chess, which holds no hand; 102 until Q1074bs's rock paper shove and four push previews, which hold no hand; 101 until Q1074bg2's dohyo, which holds no hand; 100 until Q1074bg1's brink, which holds no hand; 99 until TC10b's free companies, which holds no hand; 98 until TC8's crowd, which holds no hand; 97 until Q1024's chess with preaching bishops, which holds no hand; 96 until Q1023's chess with galloping knights, which holds no hand; 95 until LPD's short sweeping bishop chess, which holds no hand; 94 until N9's herd, which holds no hand; 93 until N7's hydra, which holds no hand; 92 until N6's shepherds duck, which holds no hand; 91 until I3's anchors, which holds no hand; 90 until A2's horse archers, which holds no hand; 89 until T3's circling queen, which holds no hand; 88 until T2's crooked bishops, which holds no hand; 87 until Q1007e's chess with nightriders, which holds no hand; 93 until Q1005 retired six previews, which held no hand; 90 until Q999d's three sight showcases, which hold no hand; 89 until Q999b's opposite colours, which holds no hand; 86 until Q983d's three rest showcases, which hold no hand; 84 until Q994p's the golem well and kraken ford, which hold no hand; 83 until Q798's circe-mortal-diagonals, which holds no hand; 80 until Q943c's three speed showcases, which hold no hand; 81 until Q962c retired gardner in rounds resting, which held no hand; 87 until Q962b retired six previews, which held no hand; 73 until Q844b's three portal showcases; 76 until Q918e's four round showcases, which hold no hand; 80 until Q942c's four, which hold none either; 84 until Q935f's two spy showcases, which hold none; 86 until Q936s's riders and leapers, which holds none
+        # Q1154: the no-hand count (119 at the end) only restated the corpus's size less the
+        # two lists, and moved with every game; the per-spec test below holds each game to
+        # its kind, so a game that holds a hand and is in neither list fails there.
+        assert len(stems) > len(self.INERT) + len(self.MOVED)
 
     # One test per spec (Q749): the walk was one test, 4.4 s in the gate once the two
     # walks above stopped compiling the corpus first in the same worker.
+    @pytest.mark.new_game
     @pytest.mark.parametrize("path", CORPUS_PATHS, ids=lambda path: path.stem)
     def test_the_term_is_inert_on_everything_that_holds_nothing(self, path: Path) -> None:
         """The blast radius, over the corpus rather than by argument: 64, 1 and 5.

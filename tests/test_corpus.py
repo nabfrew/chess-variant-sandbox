@@ -318,6 +318,7 @@ def _corpus_names() -> dict[str, str]:
     }
 
 
+@pytest.mark.new_game
 class TestTheCorpusNames:
     """Names are keys as well as labels, so a name out of line is a failure with a path."""
 

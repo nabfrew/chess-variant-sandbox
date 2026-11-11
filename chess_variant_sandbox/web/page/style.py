@@ -1862,6 +1862,67 @@ RULES = """
                     overflow-wrap: anywhere; }
   .newsEntry hr { border: none; border-top: 1px solid var(--line); margin: 12px 0; }
 
+  /* --- how the scores have moved (SH3, docs/plan-score-history.md §2.4): one column of
+     cards sharing one pick state. A pick's hue is a class (`historyPick1` to 3) setting
+     `--sw`, which its chip, its legend key and its table row read; the lines themselves
+     are drawn by `history.js` in the pick tokens and the trace token. --- */
+  .history { max-width: 1080px; }
+  .history > h2 { font-size: 28px; line-height: 34px; margin: 0 0 6px; }
+  .historyLead p { max-width: 72ch; margin: 0 0 8px; }
+  .historyCard { padding: 14px 18px 12px; margin-top: 16px; min-width: 0; }
+  .historyHead { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline;
+                 justify-content: space-between; }
+  .historyHead h3 { margin: 0; font-size: 16px; text-transform: none; letter-spacing: 0;
+                    color: var(--ink); }
+  .historyCard > p { max-width: 76ch; margin: 4px 0 8px; }
+  .historyLegend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px;
+                   color: var(--muted); }
+  .historyKey { --sw: var(--muted); }
+  .historyKey::before { content: ""; display: inline-block; width: 10px; height: 10px;
+                        border-radius: 50%; margin-right: 6px; vertical-align: -1px;
+                        background: var(--sw); }
+  .historyTipRow .historyKey:not([class*="historyPick"])::before { display: none; }
+  .historyKey.historyTrace::before { background: var(--trace); }
+  .historyKey.historyHollow::before { background: transparent; width: 6px; height: 6px;
+                                      border: 2px solid var(--muted); }
+  .historyKey.historyBand::before { background: var(--pick-1); opacity: .3; }
+  .historyPick1 { --sw: var(--pick-1); }
+  .historyPick2 { --sw: var(--pick-2); }
+  .historyPick3 { --sw: var(--pick-3); }
+  .historyGroup { margin-top: 10px; }
+  .historyGroup h4, .historyGroup summary { font-size: 12px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 6px; }
+  .historyGroup summary { cursor: pointer; }
+  .historyGroup .chips { margin-top: 6px; }
+  .historyChip[aria-pressed="true"] { border-color: var(--sw); color: var(--ink);
+                                      box-shadow: inset 0 0 0 1px var(--sw); }
+  .historyChip[aria-pressed="true"]::before { content: ""; display: inline-block; width: 9px;
+    height: 9px; border-radius: 50%; background: var(--sw); margin-right: 6px; }
+  .historyPickVersion { display: inline-flex; gap: 6px; align-items: center; margin: 0 0 6px; }
+  .historyPlot { position: relative; width: 100%; }
+  .historySvg { display: block; width: 100%; height: auto; overflow: visible; }
+  .historySvg text { font-family: var(--f-body); }
+  /* SH4: a game's own chart in its *earlier scores* fold (`history.js` `gameHistorySvg`). */
+  .gameHistory { max-width: 560px; }
+  .historyFigures { font-variant-numeric: tabular-nums; }
+  .historyTip { position: absolute; pointer-events: none; z-index: 2; min-width: 160px;
+                background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+                border-radius: 6px; padding: 7px 10px; font-size: 12.5px; line-height: 1.4;
+                box-shadow: var(--shadow-pop); }
+  .historyTipRow { display: flex; justify-content: space-between; gap: 14px; }
+  .historyTable { overflow-x: auto; max-width: 100%; }
+  .historyTable table { border-collapse: collapse; font-size: 13px; width: 100%; }
+  .historyTable th, .historyTable td { padding: 4px 8px; text-align: right;
+    border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .historyTable th { color: var(--muted); font-weight: 600; }
+  .historyTable th small { display: block; font-weight: 400; font-size: 11px; }
+  .historyTable th:first-child, .historyTable td:first-child { text-align: left;
+    position: sticky; left: 0; background: var(--panel); }
+  .historyTable tr[class*="historyPick"] td:first-child { box-shadow: inset 3px 0 0 var(--sw); }
+  .historyTable td.historyRefused { text-decoration: underline dotted;
+                                    text-underline-offset: 3px; color: var(--muted); }
+  .historyNote p { max-width: 76ch; margin: 8px 0 0; }
+
   /* --- tabs, on the board page --- */
   .tabs { margin-bottom: 10px; }
   .tabpane { max-height: 58vh; overflow-y: auto; }"""

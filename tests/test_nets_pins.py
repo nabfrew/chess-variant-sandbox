@@ -111,8 +111,9 @@ def test_a_random_net_is_this_net() -> None:
     from chess_variant_sandbox.agents.nets import random_net
 
     blob = random_net(2, 3, accumulator=2, hidden1=2, hidden2=3)
+    # Layout 2's header since Q1172 (layout 1's bytes hashed to e7dc04b1ca7b...).
     assert hashlib.sha256(blob).hexdigest() == (
-        "e7dc04b1ca7b5f33cd292204e46bceece700b1178ec43003133feb04dc11b5d4"
+        "082756caad1b8f20e239e713baf7e1cde2d380fa4367d9d5a993e413c9f4b252"
     )
 
 
@@ -170,8 +171,9 @@ def test_a_random_net_reaches_the_top_of_its_output_bias() -> None:
     blob = random_net(1, 3767, accumulator=1, hidden1=1, hidden2=1)
     net = Net.parse(blob)
     assert (net.heads[0].b3, net.heads[1].b3) == (-3973, 5000)
+    # Layout 2's header since Q1172 (layout 1's bytes hashed to c26b9dedb5fc...).
     assert hashlib.sha256(blob).hexdigest() == (
-        "c26b9dedb5fc22f015864447bebecb291e8954859a9894eef9f3738385062157"
+        "ae49011a9860f909ed375e4c7d937c7e316652bee04bdaf3a29a49a131474f74"
     )
 
 
@@ -245,8 +247,9 @@ def test_a_random_net_reaches_the_top_of_its_accumulator_bias() -> None:
     blob = random_net(1, 158, accumulator=1, hidden1=1, hidden2=1)
     net = Net.parse(blob)
     assert (net.w0, net.b0) == ((19,), (100,))
+    # Layout 2's header since Q1172 (layout 1's bytes hashed to c96930355017...).
     assert hashlib.sha256(blob).hexdigest() == (
-        "c9693035501774516244699dfac8d1d43e8a88a9176885c06942e881b760cb9a"
+        "5d626127c76dcf00c79af558fe66839b138f327b566f8f547dc1c0dce992aead"
     )
 
 

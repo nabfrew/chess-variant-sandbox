@@ -439,8 +439,8 @@ AGENT_ARMS: dict[str, tuple[tuple[Any, ...], str]] = {
         r"^the net store does not start with the CVSNET01 magic$",
     ),
     "net-layout": (
-        _agent(net=_store(version=2)),
-        r"^the net store was written for input layout 2 and this core reads layout 1; it is",
+        _agent(net=_store(version=3)),
+        r"^the net store was written for input layout 3 and this core reads layouts 1 to 2; it",
     ),
     "net-accumulator-none": (
         _agent(net=_store(accumulator=0)),
