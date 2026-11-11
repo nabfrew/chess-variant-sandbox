@@ -32,8 +32,11 @@ A trained computer player should get stronger when it is given more time to thin
 not: on Three-check, Cannonade, Dohyo and Jeson Mor the trained player sometimes lost to a quicker copy of itself.
 Those four games are played and measured by the built-in players again. Three-check is measured once more, at the
 score it had before, and so are Cannonade and Dohyo. Jeson Mor is now read as ending too quickly to count as viable.
-On Los Alamos with crushing pillars the low score turned out to come from copies of one trained player agreeing with
-each other, not from the game; how such games should be measured is being worked out.
+On Los Alamos with crushing pillars, copies of the trained player draw almost every game against each other, and
+that is what marks the game as not viable. Against a different strong computer player about four games in ten end in
+checkmate, most of them won by the trained player. So part of the low score is about the players. How much is about
+the game is not known, and the score and the mark stand as measured. (An earlier version of this entry said the low
+score did not come from the game; that went further than the games played.)
 
 ## 2026-11-09
 

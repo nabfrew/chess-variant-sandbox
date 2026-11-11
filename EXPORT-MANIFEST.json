@@ -1,5 +1,5 @@
 {
- "source_commit": "44aba32a96677a95b837c196ea93e0520b31aad5",
+ "source_commit": "4d379689e9525b9dbd9633d3e3e34b2d1a3209d8",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -3531,8 +3531,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 182124,
-   "sha256": "ae3b1271e0a05da4044a391cc219b0611dc5354c2707c40ccbfd357d7a6f7c85"
+   "bytes": 182459,
+   "sha256": "40744b47705e912dbd4fd72f9e2b9f17eefb3fb62bd8aa3e9357c8902c1dd6b2"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
