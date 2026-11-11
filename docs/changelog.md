@@ -26,6 +26,15 @@ Better players also exposed some games. Three now fail a new check for games whe
 Alamos with crushing pillars turned one-sided under its trained player, and Three-check could not be measured this
 time. Those five are no longer counted as viable, and the two with trained players are being looked into.
 
+### Four trained players stood down
+
+A trained computer player should get stronger when it is given more time to think. A new check found four that do
+not: on Three-check, Cannonade, Dohyo and Jeson Mor the trained player sometimes lost to a quicker copy of itself.
+Those four games are played and measured by the built-in players again. Three-check is measured once more, at the
+score it had before, and so are Cannonade and Dohyo. Jeson Mor is now read as ending too quickly to count as viable.
+On Los Alamos with crushing pillars the low score turned out to come from copies of one trained player agreeing with
+each other, not from the game; how such games should be measured is being worked out.
+
 ## 2026-11-09
 
 ### Tessabi, Dobutsu and Boulder get new learned players

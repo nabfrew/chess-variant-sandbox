@@ -122,11 +122,13 @@ class TestIntransitivesNet:
 
     def test_only_a_ruleset_with_an_accepted_net_is_offered_one(self) -> None:
         """Derived from `nets/*.json`: every committed ruleset, and the entry exactly where
-        an accepted store is filed under its hash."""
+        an accepted store the plan did not file `kept: false` is filed under its hash (Q1195:
+        a game whose every accepted store failed or was not tried under G-L offers none)."""
+        stores = [json.loads(path.read_text("utf-8"))
+                  for path in (ROOT / STORE_DIR).glob("*.json")]
         accepted = {
-            json.loads(path.read_text("utf-8"))["ruleset_hash"]
-            for path in (ROOT / STORE_DIR).glob("*.json")
-            if json.loads(path.read_text("utf-8")).get("verdict") == ACCEPTED
+            data["ruleset_hash"] for data in stores
+            if data.get("verdict") == ACCEPTED and data.get("kept") is not False
         }
         assert INTRANSITIVE in accepted
         for path in sorted((ROOT / "rulesets").glob("*.json")):

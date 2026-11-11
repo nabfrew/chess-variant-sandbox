@@ -83,5 +83,7 @@
     "decided_after": 200,
     "planned_pairs": 200,
     "gate": "G-A2, plan-teacher.md \u00a78.3 (Q1170, plan-player-weaknesses.md \u00a7T2)"
-  }
+  },
+  "kept": false,
+  "kept_by": "not kept: not tried under G-L (plan-teacher.md \u00a710.19, read in \u00a710.20 and reference/seated-nets-after-replay.md \u00a79 (Q1194, 2026-11-11)); the game's seated store ae8c05a4915c failed it, and an older store has no trial on today's ladder, so the built-in player returns (\u00a710.19.5). Filed by Q1195; it comes back only by passing a trial played for it. Was: generation 0 on layout 2, accepted and confirmed (Q1170)"
 }

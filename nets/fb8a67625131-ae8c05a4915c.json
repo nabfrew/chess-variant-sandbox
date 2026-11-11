@@ -95,6 +95,6 @@
     "planned_pairs": 200,
     "gate": "G-A2, plan-teacher.md \u00a710.12, graded in \u00a710.13"
   },
-  "kept": true,
-  "kept_by": "generation 1, kept by R5-1 without the guards: G-A, G-A2, G-P, G-P2 and G-N' (plan-teacher.md \u00a710.12, graded in \u00a710.13)"
+  "kept": false,
+  "kept_by": "not kept: failed G-L, the ladder gate, on 800 against 400 (s + 3.35e = 0.000); 1,600 against 400 (0.219); plan-teacher.md \u00a710.19, read in \u00a710.20 and reference/seated-nets-after-replay.md \u00a79 (Q1194, 2026-11-11). Unseated by Q1195; it comes back only by passing a trial played for it. Before: generation 1, kept by R5-1 without the guards: G-A, G-A2, G-P, G-P2 and G-N' (plan-teacher.md \u00a710.12, graded in \u00a710.13)"
 }

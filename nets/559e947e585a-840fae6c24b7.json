@@ -83,5 +83,7 @@
     "decided_after": 200,
     "planned_pairs": 200,
     "gate": "G-A2, plan-teacher.md \u00a78.3 (Q1170, plan-player-weaknesses.md \u00a7T2)"
-  }
+  },
+  "kept": false,
+  "kept_by": "not kept: failed G-L, the ladder gate, on 1,600 against 800 (s + 3.35e = 0.388); 3,200 against 1,600 (0.250); plan-teacher.md \u00a710.19, read in \u00a710.20 and reference/seated-nets-after-replay.md \u00a79 (Q1194, 2026-11-11). Unseated by Q1195; it comes back only by passing a trial played for it"
 }

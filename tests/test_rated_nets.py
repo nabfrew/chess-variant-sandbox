@@ -59,9 +59,6 @@ ROLLED_OUT = {
     "684b14652b2b": "e31e979d535a",  # tessabi: Q1170
     "b51b26942977": "e31e979d535a",  # boulder: Q1170
     "e72a8715217c": "e31e979d535a",  # los alamos with crushing pillars: Q1170
-    "c2925e027455": "840fae6c24b7",  # cannonade: Q1170, the 6,000-game recipe
-    "b1f536573c22": "e31e979d535a",  # three-check: Q1170
-    "559e947e585a": "840fae6c24b7",  # dohyo: Q1170, the 6,000-game recipe
     # LG (plan-teacher §10.12-§10.13, 2026-10-29): generation 1, kept (twelve games; three of
     # them, antichess, circe and rifle, on a refused generation-0 parent).
     "0be72e61ef24": "c68907df8d4a",  # marchfield
@@ -74,8 +71,10 @@ ROLLED_OUT = {
     "add543cc28c3": "ab3f11451433",  # rps repaint (rps-v4)
     "bdf2801ade24": "9946eb49d8ae",  # rps race (rps-v3)
     "f7a789809758": "2372dbe1cacb",  # rifle
-    "fb8a67625131": "ae8c05a4915c",  # jeson mor
     "ffc7b604bea0": "84055e9929a5",  # reckoning
+    # Unseated by Q1195 (plan-teacher §10.19-§10.20, 2026-11-11): three-check, cannonade, dohyo and
+    # jeson mor failed G-L, the ladder gate, and are filed kept: false (jeson mor's two older
+    # stores too, not tried), so the built-in player measures them again.
 }
 
 # The round games that play a net (RS, plan-teacher §10.14, 2026-10-29): RN's kept generation 0
