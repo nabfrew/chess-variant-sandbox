@@ -27,6 +27,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+import private_paths
 import pytest
 
 from chess_variant_sandbox.spec import load_spec
@@ -282,17 +283,14 @@ def test_a_torn_training_save_is_skipped_for_the_one_before(campaign_dir: Path) 
 # ------------------------------------------------------------------ the stall check
 
 
+STATUS_SCRIPT = ".claude/scripts/campaign_status.py"  # a maintainer's tool: not in the public copy
+
+
 def _status_script() -> Any:
-    import importlib.util
-
-    path = ROOT / ".claude" / "scripts" / "campaign_status.py"
-    found = importlib.util.spec_from_file_location("campaign_status", path)
-    assert found is not None and found.loader is not None
-    module = importlib.util.module_from_spec(found)
-    found.loader.exec_module(module)
-    return module
+    return private_paths.script(STATUS_SCRIPT)
 
 
+@private_paths.needs(STATUS_SCRIPT)
 def test_the_stall_check_tells_running_stalled_and_ended_apart(
     tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
@@ -319,6 +317,7 @@ def test_the_stall_check_tells_running_stalled_and_ended_apart(
     assert "no campaign" in capsys.readouterr().out
 
 
+@private_paths.needs(STATUS_SCRIPT)
 def test_the_stall_check_reads_a_superseded_campaign_as_ended_for_good(
     tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:

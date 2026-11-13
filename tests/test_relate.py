@@ -896,6 +896,34 @@ def test_a_compound_piece_adds_no_mechanism() -> None:
     assert similarity(BASE, spec).counts["mechanisms"] == 0
 
 
+def _with_lame(legs: list | None) -> dict:
+    """`BASE` plus a (2, 3) lame jumper, its legs stated or left to the computed path."""
+    spec = copy.deepcopy(BASE)
+    move: dict = {"kind": "lame", "vectors": [[2, 3]], "symmetry": "dihedral8"}
+    if legs is not None:
+        move["legs"] = legs
+    spec["pieces"].append({"id": "E", "name": "jumper", "value": 3, "moves": [move]})
+    spec["setup"]["placements"].append({"piece": "E", "squares": ["b1"]})
+    validate_spec(spec)
+    return spec
+
+
+def test_a_lame_on_stated_legs_is_one_mechanism_of_its_jumps_orbit() -> None:
+    """R-S10b1: a jump on stated legs carries each direction with its legs, and tier 2 read
+    the pair as a direction (`TypeError` from `abs`), so likeness and the map could not read
+    janggi's elephant. Its orbit is its jump's; two leg patterns are two mechanisms."""
+    stated = _with_lame([[[0, 1], [1, 2]]])
+    other = _with_lame([[[1, 1], [1, 2]]])
+    computed = _with_lame(None)
+    found = mechanisms(normal_form(stated)) - mechanisms(normal_form(BASE))
+    assert [orbit for _attrs, orbit, _members in found] == [(2, 3)]
+    assert len(next(iter(found))[2]) == 8
+    assert mechanisms(normal_form(stated)) != mechanisms(normal_form(other))
+    assert mechanisms(normal_form(stated)) != mechanisms(normal_form(computed))
+    assert similarity(BASE, stated).counts["mechanisms"] == 1
+    assert similarity(stated, other).counts["mechanisms"] == 2
+
+
 def test_a_piece_identity_leaves_out_the_letter_the_name_and_the_price() -> None:
     spec = copy.deepcopy(BASE)
     piece(spec, "R")["name"] = "something else"

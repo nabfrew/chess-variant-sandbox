@@ -1,0 +1,57 @@
+{
+  "schema_version": 31,
+  "name": "thresh",
+  "summary": [
+    "Each side guards a hearth that never moves; take the other hearth to win.",
+    "A scythe runs up to three cells along a line and cuts down every piece it passes, your own included.",
+    "Nothing cuts through a stone: a stone in the way stops a scythe.",
+    "A hare steps one cell, or vaults a piece next to it and lands just beyond, taking whatever stands there.",
+    "Stones step one cell in any direction and never take anything; only hares can take them.",
+    "Stones round your hearth keep the scythes out, but each one is a step an enemy hare can vault onto it.",
+    "If you cannot move, you lose."
+  ],
+  "description": "A siege on a hexagonal board between two attackers that want opposite boards. The scythe wants open lines: it mows down everything it passes, hares, scythes and the hearth itself, and only a stone stops it. The hare wants a crowd: it can only take by vaulting a neighbouring piece, so on an empty board it is harmless and beside a wall it is deadly. Each hearth starts ringed by its own stones, which make it safe from scythes and give an enemy hare a way in over each of them, from the cell two steps out along the line through that stone. So the decision that keeps coming back is whether a stone is a wall or a ladder: pull it out of the ring and a scythe line opens, leave it and you must keep enemy hares off the cells beyond it. A scythe swing is never free either, since it clears your own hares from its path as readily as the enemy's, and a stone of yours walked up beside the enemy hearth is a screen they cannot cut away, because no scythe can touch it. Games open with stones and hares pushing into the middle, turn on a hare fight over the cells two steps from a hearth, and usually end when a broken ring lets a scythe through or a hare finds its vault.",
+  "board": {"width": 9, "height": 9, "lattice": "hex", "shape": "hexagon"},
+  "pieces": [
+    {
+      "id": "S", "name": "stone", "value": 1,
+      "moves": [
+        {"kind": "slide", "mode": "move", "symmetry": "rotate6", "range": 1, "vectors": [[1, 0]]}
+      ]
+    },
+    {
+      "id": "H", "name": "hare", "value": 3,
+      "moves": [
+        {"kind": "hop", "mode": "both", "symmetry": "rotate6", "range": 2, "screen_range": 1, "vectors": [[1, 0]]},
+        {"kind": "slide", "mode": "move", "symmetry": "rotate6", "range": 1, "vectors": [[1, 0]]}
+      ]
+    },
+    {
+      "id": "W", "name": "scythe", "value": 5,
+      "captures": ["H", "W", "K"],
+      "moves": [
+        {"kind": "sweep", "mode": "both", "symmetry": "rotate6", "range": 3, "vectors": [[1, 0]]}
+      ]
+    },
+    {
+      "id": "K", "name": "hearth", "value": 0, "royal": true,
+      "moves": []
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {"piece": "K", "squares": ["g2"]},
+      {"piece": "W", "squares": ["e1", "i1"]},
+      {"piece": "H", "squares": ["d2", "e2", "i2", "i3"]},
+      {"piece": "S", "squares": ["f1", "g1", "h1", "f2", "h2", "c3", "e3", "f3", "g3"]}
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "loss",
+    "max_plies": 300,
+    "no_progress_draw": 80
+  }
+}

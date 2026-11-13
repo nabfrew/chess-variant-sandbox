@@ -1504,10 +1504,15 @@ def mechanisms(form: NormalForm) -> frozenset[Any]:
     found: set[Any] = set()
     for moves in form.forms.values():
         for attrs, dirs in moves:
-            orbits: dict[tuple[int, int], set[tuple[int, int]]] = defaultdict(set)
-            for dx, dy in dirs:
+            orbits: dict[tuple[int, int], set[Any]] = defaultdict(set)
+            for member in dirs:
+                # A jump on stated legs carries each direction with its legs, `((dx, dy),
+                # legs)` (SR1a, `piece_forms`): its orbit is its direction's, and the legs
+                # stay in the member, so two leg patterns are two mechanisms. Every other
+                # move's member is the bare `(dx, dy)`, read as before (R-S10b1).
+                dx, dy = member[0] if isinstance(member[0], tuple) else member
                 low, high = sorted((abs(dx), abs(dy)))
-                orbits[(low, high)].add((dx, dy))
+                orbits[(low, high)].add(member)
             for orbit, members in orbits.items():
                 found.add((attrs, orbit, frozenset(members)))
     return frozenset(found)

@@ -1,0 +1,64 @@
+{
+  "schema_version": 31,
+  "name": "gorogoro plus",
+  "description": "Gorogoro plus, shogi on a board five files wide and six ranks deep, as PyChess plays it (Gorogoro+). Each side has a king, two golds, two silvers and three pawns, the pawns already meeting the enemy's in the middle, and starts with a lance and a knight in hand. Captured pieces change sides and may be dropped back. Pawns, silvers, lances and knights promote in the last two ranks, on a move into, inside or out of them: the pawn, lance and knight to a gold, the silver to a gold too; a piece that could never move again must promote, and may not be dropped where it could never move. A pawn may not be dropped on a file already holding one of its side's pawns, nor to give mate. One departure, an edge rule: a fourth repetition is a draw, where the shogi rule this game follows makes perpetual check a loss for the checking side.",
+  "summary": [
+    "Shogi on a 5 by 6 board: king, two golds, two silvers and three pawns a side, and a lance and a knight in hand.",
+    "Captured pieces change sides and may be dropped back.",
+    "Pawns, silvers, lances and knights promote to golds in the last two ranks.",
+    "A pawn may not be dropped on a file with one of its side's pawns, nor to give mate.",
+    "Win by checkmate."
+  ],
+  "board": {
+    "width": 5,
+    "height": 6
+  },
+  "pieces": [
+    {"id": "P", "name": "pawn", "value": 1, "moves": [{"kind": "leap", "vectors": [[0, 1]], "mode": "both"}]},
+    {"id": "L", "name": "lance", "value": 3, "moves": [{"kind": "slide", "vectors": [[0, 1]], "mode": "both"}]},
+    {"id": "N", "name": "knight", "value": 4, "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "S", "name": "silver", "value": 5, "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[0, 1]], "mode": "both"}]},
+    {"id": "G", "name": "gold", "value": 6, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "K", "name": "king", "value": 0, "royal": true, "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "Q", "name": "tokin", "value": 6, "promoted_from": "P", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "M", "name": "promoted lance", "value": 6, "promoted_from": "L", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "O", "name": "promoted knight", "value": 6, "promoted_from": "N", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "Z", "name": "promoted silver", "value": 6, "promoted_from": "S", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]}
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {"piece": "S", "squares": ["a1", "e1"]},
+      {"piece": "G", "squares": ["b1", "d1"]},
+      {"piece": "K", "squares": ["c1"]},
+      {"piece": "P", "squares": ["b3", "c3", "d3"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "forbid_immobility": true,
+    "promotion": [
+      {"piece": "P", "ranks": [4, 5], "to": ["Q"], "mandatory": false, "on_leaving": true},
+      {"piece": "L", "ranks": [4, 5], "to": ["M"], "mandatory": false, "on_leaving": true},
+      {"piece": "N", "ranks": [4, 5], "to": ["O"], "mandatory": false, "on_leaving": true},
+      {"piece": "S", "ranks": [4, 5], "to": ["Z"], "mandatory": false, "on_leaving": true}
+    ],
+    "drops": {
+      "from_captures": true,
+      "stock": {"L": 1, "N": 1},
+      "no_doubled": ["P"],
+      "no_mate": ["P"]
+    },
+    "max_plies": 300,
+    "repetition_draw": 4,
+    "no_progress_draw": 200
+  },
+  "provenance": {
+    "added": "2026-11-13",
+    "origin": "human",
+    "source": "pychess.org/variants/gorogoroplus; en.wikipedia.org/wiki/Dobutsu_shogi (goro goro)",
+    "note": "A published game, entered as an addition to the labelled set for the search for strong games unlike chess (docs/reference/unlike-search.md, R-S10b1)."
+  }
+}

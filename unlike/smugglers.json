@@ -1,0 +1,194 @@
+{
+ "schema_version": 31,
+ "name": "smugglers",
+ "summary": [
+  "Get three of your couriers across the board to the far row. A courier that gets there is delivered: it leaves the board and counts for you.",
+  "Couriers walk one square forward, straight or diagonally, and never take anything.",
+  "A courier may also jump forward, straight or diagonally, over a piece right next to it, yours or your opponent's, onto the empty square just beyond. Nothing is taken.",
+  "Patrols step one square in any direction and take any enemy piece by moving onto it. A patrol may never stand on its own back row.",
+  "Whatever you take is yours. Instead of moving, put a captured courier on an empty square of your back row, or a captured patrol on an empty square of your second row.",
+  "A player who cannot move loses."
+ ],
+ "description": "A smuggling race in which every prisoner changes sides. Each player runs couriers across the border to the far row, and each courier that arrives is delivered: it leaves the board for good and counts towards the three that win. Couriers cannot fight, so they travel under the protection of patrols, which step one square any way and take anything; and couriers move fast only in company, since a courier can jump forward over a piece right beside it, a patrol or another courier, friend or foe. What a patrol takes is not lost but turned: a captured courier comes back as one of yours on your back row, the whole board from its goal, and a captured patrol comes back on your second row, in front of your own border. So every turn asks how to spend one move: push a courier, at the risk of handing your opponent a courier if it is caught; move a patrol to escort, hunt or block; or bring a prisoner back, a courier for the race or a patrol for defence. Patrols may not stand on their own back row, the very row the other side is racing to, so the border cannot simply be walled shut: it has to be held from in front. A game usually opens with couriers leapfrogging their own patrols into the middle, turns into a running fight in which pieces flow back and forth through both hands, and ends with the board thinned by deliveries and a last courier or two trying to slip through.",
+ "board": {
+  "width": 7,
+  "height": 7
+ },
+ "pieces": [
+  {
+   "id": "C",
+   "name": "courier",
+   "value": 1,
+   "captures": [],
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "mode": "move"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "move"
+    },
+    {
+     "kind": "hop",
+     "vectors": [
+      [
+       0,
+       1
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "range": 2,
+     "screen_range": 1,
+     "mode": "move",
+     "symmetry": "lateral"
+    }
+   ]
+  },
+  {
+   "id": "T",
+   "name": "patrol",
+   "value": 2,
+   "region": [
+    "a2",
+    "b2",
+    "c2",
+    "d2",
+    "e2",
+    "f2",
+    "g2",
+    "a3",
+    "b3",
+    "c3",
+    "d3",
+    "e3",
+    "f3",
+    "g3",
+    "a4",
+    "b4",
+    "c4",
+    "d4",
+    "e4",
+    "f4",
+    "g4",
+    "a5",
+    "b5",
+    "c5",
+    "d5",
+    "e5",
+    "f5",
+    "g5",
+    "a6",
+    "b6",
+    "c6",
+    "d6",
+    "e6",
+    "f6",
+    "g6",
+    "a7",
+    "b7",
+    "c7",
+    "d7",
+    "e7",
+    "f7",
+    "g7"
+   ],
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  }
+ ],
+ "setup": {
+  "mirror": true,
+  "placements": [
+   {
+    "piece": "C",
+    "squares": [
+     "a1",
+     "c1",
+     "e1",
+     "g1"
+    ]
+   },
+   {
+    "piece": "T",
+    "squares": [
+     "b2",
+     "d2",
+     "f2"
+    ]
+   }
+  ]
+ },
+ "rules": {
+  "win": "none",
+  "stalemate": "loss",
+  "max_plies": 240,
+  "reach": {
+   "piece": "C",
+   "squares": [
+    "a7",
+    "b7",
+    "c7",
+    "d7",
+    "e7",
+    "f7",
+    "g7"
+   ],
+   "removes": true,
+   "count": 3
+  },
+  "drops": {
+   "from_captures": true,
+   "region": {
+    "C": [
+     "a1",
+     "b1",
+     "c1",
+     "d1",
+     "e1",
+     "f1",
+     "g1"
+    ],
+    "T": [
+     "a2",
+     "b2",
+     "c2",
+     "d2",
+     "e2",
+     "f2",
+     "g2"
+    ]
+   }
+  }
+ }
+}

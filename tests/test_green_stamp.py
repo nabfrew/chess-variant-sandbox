@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 import green_stamp
+import private_paths
 import pytest
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -736,6 +737,7 @@ def test_the_coordinators_own_documents_are_ones_nothing_reads(path: str) -> Non
     assert green_stamp.unread(REPOSITORY, path)
 
 
+@private_paths.needs(".claude/scripts/clean_runs.py")  # a maintainer's tool: not in the public copy
 def test_the_delete_rules_tests_never_read_the_real_queue() -> None:
     """`clean_runs.py` and its tests are `NOT_READERS` only because no test's outcome depends on
     this tree's `docs/queue.md` (Q1191). The script's `main` reads the main checkout's queue,
@@ -747,7 +749,7 @@ def test_the_delete_rules_tests_never_read_the_real_queue() -> None:
     assert "clean.main(" not in source
     calls = re.findall(r"clean\.gather\(([^,)]*)", source)
     assert calls and all(first.strip() == "tmp_path" for first in calls), calls
-    script = (REPOSITORY / ".claude" / "scripts" / "clean_runs.py").read_text(encoding="utf-8")
+    script = private_paths.path(".claude/scripts/clean_runs.py").read_text(encoding="utf-8")
     assert "root = campaign_status.main_checkout(Path(__file__))" in script
 
 

@@ -18,12 +18,14 @@ import datetime
 import re
 from pathlib import Path
 
+import private_paths
 import tomllib
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 CARGO_TOML = REPOSITORY / "rust" / "Cargo.toml"
-VERSIONS = REPOSITORY / "deploy" / "versions.env"
-BUILD_SH = REPOSITORY / "deploy" / "pyodide" / "build.sh"
+# The browser build's recipe lives in `deploy/`, which the public copy does not carry.
+VERSIONS = private_paths.path("deploy/versions.env")
+BUILD_SH = private_paths.path("deploy/pyodide/build.sh")
 
 # Rust 1.1 shipped on 2015-06-25 and every release since is six weeks after the last, so
 # 1.k ships on this date plus 42k days (1.88 on 2025-06-26, 1.84 on 2025-01-09).
@@ -75,6 +77,7 @@ def test_the_release_arithmetic_matches_what_rustc_said() -> None:
     assert carried_stable("1.97.1") == (1, 97)
 
 
+@private_paths.needs("deploy/versions.env")
 def test_rust_version_is_what_the_browser_compiler_carries() -> None:
     declared = _cargo()["package"].get("rust-version")
     assert declared, "rust/Cargo.toml must state rust-version, the browser compiler's floor"
@@ -91,6 +94,7 @@ def test_clippy_refuses_an_api_past_rust_version() -> None:
     assert lints.get("incompatible_msrv") == "deny"
 
 
+@private_paths.needs("deploy/versions.env", "deploy/pyodide/build.sh")
 def test_the_image_recipe_covers_every_pin_the_image_is_built_from() -> None:
     # The tag names Pyodide's two versions only, so a moved toolchain or sysroot pin has
     # to move the recipe label, or build.sh reuses the old image and the old compiler.

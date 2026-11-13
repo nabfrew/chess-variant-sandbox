@@ -553,6 +553,9 @@ MAIL_OFF = "/mail/off/"
 #   `docs/plan-score-history.md`, `web/page/front.py`'s `history`): the single page with its
 #   own head, which `history.js` draws from `GET /api/library/history`. Public (D1, the
 #   user's answer of 2026-11-08); no cookie is read.
+# - `/score-tests`, what the score has been tested against (R-S9 of
+#   `docs/roadmap-2026-11.md`, `web/page/score_tests_page.py`): every test as it was read,
+#   drawn from a data file in the package. A constant, cached five minutes like `/rules`.
 # - `/static/style/`, the pages' stylesheets, which the code writes (G12,
 #   `web/page/assets.py`). Every script above under `/static/page/`, `/static/site/`,
 #   `/static/shell.js` and `/static/story.js` (LP6, the landing's draw) is answered under a
@@ -567,7 +570,7 @@ STATIC: tuple[str, ...] = (
     "/static/fonts/", "/static/shell.js", "/static/story.js", "/favicon.svg", "/favicon.ico",
     "/apple-touch-icon.png",
     "/static/picture/", "/rules.md", "/robots.txt", "/sitemap.xml", "/llms.txt", "/rules",
-    "/whats-new", "/feeds/", "/static/style/", "/score-history",
+    "/whats-new", "/feeds/", "/static/style/", "/score-history", "/score-tests",
 )
 
 # The pages whose answer depends on who is asking, and so the only ones the cookie is

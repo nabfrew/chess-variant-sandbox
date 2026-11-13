@@ -1,0 +1,34 @@
+{
+  "game": "labelled/clobber.json",
+  "spec_hash": "53355cbda889",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.0003,
+  "quarter": "Q1",
+  "likeness_commit": "34057d4c5",
+  "likeness_version": "k1",
+  "labelled_by": "R-S10b1 worker (Claude Opus 5.5)",
+  "date": "2026-11-13",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent. Its moves and results were compared with Fairy-Stockfish's translation of it (chess-variant-sandbox fairy, pyffish 0.0.90), whose opening is the built-in clobber's, never played by this project's players.",
+  "W": {
+    "low": 2,
+    "high": 2
+  },
+  "L": {
+    "low": 2,
+    "high": 2
+  },
+  "evidence": [
+    {
+      "address": "en.wikipedia.org/wiki/Clobber",
+      "read": "2026-11-13",
+      "says": "devised in 2001 by Michael H. Albert, J. P. Grossman and Richard Nowakowski; a Computer Olympiad event since 2005; a report on the Clobber competition at Tilburg in 2011; the rules: a full checkerboard of stones, a move takes an orthogonally adjacent enemy stone, the player who cannot move loses; the starting position shown on 5x6"
+    }
+  ],
+  "flagged": true,
+  "in_scale": false,
+  "tier_note": "W: recorded tournaments, but mostly between programs (the Computer Olympiad), so flagged thin record as unlike-search.md section 1.2 row 3 says. L: 2001 to today, 20 to 50 years.",
+  "departure": "none in the rules (the first player, which the source leaves open, is the one with a stone on b1, Fairy-Stockfish's); flagged thin record: its organised play is mostly between programs",
+  "addition": "unlike-search.md R-S10b1: a published game of section 1.2, row 3; not in the labelled set's registered reading (labelled-set.md section 3.3)"
+}

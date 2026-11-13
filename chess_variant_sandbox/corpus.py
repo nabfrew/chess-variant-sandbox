@@ -90,6 +90,10 @@ RUNS_DIR = Path("runs")
 # measured as a library game is (four runs, the waiting schedule), and in nothing the library
 # counts -- not `corpus_hashes`, `committed_candidates`, `survey`'s sweep or the site.
 LABELLED_DIR = Path("labelled")
+# The search for strong games unlike chess (R-S10b, `docs/reference/unlike-search.md` §5): its
+# designed games, which no label source the labelled set accepts can vouch for. A fourth rung,
+# the labelled set's twin: measured as a library game is, counted by nothing the library counts.
+UNLIKE_DIR = Path("unlike")
 
 # The roster a committed score *means*, which until now existed only in prose. Every
 # number in `docs/reference/metrics-and-calibration-record.md` is on this ladder and no other:
@@ -241,7 +245,8 @@ def expected_seeds(stage: str) -> tuple[int, ...]:
 
     A committed or archived game is the library and owes `EXPECTED_LIBRARY_SEEDS`; so does a
     labelled one, which is read against the library's games and must be measured as they are
-    (`docs/reference/labelled-set.md` §3.1). Everything else -- a candidate, a visitor's
+    (`docs/reference/labelled-set.md` §3.1), and so does an unlike one, for the same reason
+    (`docs/reference/unlike-search.md` §5). Everything else -- a candidate, a visitor's
     design -- is one run, because a number nobody has committed to does not owe four
     tournaments.
     """
@@ -250,7 +255,7 @@ def expected_seeds(stage: str) -> tuple[int, ...]:
 
 # The rungs measured as the library is: its seeds, and with them the waiting schedule
 # (`_plays_waiting`). Only the first two are the library.
-LIBRARY_MEASURED_STAGES = ("committed", "archived", "labelled")
+LIBRARY_MEASURED_STAGES = ("committed", "archived", "labelled", "unlike")
 
 
 class CorpusError(ValueError):
@@ -270,7 +275,7 @@ class Candidate:
     name: str
     spec: dict[str, Any]
     path: Path
-    # committed | archived | labelled | candidate -- where it is now, not how good it is.
+    # committed | archived | labelled | unlike | candidate -- where it is now, not how good it is.
     stage: str
     # The design run it came out of, when it came out of one.
     run: Path | None = None
@@ -315,6 +320,7 @@ def find(
     ruleset_dir: Path = RULESET_DIR,
     archive_dir: Path = ARCHIVE_DIR,
     labelled_dir: Path = LABELLED_DIR,
+    unlike_dir: Path = UNLIKE_DIR,
 ) -> Candidate:
     """The game with this content hash, from wherever it is.
 
@@ -322,10 +328,12 @@ def find(
     candidate it also still is: a design run's `specs/` directory keeps its copy, and
     two answers to "what is this" would make the interface offer to promote a game that
     is already in the corpus. The labelled set's own files come after the library's, so a
-    library member of the set still reads as the library game it is.
+    library member of the set still reads as the library game it is; the unlike search's
+    files come last of the four.
     """
     for directory, stage in (
         (ruleset_dir, "committed"), (archive_dir, "archived"), (labelled_dir, "labelled"),
+        (unlike_dir, "unlike"),
     ):
         path = _committed_paths(directory).get(digest)
         if path is not None:
@@ -353,13 +361,13 @@ def find(
 
     raise CorpusError(
         f"no game with hash {digest} under {ruleset_dir}/, {archive_dir}/, "
-        f"{labelled_dir}/ or {runs_dir}/"
+        f"{labelled_dir}/, {unlike_dir}/ or {runs_dir}/"
     )
 
 
 def from_file(path: Path, runs_dir: Path = RUNS_DIR) -> Candidate:
     """The game a spec file holds: `find`'s answer where the corpus, the archive, the
-    labelled set or a design run holds it, else a candidate read from the file itself.
+    labelled set, the unlike search or a design run holds it, else a candidate read from the file itself.
 
     The second case is a game nobody has put on the ladder yet -- a test spec, a game being
     written by hand -- measured where it stands (Q918d's round game was the first). It is a
@@ -2016,6 +2024,13 @@ _LABELLED_STAYS = (
     f"a game in {LABELLED_DIR}/ is a member of the labelled set and stays there: it is "
     "neither archived nor promoted (docs/reference/labelled-set.md §3)"
 )
+# Nor does a game of the unlike search: it tests the score, and whether one joins the library
+# is a separate decision nobody is asked to make there (`docs/reference/unlike-search.md` §5).
+_UNLIKE_STAYS = (
+    f"a game in {UNLIKE_DIR}/ was designed for the search for strong games unlike chess and "
+    "stays there: it is neither archived nor promoted (docs/reference/unlike-search.md §5)"
+)
+_STAYS = {"labelled": _LABELLED_STAYS, "unlike": _UNLIKE_STAYS}
 
 
 def archive_game(
@@ -2038,8 +2053,8 @@ def archive_game(
     """
     if candidate.stage == "committed":
         raise CorpusError(f"{candidate.name} is already in {RULESET_DIR}/")
-    if candidate.stage == "labelled":
-        raise CorpusError(_LABELLED_STAYS)
+    if candidate.stage in _STAYS:
+        raise CorpusError(_STAYS[candidate.stage])
     return _write(candidate, archive_dir, note, "archived", runs_dir, name, credit)
 
 
@@ -2104,8 +2119,8 @@ def promotion_blocker(
     """
     if candidate.stage == "committed":
         return f"{candidate.name} is already in {ruleset_dir}/"
-    if candidate.stage == "labelled":
-        return _LABELLED_STAYS
+    if candidate.stage in _STAYS:
+        return _STAYS[candidate.stage]
 
     errors = validate_spec(candidate.spec)
     if errors:

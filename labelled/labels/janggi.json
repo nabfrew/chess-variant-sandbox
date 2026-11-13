@@ -1,0 +1,39 @@
+{
+  "game": "labelled/janggi.json",
+  "spec_hash": "58fe9dad9711",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.0061,
+  "quarter": "Q1",
+  "likeness_commit": "34057d4c5",
+  "likeness_version": "k1",
+  "labelled_by": "R-S10b1 worker (Claude Opus 5.5)",
+  "date": "2026-11-13",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent. Its moves were compared with Fairy-Stockfish's built-in janggi (pyffish 0.0.90, random walks asking only for legal moves), never played by this project's players.",
+  "W": {
+    "low": 2,
+    "high": 5
+  },
+  "L": {
+    "low": 3,
+    "high": 4
+  },
+  "evidence": [
+    {
+      "address": "en.wikipedia.org/wiki/Janggi",
+      "read": "2026-11-13",
+      "says": "the chess of Korea, popular on the Korean Peninsula; professional games; the first world janggi tournament was held in Harbin in 2009; the rules: board, pieces, the pass, no stalemate, bikjang a draw"
+    },
+    {
+      "address": "pychess.org/variants/janggi",
+      "read": "2026-11-13",
+      "says": "janggi has a standing place among the server's variants; the four sanctioned arrays of horses and elephants and who chooses; every piece's move including the palace diagonals; bikjang and point counting as the server applies them"
+    }
+  ],
+  "flagged": true,
+  "in_scale": false,
+  "tier_note": "W: recorded tournaments, professional play and a server place make W2 certain; as a national game it is W5 on the record's reading, but no player count was read today, so the range is kept. L: traditional, centuries on general knowledge; no date of origin was read today, so 3 to 4.",
+  "departure": "four edge rules under unlike-search.md section 1's widening: one sanctioned array (both elephants inside), where the players choose among four; bikjang allowed and ending nothing (royal_facing allowed), where it is a draw or a count of points; two passes in a row not a draw; repetition and a long run without a capture drawn, where tournament play counts points",
+  "addition": "unlike-search.md R-S10b1: a published game of section 1.2, row 1; not in the labelled set's registered reading (labelled-set.md section 3.3)"
+}

@@ -1,0 +1,82 @@
+{
+  "schema_version": 31,
+  "name": "heft",
+  "summary": [
+    "Nothing is captured: move onto an enemy piece to shove it, with every piece behind it in that line, one cell on.",
+    "A piece shoved off the edge of the board is out. A player left with fewer than six pieces loses.",
+    "A shove goes through only if the shover's strength is at least the weight of the whole line it moves.",
+    "Bulls weigh 3 and shove 4; darts slide up to two cells, weigh 1 and shove 1; the ram weighs 1 but shoves 8; stones weigh 4 and never shove. All but darts step one cell.",
+    "Each turn, move a dart, bull or ram, then you may also step one stone.",
+    "A piece just shoved may not be shoved straight back on the next move.",
+    "The second player starts with one dart fewer, to make up for moving second.",
+    "If 80 moves pass with nobody pushed out, or the game reaches 300 moves, whoever has more pieces on the seven middle cells wins."
+  ],
+  "description": "A shoving match on a small hexagonal ring. Nothing is ever taken where it stands; a piece is lost only by being shoved over the rim, and a shove is a sum: it moves the whole line in front of the shover, and goes through only if the shover is strong enough for the line's total weight. So a piece standing alone is light and easy to throw, while the same piece with a friend lined up behind it is too heavy to move, and every turn asks whether to stack or to strike. Each turn has two halves that pull against each other: one shoving piece moves, and then one stone may step. The stones are pure ballast, heavy and unable to shove, so the stone half of the turn is always a choice about where to add weight. The bulls throw anything light; the darts are quick and knock lone darts off the edge; and the ram, the lightest piece on the board, is the only one strong enough to move a braced line of two heavy pieces, so a pair of heavy pieces is never safe from it (only a line of three is), while the ram itself, standing alone, can be thrown by anything. Because every cell has three lines through it, a group braced against a shove from one side is usually light along another. A piece just shoved cannot be shoved straight back, so a tug of war has to go somewhere. Both armies start on their own rim; a game opens with both sides building out into the middle, turns into a pushing match there where the rams try to crack the heavy groups, and ends when one side has lost too many pieces over the rim, or, when the shoving stalls, on a count of the seven middle cells. The second player's missing dart is a handicap that evens out the first move.",
+  "board": {"width": 7, "height": 7, "lattice": "hex", "shape": "hexagon"},
+  "pieces": [
+    {
+      "id": "D",
+      "name": "dart",
+      "value": 1,
+      "weight": 1,
+      "strength": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate6", "range": 2, "mode": "move", "push": true}
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bull",
+      "value": 3,
+      "weight": 3,
+      "strength": 4,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate6", "mode": "move", "push": true}
+      ]
+    },
+    {
+      "id": "R",
+      "name": "ram",
+      "value": 3,
+      "weight": 1,
+      "strength": 8,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate6", "mode": "move", "push": true}
+      ]
+    },
+    {
+      "id": "S",
+      "name": "stone",
+      "value": 2,
+      "weight": 4,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate6", "mode": "move"}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "orientation": "rotate",
+    "placements": [
+      {"piece": "D", "squares": ["c2", "g2", "f1"]},
+      {"piece": "B", "squares": ["d2", "f2"]},
+      {"piece": "R", "squares": ["e1"]},
+      {"piece": "S", "squares": ["e2", "d1", "g1"]},
+      {"piece": "D", "player": 1, "squares": ["e6", "a6"]},
+      {"piece": "B", "player": 1, "squares": ["d6", "b6"]},
+      {"piece": "R", "player": 1, "squares": ["c7"]},
+      {"piece": "S", "player": 1, "squares": ["c6", "d7", "a7"]}
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "turn": {"parts": [{"pieces": ["D", "B", "R"]}, {"pieces": ["S"], "optional": true}]},
+    "stalemate": "loss",
+    "push": {"chain": "weight", "no_push_back": true},
+    "extinction": {"pieces": "any", "min_count": 6},
+    "scoring": {"count": "region", "region": ["d4", "c4", "e4", "d3", "e3", "c5", "d5"]},
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 80
+  }
+}

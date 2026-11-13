@@ -57,6 +57,7 @@ from urllib.request import Request, urlopen
 import node_session
 import page_names
 import page_text
+import private_paths
 import pytest
 import site_store
 
@@ -104,8 +105,7 @@ SERVE_FAST = {"poll_interval": 0.02}
 REPOSITORY = Path(__file__).resolve().parents[1]
 # The deploy files are not in the public export (`docs/reference/public-fork.md`), so the
 # tests that read them stand down there; in this repository they always run.
-NEEDS_DEPLOY = pytest.mark.skipif(not (REPOSITORY / "deploy").is_dir(),
-                                  reason="the public export carries no deploy/")
+NEEDS_DEPLOY = private_paths.needs("deploy/")
 RULESETS = library.RULESET_DIR
 
 # Where a database to connect to is named, when there is one. Unset on a development
@@ -340,7 +340,7 @@ class TestTheRouteTable:
         assert "/static/vendor/" in routes.STATIC
         assert routes.find("GET", "/static/vendor/cytoscape-3.34.3.min.js") is None
 
-        caddyfile = (REPOSITORY / "deploy" / "remote" / "Caddyfile").read_text(
+        caddyfile = private_paths.path("deploy/remote/Caddyfile").read_text(
             encoding="utf-8"
         )
         (pattern,) = re.findall(r"^\s*@forbidden path_regexp (\S+)\s*$", caddyfile, re.M)
@@ -475,7 +475,7 @@ class TestTheRouteTable:
     @NEEDS_DEPLOY
     def test_caddy_refuses_no_static_path_the_site_serves(self) -> None:
         """The same two doors as the routes below, for what is served ahead of them."""
-        caddyfile = (REPOSITORY / "deploy" / "remote" / "Caddyfile").read_text(encoding="utf-8")
+        caddyfile = private_paths.path("deploy/remote/Caddyfile").read_text(encoding="utf-8")
         (pattern,) = re.findall(r"^\s*@forbidden path_regexp (\S+)\s*$", caddyfile, re.M)
         refused = re.compile(pattern)
         served = [path + "file.js" if path.endswith("/") else path for path in routes.STATIC]
@@ -488,7 +488,7 @@ class TestTheRouteTable:
         Caddy answers before the app is asked, so a route served here and refused there
         is dead on the box. That is what the user hit saving a draft on 2026-09-14.
         """
-        caddyfile = (REPOSITORY / "deploy" / "remote" / "Caddyfile").read_text(encoding="utf-8")
+        caddyfile = private_paths.path("deploy/remote/Caddyfile").read_text(encoding="utf-8")
         (pattern,) = re.findall(r"^\s*@forbidden path_regexp (\S+)\s*$", caddyfile, re.M)
         refused = re.compile(pattern)
         served = [

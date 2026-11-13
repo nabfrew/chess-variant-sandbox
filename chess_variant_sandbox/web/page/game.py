@@ -250,6 +250,12 @@ def score_line(score: Mapping[str, Any] | None, stale: bool) -> str:
 
 SCORE_MEANS = "The score is how interesting a game looks when the computer plays it, out of 1."
 
+SCORE_TESTS_PATH = "/score-tests"
+"""Every test of the score as it was read (R-S9, `score_tests_page.PATH`), linked beside the
+score's sentence as `detail.js`'s `SCORE_TESTS_LINK` links it from the score's basis line."""
+
+SCORE_TESTS_WORDS = "What the score has been tested against"
+
 
 # ------------------------------------------------------------------------- the page
 
@@ -353,7 +359,8 @@ def view(drawn: Drawn) -> str:
            if board else "")
         + about
         + f'\n<p class="drawnScore">{escape(score_line(drawn.score, drawn.stale))} '
-        f'<span class="muted">{escape(SCORE_MEANS)}</span></p>\n'
+        f'<span class="muted">{escape(SCORE_MEANS)} <a href="{SCORE_TESTS_PATH}">'
+        f"{escape(SCORE_TESTS_WORDS)}</a>.</span></p>\n"
         f'<p>{escape(play_free(drawn.name))}, against the computer, with no account '
         'needed.</p>\n'
         '<noscript><p class="muted">Playing needs JavaScript switched on.</p></noscript>\n'

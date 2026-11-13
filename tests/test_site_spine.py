@@ -34,6 +34,7 @@ import types
 from pathlib import Path
 from typing import Any
 
+import private_paths
 import pytest
 import site_store
 from test_site_admin import (  # noqa: F401 -- `drafting` is a fixture
@@ -116,8 +117,9 @@ class TestTheLadder:
         assert kept is not None
         assert opponents.game_lines(kept) == opponents.game_lines(records)
 
+    @private_paths.needs("deploy/ladders.py")  # the box's script: not in the public copy
     def test_the_ladders_script_plays_the_same_games_and_seed(self) -> None:
-        path = REPOSITORY / "deploy" / "ladders.py"
+        path = private_paths.path("deploy/ladders.py")
         found = importlib.util.spec_from_file_location("ladders_for_spine", path)
         assert found is not None and found.loader is not None
         module = importlib.util.module_from_spec(found)

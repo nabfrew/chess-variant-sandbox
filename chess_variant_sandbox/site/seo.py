@@ -76,6 +76,7 @@ PAGES: tuple[str, ...] = (
     reference.PAGE,
     front.NEWS_PATH,
     front.HISTORY_PATH,
+    "/score-tests",
     "/badges",
     terms.PATH,
     "/privacy",

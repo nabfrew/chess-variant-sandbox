@@ -293,10 +293,20 @@ def _atom_text(atom: tuple[int, int], distance: int, *, lame: bool, hop: bool) -
     leaper = LEAPERS[atom]
     if hop:
         # A hopper always rides to find its screen; ``p`` then runs to the end of the
-        # ray and ``g`` stops one square past, and the distance is carried by that
-        # letter rather than by a digit.
+        # ray and ``g`` stops one square past. A digit limits the whole ray, counted from
+        # the origin with the screen among it, as our hop's ``range`` does (Q1217, probed
+        # on pyffish 0.0.90: ``pB3`` over a screen one square off lands two or three off,
+        # over one two squares off lands three off; ``gB2`` over one two squares off has
+        # no landing). Range 1 leaves no square past any screen, so our hop never moves,
+        # and ``pB1`` there lands two off: refused. Until Q1217 the digit was dropped and
+        # cannon shogi's range-2 diagonal hop was written ``pB``, a different piece.
         rider = RIDERS.get(atom)
-        return rider if rider is not None else leaper * 2
+        letter = rider if rider is not None else leaper * 2
+        if distance == 0:
+            return letter
+        if 2 <= distance <= MAX_RIDE and rider is not None:
+            return f"{rider}{distance}"
+        return None
     if lame:
         # A lame leap is a leap. The core sets its distance to -1 itself and a digit
         # here would turn it into a rider, which is a different piece.

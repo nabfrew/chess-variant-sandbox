@@ -1,0 +1,54 @@
+{
+  "schema_version": 31,
+  "name": "drove",
+  "summary": [
+    "Three oxen in the middle belong to nobody; you own only herders, who walk one square and take nothing.",
+    "Whoever has more herders on the eight squares around an ox may move it, as their move, up to two squares in any straight or diagonal line. On a tie nobody can.",
+    "An ox can trample a herder of the other side, but it never becomes yours.",
+    "Drive an ox onto the far row to win.",
+    "A player left with no herders, or no move, loses; at move 100 each, more herders wins.",
+    "The first player's corner herder starts a row back, to even out the first move."
+  ],
+  "description": "Every piece of force in Drove belongs to nobody. Each side has a band of herders that walk one square and can take nothing; between the bands stand three oxen that obey whichever side has more herders standing around them, and only for as long as it does. An ox you hold can charge two squares and trample an enemy herder, and an ox driven onto the far row wins. So the decision on every turn is whether to add one more herder to a crowd or to spend the turn using an ox you hold, and neither is free. A herder usually stands beside two oxen at once, so winning one count can lose another; an ox that charges leaves its crowd behind and lands among a new count, often the opponent's; and a trample changes the count beside every ox nearby, which is why captures come in chains, each side's ox answering the other's. A tie freezes an ox, but a pure copying defence fails: the middle row, where the oxen start, is its own mirror image, and the first herder to step onto it breaks the symmetry. Games open with both bands walking up to the oxen and fighting for the squares beside them, turn sharp when the first ox gets loose and the trampling starts, and end with thinner bands where a single herder decides a count, the defender stepping up beside a charging ox to tie it while the attacker brings one more.",
+  "board": {"width": 7, "height": 7},
+  "pieces": [
+    {
+      "id": "H",
+      "name": "herder",
+      "value": 1,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move"}
+      ]
+    },
+    {
+      "id": "O",
+      "name": "ox",
+      "value": 3,
+      "control": "majority",
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 2, "mode": "both"}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {"piece": "H", "player": 0, "squares": ["a1", "b2", "c2", "d2", "e2", "f2", "g2"]},
+      {"piece": "H", "player": 1, "squares": ["a6", "b6", "c6", "d6", "e6", "f6", "g6"]},
+      {"piece": "O", "player": "nobody", "squares": ["b4", "d4", "f4"]}
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "reach": {"piece": "O", "squares": ["a7", "b7", "c7", "d7", "e7", "f7", "g7"], "mirror": true},
+    "max_plies": 200,
+    "no_progress_draw": 200,
+    "scoring": {"count": "pieces"}
+  },
+  "provenance": {
+    "added": "2026-11-13",
+    "origin": "designer",
+    "history": "Designed blind to the score as session 2 of R-S10 (seed: pieces nobody owns, moved by whoever surrounds them)."
+  }
+}

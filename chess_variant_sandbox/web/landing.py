@@ -862,6 +862,10 @@ def score_html(version: str = DEFAULT_WEIGHTS) -> str:
         f'<h2 class="landingTitle">{_e(SCORE_TITLE)}</h2>'
         f'<p class="landingLead">{_e(SCORE_LEAD)}</p>'
         + _viable_section() + _score_section(version)
+        # R-S9: every test of the score as it was read, hits and misses alike.
+        + '<p class="muted"><a href="/score-tests">What the score has been tested against</a>:'
+        " every test of it so far, what was predicted and what was found, hits and misses "
+        "alike.</p>"
         + '<p class="muted"><a href="/game">See the games</a>, each with its score and what '
         "it rests on.</p></div>")
 

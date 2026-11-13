@@ -1,0 +1,89 @@
+{
+  "schema_version": 31,
+  "name": "cannon shogi",
+  "description": "Cannon shogi, devised by Peter Michaelsen in 1998: shogi with four cannons from xiangqi and janggi on each side's second rank, and janggi's five soldiers in place of the nine pawns, as PyChess plays it. The gold cannon is xiangqi's, moving as a rook and taking only by jumping one piece; the copper cannon is the same along the diagonals. The silver cannon moves and takes only by jumping one piece, as janggi's does, and may jump and take other cannons; the iron cannon is the same along the diagonals. Promoted, the gold and silver cannons both fly: every move of the two, and one step diagonally onto an empty square, or a jump over a piece next to them on a diagonal to the square beyond. The copper and iron cannons promote the same way with the directions swapped. A soldier steps forward or sideways and promotes to a gold. Everything else is shogi: captured pieces change sides and may be dropped back, promotion in the last three ranks on a move into, inside or out of them, and a piece that could never move again must promote, and may not be dropped where it could never move. There is no limit on dropping soldiers: two on a file, a drop that mates and a drop on the last rank are all allowed. One departure, an edge rule: a fourth repetition is a draw, where shogi makes perpetual check a loss for the checking side.",
+  "summary": [
+    "Shogi on its 9 by 9 board, with four cannons on each side's second rank and five soldiers in place of the nine pawns.",
+    "Gold and copper cannons move as a rook and a bishop and take by jumping one piece; silver and iron cannons move and take only by jumping.",
+    "Promoted cannons add the other two cannons' powers along their lines and a short step or jump the other way.",
+    "A soldier steps forward or sideways; soldiers may be dropped anywhere, even to mate.",
+    "Captured pieces are dropped back as in shogi; win by checkmate."
+  ],
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {"id": "P", "name": "soldier", "value": 1, "moves": [{"kind": "leap", "vectors": [[0, 1]], "mode": "both"}, {"kind": "leap", "vectors": [[1, 0]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "L", "name": "lance", "value": 3, "moves": [{"kind": "slide", "vectors": [[0, 1]], "mode": "both"}]},
+    {"id": "N", "name": "knight", "value": 3, "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "S", "name": "silver", "value": 5, "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[0, 1]], "mode": "both"}]},
+    {"id": "G", "name": "gold", "value": 6, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "B", "name": "bishop", "value": 8, "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "R", "name": "rook", "value": 10, "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "U", "name": "gold cannon", "value": 6, "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "capture"}]},
+    {"id": "A", "name": "silver cannon", "value": 5, "moves": [{"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "C", "name": "copper cannon", "value": 5, "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "capture"}]},
+    {"id": "I", "name": "iron cannon", "value": 4, "moves": [{"kind": "hop", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "Q", "name": "tokin", "value": 6, "promoted_from": "P", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "X", "name": "promoted lance", "value": 5, "promoted_from": "L", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "Y", "name": "promoted knight", "value": 5, "promoted_from": "N", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "Z", "name": "promoted silver", "value": 5, "promoted_from": "S", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}]},
+    {"id": "H", "name": "horse", "value": 10, "promoted_from": "B", "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "D", "name": "dragon", "value": 12, "promoted_from": "R", "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "W", "name": "flying gold cannon", "value": 9, "promoted_from": "U", "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 1]], "symmetry": "rotate4", "range": 2, "mode": "both"}]},
+    {"id": "V", "name": "flying silver cannon", "value": 9, "promoted_from": "A", "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 1]], "symmetry": "rotate4", "range": 2, "mode": "both"}]},
+    {"id": "F", "name": "flying copper cannon", "value": 8, "promoted_from": "C", "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "range": 2, "mode": "both"}]},
+    {"id": "J", "name": "flying iron cannon", "value": 8, "promoted_from": "I", "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}, {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "move"}, {"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "range": 2, "mode": "both"}]},
+    {"id": "K", "name": "king", "value": 0, "royal": true, "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]}
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {"piece": "L", "squares": ["a1", "i1"]},
+      {"piece": "N", "squares": ["b1", "h1"]},
+      {"piece": "S", "squares": ["c1", "g1"]},
+      {"piece": "G", "squares": ["d1", "f1"]},
+      {"piece": "K", "squares": ["e1"]},
+      {"piece": "B", "squares": ["b2"]},
+      {"piece": "A", "squares": ["c2"]},
+      {"piece": "U", "squares": ["d2"]},
+      {"piece": "I", "squares": ["f2"]},
+      {"piece": "C", "squares": ["g2"]},
+      {"piece": "R", "squares": ["h2"]},
+      {"piece": "P", "squares": ["a3", "c3", "e3", "g3", "i3"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "forbid_immobility": true,
+    "promotion": [
+      {"piece": "P", "ranks": [6, 7, 8], "to": ["Q"], "mandatory": false, "on_leaving": true},
+      {"piece": "L", "ranks": [6, 7, 8], "to": ["X"], "mandatory": false, "on_leaving": true},
+      {"piece": "N", "ranks": [6, 7, 8], "to": ["Y"], "mandatory": false, "on_leaving": true},
+      {"piece": "S", "ranks": [6, 7, 8], "to": ["Z"], "mandatory": false, "on_leaving": true},
+      {"piece": "B", "ranks": [6, 7, 8], "to": ["H"], "mandatory": false, "on_leaving": true},
+      {"piece": "R", "ranks": [6, 7, 8], "to": ["D"], "mandatory": false, "on_leaving": true},
+      {"piece": "U", "ranks": [6, 7, 8], "to": ["W"], "mandatory": false, "on_leaving": true},
+      {"piece": "A", "ranks": [6, 7, 8], "to": ["V"], "mandatory": false, "on_leaving": true},
+      {"piece": "C", "ranks": [6, 7, 8], "to": ["F"], "mandatory": false, "on_leaving": true},
+      {"piece": "I", "ranks": [6, 7, 8], "to": ["J"], "mandatory": false, "on_leaving": true}
+    ],
+    "drops": {
+      "from_captures": true
+    },
+    "max_plies": 400,
+    "repetition_draw": 4,
+    "no_progress_draw": 200
+  },
+  "provenance": {
+    "added": "2026-11-13",
+    "origin": "human",
+    "author": "Peter Michaelsen",
+    "year": "1998",
+    "source": "pychess.org/variants/cannonshogi; github.com/gbtami/pychess-variants variants.ini [cannonshogi]; en.wikipedia.org/wiki/Shogi_variant",
+    "note": "A published game, entered as an addition to the labelled set for the search for strong games unlike chess (docs/reference/unlike-search.md, R-S10b1)."
+  }
+}

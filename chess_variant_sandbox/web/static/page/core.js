@@ -411,10 +411,11 @@ function paintIdentity() {
     // which is a file in the tree, so the local application has it too. None needs a
     // store behind it.
     // Q1214: *score history*, `/score-history` (SH3), beside *the score* (the user,
-    // 2026-11-12: "Yes, add a link"); both servers serve it.
+    // 2026-11-12: "Yes, add a link"); both servers serve it. R-S9: *score tests*,
+    // `/score-tests`, every test of the score as it was read, after its history.
     foot.append(link(GAMES_PATH, 'games'), ' · ', link('/', 'about'), ' · ',
       link(SCORE_LINK[0], 'the score'), ' · ', link('/score-history', 'score history'),
-      ' · ', link('#/whats-new', "what's new"));
+      ' · ', link('/score-tests', 'score tests'), ' · ', link('#/whats-new', "what's new"));
     if (ACCOUNTS) {
       if (ROUND) foot.append(' · ', link('#/round', 'the round'));
       if (PLAYERS) foot.append(' · ', link('/players', 'players'));

@@ -1,0 +1,119 @@
+{
+  "schema_version": 31,
+  "name": "janggi",
+  "description": "Janggi, the chess of Korea, played on the points of a nine by ten board with no river and a palace with crossed diagonals at each end. The general starts in the centre of its palace and, with its two guards, never leaves it, stepping one point along the palace's lines, diagonals included. The chariot moves as a rook and may also run along a palace's diagonals. The horse steps one point straight and one diagonally, blocked by a piece on the straight step; the elephant steps one point straight and two diagonally, blocked by a piece on either point it passes, and both roam the whole board. The cannon moves and takes only by jumping exactly one piece, never another cannon, and never takes a cannon; in a palace it may jump the centre point along a diagonal. A soldier steps forward or sideways, and in the enemy palace diagonally forward along its lines. A player may pass instead of moving, except in check, so there is no stalemate; checkmate wins. Departures, each an edge rule: the opening is one sanctioned array (both elephants inside, next to the guards), where the players choose among four; generals facing on an open file (bikjang) is allowed and ends nothing, where the published rule makes it a draw or a count of points; two passes in a row are not a draw; and a repeated position or a long run without a capture is a draw, where Korean tournament play counts points and forbids repetition.",
+  "summary": [
+    "Pieces stand on the points of a 9 by 10 board with no river; each side has a palace with crossed diagonals.",
+    "The general and its two guards stay in the palace, stepping one point along its lines.",
+    "The horse and the elephant are blocked by a piece on the points they pass; the elephant goes one straight and two diagonally.",
+    "The cannon moves and takes only by jumping one piece, never a cannon, and never takes a cannon.",
+    "A soldier steps forward or sideways; a player may pass instead of moving, except in check.",
+    "Win by checkmate."
+  ],
+  "board": {
+    "width": 9,
+    "height": 10
+  },
+  "pieces": [
+    {
+      "id": "S",
+      "name": "soldier",
+      "value": 2,
+      "moves": [
+        {"kind": "leap", "vectors": [[0, 1]], "mode": "both"},
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "lateral", "mode": "both"},
+        {"kind": "leap", "vectors": [[1, 1]], "mode": "both", "condition": {"region": ["d8", "e9"]}},
+        {"kind": "leap", "vectors": [[-1, 1]], "mode": "both", "condition": {"region": ["f8", "e9"]}}
+      ]
+    },
+    {
+      "id": "H",
+      "name": "horse",
+      "value": 5,
+      "moves": [
+        {"kind": "lame", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}
+      ]
+    },
+    {
+      "id": "E",
+      "name": "elephant",
+      "value": 3,
+      "moves": [
+        {"kind": "lame", "vectors": [[2, 3]], "legs": [[[0, 1], [1, 2]]], "symmetry": "dihedral8", "mode": "both"}
+      ]
+    },
+    {
+      "id": "A",
+      "name": "guard",
+      "value": 3,
+      "region": ["d1", "e1", "f1", "d2", "e2", "f2", "d3", "e3", "f3"],
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both", "condition": {"region": ["d1", "f1", "e2", "d3", "f3"]}}
+      ]
+    },
+    {
+      "id": "R",
+      "name": "chariot",
+      "value": 13,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both", "condition": {"region": ["e2", "e9"]}},
+        {"kind": "slide", "vectors": [[1, 1]], "range": 2, "mode": "both", "condition": {"region": ["d1", "d8"]}},
+        {"kind": "slide", "vectors": [[-1, 1]], "range": 2, "mode": "both", "condition": {"region": ["f1", "f8"]}},
+        {"kind": "slide", "vectors": [[1, -1]], "range": 2, "mode": "both", "condition": {"region": ["d3", "d10"]}},
+        {"kind": "slide", "vectors": [[-1, -1]], "range": 2, "mode": "both", "condition": {"region": ["f3", "f10"]}}
+      ]
+    },
+    {
+      "id": "C",
+      "name": "cannon",
+      "value": 7,
+      "captures": ["S", "H", "E", "A", "R", "K"],
+      "moves": [
+        {"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both", "screen": ["S", "H", "E", "A", "R", "K"]},
+        {"kind": "hop", "vectors": [[1, 1]], "range": 2, "min_range": 2, "mode": "both", "screen": ["S", "H", "E", "A", "R", "K"], "condition": {"region": ["d1", "d8"]}},
+        {"kind": "hop", "vectors": [[-1, 1]], "range": 2, "min_range": 2, "mode": "both", "screen": ["S", "H", "E", "A", "R", "K"], "condition": {"region": ["f1", "f8"]}},
+        {"kind": "hop", "vectors": [[1, -1]], "range": 2, "min_range": 2, "mode": "both", "screen": ["S", "H", "E", "A", "R", "K"], "condition": {"region": ["d3", "d10"]}},
+        {"kind": "hop", "vectors": [[-1, -1]], "range": 2, "min_range": 2, "mode": "both", "screen": ["S", "H", "E", "A", "R", "K"], "condition": {"region": ["f3", "f10"]}}
+      ]
+    },
+    {
+      "id": "K",
+      "name": "general",
+      "value": 0,
+      "royal": true,
+      "region": ["d1", "e1", "f1", "d2", "e2", "f2", "d3", "e3", "f3"],
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both", "condition": {"region": ["d1", "f1", "e2", "d3", "f3"]}}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "R", "squares": ["a1", "i1"]},
+      {"piece": "H", "squares": ["b1", "h1"]},
+      {"piece": "E", "squares": ["c1", "g1"]},
+      {"piece": "A", "squares": ["d1", "f1"]},
+      {"piece": "K", "squares": ["e2"]},
+      {"piece": "C", "squares": ["b3", "h3"]},
+      {"piece": "S", "squares": ["a4", "c4", "e4", "g4", "i4"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "pass": true,
+    "royal_facing": "allowed",
+    "max_plies": 500,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-11-13",
+    "origin": "human",
+    "source": "en.wikipedia.org/wiki/Janggi; pychess.org/variants/janggi",
+    "note": "A published game, entered as an addition to the labelled set for the search for strong games unlike chess (docs/reference/unlike-search.md, R-S10b1)."
+  }
+}

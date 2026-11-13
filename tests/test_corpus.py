@@ -21,6 +21,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import private_paths
 import pytest
 
 from chess_variant_sandbox import corpus
@@ -1264,20 +1265,14 @@ class TestThePoolIsBoundedByTheLease:
         assert list(pool_plan(many, 4)) == list(many)
         assert pool_plan(many, 5) == {}
 
+    @private_paths.needs(".claude/scripts/compute_lease.py")  # the lease: not in the public copy
     def test_the_lease_read_is_the_file_the_script_writes(self, tmp_path: Path) -> None:
-        import importlib.util
         import subprocess
-        import sys
         import time
 
         from chess_variant_sandbox.cli import held_lease_slots
 
-        script = Path(__file__).resolve().parents[1] / ".claude" / "scripts" / "compute_lease.py"
-        found = importlib.util.spec_from_file_location("compute_lease_q_c10", script)
-        assert found is not None and found.loader is not None
-        lease = importlib.util.module_from_spec(found)
-        sys.modules["compute_lease_q_c10"] = lease
-        found.loader.exec_module(lease)
+        lease = private_paths.script(".claude/scripts/compute_lease.py", "compute_lease_q_c10")
 
         repo = tmp_path / "a repo"
         repo.mkdir()

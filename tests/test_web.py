@@ -22,6 +22,7 @@ from pathlib import Path
 from urllib.request import urlopen
 
 import node_session
+import private_paths
 import pytest
 
 from chess_variant_sandbox import corpus
@@ -2752,12 +2753,16 @@ class TestWhatsNew:
             )
             # The games and the landing page first (Q718, Q723), on both servers, then the
             # changelog.
-            # LP3: then *How the score works*; Q1214: then the score history.
-            assert drawn["foot"][:9] == [{"text": "games", "href": "/game"}, " · ",
-                                         {"text": "about", "href": "/"}, " · ",
-                                         {"text": "the score", "href": "#/score"}, " · ",
-                                         {"text": "score history", "href": "/score-history"}, " · ",
-                                         {"text": "what's new", "href": "#/whats-new"}]
+            # LP3: then *How the score works*; Q1214: then the score history; R-S9: then
+            # the score's tests.
+            assert drawn["foot"][:11] == [{"text": "games", "href": "/game"}, " · ",
+                                          {"text": "about", "href": "/"}, " · ",
+                                          {"text": "the score", "href": "#/score"}, " · ",
+                                          {"text": "score history", "href": "/score-history"},
+                                          " · ",
+                                          {"text": "score tests", "href": "/score-tests"},
+                                          " · ",
+                                          {"text": "what's new", "href": "#/whats-new"}]
 
     def test_the_sites_own_pages_carry_the_same_link(self) -> None:
         """A person reading the privacy notice is on a page the application never drew,
@@ -4395,14 +4400,12 @@ class TestTheBrowserBuildIsServed:
         )
         assert [status for status, _, _ in answers] == [204, 404]
 
+    @private_paths.needs("deploy/pyodide/build.sh")  # the box's build: not in the public copy
     def test_the_default_is_where_the_build_script_writes(self) -> None:
         """`serve` reads `build/browser/` under the working directory, as it reads
         `rulesets/` and `runs/`, and that is the directory `build.sh` fills."""
-        repository = Path(__file__).resolve().parents[1]
-        if not (repository / "deploy").is_dir():
-            pytest.skip("the public export carries no deploy/ (docs/reference/public-fork.md)")
         assert App(RULESETS, library.RUNS_DIR).browser_dir == Path("build") / "browser"
-        script = (repository / "deploy" / "pyodide" / "build.sh").read_text(encoding="utf-8")
+        script = private_paths.path("deploy/pyodide/build.sh").read_text(encoding="utf-8")
         assert 'ARTEFACT="$REPO/build/browser"' in script
 
     @staticmethod
@@ -5078,6 +5081,8 @@ class TestTheWayInToTheSitesOwnPages:
             " · ",
             {"text": "score history", "href": "/score-history"},
             " · ",
+            {"text": "score tests", "href": "/score-tests"},
+            " · ",
             {"text": "what's new", "href": "#/whats-new"},
             " · ",
             {"text": "the round", "href": "#/round"},
@@ -5158,6 +5163,7 @@ class TestTheWayInToTheSitesOwnPages:
                                  {"text": "about", "href": "/"}, " · ",
                                  {"text": "the score", "href": "#/score"}, " · ",
                                  {"text": "score history", "href": "/score-history"}, " · ",
+                                 {"text": "score tests", "href": "/score-tests"}, " · ",
                                  {"text": "what's new", "href": "#/whats-new"}]
 
     def test_the_handle_is_a_text_node_and_never_markup(self) -> None:

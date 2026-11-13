@@ -1,0 +1,66 @@
+{
+  "schema_version": 31,
+  "name": "heft",
+  "summary": [
+    "Nothing is captured: move onto an enemy piece to shove it, with every piece behind it in that line, one cell on.",
+    "A piece shoved off the edge of the board is out. Push out four of the enemy's nine pieces to win.",
+    "A shove goes through only if the shover's strength is at least the weight of the whole line it moves.",
+    "Bulls step one cell, weigh 3 and shove 4. Darts slide up to two cells, weigh 1 and shove 1. Stones step one cell, weigh 4 and never shove.",
+    "Every turn is two moves; the first player's first turn is one.",
+    "A piece just shoved may not be shoved straight back on the next move.",
+    "If 80 moves pass with nobody pushed out, or the game reaches 300 moves, whoever has more pieces on the seven middle cells wins."
+  ],
+  "description": "A shoving match on a small hexagonal ring. Nothing is ever taken where it stands; a piece is lost only by being shoved over the rim, and a shove is a sum: it moves the whole line in front of the shover, and goes through only if the shover is strong enough for the line's total weight. So a piece standing alone is light and easy to throw, while the same piece with a friend lined up behind it is too heavy to move, and every turn asks whether to stack or to strike. The bulls are the only pieces that can move a real weight, but a bull sent out to shove is a bull no longer bracing anyone, and a lone bull is itself just light enough for an enemy bull to throw. The stones are pure ballast: heavy, slow and unable to shove, they make a line safe and do nothing else. The darts are quick and light, able to run two cells and knock a lone dart off the edge, and are the first pieces to be lost when they stray. Because every cell has three lines through it, a group braced against a shove from one side is usually light along another. Each turn is two moves, which lets a player step up and shove in the same turn, or shove and then brace the piece that shoved; the first player's single opening move keeps the start even. Both armies begin on their own rim, the most dangerous place on the board, so a game opens with a scramble off the edge and into the middle, settles into a pushing match in the centre where lines lean on each other, and ends when one side has lost four pieces over the rim, or, if the shoving locks up, when a clock awards the game to whoever holds more of the seven middle cells.",
+  "board": {"width": 7, "height": 7, "lattice": "hex", "shape": "hexagon"},
+  "pieces": [
+    {
+      "id": "D",
+      "name": "dart",
+      "value": 1,
+      "weight": 1,
+      "strength": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate6", "range": 2, "mode": "move", "push": true}
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bull",
+      "value": 3,
+      "weight": 3,
+      "strength": 4,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate6", "mode": "move", "push": true}
+      ]
+    },
+    {
+      "id": "S",
+      "name": "stone",
+      "value": 2,
+      "weight": 4,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate6", "mode": "move"}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {"piece": "D", "squares": ["c2", "g2", "e1", "f1"]},
+      {"piece": "B", "squares": ["d2", "f2"]},
+      {"piece": "S", "squares": ["e2", "d1", "g1"]}
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "turn": {"moves": 2, "ramp": [1]},
+    "stalemate": "loss",
+    "push": {"chain": "weight", "no_push_back": true},
+    "extinction": {"pieces": "any", "min_count": 6},
+    "scoring": {"count": "region", "region": ["d4", "c4", "e4", "d3", "e3", "c5", "d5"]},
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 80
+  }
+}

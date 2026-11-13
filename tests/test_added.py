@@ -11,13 +11,12 @@ are `tests/test_site_stages.py`'s.
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from datetime import date
 from pathlib import Path
 from typing import Any
 
+import private_paths
 import pytest
 from test_corpus import SPEC, _find, _measured, world  # noqa: F401  (`world` is a fixture)
 
@@ -26,12 +25,8 @@ from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
 from chess_variant_sandbox.web import library
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / ".claude" / "scripts" / "backfill_added.py"
-_spec = importlib.util.spec_from_file_location("backfill_added", SCRIPT)
-assert _spec is not None and _spec.loader is not None
-backfill = importlib.util.module_from_spec(_spec)
-sys.modules["backfill_added"] = backfill
-_spec.loader.exec_module(backfill)
+SCRIPT = ".claude/scripts/backfill_added.py"  # a maintainer's tool: not in the public copy
+backfill = private_paths.script(SCRIPT, "backfill_added")
 
 LIBRARY = sorted(path for folder in ("rulesets", "archive") for path in (ROOT / folder).glob("*.json"))
 
@@ -110,6 +105,7 @@ class _Stand:
         self.spec = spec
 
 
+@private_paths.needs(SCRIPT)
 class TestTheBackfill:
     def test_the_oldest_day_git_names(self) -> None:
         assert backfill.oldest_day("2026-10-09\n\n2026-08-20\n") == "2026-08-20"

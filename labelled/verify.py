@@ -19,8 +19,9 @@ where a node is a winner's move. A move after which the game is over has no "rep
 empty object), and the ending must be the winner's. At a loser's turn the replies' keys must
 be exactly the loser's legal moves; a reply that itself ends the game (a capture the loser is
 made to take, say) must end it as the winner's win, and its value is null. When the winner
-moves second the tree is `{"replies": {...}}`, the loser's every first move. A certificate that passes has its SHA-256 written into
-`labelled/verified.json`, which `tests/test_labelled_set.py` checks against the file.
+moves second the tree is `{"replies": {...}}`, the loser's every first move. A certificate that passes has its SHA-256
+(of its bytes with CRLF folded to LF, `digest`) written into `labelled/verified.json`, which
+`tests/test_labelled_set.py` checks against the file.
 """
 
 # compute-lease: light
@@ -43,7 +44,14 @@ class Refuted(Exception):
 
 
 def digest(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """SHA-256 of the file with CRLF folded to LF: the committed blob's bytes, on any checkout.
+
+    The one digest for the set's files: `verified.json`, the seal's `labels` and the guard
+    test all use it. Hashing raw bytes made the digest a property of the working copy, and a
+    file Python wrote on Windows (CRLF) sealed digests no Linux checkout, and no fresh LF
+    worktree, could match (Q1215; labelled-set.md §8, the note of 2026-11-13).
+    """
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _walk(engine: Any, state: Any, node: dict[str, Any], winner: int, line: list[str]) -> int:

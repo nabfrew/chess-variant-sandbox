@@ -108,6 +108,7 @@ class TestThePagesDrawnWithoutAStore:
             "/terms": pages.terms_page(), "/badges": pages.badges(),
             "/request-invitation": pages.request_invitation(), "/rules": pages.rules(),
             "/whats-new": pages.whats_new({"entries": []}),
+            "/score-tests": pages.score_tests(),
         }
         for where, html in drawn.items():
             assert_free_online(html, where)

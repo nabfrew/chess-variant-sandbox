@@ -59,6 +59,7 @@ from chess_variant_sandbox.web.page import (
     page,
     picture,
     rules_page,
+    score_tests_page,
     shell,
 )
 from chess_variant_sandbox.web.page import game as game_page
@@ -1612,6 +1613,11 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
                 return
             if parsed.path == RULES_PAGE_ROUTE:
                 self._send(200, rules_page.local_bytes(), "text/html; charset=utf-8",
+                           cache=RULES_CACHE)
+                return
+            if parsed.path == score_tests_page.PATH:
+                # R-S9: what the score has been tested against, under the app's header.
+                self._send(200, score_tests_page.local_bytes(), "text/html; charset=utf-8",
                            cache=RULES_CACHE)
                 return
             if parsed.path in SCRIPTS:

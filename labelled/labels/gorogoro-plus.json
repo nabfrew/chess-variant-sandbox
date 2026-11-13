@@ -1,0 +1,44 @@
+{
+  "game": "labelled/gorogoro-plus.json",
+  "spec_hash": "d4bf795ef1fe",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.0093,
+  "quarter": "Q1",
+  "likeness_commit": "34057d4c5",
+  "likeness_version": "k1",
+  "labelled_by": "R-S10b1 worker (Claude Opus 5.5)",
+  "date": "2026-11-13",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent. Its moves were compared with PyChess's own definition of the game (its variants.ini section loaded into pyffish 0.0.90, random walks asking only for legal moves), never played by this project's players.",
+  "W": {
+    "low": 2,
+    "high": 2
+  },
+  "L": {
+    "low": 1,
+    "high": 1
+  },
+  "evidence": [
+    {
+      "address": "pychess.org/variants/gorogoroplus",
+      "read": "2026-11-13",
+      "says": "Gorogoro+ has a standing place among the server's variants: shogi on a 5x6 board with kings, golds, silvers, pawns, and a knight and a lance in hand; promotion in the last two ranks"
+    },
+    {
+      "address": "github.com/gbtami/pychess-variants variants.ini, section gorogoroplus",
+      "read": "2026-11-13",
+      "says": "the server's definition: Fairy-Stockfish's gorogoro with the start sgkgs/5/1ppp1/1PPP1/5/SGKGS and a lance and a knight in each hand, lance and knight promoting to gold"
+    },
+    {
+      "address": "en.wikipedia.org/wiki/Dobutsu_shogi",
+      "read": "2026-11-13",
+      "says": "goro goro dobutsu shogi, the 5x6 game: three pawns, two silvers, two golds and a king a side; promotion in the last two ranks; shogi's drop rules; a fourfold repetition drawn"
+    }
+  ],
+  "flagged": true,
+  "in_scale": false,
+  "tier_note": "W: the server place alone; the commercial 5x6 edition is general knowledge and was not read. L: the plus form's dates of play are not given, so 1.",
+  "departure": "the repetition rule: a fourth repetition is drawn here, where the shogi rule the server follows makes perpetual check a loss for the checking side",
+  "addition": "unlike-search.md R-S10b1: a published game of section 1.2, row 2; not in the labelled set's registered reading (labelled-set.md section 3.3)"
+}

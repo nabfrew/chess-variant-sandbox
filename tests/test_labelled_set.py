@@ -67,6 +67,18 @@ def _spec_files() -> list[Path]:
     return [p for p in _set_specs() if p.name not in (SEAL.name, READING.name, VERIFIED.name)]
 
 
+def _digest(path: Path) -> str:
+    """`labelled/verify.py`'s digest: SHA-256 with CRLF folded to LF, so no checkout's line
+    endings move it (Q1215)."""
+    import importlib.util
+
+    loader = importlib.util.spec_from_file_location("labelled_verify_digest", LABELLED / "verify.py")
+    assert loader is not None and loader.loader is not None
+    module = importlib.util.module_from_spec(loader)
+    loader.loader.exec_module(module)
+    return str(module.digest(path))
+
+
 def _git(*args: str) -> str:
     done = subprocess.run(
         ["git", *args], cwd=ROOT, capture_output=True, text=True, check=False
@@ -375,8 +387,7 @@ def test_proof_labels_hold_and_their_certificates_verify() -> None:
         if label["proof"]["form"] == "certificate":
             cert = CERTIFICATES / f"{label['proof']['certificate']}.json"
             assert cert.exists(), f"{name}: no certificate"
-            digest = hashlib.sha256(cert.read_bytes()).hexdigest()
-            assert verified.get(cert.stem) == digest, f"{name}: verify.py has not passed it"
+            assert verified.get(cert.stem) == _digest(cert), f"{name}: verify.py has not passed it"
 
 
 def test_the_seal_matches_the_files_it_lists() -> None:
@@ -386,7 +397,33 @@ def test_the_seal_matches_the_files_it_lists() -> None:
     listed = {**seal.get("labels", {}), **{a["label"]: a["sha256"] for a in seal.get("additions", [])}}
     for path in sorted(LABELS.glob("*.json")):
         assert path.stem in listed, f"{path.name} is not in the seal"
-        assert hashlib.sha256(path.read_bytes()).hexdigest() == listed[path.stem], path.name
+        assert _digest(path) == listed[path.stem], path.name
+
+
+def test_the_digest_ignores_line_endings(tmp_path: Path) -> None:
+    """The seal and `verified.json` name content, not a working copy (Q1215): a file written
+    with CRLF and its LF twin digest alike, and alike to the LF bytes' plain SHA-256."""
+    lf, crlf = tmp_path / "lf.json", tmp_path / "crlf.json"
+    lf.write_bytes(b'{\n  "a": 1\n}\n')
+    crlf.write_bytes(b'{\r\n  "a": 1\r\n}\r\n')
+    assert _digest(crlf) == _digest(lf) == hashlib.sha256(lf.read_bytes()).hexdigest()
+
+
+def test_the_seals_rebase_keeps_the_old_digests_checkable() -> None:
+    """The 2026-11-13 re-record (Q1215): every digest it replaced is the new file's LF bytes
+    with each LF written as CRLF -- the same content -- and every re-recorded digest is today's."""
+    seal = json.loads(SEAL.read_text(encoding="utf-8"))
+    verified = json.loads(VERIFIED.read_text(encoding="utf-8"))
+    rebases = seal.get("rebased", [])
+    assert rebases, "the seal records its re-record"
+    for rebase in rebases:
+        for kind, folder, now in (
+            ("labels", LABELS, seal["labels"]), ("verified", CERTIFICATES, verified),
+        ):
+            for name, old in rebase["previous"][kind].items():
+                body = (folder / f"{name}.json").read_bytes().replace(b"\r\n", b"\n")
+                assert hashlib.sha256(body.replace(b"\n", b"\r\n")).hexdigest() == old, name
+                assert now[name] == hashlib.sha256(body).hexdigest(), name
 
 
 def test_before_the_seal_no_unmeasured_member_has_a_run() -> None:

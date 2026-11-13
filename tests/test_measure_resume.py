@@ -28,13 +28,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import private_paths
 import pytest
 
 from chess_variant_sandbox import cli, corpus, refresher
 from chess_variant_sandbox.spec import spec_hash
 from chess_variant_sandbox.tournament import checkpoint
-
-ROOT = Path(__file__).resolve().parent.parent
 
 SPEC = {
     "schema_version": 1,
@@ -250,13 +249,15 @@ def test_the_cli_measure_resumes_inside_its_checkpoint(library: Games, tmp_path:
 def _newest_replay_script() -> Path:
     """The newest library-replay script: each is a copy of the one before it."""
     scripts = [
-        path for path in sorted((ROOT / "docs" / "reference").glob("replay-*.py"))
+        path for path in sorted(private_paths.path("docs/reference").glob("replay-*.py"))
         if "def slice_(" in path.read_text(encoding="utf-8")
     ]
     assert scripts
     return scripts[-1]
 
 
+# The replay scripts are records in `docs/reference/`, which the public copy does not carry.
+@private_paths.needs("docs/reference/")
 def test_the_replay_launcher_resumes_inside_a_game(
     library: Games, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

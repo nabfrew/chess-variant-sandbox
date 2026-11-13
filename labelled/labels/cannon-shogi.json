@@ -1,0 +1,44 @@
+{
+  "game": "labelled/cannon-shogi.json",
+  "spec_hash": "f9242927e9f4",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.0126,
+  "quarter": "Q1",
+  "likeness_commit": "34057d4c5",
+  "likeness_version": "k1",
+  "labelled_by": "R-S10b1 worker (Claude Opus 5.5)",
+  "date": "2026-11-13",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent. Its moves were compared with PyChess's own definition of the game (its variants.ini section loaded into pyffish 0.0.90, random walks asking only for legal moves), never played by this project's players.",
+  "W": {
+    "low": 2,
+    "high": 2
+  },
+  "L": {
+    "low": 1,
+    "high": 2
+  },
+  "evidence": [
+    {
+      "address": "pychess.org/variants/cannonshogi",
+      "read": "2026-11-13",
+      "says": "Cannon shogi has a standing place among the server's variants: shogi with four cannons on the second rank and janggi's five soldiers; each cannon's move and its flying promotion; no limit on dropping soldiers; all other rules as shogi"
+    },
+    {
+      "address": "github.com/gbtami/pychess-variants variants.ini, section cannonshogi",
+      "read": "2026-11-13",
+      "says": "the server's definition: start lnsgkgsnl/1rci1uab1/p1p1p1p1p/9/9/9/P1P1P1P1P/1BAU1ICR1/LNSGKGSNL; gold cannon mRcpR, silver pR, copper mBcpB, iron pB; flying gold and silver mRpRmFpB2, flying copper and iron mBpBmWpR2; no doubled-pawn or drop-mate limit"
+    },
+    {
+      "address": "en.wikipedia.org/wiki/Shogi_variant",
+      "read": "2026-11-13",
+      "says": "Cannon shogi, Peter Michaelsen, February 1998: shogi plus xiangqi-type and janggi-type cannons, 9x9, 20 pieces each"
+    }
+  ],
+  "flagged": true,
+  "in_scale": false,
+  "tier_note": "W: the server place alone; no tournament was found. L: devised 1998; the dates of organised play are not given, so 1 to 2.",
+  "departure": "the repetition rule: a fourth repetition is drawn here, where shogi makes perpetual check a loss for the checking side",
+  "addition": "unlike-search.md R-S10b1: a published game of section 1.2, row 4; not in the labelled set's registered reading (labelled-set.md section 3.3)"
+}

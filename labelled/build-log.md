@@ -147,3 +147,70 @@ promotions to queens before mate.
 
 Nothing measured; that is R-S2c's. `labelled/SEAL.json` is written by the commit after this
 entry's.
+
+## Q1215, 2026-11-13: the seal's digests re-recorded on LF bytes; no member changed
+
+**What was wrong.** The seal (57df879ff) and `verified.json` hashed each file's working-copy
+bytes. The R-S2b2 files were written by Python on Windows, whose `write_text` turns `\n` into
+`\r\n`, so the sealer hashed CRLF; git stores every one of them with LF (`.gitattributes`:
+`* text=auto eol=lf`), and a fresh checkout on Windows or Linux holds LF. So 27 of the 54
+label digests (all 23 bad games and 4 controls; the 27 good-library labels were LF and matched)
+and all 7 certificate digests in `verified.json` matched no checkout but the sealer's.
+`test_the_seal_matches_the_files_it_lists` and `test_proof_labels_hold_and_their_certificates_verify`
+failed on main from then on.
+
+**Checked before touching anything.** For all 61 digests (54 labels, 7 certificates), each was
+compared with the committed blob at 621c15883 (raw, from `git archive` with
+`core.autocrlf=false`): 27 equal the blob's SHA-256 as stored, 34 equal the SHA-256 of the blob
+with every LF written as CRLF, and none matches neither. Every blob is LF only. So the content
+sealed is the content committed, byte for byte up to line endings.
+
+**The fix, at the root.** `labelled/verify.py`'s `digest` folds CRLF to LF before hashing,
+which is the committed blob on any checkout; the guard test hashes with that same function. The
+34 digests were re-recorded on that basis: `SEAL.json` `labels` (27) by a one-off script, and
+`verified.json` (7) by re-running `uv run python labelled/verify.py`, which walked all 7
+certificates again (7 of 7 hold). No label, game or certificate file was edited (their
+single-commit history is what `test_each_file_is_written_once...` checks, and it passes).
+
+**Checking the old digests.** `SEAL.json` now carries `rebased`: the date, the basis, the reason,
+and under `previous` every replaced digest (`labels`, `verified`). Each previous digest is
+`sha256(file.replace(b"\n", b"\r\n"))` of today's file, and
+`test_the_seals_rebase_keeps_the_old_digests_checkable` asserts exactly that, so the old seal
+stays evidence that this content was fixed on 2026-11-12. The old `SEAL.json` itself is at
+57df879ff. R-S2c's reading (11bf34048) used these same files; nothing in it moves.
+
+## R-S10b1, 2026-11-13: four published additions for the search for strong games unlike chess
+
+Branched from main at `34057d4c5`. These are additions under `labelled-set.md` §3.3, entered
+for `docs/reference/unlike-search.md` (§1.2, §5), and in no registered reading of this set.
+Nothing here was measured or played by any of the project's players, and no run directory
+exists for any of the four (checked in this worktree's and the main checkout's `runs/` before
+the labels were committed). I opened no score of any game here or of any parent, nor the
+four built candidates' scores R-S2c holds (`reading.json`, `runs/R-S2c`, §9 of the design).
+
+**The walk** (`unlike-search.md` §1.2's order, until four were written; sources read today):
+
+| # | candidate | verdict | why |
+|---|---|---|---|
+| 1 | janggi | **written** (`labelled/janggi.json`, `58fe9dad9711`, Q1, flagged) | Test one under unlike-search.md §1's widening, which admits what row 1 of R-S2b's walk skipped: one sanctioned array (both elephants inside), bikjang as `royal_facing: "allowed"`; also left unsaid, both edge: two passes in a row drawn, and the count of points (repetition and the no-capture clock draw). Everything else as Wikipedia and PyChess state it: the pass (not in check, so no stalemate), the palace's diagonals for general, guards, chariots, cannons and soldiers (moves under `condition.region`), the cannon that neither jumps nor takes a cannon (`screen` as a list, `captures`), the elephant blocked on two points (`legs`). Moves checked against Fairy-Stockfish's built-in janggi (pyffish 0.0.90): 40 random games, 8,094 positions, the same legal moves everywhere except where the generals face, where theirs restricts the reply to breaking it or passing and ends the game on a pass (93 positions, 28 games): the bikjang departure, as registered. Test two: Wikipedia (popular on the Korean Peninsula, professional games, a world tournament at Harbin in 2009), PyChess's place. W2 at least. |
+| 2 | gorogoro plus | **written** (`labelled/gorogoro-plus.json`, `d4bf795ef1fe`, Q1, flagged) | Test one: PyChess's own definition (its `variants.ini` section: Fairy-Stockfish's `gorogoro` with a lance and a knight in each hand) loaded into pyffish and walked beside ours, 10 games, 1,560 positions, the same moves (20 positions where theirs lists a mating pawn drop as a losing move, the tolerance `verify` grants). One edge departure: a fourth repetition drawn. Test two: PyChess's place. W2. |
+| 3 | clobber | **written** (`labelled/clobber.json`, `53355cbda889`, Q1, flagged *thin record*) | Test one: exact, on the published 5x6 board; the first player (the source leaves it open) is Fairy-Stockfish's, the stones on b1. `chess-variant-sandbox fairy` verifies moves and results against pyffish, whose opening is the built-in `clobber`'s. Test two: a Computer Olympiad event since 2005 and a competition at Tilburg in 2011 (Wikipedia), mostly between programs, hence the flag the record gives it. W2. |
+| 4 | cannon shogi | **written** (`labelled/cannon-shogi.json`, `f9242927e9f4`, Q1, flagged) | Test one: PyChess's own definition (`variants.ini` section `cannonshogi`, read for the opening, which neither the guide page's text nor Wikipedia states) walked beside ours, 15 games, 4,372 positions, the same moves, with promoted cannons on the board in most of them. A flying cannon's short jump is a hop over an adjacent piece with `range` 2 (Betza's `pB2`); each promoted cannon is its own type, so a captured one goes to the hand as the cannon it was. One edge departure: a fourth repetition drawn. Test two: PyChess's place (Wikipedia lists it, Peter Michaelsen 1998). W2. |
+| 5 | Manchu chess | **not reached** | Four were written at row 4. |
+
+**Likeness to chess**, each appended alone to the 131 library games at `34057d4c5` (whose
+mechanics are those of `74eaa6ca2`: the one file changed since, `archive/los-alamos-with-crushing-pillars.json`,
+changed only its provenance, and the four R-S2b games read their recorded values again):
+clobber 0.0003, janggi 0.0061, gorogoro plus 0.0093, cannon shogi 0.0126. All Q1, all below
+unlike-search.md §3's cut of 0.0525. Pieces of chess (`piece:` words shared with
+`rulesets/chess.json`): janggi 0, clobber 0, gorogoro plus 1 (the king), cannon shogi 3 (king,
+rook, bishop).
+
+**`tests/check_new_game.py`** took the four paths: the corpus pins are current and the 31
+`new_game` checks pass. No `FROZEN` row was added (that table covers `rulesets/` and `archive/`);
+each game's identity is pinned by its label's `spec_hash`.
+
+**Found on the way, not fixed here** (outside this task's files): the Fairy-Stockfish translator
+writes a hop's Betza term without its `range` (`fairy/variant.py`, the `hop` branch passes
+`distance=0`), so cannon shogi's flying cannons translate as `pB` where the game is `pB2`. The
+walk above used PyChess's definition, not the translation, so the spec is unaffected.

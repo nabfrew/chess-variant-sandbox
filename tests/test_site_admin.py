@@ -41,6 +41,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import page_text
+import private_paths
 import pytest
 import site_store
 
@@ -2175,10 +2176,11 @@ class TestTheSaveCaps:
         answer = _raw_design_post(drafting.port, site_server.DESIGN_DRAIN_BYTES + 1, body=None)
         assert b" 413 " in answer.split(b"\r\n", 1)[0]
 
+    @private_paths.needs("deploy/remote/Caddyfile")  # the box's: not in the public copy
     def test_the_drain_covers_every_body_the_box_admits(self) -> None:
         """Caddy refuses a body over its `max_size` before the application sees it, so a
         drain at least that long means every 413 on the box is delivered, not aborted."""
-        caddy = (REPOSITORY / "deploy" / "remote" / "Caddyfile").read_text(encoding="utf-8")
+        caddy = private_paths.path("deploy/remote/Caddyfile").read_text(encoding="utf-8")
         found = re.search(r"^\s*max_size\s+(\d+)MB\s*$", caddy, re.MULTILINE)
         assert found is not None
         admitted = int(found.group(1)) * 1024 * 1024

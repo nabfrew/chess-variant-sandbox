@@ -14,6 +14,16 @@ any other address keeps its brackets.
 
 ## 2026-11-13
 
+### What the score has been tested against
+
+A new page, [what the score has been tested against](/score-tests), lists every test of the games' score so far:
+fourteen of them, each with what was asked, what was predicted before the numbers were computed, what was found,
+and what it does and does not show. Misses are listed as plainly as hits. Among them: the score agreed with how
+widely published games are played about as often as a coin would, while it told every known good game from every
+proven broken one; and strong games unlike chess, looked for on purpose, scored lower than games like chess. The
+tests were written and run by the project's own AI agents. The page is linked from *score tests* in the footer of
+every page, from each game's score, and from *how the score works*.
+
 ### A note on one game's low score
 
 Los Alamos with crushing pillars scores low and is marked as not a viable game. Its page now says why that mark is

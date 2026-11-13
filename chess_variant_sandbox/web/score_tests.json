@@ -1,0 +1,173 @@
+{
+  "about": "Every test of the score as it was read, one entry per test, oldest first. Served at /score-tests by chess_variant_sandbox/web/page/score_tests_page.py. A test's task adds its own entry at the end; every field is required (tests/test_score_tests_page.py). Numbers are copied from the record named in `record`, never re-derived.",
+  "tests": [
+    {
+      "id": "R-S5",
+      "read": "2026-11-11",
+      "question": "Do games less like chess get lower scores?",
+      "asked": "Across the 107 library games that passed the checks for a broken game (chess itself and the deliberately poor check games left out), does a game's score rise with how much its rules have in common with chess? Likeness to chess is a number from 0 to 1 worked out from the rules alone: how many of a game's rarer ingredients (rules, board, pieces) it shares with chess. No game was played; the stored scores were read. The measure is a rank correlation, from -1 to +1, where 0 means no relation and a positive number means games more like chess tend to score higher.",
+      "predicted": "A rank correlation of about +0.35 (anything from +0.20 to +0.50 counted as right); a weaker and uncertain link, about +0.15, among the half of games least like chess; games more like chess clearing 0.8 about 30 percentage points more often than the rest; and that the checks for broken games would not be what drives it.",
+      "found": "The rank correlation was +0.43 (95% interval +0.26 to +0.58): among these games, those less like chess do tend to score lower. Among the half least like chess the link was far stronger than predicted, +0.66. Games like chess cleared 0.8 more often by 15 points (87% against 72%), half the gap predicted. The effect sits almost entirely in the quarter of games least like chess: 46% of those clear 0.8, against 85% to 96% in each of the other three quarters. The checks for broken games are not where it comes from.",
+      "outcome": "mixed",
+      "tally": "3 of 5 predictions right. The link was much stronger than predicted among the games least like chess, and the gap at 0.8 was half the predicted size.",
+      "shows": "A correlation over the library cannot say why. The score's scale may be shaped by chess-family games; the computer players may read such games badly; or the library may simply hold few strong games unlike chess, because few were looked for. The search for strong games unlike chess further up this page was run to tell these apart. Likeness here counts shared rare ingredients, not how alike two games feel to play, so chess with one rare rule added can read as unlike chess.",
+      "record": "docs/reference/likeness-and-score.md, sections 1 to 3"
+    },
+    {
+      "id": "R-S1b",
+      "read": "2026-11-11",
+      "question": "Does the score agree with which games people have played most widely, and for longest?",
+      "asked": "For 37 published games (a 38th was refused by the checks for a broken game), an ordering by how widely and how long each has been played was written down from outside sources before any score was read: chess and shogi above a variant a few hundred people play, for example. Where that ordering puts one game above another (435 such pairs), how often does the score put them the same way round? 0.5 is what a coin would do; 1.0 is always.",
+      "predicted": "Fixed beforehand: a pass needs 0.65 or more, with the 95% interval above 0.50; a fail is below 0.55, or an interval wholly below 0.65. The author expected a fail or no clear reading, somewhere between 0.45 and 0.60, and expected the widely played games to be ordered better than the little-played ones.",
+      "found": "The score agreed on 0.517 of the pairs (95% interval 0.391 to 0.643): about as often as a coin. That is a fail by the rule fixed beforehand. No widely played game was refused by the checks, and shogi and xiangqi sat at the published games' median. Within the quarter of games least like chess, the score ordered the nine published games there the right way round on 0.828 of 29 pairs (a pass on that part's own rule), but placed all four widely played ones (xiangqi, shogi, crazyhouse, racing kings) below the median little-played chess variant (0.881).",
+      "outcome": "miss",
+      "tally": "The score failed this test. The author's prediction of a fail was right; the prediction about widely played games was wrong.",
+      "shows": "How widely and how long a game has been played is a rough stand-in for how good it is: history, culture and an early start count too, and a good game can be unknown. The reading inside the quarter least like chess rests on four comparisons and the same stand-in, and the computer players may be the cause rather than the score.",
+      "record": "docs/reference/outside-test.md, section 8"
+    },
+    {
+      "id": "R-S2c",
+      "read": "2026-11-13",
+      "question": "Does the score tell games known to be good from games proven to be broken?",
+      "asked": "A fresh set was labelled and sealed before any of it was scored: 27 good games (published games with a long record of play), 23 broken ones (a published game with one rule changed so that a stated flaw follows, with a proof: one side can force a win, nobody can win, or one side cannot lose), and 4 controls (a good game with an extra piece that can never move). Comparing games of similar likeness to chess, does every good game rank above every broken one? A broken game refused by the checks for a broken game ranks below every game that passes them.",
+      "predicted": "Fixed beforehand: a pass needs good above broken in 80% of pairs or more. The author expected the checks to refuse 11 or 12 of the 12 plainly broken games and no widely played good game; only 2 or 3 of the subtly broken games (whose flaw needs deep play to show) to be refused; overall, good above broken in 70% to 80% of pairs, short of the pass mark; and the controls to read like the games they were made from.",
+      "found": "The checks refused all 12 plainly broken games and none of the 27 good ones. They also refused 10 of the 11 subtly broken games, by symptoms any player shows (few decisive games, repetition, one side always winning) rather than by seeing the flaw. The one broken game that got through, a horde endgame where one side can force a win, scored 0.390, below every good game. So every good game ranked above every broken game of its quarter: 100% of pairs, a pass. All 4 controls read like the games they were made from.",
+      "outcome": "hit",
+      "tally": "A pass on the rule fixed beforehand. 5 of the author's 8 predictions were right; the wrong ones underrated how much the checks would catch.",
+      "shows": "Almost all of the separation is the checks' work, not the score's number: only one broken game got past them, so whether the number orders the games the checks let through is not tested by this set. One builder made the broken games, and many of them are thinned-out armies, so part of what the checks refuse may be the thinness rather than the flaw.",
+      "record": "docs/reference/labelled-set.md, section 9"
+    },
+    {
+      "id": "R-S4b",
+      "read": "2026-11-13",
+      "question": "Would the scores change if the computer players were stronger?",
+      "asked": "A score is read from computer players that each search a fixed number of positions a move. For each of the 131 library games, the strongest of them played a copy of itself allowed four times the search, and, on the 26 games Fairy-Stockfish (a strong outside engine) can play, Fairy-Stockfish too. A rule fixed beforehand flags a score as depending on its players when the four-times copy scores under 60% against it (more search has stopped paying), when Fairy-Stockfish beats it clearly, or when the score's own runs could not tell their players apart. To test the first of those, 13 games were measured again with every player given four times the search.",
+      "predicted": "The first part of the rule flagging 15% to 35% of games; Fairy-Stockfish beating the players on at least 7 in 10 of the games it plays; the third part flagging fewer than 10 games; 35% to 60% flagged in all; the first part picking out games whose scores move, slightly better than even; and about 3 in 8 of the unflagged games moving.",
+      "found": "39 of 131 scores (30%) are flagged as depending on their players: 16 because more search barely helped, 23 because Fairy-Stockfish beat the players clearly, 5 because their runs could not order their players (those 5 are among the 16). In the re-measurement, all 5 games flagged by the first part moved by two standard deviations or more, and so did 4 of the 8 without it; 11 of the 13 new scores were lower. The first part flagged fewer games than predicted (12%), so fewer were flagged in all, and half the unflagged games moved rather than about 3 in 8.",
+      "outcome": "mixed",
+      "tally": "3 of 6 predictions right. The first part of the rule passed its own test: the games it picked out did move.",
+      "shows": "A score that is not flagged is not shown to be safe: half of the unflagged games in the sample moved when the players got stronger. The sample was 13 games and one step of four times the search. Flagging changes no score, and flagged scores are not yet marked on the games' pages.",
+      "record": "docs/reference/strength-check-all-games.md, section 14"
+    },
+    {
+      "id": "R-S11",
+      "read": "2026-11-13",
+      "question": "Is the heaviest part of the score unfair because of the unit it counts in?",
+      "asked": "The score's heaviest part counts how many rating points a computer player gains each time it may look at twice as many positions; more is better. Games unlike chess gain fewer. If a doubling buys less lookahead in some games than in others, the gap could come from the unit rather than the games. The stored games were re-read as rating points per extra move of lookahead the player actually completes, and asked whether games unlike chess use up most of their skill below the cheapest player on the ladder.",
+      "predicted": "That the unit does not carry the gap, and that there would be no sign of skill used up below the ladder's bottom.",
+      "found": "Counted per move of lookahead, games unlike chess still read lower: one outscores a chess-like game 36% of the time, against 30% per doubling, inside the band fixed beforehand that reads as the unit not carrying the gap. The second condition held by its rule: in games unlike chess the cheapest player stands about 80 rating points further above a random mover, and the ladder above it spans about 175 points less. Read afterwards, that rule was close to bound to hold by arithmetic.",
+      "outcome": "mixed",
+      "tally": "1 of 2 predictions right.",
+      "shows": "The gap on this part is not a quirk of counting in doublings rather than moves of lookahead. Whether games unlike chess give up their skill early or are simply smaller, this could not tell; the ladder test below looked again.",
+      "record": "docs/reference/score-dials.md, section 6"
+    },
+    {
+      "id": "R-S12",
+      "read": "2026-11-13",
+      "question": "Does the game-length part read the players' mismatch instead of the game?",
+      "asked": "One part of the score rewards games whose contests vary in length. It pools every game the computer players play, including lopsided ones where a weak player loses fast to a strong one, so it might be reading how unequal the players are rather than the game. It was re-read on games between players of equal or neighbouring strength only.",
+      "predicted": "That part of the gap between games unlike and like chess would go when only even pairings are read, and that the part would partly echo the score's heaviest part (how much thinking longer pays).",
+      "found": "Reading only even pairings removed about two fifths of every game's spread, from both groups alike. Games unlike chess still vary less in length: one is above a chess-like game 24% of the time on even pairings, against 26% pooled. And the part barely follows how spread out the players' ratings are (rank correlation +0.22, under the 0.40 fixed beforehand).",
+      "outcome": "miss",
+      "tally": "Both predictions wrong: the gap is in the games as played, not in the pooling.",
+      "shows": "It does not settle whether more variety in length is better for every kind of game. A game with a natural fixed length scores low on this part by design; the classics tests on this page look at that.",
+      "record": "docs/reference/score-dials.md, section 7"
+    },
+    {
+      "id": "R-S14",
+      "read": "2026-11-13",
+      "question": "Would classic games of other families do well on the parts of the score that need no computer player?",
+      "asked": "Ten classics nobody doubts (Go, international draughts, English draughts, Othello, Hex, Amazons, Oware, nine men's morris, gomoku and Lines of Action) had their published figures, such as the number of moves available on a turn, put through the score's own curves. A part is named as unfair if it gives under half marks to three or more of the ten.",
+      "predicted": "That the moves-a-turn part would be named; that the game-length part would have figures for at least three of the ten, and be named; that three other parts would not be named; that the check refusing games with too few decisive results would refuse at least one; and that two other checks would refuse none.",
+      "found": "The moves-a-turn part is named: 7 of the 10 get under half marks, on both sides of its full-marks range of about 9 to 58 moves. Go, Amazons and gomoku get nothing (they offer hundreds of moves a turn), Hex a third, and the two draughts games and Oware a third or less (they offer a handful). Othello, nine men's morris and Lines of Action get full marks. The part is about a twelfth of the score; at zero it costs an otherwise perfect game about a tenth. Only Othello had a published figure for variety of length, and it scores almost nothing (0.04): too few to grade. The decisive-results check would refuse both draughts games at the level of their title matches (17% and 19% decisive, against a line of 20%).",
+      "outcome": "mixed",
+      "tally": "7 of 8 predictions right. The wrong one: published figures for variety of length were found for one game, not three.",
+      "shows": "At least one part's limits were drawn from one family of games: the range is where twenty chess-family games happened to fall. It reaches at most about 31% of the score's weight; the heaviest parts depend on the computer players and cannot be checked from published figures. Five of the ten moves-a-turn figures are estimates from one 1994 thesis. It does not show that the score as a whole is unfair to other families.",
+      "record": "docs/reference/score-dials.md, section 8"
+    },
+    {
+      "id": "R-S11b",
+      "read": "2026-11-13",
+      "question": "Do games unlike chess use up their skill below the cheapest computer player?",
+      "asked": "A follow-up to the unit test above. Older stored runs of 97 games had players searching 100 and 200 positions as well, so the shape of each game's ladder from 100 to 6,400 positions could be read without playing anything.",
+      "predicted": "That games unlike chess would gain a larger share of their improvement below 400 positions, and that the old ladders would order the games as today's do.",
+      "found": "They do not: an unlike game's share below 400 positions is above a chess-like game's 54% of the time, about even (the line was 60%), and their whole range is not clearly smaller. The old ladders order the games as today's do (rank correlation +0.84). The earlier finding that the cheapest player stands further above a random mover in games unlike chess disappears on the old ladders, so it looks like a product of how today's ladder is built. What remains is that games unlike chess improve less per doubling above 400 positions, on both sets of players.",
+      "outcome": "mixed",
+      "tally": "1 of 2 predictions right.",
+      "shows": "Five of the 26 games unlike chess, including the three lowest on this part, have no older runs and are not covered. The two sets of players and two builds of the engine differ, so why the earlier lead vanished cannot be pinned down.",
+      "record": "docs/reference/score-dials.md, section 9"
+    },
+    {
+      "id": "R-S15",
+      "read": "2026-11-13",
+      "question": "Are the two parts that count piece values blind to games where pieces are not the point?",
+      "asked": "Two parts of the score judge positions by piece values: the share of moves that would cost at least the cheapest piece, and how often a side a piece ahead a third of the way in goes on to win. Twelve library games have a trained evaluation that learned from the game's own play. Both parts were re-read on those games with it in place of the piece count.",
+      "predicted": "That both parts would change with the evaluation, and change more on the games unlike chess.",
+      "found": "Both changed a lot, the first on 10 of the 12 games and the second on 9 of 11: the trained evaluation sees fewer costly moves, and sees leads converted more often. But they changed about as much on the games like chess as on those unlike it. On the second part the trained evaluation happens to remove the gap between the two groups on these twelve games.",
+      "outcome": "mixed",
+      "tally": "2 of 4 predictions right: the parts depend on whose judgement of a position is used, not on the family of game.",
+      "shows": "Twelve games. It shows both parts depend heavily on which evaluation reads them, and the first also on how moves are searched. It does not say which reading is right, and no score changed.",
+      "record": "docs/reference/score-dials.md, section 10"
+    },
+    {
+      "id": "R-S10",
+      "read": "2026-11-13",
+      "question": "Do strong games unlike chess, looked for on purpose, score as well as games like chess?",
+      "asked": "The library's games unlike chess were not chosen for quality, so their low scores could say more about the library than about the score. Fourteen games unlike chess were gathered for quality: eight published and played (Gliński's hexagonal chess, minixiangqi, gorogoro plus, janggi, minishogi, breakthrough, cannon shogi, clobber) and six designed by the project's AI design sessions with that one brief and play-tested by agents. They were measured exactly as library games are. The number read is the chance that one of them, drawn at random, scores above a library game like chess drawn at random: 0.5 would mean they score alike, and lower means they score lower.",
+      "predicted": "Fixed beforehand: 0.40 or more (interval above 0.20) would mean the library had simply lacked such games; 0.30 or less (interval below 0.50) would mean the score, or its players, set such games lower. The author expected something in between, about 0.33.",
+      "found": "0.177 (95% interval 0.077 to 0.301): one of these games outscores a chess-like library game about one time in six, close to where the library's own unlike games sat (0.198). By the rule fixed beforehand, that reads as set lower by the score or its players. Only one of the fourteen, Gliński's hexagonal chess (0.936), scored above the chess-like games' median of 0.914; none was refused by the checks. The strength check flagged 2 of the 14 as depending on their players, against 20 of the 81 chess-like games, which by the rule fixed beforehand points at the score rather than the players.",
+      "outcome": "miss",
+      "tally": "The author's prediction (in between, about 0.33) was wrong; the result fell in the band fixed beforehand that reads as set lower by the score or its players.",
+      "shows": "This is what was observed; it does not show that the score measures likeness to chess. The check on the players is indirect: the same check found that half the games it calls safe moved when the players got stronger, and 11 of the 14 had no outside engine to compare with. The six designed games are a day old, judged strong by agents' play-tests rather than a record of human play; the published ones alone also read low (0.216), but their interval reaches 0.401. Only games the project's rule language can describe could be tried, mostly relatives of shogi and xiangqi; draughts, tafl and other families were out of reach.",
+      "record": "docs/reference/unlike-search.md, sections 9.6 and 9.7"
+    },
+    {
+      "id": "R-S15b",
+      "read": "2026-11-13",
+      "question": "Does the trained evaluation see fewer costly moves, or just use smaller numbers?",
+      "asked": "A follow-up to the test above. Every move's value was kept under both evaluations, and each evaluation's numbers were translated into winning chances, learned from the results of stored games. A move then counted as costly when it gives up a tenth of a game in winning chances, on each evaluation's own translation.",
+      "predicted": "That the difference would be only a matter of scale.",
+      "found": "The trained evaluation's numbers are about three times smaller for the same change in winning chances. Once that is accounted for, in the typical game only about an eighth of the difference is left. On 9 of the 12 games the small remainder still points the same way, and on 3 it reverses, so the rule fixed beforehand calls it neither pure scale nor a real difference of judgement.",
+      "outcome": "miss",
+      "tally": "The prediction (only scale) was wrong by the rule fixed beforehand, though most of the difference is scale.",
+      "shows": "With a stricter or looser idea of costly the remainder shrinks to almost nothing in the typical game. The plain summary: the part's fixed threshold of one cheapest piece does not mean the same thing on the two evaluations. No score changed.",
+      "record": "docs/reference/score-dials.md, section 11"
+    },
+    {
+      "id": "R-S13",
+      "read": "2026-11-13",
+      "question": "If the score's limits were set from games unlike chess, would those games score higher?",
+      "asked": "Twelve of the score's limits (for example, how many moves a turn earn full marks) were set where twenty chess-family games fall. They were set again, by exactly the same rule, from fifteen published games unlike chess (xiangqi, shogi, janggi, clobber, breakthrough and others), and every game was re-scored from its stored measurements without playing anything.",
+      "predicted": "That the new limits would close part of the gap (the chance an unlike game outscores a like one rising by between 0.07 and 0.17); that the chess-like games' average would move by under 0.01; and that the moves-a-turn limit would move things most.",
+      "found": "Eleven of the twelve limits moved, some a lot: full marks for moves a turn now runs from about 18 to 76 instead of 9 to 58. Yet the games unlike chess scored almost exactly as before (+0.002 on average), and so did the chess-like ones; the chance an unlike game outscores a chess-like one went from 19% to 20%. Some unlike games rose and others fell by as much. The twelfth limit, on the heaviest part, could not be re-read by the rule: too few of these games give clean ladders of computer players.",
+      "outcome": "mixed",
+      "tally": "2 of 3 predictions right. The main one was wrong: the limits do not carry the gap.",
+      "shows": "Where the limits were drawn is not what keeps games unlike chess lower. That points back at what the score measures, above all how much a computer player gains from thinking longer, and at the players. It does not say which, nor whether the score's judgement of these games is right.",
+      "record": "docs/reference/score-dials-other-ends.md"
+    },
+    {
+      "id": "R-S14b",
+      "read": "2026-11-13",
+      "question": "Can the score read a game that starts on an empty board?",
+      "asked": "One part of the score asks what share of the pieces set out at the start of a game ever move. Go, Hex and gomoku start on an empty board, with pieces placed during play. What happens today was tried on one small placement game, written three ways.",
+      "predicted": "Nothing: this looked at how the code behaves. It is a limit found, not a graded test.",
+      "found": "It cannot, today. The rule language refuses a game with nothing on the board, so no game has lost its score this way yet. Let through by hand, such a game played without trouble, and then the scorer stopped with an error instead of a score. The same game written with two pieces on the board at the start got readings decided by those two pieces alone, not by the eight placed later. The proposed repair is to count every piece that ever stood on the board and can move; it would change three library scores of 126, by half a hundredth at most, and is planned for the next version of the scoring rules.",
+      "outcome": "not graded",
+      "tally": "A kind of game the score cannot read today.",
+      "shows": "One small game, one run each way: it shows how the code behaves, not anything about placement games in general.",
+      "record": "docs/reference/empty-board-participation.md"
+    },
+    {
+      "id": "R-S14a",
+      "read": "2026-11-13",
+      "question": "Does the game-length part mark down classics that last about as long every time?",
+      "asked": "The classics test above could grade this part on one game only. So the figure was computed from public collections of real games: 3,931 professional Go games (with 3,658 strong amateur games beside them), 139,045 Othello tournament games and 22,621 published English draughts games. As before, the part is named as unfair if three of the classics get under half marks.",
+      "predicted": "Othello under half marks; Go and English draughts not; so the part is not named.",
+      "found": "Othello scores almost nothing (0.04): 95% of its games run the full sixty moves. Go (0.54) and draughts (0.55) score just over half marks, so the part is not named. But only with an allowance fixed beforehand in the part's favour: these collections are mostly games between equals, whose lengths vary less than the computer players' mixed pairings, so their variety was scaled up 1.6 times. Without the allowance all three would score under half marks.",
+      "outcome": "hit",
+      "tally": "All 4 predictions right (a detail about Go's games played to the end was not).",
+      "shows": "Human games often end early, when a player resigns or a draw is agreed; the computer players play games out, and nobody knows how long their Go or draughts would run. Seven of the ten classics have no public collection that could be used. One game, Othello, is clearly set low by this part, and the other two sit close to the line.",
+      "record": "docs/reference/score-dials.md, section 12"
+    }
+  ]
+}

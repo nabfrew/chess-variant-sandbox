@@ -1,0 +1,31 @@
+1. Dg2-e4
+1... Da6-c4
+2. De6>e4
+2... Bd2-d3
+3. De1-c3
+3... Dc4-b4
+4. De4-c4
+4... Bd3>c4
+5. Bc4>b4
+5... Sc6-c5
+6. Da4-a6
+6... Bb4-c4
+7. Bc4>>b5
+7... Bb6>b5
+8. Bb5>b4
+8... Dc3-c4
+9. Bb3>b4
+9... Bb5>c4
+10. Da6-c6
+10... Bb4-b5
+11. Bb5-b6
+11... Bc4-c3
+12. Bc3>>c2
+12... Bb6>c6
+13. Bc6>>d6
+13... Bc2>>d1
+14. Bd1-d2
+14... Bd6>>e6
+15. Be6>>d7
+
+player 0 (minimax:nodes=25600) by extinction in 29 plies (318 ms)

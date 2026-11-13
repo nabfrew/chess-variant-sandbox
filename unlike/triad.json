@@ -1,0 +1,63 @@
+{
+  "schema_version": 31,
+  "name": "triad",
+  "summary": [
+    "Spears take horses, horses take shields, shields take spears; nothing else can be taken.",
+    "Lose the moment you have no piece left of any one kind.",
+    "Spears slide any distance along the six lines, but strike a horse only up to three cells away.",
+    "Horses jump to any cell exactly two away, over anything.",
+    "Shields step forward or sideways, never back, and strike a spear anywhere down an open line.",
+    "A shield that reaches the far edge becomes a spear or a horse."
+  ],
+  "description": "Three kinds of piece chase each other round a circle on a small hexagonal board, and a side is only as strong as its scarcest kind, because running out of any one of them loses. Each kind is guarded not by its own kind but by the kind that eats its attacker: a horse that jumps into the shield line to take a shield is safe from shields but stands on a line for a spear, and a spear that takes that horse may now be on an open line for a shield. So every safe group mixes all three, and every exchange goes round the circle, spear for horse, shield for spear, horse for shield, with the question always which kind each side is running short of. The kinds also reach differently: the spear roams far but strikes short, the horse jumps two cells over anything, and the shield crawls but fires down the whole length of an open line, which makes the slow pieces both the spears' executioners and the walls that hide them. Shields never step back, so pushing the shield line forward is a commitment, and a shield that crosses the board is reborn as a spear or a horse, which is how a side short of one of those kinds buys it back. Games open with horse raids on the shield lines, turn into three-cornered exchanges in the middle, and usually end with one side hunting the last two or three pieces of the other's weakest kind.",
+  "board": {"width": 9, "height": 9, "lattice": "hex", "shape": "hexagon"},
+  "pieces": [
+    {
+      "id": "S",
+      "name": "spear",
+      "value": 3,
+      "captures": ["H"],
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate6", "mode": "move"},
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate6", "range": 3, "mode": "capture"}
+      ]
+    },
+    {
+      "id": "H",
+      "name": "horse",
+      "value": 3,
+      "captures": ["W"],
+      "moves": [
+        {"kind": "leap", "vectors": [[2, 0], [1, 1]], "symmetry": "rotate6"}
+      ]
+    },
+    {
+      "id": "W",
+      "name": "shield",
+      "value": 2,
+      "captures": ["S"],
+      "moves": [
+        {"kind": "leap", "vectors": [[0, 1], [-1, 1], [1, 0], [-1, 0]], "symmetry": "none", "mode": "move"},
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate6", "mode": "capture"}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {"piece": "W", "squares": ["c3", "d3", "e3", "f3", "g3", "h3", "i3"]},
+      {"piece": "S", "squares": ["e2", "h2", "e1", "i1"]},
+      {"piece": "H", "squares": ["d2", "i2", "f1", "h1", "g1"]}
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "promotion": {"piece": "W", "squares": ["a9", "b9", "c9", "d9", "e9"], "to": ["S", "H"]},
+    "extinction": {"pieces": ["S", "H", "W"], "per_type": true},
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  }
+}

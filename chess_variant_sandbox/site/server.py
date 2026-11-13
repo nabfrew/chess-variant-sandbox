@@ -125,6 +125,7 @@ from chess_variant_sandbox.web.page import (
     picture,
     proven_page,
     rules_page,
+    score_tests_page,
     shell,
 )
 from chess_variant_sandbox.web.page import game as game_drawing
@@ -1413,6 +1414,15 @@ class SiteApp(App):
         """`/rules` (G8): the rule language in the site's shell. The reference inside it is
         drawn once a process (`rules_page.drawn`); the shell around it is a few lines."""
         return pages.rules().encode("utf-8")
+
+    def score_tests_page(self) -> bytes:
+        """`/score-tests` (R-S9): every test of the score as it was read, in the site's shell.
+        The rows are a file in the package (`web/score_tests.json`), drawn once a process."""
+        held = getattr(self, "_score_tests_bytes", None)
+        if held is None:
+            held = pages.score_tests().encode("utf-8")
+            self._score_tests_bytes = held
+        return held
 
     def findable(self, games: Iterable[library.Game]) -> set[str]:
         """Which of these games this person may be shown: the store's answer, not the tree's.
@@ -3525,6 +3535,10 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                 # G8: the rule language as a page, in the site's shell; the local handler's
                 # own drawing of it (under the application's header) is never reached here.
                 self._send(200, app.rules_page(), "text/html; charset=utf-8",
+                           cache=RULES_CACHE)
+            elif path == score_tests_page.PATH:
+                # R-S9: what the score has been tested against; public, no cookie read.
+                self._send(200, app.score_tests_page(), "text/html; charset=utf-8",
                            cache=RULES_CACHE)
             else:
                 return False

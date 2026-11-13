@@ -1,0 +1,44 @@
+{
+  "schema_version": 31,
+  "name": "tide",
+  "summary": [
+    "Every piece paints the cell it stops on in your colour, and the other side can paint it back the same way.",
+    "After sixty turns each, whoever has more cells in their colour wins; equal counts draw.",
+    "Waves step to either cell ahead or to the side; surges run up to three cells straight ahead; leapers jump two cells diagonally, any way, over anything.",
+    "Only the leaper can turn back: everything else flows toward the far side.",
+    "Land on an enemy piece to take it. It joins your hand, and instead of moving you may set it down on an empty cell of your own two back rows, painting that cell.",
+    "If you ever have no move at all, you lose."
+  ],
+  "description": "A fight for ground in which nothing stays claimed. Every move paints the cell it ends on, and an enemy piece that later lands there paints it back, so the colours on the board in the middle of the game are only a promise: what counts is the colour when the sixty turns run out. What stops this from being an endless trade of repaints is that the armies cannot go home. Waves and surges only ever move ahead or, for a wave, sideways, so every cell a piece passes over is one it will never be able to defend again, and the far rows can only be painted by pieces that have spent themselves getting there. Each turn asks whether to push a piece on into the opponent's half, where it paints cells the opponent will have to come back for but can be taken by the pieces still waiting there, or to hold it back where it guards your own ground and keeps a move in reserve. Taking a piece paints its cell and puts it in your hand, and a piece set down from the hand paints one of your back cells again, so captures feed a second wave from home; the leaper, the one piece that can turn round, is the surest way to hunt raiders that have got behind your lines, since a wave can only reach one that stands beside it. Push everything and you run out of moves, which loses outright; hold everything back and the opponent paints the middle and most of your side. A typical game opens with both sides painting their own half, meets in a long exchange across the middle, and ends with the hands emptied onto the back rows and the last raiders painting what they can reach.",
+  "board": {"width": 9, "height": 9, "lattice": "hex", "shape": "hexagon"},
+  "pieces": [
+    {"id": "W", "name": "wave", "value": 1,
+     "moves": [{"kind": "leap", "vectors": [[0, 1], [-1, 1], [1, 0], [-1, 0]]}]},
+    {"id": "U", "name": "surge", "value": 3,
+     "moves": [{"kind": "slide", "vectors": [[0, 1], [-1, 1]], "range": 3}]},
+    {"id": "L", "name": "leaper", "value": 3,
+     "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate6"}]}
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {"piece": "W", "squares": ["d2", "e2", "f2", "g2", "h2", "i2"]},
+      {"piece": "U", "squares": ["f1", "h1"]},
+      {"piece": "L", "squares": ["g1"]}
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "territory": {"mode": "repaint"},
+    "scoring": {"count": "territory"},
+    "drops": {"from_captures": true,
+              "region": {"W": ["e1", "f1", "g1", "h1", "i1", "d2", "e2", "f2", "g2", "h2", "i2"],
+                         "U": ["e1", "f1", "g1", "h1", "i1", "d2", "e2", "f2", "g2", "h2", "i2"],
+                         "L": ["e1", "f1", "g1", "h1", "i1", "d2", "e2", "f2", "g2", "h2", "i2"]}},
+    "max_plies": 120,
+    "repetition_draw": "never",
+    "no_progress_draw": 200
+  }
+}

@@ -1,0 +1,22 @@
+1. Hd2-d3
+1... Hd6-d5
+2. Hc2-c3
+2... Hb6-c5
+3. He2-e3
+3... Hf6-e5
+4. Hd3-e4
+4... Hd5-c4
+5. ~Of4xe5
+5... Hc6-d5
+6. Hb2-b3
+6... ~Oe5xe4
+7. Hf2-f3
+7... ~Od4xc3
+8. ~Oe4xg6
+8... ~Ob4xb3
+9. Ha1-b2
+9... Hc5-b4
+10. He3-e4
+10... ~Oc3-c1
+
+player 1 (minimax:nodes=6400) by reached in 20 plies (74 ms)

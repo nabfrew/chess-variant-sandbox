@@ -1,0 +1,42 @@
+1. Hi3-h4
+1... Sc7-d6
+2. Hh4-g5
+2... Sd6-e5
+3. Hg5-g6
+3... Se7-f7
+4. Hg6-h5
+4... Hf8-h6
+5. He2-e4
+5... Sb8-b7
+6. Sf3-f4
+6... Wa9-d6
+7. Sh2-h3
+7... Wd6-d5
+8. Se3-f3
+8... Wd5xe4
+9. We1xe4
+9... Hh6-h4
+10. Sf4-f5
+10... Hh4-g5
+11. Sf2-e2
+11... Sd8-e7
+12. We4-d4
+12... Sb7-b6
+13. Sg3-f4
+13... Se7-f6
+14. Hi2-g4
+14... Se5-d5
+15. Sf5-e5
+15... Sb9-b8
+16. Hd2-b4
+16... Sg7-h6
+17. Hb4-b5
+17... We9-g7
+18. Hg4-h4
+18... Hg5-g4
+19. Sf4-f5
+19... Wg7-g5
+20. Hb5-a5
+20... Wg5xg2 (sweeps g4)
+
+player 1 (minimax:nodes=6400) by royal_captured in 40 plies (265 ms)

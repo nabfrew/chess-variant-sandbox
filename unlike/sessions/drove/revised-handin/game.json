@@ -1,0 +1,52 @@
+{
+  "schema_version": 31,
+  "name": "drove",
+  "summary": [
+    "Three oxen in the middle belong to nobody; you own only herders, who step one square forward or diagonally forward, never back, and take nothing.",
+    "Whoever has more herders on the eight squares around an ox may move it one square in any direction, as their move. On a tie nobody can.",
+    "An ox can trample a herder of the other side, but it never becomes yours.",
+    "Drive an ox onto the far row to win.",
+    "If you have no move on your turn, you lose: herders that have marched to the end, or are hemmed in, cannot move.",
+    "The second player's corner herder starts a row ahead, to even out the first move."
+  ],
+  "description": "Every piece of force in Drove belongs to nobody. Each side has a band of herders that can only walk forward and can take nothing; between the bands stand three oxen that obey whichever side has more herders standing around them, and only for as long as it does. An ox you hold can step and trample an enemy herder, and an ox driven onto the far row wins. So the decision on every turn is whether to add one more herder to a crowd, or to spend the turn moving an ox you hold, and because herders never step back, every herder you send forward is one you can no longer use to guard your own row, and one move fewer you have left to wait with. A tie freezes an ox, but nobody can sit on a tie for ever: each side's herder moves are a finite supply, a side that holds an ox has moves to spare while the other spends its herders, and a player with no move on their turn loses. Games open with both bands marching on the oxen, turn on a middle game of crowds forming and breaking, where one trample changes the count beside every ox nearby, and end either with an ox walked square by square to a row its defenders have left behind, or with one side out of herder moves and forced to give way.",
+  "board": {"width": 7, "height": 11},
+  "pieces": [
+    {
+      "id": "H",
+      "name": "herder",
+      "value": 1,
+      "moves": [
+        {"kind": "leap", "vectors": [[0, 1], [1, 1]], "symmetry": "lateral", "mode": "move"}
+      ]
+    },
+    {
+      "id": "O",
+      "name": "ox",
+      "value": 3,
+      "control": "majority",
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {"piece": "H", "player": 0, "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2"]},
+      {"piece": "H", "player": 1, "squares": ["a9", "b10", "c10", "d10", "e10", "f10", "g10"]},
+      {"piece": "O", "player": "nobody", "squares": ["b6", "d6", "f6"]}
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "reach": {"piece": "O", "squares": ["a11", "b11", "c11", "d11", "e11", "f11", "g11"], "mirror": true},
+    "max_plies": 200
+  },
+  "provenance": {
+    "added": "2026-11-13",
+    "origin": "designer",
+    "history": "Designed blind to the score as session 2 of R-S10 (seed: pieces nobody owns, moved by whoever surrounds them); revised once after a blind reading found a freeze."
+  }
+}

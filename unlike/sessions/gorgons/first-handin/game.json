@@ -1,0 +1,176 @@
+{
+ "schema_version": 31,
+ "name": "gorgons",
+ "description": "A game of lines on a hexagonal board. Nothing here jumps or slides far: every piece steps one cell. What reaches across the board is sight. A gorgon freezes the first enemy piece on each of its three lines for as long as it stands there, and since a gaze stops at the first piece of either side, every piece is at once a target and a screen. That is the question each move asks: open a line or close one. A piece stepping into a gaze is frozen and helpless, a spearman's easy prey, but it also blinds the gorgon to everything behind it; a screen that steps away discovers the gaze on whatever it was hiding, yours or theirs. Two gorgons that see each other freeze each other and stay staring, a standoff only a third piece can break, and a frozen gorgon or lure still sees. The lure turns the question round: it reaches into the enemy's wall and pulls a spearman out of it, and because a moved spearman must then stand a turn, a pulled one is left where you put it, perhaps in your gorgon's gaze, perhaps next to your spearman. Games open with both armies screened, spearmen feeling forward and gorgons edging round to the flanks, where their blind sides are; the middle fills with frozen pieces that serve as living walls; and the end comes when the oracle, which steps only one cell, is caught frozen beside a spearman, or when a whole side is frozen solid and cannot move.",
+ "board": {
+  "width": 9,
+  "height": 9,
+  "lattice": "hex",
+  "shape": "hexagon"
+ },
+ "pieces": [
+  {
+   "id": "O",
+   "name": "oracle",
+   "royal": true,
+   "value": 0,
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate6",
+     "range": 1
+    }
+   ]
+  },
+  {
+   "id": "G",
+   "name": "gorgon",
+   "value": 4,
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate6",
+     "range": 1,
+     "mode": "move"
+    }
+   ],
+   "captures": [],
+   "sight": [
+    {
+     "vectors": [
+      [
+       0,
+       1
+      ],
+      [
+       1,
+       -1
+      ],
+      [
+       -1,
+       0
+      ]
+     ],
+     "effect": "freeze",
+     "whose": "enemy"
+    }
+   ]
+  },
+  {
+   "id": "L",
+   "name": "lure",
+   "value": 3,
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate6",
+     "range": 1,
+     "mode": "move"
+    }
+   ],
+   "captures": [],
+   "sight": [
+    {
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate6",
+     "range": 2,
+     "effect": "command",
+     "whose": "enemy",
+     "affects": [
+      "S"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S",
+   "name": "spearman",
+   "value": 2,
+   "rest": 1,
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate6",
+     "range": 1
+    }
+   ]
+  }
+ ],
+ "setup": {
+  "mirror": true,
+  "orientation": "rotate",
+  "placements": [
+   {
+    "piece": "O",
+    "squares": [
+     "g1"
+    ]
+   },
+   {
+    "piece": "G",
+    "squares": [
+     "f1",
+     "h1"
+    ]
+   },
+   {
+    "piece": "L",
+    "squares": [
+     "g2"
+    ]
+   },
+   {
+    "piece": "S",
+    "squares": [
+     "d3",
+     "e3",
+     "f3",
+     "g3",
+     "h3"
+    ]
+   }
+  ]
+ },
+ "rules": {
+  "win": "royal_capture",
+  "stalemate": "loss",
+  "max_plies": 300
+ },
+ "summary": [
+  "Each gorgon stares down three lines, a third of a turn apart, to the edge of the board. If the first piece on a line is an enemy, it is frozen: it cannot move or threaten, but still blocks.",
+  "Any piece in a gaze line, of either side, stops the gaze there, so every piece is also a screen.",
+  "Your lure sees the first piece on each of the six lines, up to two cells away. If that is an enemy spearman, you may move it one step onto an empty cell, as your move.",
+  "A spearman that moves, or is moved, stands still through its owner's next turn (unless nothing else can move), and nobody may move it meanwhile.",
+  "Only spearmen and the oracle take, by stepping onto a neighbouring cell. Gorgons and lures step one cell and take nothing.",
+  "There is no check: win by taking the enemy oracle, or when your opponent has no legal move."
+ ]
+}

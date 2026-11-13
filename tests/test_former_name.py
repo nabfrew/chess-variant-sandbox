@@ -19,6 +19,7 @@ from collections import Counter
 from pathlib import Path
 from typing import NamedTuple
 
+import private_paths
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
@@ -128,7 +129,10 @@ def test_the_former_name_appears_only_where_allowed() -> None:
     assert stray == [], "the former name is back; rename it, or add an ALLOWED entry with its reason"
 
 
+# The allowances under `docs/` name records the public copy does not carry: there no line
+# can match them, so the check is this checkout's.
 @needs_git
+@private_paths.needs(*(entry.path for entry in ALLOWED if private_paths.private(entry.path)))
 def test_every_allowance_is_still_needed() -> None:
     """An entry nothing matches is stale, and would let the name back in unnoticed."""
     used = Counter(allowed_by(path, line) for path, _, line in occurrences())

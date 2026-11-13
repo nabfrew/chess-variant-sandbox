@@ -1952,8 +1952,15 @@ def _descriptor_term(
                 f"not exactly {screen_range} squares past"
             )
             return None
+        # Q1217: the range is passed, not assumed (cannon shogi's flying cannons are `pB2`
+        # and `pR2`); and so is a `from_rank` condition, which was dropped here and on a
+        # lame as well, giving a hop an initial move from everywhere.
         term = betza.term(
-            directions, distance=0, mode=mode, hop="g" if screen_range == 1 else "p"
+            directions,
+            distance=rng,
+            mode=mode,
+            hop="g" if screen_range == 1 else "p",
+            initial=initial,
         )
     elif kind == "lame":
         # Q1007a: the range is passed, not assumed. A lame rider (`range` other than 1) was
@@ -1990,7 +1997,7 @@ def _descriptor_term(
                 "a (2, 3) lame with legs [[0, 1], [1, 2]] states"
             )
             return None
-        term = betza.term(directions, distance=rng, mode=mode, lame=True)
+        term = betza.term(directions, distance=rng, mode=mode, lame=True, initial=initial)
     elif kind == "leap":
         term = betza.term(directions, distance=rng, mode=mode, initial=initial)
     elif kind == "slide":

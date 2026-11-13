@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import private_paths
 import pytest
 from test_corpus import SPEC, _find, _Scored, world  # noqa: F401  (`world` is a fixture)
 
@@ -655,7 +656,10 @@ class TestItMovesNothing:
 
 TREE = Path(__file__).resolve().parents[1]
 _HEX = re.compile(r"^[0-9a-f]{12}$")
-_BUILD = TREE / "docs" / "reference" / "score-history" / "build_boards.py"
+# A record's build script: `docs/` is not in the public copy, so the two tests that run it
+# are this checkout's.
+_BUILD_PATH = "docs/reference/score-history/build_boards.py"
+_BUILD = private_paths.path(_BUILD_PATH)
 
 
 def _campaign_runs() -> Path | None:
@@ -753,6 +757,7 @@ class TestTheBoards:
             for entry in snapshot["entries"]:
                 assert source[entry["hash"]] == entry, (snapshot["id"], entry)
 
+    @private_paths.needs(_BUILD_PATH)
     def test_the_build_refuses_a_changed_snapshot(self) -> None:
         build = _build()
         held = history.boards()
@@ -763,6 +768,7 @@ class TestTheBoards:
         assert "v3" in build.refusal(held, moved)
         assert build.refusal(held, {**held, "snapshots": held["snapshots"][:-1]})
 
+    @private_paths.needs(_BUILD_PATH)
     def test_the_committed_file_is_what_the_build_writes(self) -> None:
         assert _build().render(history.boards()) == history.BOARDS_FILE.read_text(encoding="utf-8")
 

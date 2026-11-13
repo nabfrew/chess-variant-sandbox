@@ -1,0 +1,33 @@
+1. Ha1-a2
+1... Ha6-b5
+2. Hc2-c3
+2... Hb5-c4
+3. Hg2-f3
+3... Hc6-c5
+4. Hd2-d3
+4... Hd6-e5
+5. He2-e3
+5... ~Ob4xb2
+6. Hf3-e4
+6... Hc4-b5
+7. ~Of4xf6
+7... He5-f4
+8. ~Ob2-b3
+8... Hb5-c6
+9. ~Ob3-c4
+9... Hb6-b5
+10. ~Od4xc5
+10... Hc6-d5
+11. Ha2-b3
+11... Hb5-c6
+12. ~Oc4xd5
+12... ~Od5xb3
+13. Hc3-b4
+13... ~Of6-e7
+14. Hd3-d4
+14... He6-d6
+15. He4-d5
+15... Hf4-g3
+16. ~Oc5-a7
+
+player 0 (minimax:nodes=25600) by reached in 31 plies (317 ms)

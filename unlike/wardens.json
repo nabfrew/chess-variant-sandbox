@@ -1,0 +1,58 @@
+{
+  "schema_version": 31,
+  "name": "wardens",
+  "summary": [
+    "Every turn you move two pieces: one warden and one raider, in either order.",
+    "Raiders only go forward, one square straight or diagonally. They capture by jumping exactly two squares in any of the eight directions, over anything in between.",
+    "Wardens step one square in any direction and never capture. An enemy raider standing next to one of your wardens is frozen: it can neither move nor capture.",
+    "Raiders capture wardens as well as raiders.",
+    "Get a raider to the far row to win.",
+    "If you cannot make both moves of your turn (every raider frozen or blocked, no raider left, or no warden left), you lose."
+  ],
+  "description": "A game about two kinds of piece that can only work together, because every turn moves one of each. Raiders are the attack: they march forward and never step back (only a capture can carry one backward), and they strike only at a distance, jumping exactly two squares onto an enemy, so two raiders two squares apart are a standoff that whoever moves first wins. Wardens are the control: they cannot take anything, but any enemy raider next to a warden is frozen in place, unable to run or to strike. A warden walked up beside an enemy raider pins it for your raiders to take next turn, and a warden standing in front of your own line stops the raiders that would hit it; but a warden is itself a target for any raider two squares away, and losing all of them loses the game. Because raiders cannot retreat and a raider must move every turn, the board only ever tightens: the opening is a slow advance with wardens walked out as escorts, the middle game is a run of exchanges decided by who still has a safe raider move, and the end comes when a raider breaks through to the far row or when the last free raiders of one side are frozen or blocked and that side cannot finish a turn. Moving forward is the only thing a raider can do without capturing, so a game can never repeat itself and there are no draws.",
+  "board": {"width": 9, "height": 8},
+  "pieces": [
+    {
+      "id": "W",
+      "name": "warden",
+      "value": 3,
+      "captures": [],
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move"}
+      ],
+      "sight": [
+        {"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
+         "effect": "freeze", "whose": "enemy", "affects": ["R"]}
+      ]
+    },
+    {
+      "id": "R",
+      "name": "raider",
+      "value": 1,
+      "moves": [
+        {"kind": "leap", "vectors": [[0, 1], [1, 1]], "symmetry": "lateral", "mode": "move"},
+        {"kind": "leap", "vectors": [[2, 0], [2, 2]], "symmetry": "rotate4", "mode": "capture"}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "R", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2", "i2"]},
+      {"piece": "W", "squares": ["b1", "e1", "h1"]}
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "no_progress_draw": 1000,
+    "reach": {"piece": "R", "squares": ["a8", "b8", "c8", "d8", "e8", "f8", "g8", "h8", "i8"]},
+    "turn": {
+      "parts": [
+        {"pieces": ["W"]},
+        {"pieces": ["R"]}
+      ],
+      "order": "any"
+    }
+  }
+}

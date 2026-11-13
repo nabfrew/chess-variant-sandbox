@@ -1,0 +1,38 @@
+{
+  "schema_version": 31,
+  "name": "clobber",
+  "description": "Clobber, devised in 2001 by Michael Albert, J. P. Grossman and Richard Nowakowski, here on its published five by six board. Every square starts filled, the two players' stones alternating like the colours of a checkerboard. A move picks up one of your stones and clobbers an enemy stone on a square next to it, straight across or up or down, never diagonally: the enemy stone is removed and yours takes its place. A stone never moves except to take, so every move removes a stone, and the player who cannot move on their turn loses. The rules are the published ones; the first player is the one with a stone on b1, which the source leaves to the players.",
+  "summary": [
+    "A 5 by 6 board starts full, the two players' stones alternating like a checkerboard.",
+    "A move takes an enemy stone on an orthogonally adjacent square, moving onto it.",
+    "A stone never moves except to take.",
+    "The player who cannot move loses."
+  ],
+  "board": {
+    "width": 5,
+    "height": 6
+  },
+  "pieces": [
+    {"id": "X", "name": "stone", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "capture"}]}
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {"piece": "X", "player": 0, "squares": ["b1", "d1", "a2", "c2", "e2", "b3", "d3", "a4", "c4", "e4", "b5", "d5", "a6", "c6", "e6"]},
+      {"piece": "X", "player": 1, "squares": ["a1", "c1", "e1", "b2", "d2", "a3", "c3", "e3", "b4", "d4", "a5", "c5", "e5", "b6", "d6"]}
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "max_plies": 60
+  },
+  "provenance": {
+    "added": "2026-11-13",
+    "origin": "human",
+    "author": "Michael H. Albert, J. P. Grossman and Richard J. Nowakowski",
+    "year": "2001",
+    "source": "en.wikipedia.org/wiki/Clobber",
+    "note": "A published game, entered as an addition to the labelled set for the search for strong games unlike chess (docs/reference/unlike-search.md, R-S10b1)."
+  }
+}

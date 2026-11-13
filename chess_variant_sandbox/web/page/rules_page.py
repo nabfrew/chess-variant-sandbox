@@ -416,6 +416,7 @@ def document() -> str:
         for where, words in ((front.GAMES_PATH, "games"), ("/", "about"),
                              ("/#/score", "the score"),
                              (front.HISTORY_PATH, "score history"),
+                             ("/score-tests", "score tests"),
                              ("/#/whats-new", "what's new"))
     )
     return (

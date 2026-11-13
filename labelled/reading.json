@@ -1,0 +1,1355 @@
+{
+  "design": "docs/reference/labelled-set.md",
+  "seed": 20261114,
+  "resamples": 10000,
+  "basis": {
+    "weights_version": "v13",
+    "engine": "f0b28a2e4f883c15-80dee3d13bd9330d",
+    "metrics": "22cb2f9c558aec1b",
+    "analysis": "85400362f0da30c4",
+    "verdict_rule": "vote-tie-refuses+pooled-seat+blind-abstains",
+    "agents_source": "534a5466860b304c"
+  },
+  "grades": {
+    "plain": "HIT",
+    "w3_good_refused": [],
+    "S_all": "HIT",
+    "D": "no reading",
+    "S_pass": "too few to read",
+    "Q1_S_all": "HIT",
+    "Q1_S_pass": "too few to read",
+    "controls_alike": 4
+  },
+  "whole": {
+    "S_gate": {
+      "value": 0.978125,
+      "low": 0.934375,
+      "high": 1.0
+    },
+    "S_all": {
+      "value": 1.0,
+      "low": 1.0,
+      "high": 1.0
+    },
+    "S_pass": {
+      "value": 1.0,
+      "low": 1.0,
+      "high": 1.0
+    },
+    "D": {
+      "value": 0.021874999999999978,
+      "low": 0.0,
+      "high": 0.06562500000000004
+    },
+    "passed": {
+      "good": 27,
+      "bad": 1,
+      "pairs": 7
+    }
+  },
+  "quarters": {
+    "Q1": {
+      "S_gate": {
+        "value": 1.0,
+        "low": 1.0,
+        "high": 1.0
+      },
+      "S_all": {
+        "value": 1.0,
+        "low": 1.0,
+        "high": 1.0
+      },
+      "S_pass": {
+        "value": NaN,
+        "low": NaN,
+        "high": NaN
+      },
+      "D": {
+        "value": 0.0,
+        "low": 0.0,
+        "high": 0.0
+      },
+      "passed": {
+        "good": 11,
+        "bad": 0,
+        "pairs": 0
+      }
+    },
+    "Q2": {
+      "S_gate": {
+        "value": 1.0,
+        "low": 1.0,
+        "high": 1.0
+      },
+      "S_all": {
+        "value": 1.0,
+        "low": 1.0,
+        "high": 1.0
+      },
+      "S_pass": {
+        "value": NaN,
+        "low": NaN,
+        "high": NaN
+      },
+      "D": {
+        "value": 0.0,
+        "low": 0.0,
+        "high": 0.0
+      },
+      "passed": {
+        "good": 7,
+        "bad": 0,
+        "pairs": 0
+      }
+    },
+    "Q3": {
+      "S_gate": {
+        "value": 0.9166666666666666,
+        "low": 0.75,
+        "high": 1.0
+      },
+      "S_all": {
+        "value": 1.0,
+        "low": 1.0,
+        "high": 1.0
+      },
+      "S_pass": {
+        "value": 1.0,
+        "low": 1.0,
+        "high": 1.0
+      },
+      "D": {
+        "value": 0.08333333333333337,
+        "low": 0.0,
+        "high": 0.25
+      },
+      "passed": {
+        "good": 7,
+        "bad": 1,
+        "pairs": 7
+      }
+    },
+    "Q4": {
+      "S_gate": {
+        "value": 1.0,
+        "low": 1.0,
+        "high": 1.0
+      },
+      "S_all": {
+        "value": 1.0,
+        "low": 1.0,
+        "high": 1.0
+      },
+      "S_pass": {
+        "value": NaN,
+        "low": NaN,
+        "high": NaN
+      },
+      "D": {
+        "value": 0.0,
+        "low": 0.0,
+        "high": 0.0
+      },
+      "passed": {
+        "good": 2,
+        "bad": 0,
+        "pairs": 0
+      }
+    }
+  },
+  "cross_quarter": 1.0,
+  "members": {
+    "antichess": {
+      "hash": "3ec1560124c3",
+      "label": "good",
+      "quarter": "Q2",
+      "verdict": "passed",
+      "index": 0.8119,
+      "interval": [
+        0.8083,
+        0.8421
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8986,
+        "pacing": 0.6821,
+        "variety": 0.399,
+        "drama": 1.0,
+        "decisions": 0.9681,
+        "depth": 0.9053
+      },
+      "measured": "2026-11-10"
+    },
+    "antichess-pawn-ending": {
+      "hash": "4d26ba4fd624",
+      "label": "bad",
+      "quarter": "Q2",
+      "verdict": "refused",
+      "index": 0.3766,
+      "interval": [
+        0.3458,
+        0.4018
+      ],
+      "gates": {
+        "decisive_rate_worst_half=0.156 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 3,
+        "forced_repetition=0.875 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 1,
+        "decisive_rate_worst_half=0.141 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 1
+      },
+      "families": {
+        "balance": 0.4323,
+        "pacing": 0.7545,
+        "variety": 0.7798,
+        "drama": 0.8454,
+        "decisions": 0.4596,
+        "depth": 0.0803
+      },
+      "measured": "2026-11-12"
+    },
+    "antichess-with-a-lone-queen": {
+      "hash": "ea25e87362d5",
+      "label": "bad",
+      "quarter": "Q2",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "mean_plies_worst_half=2.000 below minimum 8.0 (a game decided before either player has developed anything is not a game; pooled with a shuffle at the other end of the ladder the mean describes no game that was played)": 4,
+        "quick_kill_rate_worst_half=1.000 above maximum 0.5 (a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator)": 4,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 0% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 4
+      },
+      "families": {},
+      "measured": "2026-11-12"
+    },
+    "atomic": {
+      "hash": "6bd4d9c5769e",
+      "label": "good",
+      "quarter": "Q4",
+      "verdict": "passed",
+      "index": 0.8273,
+      "interval": [
+        0.7976,
+        0.8645
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8297,
+        "pacing": 0.9892,
+        "variety": 0.5838,
+        "drama": 0.9537,
+        "decisions": 0.96,
+        "depth": 0.6862
+      },
+      "measured": "2026-11-10"
+    },
+    "atomic-forward-knight": {
+      "hash": "ed1ffc84b782",
+      "label": "bad",
+      "quarter": "Q4",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "mean_plies_worst_half=1.000 below minimum 8.0 (a game decided before either player has developed anything is not a game; pooled with a shuffle at the other end of the ladder the mean describes no game that was played)": 4,
+        "skill_gradient=0.690 below minimum 8.0 (doubling the thinking budget must be worth at least a few Elo, or skill does not exist here)": 1,
+        "quick_kill_rate_worst_half=1.000 above maximum 0.5 (a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator)": 4,
+        "could not be measured on this corpus: blunder_recoverability": 1,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 20% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 1,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 40% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 2
+      },
+      "families": {},
+      "measured": "2026-11-12"
+    },
+    "breakthrough": {
+      "hash": "bb208e1b1211",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.7399,
+      "interval": [
+        0.7004,
+        0.7767
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8959,
+        "pacing": 0.6185,
+        "variety": 0.9789,
+        "drama": 0.9721,
+        "decisions": 0.8802,
+        "depth": 0.4737
+      },
+      "measured": "2026-11-12"
+    },
+    "breakthrough-on-three-files": {
+      "hash": "300a8d5c66f8",
+      "label": "bad",
+      "quarter": "Q1",
+      "verdict": "refused",
+      "index": 0.1762,
+      "interval": [
+        0.1653,
+        0.2099
+      ],
+      "gates": {
+        "quick_kill_rate_worst_half=0.614 above maximum 0.5 (a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator)": 2,
+        "seat_decided_chance=3.05e-05 below minimum 0.001: the first seat went 16-0 with 0 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 16-0 with each different game counted once, one chance in 32,768 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 1,
+        "top_three_seat_decided_chance=1.16e-10 below minimum 0.0005: the first seat went 36-0 with 0 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 34-0 with each different game counted once, one chance in 8,589,934,592 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 3,
+        "quick_kill_rate_worst_half=0.652 above maximum 0.5 (a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator)": 1,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 40% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 1,
+        "seat_decided_chance=6.10e-05 below minimum 0.001: the first seat went 16-0 with 0 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 15-0 with each different game counted once, one chance in 16,384 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 2,
+        "quick_kill_rate_worst_half=0.621 above maximum 0.5 (a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator)": 1
+      },
+      "families": {
+        "balance": 0.6667,
+        "pacing": 0.3348,
+        "variety": 0.3973,
+        "drama": 0.0,
+        "decisions": 0.9282,
+        "depth": 0.0346
+      },
+      "measured": "2026-11-12"
+    },
+    "breakthrough-runner-on-the-seventh": {
+      "hash": "1ba429ade817",
+      "label": "bad",
+      "quarter": "Q1",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "mean_plies_worst_half=1.000 below minimum 8.0 (a game decided before either player has developed anything is not a game; pooled with a shuffle at the other end of the ladder the mean describes no game that was played)": 4,
+        "skill_gradient=0.650 below minimum 8.0 (doubling the thinking budget must be worth at least a few Elo, or skill does not exist here)": 1,
+        "quick_kill_rate_worst_half=1.000 above maximum 0.5 (a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator)": 4,
+        "could not be measured on this corpus: blunder_recoverability": 1,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 20% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 1,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 40% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 2
+      },
+      "families": {},
+      "measured": "2026-11-12"
+    },
+    "capablanca": {
+      "hash": "2eefcd835b3b",
+      "label": "good",
+      "quarter": "Q3",
+      "verdict": "passed",
+      "index": 0.9263,
+      "interval": [
+        0.9088,
+        0.9497
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.864,
+        "pacing": 0.9366,
+        "variety": 0.7863,
+        "drama": 1.0,
+        "decisions": 0.9896,
+        "depth": 0.9276
+      },
+      "measured": "2026-11-10"
+    },
+    "capablanca-held-runners": {
+      "hash": "8b60a8369a49",
+      "label": "bad",
+      "quarter": "Q3",
+      "verdict": "refused",
+      "index": 0.3578,
+      "interval": [
+        0.3231,
+        0.3767
+      ],
+      "gates": {
+        "decisive_rate_worst_half=0.141 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 1,
+        "forced_repetition=1.000 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 4,
+        "decisive_rate_worst_half=0.078 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 2,
+        "decisive_rate_worst_half=0.094 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 1
+      },
+      "families": {
+        "balance": 0.794,
+        "pacing": 0.7359,
+        "variety": 0.5876,
+        "drama": 0.5749,
+        "decisions": 0.3533,
+        "depth": 0.0809
+      },
+      "measured": "2026-11-12"
+    },
+    "capablanca-locked-wall": {
+      "hash": "3d9bcabaeaea",
+      "label": "bad",
+      "quarter": "Q3",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "decisive_rate_worst_half=0.000 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 4,
+        "forced_repetition=1.000 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 4,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 0% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 4
+      },
+      "families": {},
+      "measured": "2026-11-12"
+    },
+    "capablanca-two-runners": {
+      "hash": "c64961eda21a",
+      "label": "bad",
+      "quarter": "Q3",
+      "verdict": "refused",
+      "index": 0.469,
+      "interval": [
+        0.45,
+        0.4891
+      ],
+      "gates": {
+        "top_three_seat_decided_chance=1.19e-07 below minimum 0.0005: the first seat went 24-0 with 12 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 24-0 with each different game counted once, one chance in 8,388,608 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 4,
+        "forced_repetition=1.000 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 4
+      },
+      "families": {
+        "balance": 0.6083,
+        "pacing": 0.8217,
+        "variety": 0.6944,
+        "drama": 0.7063,
+        "decisions": 0.5568,
+        "depth": 0.1467
+      },
+      "measured": "2026-11-12"
+    },
+    "chess-held-runners": {
+      "hash": "d3c7320a1422",
+      "label": "bad",
+      "quarter": "Q4",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "decisive_rate_worst_half=0.094 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 1,
+        "forced_repetition=1.000 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 4,
+        "decisive_rate_worst_half=0.000 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 1,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 40% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 2,
+        "decisive_rate_worst_half=0.062 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 1,
+        "decisive_rate_worst_half=0.047 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 1
+      },
+      "families": {
+        "balance": 0.841,
+        "pacing": 0.6991,
+        "variety": 0.5525,
+        "drama": 0.4167,
+        "decisions": 0.4065,
+        "depth": 0.088
+      },
+      "measured": "2026-11-12"
+    },
+    "chess-locked-wall": {
+      "hash": "07e969db7b4f",
+      "label": "bad",
+      "quarter": "Q4",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "decisive_rate_worst_half=0.000 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 4,
+        "forced_repetition=1.000 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 4,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 0% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 4
+      },
+      "families": {},
+      "measured": "2026-11-12"
+    },
+    "chess-two-runners": {
+      "hash": "360f5cc5a0c5",
+      "label": "bad",
+      "quarter": "Q4",
+      "verdict": "refused",
+      "index": 0.4808,
+      "interval": [
+        0.4635,
+        0.5022
+      ],
+      "gates": {
+        "top_three_seat_decided_chance=1.55e-06 below minimum 0.0005: the first seat went 24-1 with 11 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 24-1 with each different game counted once, one chance in 645,278 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1,
+        "forced_repetition=1.000 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 4,
+        "top_three_seat_decided_chance=1.19e-07 below minimum 0.0005: the first seat went 24-0 with 12 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 24-0 with each different game counted once, one chance in 8,388,608 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 3
+      },
+      "families": {
+        "balance": 0.623,
+        "pacing": 0.7991,
+        "variety": 0.625,
+        "drama": 0.7318,
+        "decisions": 0.5887,
+        "depth": 0.1607
+      },
+      "measured": "2026-11-12"
+    },
+    "chess-without-captures": {
+      "hash": "9f42cd064b97",
+      "label": "bad",
+      "quarter": "Q2",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "stall_rate_worst_half=0.859 above maximum 0.7 (a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing)": 1,
+        "decisive_rate_worst_half=0.000 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 4,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 0% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 4,
+        "stall_rate_worst_half=0.875 above maximum 0.7 (a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing)": 1,
+        "stall_rate_worst_half=0.879 above maximum 0.7 (a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing)": 1,
+        "stall_rate_worst_half=0.848 above maximum 0.7 (a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing)": 1
+      },
+      "families": {},
+      "measured": "2026-11-12"
+    },
+    "courier": {
+      "hash": "0b96463ffba7",
+      "label": "good",
+      "quarter": "Q2",
+      "verdict": "passed",
+      "index": 0.8962,
+      "interval": [
+        0.8619,
+        0.9114
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8383,
+        "pacing": 0.8885,
+        "variety": 0.9744,
+        "drama": 0.8613,
+        "decisions": 0.9565,
+        "depth": 0.8766
+      },
+      "measured": "2026-11-11"
+    },
+    "crazyhouse": {
+      "hash": "bb5d97520084",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.8466,
+      "interval": [
+        0.8251,
+        0.8833
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8594,
+        "pacing": 0.8054,
+        "variety": 0.7335,
+        "drama": 1.0,
+        "decisions": 0.9617,
+        "depth": 0.7514
+      },
+      "measured": "2026-11-10"
+    },
+    "dobutsu": {
+      "hash": "a2f0c65ceedf",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.624,
+      "interval": [
+        0.6055,
+        0.6761
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.7552,
+        "pacing": 0.8355,
+        "variety": 0.2808,
+        "drama": 0.5162,
+        "decisions": 0.896,
+        "depth": 0.5802
+      },
+      "measured": "2026-11-10"
+    },
+    "duck-chess": {
+      "hash": "7acb867a99aa",
+      "label": "good",
+      "quarter": "Q3",
+      "verdict": "passed",
+      "index": 0.9015,
+      "interval": [
+        0.8786,
+        0.9026
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.9297,
+        "pacing": 0.9841,
+        "variety": 0.9815,
+        "drama": 1.0,
+        "decisions": 0.6518,
+        "depth": 1.0
+      },
+      "measured": "2026-11-11"
+    },
+    "glinski-hexagonal-chess": {
+      "hash": "d7be83b7f1f9",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.936,
+      "interval": [
+        0.9151,
+        0.9477
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8981,
+        "pacing": 0.8869,
+        "variety": 0.8889,
+        "drama": 0.8992,
+        "decisions": 0.9912,
+        "depth": 1.0
+      },
+      "measured": "2026-11-12"
+    },
+    "grand": {
+      "hash": "393dfeada70d",
+      "label": "good",
+      "quarter": "Q2",
+      "verdict": "passed",
+      "index": 0.9499,
+      "interval": [
+        0.9289,
+        0.9546
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.9446,
+        "pacing": 0.8702,
+        "variety": 0.8512,
+        "drama": 1.0,
+        "decisions": 0.9859,
+        "depth": 1.0
+      },
+      "measured": "2026-11-11"
+    },
+    "grand-chess-without-a-white-king": {
+      "hash": "d181098a043b",
+      "label": "bad",
+      "quarter": "Q2",
+      "verdict": "refused",
+      "index": 0.595,
+      "interval": [
+        0.5827,
+        0.6054
+      ],
+      "gates": {
+        "top_three_seat_decided_chance=5.96e-08 below minimum 0.0005: the first seat went 25-0 with 11 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 25-0 with each different game counted once, one chance in 16,777,216 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1,
+        "seat_decided_chance=2.44e-04 below minimum 0.001: the first seat went 13-0 with 3 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 13-0 with each different game counted once, one chance in 4,096 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 1,
+        "top_three_seat_decided_chance=7.45e-09 below minimum 0.0005: the first seat went 28-0 with 8 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 28-0 with each different game counted once, one chance in 134,217,728 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 2,
+        "seat_decided_chance=4.88e-04 below minimum 0.001: the first seat went 12-0 with 4 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 12-0 with each different game counted once, one chance in 2,048 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 1,
+        "top_three_seat_decided_chance=1.19e-07 below minimum 0.0005: the first seat went 24-0 with 12 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 24-0 with each different game counted once, one chance in 8,388,608 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1
+      },
+      "families": {
+        "balance": 0.5865,
+        "pacing": 0.9119,
+        "variety": 0.854,
+        "drama": 1.0,
+        "decisions": 0.9803,
+        "depth": 0.1679
+      },
+      "measured": "2026-11-12"
+    },
+    "held-runners": {
+      "hash": "ecafa9ff71aa",
+      "label": "bad",
+      "quarter": "Q1",
+      "verdict": "refused",
+      "index": 0.2235,
+      "interval": [
+        0.1903,
+        0.241
+      ],
+      "gates": {
+        "decisive_rate_worst_half=0.000 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 4,
+        "skill_gradient=4.940 below minimum 8.0 (doubling the thinking budget must be worth at least a few Elo, or skill does not exist here)": 1,
+        "forced_repetition=1.000 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 4,
+        "skill_gradient=3.340 below minimum 8.0 (doubling the thinking budget must be worth at least a few Elo, or skill does not exist here)": 1,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 40% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 1,
+        "skill_gradient=4.460 below minimum 8.0 (doubling the thinking budget must be worth at least a few Elo, or skill does not exist here)": 1
+      },
+      "families": {
+        "balance": 0.7786,
+        "pacing": 0.6685,
+        "variety": 0.4369,
+        "drama": 0.3333,
+        "decisions": 0.3419,
+        "depth": 0.0
+      },
+      "measured": "2026-11-12"
+    },
+    "horde": {
+      "hash": "15593fc47f6d",
+      "label": "good",
+      "quarter": "Q3",
+      "verdict": "passed",
+      "index": 0.7179,
+      "interval": [
+        0.6853,
+        0.7548
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8764,
+        "pacing": 0.6886,
+        "variety": 0.963,
+        "drama": 1.0,
+        "decisions": 0.8503,
+        "depth": 0.3973
+      },
+      "measured": "2026-11-11"
+    },
+    "horde-endgame": {
+      "hash": "453fb0039c51",
+      "label": "bad",
+      "quarter": "Q3",
+      "verdict": "passed",
+      "index": 0.3903,
+      "interval": [
+        0.3599,
+        0.4159
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.657,
+        "pacing": 0.9338,
+        "variety": 0.2598,
+        "drama": 0.5251,
+        "decisions": 0.2993,
+        "depth": 0.2005
+      },
+      "measured": "2026-11-12"
+    },
+    "horde-without-extinction": {
+      "hash": "d3698b87f6f2",
+      "label": "bad",
+      "quarter": "Q3",
+      "verdict": "refused",
+      "index": 0.4115,
+      "interval": [
+        0.3821,
+        0.4293
+      ],
+      "gates": {
+        "top_three_seat_decided_chance=4.88e-04 below minimum 0.0005: the first seat went 12-0 with 24 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 12-0 with each different game counted once, one chance in 2,048 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1
+      },
+      "families": {
+        "balance": 0.7143,
+        "pacing": 0.7004,
+        "variety": 0.9585,
+        "drama": 0.463,
+        "decisions": 0.5658,
+        "depth": 0.0973
+      },
+      "measured": "2026-11-12"
+    },
+    "janus": {
+      "hash": "3d56b3cf64cf",
+      "label": "good",
+      "quarter": "Q3",
+      "verdict": "passed",
+      "index": 0.9365,
+      "interval": [
+        0.923,
+        0.9463
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.9038,
+        "pacing": 0.9278,
+        "variety": 0.7186,
+        "drama": 1.0,
+        "decisions": 0.9857,
+        "depth": 0.9988
+      },
+      "measured": "2026-11-12"
+    },
+    "king-of-the-hill-head-start": {
+      "hash": "f1e40c40ab38",
+      "label": "bad",
+      "quarter": "Q3",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "mean_plies_worst_half=1.000 below minimum 8.0 (a game decided before either player has developed anything is not a game; pooled with a shuffle at the other end of the ladder the mean describes no game that was played)": 4,
+        "quick_kill_rate_worst_half=1.000 above maximum 0.5 (a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator)": 4,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 40% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 4
+      },
+      "families": {},
+      "measured": "2026-11-12"
+    },
+    "king-of-the-hill-with-a-sentry": {
+      "hash": "d5f6ff9da0a0",
+      "label": "null",
+      "quarter": "Q3",
+      "verdict": "passed",
+      "index": 0.8327,
+      "interval": [
+        0.805,
+        0.8691
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.9206,
+        "pacing": 0.8127,
+        "variety": 0.8083,
+        "drama": 0.9557,
+        "decisions": 0.9883,
+        "depth": 0.6369
+      },
+      "measured": "2026-11-12"
+    },
+    "kingofthehill": {
+      "hash": "71912ea8ba7f",
+      "label": "good",
+      "quarter": "Q3",
+      "verdict": "passed",
+      "index": 0.8083,
+      "interval": [
+        0.7881,
+        0.8502
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8542,
+        "pacing": 0.7765,
+        "variety": 0.5754,
+        "drama": 1.0,
+        "decisions": 0.9826,
+        "depth": 0.7059
+      },
+      "measured": "2026-11-11"
+    },
+    "kyoto": {
+      "hash": "a1805ac1adc1",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.7197,
+      "interval": [
+        0.6901,
+        0.7503
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.6759,
+        "pacing": 0.9444,
+        "variety": 0.2811,
+        "drama": 0.5366,
+        "decisions": 0.8589,
+        "depth": 0.999
+      },
+      "measured": "2026-11-10"
+    },
+    "makruk": {
+      "hash": "eaa48ed29ad7",
+      "label": "good",
+      "quarter": "Q2",
+      "verdict": "passed",
+      "index": 0.8596,
+      "interval": [
+        0.836,
+        0.8826
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.741,
+        "pacing": 0.8388,
+        "variety": 0.9536,
+        "drama": 1.0,
+        "decisions": 0.9623,
+        "depth": 0.7413
+      },
+      "measured": "2026-11-11"
+    },
+    "makruk-with-a-sentry": {
+      "hash": "6f3eeffcc967",
+      "label": "null",
+      "quarter": "Q2",
+      "verdict": "passed",
+      "index": 0.8584,
+      "interval": [
+        0.836,
+        0.8827
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.7359,
+        "pacing": 0.8386,
+        "variety": 0.9536,
+        "drama": 1.0,
+        "decisions": 0.9615,
+        "depth": 0.7404
+      },
+      "measured": "2026-11-13"
+    },
+    "minishogi": {
+      "hash": "91974dda36cb",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.7766,
+      "interval": [
+        0.7548,
+        0.8087
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.9154,
+        "pacing": 0.9744,
+        "variety": 0.4588,
+        "drama": 0.9202,
+        "decisions": 0.6878,
+        "depth": 0.784
+      },
+      "measured": "2026-11-13"
+    },
+    "minixiangqi": {
+      "hash": "6a4da609da21",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.8908,
+      "interval": [
+        0.8714,
+        0.9198
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8793,
+        "pacing": 0.9172,
+        "variety": 0.7044,
+        "drama": 1.0,
+        "decisions": 0.9596,
+        "depth": 0.8551
+      },
+      "measured": "2026-11-13"
+    },
+    "omega": {
+      "hash": "c68b69c57219",
+      "label": "good",
+      "quarter": "Q2",
+      "verdict": "passed",
+      "index": 0.9374,
+      "interval": [
+        0.915,
+        0.9453
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.857,
+        "pacing": 0.8879,
+        "variety": 0.9368,
+        "drama": 0.9166,
+        "decisions": 0.9867,
+        "depth": 1.0
+      },
+      "measured": "2026-11-11"
+    },
+    "pawn-wall-race": {
+      "hash": "3b44f69467d8",
+      "label": "bad",
+      "quarter": "Q2",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "decisive_rate_worst_half=0.000 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 4,
+        "forced_repetition=1.000 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 4,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 40% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 4
+      },
+      "families": {},
+      "measured": "2026-11-13"
+    },
+    "pawn-wall-race-late-king": {
+      "hash": "d199bdad5666",
+      "label": "bad",
+      "quarter": "Q2",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "decisive_rate_worst_half=0.000 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 4,
+        "skill_gradient=6.770 below minimum 8.0 (doubling the thinking budget must be worth at least a few Elo, or skill does not exist here)": 1,
+        "forced_repetition=1.000 above maximum 0.8 (the strongest player draws four games in five by repetition against itself, and a player that refuses repetitions cannot win: a side can always wait, so the game is not a contest)": 4,
+        "skill_gradient=3.760 below minimum 8.0 (doubling the thinking budget must be worth at least a few Elo, or skill does not exist here)": 1,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 40% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 2
+      },
+      "families": {
+        "balance": 0.6873,
+        "pacing": 0.6891,
+        "variety": 0.488,
+        "drama": 0.0463,
+        "decisions": 0.2882,
+        "depth": 0.0
+      },
+      "measured": "2026-11-13"
+    },
+    "placement-chess": {
+      "hash": "2cb9cb3c018c",
+      "label": "good",
+      "quarter": "Q2",
+      "verdict": "passed",
+      "index": 0.9217,
+      "interval": [
+        0.8947,
+        0.9417
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8608,
+        "pacing": 0.8395,
+        "variety": 0.9879,
+        "drama": 1.0,
+        "decisions": 0.9973,
+        "depth": 0.8762
+      },
+      "measured": "2026-11-11"
+    },
+    "racing-kings-with-a-low-ceiling": {
+      "hash": "610c330161b3",
+      "label": "bad",
+      "quarter": "Q1",
+      "verdict": "refused",
+      "index": null,
+      "interval": [
+        null,
+        null
+      ],
+      "gates": {
+        "stall_rate_worst_half=0.955 above maximum 0.7 (a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing)": 1,
+        "decisive_rate_worst_half=0.000 below minimum 0.2 (a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one)": 4,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 0% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 4,
+        "stall_rate_worst_half=0.985 above maximum 0.7 (a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing)": 1,
+        "stall_rate_worst_half=0.962 above maximum 0.7 (a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing)": 1,
+        "stall_rate_worst_half=0.947 above maximum 0.7 (a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing)": 1
+      },
+      "families": {},
+      "measured": "2026-11-13"
+    },
+    "racing-kings-with-a-tilted-ceiling": {
+      "hash": "e75d81bd4b8a",
+      "label": "bad",
+      "quarter": "Q1",
+      "verdict": "refused",
+      "index": 0.393,
+      "interval": [
+        0.354,
+        0.4173
+      ],
+      "gates": {
+        "top_three_seat_decided_chance=7.63e-06 below minimum 0.0005: the first seat went 0-18 with 18 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 0-18 with each different game counted once, one chance in 131,072 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 2,
+        "top_three_seat_decided_chance=1.53e-05 below minimum 0.0005: the first seat went 0-17 with 19 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 0-17 with each different game counted once, one chance in 65,536 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1,
+        "stall_rate_worst_half=0.705 above maximum 0.7 (a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing)": 1,
+        "top_three_seat_decided_chance=9.54e-07 below minimum 0.0005: the first seat went 0-21 with 15 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 0-21 with each different game counted once, one chance in 1,048,576 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1
+      },
+      "families": {
+        "balance": 0.1523,
+        "pacing": 0.7766,
+        "variety": 0.8538,
+        "drama": 0.8471,
+        "decisions": 0.6576,
+        "depth": 0.1121
+      },
+      "measured": "2026-11-13"
+    },
+    "racingkings": {
+      "hash": "66b001f1b790",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.7659,
+      "interval": [
+        0.7522,
+        0.8014
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.684,
+        "pacing": 0.8153,
+        "variety": 0.596,
+        "drama": 0.9861,
+        "decisions": 0.7639,
+        "depth": 0.7482
+      },
+      "measured": "2026-11-11"
+    },
+    "seirawan": {
+      "hash": "3dafe910108f",
+      "label": "good",
+      "quarter": "Q3",
+      "verdict": "passed",
+      "index": 0.908,
+      "interval": [
+        0.8855,
+        0.9318
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8609,
+        "pacing": 0.8392,
+        "variety": 0.8235,
+        "drama": 1.0,
+        "decisions": 0.9837,
+        "depth": 0.9073
+      },
+      "measured": "2026-11-10"
+    },
+    "shako": {
+      "hash": "d4bea31a4f58",
+      "label": "good",
+      "quarter": "Q3",
+      "verdict": "passed",
+      "index": 0.9282,
+      "interval": [
+        0.9026,
+        0.944
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8407,
+        "pacing": 0.8769,
+        "variety": 0.9186,
+        "drama": 0.9669,
+        "decisions": 0.9853,
+        "depth": 0.95
+      },
+      "measured": "2026-11-13"
+    },
+    "shatranj": {
+      "hash": "67270a8805a0",
+      "label": "good",
+      "quarter": "Q2",
+      "verdict": "passed",
+      "index": 0.8907,
+      "interval": [
+        0.8589,
+        0.91
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8282,
+        "pacing": 0.8474,
+        "variety": 0.9711,
+        "drama": 0.9611,
+        "decisions": 0.9469,
+        "depth": 0.8317
+      },
+      "measured": "2026-11-11"
+    },
+    "shogi": {
+      "hash": "54c731ca6e95",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.8578,
+      "interval": [
+        0.8334,
+        0.8769
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.9523,
+        "pacing": 0.6657,
+        "variety": 0.9329,
+        "drama": 1.0,
+        "decisions": 0.8309,
+        "depth": 0.8728
+      },
+      "measured": "2026-11-11"
+    },
+    "sittuyin": {
+      "hash": "771c1a22e182",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.9312,
+      "interval": [
+        0.9011,
+        0.9406
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8228,
+        "pacing": 0.8857,
+        "variety": 0.9916,
+        "drama": 1.0,
+        "decisions": 0.9561,
+        "depth": 0.9373
+      },
+      "measured": "2026-11-11"
+    },
+    "three-check-with-a-sentry": {
+      "hash": "cb25a48cf9a8",
+      "label": "null",
+      "quarter": "Q4",
+      "verdict": "passed",
+      "index": 0.8014,
+      "interval": [
+        0.7662,
+        0.8415
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.9219,
+        "pacing": 0.8148,
+        "variety": 0.6261,
+        "drama": 0.9157,
+        "decisions": 0.9751,
+        "depth": 0.6361
+      },
+      "measured": "2026-11-13"
+    },
+    "three-check-without-a-white-king": {
+      "hash": "73759c520218",
+      "label": "bad",
+      "quarter": "Q4",
+      "verdict": "refused",
+      "index": 0.3509,
+      "interval": [
+        0.3485,
+        0.4008
+      ],
+      "gates": {
+        "seat_decided_chance=3.05e-05 below minimum 0.001: the first seat went 16-0 with 0 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 16-0 with each different game counted once, one chance in 32,768 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 1,
+        "top_three_seat_decided_chance=2.33e-10 below minimum 0.0005: the first seat went 33-0 with 3 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 33-0 with each different game counted once, one chance in 4,294,967,296 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1,
+        "seat_decided_chance=1.22e-04 below minimum 0.001: the first seat went 16-0 with 0 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 14-0 with each different game counted once, one chance in 8,192 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 1,
+        "top_three_seat_decided_chance=1.16e-10 below minimum 0.0005: the first seat went 36-0 with 0 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 34-0 with each different game counted once, one chance in 8,589,934,592 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1,
+        "this roster cannot read this ruleset: the rating ladder orders the agents on only 40% of its budget steps, so lead_conversion, skill_gradient would describe the players rather than the game": 1,
+        "seat_decided_chance=6.10e-05 below minimum 0.001: the first seat went 15-0 with 1 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 15-0 with each different game counted once, one chance in 16,384 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 1,
+        "top_three_seat_decided_chance=5.82e-11 below minimum 0.0005: the first seat went 35-0 with 1 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 35-0 with each different game counted once, one chance in 17,179,869,184 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1
+      },
+      "families": {
+        "balance": 0.6667,
+        "pacing": 0.8686,
+        "variety": 0.6652,
+        "drama": 0.8872,
+        "decisions": 0.9631,
+        "depth": 0.0165
+      },
+      "measured": "2026-11-13"
+    },
+    "threecheck": {
+      "hash": "b1f536573c22",
+      "label": "good",
+      "quarter": "Q4",
+      "verdict": "passed",
+      "index": 0.7959,
+      "interval": [
+        0.7634,
+        0.8386
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.9219,
+        "pacing": 0.8164,
+        "variety": 0.6267,
+        "drama": 0.8781,
+        "decisions": 0.9753,
+        "depth": 0.6353
+      },
+      "measured": "2026-11-11"
+    },
+    "two-runners-one-king": {
+      "hash": "47e80de7c1b0",
+      "label": "bad",
+      "quarter": "Q1",
+      "verdict": "refused",
+      "index": 0.3165,
+      "interval": [
+        0.2859,
+        0.3613
+      ],
+      "gates": {
+        "seat_decided_chance=4.88e-04 below minimum 0.001: the first seat went 0-12 with 4 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 0-12 with each different game counted once, one chance in 2,048 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 1,
+        "top_three_seat_decided_chance=4.63e-07 below minimum 0.0005: the first seat went 2-29 with 5 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 2-29 with each different game counted once, one chance in 2,160,446 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1,
+        "seat_decided_chance=2.44e-04 below minimum 0.001: the first seat went 0-13 with 3 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 0-13 with each different game counted once, one chance in 4,096 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 2,
+        "top_three_seat_decided_chance=2.16e-07 below minimum 0.0005: the first seat went 1-27 with 8 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 1-27 with each different game counted once, one chance in 4,628,198 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1,
+        "top_three_seat_decided_chance=1.05e-05 below minimum 0.0005: the first seat went 2-24 with 10 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 2-24 with each different game counted once, one chance in 95,325 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1,
+        "seat_decided_chance=9.77e-04 below minimum 0.001: the first seat went 0-11 with 5 draws over the 16 games between the two strongest rungs (6400, 25600 nodes), 0-11 with each different game counted once, one chance in 1,024 under a fair seat (a game the two strongest rungs win from one seat nearly every time, whoever sits in it, is decided by the seat and not by play)": 1,
+        "top_three_seat_decided_chance=1.55e-06 below minimum 0.0005: the first seat went 1-24 with 11 draws over the 36 games between the three strongest rungs (3200, 6400, 25600 nodes), 1-24 with each different game counted once, one chance in 645,278 under a fair seat (a game the three strongest rungs win from one seat far more often than the other, whoever sits in it, is decided by the seat and not by play)": 1
+      },
+      "families": {
+        "balance": 0.562,
+        "pacing": 0.8176,
+        "variety": 0.6005,
+        "drama": 0.8277,
+        "decisions": 0.3593,
+        "depth": 0.041
+      },
+      "measured": "2026-11-13"
+    },
+    "xiangqi": {
+      "hash": "151582aed409",
+      "label": "good",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.8493,
+      "interval": [
+        0.819,
+        0.8816
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8393,
+        "pacing": 0.924,
+        "variety": 0.9072,
+        "drama": 1.0,
+        "decisions": 0.9311,
+        "depth": 0.6456
+      },
+      "measured": "2026-11-11"
+    },
+    "xiangqi-with-a-sentry": {
+      "hash": "4659ac7bf07a",
+      "label": "null",
+      "quarter": "Q1",
+      "verdict": "passed",
+      "index": 0.8493,
+      "interval": [
+        0.819,
+        0.8816
+      ],
+      "gates": {},
+      "families": {
+        "balance": 0.8393,
+        "pacing": 0.924,
+        "variety": 0.9072,
+        "drama": 1.0,
+        "decisions": 0.9311,
+        "depth": 0.6456
+      },
+      "measured": "2026-11-13"
+    }
+  }
+}

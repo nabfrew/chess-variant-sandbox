@@ -7,21 +7,17 @@ the decision reads besides the tree is a field of `Facts`; the tree is built per
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
+import private_paths
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / ".claude" / "scripts" / "clean_runs.py"
-spec = importlib.util.spec_from_file_location("clean_runs", SCRIPT)
-assert spec is not None and spec.loader is not None
-clean = importlib.util.module_from_spec(spec)
-sys.modules["clean_runs"] = clean
-spec.loader.exec_module(clean)
+SCRIPT = ".claude/scripts/clean_runs.py"  # a maintainer's tool: not in the public copy
+clean = private_paths.script(SCRIPT, "clean_runs")
+pytestmark = private_paths.needs(SCRIPT)
 
 DAY = 24 * 3600
 NOW = time.time() + 60 * DAY  # every file written by the test is two months old

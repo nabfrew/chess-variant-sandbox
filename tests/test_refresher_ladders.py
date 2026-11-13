@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import private_paths
 import pytest
 from test_refresher import FakeMachine, repo  # noqa: F401  (`repo` is a fixture)
 
@@ -46,6 +47,11 @@ SPINE = ["random", "greedy"]
 # After every change `opponents.PLAYER_CHANGES` marks (Q502i, 2026-09-29).
 RECENT = "2026-10-01"
 
+
+# `ladders_check.py` and `ladders.py` are the box's scripts in `deploy/`, which the public copy
+# does not carry (the refresher owes no ladders there): the tests that load them are this
+# checkout's.
+LADDERS = private_paths.needs("deploy/ladders_check.py", "deploy/ladders.py")
 
 @pytest.fixture
 def checks(monkeypatch: pytest.MonkeyPatch) -> Any:
@@ -111,6 +117,7 @@ def owing(tmp_path: Path, checks: Any) -> tuple[Path, dict[str, str]]:
 
 
 class TestTheOrder:
+    @LADDERS
     def test_missing_then_a_top_up_then_old_players(self, owing) -> None:
         root, digests = owing
         items = refresher.ladder_items(root / "runs", root)
@@ -128,6 +135,7 @@ class TestTheOrder:
         assert items[2].stored.startswith(refresher.LADDER_STORED) and items[2].stored != (
             refresher.LADDER_STORED + "absent")
 
+    @LADDERS
     def test_a_short_ladder_with_no_kept_games_is_rated_again_whole(
         self, tmp_path: Path, checks: Any
     ) -> None:
@@ -137,6 +145,7 @@ class TestTheOrder:
         assert found.needs == "re-rate"
         assert found.reason == "short: minimax:nodes=200000 (no kept games)"
 
+    @LADDERS
     def test_within_a_kind_the_oldest_ladder_first(self, tmp_path: Path, checks: Any) -> None:
         digests = tree(tmp_path, dull="dull", gardner="gardner")
         unstamped(tmp_path / "runs", digests["dull"], OFFERED, "2026-09-20")
@@ -144,6 +153,7 @@ class TestTheOrder:
         assert [i.hash for i in refresher.ladder_items(tmp_path / "runs", tmp_path)] == [
             digests["gardner"], digests["dull"]]
 
+    @LADDERS
     def test_a_preview_owes_no_ladder_and_a_library_game_without_one_still_does(
         self, tmp_path: Path, checks: Any
     ) -> None:
@@ -196,6 +206,7 @@ def rating(monkeypatch: pytest.MonkeyPatch, checks: Any) -> list[tuple[str, bool
     return asked
 
 
+@LADDERS
 class TestOneLadder:
     def test_each_kind_is_paid_by_l3s_own_call(self, owing, rating) -> None:
         root, digests = owing
@@ -290,6 +301,7 @@ def machine_on(root: Path, **fields: Any) -> FixtureMachine:
 
 
 class TestTheLoop:
+    @LADDERS
     def test_scores_first_then_one_ladder_a_lease_in_order(self, owing, rating) -> None:
         root, digests = owing
         machine = machine_on(root, owed={digests["dull"]: ("rescore", "s")})
@@ -324,6 +336,7 @@ class TestTheLoop:
         assert status is not None and status["state"] == "stopped"
         assert status["ladder_counts"] == {"ladder": 0, "top-up": 0, "re-rate": 0}
 
+    @LADDERS
     def test_a_score_owed_mid_way_comes_before_the_next_ladder(self, owing, rating) -> None:
         root, digests = owing
         machine = machine_on(root)
@@ -337,6 +350,7 @@ class TestTheLoop:
         assert len(machine.did("ladders")) == 2
         assert rating == [(digests["dobutsu"], False), (digests["dull"], False)]
 
+    @LADDERS
     def test_a_refused_ladder_is_not_retried_and_leaves_the_score_refusal(
         self, tmp_path: Path, rating
     ) -> None:
@@ -402,6 +416,7 @@ class TestWhatItSays:
         lines = refresher.plain_status(refresher.read_status(tmp_path))
         assert "ladders owed: 1 re-rate (1 more owed and refused)" in lines
 
+    @LADDERS
     def test_the_plan_lists_the_ladder_work_after_the_scores(
         self, owing, monkeypatch: pytest.MonkeyPatch, capsys
     ) -> None:
@@ -425,6 +440,7 @@ class TestWhatItSays:
         assert ("5 owed: 1 scores, then 4 ladders, then 0 proofs (the ladders and proofs "
                 "wait until no score is owed)") in out
 
+    @LADDERS
     def test_a_ladder_is_paid_by_a_named_game_and_never_without_one(
         self, owing, rating, monkeypatch: pytest.MonkeyPatch, capsys
     ) -> None:
@@ -481,6 +497,7 @@ class TestTheRealMachine:
         assert seen[0][3:7] == ["refresh", "--plan", "--part", "scores"]
 
 
+@LADDERS
 def test_ladders_check_does_not_list_a_preview_as_owing(
     tmp_path: Path, checks: Any, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -501,6 +518,7 @@ def test_ladders_check_does_not_list_a_preview_as_owing(
     assert checks.main(["--root", str(tmp_path)]) == 0
 
 
+@LADDERS
 def test_ladders_check_is_the_one_ladders_py_reads() -> None:
     """`ladders.py` imports `ladders_check` by its plain name; the refresher must read the
     same module, or a stand-in for its roster reaches one and not the other."""

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import page_text
+import private_paths
 import pytest
 import site_store
 import site_words
@@ -23,7 +24,7 @@ import site_words
 from chess_variant_sandbox.site import db, depths, pages, quota
 
 ORDER = ["checks", "publishes", "ratings", "sweep", "asks", "reports", "training"]
-DEPLOY = Path(__file__).resolve().parent.parent / "deploy"
+DEPLOY = private_paths.path("deploy")  # the box's scripts: not in the public copy
 
 
 @pytest.fixture(autouse=True)
@@ -335,11 +336,13 @@ def test_the_disk_reads_a_real_directory_and_never_raises(
     assert depths.disk(tmp_path) is None
 
 
+@private_paths.needs("deploy/status.sh")
 def test_the_disk_limit_is_the_scripts() -> None:
     script = (DEPLOY / "status.sh").read_text(encoding="utf-8")
     assert f'[ "$used" -lt {depths.DISK_LIMIT} ]' in script
 
 
+@private_paths.needs("deploy/remote/status.sh")
 def test_the_box_half_words_the_disk_as_the_page_does() -> None:
     """`df -P -k`'s used and available, in KiB, through the box half's arithmetic."""
     script = (DEPLOY / "remote" / "status.sh").read_text(encoding="utf-8")

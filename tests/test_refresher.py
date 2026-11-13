@@ -30,6 +30,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import private_paths
 import pytest
 from test_corpus import SPEC, world  # noqa: F401  (`world` is a fixture)
 from test_history import _game_on_disk, stubbed  # noqa: F401  (`stubbed` is a fixture)
@@ -970,6 +971,8 @@ class TestItMovesNothing:
 
 
 class TestTheCommand:
+    # Its ladder row needs `deploy/ladders_check.py`, which the public copy does not carry.
+    @private_paths.needs("deploy/ladders_check.py")
     def test_the_plan_is_the_queue_as_json(self, library: Path, capsys) -> None:
         from chess_variant_sandbox.cli import main
 

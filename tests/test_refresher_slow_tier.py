@@ -15,13 +15,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import private_paths
 from test_refresher import FakeMachine, repo  # noqa: F401  (`repo` is a fixture)
 
 from chess_variant_sandbox import refresher
 from chess_variant_sandbox.refresher import SlowTier
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-SCRIPT = REPOSITORY / ".claude" / "scripts" / "slow_tier_status.py"
+SCRIPT = private_paths.path(".claude/scripts/slow_tier_status.py")  # not in the public copy
 
 NOW = datetime.datetime(2026, 10, 5, 12, 0, tzinfo=datetime.timezone.utc)
 
@@ -218,6 +219,7 @@ class TestTheRealMachine:
         assert tier.outcome == "unfinished" and "stopped after" in tier.note
 
 
+@private_paths.needs(".claude/scripts/slow_tier_status.py")
 class TestTheScript:
     """`.claude/scripts/slow_tier_status.py`: reads the file, imports nothing."""
 

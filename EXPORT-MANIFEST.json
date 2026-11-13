@@ -1,5 +1,5 @@
 {
- "source_commit": "621c15883a289a4b7b6db943fa054bf590e04270",
+ "source_commit": "c6813d111bbb7b4275c49a0a487f8ae936c8c400",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -15,6 +15,7 @@
   "rulesets/",
   "archive/",
   "labelled/",
+  "unlike/",
   "heuristics/",
   "valuations/",
   "nets/",
@@ -1907,8 +1908,8 @@
   },
   {
    "path": "chess_variant_sandbox/corpus.py",
-   "bytes": 103133,
-   "sha256": "720c3ac4a51e65065216637da199ca3f3ae36ba76a19fde946756c9302a74714"
+   "bytes": 104183,
+   "sha256": "3f9cb6d2c6c13fed4b8974521d7aecf0c3e6409bb04c3dccfa70a6a0eb94c23a"
   },
   {
    "path": "chess_variant_sandbox/engine/__init__.py",
@@ -1957,8 +1958,8 @@
   },
   {
    "path": "chess_variant_sandbox/fairy/betza.py",
-   "bytes": 13295,
-   "sha256": "bc6d5f4fe6ff3a55cebe8491ffd0bb703eed32e6bf9a4fd7f12f87672c681134"
+   "bytes": 13968,
+   "sha256": "1359a0c2b80fe6ea6c49141232aa7b97520aa9851e46d17c78b28a5d6e6456ad"
   },
   {
    "path": "chess_variant_sandbox/fairy/engine.py",
@@ -1982,8 +1983,8 @@
   },
   {
    "path": "chess_variant_sandbox/fairy/variant.py",
-   "bytes": 154119,
-   "sha256": "453e52073fb4fa66c78eeee40c5ed6a51b6d5632e9efd628d0a01011272f2fb0"
+   "bytes": 154454,
+   "sha256": "6101011e2fc655f3ad01d425d616b3cf327a4a00630e520e82784167563fdb69"
   },
   {
    "path": "chess_variant_sandbox/fairy/verify.py",
@@ -2622,8 +2623,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/pages.py",
-   "bytes": 116576,
-   "sha256": "e2cb4cc427fb977af824a264f05a2a41d8d0c2c2ab7391d4451accaf33031f9d"
+   "bytes": 117432,
+   "sha256": "161218bb4cfdfeb1053ac52fe83e1c27f92cff38e88f4b86a1ccd28fbefe4ec7"
   },
   {
    "path": "chess_variant_sandbox/site/people.py",
@@ -2677,8 +2678,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/routes.py",
-   "bytes": 31673,
-   "sha256": "36ab62810f89f77fdb7fd4afb5464960282d51a52ef64cd60cdbee2c557511eb"
+   "bytes": 31938,
+   "sha256": "5af23f38b50cbb7bee3e9cfb58dd9fbb63390caa529976de11451661be7765d0"
   },
   {
    "path": "chess_variant_sandbox/site/screening.py",
@@ -2687,13 +2688,13 @@
   },
   {
    "path": "chess_variant_sandbox/site/seo.py",
-   "bytes": 10325,
-   "sha256": "3eb86078f5b0d1e3442e188e861cda55f2d5755b717314d71a583f0687a14c93"
+   "bytes": 10345,
+   "sha256": "d63dbdc179cb33abb10638728df64f2c7a7b64c616ef5a70128b4f341f502277"
   },
   {
    "path": "chess_variant_sandbox/site/server.py",
-   "bytes": 189162,
-   "sha256": "c358e3d3aa61b9144fe0e6089ab8cf452a1b0a5c2612a2969fbb4426df8005fa"
+   "bytes": 189881,
+   "sha256": "bfd04cbbecaa4acd546823365b6da06073d498eaa4b5176b49b8d71114c136c6"
   },
   {
    "path": "chess_variant_sandbox/site/shortlist.py",
@@ -2897,8 +2898,8 @@
   },
   {
    "path": "chess_variant_sandbox/spec/relate.py",
-   "bytes": 71209,
-   "sha256": "c77066436fe05dcedd56e5c97a946b3930893a6e0d5a99bf361caf21e2dfa9be"
+   "bytes": 71627,
+   "sha256": "312cd9b990375c7951ec7f79e038750061a5710986776ada51316fa868b2bece"
   },
   {
    "path": "chess_variant_sandbox/spec/rules_used.py",
@@ -3112,8 +3113,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/landing.py",
-   "bytes": 71120,
-   "sha256": "8870b4eab7ff5db98be9b5c32868574ff6cf84374679e2567765eca17d0bb8a2"
+   "bytes": 71408,
+   "sha256": "1c67245f8962ea0fed81c249e036ce429cf5bb2a8051feb872a100565c1462f3"
   },
   {
    "path": "chess_variant_sandbox/web/launch.py",
@@ -3177,8 +3178,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/game.py",
-   "bytes": 16147,
-   "sha256": "f714a0f6bd3e609063394acd7ef18fd404f51b1678d7079ab7101b34671bb428"
+   "bytes": 16505,
+   "sha256": "0b93591c760108baa35519cb2917b5e990a4fc6acba939ca03ef389868231d68"
   },
   {
    "path": "chess_variant_sandbox/web/page/game_picture.py",
@@ -3212,8 +3213,13 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/rules_page.py",
-   "bytes": 19927,
-   "sha256": "aefa2509d94e1893c757085b1dd073a903d6ffb5f750a754cc9425acb84194dc"
+   "bytes": 19989,
+   "sha256": "aaf6abcd994788b0b858d9901747bb5f1827877e0cdd49257aeb8d4039fc6986"
+  },
+  {
+   "path": "chess_variant_sandbox/web/page/score_tests_page.py",
+   "bytes": 14220,
+   "sha256": "3adb9686a490e2ec3f1e797856a8628c1e92840d7a0d504d92c638e6adb4b0db"
   },
   {
    "path": "chess_variant_sandbox/web/page/shell.py",
@@ -3256,9 +3262,14 @@
    "sha256": "057d372f317592a0be9c6e1d7fe85cca84c5d9ff7f72fe1d116b47ff384b2abe"
   },
   {
+   "path": "chess_variant_sandbox/web/score_tests.json",
+   "bytes": 26859,
+   "sha256": "a77ff610e1081fd37468fc58caa9e6c5b4bc747a8103fa28fdf20023992f6f9a"
+  },
+  {
    "path": "chess_variant_sandbox/web/server.py",
-   "bytes": 99407,
-   "sha256": "c32d70a64cb66c70ab07565da8008008b0258ae317e2811f3af17452f4ed77ad"
+   "bytes": 99731,
+   "sha256": "85b0b311175fe9fd0170c65812096cd04e1e948cea2280ae9d1572e871995327"
   },
   {
    "path": "chess_variant_sandbox/web/sitescore.py",
@@ -3327,8 +3338,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/core.js",
-   "bytes": 94050,
-   "sha256": "a8f6840c16ba6369c2f0e6aa30c36db1d9b7ad802e1f3789fed59254b15a740f"
+   "bytes": 94198,
+   "sha256": "c245704a3bb6a586a244e72b18e05445b9b422f6b269b9db729c428fa1bf6d5f"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/design.js",
@@ -3337,8 +3348,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/detail.js",
-   "bytes": 168127,
-   "sha256": "ff27ce18b94a2c1f105336870f2d80ca18bdc4619e88698f76908d8d51dd968e"
+   "bytes": 168343,
+   "sha256": "2b246cbaa2d3a651df769489eaafcbff92898a74e9354282a2106ab85d56b619"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/explorer.js",
@@ -3532,8 +3543,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 183678,
-   "sha256": "2af4a157b80250abfe024f7024cf493d10e5dd45d589541cf46a40033e560535"
+   "bytes": 184469,
+   "sha256": "794d80a1b774eb4698c41da470d4840b18c00ff6bc3e4843e9d83595bc65171c"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -3737,8 +3748,8 @@
   },
   {
    "path": "labelled/SEAL.json",
-   "bytes": 16715,
-   "sha256": "77fe8e12eeb3dcc1ebe5efd2d4dbde16980311fc5de6cc2736596bb411224341"
+   "bytes": 22470,
+   "sha256": "fb9e6039023266feb39718d9f776d3e3145f6ed89c75f9ec1c9b40060df95022"
   },
   {
    "path": "labelled/antichess-pawn-ending.json",
@@ -3772,8 +3783,13 @@
   },
   {
    "path": "labelled/build-log.md",
-   "bytes": 14087,
-   "sha256": "e6ce97411bf7c8fb0f38ec299055de0cc469e6f51e6033676af4fc954f1a385f"
+   "bytes": 21283,
+   "sha256": "b75e7c62de41a30583480ceeb05c9d7f38a4fec683d2fb21e5f42ff259e0ec9c"
+  },
+  {
+   "path": "labelled/cannon-shogi.json",
+   "bytes": 9421,
+   "sha256": "459fbdd2876c5383e4e1d7baa134fe5df3765988e765e1b2eccedf8f9482f30e"
   },
   {
    "path": "labelled/capablanca-held-runners.json",
@@ -3851,9 +3867,19 @@
    "sha256": "9d48db708f7b6e2340d2cdcfa8d20c2c17baf60aa3f735ff8bc665eaab43f870"
   },
   {
+   "path": "labelled/clobber.json",
+   "bytes": 2014,
+   "sha256": "f6e3f1f06d24186c4122410335e37b84fe14e41073a67abbbb8a7799cbbd77c1"
+  },
+  {
    "path": "labelled/glinski-hexagonal-chess.json",
    "bytes": 7953,
    "sha256": "d23b8ed2e688e0addd3d94fb9f4e489e91e619dd7de8864d9a5c22a70227cb1a"
+  },
+  {
+   "path": "labelled/gorogoro-plus.json",
+   "bytes": 4577,
+   "sha256": "3d11059a538f2b0bb98c8236670f3ba3739ec8fd3b7bc0056a584f4a9f167779"
   },
   {
    "path": "labelled/grand-chess-without-a-white-king.json",
@@ -3874,6 +3900,11 @@
    "path": "labelled/horde-without-extinction.json",
    "bytes": 5171,
    "sha256": "b92471ef020ebdc8fbb80137c20388963086f6304fd8cb7c4ee2dcbbb4930ce7"
+  },
+  {
+   "path": "labelled/janggi.json",
+   "bytes": 6417,
+   "sha256": "ec85ee96d230a125ad4316bfb4b3d96b7737ff4fd23f68380f149c531ee07a47"
   },
   {
    "path": "labelled/janus.json",
@@ -3931,6 +3962,11 @@
    "sha256": "fb95de2df9530c6318f9b64781449a7be4edc21610007bb0f6830c9fdedd3f81"
   },
   {
+   "path": "labelled/labels/cannon-shogi.json",
+   "bytes": 2194,
+   "sha256": "fc32bc28829fe0f5803488cdbd9533554333dfcc6ec0e7ace572654b7347d5a6"
+  },
+  {
    "path": "labelled/labels/capablanca-held-runners.json",
    "bytes": 4612,
    "sha256": "91da1c3a14921ebf952bfd64ad992ddaa3b25d6b673d5dc422b5efc476492497"
@@ -3971,6 +4007,11 @@
    "sha256": "c3ba6cfa45ad1a2fc99678a0f073fc1a839b2c7d90b35b9a5a1ab1931247c4dd"
   },
   {
+   "path": "labelled/labels/clobber.json",
+   "bytes": 1779,
+   "sha256": "f0b3149c34380c66eafa7688c79270ffd00ee3a95f39eebc2ee8731e2d5a4a48"
+  },
+  {
    "path": "labelled/labels/courier.json",
    "bytes": 1002,
    "sha256": "edcba5304c745ae820f1bd9c01aec0c97115cc66992fced864e3029ca3656770"
@@ -3994,6 +4035,11 @@
    "path": "labelled/labels/glinski-hexagonal-chess.json",
    "bytes": 1239,
    "sha256": "fd745a90cae76c17b0e1c0a23c119af64834fd3d9068008c847bd26ad2dd5bf0"
+  },
+  {
+   "path": "labelled/labels/gorogoro-plus.json",
+   "bytes": 2170,
+   "sha256": "e8b0a89c58ec5d6729cb2b3911d7722e1e6a8a4f8f5507baec875b7cf06866f9"
   },
   {
    "path": "labelled/labels/grand-chess-without-a-white-king.json",
@@ -4024,6 +4070,11 @@
    "path": "labelled/labels/horde.json",
    "bytes": 1116,
    "sha256": "facc6b06f152df98db61d4e78826c9af6f95572458a08aadf5c18a18a855da95"
+  },
+  {
+   "path": "labelled/labels/janggi.json",
+   "bytes": 2219,
+   "sha256": "f26f750e70f9aa563c3eba6f564d7571baafbb128e36200c338f5379b887a05a"
   },
   {
    "path": "labelled/labels/janus.json",
@@ -4206,6 +4257,11 @@
    "sha256": "163091066590d69c2cee93b9c695f9a24a17d99ceee68f4c5b8256d879dca779"
   },
   {
+   "path": "labelled/reading.json",
+   "bytes": 52855,
+   "sha256": "8f12012a54d8d34dfc7dd8a1f02663bfca2f7605cf761f48601ac90a7a29b41d"
+  },
+  {
    "path": "labelled/shako.json",
    "bytes": 5551,
    "sha256": "1638c7570b8efb2335eb661f575aa95a78b3a2d5d30331d66317972380bba036"
@@ -4228,12 +4284,12 @@
   {
    "path": "labelled/verified.json",
    "bytes": 691,
-   "sha256": "f0beb782adedd86866fca69fa0c33ce693d69e7b560421444ad46b29decc9481"
+   "sha256": "9f32c0ee4dbc7cf0b061189a8eebf8b24e2efefa4b9818dcfdd80578366621fb"
   },
   {
    "path": "labelled/verify.py",
-   "bytes": 7157,
-   "sha256": "c96fc51fc7c2bad1aa1762dd1f2654512a92d933e84de5bc3e3820a2ccb41019"
+   "bytes": 7688,
+   "sha256": "e2726d8e74d93e728e0befdbc4e81880085ec5eb3ca1074d0bf3fd80f72fcad3"
   },
   {
    "path": "labelled/xiangqi-with-a-sentry.json",
@@ -6416,6 +6472,11 @@
    "sha256": "0d95ebcf49c00f1d58d567360cdb6df002efecdecd01551905f2526df413b8f5"
   },
   {
+   "path": "tests/private_paths.py",
+   "bytes": 3898,
+   "sha256": "477ec1b888ec9c9dd15c25ff2ea19cd3a41d02b865cb477290af02dd5e640975"
+  },
+  {
    "path": "tests/push_oracle.py",
    "bytes": 18091,
    "sha256": "5203b732b4c108ae7621db1548529ea3b8806996dcebbf45c0edac35a1e941e0"
@@ -6497,8 +6558,8 @@
   },
   {
    "path": "tests/test_added.py",
-   "bytes": 10140,
-   "sha256": "ee23a442d121cdf21e70827bef4be1d16d559d9348eea4c5b65563c4b129edc4"
+   "bytes": 9994,
+   "sha256": "d5363fb08c094ca41eff074f325b3f55549e3ec49afd75f9b1778e9e50476d3d"
   },
   {
    "path": "tests/test_adopt.py",
@@ -6622,8 +6683,8 @@
   },
   {
    "path": "tests/test_browser_toolchain.py",
-   "bytes": 4436,
-   "sha256": "bb985573379c0692570870652169bd3f5ee2abadb285e2731c90e275c86fe86f"
+   "bytes": 4661,
+   "sha256": "f368c54263091b228dc3b42282a524d6cc19e997bd58e852d263f3348755b8ee"
   },
   {
    "path": "tests/test_buying_in_rounds.py",
@@ -6677,13 +6738,13 @@
   },
   {
    "path": "tests/test_checkpoint.py",
-   "bytes": 17764,
-   "sha256": "d77f4d645b4a01983e908e984d90f8de4bdffa91b38e763bfa9f592dd179425a"
+   "bytes": 17675,
+   "sha256": "4761d1c20d5cec5084fe4916a5b2a5830f6acf4542aed8be9271c294b3ce318c"
   },
   {
    "path": "tests/test_clean_runs.py",
-   "bytes": 13568,
-   "sha256": "1f2b8f860b1e4cdd6aacfa5c48ae4792bb00dd3f113885a7682b2cb1bb2fb744"
+   "bytes": 13418,
+   "sha256": "bbd6f43839e1462ce5ac4fea2cf4fc45858b4d2d64c9e9d434aa829436455be1"
   },
   {
    "path": "tests/test_cli_refresh_slow_tier.py",
@@ -6792,13 +6853,18 @@
   },
   {
    "path": "tests/test_corpus.py",
-   "bytes": 63626,
-   "sha256": "25c82a6278bee39f2ff80d8497beb07bf9598629656751aca8e4fa601a44caa7"
+   "bytes": 63400,
+   "sha256": "36a3ae93fe9ef57832abe0b21770e4b34d2ed96e02a84a0dfad9bb9c3d5e3379"
   },
   {
    "path": "tests/test_corpus_pins.py",
    "bytes": 2991,
    "sha256": "00e5826b53ffe1df279b9aa4d702c38e668c8e8632b253ed1e432f7a43997ea1"
+  },
+  {
+   "path": "tests/test_deploy_library.py",
+   "bytes": 10462,
+   "sha256": "f44e639b57ef84e0ba99f12247c911e82a6dbb7ef6abd3e5a8d53f4c929692dd"
   },
   {
    "path": "tests/test_deploy_public.py",
@@ -6899,6 +6965,11 @@
    "path": "tests/test_edits.py",
    "bytes": 5218,
    "sha256": "f76a3389d4a2e70c2ac0a1f31b50742d6a94ec9487b90feada1648980d0b9808"
+  },
+  {
+   "path": "tests/test_empty_board_participation.py",
+   "bytes": 4209,
+   "sha256": "ee23f2fa8c7ecdd1d7fde5d7128ae5631cc14e59a087d839983a895abedd1f79"
   },
   {
    "path": "tests/test_en_passant_long_turn.py",
@@ -7021,6 +7092,11 @@
    "sha256": "40dfce449b27cae90d12011828a3388277be6ee300e74f10dd74b004ebb786a2"
   },
   {
+   "path": "tests/test_fairy_hop_range.py",
+   "bytes": 9348,
+   "sha256": "faa3e54151fa9bfe9079d193ddf48c9e5915c977897048279ef06a02a9a862c5"
+  },
+  {
    "path": "tests/test_fairy_reach.py",
    "bytes": 6292,
    "sha256": "119b2905f1c47017eca0330cf880488932e3ab931cc1b0d4594d880a684a4884"
@@ -7077,13 +7153,13 @@
   },
   {
    "path": "tests/test_former_name.py",
-   "bytes": 5484,
-   "sha256": "059772e602488e8f9183d23448f1c86f19601d517a767ed0aebacbff1869b041"
+   "bytes": 5740,
+   "sha256": "47b2433d97d1301a24229aca002e438fcb182e89d7a9651ab47f85c7b3eb9034"
   },
   {
    "path": "tests/test_free_online.py",
-   "bytes": 7977,
-   "sha256": "dc37bfc7a2f1609f8c614a8b9f38abe2de8b586fd384b6f2952103522d0977ff"
+   "bytes": 8026,
+   "sha256": "d87f7625496f28d5967d02cd257625badf07ed72fe7fea95da82166c53d1718a"
   },
   {
    "path": "tests/test_fuzz.py",
@@ -7127,8 +7203,8 @@
   },
   {
    "path": "tests/test_green_stamp.py",
-   "bytes": 34196,
-   "sha256": "3ec80ff7a7672b88c80c078c4cf9d0408d59ca1407ec9ef8a27f0017ecb00d7f"
+   "bytes": 34315,
+   "sha256": "6f7645bc04a2f3e9182498c62daf03d0d1851cda915c18b3d968f78374a8a273"
   },
   {
    "path": "tests/test_grid.py",
@@ -7207,8 +7283,8 @@
   },
   {
    "path": "tests/test_history.py",
-   "bytes": 39793,
-   "sha256": "af222e2705ee70bcd3a739a82e3bc37e1abc8cdb78a1570ded235b8ff11c15e0"
+   "bytes": 40031,
+   "sha256": "c050edd38d861abd93f488dab0ea210253ad622857fc4465347a4fd09fc4595f"
   },
   {
    "path": "tests/test_hop_runs.py",
@@ -7277,8 +7353,8 @@
   },
   {
    "path": "tests/test_labelled_set.py",
-   "bytes": 19187,
-   "sha256": "b6fd863794c7cf8fa222be8bcd1333f455684d18f203f37f129f2e304854f6ec"
+   "bytes": 21005,
+   "sha256": "69be982e46c8614230553b43dc8042a6516a4f4926a5310d91e08f0695d3006c"
   },
   {
    "path": "tests/test_ladder_v2.py",
@@ -7397,8 +7473,8 @@
   },
   {
    "path": "tests/test_measure_resume.py",
-   "bytes": 14741,
-   "sha256": "0c077f74cf48e064a90fd3b87ca61988e7f2bfa6c4e906cbef95beb1c6cc48fc"
+   "bytes": 14855,
+   "sha256": "a6242bde163bac66ae012a00252894e489a207f363120a4e96b7e7b11d013682"
   },
   {
    "path": "tests/test_measurement.py",
@@ -7731,6 +7807,11 @@
    "sha256": "c998be037e007728e47e4f7cae69ddd2fd97ac218a6a6df37f058e3c67036e12"
   },
   {
+   "path": "tests/test_private_paths.py",
+   "bytes": 6719,
+   "sha256": "bbdf3f2e00ca40c523a42e59ae2b9c5a15bae68e655eb98f1bd74a7c8361c087"
+  },
+  {
    "path": "tests/test_proofs_own_game.py",
    "bytes": 13147,
    "sha256": "6328a19d8929d2943ad57a4ae7004d63709cf180532728c08cd5ce5ab21140d1"
@@ -7847,13 +7928,13 @@
   },
   {
    "path": "tests/test_refresher.py",
-   "bytes": 49999,
-   "sha256": "268bdaaf262af5045fbb3b4ad07b173280da79b025ee5fd5807fb8ee95e52184"
+   "bytes": 50164,
+   "sha256": "a7d26874e1587ea8363fe90b74383fa50ced30bbde9425809fe138799f76893b"
   },
   {
    "path": "tests/test_refresher_ladders.py",
-   "bytes": 25000,
-   "sha256": "db2b5c4bd670f37b8b83a4acfd1b2ed3580a9dcabdb33c3977faeeed5486a77b"
+   "bytes": 25444,
+   "sha256": "486d3bccb464798271c75c4799ab7180747dc6deb9fcea7f7b33568899b656e1"
   },
   {
    "path": "tests/test_refresher_proofs.py",
@@ -7862,8 +7943,8 @@
   },
   {
    "path": "tests/test_refresher_slow_tier.py",
-   "bytes": 12095,
-   "sha256": "e9a13e51059595f26b62c39b36126fe057fb28a627f4c5c35b0ebd9791519183"
+   "bytes": 12201,
+   "sha256": "2f1d2ad58e35230f95f0c5a9e0ca2ee3a531cf722e5d72d0860621062603e73d"
   },
   {
    "path": "tests/test_refreshing.py",
@@ -7877,8 +7958,8 @@
   },
   {
    "path": "tests/test_relate.py",
-   "bytes": 74587,
-   "sha256": "6e1caf29ea5bd209343f9b5479d3817013c1016997cc9a28f4bb03d974c4a145"
+   "bytes": 76026,
+   "sha256": "24f614d15ad1a42ef7308dfa9dcadac617334149dbc4bbf6d51c11acc9d5dd57"
   },
   {
    "path": "tests/test_relaxing.py",
@@ -8146,6 +8227,16 @@
    "sha256": "15f17be6eaa26030d52742cf5a06917190981ce29dd6011e855f3193a9f7a1ee"
   },
   {
+   "path": "tests/test_score_dials_other_ends.py",
+   "bytes": 4072,
+   "sha256": "6798941cbc36c93b9b2ddf1f2734aa9f4b2846e0d9ea2f6669ecc5a05c8a45f9"
+  },
+  {
+   "path": "tests/test_score_dials_script.py",
+   "bytes": 21687,
+   "sha256": "2443c6277cc027bf9f144c833db1560dfb4ef00943503228f086071651e11b8f"
+  },
+  {
    "path": "tests/test_score_history_page.py",
    "bytes": 9232,
    "sha256": "be99a3cb96643bf2c034d17f4e046156f939c7978ad443f46b2261b9f23c32af"
@@ -8154,6 +8245,11 @@
    "path": "tests/test_score_parts.py",
    "bytes": 13599,
    "sha256": "244f0e5c15d560ff2e5f77811276ba672952673e2edbfab72247d33446c0dcdf"
+  },
+  {
+   "path": "tests/test_score_tests_page.py",
+   "bytes": 8353,
+   "sha256": "931467c021aae45dca8e1be9dc4e634a07cb2aaa98c3d701bf1047fd10775b0e"
   },
   {
    "path": "tests/test_scoring.py",
@@ -8402,13 +8498,13 @@
   },
   {
    "path": "tests/test_site.py",
-   "bytes": 305628,
-   "sha256": "23e4681df260e2cc457754ec85c62f2f19ccc7e4efd48e51bde9fc8a6b76a15e"
+   "bytes": 305533,
+   "sha256": "b003e4322b9abd661ae4d2d744e7b16cbfeaceb1196738a49ed66f4e3741017b"
   },
   {
    "path": "tests/test_site_admin.py",
-   "bytes": 153126,
-   "sha256": "13d2a4211883476ac295ab29bcef61276e28bdf90d2fe87ae44d8d221c4c6011"
+   "bytes": 153233,
+   "sha256": "61e926d43872724eb5b5391e8eca625fbcf34646264292837ec8ed877c215751"
   },
   {
    "path": "tests/test_site_asking.py",
@@ -8442,8 +8538,8 @@
   },
   {
    "path": "tests/test_site_depths.py",
-   "bytes": 15632,
-   "sha256": "1713ee0cfd09e404b74348e996cb2e4269f13634d86a187a70e98a02a1edfa8b"
+   "bytes": 15766,
+   "sha256": "9ad1d0f3644833d695785f7ed236eaf170cd3b07b495b54b8ab26e68345fca1d"
   },
   {
    "path": "tests/test_site_designer.py",
@@ -8662,8 +8758,8 @@
   },
   {
    "path": "tests/test_site_spine.py",
-   "bytes": 21501,
-   "sha256": "7f7abd9bf6f878a31418d6c0663fe896186a32aed08592538667806cb3b903fd"
+   "bytes": 21615,
+   "sha256": "8a11846a67d57b128baa44dfaf7177d20748308a592d565dc26a7c3e90ba7372"
   },
   {
    "path": "tests/test_site_stages.py",
@@ -8826,6 +8922,11 @@
    "sha256": "f853afa391754e20d3878928c40eed783dde035161558b8569d0541a326317b3"
   },
   {
+   "path": "tests/test_strength_check_all_games.py",
+   "bytes": 3937,
+   "sha256": "c17654c145f81cc4b927699d3dbc96a33cff18b533b83ef5ce482b5d89431c34"
+  },
+  {
    "path": "tests/test_strike_at_exit.py",
    "bytes": 20027,
    "sha256": "99ae29c33daaab21c0a3b7dd1f3749ec820b341219ffe668f34a9d84538e2094"
@@ -8971,6 +9072,16 @@
    "sha256": "15c9184c837c8c0de9b3559549ea98c3873dae5a11a951734f4fddf8e3ce68c0"
   },
   {
+   "path": "tests/test_unlike_games.py",
+   "bytes": 2728,
+   "sha256": "6aec0ba72427a6bd69e8b6a6c27bce166391a953b786a823b3a9e7d20a657306"
+  },
+  {
+   "path": "tests/test_unlike_rung.py",
+   "bytes": 6352,
+   "sha256": "f3dab9b00ebd19e0d8666f5301cd17b1b125fbad9150669d7de4b88ecc7d1e10"
+  },
+  {
    "path": "tests/test_upkeep.py",
    "bytes": 11329,
    "sha256": "84502f41a88ec32d6102d6bff3708cee099f5bec3fb18d98f205f537ec9fafcf"
@@ -9012,8 +9123,8 @@
   },
   {
    "path": "tests/test_web.py",
-   "bytes": 786688,
-   "sha256": "d7c305d19205287b197fb2dba610275ccdb5077ce5d3c63255ea787300957659"
+   "bytes": 787002,
+   "sha256": "7913f10ce86d2c11596cc69b2e5504e024274cd8eb9ae9124c45cb2c01f674b3"
   },
   {
    "path": "tests/test_web_board_fit.py",
@@ -9089,6 +9200,531 @@
    "path": "tests/war_chest_study.py",
    "bytes": 10123,
    "sha256": "6029ffe8a6ecefd5148158a590d278c54dccc1bdb4efa963500704c839dfed34"
+  },
+  {
+   "path": "unlike/README.md",
+   "bytes": 1056,
+   "sha256": "6bec2ba7b795f55fec530b1197651b60327950fbd1e0885fa5cdaf62045fa186"
+  },
+  {
+   "path": "unlike/drove.json",
+   "bytes": 3110,
+   "sha256": "a2d9384bac33b38e6a2212b0321f6aefd9f518a01847ad763782d0251178cf1b"
+  },
+  {
+   "path": "unlike/gorgons.json",
+   "bytes": 4243,
+   "sha256": "10cb0c33d402291337f3d6c4c75010bcae2be5bf6c708fc8562f08e774678dcf"
+  },
+  {
+   "path": "unlike/limits.py",
+   "bytes": 3159,
+   "sha256": "7d954b42b49ff48fb66567a47b6c2e2f0837d90049666b657da1fbb56eae3354"
+  },
+  {
+   "path": "unlike/packet.py",
+   "bytes": 1404,
+   "sha256": "d6d0213bb4a383ee23ace9380e726e6c3f0ee93070913252182eee7be4e5c1e2"
+  },
+  {
+   "path": "unlike/sessions/drove.md",
+   "bytes": 42391,
+   "sha256": "f9f2c34bcf0e05935e0d36129812e67e7a7c047a8f1fa83afbb92c70755a4ea4"
+  },
+  {
+   "path": "unlike/sessions/drove/first-handin/game.json",
+   "bytes": 3219,
+   "sha256": "d2da1b5e79565b1431a3514186aac2867954df6f5fbddf45e310fb4b57d0783d"
+  },
+  {
+   "path": "unlike/sessions/drove/first-handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 426,
+   "sha256": "d83a2064b377f51746dd106329c3212952051207877e7892e75e8db4a7b30cc9"
+  },
+  {
+   "path": "unlike/sessions/drove/first-handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 970,
+   "sha256": "f1c28baf10045316a7dbac4e70d8474f05c04cec5c01d21e18fc93ed36a483cb"
+  },
+  {
+   "path": "unlike/sessions/drove/first-handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 848,
+   "sha256": "0994168c9108cef7dc99bdc4225926032baa47231d4bfd836921698c379857b0"
+  },
+  {
+   "path": "unlike/sessions/drove/first-handin/transcripts/6400-self-seed0.txt",
+   "bytes": 525,
+   "sha256": "25e351e987526b58adddc9691ec860d2ba2f311fe63160013c0a2bde249d7c78"
+  },
+  {
+   "path": "unlike/sessions/drove/first-handin/transcripts/6400-self-seed1.txt",
+   "bytes": 290,
+   "sha256": "b1749388886a86c375a5ccf67920a4b32c806f0deae878a0ed42f57a79d38e77"
+  },
+  {
+   "path": "unlike/sessions/drove/first-handin/transcripts/6400-self-seed2.txt",
+   "bytes": 487,
+   "sha256": "49d7e888be1078cec5f051aca8bc8f67d63f5ebdbad69c3046e7a8e470508260"
+  },
+  {
+   "path": "unlike/sessions/drove/revised-handin/game.json",
+   "bytes": 3132,
+   "sha256": "534c9bc99c7ceee3ccdce0cc7c5fc5d36cd93a0ee88481a95c4d0b2baa68fbd5"
+  },
+  {
+   "path": "unlike/sessions/drove/revised-handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 1006,
+   "sha256": "e07614168e7917e948e6d01855cdd7a14f414a012169bdcdd3dc4245c997f484"
+  },
+  {
+   "path": "unlike/sessions/drove/revised-handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 1056,
+   "sha256": "73508e0c284b0d40d5152830cd838f66f4422937b637282c2c2026e017169710"
+  },
+  {
+   "path": "unlike/sessions/drove/revised-handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 682,
+   "sha256": "d1427eeddbde9c99004e960278b529afd6ec3d9c608a6d8716b9fd71f7420022"
+  },
+  {
+   "path": "unlike/sessions/drove/revised-handin/transcripts/6400-self-seed0.txt",
+   "bytes": 904,
+   "sha256": "ecc955e29b073043e90541ee69e1289cdf5f4b100a39599ac73dd4e779ed73aa"
+  },
+  {
+   "path": "unlike/sessions/drove/revised-handin/transcripts/6400-self-seed1.txt",
+   "bytes": 868,
+   "sha256": "a6b40ac8fc96735d41d40256a89ab329003caf8e79512140b2d06b4a1ef7a8ab"
+  },
+  {
+   "path": "unlike/sessions/drove/revised-handin/transcripts/6400-self-seed2.txt",
+   "bytes": 785,
+   "sha256": "47b8fafdf30761b84c0d80198d01576fcdf1a1634d304bab054cb84312080d76"
+  },
+  {
+   "path": "unlike/sessions/gorgons.md",
+   "bytes": 51866,
+   "sha256": "6082e24a3d9dca7308a4cf375e565bbd7f3da34cbc2de1d3f934dcfc8f3ec025"
+  },
+  {
+   "path": "unlike/sessions/gorgons/first-handin/game.json",
+   "bytes": 4289,
+   "sha256": "7266d1de099c9ff0c7b2814e3f3ef7235c9d8c12036e6a129b54e97e6be01943"
+  },
+  {
+   "path": "unlike/sessions/gorgons/first-handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 2741,
+   "sha256": "0a554ecaba0c1d99a80377d437d1e932812a62355cd847bfd900c5cac93c3c31"
+  },
+  {
+   "path": "unlike/sessions/gorgons/first-handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 1584,
+   "sha256": "9d2b4cfc7a6ee8b67b5ea2a2576cba47b0c8f7a4befa7110ccb98e4511706e11"
+  },
+  {
+   "path": "unlike/sessions/gorgons/first-handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 1880,
+   "sha256": "5ff9606ffa3dabc8997e3f94acd2b6092f52caeae60772f5c13237505bc3cb6f"
+  },
+  {
+   "path": "unlike/sessions/gorgons/first-handin/transcripts/6400-self-seed0.txt",
+   "bytes": 2422,
+   "sha256": "b1bef43e775354312bcabadbe07bae29a789f2a2aac879b9d4f29ba5221e6cdc"
+  },
+  {
+   "path": "unlike/sessions/gorgons/first-handin/transcripts/6400-self-seed1.txt",
+   "bytes": 2601,
+   "sha256": "897b4745555c5f1ed1357f630efd77ceea7b9cec037cbedcb0dc94a7ec86b864"
+  },
+  {
+   "path": "unlike/sessions/gorgons/first-handin/transcripts/6400-self-seed2.txt",
+   "bytes": 994,
+   "sha256": "b5e9a6047d1b9969919893735b0ba3db546d087ac40bb5587eccfe31e246605b"
+  },
+  {
+   "path": "unlike/sessions/gorgons/revised-handin/game.json",
+   "bytes": 4243,
+   "sha256": "10cb0c33d402291337f3d6c4c75010bcae2be5bf6c708fc8562f08e774678dcf"
+  },
+  {
+   "path": "unlike/sessions/gorgons/revised-handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 2986,
+   "sha256": "5e369a95a769788aeb756f2408409ec7a6b06d522a6f38cdcc1de8829438a3e0"
+  },
+  {
+   "path": "unlike/sessions/gorgons/revised-handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 690,
+   "sha256": "5444b89d1a0a15d3c1424731ad7aa2d116204caf4b50d2bb1faec00c688630e5"
+  },
+  {
+   "path": "unlike/sessions/gorgons/revised-handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 1323,
+   "sha256": "38f866c9e7ee2103a1cae36747b814344775f3fc39ba246f768df00f0148dc83"
+  },
+  {
+   "path": "unlike/sessions/gorgons/revised-handin/transcripts/6400-self-seed0.txt",
+   "bytes": 796,
+   "sha256": "7b2a886836f0959e8e82a34df48ef83a32c64eb27445823e536582cf8acac926"
+  },
+  {
+   "path": "unlike/sessions/gorgons/revised-handin/transcripts/6400-self-seed1.txt",
+   "bytes": 3727,
+   "sha256": "c74e06447068ff9f416223155ecb2fd663008122f1c32fa96dd66728f3842c2d"
+  },
+  {
+   "path": "unlike/sessions/gorgons/revised-handin/transcripts/6400-self-seed2.txt",
+   "bytes": 2624,
+   "sha256": "b6a1347d282c1ab9d8763efe9afed7b95a2bbae2b33f6ed9c9efa82ec5ff58c4"
+  },
+  {
+   "path": "unlike/sessions/heft.md",
+   "bytes": 46045,
+   "sha256": "a782456c023d44eb89ad111c9d271ed1ce30c4b7ad51f08348ee2f5772d5f093"
+  },
+  {
+   "path": "unlike/sessions/heft/first-handin/game.json",
+   "bytes": 3848,
+   "sha256": "c15b8b5ed3da7d775dbb599610c968531d36d93c7f0aa8535e3c59afabc914b9"
+  },
+  {
+   "path": "unlike/sessions/heft/first-handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 1050,
+   "sha256": "99e8969f56ec8a6dfcd2252688ea3c88af44d84316db99349c6a312a93ee52af"
+  },
+  {
+   "path": "unlike/sessions/heft/first-handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 402,
+   "sha256": "6dab7dfdb57b58850b6e9cfae4a90557aacee92289d8a06d1d3a900927c889ec"
+  },
+  {
+   "path": "unlike/sessions/heft/first-handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 1170,
+   "sha256": "fc85573e233d0a1d0741744dc714e9d7e78487c5e8a576633acd1cea4bee663d"
+  },
+  {
+   "path": "unlike/sessions/heft/first-handin/transcripts/6400-self-seed0.txt",
+   "bytes": 726,
+   "sha256": "ec6bfe2a6d3b41be7d3667f52f4d8c1cfa09c097ab66e5ada603b7efd08cc5b9"
+  },
+  {
+   "path": "unlike/sessions/heft/first-handin/transcripts/6400-self-seed1.txt",
+   "bytes": 714,
+   "sha256": "a97284d4392c67deed92e582fcba4fdef16266b0c20a577750269293449e18a7"
+  },
+  {
+   "path": "unlike/sessions/heft/first-handin/transcripts/6400-self-seed2.txt",
+   "bytes": 930,
+   "sha256": "7fdd96e2e7ec3cb577a2dd426d3ffb85cb964b4cc33d807127d17c511683061a"
+  },
+  {
+   "path": "unlike/sessions/heft/revised-handin/game.json",
+   "bytes": 4574,
+   "sha256": "66121a944e9661baf9f237d1a0769274e97ae54fd2f92e1beba46b9b64e028a6"
+  },
+  {
+   "path": "unlike/sessions/heft/revised-handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 734,
+   "sha256": "302a499d090170838a671b8c6d75ea05811be4b067130bc21b2acb3069be43bd"
+  },
+  {
+   "path": "unlike/sessions/heft/revised-handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 1245,
+   "sha256": "f225091644a12ee4b353975b27b150ff1dc733104ec772c016fea6849ba7836f"
+  },
+  {
+   "path": "unlike/sessions/heft/revised-handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 1063,
+   "sha256": "03812282664d23baaaf1f529671d39a5ab676c63557d36fa39d2375133dc2ade"
+  },
+  {
+   "path": "unlike/sessions/heft/revised-handin/transcripts/6400-self-seed0.txt",
+   "bytes": 1336,
+   "sha256": "eff1f5fb375d1162a0747a595b899e7af53481b4d921d8b15688a4e56954704f"
+  },
+  {
+   "path": "unlike/sessions/heft/revised-handin/transcripts/6400-self-seed1.txt",
+   "bytes": 996,
+   "sha256": "545de7eb56609b580ee7dd09cc5890ef368a069f6fcc1d10cb15290bd1dd0f4c"
+  },
+  {
+   "path": "unlike/sessions/heft/revised-handin/transcripts/6400-self-seed2.txt",
+   "bytes": 1388,
+   "sha256": "e00ac3476475d8e8978270998ddf706b2fe370476c40320ccb31ecf97edca495"
+  },
+  {
+   "path": "unlike/sessions/protocol/assemble.py",
+   "bytes": 1956,
+   "sha256": "7d205cf1ce3c2e29a472fb3d1d6936133133c107637a07ecff86f0249d7667ff"
+  },
+  {
+   "path": "unlike/sessions/protocol/designer-prompt.md",
+   "bytes": 6279,
+   "sha256": "c51e7bd8a42bd2b933ce2587522deca3456dbbda6ee67f3f38b5a06e326e2e79"
+  },
+  {
+   "path": "unlike/sessions/protocol/fill_prompts.py",
+   "bytes": 2611,
+   "sha256": "c85c0d4b2f05aac8f28a94752b81cd927ebf5785039c3f18975ba19b888d1b48"
+  },
+  {
+   "path": "unlike/sessions/protocol/reader-prompt.md",
+   "bytes": 3362,
+   "sha256": "c11a060b797119fad234176ecd4f4f1e5a7a49eab906871f6a8d90f08d5b9b0b"
+  },
+  {
+   "path": "unlike/sessions/smugglers.md",
+   "bytes": 20493,
+   "sha256": "9ed05c7013a669b2488f475ac45fd14d12d3ba0d5abdec20ae69d23e7498440e"
+  },
+  {
+   "path": "unlike/sessions/smugglers/handin/game.json",
+   "bytes": 4240,
+   "sha256": "0d51e2bec915500e76c0e6ee3b7bead891702a36bf7b8421151b7519b9159653"
+  },
+  {
+   "path": "unlike/sessions/smugglers/handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 769,
+   "sha256": "21e40dc6d559c789d24bef7ae3ab56a92a6326d0a5e376702d795e32976a8bfd"
+  },
+  {
+   "path": "unlike/sessions/smugglers/handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 653,
+   "sha256": "d6443dcde4daf89080c18d88c1fbe2961d17abfd562c70bb2d547b0962e6acf0"
+  },
+  {
+   "path": "unlike/sessions/smugglers/handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 939,
+   "sha256": "7f536ed3de4786a47975ede8df192adf89e04d3eabf5356ccb5c2caeeb2ac369"
+  },
+  {
+   "path": "unlike/sessions/smugglers/handin/transcripts/6400-self-seed0.txt",
+   "bytes": 571,
+   "sha256": "b367870802957d65512b9fc8b127194f286648996ba505f3f689134e355304d8"
+  },
+  {
+   "path": "unlike/sessions/smugglers/handin/transcripts/6400-self-seed1.txt",
+   "bytes": 1634,
+   "sha256": "ea83c3434c9223f7fd685f433258e65411ac34bb58224895cd009d64cc2d98fc"
+  },
+  {
+   "path": "unlike/sessions/smugglers/handin/transcripts/6400-self-seed2.txt",
+   "bytes": 847,
+   "sha256": "8faea35f2530b3e178de470812dad3aed497806c236ca35976711eb37b1185e5"
+  },
+  {
+   "path": "unlike/sessions/thresh.md",
+   "bytes": 19062,
+   "sha256": "25077fe5e5536383ec940211c64685097ed82773ce6b1ba6bc9c1e51f500dbc3"
+  },
+  {
+   "path": "unlike/sessions/thresh/handin/game.json",
+   "bytes": 3202,
+   "sha256": "8561de06f814d23f96dbbbb41d6dc9f7159a81ea2936d5ee885b7c1a0bed9ce0"
+  },
+  {
+   "path": "unlike/sessions/thresh/handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 1121,
+   "sha256": "c2a0893193feba7d77193e3e690ed36b46d9eb2577706b31a3410c6aa82c7665"
+  },
+  {
+   "path": "unlike/sessions/thresh/handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 772,
+   "sha256": "c07b6912a56773855bc7e77742f2653e9ccefabf9acd075e90cd4c068b20844b"
+  },
+  {
+   "path": "unlike/sessions/thresh/handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 1374,
+   "sha256": "b9357987ba2c6d5a0791486f0f818dbd19ec4609953f71911601a902d27cd606"
+  },
+  {
+   "path": "unlike/sessions/thresh/handin/transcripts/6400-self-seed0.txt",
+   "bytes": 975,
+   "sha256": "0f4ce9ca55ce7f46c56bdb5086584248a2760cc64b8dc1006f1b29ba4f6d3132"
+  },
+  {
+   "path": "unlike/sessions/thresh/handin/transcripts/6400-self-seed1.txt",
+   "bytes": 544,
+   "sha256": "cff99bed138e8b96e9f7ad2aff1a4fdc8a881bcff29bae991cb5fc0245dfb060"
+  },
+  {
+   "path": "unlike/sessions/thresh/handin/transcripts/6400-self-seed2.txt",
+   "bytes": 963,
+   "sha256": "0299b9fda7b9ad43d42c91925ce7224da61b9d4cc44ba16aa54e125673b3b454"
+  },
+  {
+   "path": "unlike/sessions/tide.md",
+   "bytes": 49865,
+   "sha256": "be615f36cff1de68b35ad6093cc1ae18d3b37a890b2de3ef5f9eca73ab8e28c9"
+  },
+  {
+   "path": "unlike/sessions/tide/first-handin/game.json",
+   "bytes": 3579,
+   "sha256": "f91f57ac771ccb51b0df93dedda42adfdeefde31931d0e43e45b91d920df109a"
+  },
+  {
+   "path": "unlike/sessions/tide/first-handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 1468,
+   "sha256": "9c725248cd0ecd20e815368b95cf8ab7bccb83b077b84fb9e740adb86824649f"
+  },
+  {
+   "path": "unlike/sessions/tide/first-handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 1460,
+   "sha256": "7fd737eee2b58fc7fc367db1cc4013dd667111a0287ae910ef3ff49463789e33"
+  },
+  {
+   "path": "unlike/sessions/tide/first-handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 1459,
+   "sha256": "3f0c637f58530db7512afc47810f3e66e047cb6e72a02119088eec9289a62cca"
+  },
+  {
+   "path": "unlike/sessions/tide/first-handin/transcripts/6400-self-seed0.txt",
+   "bytes": 1449,
+   "sha256": "7794f663d4f8effc82fa3ea39f7a32121386909ab78e27e5193334fdf8da5346"
+  },
+  {
+   "path": "unlike/sessions/tide/first-handin/transcripts/6400-self-seed1.txt",
+   "bytes": 1455,
+   "sha256": "3f42023f72d10dbbeec5a6634655f6307b53ac34db17d9485e57b9e239747ee4"
+  },
+  {
+   "path": "unlike/sessions/tide/first-handin/transcripts/6400-self-seed2.txt",
+   "bytes": 1453,
+   "sha256": "6473d4875389b20b2b9639f29f5d01bccc390fdcae4dd01175da1d23b5f111c9"
+  },
+  {
+   "path": "unlike/sessions/tide/revised-handin/game.json",
+   "bytes": 4705,
+   "sha256": "cd5ea66cb6a1da70cfbf552031b4e588aef3c402275e0a52f6e10a01b8a5f726"
+  },
+  {
+   "path": "unlike/sessions/tide/revised-handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 1453,
+   "sha256": "e363a59e2631cb21ab8eb6797aee9822a4d52f531d88a1bb60a495b665390a0f"
+  },
+  {
+   "path": "unlike/sessions/tide/revised-handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 1451,
+   "sha256": "200bc8e9e7568cfa07262562e35105ca3d4aaf2f1afe2651b8924e5d2136afb5"
+  },
+  {
+   "path": "unlike/sessions/tide/revised-handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 1312,
+   "sha256": "4184051a055478181a06c32409746ff74ccf148537176d6420efed308d11413e"
+  },
+  {
+   "path": "unlike/sessions/tide/revised-handin/transcripts/6400-self-seed0.txt",
+   "bytes": 1453,
+   "sha256": "98352f041952cf2998f17159ae1ac32b0571e8716ce081b59a00c34b27395239"
+  },
+  {
+   "path": "unlike/sessions/tide/revised-handin/transcripts/6400-self-seed1.txt",
+   "bytes": 1473,
+   "sha256": "00d7a321fb68990fcbb05df2c0e31e15f14cbba891391c79e5daff903aa87d31"
+  },
+  {
+   "path": "unlike/sessions/tide/revised-handin/transcripts/6400-self-seed2.txt",
+   "bytes": 1439,
+   "sha256": "56df1867734828dbdb87ecc87dcbe12ff50c7668c24dd2dcfbcd3ba1e17319bd"
+  },
+  {
+   "path": "unlike/sessions/triad.md",
+   "bytes": 23052,
+   "sha256": "9760592ef58248fa0693c99a1b7bba80598c64b3861219a317c3a805e84b6007"
+  },
+  {
+   "path": "unlike/sessions/triad/handin/game.json",
+   "bytes": 3412,
+   "sha256": "b209d3b8b40b816ca1b1558a1df3ce49089266d5183167d12627d50781e6225a"
+  },
+  {
+   "path": "unlike/sessions/triad/handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 1217,
+   "sha256": "8e25ac07fb7b50979437e12f73a7104b5a5c07ff2b73df293dd3e1a61ed45a25"
+  },
+  {
+   "path": "unlike/sessions/triad/handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 516,
+   "sha256": "aeb548df02b0683ed6fa959f9411aa0b88d4cdd04717cd61a525de9ab1e36245"
+  },
+  {
+   "path": "unlike/sessions/triad/handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 516,
+   "sha256": "8e9a3c02f68078217fbef972b1e6f3c1e25c58b6464b7551d215ce15a2798ae7"
+  },
+  {
+   "path": "unlike/sessions/triad/handin/transcripts/6400-self-seed0.txt",
+   "bytes": 1080,
+   "sha256": "f3e9b7cd772d1593214588a686005df4b7bf4c3b56062d0542c07c4a2d232a7f"
+  },
+  {
+   "path": "unlike/sessions/triad/handin/transcripts/6400-self-seed1.txt",
+   "bytes": 1008,
+   "sha256": "d1721302d74dc2aece46017175c9f03ddd411f869ee991ed14083a7ae799800a"
+  },
+  {
+   "path": "unlike/sessions/triad/handin/transcripts/6400-self-seed2.txt",
+   "bytes": 1152,
+   "sha256": "d0db5eefe1ac5eb92707e7f40e419f47b588281ae06992ab7c8b6195dd7ee187"
+  },
+  {
+   "path": "unlike/sessions/wardens.md",
+   "bytes": 20638,
+   "sha256": "a6a97f5142cbd629cd52ed5ee68887c2fd1ef2d3d79f26b7b28454141e305f8e"
+  },
+  {
+   "path": "unlike/sessions/wardens/handin/game.json",
+   "bytes": 3265,
+   "sha256": "91dda9b0f4352a91a6194e22a81337310d87977b07e5be152c8768991d0c4413"
+  },
+  {
+   "path": "unlike/sessions/wardens/handin/transcripts/25600-v-1600-seed0.txt",
+   "bytes": 586,
+   "sha256": "222aed1bc1bcf408e7188e0b4a314ab3d359bd154069d087c94d6bb02cc7cfc3"
+  },
+  {
+   "path": "unlike/sessions/wardens/handin/transcripts/25600-v-1600-seed1.txt",
+   "bytes": 875,
+   "sha256": "dda9437fab7381f41cc62ffcf980bf8f025c55a10efd0ee8c31c083d7ed7c7cb"
+  },
+  {
+   "path": "unlike/sessions/wardens/handin/transcripts/25600-v-1600-seed2.txt",
+   "bytes": 1067,
+   "sha256": "2f4e4e88976ff29f49d177cff9b011bda2d6c7320388bb2b3abbd2c53dea6a04"
+  },
+  {
+   "path": "unlike/sessions/wardens/handin/transcripts/6400-self-seed0.txt",
+   "bytes": 749,
+   "sha256": "cca2c052a014d7293205f328ac472781c56c4d606aef6d66064c51d4b3c8c49c"
+  },
+  {
+   "path": "unlike/sessions/wardens/handin/transcripts/6400-self-seed1.txt",
+   "bytes": 633,
+   "sha256": "f06123912d0b5fb858ccac741cfffe3b56c2174ac078a84f39567bd2cc2ed18a"
+  },
+  {
+   "path": "unlike/sessions/wardens/handin/transcripts/6400-self-seed2.txt",
+   "bytes": 873,
+   "sha256": "7fd8f4fda5aa326270fd426ba7f2eb5172a22757af7fcd0e95e32e9a7cd471dd"
+  },
+  {
+   "path": "unlike/smugglers.json",
+   "bytes": 4240,
+   "sha256": "0d51e2bec915500e76c0e6ee3b7bead891702a36bf7b8421151b7519b9159653"
+  },
+  {
+   "path": "unlike/thresh.json",
+   "bytes": 3202,
+   "sha256": "8561de06f814d23f96dbbbb41d6dc9f7159a81ea2936d5ee885b7c1a0bed9ce0"
+  },
+  {
+   "path": "unlike/triad.json",
+   "bytes": 3412,
+   "sha256": "b209d3b8b40b816ca1b1558a1df3ce49089266d5183167d12627d50781e6225a"
+  },
+  {
+   "path": "unlike/wardens.json",
+   "bytes": 3265,
+   "sha256": "91dda9b0f4352a91a6194e22a81337310d87977b07e5be152c8768991d0c4413"
   },
   {
    "path": "uv.lock",

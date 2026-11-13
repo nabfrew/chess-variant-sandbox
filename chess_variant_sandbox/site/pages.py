@@ -58,6 +58,7 @@ from chess_variant_sandbox.web.page import (
     marks,
     news_page,
     rules_page,
+    score_tests_page,
     script_tags,
     shell,
     stylesheet_links,
@@ -491,6 +492,8 @@ def _foot(here: str = "", players: bool = False) -> str:
         ("/#/score", "the score"),
         # Q1214: how the library's scores have moved (SH3), beside *the score*.
         (front.HISTORY_PATH, "score history"),
+        # R-S9: every test of the score as it was read, beside its history.
+        (score_tests_page.PATH, "score tests"),
         (front.NEWS_PATH, "what's new"),
         *((("/players", "players"),) if players else ()),
         ("/suggestions", "suggestions"),
@@ -518,6 +521,7 @@ def _shell(
     path: str | None = None,
     boards: bool = False,
     motion: bool = False,
+    sheets: tuple[str, ...] = (),
 ) -> str:
     """One page, in the application's shell.
 
@@ -540,7 +544,8 @@ def _shell(
     server hands them. `boards` loads the application's still board first (`BOARD_SCRIPTS`),
     for a page that draws a game's position, and `motion` the board motion after it
     (`MOTION_SCRIPTS`), as JSON in a tag that never runs. `<` is written `\\u003c` there,
-    so no value can close the tag.
+    so no value can close the tag. `sheets` are a page's own stylesheets, linked after the
+    site's (the score tests' page, R-S9).
     """
     tail = script_tags([
         *(f"{PAGE_SCRIPT_PREFIX}{name}.js" for name in (BOARD_SCRIPTS if boards else ())),
@@ -562,7 +567,7 @@ def _shell(
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f"<title>{escape(title)}</title>\n{head}{shell.head_links()}"
-        f"{stylesheet_links(SHEET, rules_page.SHEET)}"
+        f"{stylesheet_links(SHEET, rules_page.SHEET, *sheets)}"
         "</head>\n"
         '<body>\n<div class="wrap">\n'
         '  <header class="top">\n'
@@ -1871,6 +1876,15 @@ def rules() -> str:
     constant, like credits: it asks nobody's name."""
     return _shell(rules_page.TITLE, rules_page.body(), kind="prose rules", here=rules_page.PATH,
                   description=rules_page.DESCRIPTION, path=rules_page.PATH)
+
+
+def score_tests() -> str:
+    """What the score has been tested against (R-S9 of `docs/roadmap-2026-11.md`): every test
+    as it was read, drawn by `web/page/score_tests_page.py` from its data file, in this shell.
+    A constant, like the rule language's page: it asks nobody's name and reads no store."""
+    return _shell(score_tests_page.TITLE, score_tests_page.body(), kind="prose scoreTests",
+                  here=score_tests_page.PATH, description=score_tests_page.DESCRIPTION,
+                  path=score_tests_page.PATH, sheets=(score_tests_page.SHEET,))
 
 
 def whats_new(payload: dict[str, Any]) -> str:

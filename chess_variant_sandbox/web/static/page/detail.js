@@ -422,6 +422,9 @@ function earlierChartHtml(lines, game) {
       present}</p>`;
 }
 
+// R-S9: the way from a score's basis line to every test of the score as it was read.
+const SCORE_TESTS_LINK = '<a href="/score-tests">what the score has been tested against</a>';
+
 function earlierLinkHtml() {
   return `<p class="small u-mt-6"><a href="/score-history">the whole library's history</a></p>`;
 }
@@ -3109,7 +3112,8 @@ function scoreHtml(score, guide, band, trust) {
     <div class="muted small">${scored ? 'out of 1'
       : isNotMeasured(score) ? 'not measured' : 'it could not be scored'}${
       score.viable === false && !isNotMeasured(score) ? ', and ruled out' : ''
-    } &middot; ${esc(rulesVersion(score.weights_version))}${info('weights')}</div>
+    } &middot; ${esc(rulesVersion(score.weights_version))}${info('weights')}
+      &middot; ${SCORE_TESTS_LINK}</div>
     ${isNotMeasured(score) ? `<div class="small u-mt-6">${
       esc(notMeasuredSentence(runCount(score.seeds)))}</div>` : ''}
     ${provisionalMarkHtml(score)}
