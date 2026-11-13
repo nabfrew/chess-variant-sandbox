@@ -85,6 +85,11 @@ from chess_variant_sandbox.tournament.checkpoint import run_schedules
 RULESET_DIR = Path("rulesets")
 ARCHIVE_DIR = Path("archive")
 RUNS_DIR = Path("runs")
+# The labelled set's games that are not in the library (R-S2b, `docs/reference/labelled-set.md`
+# §3.1): new published games, proven-bad games and controls. A third rung beside the library:
+# measured as a library game is (four runs, the waiting schedule), and in nothing the library
+# counts -- not `corpus_hashes`, `committed_candidates`, `survey`'s sweep or the site.
+LABELLED_DIR = Path("labelled")
 
 # The roster a committed score *means*, which until now existed only in prose. Every
 # number in `docs/reference/metrics-and-calibration-record.md` is on this ladder and no other:
@@ -234,11 +239,18 @@ VERDICT_RULE = VOTE_BLIND_ABSTAINS
 def expected_seeds(stage: str) -> tuple[int, ...]:
     """How many runs a game at this rung is expected to have been measured on.
 
-    A committed or archived game is the library and owes `EXPECTED_LIBRARY_SEEDS`.
-    Everything else -- a candidate, a visitor's design -- is one run, because a number
-    nobody has committed to does not owe four tournaments.
+    A committed or archived game is the library and owes `EXPECTED_LIBRARY_SEEDS`; so does a
+    labelled one, which is read against the library's games and must be measured as they are
+    (`docs/reference/labelled-set.md` §3.1). Everything else -- a candidate, a visitor's
+    design -- is one run, because a number nobody has committed to does not owe four
+    tournaments.
     """
-    return EXPECTED_LIBRARY_SEEDS if stage in ("committed", "archived") else ONE_SEED
+    return EXPECTED_LIBRARY_SEEDS if stage in LIBRARY_MEASURED_STAGES else ONE_SEED
+
+
+# The rungs measured as the library is: its seeds, and with them the waiting schedule
+# (`_plays_waiting`). Only the first two are the library.
+LIBRARY_MEASURED_STAGES = ("committed", "archived", "labelled")
 
 
 class CorpusError(ValueError):
@@ -258,7 +270,7 @@ class Candidate:
     name: str
     spec: dict[str, Any]
     path: Path
-    # committed | archived | candidate -- where it is now, not how good it is.
+    # committed | archived | labelled | candidate -- where it is now, not how good it is.
     stage: str
     # The design run it came out of, when it came out of one.
     run: Path | None = None
@@ -302,15 +314,19 @@ def find(
     runs_dir: Path = RUNS_DIR,
     ruleset_dir: Path = RULESET_DIR,
     archive_dir: Path = ARCHIVE_DIR,
+    labelled_dir: Path = LABELLED_DIR,
 ) -> Candidate:
     """The game with this content hash, from wherever it is.
 
     Searched in ladder order so a promoted game reports as committed rather than as the
     candidate it also still is: a design run's `specs/` directory keeps its copy, and
     two answers to "what is this" would make the interface offer to promote a game that
-    is already in the corpus.
+    is already in the corpus. The labelled set's own files come after the library's, so a
+    library member of the set still reads as the library game it is.
     """
-    for directory, stage in ((ruleset_dir, "committed"), (archive_dir, "archived")):
+    for directory, stage in (
+        (ruleset_dir, "committed"), (archive_dir, "archived"), (labelled_dir, "labelled"),
+    ):
         path = _committed_paths(directory).get(digest)
         if path is not None:
             spec = load_spec(path)
@@ -336,13 +352,14 @@ def find(
         )
 
     raise CorpusError(
-        f"no game with hash {digest} under {ruleset_dir}/, {archive_dir}/ or {runs_dir}/"
+        f"no game with hash {digest} under {ruleset_dir}/, {archive_dir}/, "
+        f"{labelled_dir}/ or {runs_dir}/"
     )
 
 
 def from_file(path: Path, runs_dir: Path = RUNS_DIR) -> Candidate:
-    """The game a spec file holds: `find`'s answer where the corpus, the archive or a design
-    run holds it, else a candidate read from the file itself.
+    """The game a spec file holds: `find`'s answer where the corpus, the archive, the
+    labelled set or a design run holds it, else a candidate read from the file itself.
 
     The second case is a game nobody has put on the ladder yet -- a test spec, a game being
     written by hand -- measured where it stands (Q918d's round game was the first). It is a
@@ -1002,7 +1019,9 @@ PLAY_WAITING = True
 
 
 def _plays_waiting(candidate: Candidate) -> bool:
-    """Whether this game's runs carry the waiting schedule: a library game's do."""
+    """Whether this game's runs carry the waiting schedule: a library game's do, and so does a
+    labelled one's, or the gate aimed at a side that cannot lose would go unread on the set
+    built to test it (`docs/reference/labelled-set.md` §3.1)."""
     return PLAY_WAITING and len(expected_seeds(candidate.stage)) > 1
 
 
@@ -1990,6 +2009,14 @@ def _rescore_seed(
 
 # -------------------------------------------------------------- archive and promote
 
+# A labelled game never joins the library: a proven-broken game must not reach the site or
+# the corpus counts, and a member that moved would leave the set's reading without it
+# (`docs/reference/labelled-set.md` §3.1, §3.3).
+_LABELLED_STAYS = (
+    f"a game in {LABELLED_DIR}/ is a member of the labelled set and stays there: it is "
+    "neither archived nor promoted (docs/reference/labelled-set.md §3)"
+)
+
 
 def archive_game(
     candidate: Candidate,
@@ -2011,6 +2038,8 @@ def archive_game(
     """
     if candidate.stage == "committed":
         raise CorpusError(f"{candidate.name} is already in {RULESET_DIR}/")
+    if candidate.stage == "labelled":
+        raise CorpusError(_LABELLED_STAYS)
     return _write(candidate, archive_dir, note, "archived", runs_dir, name, credit)
 
 
@@ -2075,6 +2104,8 @@ def promotion_blocker(
     """
     if candidate.stage == "committed":
         return f"{candidate.name} is already in {ruleset_dir}/"
+    if candidate.stage == "labelled":
+        return _LABELLED_STAYS
 
     errors = validate_spec(candidate.spec)
     if errors:

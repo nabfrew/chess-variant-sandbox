@@ -1,0 +1,33 @@
+{
+  "game": "labelled/antichess-with-a-lone-queen.json",
+  "spec_hash": "ea25e87362d5",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.1376,
+  "quarter": "Q2",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "forced-win",
+  "stratum": "plain",
+  "side": 0,
+  "claim": "White wins on its first move and Black's forced reply.",
+  "parent": "rulesets/antichess.json",
+  "change": "setup: White's whole army is one queen, on d1; Black's army is as usual.",
+  "proof": {
+    "form": "certificate",
+    "text": "Captures are compulsory (`rules.must_capture`). White's only legal move is Qd1xd7 (the d-file is open to d7). Every Black legal reply is then a capture of the queen on d7, which leaves White with no pieces, and `rules.extinction` (any piece, fewer than 1, result win) gives White the game. The certificate lists White's move and every Black reply, each ending the game as White's win; `labelled/verify.py` walks it.",
+    "certificate": "antichess-with-a-lone-queen",
+    "certificate_size": 5
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "Qd1xd7 is White's only move; Black's four legal replies all capture on d7 and end the game for White; the extinction rule counts total pieces, so the opening is not over."
+  }
+}

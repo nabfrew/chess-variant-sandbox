@@ -1,0 +1,527 @@
+{
+  "date": "2026-11-12",
+  "sealed_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "design": "docs/reference/labelled-set.md",
+  "members": {
+    "antichess-pawn-ending": {
+      "spec_hash": "4d26ba4fd624",
+      "label": "bad",
+      "quarter": "Q2",
+      "kind": "forced-win",
+      "stratum": "hidden"
+    },
+    "antichess-with-a-lone-queen": {
+      "spec_hash": "ea25e87362d5",
+      "label": "bad",
+      "quarter": "Q2",
+      "kind": "forced-win",
+      "stratum": "plain"
+    },
+    "antichess": {
+      "spec_hash": "3ec1560124c3",
+      "label": "good",
+      "quarter": "Q2",
+      "kind": null,
+      "stratum": null
+    },
+    "atomic-forward-knight": {
+      "spec_hash": "ed1ffc84b782",
+      "label": "bad",
+      "quarter": "Q4",
+      "kind": "forced-win",
+      "stratum": "plain"
+    },
+    "atomic": {
+      "spec_hash": "6bd4d9c5769e",
+      "label": "good",
+      "quarter": "Q4",
+      "kind": null,
+      "stratum": null
+    },
+    "breakthrough-on-three-files": {
+      "spec_hash": "300a8d5c66f8",
+      "label": "bad",
+      "quarter": "Q1",
+      "kind": "forced-win",
+      "stratum": "hidden"
+    },
+    "breakthrough-runner-on-the-seventh": {
+      "spec_hash": "1ba429ade817",
+      "label": "bad",
+      "quarter": "Q1",
+      "kind": "forced-win",
+      "stratum": "plain"
+    },
+    "breakthrough": {
+      "spec_hash": "bb208e1b1211",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "capablanca-held-runners": {
+      "spec_hash": "8b60a8369a49",
+      "label": "bad",
+      "quarter": "Q3",
+      "kind": "no-win",
+      "stratum": "hidden"
+    },
+    "capablanca-locked-wall": {
+      "spec_hash": "3d9bcabaeaea",
+      "label": "bad",
+      "quarter": "Q3",
+      "kind": "no-win",
+      "stratum": "plain"
+    },
+    "capablanca-two-runners": {
+      "spec_hash": "c64961eda21a",
+      "label": "bad",
+      "quarter": "Q3",
+      "kind": "cannot-lose",
+      "stratum": "hidden"
+    },
+    "capablanca": {
+      "spec_hash": "2eefcd835b3b",
+      "label": "good",
+      "quarter": "Q3",
+      "kind": null,
+      "stratum": null
+    },
+    "chess-held-runners": {
+      "spec_hash": "d3c7320a1422",
+      "label": "bad",
+      "quarter": "Q4",
+      "kind": "no-win",
+      "stratum": "hidden"
+    },
+    "chess-locked-wall": {
+      "spec_hash": "07e969db7b4f",
+      "label": "bad",
+      "quarter": "Q4",
+      "kind": "no-win",
+      "stratum": "plain"
+    },
+    "chess-two-runners": {
+      "spec_hash": "360f5cc5a0c5",
+      "label": "bad",
+      "quarter": "Q4",
+      "kind": "cannot-lose",
+      "stratum": "hidden"
+    },
+    "chess-without-captures": {
+      "spec_hash": "9f42cd064b97",
+      "label": "bad",
+      "quarter": "Q2",
+      "kind": "no-win",
+      "stratum": "plain"
+    },
+    "courier": {
+      "spec_hash": "0b96463ffba7",
+      "label": "good",
+      "quarter": "Q2",
+      "kind": null,
+      "stratum": null
+    },
+    "crazyhouse": {
+      "spec_hash": "bb5d97520084",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "dobutsu": {
+      "spec_hash": "a2f0c65ceedf",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "duck-chess": {
+      "spec_hash": "7acb867a99aa",
+      "label": "good",
+      "quarter": "Q3",
+      "kind": null,
+      "stratum": null
+    },
+    "glinski-hexagonal-chess": {
+      "spec_hash": "d7be83b7f1f9",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "grand-chess-without-a-white-king": {
+      "spec_hash": "d181098a043b",
+      "label": "bad",
+      "quarter": "Q2",
+      "kind": "cannot-lose",
+      "stratum": "plain"
+    },
+    "grand": {
+      "spec_hash": "393dfeada70d",
+      "label": "good",
+      "quarter": "Q2",
+      "kind": null,
+      "stratum": null
+    },
+    "held-runners": {
+      "spec_hash": "ecafa9ff71aa",
+      "label": "bad",
+      "quarter": "Q1",
+      "kind": "no-win",
+      "stratum": "hidden"
+    },
+    "horde-endgame": {
+      "spec_hash": "453fb0039c51",
+      "label": "bad",
+      "quarter": "Q3",
+      "kind": "forced-win",
+      "stratum": "hidden"
+    },
+    "horde-without-extinction": {
+      "spec_hash": "d3698b87f6f2",
+      "label": "bad",
+      "quarter": "Q3",
+      "kind": "cannot-lose",
+      "stratum": "plain"
+    },
+    "horde": {
+      "spec_hash": "15593fc47f6d",
+      "label": "good",
+      "quarter": "Q3",
+      "kind": null,
+      "stratum": null
+    },
+    "janus": {
+      "spec_hash": "3d56b3cf64cf",
+      "label": "good",
+      "quarter": "Q3",
+      "kind": null,
+      "stratum": null
+    },
+    "king-of-the-hill-head-start": {
+      "spec_hash": "f1e40c40ab38",
+      "label": "bad",
+      "quarter": "Q3",
+      "kind": "forced-win",
+      "stratum": "plain"
+    },
+    "king-of-the-hill-with-a-sentry": {
+      "spec_hash": "d5f6ff9da0a0",
+      "label": "null",
+      "quarter": "Q3",
+      "kind": "null",
+      "stratum": null
+    },
+    "kingofthehill": {
+      "spec_hash": "71912ea8ba7f",
+      "label": "good",
+      "quarter": "Q3",
+      "kind": null,
+      "stratum": null
+    },
+    "kyoto": {
+      "spec_hash": "a1805ac1adc1",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "makruk-with-a-sentry": {
+      "spec_hash": "6f3eeffcc967",
+      "label": "null",
+      "quarter": "Q2",
+      "kind": "null",
+      "stratum": null
+    },
+    "makruk": {
+      "spec_hash": "eaa48ed29ad7",
+      "label": "good",
+      "quarter": "Q2",
+      "kind": null,
+      "stratum": null
+    },
+    "minishogi": {
+      "spec_hash": "91974dda36cb",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "minixiangqi": {
+      "spec_hash": "6a4da609da21",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "omega": {
+      "spec_hash": "c68b69c57219",
+      "label": "good",
+      "quarter": "Q2",
+      "kind": null,
+      "stratum": null
+    },
+    "pawn-wall-race-late-king": {
+      "spec_hash": "d199bdad5666",
+      "label": "bad",
+      "quarter": "Q2",
+      "kind": "cannot-lose",
+      "stratum": "hidden"
+    },
+    "pawn-wall-race": {
+      "spec_hash": "3b44f69467d8",
+      "label": "bad",
+      "quarter": "Q2",
+      "kind": "no-win",
+      "stratum": "hidden"
+    },
+    "placement-chess": {
+      "spec_hash": "2cb9cb3c018c",
+      "label": "good",
+      "quarter": "Q2",
+      "kind": null,
+      "stratum": null
+    },
+    "racing-kings-with-a-low-ceiling": {
+      "spec_hash": "610c330161b3",
+      "label": "bad",
+      "quarter": "Q1",
+      "kind": "no-win",
+      "stratum": "plain"
+    },
+    "racing-kings-with-a-tilted-ceiling": {
+      "spec_hash": "e75d81bd4b8a",
+      "label": "bad",
+      "quarter": "Q1",
+      "kind": "cannot-lose",
+      "stratum": "plain"
+    },
+    "racingkings": {
+      "spec_hash": "66b001f1b790",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "seirawan": {
+      "spec_hash": "3dafe910108f",
+      "label": "good",
+      "quarter": "Q3",
+      "kind": null,
+      "stratum": null
+    },
+    "shako": {
+      "spec_hash": "d4bea31a4f58",
+      "label": "good",
+      "quarter": "Q3",
+      "kind": null,
+      "stratum": null
+    },
+    "shatranj": {
+      "spec_hash": "67270a8805a0",
+      "label": "good",
+      "quarter": "Q2",
+      "kind": null,
+      "stratum": null
+    },
+    "shogi": {
+      "spec_hash": "54c731ca6e95",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "sittuyin": {
+      "spec_hash": "771c1a22e182",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    },
+    "three-check-with-a-sentry": {
+      "spec_hash": "cb25a48cf9a8",
+      "label": "null",
+      "quarter": "Q4",
+      "kind": "null",
+      "stratum": null
+    },
+    "three-check-without-a-white-king": {
+      "spec_hash": "73759c520218",
+      "label": "bad",
+      "quarter": "Q4",
+      "kind": "cannot-lose",
+      "stratum": "plain"
+    },
+    "threecheck": {
+      "spec_hash": "b1f536573c22",
+      "label": "good",
+      "quarter": "Q4",
+      "kind": null,
+      "stratum": null
+    },
+    "two-runners-one-king": {
+      "spec_hash": "47e80de7c1b0",
+      "label": "bad",
+      "quarter": "Q1",
+      "kind": "cannot-lose",
+      "stratum": "hidden"
+    },
+    "xiangqi-with-a-sentry": {
+      "spec_hash": "4659ac7bf07a",
+      "label": "null",
+      "quarter": "Q1",
+      "kind": "null",
+      "stratum": null
+    },
+    "xiangqi": {
+      "spec_hash": "151582aed409",
+      "label": "good",
+      "quarter": "Q1",
+      "kind": null,
+      "stratum": null
+    }
+  },
+  "labels": {
+    "antichess-pawn-ending": "cfa0e6f7e16fde100aa54e11dc4f5daaf601f752f9c7d9e3e8a4e97b059cfdf3",
+    "antichess-with-a-lone-queen": "c9d2fec84f01671842b0e3d4261783b8483f3c851c44ea4059da112eb5344ec9",
+    "antichess": "71b811d1f4815fa3dff9e2b83ff2e53a16587523ded7d4d4d0c28e1d14b19e87",
+    "atomic-forward-knight": "a1e6bfdd68490b4e21612807b8a5c37f107c739d5dff764315d01ba561ee1114",
+    "atomic": "7ffac2476f5ba5b6ca0015d5e415938bbad1e3a2b9031162b0b139985128a8c6",
+    "breakthrough-on-three-files": "74592395dc34e890cca35c0b85c71d3fabdf5413d2e1e74b92876e6ec7bb0a00",
+    "breakthrough-runner-on-the-seventh": "a132ac24d317e1cd8321d151cd53cc427a67e93dd23f26b3e6f37d2d4c044c98",
+    "breakthrough": "fb95de2df9530c6318f9b64781449a7be4edc21610007bb0f6830c9fdedd3f81",
+    "capablanca-held-runners": "bc6c268e2ec069a3f302fd8f647128e5946820475632e54539d05c44fdf8c09e",
+    "capablanca-locked-wall": "6e90ff115898fffb993e8ccc4b634725b3e8c17189a11fc6a19d5036a2fdade1",
+    "capablanca-two-runners": "f3f2db96cd580dbd3fcda1c6b7443a997dede9272644ead33037ec4f5dc38a05",
+    "capablanca": "cd86b5fe2044882120dacfdb3e2fee711cfa59ea9c7d8a24e0d666815668bcd1",
+    "chess-held-runners": "3be258a8e2054b1328ee8c14b9308925f77550babe9ac4c8db0369be8ba104fb",
+    "chess-locked-wall": "1cd1a7637ab608256a0829804b52589512f9b339c10b8b4ea38248014132c20d",
+    "chess-two-runners": "2d8fff6b38ffda742ab2fc8be31f7d50f95357c419b2684e1690d6f1d2a33884",
+    "chess-without-captures": "f13f883ff9b9226b75277c28650f75dd5dfc6c147b12670a1c54ef4046dd12c2",
+    "courier": "edcba5304c745ae820f1bd9c01aec0c97115cc66992fced864e3029ca3656770",
+    "crazyhouse": "d2b8fb9012363d3d51deb918d59d24ef9f441e2ae86b7f6cf679e282893f98f1",
+    "dobutsu": "fb0851b4bf90ff92a8492047a41bb277eb46feb47a582ff8c269d7e76be4a802",
+    "duck-chess": "7a44497a8f7b8d272d6c9560712863f1e3ce68e526a85074a50b0d912d4a08ed",
+    "glinski-hexagonal-chess": "fd745a90cae76c17b0e1c0a23c119af64834fd3d9068008c847bd26ad2dd5bf0",
+    "grand-chess-without-a-white-king": "91f481eacab76a1548efaf789eef155b1a68c60e986aeb67ee7ab94ccb075506",
+    "grand": "e471f8e6feda9a99184d86077dd8ec292620e19052636bbbbeaeea3327a9f717",
+    "held-runners": "e42b528d4c2f93f389f81a4dc2642c45ed7366b166218d199faf782c3373eca0",
+    "horde-endgame": "98f90b2bfb2bb8355e4a80cbb2c7dd1c514c17513ed8107598778290448d4b7d",
+    "horde-without-extinction": "7c74a816242626965d3227618084953c69466f13d1678b885ef5cfc534bc343f",
+    "horde": "facc6b06f152df98db61d4e78826c9af6f95572458a08aadf5c18a18a855da95",
+    "janus": "9180e40231b8e314730a847383ad0d8bb567275ccc4b378bc5331083557bff41",
+    "king-of-the-hill-head-start": "0fce755f671b43e110548b34398f0eebe66d7d5684e099499562511ac20c99f6",
+    "king-of-the-hill-with-a-sentry": "04d1cd5af90540165416728a1cc8bfc69de3705ca90925853586e8e4a04dd2f7",
+    "kingofthehill": "83459acd1910e342fca587240a377a93e0da06a84375358500135b1b8e0d93c0",
+    "kyoto": "71c3b6c35484abdc7dc66b67eaefd405d0c2ffdd0bb90f02fd75ba62a39bc660",
+    "makruk-with-a-sentry": "e40dace640a1454f3a41372bd50e716ddbaf0ba5626ae9d03fcd3adcf8311894",
+    "makruk": "e77fad4231fba0751a86e6e4217be425e154ff0433122c1213f50baf7cf397e4",
+    "minishogi": "60d84d69590cf91ff6a8fa57af0fc4ac5216bf5d79a0bcfdadca4deb34119d7e",
+    "minixiangqi": "ea7838f8edb7b8f6fdc7a81b5235f52fd5754811e53fe4ee4640e33cc70e8625",
+    "omega": "d353e97cfdfa764493cdcdde6dd3225ca46fce52a4713e2b820c2144cf9a69d6",
+    "pawn-wall-race-late-king": "fb40b85e127538b9135d7d637fe87a401138da16cf9b6b45c9cb414d113dcde9",
+    "pawn-wall-race": "b5e67dc4b448a442f0b3f848c6d288f2fc3b251797ee47f635e2d0f8672047d0",
+    "placement-chess": "444df0f2e3e7eb373b93284b1ce41c8106dfcf1d695fc24cbdadcd47d15a6576",
+    "racing-kings-with-a-low-ceiling": "4358427b47d090477c2854c5a389a329c4bb4eb62ac4e39e2d8c2383d53c489b",
+    "racing-kings-with-a-tilted-ceiling": "04955cf8f587b6142202f7edf0fd09a023f4b3908ad0a0425f04ef012a4cba4d",
+    "racingkings": "ba184cc98355741ff82b04970a10152fccdabf0325d369cf6578c41462f901c7",
+    "seirawan": "f1ef59f614949b66928339916fc55a07daeb05d0bfd3c6568f482e737ad4919e",
+    "shako": "d19c323fcb55f39bf3f309158e01d2892278487380b009c9f97836efe9444dee",
+    "shatranj": "d3e53e66d4d6795ad2837d8144b4be818541ea26f075cf923498c9a19b602d07",
+    "shogi": "966cfaa10a43b9c2560a0830aa06119918fca93b9ae9cca0f15f5bea88fc982d",
+    "sittuyin": "3c90e6c17b1a94759c6fbfb558fcb5d264a82f12069ea6301acaae9e2489d439",
+    "three-check-with-a-sentry": "057c585067da394324a395f2c934be007afb5b18cbec2198c8d02115728fd9d4",
+    "three-check-without-a-white-king": "1d653cd55664b3669e3d2ca842adffd2d7c16160b54617ccfbd66378e0813f91",
+    "threecheck": "0c3f1e0d13c14a942aaea2378f29862161e2530a56ac228527171dc4c89f98b7",
+    "two-runners-one-king": "64c0c2561cbbe7ba0f5d3f0b4f788a403a2e943cc6749f26b04e4defd3570e92",
+    "xiangqi-with-a-sentry": "8e721f33af2dcd1e7bc2ce3b3f70bc28b958110d839c900bada20614d1a0f57e",
+    "xiangqi": "f72f79dbb281e9f9690c4ef6f6dbe29c982c0c4f490a03c83d183783b8a3159e"
+  },
+  "counts": {
+    "bad_by_cell": {
+      "Q1 cannot-lose hidden": 1,
+      "Q1 cannot-lose plain": 1,
+      "Q1 forced-win hidden": 1,
+      "Q1 forced-win plain": 1,
+      "Q1 no-win hidden": 1,
+      "Q1 no-win plain": 1,
+      "Q2 cannot-lose hidden": 1,
+      "Q2 cannot-lose plain": 1,
+      "Q2 forced-win hidden": 1,
+      "Q2 forced-win plain": 1,
+      "Q2 no-win hidden": 1,
+      "Q2 no-win plain": 1,
+      "Q3 cannot-lose hidden": 1,
+      "Q3 cannot-lose plain": 1,
+      "Q3 forced-win hidden": 1,
+      "Q3 forced-win plain": 1,
+      "Q3 no-win hidden": 1,
+      "Q3 no-win plain": 1,
+      "Q4 cannot-lose hidden": 1,
+      "Q4 cannot-lose plain": 1,
+      "Q4 forced-win plain": 1,
+      "Q4 no-win hidden": 1,
+      "Q4 no-win plain": 1
+    },
+    "good_and_null_by_quarter": {
+      "Q1 good": 11,
+      "Q1 null": 1,
+      "Q2 good": 7,
+      "Q2 null": 1,
+      "Q3 good": 7,
+      "Q3 null": 1,
+      "Q4 good": 2,
+      "Q4 null": 1
+    },
+    "bad": 23,
+    "good": 27,
+    "null": 4
+  },
+  "empty_cells": [
+    "Q4 forced-win hidden"
+  ],
+  "unmeasured": {
+    "statement": "When this seal was written, neither this worktree's runs/ nor the main checkout's runs/ held a <hash> or <hash>-<seed> directory for any member listed here.",
+    "checked": [
+      "worktree runs/",
+      "main checkout runs/"
+    ],
+    "members": {
+      "antichess-pawn-ending": "4d26ba4fd624",
+      "antichess-with-a-lone-queen": "ea25e87362d5",
+      "atomic-forward-knight": "ed1ffc84b782",
+      "breakthrough-on-three-files": "300a8d5c66f8",
+      "breakthrough-runner-on-the-seventh": "1ba429ade817",
+      "breakthrough": "bb208e1b1211",
+      "capablanca-held-runners": "8b60a8369a49",
+      "capablanca-locked-wall": "3d9bcabaeaea",
+      "capablanca-two-runners": "c64961eda21a",
+      "chess-held-runners": "d3c7320a1422",
+      "chess-locked-wall": "07e969db7b4f",
+      "chess-two-runners": "360f5cc5a0c5",
+      "chess-without-captures": "9f42cd064b97",
+      "glinski-hexagonal-chess": "d7be83b7f1f9",
+      "grand-chess-without-a-white-king": "d181098a043b",
+      "held-runners": "ecafa9ff71aa",
+      "horde-endgame": "453fb0039c51",
+      "horde-without-extinction": "d3698b87f6f2",
+      "janus": "3d56b3cf64cf",
+      "king-of-the-hill-head-start": "f1e40c40ab38",
+      "king-of-the-hill-with-a-sentry": "d5f6ff9da0a0",
+      "makruk-with-a-sentry": "6f3eeffcc967",
+      "minishogi": "91974dda36cb",
+      "minixiangqi": "6a4da609da21",
+      "pawn-wall-race-late-king": "d199bdad5666",
+      "pawn-wall-race": "3b44f69467d8",
+      "racing-kings-with-a-low-ceiling": "610c330161b3",
+      "racing-kings-with-a-tilted-ceiling": "e75d81bd4b8a",
+      "shako": "d4bea31a4f58",
+      "three-check-with-a-sentry": "cb25a48cf9a8",
+      "three-check-without-a-white-king": "73759c520218",
+      "two-runners-one-king": "47e80de7c1b0",
+      "xiangqi-with-a-sentry": "4659ac7bf07a"
+    }
+  },
+  "additions": []
+}

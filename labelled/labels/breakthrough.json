@@ -1,0 +1,37 @@
+{
+  "game": "labelled/breakthrough.json",
+  "spec_hash": "bb208e1b1211",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.0155,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b worker (Claude Opus 5.5)",
+  "date": "2026-11-11",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent.",
+  "W": {
+    "low": 2,
+    "high": 2
+  },
+  "L": {
+    "low": 1,
+    "high": 2
+  },
+  "evidence": [
+    {
+      "address": "en.wikipedia.org/wiki/Breakthrough_(board_game)",
+      "read": "2026-11-11",
+      "says": "Dan Troyka, 2000; won the 2001 8x8 Game Design Competition; the rules as written; a draw is impossible"
+    },
+    {
+      "address": "playstrategy.org/blog/ZoVICxEAAJKS4nxq",
+      "read": "2026-11-11",
+      "says": "added to PlayStrategy, a public multi-game server of 40 games, on 3 July 2024, with introductory tournaments"
+    }
+  ],
+  "flagged": false,
+  "in_scale": false,
+  "tier_note": "W: a standing place on a public multi-game server since 2024. L: the game dates from 2000; organised play attested from 2001 (the competition) and 2024 (the server), so 1 to 2."
+}

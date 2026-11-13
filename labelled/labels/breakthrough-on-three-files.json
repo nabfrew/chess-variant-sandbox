@@ -1,0 +1,40 @@
+{
+  "game": "labelled/breakthrough-on-three-files.json",
+  "spec_hash": "300a8d5c66f8",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.0002,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "forced-win",
+  "stratum": "hidden",
+  "side": 0,
+  "claim": "White wins by force in 7 of its own moves, and no win for either side can come sooner.",
+  "parent": "labelled/breakthrough.json",
+  "change": "the board: 3 files by 5 rows (the far row moved with it); the setup: one row of three runners each.",
+  "proof": {
+    "form": "certificate",
+    "text": "The certificate gives White's move at each of its turns and every legal Black reply, down to positions the engine calls won for White (a runner on the far row, or every black runner taken), in at most 7 White moves; `labelled/verify.py` walks it. A `shortest` check searches every line and finds no forced White win in 6. Black cannot win first, since every Black reply in the certificate leaves the game going on until White's win. Wins for Black are reachable (White may walk a runner into a capture), and Breakthrough has no draw, so no plain defect: no forced win within 2 moves, no side that cannot lose.",
+    "checks": [
+      {
+        "type": "shortest",
+        "winner": 0,
+        "moves": 7
+      }
+    ],
+    "certificate": "breakthrough-on-three-files",
+    "certificate_size": 1933
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "An independent ply-counting search: White's earliest forced win is ply 13 (its 7th move), Black has none within 14 plies; a Black win is reachable in 8 plies."
+  }
+}

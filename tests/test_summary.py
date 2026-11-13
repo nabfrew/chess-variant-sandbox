@@ -175,6 +175,35 @@ class TestThePageLeadsWithIt:
         assert '<p class="gameAbout">' in html
 
 
+class TestTheCrushingPillarsLine:
+    """Q1205 (the user, 2026-11-12: *"You can add a line to the los alamos."*): the page of
+    los alamos with crushing pillars says, in its `provenance.note` (the line under the
+    summary, outside the mechanics), that its trained computer player draws almost every game
+    against itself while about four in ten against a different strong player are decided
+    (`docs/reference/seated-nets-after-replay.md` §8). The game is unmoved, and no other game's
+    page says it."""
+
+    PATH = "archive/los-alamos-with-crushing-pillars.json"
+    WORDS = "draws almost every game against a copy of itself"
+
+    def test_its_page_carries_the_line_and_the_game_is_unmoved(self) -> None:
+        spec = _load(self.PATH)
+        note = provenance_note(spec)
+        assert self.WORDS in note and "about four games in ten" in note
+        assert "the score is shown as it was measured" in note
+        assert spec_hash(spec) == "e72a8715217c"
+        drawn = drawing.Drawn(hash="e72a8715217c", name=spec["name"],
+                              description=spec["description"], spec=spec, score=None,
+                              stale=False, near=(), indexable=True)
+        html = drawing.view(drawn)
+        assert html.index(self.WORDS) < html.index('<details class="sect fullRules">')
+
+    def test_no_other_game_says_it(self) -> None:
+        saying = [path.relative_to(ROOT).as_posix() for path in _every_spec()
+                  if self.WORDS in path.read_text(encoding="utf-8")]
+        assert saying == [self.PATH]
+
+
 class TestADraftCarriesThem:
     """Q1085c: the designer writes both, a save keeps them, a re-save restates them, and the
     saved draft's page leads with them like any game's."""

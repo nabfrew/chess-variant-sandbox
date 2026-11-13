@@ -1,0 +1,43 @@
+{
+  "game": "labelled/minishogi.json",
+  "spec_hash": "91974dda36cb",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.027,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b worker (Claude Opus 5.5)",
+  "date": "2026-11-11",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent.",
+  "W": {
+    "low": 2,
+    "high": 2
+  },
+  "L": {
+    "low": 1,
+    "high": 3
+  },
+  "evidence": [
+    {
+      "address": "pychess.org/variants",
+      "read": "2026-11-11",
+      "says": "Minishogi has a standing place among the server's variants"
+    },
+    {
+      "address": "en.wikipedia.org/wiki/Minishogi",
+      "read": "2026-11-11",
+      "says": "devised around 1970 by Shigenobu Kusumoto; yearly computer tournaments (UEC Cup, TAAI, the ICGA Computer Olympiad); a Japanese Minishogi Association"
+    },
+    {
+      "address": "pychess.org/variants/minishogi",
+      "read": "2026-11-11",
+      "says": "the rules as written; a fourfold repetition loses for the first player"
+    }
+  ],
+  "flagged": true,
+  "in_scale": false,
+  "tier_note": "L: devised 1970, but the dates of organised play are not given, so 1 to 3.",
+  "departure": "the repetition rule: a fourth repetition is drawn here, where the published rule makes it a loss for the first player (the checking side under perpetual check)"
+}

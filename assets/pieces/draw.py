@@ -698,8 +698,10 @@ def duck(top: float) -> Part:
                      f"C {_n(CX - 13.5)},{_n(t - 14)} {_n(CX - 11.5)},{_n(t - 14)} "
                      f"{_n(CX - 10)},{_n(t - 14.5)} Z"),
         Mark("dot", circle(CX - 6.5, t - 17, 1.1)),
-        Mark("line", f"M {_n(CX - 2)},{_n(t - 6)} C {_n(CX + 2)},{_n(t - 3)} {_n(CX + 6)},"
-                     f"{_n(t - 4)} {_n(CX + 8)},{_n(t - 7)}"),
+        # The folded wing: round at the shoulder, its tip raised towards the tail.
+        Mark("line", f"M {_n(CX - 3)},{_n(t - 6)} C {_n(CX - 3)},{_n(t - 8.6)} {_n(CX + 3)},"
+                     f"{_n(t - 8.4)} {_n(CX + 9.5)},{_n(t - 8.8)} C {_n(CX + 7.5)},{_n(t - 4.4)} "
+                     f"{_n(CX - 1)},{_n(t - 2)} {_n(CX - 3)},{_n(t - 6)} Z"),
     ]
 
 
@@ -1095,24 +1097,29 @@ def golem(top: float) -> Part:
 
 
 def gorgon(top: float) -> Part:
-    """A gorgon's face, crowned with snakes."""
+    """A gorgon's mask, crowned with snakes: a brow drawn down to the nose over narrowed
+    eyes and a set mouth, the stare that turns a piece to stone."""
     p = _at(top)
-    snakes = [((-4.5, -12), (-8.5, -13), (-8, -17), (-11.5, -19)),
-              ((-2, -14), (-4.5, -17), (-2, -19), (-4.5, -22)),
-              ((2, -14), (4.5, -17), (2, -19), (4.5, -22)),
-              ((4.5, -12), (8.5, -13), (8, -17), (11.5, -19))]
-    part = [Mark("body", _tube(top, s, 2.4, 1.6)) for s in snakes]
-    part += [Mark("body", circle(CX - 11.8, top - 19.2, 1.5)),
-             Mark("body", circle(CX - 4.7, top - 22.2, 1.5)),
-             Mark("body", circle(CX + 4.7, top - 22.2, 1.5)),
-             Mark("body", circle(CX + 11.8, top - 19.2, 1.5))]
+    snakes = [((-4.5, -12), (-8.5, -13), (-8, -17), (-11, -18.6)),
+              ((-2, -14), (-4.5, -17), (-2, -19), (-4.2, -20.7)),
+              ((2, -14), (4.5, -17), (2, -19), (4.2, -20.7)),
+              ((4.5, -12), (8.5, -13), (8, -17), (11, -18.6))]
+    part = [Mark("body", _tube(top, s, 2.4, 1.8)) for s in snakes]
+    part += _serpent_head(top, -11.6, -19.2, -150, 1.7)
+    part += _serpent_head(top, -4.6, -21.5, -115, 1.7)
+    part += _serpent_head(top, 4.6, -21.5, -65, 1.7)
+    part += _serpent_head(top, 11.6, -19.2, -30, 1.7)
     part += [
         Mark("body", poly([p(-2.5, 0.5), p(-2.5, -3), p(2.5, -3), p(2.5, 0.5)])),
-        Mark("body", ellipse(CX, top - 9, 6.3, 6.8)),
-        Mark("dot", ellipse(CX - 2.4, top - 10, 1.1, 1.4)),
-        Mark("dot", ellipse(CX + 2.4, top - 10, 1.1, 1.4)),
-        Mark("line", _path("M", p(-2.2, -5.6), "Q", p(0, -6.8), p(2.2, -5.6))),
-        Mark("line", _path("M", p(-5.5, -12.5), "Q", p(0, -16.5), p(5.5, -12.5))),
+        Mark("body", _mirrored(top, [(0, -2), (-2.2, -2.4), (-4.6, -4.6), (-5.9, -7.6),
+                                     (-6.2, -10.5), (-5.4, -13.4), (-3.2, -15.4),
+                                     (0, -16)])),
+        # The brow, drawn down to the bridge of the nose, and the nose under it.
+        Mark("line", _path("M", p(-4.6, -11.6), "L", p(0, -9.8), "L", p(4.6, -11.6), "M",
+                           p(0, -9.8), "L", p(0, -6.6))),
+        Mark("dot", poly([p(-4.3, -9.9), p(-1.3, -8.7), p(-2.2, -7.7), p(-3.8, -8.3)])),
+        Mark("dot", poly([p(4.3, -9.9), p(1.3, -8.7), p(2.2, -7.7), p(3.8, -8.3)])),
+        Mark("line", _path("M", p(-1.9, -4.5), "L", p(1.9, -4.5))),
     ]
     return part
 
@@ -1142,7 +1149,7 @@ def siren(top: float) -> Part:
 
 
 def dryad(top: float) -> Part:
-    """A tree with a face in its leaves, the tree's own spirit."""
+    """A tree with its boughs raised like arms, the tree a dryad is the spirit of."""
     p = _at(top)
     c, rx, ry = -14.0, 10.5, 7.5
     leaves = []
@@ -1160,11 +1167,11 @@ def dryad(top: float) -> Part:
         Mark("body", _tube(top, boughs[1], 2.2, 1.2)),
         Mark("body", trunk),
         Mark("body", poly(leaves)),
-        Mark("dot", ellipse(CX - 3.2, top - 15, 1.1, 1.5)),
-        Mark("dot", ellipse(CX + 3.2, top - 15, 1.1, 1.5)),
-        Mark("line", _path("M", p(-3, -11), "Q", p(0, -9), p(3, -11))),
-        Mark("line", _path("M", p(-7.5, -16.5), "Q", p(-6.5, -19), p(-4, -19.5), "M",
-                           p(7.5, -16.5), "Q", p(6.5, -19), p(4, -19.5))),
+        # The trunk forking into three limbs inside the crown, and the foliage over them.
+        Mark("line", _path("M", p(0, -8), "L", p(0, -13.5), "M", p(0, -10.6), "L",
+                           p(-3.6, -13.6), "M", p(0, -10.6), "L", p(3.6, -13.6))),
+        Mark("line", _path("M", p(-7.4, -14.6), "Q", p(-5.6, -17.6), p(-3, -16.4), "Q",
+                           p(0, -19.6), p(3, -16.4), "Q", p(5.6, -17.6), p(7.4, -14.6))),
     ]
 
 
@@ -1470,11 +1477,11 @@ piece("hydra", "hydra", "oddities", "plinth", "hydra",
 piece("golem", "golem", "oddities", "plinth", "golem",
       "a figure of stone", ("statue", "clay", "stone giant", "construct"))
 piece("gorgon", "gorgon", "oddities", "plinth", "gorgon",
-      "a face crowned with snakes", ("medusa", "petrify", "freeze", "snakes"))
+      "a stern mask crowned with snakes", ("medusa", "petrify", "freeze", "snakes"))
 piece("siren", "siren", "oddities", "plinth", "siren",
       "a mermaid", ("mermaid", "song", "charm", "lure"))
 piece("dryad", "dryad", "oddities", "plinth", "dryad",
-      "a tree with a face in its leaves", ("tree spirit", "nymph", "grove", "ent"))
+      "a tree with its boughs raised like arms", ("tree spirit", "nymph", "grove", "ent"))
 
 
 # ------------------------------------------------------------------ writing the files

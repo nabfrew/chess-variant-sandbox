@@ -1,0 +1,119 @@
+{
+  "schema_version": 31,
+  "name": "breakthrough-runner-on-the-seventh",
+  "description": "Breakthrough begun from a different opening: one of the first player's runners has already slipped through and stands on the second player's second row, while the runner it passed waits a row lower. Otherwise it is the race game: step straight or diagonally forward, take only diagonally, and reach the far row or take every piece.",
+  "summary": [
+    "One of White's runners starts deep in Black's camp, on e7.",
+    "Each piece steps one square straight or diagonally forward, and takes only diagonally.",
+    "Reach the far row, or take every enemy piece, to win."
+  ],
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "runner",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a1",
+          "a2",
+          "b1",
+          "b2",
+          "c1",
+          "c2",
+          "d1",
+          "d2",
+          "e1",
+          "e7",
+          "f1",
+          "f2",
+          "g1",
+          "g2",
+          "h1",
+          "h2"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "a7",
+          "a8",
+          "b7",
+          "b8",
+          "c7",
+          "c8",
+          "d7",
+          "d8",
+          "e6",
+          "e8",
+          "f7",
+          "f8",
+          "g7",
+          "g8",
+          "h7",
+          "h8"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "annihilation",
+    "stalemate": "loss",
+    "reach": {
+      "squares": [
+        "a8",
+        "b8",
+        "c8",
+        "d8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ],
+      "mirror": true,
+      "result": "win"
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 400
+  },
+  "provenance": {
+    "added": "2026-11-12",
+    "origin": "constructed",
+    "note": "Built for the labelled set (docs/reference/labelled-set.md, R-S2b2)."
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "schema_version": 31,
+  "name": "pawn-wall-race",
+  "description": "A race behind a wall with chess's king and pawns. The pawns of both sides stand locked across the board, each blocked by an enemy pawn, and each side has one pawn already through. A pawn that reaches the far rank wins; checkmate wins too.",
+  "summary": [
+    "The pawns are locked in a wall across the board: none can move or take.",
+    "Each side has one pawn already through the wall, guarded by the enemy king.",
+    "A king may not stand next to a protected enemy pawn, so neither king can cross.",
+    "A pawn that reaches the far rank wins; checkmate also wins."
+  ],
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "K",
+        "player": 0,
+        "squares": [
+          "b2"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a3",
+          "b4",
+          "c3",
+          "c5",
+          "d4",
+          "e3",
+          "f4",
+          "g3",
+          "h4"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 1,
+        "squares": [
+          "c7"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "a4",
+          "b3",
+          "b5",
+          "c4",
+          "d5",
+          "e4",
+          "f5",
+          "g4",
+          "h5"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "reach": {
+      "piece": "P",
+      "squares": [
+        "a8",
+        "b8",
+        "c8",
+        "d8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-11-12",
+    "origin": "constructed",
+    "note": "Built for the labelled set (docs/reference/labelled-set.md, R-S2b2)."
+  }
+}

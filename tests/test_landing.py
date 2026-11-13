@@ -153,6 +153,19 @@ class TestTheShelvesAndTheScoreMove:
         assert '<a href="/#/score">the score</a>' in rules_page.document()
         assert '<a href="/#/score">the score</a>' in pages.not_found()
 
+    def test_every_footer_links_the_score_history_beside_the_score(self) -> None:
+        """Q1214 (the user, 2026-11-12: *"Yes, add a link"*): `/score-history` is in the
+        footer menu right after *the score*, on the application's pages, the local rules
+        page and the site's own pages; the site's drops it only on the page itself."""
+        from chess_variant_sandbox.site import pages
+        from chess_variant_sandbox.web.page import rules_page
+
+        assert ("link(SCORE_LINK[0], 'the score'), ' · ', "
+                "link('/score-history', 'score history')") in CORE
+        pair = '<a href="/#/score">the score</a> · <a href="/score-history">score history</a>'
+        assert pair in rules_page.document()
+        assert pair in pages.not_found() and pair in pages.privacy()
+
 
 # The router, run under Node with the views stubbed: what each address draws, and what
 # the address bar says after (Q723). `core.js`'s `render` and its two helpers alone, so

@@ -489,6 +489,8 @@ def _foot(here: str = "", players: bool = False) -> str:
         ("/", "about"),
         # LP3: *How the score works*, a view of the single page (`landing.score_html`).
         ("/#/score", "the score"),
+        # Q1214: how the library's scores have moved (SH3), beside *the score*.
+        (front.HISTORY_PATH, "score history"),
         (front.NEWS_PATH, "what's new"),
         *((("/players", "players"),) if players else ()),
         ("/suggestions", "suggestions"),

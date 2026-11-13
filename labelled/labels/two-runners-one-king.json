@@ -1,0 +1,78 @@
+{
+  "game": "labelled/two-runners-one-king.json",
+  "spec_hash": "47e80de7c1b0",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.0107,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "cannot-lose",
+  "stratum": "hidden",
+  "side": 1,
+  "claim": "Black never loses: it has a recipe under which it never loses.",
+  "parent": null,
+  "change": "built from nothing: a 7 by 10 board, kings and pawns, a pawn reaching the far rank wins.",
+  "proof": {
+    "form": "argument",
+    "text": "Setup (`setup.placements`): a locked pawn wall across every file, white pawns on ranks o and o+1 alternately with a black pawn directly above each, so every pawn is blocked head-on and every pawn's diagonal capture squares hold its own pawn or nothing; the wall therefore never moves and never takes. A king may not step next to an enemy pawn's capture square, and every enemy pawn a king could reach is protected, so each king stays on its own side of the wall for the whole game. Black has two runners past the wall (b5, d5), each protected by two of its wall pawns, against White's king; White has one (c7), with Black's king in front of it. The recipe: Black: move only the king, between c9 and c8; if White's runner steps onto c8, take it with the king. A runner can advance only onto the square in front of it; with the king on the square in front it cannot move; with the king one square further back it may step forward, and is then next to that king and unprotected (its protectors are wall pawns that never move), so the king takes it. The king always has its other square to go to, since nothing of the other side can reach either square. Mechanically: `labelled/check.py` visits every position reachable while the recipe side follows its recipe and the other side plays anything (repetition and the other clocks walked past), and finds no position the recipe side has lost and none where the recipe leaves it with no allowed move. Wins are reachable: the lines in `checks` are legal games ending in a win for each side, after a king leaves its post. Neither side forces a win within two of its own moves (`shortest` checks). White's own result is not claimed.",
+    "checks": [
+      {
+        "type": "recipe",
+        "side": 1,
+        "piece": "K",
+        "squares": [
+          "c9",
+          "c8"
+        ],
+        "take": "c8"
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Pc7-c8",
+          "Kc9-b10",
+          "Pc8-c9",
+          "Kb10-a10",
+          "Pc9-c10"
+        ],
+        "winner": 0
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Kc1-b1",
+          "Pb5-b4",
+          "Kb1-a1",
+          "Pb4-b3",
+          "Ka1-b1",
+          "Pb3-b2",
+          "Kb1-a2",
+          "Pb2-b1"
+        ],
+        "winner": 1
+      },
+      {
+        "type": "shortest",
+        "winner": 0,
+        "moves": 3
+      },
+      {
+        "type": "shortest",
+        "winner": 1,
+        "moves": 3
+      }
+    ]
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "White's runner on c7 never attacks c8 or c9; an independent search agrees (225 positions, none lost or stuck)."
+  }
+}

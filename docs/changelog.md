@@ -12,6 +12,29 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-13
+
+### A note on one game's low score
+
+Los Alamos with crushing pillars scores low and is marked as not a viable game. Its page now says why that mark is
+partly about its computer player: the trained player draws almost every game against a copy of itself, while against
+a different strong player about four games in ten are decided. The score is shown as measured.
+
+## 2026-11-12
+
+### The herd's pieces lose their smiles
+
+The gorgon, the dryad and the duck are redrawn: a stern mask under a crown of snakes, a tree with limbs and foliage
+and no face, and a duck with a folded wing. The duck is the same piece in every duck game.
+
+### How every game's score has moved
+
+A new page, [how the scores have moved](/score-history), shows every score the library has kept for its games, from
+the first version of the scoring rules in August to today's. Each version of the rules sets its own scale, so a
+game's rank and the shape of its line carry across versions while the number itself does not. It is reached from *score
+history* in the footer of every page, and from the score heading on the games page. Each game's own page also draws its earlier scores as a small chart, in the fold
+named *earlier scores*.
+
 ## 2026-11-11
 
 ### Every game re-measured on stronger computer players; Hunger Chess gets its score

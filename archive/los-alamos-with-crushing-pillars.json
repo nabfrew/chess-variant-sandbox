@@ -202,6 +202,7 @@
     "added": "2026-10-31",
     "origin": "human",
     "history": "Q1074bs: the showcase of rules.push.walls 'crush' (docs/plan-push.md section 6.3): Los Alamos chess with four walls, every piece but the king pushing instead of capturing, no push back.",
-    "preview": "A preview: a new game showing one rule of pushing pieces, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and any score it has is a first reading, not yet trusted."
+    "preview": "A preview: a new game showing one rule of pushing pieces, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and any score it has is a first reading, not yet trusted.",
+    "note": "Its trained computer player draws almost every game against a copy of itself, while about four games in ten against a different strong computer player end in a win for one side; the score is shown as it was measured."
   }
 }

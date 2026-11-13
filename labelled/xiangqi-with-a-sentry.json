@@ -1,0 +1,333 @@
+{
+  "schema_version": 31,
+  "name": "xiangqi-with-a-sentry",
+  "description": "Xiangqi, Chinese chess, exactly as played. The piece list also names a sentry, a piece that steps one square any way, which no army includes.",
+  "summary": [
+    "Xiangqi as usual.",
+    "The rules list a sentry piece, but neither army has one."
+  ],
+  "board": {
+    "width": 9,
+    "height": 10
+  },
+  "pieces": [
+    {
+      "id": "S",
+      "name": "soldier",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both",
+          "condition": {
+            "region": [
+              "a6",
+              "b6",
+              "c6",
+              "d6",
+              "e6",
+              "f6",
+              "g6",
+              "h6",
+              "i6",
+              "a7",
+              "b7",
+              "c7",
+              "d7",
+              "e7",
+              "f7",
+              "g7",
+              "h7",
+              "i7",
+              "a8",
+              "b8",
+              "c8",
+              "d8",
+              "e8",
+              "f8",
+              "g8",
+              "h8",
+              "i8",
+              "a9",
+              "b9",
+              "c9",
+              "d9",
+              "e9",
+              "f9",
+              "g9",
+              "h9",
+              "i9",
+              "a10",
+              "b10",
+              "c10",
+              "d10",
+              "e10",
+              "f10",
+              "g10",
+              "h10",
+              "i10"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "H",
+      "name": "horse",
+      "value": 4,
+      "moves": [
+        {
+          "kind": "lame",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "name": "elephant",
+      "value": 2,
+      "region": [
+        "c1",
+        "g1",
+        "a3",
+        "e3",
+        "i3",
+        "c5",
+        "g5"
+      ],
+      "moves": [
+        {
+          "kind": "lame",
+          "vectors": [
+            [
+              2,
+              2
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "A",
+      "name": "advisor",
+      "value": 2,
+      "region": [
+        "d1",
+        "e1",
+        "f1",
+        "d2",
+        "e2",
+        "f2",
+        "d3",
+        "e3",
+        "f3"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "chariot",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "cannon",
+      "value": 4.5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        },
+        {
+          "kind": "hop",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "general",
+      "value": 0,
+      "royal": true,
+      "region": [
+        "d1",
+        "e1",
+        "f1",
+        "d2",
+        "e2",
+        "f2",
+        "d3",
+        "e3",
+        "f3"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Z",
+      "name": "sentry",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "i1"
+        ]
+      },
+      {
+        "piece": "H",
+        "squares": [
+          "b1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "E",
+        "squares": [
+          "c1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "A",
+        "squares": [
+          "d1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "C",
+        "squares": [
+          "b3",
+          "h3"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "a4",
+          "c4",
+          "e4",
+          "g4",
+          "i4"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "royal_facing": "forbidden",
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 120
+  },
+  "provenance": {
+    "added": "2026-11-12",
+    "origin": "constructed",
+    "note": "Built for the labelled set (docs/reference/labelled-set.md, R-S2b2)."
+  }
+}

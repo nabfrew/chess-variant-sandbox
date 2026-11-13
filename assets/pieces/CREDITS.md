@@ -68,8 +68,8 @@ script, not this file.
 | `dragon-white.svg` | Cburnett | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg) | drawn for this repository from Cburnett's knight: a winged knight's head on a stem |
 | `drop-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a drop of water |
 | `drop-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a drop of water |
-| `dryad-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a tree with a face in its leaves |
-| `dryad-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a tree with a face in its leaves |
+| `dryad-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a tree with its boughs raised like arms |
+| `dryad-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a tree with its boughs raised like arms |
 | `duck-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a duck |
 | `duck-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a duck |
 | `emperor-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a wide body with a broad cross |
@@ -96,8 +96,8 @@ script, not this file.
 | `giraffe-white.svg` | Francois-Pier | [CC BY-SA 3.0](http://creativecommons.org/licenses/by-sa/3.0/) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_Glt45.svg) |  |
 | `golem-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a figure of stone |
 | `golem-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a figure of stone |
-| `gorgon-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a face crowned with snakes |
-| `gorgon-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a face crowned with snakes |
+| `gorgon-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a stern mask crowned with snakes |
+| `gorgon-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a stern mask crowned with snakes |
 | `grasshopper-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a chevron on a shaft |
 | `grasshopper-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a chevron on a shaft |
 | `hammer-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a hammer |

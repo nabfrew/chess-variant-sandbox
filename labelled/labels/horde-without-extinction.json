@@ -1,0 +1,31 @@
+{
+  "game": "labelled/horde-without-extinction.json",
+  "spec_hash": "d3698b87f6f2",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.3637,
+  "quarter": "Q3",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "cannot-lose",
+  "stratum": "plain",
+  "side": 0,
+  "claim": "White never loses.",
+  "parent": "rulesets/horde.json",
+  "change": "rules: `extinction` removed (losing every piece no longer loses).",
+  "proof": {
+    "form": "argument",
+    "text": "White (the horde of pawns) has no royal piece and can never get one: `rules.promotion` targets Q, R, B, N, none royal, and there are no drops. With `rules.extinction` gone, the only ending with a loser is checkmate (`rules.win`), which needs a royal piece. `rules.stalemate` is a draw. So no position is a White loss: a White side with no pieces left has no move, which is stalemate, a draw. White is not claimed to win."
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "A White side with nothing left, or no move, is a stalemate draw; 150 random games, no White loss."
+  }
+}

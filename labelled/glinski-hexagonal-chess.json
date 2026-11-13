@@ -1,0 +1,437 @@
+{
+  "schema_version": 31,
+  "name": "glinski hexagonal chess",
+  "description": "Wladyslaw Glinski's hexagonal chess (1936, launched in Britain in 1949), played on a regular hexagon of 91 cells, six to a side. A rook runs along the six lines through a cell's edges, a bishop along the six diagonals between them (three bishops a side, one for each cell colour), a queen does both, a king steps in any of those twelve directions and a knight jumps to the twelve nearest cells no line reaches. The two armies face each other as mirror images, king against king. A pawn steps straight forward, takes on the two cells forward at sixty degrees, may advance two from its own or any other pawn's starting cell, may be taken in passing, and promotes at the far end of its file to a queen, rook, bishop or knight. There is no castling. One departure: stalemate is a draw, where Glinski gave the stalemating side three quarters of a point.",
+  "board": {
+    "width": 11,
+    "height": 11,
+    "lattice": "hex",
+    "shape": "hexagon"
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "move",
+          "range": 1,
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ]
+        },
+        {
+          "kind": "slide",
+          "mode": "move",
+          "range": 2,
+          "min_range": 2,
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "condition": {
+            "region": [
+              "b5",
+              "c5",
+              "d5",
+              "e5",
+              "f5",
+              "g4",
+              "h3",
+              "i2",
+              "j1"
+            ]
+          }
+        },
+        {
+          "kind": "leap",
+          "mode": "capture",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              -1,
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral12"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "vectors": [
+            [
+              1,
+              1
+            ],
+            [
+              -1,
+              -1
+            ],
+            [
+              2,
+              -1
+            ],
+            [
+              -2,
+              1
+            ],
+            [
+              1,
+              -2
+            ],
+            [
+              -1,
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              -1,
+              1
+            ],
+            [
+              -1,
+              0
+            ],
+            [
+              0,
+              -1
+            ],
+            [
+              1,
+              -1
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              -1,
+              1
+            ],
+            [
+              -1,
+              0
+            ],
+            [
+              0,
+              -1
+            ],
+            [
+              1,
+              -1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              -1,
+              -1
+            ],
+            [
+              2,
+              -1
+            ],
+            [
+              -2,
+              1
+            ],
+            [
+              1,
+              -2
+            ],
+            [
+              -1,
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              -1,
+              1
+            ],
+            [
+              -1,
+              0
+            ],
+            [
+              0,
+              -1
+            ],
+            [
+              1,
+              -1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              -1,
+              -1
+            ],
+            [
+              2,
+              -1
+            ],
+            [
+              -2,
+              1
+            ],
+            [
+              1,
+              -2
+            ],
+            [
+              -1,
+              2
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "orientation": "rotate",
+    "placements": [
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "b5",
+          "c5",
+          "d5",
+          "e5",
+          "f5",
+          "g4",
+          "h3",
+          "i2",
+          "j1"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 0,
+        "squares": [
+          "c4",
+          "i1"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 0,
+        "squares": [
+          "d3",
+          "h1"
+        ]
+      },
+      {
+        "piece": "B",
+        "player": 0,
+        "squares": [
+          "f1",
+          "f2",
+          "f3"
+        ]
+      },
+      {
+        "piece": "Q",
+        "player": 0,
+        "squares": [
+          "e2"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 0,
+        "squares": [
+          "g1"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "b11",
+          "c10",
+          "d9",
+          "e8",
+          "f7",
+          "g7",
+          "h7",
+          "i7",
+          "j7"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 1,
+        "squares": [
+          "c11",
+          "i8"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 1,
+        "squares": [
+          "d11",
+          "h9"
+        ]
+      },
+      {
+        "piece": "B",
+        "player": 1,
+        "squares": [
+          "f11",
+          "f10",
+          "f9"
+        ]
+      },
+      {
+        "piece": "Q",
+        "player": 1,
+        "squares": [
+          "e11"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 1,
+        "squares": [
+          "g10"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ],
+      "squares": [
+        "a11",
+        "b11",
+        "c11",
+        "d11",
+        "e11",
+        "f11",
+        "g10",
+        "h9",
+        "i8",
+        "j7",
+        "k6"
+      ]
+    },
+    "en_passant": true,
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-11-11",
+    "origin": "human",
+    "author": "Wladyslaw Glinski",
+    "year": "1949",
+    "source": "en.wikipedia.org/wiki/Hexagonal_chess",
+    "note": "A published game, entered for the labelled set (docs/reference/labelled-set.md, R-S2b)."
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "schema_version": 31,
+  "name": "breakthrough-on-three-files",
+  "description": "Breakthrough shrunk to a strip three files wide and five rows long, one row of three runners a side. Each runner steps straight or diagonally forward and takes diagonally; the first to reach the far row, or to take every enemy runner, wins.",
+  "summary": [
+    "Three runners a side on a board three squares wide and five long.",
+    "A runner steps one square straight or diagonally forward, and takes only diagonally.",
+    "Reach the far row, or take every enemy runner, to win."
+  ],
+  "board": {
+    "width": 3,
+    "height": 5
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "runner",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a1",
+          "b1",
+          "c1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "annihilation",
+    "stalemate": "loss",
+    "reach": {
+      "squares": [
+        "a5",
+        "b5",
+        "c5"
+      ],
+      "mirror": true,
+      "result": "win"
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 400
+  },
+  "provenance": {
+    "added": "2026-11-12",
+    "origin": "constructed",
+    "note": "Built for the labelled set (docs/reference/labelled-set.md, R-S2b2)."
+  }
+}

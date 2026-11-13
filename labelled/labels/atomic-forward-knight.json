@@ -1,0 +1,33 @@
+{
+  "game": "labelled/atomic-forward-knight.json",
+  "spec_hash": "ed1ffc84b782",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.4654,
+  "quarter": "Q4",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "forced-win",
+  "stratum": "plain",
+  "side": 0,
+  "claim": "White wins on its first move.",
+  "parent": "rulesets/atomic.json",
+  "change": "setup: White's g1 knight starts on g5.",
+  "proof": {
+    "form": "certificate",
+    "text": "The knight on g5 takes the pawn on f7 (`pieces[N].moves`). A capture explodes (`rules.explode_on_capture`, radius 1): everything next to f7 is destroyed, Black's king on e8 among them, which wins for White. White moves first. `labelled/verify.py` walks it.",
+    "certificate": "atomic-forward-knight",
+    "certificate_size": 1
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "Ng5xf7 is legal and its blast destroys the king on e8; White's own king is far away."
+  }
+}

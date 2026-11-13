@@ -1818,6 +1818,10 @@ RULES = """
      row; the communities are listed once, as the key, and fold from their panel (Q801). */
   .mapSay { flex: 1 1 200px; min-width: 0; }
   .mapControls .mapLegend { margin-bottom: 4px; }
+  /* The key's chips scroll past about three rows (Q1214: twenty-two communities took seven
+     rows at 1400 and pushed the drawing to y 614 of 900, past the sheet's two thirds). The
+     part row shown says there is more. */
+  #mapCommunities { max-height: 116px; overflow-y: auto; }
   .mapPanel .links { margin-top: 10px; max-height: 42vh; overflow-y: auto; }
   .mapPanel .linkRow { display: block; width: 100%; text-align: left; border: none;
                        min-height: var(--hit); background: none; padding: 6px 0; border-top: 1px solid var(--line);

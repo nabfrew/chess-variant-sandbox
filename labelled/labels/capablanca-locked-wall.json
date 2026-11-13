@@ -1,0 +1,36 @@
+{
+  "game": "labelled/capablanca-locked-wall.json",
+  "spec_hash": "3d9bcabaeaea",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.2577,
+  "quarter": "Q3",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "no-win",
+  "stratum": "plain",
+  "side": null,
+  "claim": "Neither side can win.",
+  "parent": "rulesets/capablanca.json",
+  "change": "setup: kings and a locked wall of pawns only; castling removed (no rook stands beside a king).",
+  "proof": {
+    "form": "argument",
+    "text": "White pawns stand on ranks 3 and 4 alternately across the ten files, each with a black pawn directly above it. Every pawn is blocked head-on, and every pawn's diagonal capture squares hold its own pawn or nothing, so no pawn ever moves or takes. Every pawn a king could reach is protected, and a king may not move into check, so the kings never take and never cross; neither can give check to the other. So no position is checkmate, and stalemate (`rules.stalemate`) is a draw. Mechanically: `labelled/check.py` visits every reachable position (`no_win`) and finds no ending with a winner.",
+    "checks": [
+      {
+        "type": "no_win"
+      }
+    ]
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "Square by square, every empty square next to an enemy pawn is pawn-attacked (j-file edge too); no_win's 1200 positions equal 20 x 30 king squares x 2, so no pawn ever moves."
+  }
+}

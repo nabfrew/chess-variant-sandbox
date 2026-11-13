@@ -1,0 +1,36 @@
+{
+  "game": "rulesets/shogi.json",
+  "spec_hash": "54c731ca6e95",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.0207,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b worker (Claude Opus 5.5)",
+  "date": "2026-11-11",
+  "measured_before_label": true,
+  "seen": "A library game, measured before this label (its score existed). In this task I read no score of it; I had read labelled-set.md, which quotes no score of this game and says the W2-only games average higher than the W3 games in outside-test.md §8.3.",
+  "W": {
+    "low": 5,
+    "high": 5
+  },
+  "L": {
+    "low": 4,
+    "high": 4
+  },
+  "evidence": [
+    {
+      "address": "docs/reference/outside-test.md §2.3 (its sources A to J are §2.4's, read 2026-11-11)",
+      "read": "2026-11-11",
+      "says": "present form played as early as the 15th century; professional players, ranks and title matches under the Japan Shogi Association"
+    },
+    {
+      "address": "en.wikipedia.org/wiki/Shogi",
+      "read": "2026-11-11",
+      "says": "as quoted in outside-test.md §2.3"
+    }
+  ],
+  "flagged": false,
+  "in_scale": true
+}

@@ -1,0 +1,135 @@
+{
+  "schema_version": 31,
+  "name": "two-runners-one-king",
+  "description": "A race behind a wall on a long narrow board. The pawns stand locked across the board, each blocked by an enemy pawn; the second player has two pawns already through, the first player one. A pawn that reaches the far rank wins, and the kings, unable to cross the wall, must stop the runners on their own side.",
+  "summary": [
+    "The pawns are locked in a wall across the board: none can move or take.",
+    "Black has two pawns through the wall, White one; each must be stopped by a king.",
+    "A pawn that reaches the far rank wins; checkmate also wins."
+  ],
+  "board": {
+    "width": 7,
+    "height": 10
+  },
+  "pieces": [
+    {
+      "id": "K",
+      "name": "king",
+      "royal": true,
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "K",
+        "player": 0,
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a5",
+          "b6",
+          "c5",
+          "c7",
+          "d6",
+          "e5",
+          "f6",
+          "g5"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 1,
+        "squares": [
+          "c9"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "a6",
+          "b5",
+          "b7",
+          "c6",
+          "d5",
+          "d7",
+          "e6",
+          "f7",
+          "g6"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "reach": {
+      "piece": "P",
+      "squares": [
+        "a10",
+        "b10",
+        "c10",
+        "d10",
+        "e10",
+        "f10",
+        "g10"
+      ]
+    }
+  },
+  "provenance": {
+    "added": "2026-11-12",
+    "origin": "constructed",
+    "note": "Built for the labelled set (docs/reference/labelled-set.md, R-S2b2)."
+  }
+}

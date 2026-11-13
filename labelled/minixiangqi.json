@@ -1,0 +1,193 @@
+{
+  "schema_version": 31,
+  "name": "minixiangqi",
+  "description": "Minixiangqi, xiangqi on a 7x7 board without a river, devised in 1973 by Shigenobu Kusumoto. Each side has two chariots, two cannons, two horses, a general and five soldiers; there are no advisors or elephants. Soldiers step forward or sideways from the start, the horse is blocked by a piece beside it, the cannon takes by jumping one piece, and the general stays in its 3x3 palace and may never face the other across an open file. A player with no legal move loses. One departure: perpetual check and chasing are counted as an ordinary repetition draw rather than forbidden.",
+  "board": {
+    "width": 7,
+    "height": 7
+  },
+  "pieces": [
+    {
+      "id": "S",
+      "name": "soldier",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "symmetry": "none",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "H",
+      "name": "horse",
+      "value": 4,
+      "moves": [
+        {
+          "kind": "lame",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "chariot",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "cannon",
+      "value": 4.5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        },
+        {
+          "kind": "hop",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "general",
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "royal": true,
+      "region": [
+        "c1",
+        "d1",
+        "e1",
+        "c2",
+        "d2",
+        "e2",
+        "c3",
+        "d3",
+        "e3"
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "C",
+        "squares": [
+          "b1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "H",
+        "squares": [
+          "c1",
+          "e1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "a2",
+          "c2",
+          "d2",
+          "e2",
+          "g2"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "royal_facing": "forbidden",
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 120
+  },
+  "provenance": {
+    "added": "2026-11-11",
+    "origin": "human",
+    "author": "Shigenobu Kusumoto",
+    "year": "1973",
+    "source": "pychess.org/variants/minixiangqi",
+    "note": "A published game, entered for the labelled set (docs/reference/labelled-set.md, R-S2b)."
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "game": "labelled/chess-held-runners.json",
+  "spec_hash": "d3c7320a1422",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.6269,
+  "quarter": "Q4",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "no-win",
+  "stratum": "hidden",
+  "side": null,
+  "claim": "Neither side can win: each has a recipe under which it never loses.",
+  "parent": "rulesets/chess.json",
+  "change": "setup: kings, a locked pawn wall and one runner a side; castling removed (no rook stands).",
+  "proof": {
+    "form": "argument",
+    "text": "Setup (`setup.placements`): a locked pawn wall across every file, white pawns on ranks o and o+1 alternately with a black pawn directly above each, so every pawn is blocked head-on and every pawn's diagonal capture squares hold its own pawn or nothing; the wall therefore never moves and never takes. A king may not step next to an enemy pawn's capture square, and every enemy pawn a king could reach is protected, so each king stays on its own side of the wall for the whole game. Each side has one runner past the wall, protected by two of its own wall pawns, with the defending king in front of it. The recipes: White: move only the king, between b1 and b2; if Black's runner steps onto b2, take it with the king. Black: move only the king, between c7 and c6; if White's runner steps onto c6, take it with the king. A runner can advance only onto the square in front of it; with the king on the square in front it cannot move; with the king one square further back it may step forward, and is then next to that king and unprotected (its protectors are wall pawns that never move), so the king takes it. The king always has its other square to go to, since nothing of the other side can reach either square. Mechanically: `labelled/check.py` visits every position reachable while the recipe side follows its recipe and the other side plays anything (repetition and the other clocks walked past), and finds no position the recipe side has lost and none where the recipe leaves it with no allowed move. Wins are reachable: the lines in `checks` are legal games ending in a win for each side, after a king leaves its post. Neither side forces a win within two of its own moves (`shortest` checks). A win here is checkmate only, so the winning lines in `checks` run through a promotion to a queen and a second one before mate.",
+    "checks": [
+      {
+        "type": "recipe",
+        "side": 0,
+        "piece": "K",
+        "squares": [
+          "b1",
+          "b2"
+        ],
+        "take": "b2"
+      },
+      {
+        "type": "recipe",
+        "side": 1,
+        "piece": "K",
+        "squares": [
+          "c7",
+          "c6"
+        ],
+        "take": "c6"
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Kb2-b1",
+          "Kc7-d7",
+          "Kb1-b2",
+          "Kd7-e7",
+          "Pc5-c6",
+          "Ke7-f7",
+          "Pc6-c7",
+          "Kf7-g7",
+          "Pc7-c8=Q",
+          "Kg7-h7",
+          "Qc8-c6",
+          "Kh7-g7",
+          "Qc6xb5",
+          "Kg7-h7",
+          "Qb5-d7",
+          "Kh7-g8",
+          "Pb4-b5",
+          "Kg8-f8",
+          "Pb5-b6",
+          "Kf8-g8",
+          "Pb6-b7",
+          "Kg8-f8",
+          "Pb7-b8=Q"
+        ],
+        "winner": 0
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Kb2-c1",
+          "Kc7-c8",
+          "Kc1-d2",
+          "Pb3-b2",
+          "Kd2-e2",
+          "Pb2-b1=Q",
+          "Ke2-f2",
+          "Qb1-b3",
+          "Kf2-g2",
+          "Qb3xc3",
+          "Kg2-h2",
+          "Qc3-b2",
+          "Kh2-g1",
+          "Pc4-c3",
+          "Kg1-f1",
+          "Pc3-c2",
+          "Kf1-e1",
+          "Pc2-c1=Q"
+        ],
+        "winner": 1
+      },
+      {
+        "type": "shortest",
+        "winner": 0,
+        "moves": 3
+      },
+      {
+        "type": "shortest",
+        "winner": 1,
+        "moves": 3
+      }
+    ]
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "Checked by hand (no double step, no en passant, the kings' squares never attacked) and by an independent search keyed on board, side and en passant (198 and 126 positions, none lost or stuck); both lines end in legal mates."
+  }
+}

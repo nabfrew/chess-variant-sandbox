@@ -1,0 +1,94 @@
+{
+  "schema_version": 31,
+  "name": "breakthrough",
+  "description": "Breakthrough, Dan Troyka's race game (2000; winner of the 2001 8x8 Game Design Competition). Each side fills its first two rows with identical pieces. A piece steps one square straight or diagonally forward onto an empty square, and takes only diagonally forward. The first to reach the far row wins, as does taking every piece of the other side; nothing ever moves back, so the game cannot be drawn.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "runner",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a1",
+          "b1",
+          "c1",
+          "d1",
+          "e1",
+          "f1",
+          "g1",
+          "h1",
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "annihilation",
+    "stalemate": "loss",
+    "reach": {
+      "squares": [
+        "a8",
+        "b8",
+        "c8",
+        "d8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ],
+      "mirror": true,
+      "result": "win"
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 400
+  },
+  "provenance": {
+    "added": "2026-11-11",
+    "origin": "human",
+    "author": "Dan Troyka",
+    "year": "2000",
+    "source": "en.wikipedia.org/wiki/Breakthrough_(board_game); playstrategy.org",
+    "note": "A published game, entered for the labelled set (docs/reference/labelled-set.md, R-S2b)."
+  }
+}

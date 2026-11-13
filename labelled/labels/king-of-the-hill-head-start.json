@@ -1,0 +1,33 @@
+{
+  "game": "labelled/king-of-the-hill-head-start.json",
+  "spec_hash": "f1e40c40ab38",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.2657,
+  "quarter": "Q3",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "forced-win",
+  "stratum": "plain",
+  "side": 0,
+  "claim": "White wins on its first move.",
+  "parent": "rulesets/kingofthehill.json",
+  "change": "setup: White's king starts on e3 instead of e1.",
+  "proof": {
+    "form": "certificate",
+    "text": "White's king on e3 steps to d4 or e4, a hill square (`rules.reach`, piece K, squares d4 e4 d5 e5, result win). Neither square is attacked by Black in the opening, so the move is legal and wins. White moves first. `labelled/verify.py` walks it.",
+    "certificate": "king-of-the-hill-head-start",
+    "certificate_size": 1
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "Ke3-d4 and Ke3-e4 are legal (nothing attacks them) and each wins on arrival."
+  }
+}

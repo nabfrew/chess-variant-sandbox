@@ -494,25 +494,25 @@
   "dryad-black": {
     "file": "svg/dryad-black.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 4147,
+    "bytes": 3866,
     "author": "Chess variant sandbox",
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-    "modified": "drawn for this repository in Cburnett's grammar: a tree with a face in its leaves"
+    "modified": "drawn for this repository in Cburnett's grammar: a tree with its boughs raised like arms"
   },
   "dryad-white": {
     "file": "svg/dryad-white.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 4147,
+    "bytes": 3866,
     "author": "Chess variant sandbox",
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-    "modified": "drawn for this repository in Cburnett's grammar: a tree with a face in its leaves"
+    "modified": "drawn for this repository in Cburnett's grammar: a tree with its boughs raised like arms"
   },
   "duck-black": {
     "file": "svg/duck-black.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 1517,
+    "bytes": 1547,
     "author": "Chess variant sandbox",
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
@@ -521,7 +521,7 @@
   "duck-white": {
     "file": "svg/duck-white.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 1517,
+    "bytes": 1547,
     "author": "Chess variant sandbox",
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
@@ -746,20 +746,20 @@
   "gorgon-black": {
     "file": "svg/gorgon-black.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 4807,
+    "bytes": 7159,
     "author": "Chess variant sandbox",
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-    "modified": "drawn for this repository in Cburnett's grammar: a face crowned with snakes"
+    "modified": "drawn for this repository in Cburnett's grammar: a stern mask crowned with snakes"
   },
   "gorgon-white": {
     "file": "svg/gorgon-white.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 4807,
+    "bytes": 7159,
     "author": "Chess variant sandbox",
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-    "modified": "drawn for this repository in Cburnett's grammar: a face crowned with snakes"
+    "modified": "drawn for this repository in Cburnett's grammar: a stern mask crowned with snakes"
   },
   "grasshopper-black": {
     "file": "svg/grasshopper-black.svg",

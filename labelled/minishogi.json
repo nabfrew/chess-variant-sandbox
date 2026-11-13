@@ -1,0 +1,377 @@
+{
+  "schema_version": 31,
+  "name": "minishogi",
+  "description": "Minishogi, shogi on a 5x5 board, devised around 1970 by Shigenobu Kusumoto of Osaka. Each side has a king, a gold, a silver, a bishop, a rook and one pawn; captured pieces change sides and may be dropped back. Every piece but the king and the gold promotes on the far rank, the pawn always. A pawn may not be dropped on a file already holding one of its side's pawns, nor to give mate. One departure: a fourth repetition is a draw here, where the published rule makes it a loss for the first player (for the checking side under perpetual check).",
+  "board": {
+    "width": 5,
+    "height": 5
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "silver",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "gold",
+      "value": 6,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 8,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 10,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "tokin",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "P"
+    },
+    {
+      "id": "Z",
+      "name": "promoted silver",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "S"
+    },
+    {
+      "id": "H",
+      "name": "horse",
+      "value": 10,
+      "promoted_from": "B",
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "dragon",
+      "value": 12,
+      "promoted_from": "R",
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "G",
+        "squares": [
+          "b1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "a1"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "a2"
+        ]
+      }
+    ],
+    "orientation": "rotate"
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "forbid_immobility": true,
+    "promotion": [
+      {
+        "piece": "P",
+        "ranks": [
+          4
+        ],
+        "to": [
+          "Q"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "S",
+        "ranks": [
+          4
+        ],
+        "to": [
+          "Z"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "B",
+        "ranks": [
+          4
+        ],
+        "to": [
+          "H"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "R",
+        "ranks": [
+          4
+        ],
+        "to": [
+          "D"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      }
+    ],
+    "drops": {
+      "from_captures": true,
+      "no_doubled": [
+        "P"
+      ],
+      "no_mate": [
+        "P"
+      ]
+    },
+    "max_plies": 300,
+    "repetition_draw": 4,
+    "no_progress_draw": 200
+  },
+  "provenance": {
+    "added": "2026-11-11",
+    "origin": "human",
+    "author": "Shigenobu Kusumoto",
+    "year": "1970",
+    "source": "pychess.org/variants/minishogi; en.wikipedia.org/wiki/Minishogi",
+    "note": "A published game, entered for the labelled set (docs/reference/labelled-set.md, R-S2b)."
+  }
+}

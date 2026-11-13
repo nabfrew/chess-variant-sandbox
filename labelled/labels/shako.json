@@ -1,0 +1,37 @@
+{
+  "game": "labelled/shako.json",
+  "spec_hash": "d4bea31a4f58",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.1685,
+  "quarter": "Q3",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b worker (Claude Opus 5.5)",
+  "date": "2026-11-11",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent.",
+  "W": {
+    "low": 2,
+    "high": 2
+  },
+  "L": {
+    "low": 1,
+    "high": 2
+  },
+  "evidence": [
+    {
+      "address": "pychess.org/variants",
+      "read": "2026-11-11",
+      "says": "Shako has a standing place among the server's variants"
+    },
+    {
+      "address": "pychess.org/variants/shako",
+      "read": "2026-11-11",
+      "says": "Jean-Louis Cazaux, 1990; chess with xiangqi's cannon and a one-or-two diagonal leaping elephant; pawns promote on the tenth rank, to an elephant or cannon too"
+    }
+  ],
+  "flagged": false,
+  "in_scale": false,
+  "tier_note": "L: from 1990; the dates of organised play are not given, so 1 to 2."
+}

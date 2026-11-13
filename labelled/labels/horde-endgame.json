@@ -1,0 +1,65 @@
+{
+  "game": "labelled/horde-endgame.json",
+  "spec_hash": "453fb0039c51",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.1674,
+  "quarter": "Q3",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "forced-win",
+  "stratum": "hidden",
+  "side": 1,
+  "claim": "Black wins by force in 8 of its own moves, and no win for either side can come sooner.",
+  "parent": "rulesets/horde.json",
+  "change": "setup: White has pawns on b3 and e2, Black a king on f8; castling removed (no rook stands).",
+  "proof": {
+    "form": "certificate",
+    "text": "Black wins by taking White's last piece (`rules.extinction`). The certificate opens with every White first move and gives Black's move at each of its turns and every White reply, to positions the engine calls won for Black, within 8 Black moves; `labelled/verify.py` walks it. A `shortest` check finds no forced Black win in 7, and White cannot win first along any line of the certificate. A White win is reachable (the `line` check: both pawns promote and mate the bare king), so there is no plain defect.",
+    "checks": [
+      {
+        "type": "shortest",
+        "winner": 1,
+        "moves": 8
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Pe2-e4",
+          "Kf8-g8",
+          "Pe4-e5",
+          "Kg8-h8",
+          "Pe5-e6",
+          "Kh8-g8",
+          "Pe6-e7",
+          "Kg8-h8",
+          "Pb3-b4",
+          "Kh8-g7",
+          "Pb4-b5",
+          "Kg7-f6",
+          "Pb5-b6",
+          "Kf6-e5",
+          "Pb6-b7",
+          "Ke5-d6",
+          "Pb7-b8=Q",
+          "Kd6-d7",
+          "Pe7-e8=Q"
+        ],
+        "winner": 0
+      }
+    ],
+    "certificate": "horde-endgame",
+    "certificate_size": 212
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "An independent ply-counting search: Black's earliest forced win is ply 16 (its 8th move), no White forced win within 9 plies; a White win is reachable (two promotions and mate)."
+  }
+}

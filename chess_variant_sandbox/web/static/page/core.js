@@ -410,8 +410,11 @@ function paintIdentity() {
     // On both servers: the games and the landing page (Q718, Q723), and the changelog,
     // which is a file in the tree, so the local application has it too. None needs a
     // store behind it.
+    // Q1214: *score history*, `/score-history` (SH3), beside *the score* (the user,
+    // 2026-11-12: "Yes, add a link"); both servers serve it.
     foot.append(link(GAMES_PATH, 'games'), ' · ', link('/', 'about'), ' · ',
-      link(SCORE_LINK[0], 'the score'), ' · ', link('#/whats-new', "what's new"));
+      link(SCORE_LINK[0], 'the score'), ' · ', link('/score-history', 'score history'),
+      ' · ', link('#/whats-new', "what's new"));
     if (ACCOUNTS) {
       if (ROUND) foot.append(' · ', link('#/round', 'the round'));
       if (PLAYERS) foot.append(' · ', link('/players', 'players'));

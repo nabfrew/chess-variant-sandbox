@@ -1,0 +1,38 @@
+{
+  "game": "labelled/minixiangqi.json",
+  "spec_hash": "6a4da609da21",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.0099,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b worker (Claude Opus 5.5)",
+  "date": "2026-11-11",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent.",
+  "W": {
+    "low": 2,
+    "high": 2
+  },
+  "L": {
+    "low": 1,
+    "high": 3
+  },
+  "evidence": [
+    {
+      "address": "pychess.org/variants",
+      "read": "2026-11-11",
+      "says": "Minixiangqi has a standing place among the server's variants"
+    },
+    {
+      "address": "pychess.org/variants/minixiangqi",
+      "read": "2026-11-11",
+      "says": "Shigenobu Kusumoto, 1973; the rules as written; perpetual check and chase rules as in xiangqi"
+    }
+  ],
+  "flagged": true,
+  "in_scale": false,
+  "tier_note": "L: devised 1973; the dates of organised play are not given, so 1 to 3.",
+  "departure": "perpetual check and chasing are counted as an ordinary repetition draw rather than forbidden, as the library's xiangqi does"
+}

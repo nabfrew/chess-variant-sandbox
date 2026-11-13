@@ -1,0 +1,37 @@
+{
+  "game": "labelled/chess-without-captures.json",
+  "spec_hash": "9f42cd064b97",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.1348,
+  "quarter": "Q2",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "no-win",
+  "stratum": "plain",
+  "side": null,
+  "claim": "Neither side can win.",
+  "parent": "rulesets/chess.json",
+  "change": "the pieces' moves: no move may capture (every move is made non-capturing, and the pawn's diagonal capture is removed); stated once, written on each of the six pieces.",
+  "proof": {
+    "form": "argument",
+    "text": "Every move of every piece has `mode` move, and the pawn has no capture move, so no piece attacks any square (en passant needs a capture move and none is generated). Check is an attack on the king, so there is never check, and checkmate (`rules.win`) needs check. Stalemate is a draw (`rules.stalemate`). No other rule decides a game. So every game is drawn, by stalemate, insufficient material or a clock.",
+    "checks": [
+      {
+        "type": "no_capture",
+        "depth": 3
+      }
+    ]
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "Hand-set positions with attackers next to the king never gave check; 200 random games all drawn; no_capture holds."
+  }
+}

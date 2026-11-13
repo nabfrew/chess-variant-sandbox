@@ -1,0 +1,84 @@
+{
+  "game": "labelled/held-runners.json",
+  "spec_hash": "ecafa9ff71aa",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.0123,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "no-win",
+  "stratum": "hidden",
+  "side": null,
+  "claim": "Neither side can win: each has a recipe under which it never loses.",
+  "parent": null,
+  "change": "built from nothing: a 7 by 8 board, kings and pawns, a pawn reaching the far rank wins.",
+  "proof": {
+    "form": "argument",
+    "text": "Setup (`setup.placements`): a locked pawn wall across every file, white pawns on ranks o and o+1 alternately with a black pawn directly above each, so every pawn is blocked head-on and every pawn's diagonal capture squares hold its own pawn or nothing; the wall therefore never moves and never takes. A king may not step next to an enemy pawn's capture square, and every enemy pawn a king could reach is protected, so each king stays on its own side of the wall for the whole game. Each side has one runner past the wall, protected by two of its own wall pawns, with the defending king in front of it. The recipes: White: move only the king, between b1 and b2; if Black's runner steps onto b2, take it with the king. Black: move only the king, between c7 and c6; if White's runner steps onto c6, take it with the king. A runner can advance only onto the square in front of it; with the king on the square in front it cannot move; with the king one square further back it may step forward, and is then next to that king and unprotected (its protectors are wall pawns that never move), so the king takes it. The king always has its other square to go to, since nothing of the other side can reach either square. Mechanically: `labelled/check.py` visits every position reachable while the recipe side follows its recipe and the other side plays anything (repetition and the other clocks walked past), and finds no position the recipe side has lost and none where the recipe leaves it with no allowed move. Wins are reachable: the lines in `checks` are legal games ending in a win for each side, after a king leaves its post. Neither side forces a win within two of its own moves (`shortest` checks). The game is won by checkmate or by a pawn arriving on the far rank (`rules.reach`); with every pawn but the runners locked, only a runner can arrive, and the recipes hold both runners.",
+    "checks": [
+      {
+        "type": "recipe",
+        "side": 0,
+        "piece": "K",
+        "squares": [
+          "b1",
+          "b2"
+        ],
+        "take": "b2"
+      },
+      {
+        "type": "recipe",
+        "side": 1,
+        "piece": "K",
+        "squares": [
+          "c7",
+          "c6"
+        ],
+        "take": "c6"
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Pc5-c6",
+          "Kc7-b6",
+          "Pc6-c7",
+          "Kb6-a6",
+          "Pc7-c8"
+        ],
+        "winner": 0
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Kb2-a1",
+          "Pb3-b2",
+          "Ka1-a2",
+          "Pb2-b1"
+        ],
+        "winner": 1
+      },
+      {
+        "type": "shortest",
+        "winner": 0,
+        "moves": 3
+      },
+      {
+        "type": "shortest",
+        "winner": 1,
+        "moves": 3
+      }
+    ]
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "An independent search keyed on the board bytes agrees (171 and 108 positions, none lost, none stuck); no forced win within 3 own moves for either side; both lines replay to wins."
+  }
+}

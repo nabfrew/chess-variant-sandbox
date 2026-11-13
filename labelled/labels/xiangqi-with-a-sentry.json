@@ -1,0 +1,38 @@
+{
+  "game": "labelled/xiangqi-with-a-sentry.json",
+  "spec_hash": "4659ac7bf07a",
+  "label": "null",
+  "source": "proof",
+  "likeness": 0.0167,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken. Of the parent I saw no score: labelled-set.md \u00a70 quotes 0.756 for a xiangqi mutant with a flat army, not for xiangqi.",
+  "kind": "null",
+  "stratum": null,
+  "side": null,
+  "claim": "The sentry never stands on the board, so the game plays exactly as its parent.",
+  "parent": "rulesets/xiangqi.json",
+  "change": "pieces: a piece type, the sentry, is added to the piece list; it is placed nowhere, and nothing promotes into it or drops it.",
+  "proof": {
+    "form": "argument",
+    "text": "The sentry appears in `pieces` and nowhere else: no `setup.placements` entry places it, no `rules.promotion` target names it, and the game has no drops or other rule that could create a piece. So it is never on the board: it cannot move, take, be taken or hold a square, and every position, legal move and ending is the parent's. Mechanically: `same_moves` compares the two games' legal moves, spelled alike, in every position to two plies.",
+    "checks": [
+      {
+        "type": "same_moves",
+        "parent": "rulesets/xiangqi.json",
+        "depth": 2
+      }
+    ]
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "Rules and setup identical to the parent's but for the added piece; 40 seeded random legal lines (12,749 plies) matched the parent's moves and endings at every ply."
+  }
+}

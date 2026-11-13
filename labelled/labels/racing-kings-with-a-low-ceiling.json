@@ -1,0 +1,31 @@
+{
+  "game": "labelled/racing-kings-with-a-low-ceiling.json",
+  "spec_hash": "610c330161b3",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.0469,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "no-win",
+  "stratum": "plain",
+  "side": null,
+  "claim": "Neither side can win.",
+  "parent": "rulesets/racingkings.json",
+  "change": "the king's `region`: ranks 2 to 7 (written for White, reflected for Black, which is the same ranks).",
+  "proof": {
+    "form": "argument",
+    "text": "The only endings with a winner in the spec are `rules.reach` (a king, K, arriving on rank 8) and `rules.win` checkmate. (1) `pieces[K].region` is ranks 2 to 7 for White and, reflected, ranks 7 to 2 for Black: no king may ever stand on rank 8, so `rules.reach` cannot fire. (2) `rules.forbid_check` makes giving check illegal, so no position is check, and checkmate needs check. (3) `rules.stalemate` is a draw. Nothing else in `rules` decides a game (no extinction, check limit, territory or scoring), so every game ends drawn by stalemate or a clock. The kings start on a2 and h2, inside the region."
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "The region is symmetric, so no king can stand on rank 8; no check arose in 500 random legal games, all drawn."
+  }
+}

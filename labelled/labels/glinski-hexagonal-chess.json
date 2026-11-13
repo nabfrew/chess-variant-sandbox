@@ -1,0 +1,33 @@
+{
+  "game": "labelled/glinski-hexagonal-chess.json",
+  "spec_hash": "d7be83b7f1f9",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.0178,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b worker (Claude Opus 5.5)",
+  "date": "2026-11-11",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent.",
+  "W": {
+    "low": 2,
+    "high": 2
+  },
+  "L": {
+    "low": 2,
+    "high": 3
+  },
+  "evidence": [
+    {
+      "address": "en.wikipedia.org/wiki/Hexagonal_chess",
+      "read": "2026-11-11",
+      "says": "invented 1936, launched in Britain 1949; over half a million players at its peak and more than 130,000 sets sold; a 1976 London congress, a 1978 Poland v Great Britain match, an International Hexagonal Chess Federation and a first European Championship in 1980 (that timeline uncited)"
+    }
+  ],
+  "flagged": true,
+  "in_scale": false,
+  "tier_note": "W: no server count and no figure in the millions, so W2 at both ends. L: play from 1949; not established to today, so 2 to 3.",
+  "departure": "stalemate is a draw, where Glinski gave the stalemating side three quarters of a point"
+}

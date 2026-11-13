@@ -1,0 +1,40 @@
+{
+  "game": "labelled/antichess-pawn-ending.json",
+  "spec_hash": "4d26ba4fd624",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.1395,
+  "quarter": "Q2",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "forced-win",
+  "stratum": "hidden",
+  "side": 0,
+  "claim": "White wins by force in 7 of its own moves (the win comes on White's 7th move or on Black's forced reply to it) and in no fewer, and no win for either side can come sooner.",
+  "parent": "rulesets/antichess.json",
+  "change": "setup: White has its king (an ordinary piece here) on f2 and pawns on b5 and h6; Black has a queen on b4 and pawns on b2 and g6.",
+  "proof": {
+    "form": "certificate",
+    "text": "The certificate gives White's move at each of its turns and every Black legal reply to positions the engine calls won for White (White out of pieces or out of moves), within 7 White moves; `labelled/verify.py` walks it. A `shortest` check searches every line and finds no forced White win within 6 White moves, a win on Black's forced reply to White's 6th move included, and the certificate shows Black cannot win first. Black wins are reachable (White can take everything Black offers), so there is no plain defect.",
+    "checks": [
+      {
+        "type": "shortest",
+        "winner": 0,
+        "moves": 7
+      }
+    ],
+    "certificate": "antichess-pawn-ending",
+    "certificate_size": 160
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "An independent ply-counting search: no White forced win within 13 plies, one within 14 (on Black's forced reply to White's 7th move); Black forces nothing within 16; a Black win is reachable."
+  }
+}

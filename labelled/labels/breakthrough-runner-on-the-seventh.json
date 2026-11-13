@@ -1,0 +1,33 @@
+{
+  "game": "labelled/breakthrough-runner-on-the-seventh.json",
+  "spec_hash": "1ba429ade817",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.0155,
+  "quarter": "Q1",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b2 worker (Claude Opus 5.5)",
+  "date": "2026-11-12",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of its parent.",
+  "kind": "forced-win",
+  "stratum": "plain",
+  "side": 0,
+  "claim": "White wins on its first move.",
+  "parent": "labelled/breakthrough.json",
+  "change": "setup: one of White's runners starts on e7 instead of e2, and Black's e7 runner starts on e6.",
+  "proof": {
+    "form": "certificate",
+    "text": "White's runner on e7 steps diagonally onto d8 or f8, taking the black runner there (`pieces[P].moves`, mode both), and arrives on the far row (`rules.reach`, squares a8 to h8 for White), which wins at once. White moves first. The certificate is that one move, walked by `labelled/verify.py`.",
+    "certificate": "breakthrough-runner-on-the-seventh",
+    "certificate_size": 1
+  },
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-12",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context",
+    "given": "the spec file, describe_rules' text, the claim and the proof (with its certificate or checks); told not to read docs/, runs/, other labels, the build log or any score, and to run no player",
+    "notes": "Both captures onto row 8 are legal and end the game at once for White; nothing ends it sooner."
+  }
+}

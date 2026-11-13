@@ -1,0 +1,32 @@
+{
+  "game": "labelled/janus.json",
+  "spec_hash": "3d56b3cf64cf",
+  "label": "good",
+  "source": "record",
+  "likeness": 0.2742,
+  "quarter": "Q3",
+  "likeness_commit": "74eaa6ca2",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2b worker (Claude Opus 5.5)",
+  "date": "2026-11-11",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken, and I saw no score of it or of any parent.",
+  "W": {
+    "low": 2,
+    "high": 2
+  },
+  "L": {
+    "low": 2,
+    "high": 3
+  },
+  "evidence": [
+    {
+      "address": "en.wikipedia.org/wiki/Janus_Chess",
+      "read": "2026-11-11",
+      "says": "Werner Schöndorf, 1978; popular in Europe with regular tournaments that draw strong players; played online on BrainKing.com"
+    }
+  ],
+  "flagged": false,
+  "in_scale": false,
+  "tier_note": "L: from 1978; whether play continues today is not stated, so 2 to 3."
+}
