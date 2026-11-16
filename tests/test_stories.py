@@ -333,7 +333,8 @@ def test_every_story_holds_while_its_pair_reads_as_told(scores: dict[str, Any],
 
 
 @pytest.mark.parametrize("force", ["failed turns viable", "fixed ruled out",
-                                   "fixed provisional", "failed unmeasured"])
+                                   "fixed provisional and ruled out",
+                                   "failed provisional and viable", "failed unmeasured"])
 def test_a_story_whose_pair_stops_reading_as_told_leaves_the_pool(
         force: str, scores: dict[str, Any], tmp_path: Path) -> None:
     story = stories.BY_KEY["stones"]
@@ -342,8 +343,10 @@ def test_a_story_whose_pair_stops_reading_as_told_leaves_the_pool(
         scores[failed] = made_score(True)
     elif force == "fixed ruled out":
         scores[fixed] = made_score(False)
-    elif force == "fixed provisional":
-        scores[fixed] = made_score(True, status="provisional")
+    elif force == "fixed provisional and ruled out":
+        scores[fixed] = made_score(False, status="provisional")
+    elif force == "failed provisional and viable":
+        scores[failed] = made_score(True, status="provisional")
     else:
         del scores[failed]
     rendered = stories.render(Roots(tmp_path))
@@ -356,10 +359,59 @@ def test_a_story_whose_pair_stops_reading_as_told_leaves_the_pool(
 def test_with_every_library_pair_gone_a_constructed_story_stays(
         scores: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     for digest in list(scores):
-        scores[digest] = made_score(True, status="provisional")
+        del scores[digest]
     assert stories.render(Roots(tmp_path))["pool"] == []
     monkeypatch.setattr(stories, "STORIES", (*stories.STORIES, stories.GROUND))
     assert stories.render(Roots(tmp_path))["pool"] == ["ground"]
+
+
+def test_every_story_stays_marked_while_the_library_is_provisional(
+        scores: dict[str, Any], tmp_path: Path) -> None:
+    """R-S6f: between a change to the scorer, the core or the pass and the library's replay,
+    every estimate is provisional. Each story stays, marked, its verdicts each the last answer
+    with the version and the day, never as current."""
+    for story in LIBRARY_STORIES:
+        scores[story.wrong.game.hash] = made_score(False, status="provisional")
+        scores[story.right.game.hash] = made_score(True, status="provisional")
+    rendered = stories.render(Roots(tmp_path))
+    assert rendered["pool"] == ["stones", "door", "blast", "sweep"], rendered["dropped"]
+    for told in rendered["stories"]:
+        assert told["provisional"] is True
+        for side, verdict in (("failed", "ruled out"), ("fixed", "stays in")):
+            said = told[side]
+            assert said["status"] == stories.PROVISIONAL
+            assert said["line"].startswith(stories.PROVISIONAL_LINE + " · " + verdict)
+            assert "scoring rules version 12" in said["line"]
+            assert said["line"].endswith("24 October 2026")
+
+
+def test_one_provisional_side_marks_the_story(scores: dict[str, Any], tmp_path: Path) -> None:
+    story = stories.BY_KEY["door"]
+    scores[story.right.game.hash] = made_score(True, status="provisional")
+    told = {s["key"]: s for s in stories.render(Roots(tmp_path))["stories"]}
+    assert told["door"]["provisional"] is True
+    assert told["door"]["failed"]["status"] == stories.CURRENT
+    assert not told["door"]["failed"]["line"].startswith(stories.PROVISIONAL_LINE)
+    assert [k for k, s in told.items() if s["provisional"]] == ["door"]
+
+
+def test_the_states_are_spelt_as_the_library_spells_them() -> None:
+    assert (stories.CURRENT, stories.PROVISIONAL) == (library.CURRENT, library.PROVISIONAL)
+
+
+@pytest.mark.parametrize("iso,said", [("2026-11-09", "9 November 2026"),
+                                      ("2026-01-31T10:00", "31 January 2026"),
+                                      (None, ""), ("soon", ""), ("2026-13-01", "")])
+def test_a_day_in_words(iso: Any, said: str) -> None:
+    assert stories.day_words(iso) == said
+
+
+def test_a_storys_qualities_are_the_current_weights_families() -> None:
+    """After the replay every score is the current version's: each bar a story draws is a
+    family that version scores (v14 dropped *converting a lead*, not a family; R-S6f)."""
+    from chess_variant_sandbox.metrics.scoring import DEFAULT_WEIGHTS, load_weights
+
+    assert set(stories.QUALITIES) == set(load_weights(DEFAULT_WEIGHTS).families.values())
 
 
 def test_a_constructed_story_that_stops_replaying_leaves_the_pool(
@@ -425,18 +477,22 @@ def test_a_library_storys_numbers_are_its_games_own_measurement(measured_runs: P
         if not reads_as_told:
             assert story.key not in rendered["pool"]
             continue
-        if story.key not in told:  # stale here: dropped, never shown provisional
-            assert story.key in [d["key"] for d in rendered["dropped"]]
-            continue
+        assert story.key in told, rendered["dropped"]
         for side, played in (("failed", story.wrong.game), ("fixed", story.right.game)):
             said, canonical = told[story.key][side], stored[played.hash]
             assert said["index"] == canonical["index"]
             assert said["runs"] == len(canonical["seeds"]) and said["runs"] >= 1
             assert said["viable"] == canonical["viable"]
-            assert said["status"] == "current"
+            # Current, or the last answer marked provisional (R-S6f), never unmarked.
+            # Or unread (R-S8): its own mark leads the line, never unmarked either.
+            assert said["status"] in (stories.CURRENT, stories.PROVISIONAL, stories.UNREAD)
+            assert (said["status"] == stories.PROVISIONAL) == said["line"].startswith(
+                stories.PROVISIONAL_LINE)
+            assert (said["status"] == stories.UNREAD) == said["line"].startswith(
+                stories.UNREAD_LINE)
             if canonical["index"] is None:
                 # Too few runs gave a total (`seeds.MIN_TOTALS`): the page says only that.
-                assert said["line"] == "ruled out"
+                assert "ruled out" in said["line"] and "run" not in said["line"]
             else:
                 assert f"{canonical['index']:.3f}" in said["line"]
                 assert f"{said['runs']} run" in said["line"]

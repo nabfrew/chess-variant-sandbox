@@ -19,14 +19,18 @@ stay inline in `schema.py`.
 Kept rows only: what SR2 and SR2b lifted (L5, L6, T2 and T5 in part, H1, H2, H6, W9, N20,
 V5 and V6 in part) and the core lifts of SR3d (K2), SR3e (K3), SR3f (O1, O2), SR3g (P9,
 P10), SR4b (W4), SR4c (W5), SR4d (H11), SR4e (T6, T7), SR4f (T8), SR4h (V5, V6, V9), SR4i (T9), SR4j (T10), SR5a (T1, T4),
-SR5b (V2), SR5c and SR5c2 (V1), SR5d (V3, V4), SR5g (P1), SR5h (P5), SR5i (P6, P7), SR5j (O12), SR5k (O10, O11), SR6a (W1), SR6b (W2), SR6c (W3), SR6d (W6), SR7a (L1), SR7b (L3), SR7d (L2), SR7e (R11), SR7f (R18), SR7g (R19), SR7n (R20) is not here, or is here as the
+SR5b (V2), SR5c and SR5c2 (V1), SR5d (V3, V4), SR5g (P1), SR5h (P5), SR5i (P6, P7), SR5j (O12), SR5k (O10, O11), SR6a (W1), SR6b (W2), SR6c (W3), SR6d (W6), SR7a (L1), SR7b (L3), SR7d (L2), SR7e (R11), SR7f (R18), SR7g (R19), SR7n (R20), SR8a (H3), SR8d (R6) is not here, or is here as the
 narrower case still refused.
 """
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Iterable
+from pathlib import Path
 from typing import NamedTuple
+
+import tomllib
 
 
 class Refusal(NamedTuple):
@@ -78,7 +82,8 @@ REFUSALS: tuple[Refusal, ...] = (
     # L3 (wild pieces beside a long turn) lifted by SR7b: a phase follows every move, as in a
     # turn of one, so no legality filter needs to know whether a move ends the turn.
     _rounds("L4", _LONG_TURN, "a turn longer than one move", "a round is one secret move each"),
-    Refusal("L7", "rules.duck", "rules.turn", "rules.duck beside rules.turn: a turn already has its two halves"),
+    # L7 (the duck beside a long turn) lifted by SR8c: the turn's piece moves, then one duck move
+    # at its end, for any rules.turn (`moves: 1` included).
     # §2.3 Rounds. R1 (its message says whether the win is stated), R14 (three keys) and R16
     # (it names the npc) stay inline.
     _rounds("R2", "rules.checkmate", "rules.checkmate", "there is no checkmate when both players move at once"),
@@ -88,7 +93,9 @@ REFUSALS: tuple[Refusal, ...] = (
         "R5", 'rules.royal_facing: "forbidden"', "rules.royal_facing 'forbidden'",
         "two legal moves made together can open the file, which neither did alone",
     ),
-    _rounds("R6", "rules.castling", "rules.castling", "castling moves two pieces in one move, and a round has one each"),
+    # R6 (castling in rounds) lifted by SR8d: only the king's arrival takes part in the
+    # round's collisions; after them the partner moves to its castled square if that square
+    # is empty, and otherwise stays where it is (rounds.md §4 step 4).
     _rounds(
         "R7", "rules.en_passant", "rules.en_passant",
         "it reads the last move, and the pawn that stepped twice may move again this round",
@@ -98,9 +105,12 @@ REFUSALS: tuple[Refusal, ...] = (
         "which pieces a sweep removes depends on who stood on its path when, and a "
         "round has no such time",
     ),
+    # R9 (a portal a player moves, in rounds) lifted by SR8e: the round's portal moves are made
+    # first, and the piece move then reads the ends where they now stand (rounds.md §4 step 1).
+    # What stays refused is the straight-back bar, which names the one move after an end's.
     _rounds(
-        "R9", "rules.portals[] moved_by", "a portal a player moves (moved_by)",
-        "a piece going through a portal moved in the same round needs a third timing rule",
+        "R9", "rules.portals[] no_straight_back", "a portal's straight-back bar (no_straight_back)",
+        "the bar holds an end on the very next move, and in a round both players move next",
     ),
     _rounds(
         "R10", 'rules.strike.position: "choose"', "rules.strike.position 'choose'",
@@ -201,19 +211,17 @@ REFUSALS: tuple[Refusal, ...] = (
         "allowed)",
     ),
     # §2.5 Promotion, the hand and extinction. H4 (its message names the position) stays inline.
-    Refusal(
-        "H3", "rules.promotion.only_lost", "rules.promote_on_entry",
-        "rules.promotion.only_lost beside rules.promote_on_entry: a piece that enters "
-        "its zone takes the first target listed, with no move in which to withhold it; "
-        "drop one of the two",
-    ),
+    # H3 (`only_lost` beside `promote_on_entry`) was lifted by SR8a: an entering piece takes
+    # the first target still offered, none if none (`Game::arriving`).
     Refusal(
         "H5", "rules.drops.either_face", "rules.strike.switches_sides",
         "rules.drops.either_face beside rules.strike.switches_sides: a capture "
         "already changes a piece's side, so what a taken piece becomes has two "
         "answers; drop one of the two",
     ),
-    # §2.6 Sweeps, in `_check_sweep_coherence`'s order. W7 (it names the piece) stays inline.
+    # §2.6 Sweeps, in `_check_sweep_coherence`'s order. W7 (it names the piece) stays inline,
+    # lifted by SR8b but beside folds: a promoting sweeper promotes by its landing square, and
+    # its word's promotion field is a fold step in a fold game (`moves.move_through`).
     # W1 lifted by SR6a (the sweep switch, `moves[].effects`) but for a chosen square.
     Refusal(
         "W1", _SWEEP, 'rules.strike.position: "choose"',
@@ -480,12 +488,8 @@ def _income(rid: str, second: str, why: str) -> Refusal:
 
 
 INCOME_REFUSALS: tuple[Refusal, ...] = (
-    _income(
-        "I1", 'rules.scoring.count "points"',
-        "income into the points tally is a later value of the rule, and the tally is not in "
-        "the position's key, so a holder shuffling in place would repeat the position and draw "
-        "while it banked points",
-    ),
+    # I1 (a points count) lifted by U2 (`docs/reference/unheld-pairs-plan.md` §2.2): income is
+    # paid into the purse and never into the points, which count bounties alone.
     _income(
         "I2", "rules.simultaneous",
         "a round has no start of one player's turn to pay at, so when income lands in a round "
@@ -493,7 +497,103 @@ INCOME_REFUSALS: tuple[Refusal, ...] = (
     ),
 )
 
-_ALL = REFUSALS + PUSH_REFUSALS + UPKEEP_REFUSALS + PASS_REFUSALS + INCOME_REFUSALS
+# U1 (`docs/reference/unheld-pairs-plan.md` §1.2, §1.3): ten combinations the validator used to
+# accept and the engine then refused, from `engine/bridge.py::rust_supports` or the compiler. The
+# validator now names each (`spec/engine_holds.py`, which asks the compiled tables the question the
+# boundary asks); the boundary keeps its refusal as the second line. Prefixed ``hold.``, by the
+# record's ids: H1 to H6 are pairs not built yet, C1 to C4 limits of the move word's five-bit tag.
+_MOVE_WORD = "the move word has five bits for it, so the engine cannot play more"
+
+
+def _hold(rid: str, first: str, second: str, message: str) -> Refusal:
+    return Refusal(f"hold.{rid}", first, second, message)
+
+
+HOLD_REFUSALS: tuple[Refusal, ...] = (
+    _hold(
+        "H1", _PUSH, "rules.drops.gating",
+        "a push (pieces[].moves[].push) beside rules.drops.gating: a piece's first move may "
+        "push and gate a piece in at once, and the engine does not play that yet; the two "
+        "rules cannot be combined yet, so leave one out",
+    ),
+    _hold(
+        "H2", _PUSH, 'pieces[].control "majority" or "shared"',
+        'a push (pieces[].moves[].push) beside a piece nobody owns that a player moves '
+        '(pieces[].control "majority" or "shared", placed for nobody): the engine does not yet '
+        "play a held or shared piece in a game with pushes, whether or not that piece pushes; "
+        "the two rules cannot be combined yet, so leave one out",
+    ),
+    _hold(
+        "H3", _PUSH, 'rules.npcs[].pounce "attackers"',
+        'a push (pieces[].moves[].push) beside a wild piece that pounces on its attackers '
+        '(rules.npcs[].pounce "attackers"): the engine cannot yet count a pushing piece among '
+        'a pouncer\'s attackers; the two rules cannot be combined yet, so leave one out (a '
+        'pouncer on "prey" may stay)',
+    ),
+    _hold(
+        "H4", _UPKEEP, _PUSH,
+        "rules.purse.upkeep beside a push (pieces[].moves[].push): the engine cannot yet charge "
+        "a move's cost when the move shoves other pieces; the two rules cannot be combined "
+        "yet, so leave one out",
+    ),
+    _hold(
+        "H5", 'pieces[].moves[].displace "back"', 'a second displacing hop of the same piece',
+        'two displacing hops of one piece (pieces[].moves[].displace "back") reach one square: '
+        "the engine finds a displacement's line by the one hop that reaches its square, so it "
+        "cannot yet tell which line such a move shifts; give the piece one displacing hop per "
+        "line (merge the two, or keep them from reaching the same squares)",
+    ),
+    _hold(
+        "H6", _PUSH, "pieces[].moves[].push.along of a second move of the same piece",
+        "two pushing moves of one piece reach one landing and push the piece there two ways "
+        "(pieces[].moves[].push.along differs): a landing holds one push direction, so the "
+        "engine cannot yet tell which way such a move pushes; give the moves that share a "
+        "landing one 'along'",
+    ),
+    # U1b (`docs/reference/refusal-debt.md` §12; fuzz find F5): the duck makes every turn long
+    # (`compile._compile_duck_turn`), and the boundary holds upkeep beside any long turn, so this
+    # is `upkeep.U2`'s hold reached through the duck rather than through `rules.turn`.
+    _hold(
+        "H7", _UPKEEP, "rules.duck",
+        "rules.purse.upkeep beside the duck (rules.duck): a duck game's turn is a piece move and "
+        "then the duck's move, and the engine does not yet charge a move's cost in a turn of "
+        "more than one move; the two rules cannot be combined yet, so leave one out",
+    ),
+    _hold(
+        "C1", _PUSH, "the move word: push directions",
+        "more than 32 push directions in one game (pieces[].moves[].push, counting both "
+        "players and every facing): a move names its push direction, and "
+        f"{_MOVE_WORD}; use fewer pushing vectors or a smaller symmetry (too expensive: a "
+        "wider move word)",
+    ),
+    _hold(
+        "C2", _SWEEP, "the move word: sweep rays",
+        'more than 32 sweep rays from one square (pieces[].moves[].kind "sweep") on a board '
+        "where two of them reach one square by different paths: a move names its ray there, "
+        "and "
+        f"{_MOVE_WORD}; use fewer sweep vectors or a smaller symmetry (too expensive: a wider "
+        "move word)",
+    ),
+    _hold(
+        "C3", _SWEEP, 'rules.portals[].kind: "fold"',
+        'a sweep (pieces[].moves[].kind "sweep") beside fold portals with more than 32 sweep '
+        "rays from one square, or a sweep ray longer than 31 squares: a move through a fold "
+        "names its ray and its step on the ray in five bits each, so the engine cannot play "
+        "it; use fewer sweep vectors, a range of at most 31, or a smaller joined board (too "
+        "expensive: a wider move word)",
+    ),
+    _hold(
+        "C4", 'rules.strike or rules.contacts position "choose"', "the move word: landing squares",
+        'a strike or contact placed "choose" whose landing offers more than 32 squares for one '
+        "capture (rules.strike.landing or rules.contacts.landing): a move names its landing, "
+        f"and {_MOVE_WORD}; use fewer landing vectors or a smaller symmetry (too expensive: a "
+        "wider move word)",
+    ),
+)
+
+_ALL = (
+    REFUSALS + PUSH_REFUSALS + UPKEEP_REFUSALS + PASS_REFUSALS + INCOME_REFUSALS + HOLD_REFUSALS
+)
 
 
 def _index() -> dict[tuple[str, str], Refusal]:
@@ -527,3 +627,27 @@ def refusal_rows(rid: str) -> tuple[Refusal, ...]:
 def refused_ids(errors: Iterable[str]) -> set[str]:
     """The ids of the refused pairs among ``errors``, a validator's messages."""
     return {_BY_MESSAGE[error].id for error in errors if error in _BY_MESSAGE}
+
+
+# ------------------------------------------------------------------------- reasons
+
+# Why each refused combination is refused (R-L1b). The one source is `refusals.toml`, beside
+# this file: one `[[refusal]]` entry per refused pair, naming the row of the tables above or
+# the message of `schema.py` it classifies (`at`) and its `reason`. `docs/reference/refusal-debt.py`
+# holds it one-to-one against the code (a refusal with no entry, or an entry naming no
+# refusal, fails `tests/test_refusal_debt.py`), and `reference.py` prints its counts in
+# `RULES.md`. `inert` is a fourth value, not counted: refusing it loses the designer nothing.
+REASONS: tuple[str, ...] = ("contradictory", "too_expensive", "not_built")
+REASONS_FILE = Path(__file__).with_name("refusals.toml")
+
+
+@functools.cache
+def reason_counts() -> dict[str, int]:
+    """How many refused combinations carry each reason, in `REASONS`' order."""
+    with REASONS_FILE.open("rb") as handle:
+        entries = tomllib.load(handle).get("refusal", [])
+    counts = {reason: 0 for reason in REASONS}
+    for entry in entries:
+        if entry.get("reason") in counts:
+            counts[entry["reason"]] += 1
+    return counts

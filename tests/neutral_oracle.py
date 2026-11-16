@@ -2,8 +2,8 @@
 
 `setup.placements[].player: "nobody"` puts pieces in nobody's block; `pieces[].control:
 "majority"` lets the player with **strictly more** of their own pieces next to one move it, as
-one of their moves, in frame 0, onto an empty square or taking a non-royal piece of the other
-player its type may take. A tie, none against none included, means nobody moves it. This module
+one of their moves, in its holder's frame (SR8i), onto an empty square or taking a non-royal
+piece of the other player its type may take. A tie, none against none included, means nobody moves it. This module
 works the rule out a second way and the tests hold the core to it, move list by move list.
 CLAUDE.md rule 3 allows it: it is a declared test oracle.
 
@@ -16,12 +16,21 @@ wrap is held by a hand position in `tests/test_neutral_pieces.py`.
 **The holder** is counted here from the board's bytes: every piece of each player on a
 neighbour square, royals included.
 
-**A held neutral's moves** come from the *frame-0 twin*: the same position with the neutral's
-byte recoloured to the holder's piece of the same type at facing 0, asked of the core's
-ordinary generator (`pseudo_legal_moves`, the holder to move), kept where they start on the
-neutral's square, are not themselves foreign, and land on an empty square or on a non-royal
-piece of the holder's opponent (never on another nobody's piece). Each is marked
-`MOVE_FOREIGN`. The core's own walk (`foreign.rs::push_held`) never sees the twin.
+**A held neutral's moves** come from the *holder's twin*: the same position with the neutral's
+byte recoloured to the holder's own piece of the same type pointing the same way on the board
+(SR8i, `docs/plan-schema-next.md` §2.11 *the mover's reading*: its facing read off
+`facing_headings`, its never-moved mark kept), asked of the core's ordinary generator
+(`pseudo_legal_moves`, the holder to move), kept where they start on the neutral's square, are
+not themselves foreign, and land on an empty square or on a non-royal piece of the holder's
+opponent (never on another nobody's piece), or turn it (named by nobody's facing), or (SR8j,
+O15) promote it as the twin promotes, the holder's own targets but a royal, a wild type or the
+duck (`promoted_byte` is what the promoted piece must be: nobody's, at its type's initial facing
+in nobody's frame), or (SR8k, O16) sweep as the twin sweeps where every piece the twin's sweep
+removes is the other player's and not royal (`CompiledSpec.sweep_victims` on the twin's board):
+the holder's pieces, a royal and another nobody's piece end a held sweep's ray. Each is marked
+`MOVE_FOREIGN`. A type with a hop screen named by owner is asked of two twins (see
+`_twin_words`). The core's own walk (`foreign.rs::push_held`) never sees the twin, nor the
+compiler's `held_frames`.
 
 **Hires and bribes** (TC6, `docs/plan-turncoat.md` §5.5) are worked out here too: under
 `rules.purse`, a nobody's piece of a priced type (a hire, at its price) or, under
@@ -57,9 +66,13 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_FOREIGN,
     MOVE_HIRE,
     MOVE_NORMAL,
+    MOVE_PROMOTION,
+    MOVE_ROTATE,
+    MOVE_SWEEP,
     encode_move,
     move_foreign,
     move_from,
+    move_promotion,
     move_to,
     move_type,
 )
@@ -85,6 +98,7 @@ class NeutralOracle:
         self.height = compiled.height
         self.n_types = compiled.n_types
         self.n_facings = compiled.n_facings
+        self.headings = compiled.facing_headings()
         self.royal = set(compiled.royal_types)
         self.ids = [piece["id"] for piece in spec["pieces"]]
         board = spec["board"]
@@ -141,12 +155,25 @@ class NeutralOracle:
             if piece_type in self.hire or piece_type in self.bribe:
                 self.near[piece_type] = next_to(piece)
         self.checkmate = rules.get("win", "checkmate") == "checkmate"
+        # SR8j (O15): the types no player owns, which a held piece never promotes into: the
+        # wild types and the duck (read off the spec, not the compiler's table).
+        unowned_ids = {npc.get("piece") for npc in rules.get("npcs") or []}
+        if isinstance(rules.get("duck"), dict):
+            unowned_ids.add(rules["duck"].get("piece"))
+        self.unowned = {self.ids.index(pid) for pid in unowned_ids if pid in self.ids}
         # Q1077: the types whose held pieces take royals, and the game without the key, whose
         # check is the rest of the attack (the boards of the two read alike: same types).
         self.takers = {
             piece_type for piece_type, piece in enumerate(spec["pieces"])
             if piece.get("takes_royal") is True and piece_type in self.majority
         }
+        # SR8k (O16): a royal ends a held sweep's ray, so a held sweeper that takes royals
+        # takes them only by its other moves, which the twin's words do not tell apart from its
+        # sweeps over an empty line; the oracle reads no such type.
+        assert not any(
+            move.get("kind") == "sweep"
+            for piece_type in self.takers for move in spec["pieces"][piece_type].get("moves", ())
+        ), "the oracle reads no held sweeper that takes royals"
         self.plain = engine
         if self.takers:
             without = copy.deepcopy(spec)
@@ -162,8 +189,8 @@ class NeutralOracle:
     def type_of(self, value: int) -> int:
         return (value - 1) % self.n_types
 
-    def byte(self, player: int, piece_type: int) -> int:
-        return (player * self.n_facings) * self.n_types + piece_type + 1
+    def byte(self, player: int, piece_type: int, facing: int = 0) -> int:
+        return (player * self.n_facings + facing) * self.n_types + piece_type + 1
 
     # ---------------------------------------------------------------- the rule
 
@@ -184,19 +211,100 @@ class NeutralOracle:
             return -1
         return 0 if count[0] > count[1] else 1
 
-    def _twin_targets(self, state: GameState, square: int, player: int) -> list[int]:
-        """Where the neutral on ``square`` could land as ``player``'s piece of its type at
-        facing 0 (the frame-0 twin), by the plain game's ordinary generator."""
+    def facing(self, value: int) -> int:
+        """The facing index a byte carries (nobody's: relative to the first player's forward)."""
+        return ((value - 1) // self.n_types) % self.n_facings
+
+    def holders_facing(self, player: int, facing: int) -> int:
+        """SR8i: the facing index of ``player``'s own piece that points where a nobody's piece
+        at ``facing`` points, read off the drawing table (`facing_headings`), whose row 0 is
+        nobody's frame as it is the first player's."""
+        if self.n_facings == 1:
+            return 0
+        headings = self.headings
+        return headings[player].index(headings[0][facing])
+
+    def _twin(self, state: GameState, square: int, player: int, others: int | None) -> GameState:
+        """The position with the neutral on ``square`` recoloured to ``player``'s own piece of
+        its type pointing the same way (SR8i: the holder's twin), ``player`` to move; with
+        ``others`` set, every other nobody's piece recoloured to that player's (at facing 0),
+        which is how the twin is asked about a hop screen named by owner."""
         board = bytearray(state.board)
-        board[square] = self.byte(player, self.type_of(state.board[square]))
-        twin = dataclasses.replace(state, board=bytes(board), side_to_move=player)
+        value = state.board[square]
+        # A type that does not face has no arrow: its twin is the holder's own piece at facing
+        # 0, the holder's forward, whatever other types face (SR8j's fix to SR8i's reading).
+        stated = self.spec["pieces"][self.type_of(value)].get("facing")
+        faces = isinstance(stated, dict) and int(stated.get("axes", 1)) > 1
+        facing = self.holders_facing(player, self.facing(value)) if faces else 0
+        board[square] = self.byte(player, self.type_of(value), facing)
+        if others is not None:
+            for at, other in enumerate(state.board):
+                if at != square and other and self.owner(other) == NOBODY_BLOCK:
+                    board[at] = self.byte(others, self.type_of(other))
+        return dataclasses.replace(state, board=bytes(board), side_to_move=player)
+
+    def _twin_moves(self, twin: GameState, square: int) -> set[tuple[int, int, int]]:
+        """SR8k (O16): a twin's sweep is kept only where every piece it removes is one its
+        holder could capture with it, the other player's non-royal pieces: the twin sweeps its
+        own side's and nobody's pieces too, and those end a held sweep's ray."""
+        holder = twin.side_to_move
+        spec = self.plain.spec
+
+        def sweeps_only_what_it_may(move: int) -> bool:
+            return all(
+                self.owner(value) == 1 - holder and self.type_of(value) not in self.royal
+                for _, value in spec.sweep_victims(twin.board, move, holder)
+            )
+
+        return {
+            (move_type(move), move_to(move), move_promotion(move))
+            for move in self.plain.pseudo_legal_moves(twin)
+            if not move_foreign(move) and move_from(move) == square
+            and (
+                move_type(move) in (MOVE_NORMAL, MOVE_ROTATE, MOVE_PROMOTION)
+                or (move_type(move) == MOVE_SWEEP and sweeps_only_what_it_may(move))
+            )
+        }
+
+    def promoted_byte(self, holder: int, target: int) -> int:
+        """SR8j (O15): the nobody's byte a held piece ``holder`` promotes to ``target`` becomes:
+        nobody's piece of the type entering play, at the type's initial facing read in nobody's
+        frame (the first player's forward), whoever held it; 0 for a type that does not face."""
+        facing = 0
+        piece = self.spec["pieces"][target]
+        stated = piece.get("facing")
+        if self.n_facings > 1 and isinstance(stated, dict) and int(stated.get("axes", 1)) > 1:
+            names = ("forward", "right", "backward", "left")
+            facing = names.index(stated.get("initial", "forward")) // (4 // self.n_facings)
+        return self.byte(NOBODY_BLOCK, target, facing)
+
+    def _twin_words(self, state: GameState, square: int, player: int) -> set[tuple[int, int, int]]:
+        """``(kind, target, facing)`` of the neutral on ``square`` moved as ``player``'s twin.
+
+        SR8i (O19): a nobody's piece screens a held hop only under ``any``. The plain
+        generator reads ``enemy`` as *not mine*, so a type with an owner-named screen is
+        asked twice, the other nobody's pieces once the holder's and once the opponent's, and
+        a move is kept where both agree (one hop's screen is right in both; the oracle refuses
+        a type with screens of both owners, where the two could disagree for two hops)."""
+        piece = self.spec["pieces"][self.type_of(state.board[square])]
+        screens = {move.get("screen") for move in piece.get("moves", ()) if move.get("kind") == "hop"}
+        if not screens & {"own", "enemy"}:
+            return self._twin_moves(self._twin(state, square, player, None), square)
+        assert not {"own", "enemy"} <= screens, "the oracle reads one owner-named screen a type"
+        return self._twin_moves(self._twin(state, square, player, player), square) & self._twin_moves(
+            self._twin(state, square, player, 1 - player), square
+        )
+
+    def _twin_targets(self, state: GameState, square: int, player: int) -> list[int]:
+        """Where the neutral on ``square`` could land as ``player``'s twin."""
         return [
-            move_to(move) for move in self.plain.pseudo_legal_moves(twin)
-            if not move_foreign(move) and move_from(move) == square and move_type(move) == MOVE_NORMAL
+            target for kind, target, _ in self._twin_words(state, square, player)
+            if kind == MOVE_NORMAL
         ]
 
     def held_moves(self, state: GameState) -> list[int]:
-        """The side to move's held neutrals' pseudo-legal moves, from the frame-0 twin."""
+        """The side to move's held neutrals' pseudo-legal moves, from the holder's twin: its
+        landings, and (SR8i, O9) its turns, named by the facing nobody's byte will carry."""
         player = state.side_to_move
         found: list[int] = []
         for square, value in enumerate(state.board):
@@ -206,12 +314,31 @@ class NeutralOracle:
             if not shared and self.holder(state, square) != player:
                 continue
             takes_royal = self.type_of(value) in self.takers
-            for target in self._twin_targets(state, square, player):
+            for kind, target, field in self._twin_words(state, square, player):
+                if kind == MOVE_ROTATE:
+                    nobodys = self.headings[0].index(self.headings[player][field])
+                    assert self.holders_facing(player, nobodys) == field
+                    found.append(encode_move(square, square, MOVE_ROTATE, nobodys) | MOVE_FOREIGN)
+                    continue
                 occupant = state.board[target]
                 if occupant and (
                     self.owner(occupant) != 1 - player
                     or (self.type_of(occupant) in self.royal and not takes_royal)
                 ):
+                    continue
+                if kind == MOVE_PROMOTION:
+                    # SR8j (O15): the twin's own promotion, chosen by the holder, never into a
+                    # royal or a type no player owns (a wild type, the duck).
+                    if field in self.royal or field in self.unowned:
+                        continue
+                    found.append(encode_move(square, target, MOVE_PROMOTION, field) | MOVE_FOREIGN)
+                    continue
+                if kind == MOVE_SWEEP:
+                    # SR8k (O16): the twin's sweep over what its holder could capture, a
+                    # promoting one (type + 1 in the field) as SR8j's promotion.
+                    if field and (field - 1 in self.royal or field - 1 in self.unowned):
+                        continue
+                    found.append(encode_move(square, target, MOVE_SWEEP, field) | MOVE_FOREIGN)
                     continue
                 found.append(encode_move(square, target, MOVE_NORMAL, 0) | MOVE_FOREIGN)
         return sorted(set(found))

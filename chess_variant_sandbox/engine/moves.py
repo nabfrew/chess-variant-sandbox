@@ -188,7 +188,10 @@ def encode_move(
                       sweep entries (< 32); 0 elsewhere. SR6e: on every sweep
                       through a fold, in any game
     20-24  through    SR6e: ``MOVE_SWEEP`` through a fold: the near end's index on
-                      the ray + 1 (< ``MAX_SWEEP_THROUGH``); 0 a direct sweep
+                      the ray + 1 (< ``MAX_SWEEP_THROUGH``); 0 a direct sweep (only in
+                      a fold game, ``CompiledSpec.fold_sweeps``)
+    20-24  promotion  SR8b: ``MOVE_SWEEP`` in every other game: the promoted type + 1,
+                      0 none (``CompiledSpec.sweep_promotion``)
     30     foreign    a move of a piece the mover does not own (``MOVE_FOREIGN``)
     31     gate_rook  Q1059a: a gating castle places on the rook's origin
     =====  =========  ==========================================================
@@ -198,9 +201,10 @@ def encode_move(
     set the foreign bit beside a tag (the core's encoders assert it). Each accessor below
     reads its own field only. SR6d's declared sweep ray takes the tag on a ``MOVE_SWEEP``
     word, and SR6e's sweep through a fold its step on the ray in the promotion field (a
-    sweeper never promotes): the ray and the step locate the fold, so the word names no fold
-    end and reads without the position. SR8b's promoting sweep would want the promotion field
-    too: it fits beside the ray and the foreign bit, not beside a fold step.
+    fold game): the ray and the step locate the fold, so the word names no fold end and reads
+    without the position. SR8b's promoting sweep carries its type + 1 in the same field, beside
+    the ray and the foreign bit; it does not fit beside a fold step, so a promoting sweeper
+    beside folds is refused and the game says which reading the field has.
     """
     return (
         origin
@@ -245,7 +249,13 @@ def move_fold(move: int) -> int:
 
 def move_gate(move: int) -> int:
     """Q1059a: the tag read as a gate, the type a gating move places plus one (0 none).
-    Meaningful only in a game with ``drops.gating``; elsewhere the tag is another field."""
+    Meaningful only in a game with ``drops.gating``; elsewhere the tag is another field.
+
+    R-L6e (F7): only a gating kind's tag is a gate (``MOVE_NORMAL``, ``MOVE_EN_PASSANT``,
+    ``MOVE_CASTLE``, ``MOVE_PROMOTION``); a ``MOVE_SWEEP``'s tag is its ray, never a gate, as
+    ``rust/src/tables.rs::move_gate`` reads it."""
+    if move_type(move) > MOVE_PROMOTION:
+        return 0
     return (move >> _TAG_SHIFT) & _TAG_MASK
 
 
@@ -263,7 +273,9 @@ def move_ray(move: int) -> int:
 
 def move_through(move: int) -> int:
     """SR6e (W8): a ``MOVE_SWEEP``'s fold step, the promotion field read as the index on its
-    ray of the fold it went through plus one; 0 for a direct sweep."""
+    ray of the fold it went through plus one; 0 for a direct sweep. Only in a fold game: read
+    it through ``CompiledSpec.sweep_through``, since elsewhere the field is the sweep's
+    promotion (SR8b)."""
     return (move >> 20) & 0x1F
 
 

@@ -3824,9 +3824,23 @@ function wireFootbar() {
 
 // ------------------------------------------------------ from a draft to a number
 
+// R-W7: on the site, a visitor who is not signed in. The site answers the standing and the
+// screen only for a signed-in person (`site/routes.py`: each route's `visitor` sentence, as
+// a 400), so the page does not ask them for a visitor: it would only draw the refusal, the
+// screen's as a failed rung and the standing's as a save rung *asking...* for ever. The
+// rungs say instead what signing in opens (`rungStates`). The local application has no
+// visitors and asks both as before.
+function signedOutHere() {
+  return ACCOUNTS && !VIEWER;
+}
+
+// What the screen's rung says to a visitor: the site's own reason, as a step still ahead.
+const SCREEN_SIGN_IN = 'sign in to run it; it plays games on the server';
+
 // Where the draft is on the rungs, and its family. Asked once per hash, because a name
 // or a description is not a new game.
 function loadStanding(hash) {
+  if (signedOutHere()) return Promise.resolve();
   const query = '?parent=' + encodeURIComponent(DRAFT_FROM || '')
     + '&name=' + encodeURIComponent(DRAFT.name || '');
   return api('/api/design/standing/' + hash + query).then(standing => {
@@ -3855,6 +3869,11 @@ function loadStanding(hash) {
 
 // The screen is cheap enough to run on every new hash, like the smoke gate.
 function runScreen(hash) {
+  if (signedOutHere()) {
+    DRAFT_SCREEN = { hash, visitor: true };
+    redrawLadder();
+    return;
+  }
   api('/api/design/screen', { spec: DRAFT }).then(screen => {
     if (hash !== DRAFT_HASH) return;
     DRAFT_SCREEN = screen;
@@ -3949,12 +3968,16 @@ function rungStates(check, standing, screen) {
     : check.playable === null
       ? { mark: 'failed', says: (check.playableReasons || []).join('; ') }
       : { mark: 'done', says: `yes (${Number(check.smokeSeconds || 0).toFixed(2)} seconds)` };
+  const visitor = signedOutHere();
   states.screen = !screen || screen.hash !== check.hash
     ? { mark: 'running', says: 'running...' }
+    : screen.visitor ? { mark: 'ahead', says: SCREEN_SIGN_IN }
     : screen.passed
       ? { mark: 'done', says: `yes (${Number(screen.seconds || 0).toFixed(2)} seconds)` }
       : { mark: 'failed', says: (screen.reasons || []).join('; ') };
-  states.save = !standing
+  states.save = !standing && visitor
+    ? { mark: 'ahead', says: 'sign in to save it' }
+    : !standing
     ? { mark: 'running', says: 'asking...' }
     : saved
       ? { mark: 'done', says: savedWords(s) }

@@ -18,6 +18,16 @@
 //! holds a player's non-royal piece the wild type may take gets the piece back (eating
 //! that one), and otherwise the return is held and tried every phase. After a return the
 //! clock starts again at `every` while the half still stands short.
+//!
+//! **A pouncer that comes back** (generation 124, SR8g, N7, ruled 2026-10-27: *a pouncer
+//! respawns on its entry's first free start*). A pouncer leaves its route, and may pounce back
+//! onto another route of its type, so the board does not say which walk it belongs to. A
+//! pouncing entry is therefore one half (`RespawnHalf::pool`), its mirrored starts beside its
+//! own, and its pieces are the wild pieces of its type standing anywhere, the earlier pouncing
+//! entries of the type claiming theirs first. A piece comes back on the entry's first free
+//! start in the mover's reading order (`PounceTables::reading`), as the pounce reads its prey,
+//! so mirrored positions return mirrored pieces. Step 3 is played by `pounce_walk`, after the
+//! pounces and the steps; the pass test has none (a return never takes a royal).
 
 use super::*;
 
@@ -26,6 +36,10 @@ impl<'t> Game<'t> {
     #[inline]
     fn respawn_standing(&self, half: &RespawnHalf) -> usize {
         let t = self.t;
+        if let Some(before) = half.pool {
+            let of_type = self.board[..t.n_squares].iter().filter(|value| **value == half.value).count();
+            return of_type.saturating_sub(before).min(half.starts.len());
+        }
         half.route
             .iter()
             .filter(|square| {
@@ -40,10 +54,10 @@ impl<'t> Game<'t> {
     /// piece in `shields` (generation 37: the phase's snapshot of the shielded squares, a
     /// wild piece never takes a shielded piece) and another wild piece each hold the start.
     #[inline]
-    fn respawn_start(&self, half: &RespawnHalf, shields: &SquareSet) -> Option<usize> {
+    fn respawn_start(&self, half: &RespawnHalf, shields: &SquareSet, mover: usize) -> Option<usize> {
         let t = self.t;
         let wild_type = t.type_of(half.value);
-        half.starts.iter().map(|square| *square as usize).find(|square| {
+        let free = |square: &usize| {
             let standing = self.board[*square];
             if standing == 0 {
                 return true;
@@ -52,16 +66,25 @@ impl<'t> Game<'t> {
                 return false;
             }
             let victim = t.type_of(standing);
-            !t.is_royal(victim) && t.may_capture(wild_type, victim)
-        })
+            !t.is_royal(victim) && t.may_capture(wild_type, t.victim_of(standing))
+        };
+        let starts = half.starts.iter().map(|square| *square as usize);
+        if half.pool.is_some() {
+            // Generation 124: the mover's reading order, as a pounce reads its prey.
+            let p = t.pounce.as_deref().expect("a pouncing half without the pounce tables");
+            let reading = &p.reading[mover * p.n_squares..(mover + 1) * p.n_squares];
+            return starts.filter(free).min_by_key(|square| reading[*square]);
+        }
+        starts.into_iter().find(free)
     }
 
     /// **The rule, stated once**: what `half` does this phase on the board as it stands
     /// (after the steps), its clock being `clock` before the phase. Returns the clock after
     /// the phase and the start a piece comes back onto, if one does. `shields` is the
-    /// phase's snapshot of the shielded squares (`Game::wild_sight`), read at its start.
+    /// phase's snapshot of the shielded squares (`Game::wild_sight`), read at its start;
+    /// `mover` the player who has just moved (read only by a pouncing half's start).
     pub(super) fn respawn_due(
-        &self, index: usize, clock: u8, shields: &SquareSet,
+        &self, index: usize, clock: u8, shields: &SquareSet, mover: usize,
     ) -> (u8, Option<usize>) {
         let rule = self.t.respawn.as_deref().expect("respawn_due without the rule");
         let half = &rule.halves[index];
@@ -77,7 +100,7 @@ impl<'t> Game<'t> {
         if left > 0 {
             return (left, None);
         }
-        match self.respawn_start(half, shields) {
+        match self.respawn_start(half, shields, mover) {
             None => (1, None),
             Some(start) => {
                 let next = if standing + 1 < half.starts.len() { half.every } else { 0 };

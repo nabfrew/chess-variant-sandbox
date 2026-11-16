@@ -60,6 +60,18 @@ gives the same verdict (``settled``). The verdict is then the full duel's by con
 not by a bound on an error. The stopping point is read pair by pair along the schedule, never
 from which games came back first, so it is the same at any worker count; games past it are
 discarded. What moves is the score, which is the prefix's, stored with "decided after k of n".
+
+**A duel is opened unless it asks not to be** (R-P1). The searching players are deterministic
+up to their seat's stream, so a duel from the start position replays a few lines and its
+error counts one line's fate many times (T1c's 400 games held 24 distinct 10-ply openings,
+``docs/plan-player-weaknesses.md``, *The probe's openings*). So ``duel``, ``duel_records``,
+``curtailed_duel`` and ``steering_duel`` open every seed-pair with up to ``opening_plies``
+(default ``DUEL_OPENING_PLIES``, 8) random plies drawn from its seed
+(``tournament/openings.py``): both games of a pair start from the same position with the
+seats swapped, and the games are the same at any worker count. A duel from the start
+position is asked for by name, ``unopened=True``; ``opening_plies=0`` is refused, so an
+unopened duel never happens by omission. Every ``Duel`` reports how many distinct openings
+and distinct games it played (``as_dict``), so a reader sees a duel that repeated itself.
 """
 
 from __future__ import annotations
@@ -74,6 +86,12 @@ from chess_variant_sandbox.agents.evaluation import Evaluator
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import CompiledSpec
 from chess_variant_sandbox.tournament.checkpoint import run_tournament
+from chess_variant_sandbox.tournament.openings import (
+    DUEL_OPENING_PLIES,
+    count_games,
+    count_openings,
+    play_opened_schedule,
+)
 from chess_variant_sandbox.tournament.record import GameRecord
 from chess_variant_sandbox.tournament.runner import TournamentConfig
 
@@ -151,6 +169,12 @@ class Duel:
     # variance, and their share is the whole reason this estimator is affordable.
     identical: int
     margin_weight: float = MARGIN_WEIGHT
+    # The most random plies each pair opened with (0: unopened, from the start position),
+    # the distinct openings the pairs played, and the distinct games, move for move. 0 for
+    # ``distinct_games`` means a Duel built without its records.
+    opening_plies: int = 0
+    openings: int = 1
+    distinct_games: int = 0
 
     @property
     def games(self) -> int:
@@ -175,6 +199,9 @@ class Duel:
             "games": self.games,
             "identical": self.identical,
             "margin_weight": self.margin_weight,
+            "opening_plies": self.opening_plies,
+            "openings": self.openings,
+            "distinct_games": self.distinct_games,
         }
 
 
@@ -186,19 +213,31 @@ def duel(
     seed: int = 0,
     workers: int = 0,
     margin_weight: float = MARGIN_WEIGHT,
+    *,
+    opening_plies: int | None = None,
+    unopened: bool = False,
 ) -> Duel:
     """Play ``pairs`` matched seeds of ``candidate`` against ``reference`` and score them.
 
     Two games per pair -- the candidate at each seat on one seed -- so ``pairs`` of 24 is
     the same 48 games the acceptance test plays, at a fraction of its noise.
 
-    Everything goes through the ordinary tournament runner, which is not a detail: the
-    runner fixes every seed before any thread starts, so the answer is identical at any
-    worker count, and the games then run in parallel in the core. A loop over
-    ``play_game`` here would be a second scheduler to keep in step with the first.
+    Each pair opens with up to ``opening_plies`` (default ``DUEL_OPENING_PLIES``) random
+    plies drawn from its seed; ``unopened=True`` plays every pair from the start position
+    instead, the duel before R-P1 (module docstring).
+
+    The schedule is the ordinary paired one, which is not a detail: it fixes every seed
+    before any thread starts, so the answer is identical at any worker count, and the games
+    then run in parallel in the core.
     """
+    most = opening(opening_plies, unopened)
     if pairs < 1:
         raise ValueError("a duel needs at least one seed-pair")
+    if most and margin_weight:
+        raise ValueError(
+            "a graded duel reads each game's material series, which an opened duel does "
+            "not keep; grade an unopened duel (unopened=True) or leave margin_weight at 0"
+        )
     if candidate == reference:
         # Nothing downstream forbids it, and it would return exactly 0.5 at exactly zero
         # error -- correct, and also the one answer that cannot mean what a caller
@@ -209,6 +248,11 @@ def duel(
             "is two spellings of one player, not one spelling twice"
         )
 
+    if most:
+        records = duel_records(spec, candidate, reference, pairs, seed, workers,
+                               opening_plies=most)
+        rounds = bool(Engine(spec).simultaneous)
+        return grade(records, candidate, reference, opening_plies=most, rounds=rounds)
     result = run_tournament(
         spec,
         TournamentConfig(
@@ -225,14 +269,42 @@ def duel(
     return grade(result.records, candidate, reference, scale, margin_weight)
 
 
+def opening(opening_plies: int | None, unopened: bool) -> int:
+    """The most random plies a duel opens each pair with: 0 only when asked for by name.
+
+    ``None`` is ``DUEL_OPENING_PLIES``. ``unopened=True`` is the duel from the start
+    position, and naming plies beside it is refused as a contradiction; so is
+    ``opening_plies`` below 1 without it, so a duel is never unopened by omission.
+    """
+    if unopened:
+        if opening_plies is not None:
+            raise ValueError(
+                f"an unopened duel opens with no plies; opening_plies={opening_plies} "
+                "beside unopened=True asks for both"
+            )
+        return 0
+    most = DUEL_OPENING_PLIES if opening_plies is None else opening_plies
+    if most < 1:
+        raise ValueError(
+            f"opening_plies={most}: a duel from the start position is asked for by name, "
+            "unopened=True (it repeats the same games between deterministic players)"
+        )
+    return most
+
+
 def grade(
     records: list[GameRecord],
     candidate: str,
     reference: str,
     scale: float = 1.0,
     margin_weight: float = MARGIN_WEIGHT,
+    opening_plies: int = 0,
+    rounds: bool = False,
 ) -> Duel:
     """Score a paired set of records for ``candidate``. Separate so it can be re-run.
+
+    ``opening_plies`` (and ``rounds``, a round game's openings being whole rounds) say how
+    the games were opened, so the distinct openings can be counted; 0 is the start position.
 
     The records are grouped by seed and each seed must carry exactly two games, one with
     the candidate at each seat. A seed with one game is a schedule that was not paired,
@@ -280,6 +352,9 @@ def grade(
         pairs=tuple(estimates),
         identical=identical,
         margin_weight=margin_weight,
+        opening_plies=max(0, opening_plies),
+        openings=count_openings(records, opening_plies, rounds),
+        distinct_games=count_games(records),
     )
 
 
@@ -509,14 +584,19 @@ def steering_duel(
     seed: int = 0,
     workers: int = 0,
     margin_weight: float = MARGIN_WEIGHT,
+    *,
+    opening_plies: int | None = None,
+    unopened: bool = False,
 ) -> SteeringDuel:
     """Play look by look until ``steer`` makes a call. For steering only, never a verdict.
 
     Each look plays the next block of seed-pairs through ``duel`` with its seed offset by
     the pairs already played. Two players get one block of seeds starting at ``seed``, so
     the pairs are those of one long duel's prefix: the same games at any worker count,
-    and the same call as reading a full 24-pair duel with ``steer``.
+    and the same call as reading a full 24-pair duel with ``steer``. Opened as ``duel`` is
+    (an opening is a function of its pair's seed, so a block's openings are the long duel's).
     """
+    most = opening(opening_plies, unopened)
     estimates: list[float] = []
     identical = 0
     while True:
@@ -532,6 +612,8 @@ def steering_duel(
             seed=seed + len(estimates),
             workers=workers,
             margin_weight=margin_weight,
+            opening_plies=most or None,
+            unopened=not most,
         )
         estimates.extend(block.pairs)
         identical += block.identical
@@ -648,16 +730,21 @@ def curtailed_duel(
     seed: int = 0,
     workers: int = 0,
     play: PlayPairs | None = None,
+    *,
+    opening_plies: int | None = None,
+    unopened: bool = False,
 ) -> Curtailed:
     """``duel``'s ``pairs`` seed-pairs from ``seed``, stopped once ``verdict`` is settled.
 
     A batch is ``workers`` (resolved as the runner resolves it) seed-pairs, the next block
-    of the one paired schedule, played as ``duel`` plays it, or by ``play``. After each
+    of the one paired schedule, played as ``duel`` plays it (opened unless ``unopened``), or
+    by ``play``, which then owns the opening (``opening_plies`` only names it). After each
     batch the pairs are read one at a time in seed order and the first prefix ``settled``
     answers is the decision; the rest of that batch is discarded. So the stopping point,
     the kept games and the verdict are functions of the schedule alone, and the verdict is
     ``verdict`` of the full duel whatever the unplayed games would have been.
     """
+    most = opening(opening_plies, unopened)
     if pairs < 1:
         raise ValueError("a duel needs at least one seed-pair")
     config = TournamentConfig(
@@ -670,9 +757,14 @@ def curtailed_duel(
     batch = config.resolved_workers()
 
     def standard(first: int, count: int) -> list[GameRecord]:
-        return duel_records(spec, candidate, reference, count, first, workers)
+        return duel_records(spec, candidate, reference, count, first, workers,
+                            opening_plies=most or None, unopened=not most)
 
     play = play or standard
+
+    def graded(records: list[GameRecord]) -> Duel:
+        rounds = bool(most) and bool(Engine(spec).simultaneous)
+        return grade(records, candidate, reference, opening_plies=most, rounds=rounds)
     estimates: list[float] = []
     kept: list[GameRecord] = []
     while True:
@@ -690,7 +782,7 @@ def curtailed_duel(
             cut = first + index
             kept.extend(record for record in records if record.seed <= cut)
             kept.sort(key=lambda record: (record.seed, record.agents[0] != candidate))
-            return Curtailed(grade(kept, candidate, reference), call, pairs, tuple(kept))
+            return Curtailed(graded(kept), call, pairs, tuple(kept))
         kept.extend(records)
 
 
@@ -701,22 +793,29 @@ def duel_records(
     pairs: int,
     seed: int = 0,
     workers: int = 0,
+    *,
+    opening_plies: int | None = None,
+    unopened: bool = False,
 ) -> list[GameRecord]:
     """The games of ``duel``'s paired schedule, ungraded: seeds ``seed`` to ``seed + pairs``.
 
     A paired schedule gives the one pairing one block of seeds from the config's, so the
-    block from ``seed + k`` is the same games as the tail of the block from ``seed``.
+    block from ``seed + k`` is the same games as the tail of the block from ``seed``; an
+    opening is a function of its seed, so that holds opened too. Opened, the records come
+    back in schedule order (``openings.play_opened_schedule``: the core finishes each game,
+    or the mixed loop where a seat has no native form); ``unopened=True`` is the ordinary
+    runner from the start position.
     """
-    result = run_tournament(
-        spec,
-        TournamentConfig(
-            agents=(candidate, reference),
-            games_per_pairing=pairs,
-            seed=seed,
-            workers=workers,
-            include_self_play=False,
-            collect_series=False,
-            paired=True,
-        ),
+    most = opening(opening_plies, unopened)
+    config = TournamentConfig(
+        agents=(candidate, reference),
+        games_per_pairing=pairs,
+        seed=seed,
+        workers=workers,
+        include_self_play=False,
+        collect_series=False,
+        paired=True,
     )
-    return list(result.records)
+    if most:
+        return play_opened_schedule(spec, config, most)
+    return list(run_tournament(spec, config).records)

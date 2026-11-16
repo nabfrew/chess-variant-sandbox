@@ -39,7 +39,9 @@ async function showLanding() {
   if (!data) return;
   takePieceArt(data);
   const today = view.querySelector('[data-today]');
-  if (today && data.firstStep && data.firstStep.hash) today.href = gamePath(data.firstStep.hash);
+  // R-W1: its address starts the day's game too, against the game's own default opponent.
+  const step = data.firstStep;
+  if (today && step && step.hash) today.href = playPath(step.hash);
   // A server with no day's game (the local application) has only the list behind *Play today's
   // game*; beside a story's own door, which starts a board, it goes.
   else if (today && view.querySelector('.landingWays a[data-play]')) today.hidden = true;
@@ -49,11 +51,15 @@ async function showLanding() {
 // LP9 (`docs/reference/landing-cold-read.md` §3, R6): every door to play on the landing lands
 // on a started board. A story's door (`data-play`, `landing.play_door`) starts a practice game
 // of its fixed game against the gentlest computer player the game's own page offers, the
-// visitor in the story's seat (`data-seat`); *Play today's game* starts the day's game against
-// the gentlest the server named for it (`firstStep`, as the games page's own button does). A
-// press asking for a new tab, and a game with no opponent to seat, follow the link instead: the
-// game's page, with the seat chosen (`?seat=`, `detail.js`). The page picks no move and no
-// game; the opponents are the server's and the session is the core's (rule 3).
+// visitor in the story's seat (`data-seat`); *Play today's game* starts the day's game
+// (`firstStep`) against that game's own default too. R-W1: one rule names the default for
+// every game, `detail.js` `defaultOpponent` over the game page's `firstGame` (read off the
+// picker's own rating table; the site's `firstStep.opponents` is that same answer, `chosen`
+// in `launch.first_step`, where it once read another table and named another player). A press asking for a new tab, and a
+// game with no opponent to seat, follow the link instead, and the link's address starts the
+// game as well (`?play=`, `detail.js` `askedPlay`), so no press lands on the picker. The page
+// picks no move and no game; the opponents are the server's and the session is the core's
+// (rule 3).
 function wirePlayDoors(root, listing) {
   const plain = event => !(event.button || event.metaKey || event.ctrlKey || event.shiftKey
     || event.altKey);
@@ -76,10 +82,11 @@ function wirePlayDoors(root, listing) {
     pending('Starting the game…');
     const data = await listing;
     const step = data && data.firstStep;
+    // The server named the page's own default (`chosen`); without it, the page is asked.
     const gentle = step && step.opponents && step.opponents.gentle;
-    if (step && step.hash && gentle) return playNow(today, step.hash, 0, gentle.agent);
+    if (step && step.hash) return playNow(today, step.hash, 0, gentle && gentle.agent);
     clearPending();
-    goPath(step && step.hash ? gamePath(step.hash) : GAMES_PATH);
+    goPath(GAMES_PATH);
   });
 }
 
@@ -149,15 +156,10 @@ function wireStoryBack(link) {
   });
 }
 
-// The gentlest computer player a game's page offers: the one it names for a first game, else
-// the first of its ladder (weakest first), else the first it offers at all.
+// The gentlest computer player a game's page offers: its default opponent (`detail.js`
+// `defaultOpponent`, the one rule a door's own address starts against too).
 async function gentlestAgent(hash) {
-  const game = await detailFor(hash);
-  const offered = ((game && game.opponents) || []).filter(one => one.agent !== 'human');
-  const first = game && game.firstGame && game.firstGame.gentle;
-  if (first && offered.some(one => one.agent === first.agent)) return first.agent;
-  const one = offered.find(o => o.store === 'ladder') || offered[0];
-  return one ? one.agent : null;
+  return defaultOpponent(await detailFor(hash), null);
 }
 
 async function playNow(door, hash, seat, agent) {

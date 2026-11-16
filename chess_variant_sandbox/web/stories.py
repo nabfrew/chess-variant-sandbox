@@ -33,11 +33,20 @@ copy to the record wherever the run is on disk.
 
 **A story that stops reading as told leaves the pool** (§4.1). A library story *holds* when
 both games are listed library games, their mechanics differ by exactly the declared change,
-the failed game's estimate is current and ruled out, the fixed one's current and staying in,
-and both recorded games replay to the ending their sentences claim; a constructed story when
-both specs validate, differ by exactly the change and their games replay to their endings. A
-provisional number never enters the pool. `render` returns the holding stories and names each
-dropped one with why; nothing draws a dropped story.
+the failed game's estimate is ruled out and the fixed one's stays in, and both recorded games
+replay to the ending their sentences claim; a constructed story when both specs validate,
+differ by exactly the change and their games replay to their endings. `render` returns the
+holding stories and names each dropped one with why; nothing draws a dropped story.
+
+**A provisional estimate keeps its story, marked** (R-S6f, `docs/reference/v14-registration.md`
+§14). Each estimate is current or provisional (the last one, worked out before the latest change
+to how games are scored); a game with neither drops its story. A provisional one is shown as the
+provisional rule allows: its verdict and number under a line that says it is provisional, with
+the scoring version and the day, and the story is marked `provisional`, so the page says each
+game is being measured again and draws no pair of bars (a provisional number enters no
+comparison). Its stored verdict must still read as the story tells it, as a current one must.
+Between a change to the scorer, the core or the pass and the library's replay every library
+score is provisional, and the stories stay on the page.
 
     uv run python -m chess_variant_sandbox.web.stories [--runs RUNS]
 
@@ -73,6 +82,38 @@ RECORDED_FILE = HERE / "recorded.json"
 
 LIBRARY = "library"
 CONSTRUCTED = "constructed"
+
+# An estimate's states as `library.Game.status` spells them (`library` is imported where it is
+# read, not here; `tests/test_stories.py` holds the two spellings together).
+CURRENT = "current"
+PROVISIONAL = "provisional"
+# R-S8: a score whose players could not be told apart (`library.UNREAD`). A story whose game
+# reads so stays, marked as a provisional one is, with no pair of bars.
+UNREAD = "unread"
+
+# The mark that leads a provisional verdict's line, in the words the library's cards use
+# (`core.js`'s `provisionalSentence`).
+PROVISIONAL_LINE = "provisional, worked out before the latest change to how games are scored"
+# And an unread one's (`library.UNREAD_SAID`, shortened for a line).
+UNREAD_LINE = "cannot be read yet: the computer players could not be told apart on this game"
+# R-S4c: `measurement.DEPENDS`, and the words a line ends with for it (`library.STRENGTH_TAGS`).
+DEPENDS = "depends"
+DEPENDS_LINE = "may change with stronger players"
+
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August",
+           "September", "October", "November", "December")
+
+
+def day_words(iso: Any) -> str:
+    """`2026-11-09` as `9 November 2026` (`core.js`'s `dayWords`), or "" for no date."""
+    text = str(iso or "")
+    try:
+        year, month, day = int(text[0:4]), int(text[5:7]), int(text[8:10])
+    except ValueError:
+        return ""
+    if not 1 <= month <= 12 or text[4:5] != "-" or text[7:8] != "-":
+        return ""
+    return f"{day} {_MONTHS[month - 1]} {year}"
 
 # The six qualities, in the order the story's paired bars list them (§2.1).
 QUALITIES = ("depth", "drama", "decisions", "pacing", "variety", "balance")
@@ -768,10 +809,31 @@ def verdict(score: dict[str, Any] | None, name: str) -> dict[str, Any]:
     number = f"{index:.3f}" if isinstance(index, (int, float)) else ""
     if number and isinstance(sd, (int, float)):
         number += f" ±{sd:.3f}"
+    status = worded.get("status")
+    line = " · ".join([said, number, *basis]) if number else said
+    stale = not ((worded.get("staleness") or {}).get("current", True))
+    if status == UNREAD:
+        # R-S8: never as current either, and said first; where it is also out of date the
+        # provisional mark follows, so it reads no more current than either alone.
+        day = day_words(worded.get("measured_at"))
+        line = " · ".join([UNREAD_LINE, *([PROVISIONAL_LINE] if stale else []), line,
+                           *([day] if day else [])])
+    elif status == PROVISIONAL:
+        # The last answer, never as current: marked, with the version and the day it was
+        # worked out under (the provisional rule, `metrics-and-calibration.md`).
+        day = day_words(worded.get("measured_at"))
+        line = " · ".join([PROVISIONAL_LINE, line, *([day] if day else [])])
+    # R-S4c: a score the strength check found resting on its players keeps its story and
+    # its verdict, and its line says so (`library.STRENGTH_TAGS`). Not on an unread one,
+    # whose own words already say the players could not be told apart.
+    strength = score.get("strength") or {}
+    flagged = strength.get("word") == DEPENDS and status != UNREAD
+    if flagged:
+        line = " · ".join([line, str(strength.get("tag") or DEPENDS_LINE)])
     return {
         "name": name,
         "hash": worded.get("ruleset_hash") or worded.get("hash"),
-        "status": worded.get("status"),
+        "status": status,
         "viable": viable,
         "measured": not unmeasured,
         "verdict": said,
@@ -785,7 +847,9 @@ def verdict(score: dict[str, Any] | None, name: str) -> dict[str, Any]:
         "words": list((worded.get("site") or {}).get("violations") or []),
         "split": ((worded.get("verdict") or {}).get("site") or {}).get("split", ""),
         "lean": ((worded.get("seat") or {}).get("site") or {}).get("lean", ""),
-        "line": " · ".join([said, number, *basis]) if number else said,
+        "line": line,
+        # R-S4c: the strength check's short words where it found dependence, else "".
+        "players": str(strength.get("tag") or DEPENDS_LINE) if flagged else "",
     }
 
 
@@ -901,8 +965,9 @@ def render_story(story: Story, app: Roots,
         after = verdict(read_score(app, story.right.game.hash, fixed_spec, fixed_path,
                                    fixed_source), fixed_name)
         for said, name in ((before, failed_name), (after, fixed_name)):
-            if said["status"] != "current":
-                raise StoryError(f"{name}'s estimate is {said['status']}, not current")
+            if said["status"] not in (CURRENT, PROVISIONAL, UNREAD):
+                raise StoryError(f"{name}'s estimate is {said['status']}, neither current "
+                                 "nor provisional nor unread")
         if before["viable"] or not before["measured"]:
             raise StoryError(f"{failed_name} is no longer ruled out")
         if not after["viable"]:
@@ -955,6 +1020,12 @@ def render_story(story: Story, app: Roots,
         "right": said(story.right, right),
         "failed": before,
         "fixed": after,
+        # Either game's estimate is the last one, worked out before the latest change to how
+        # games are scored: the page says each is being measured again and draws no pair of
+        # bars, since a provisional number enters no comparison (R-S6f).
+        "provisional": any(side.get("status") == PROVISIONAL for side in (before, after)),
+        # R-S8: either game's score cannot be read yet; no pair of bars either.
+        "unread": any(side.get("status") == UNREAD for side in (before, after)),
         # Quoted only while the fixed game's own description still says it.
         "quote": story.quote if story.quote in str(fixed_spec.get("description", "")) else "",
         # Whose seat the story is about, by its place and by the side's name on the board.

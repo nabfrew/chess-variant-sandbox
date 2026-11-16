@@ -44,6 +44,9 @@ pub(super) struct RoundUndo {
     purse: [u16; 2],
     /// SR7h (§2.12): the side to move, which a round of a spy game writes on a gain.
     side: usize,
+    /// SR8e (R9): where each fold stands, which a round's fold move writes (all -1 in a game
+    /// without folds).
+    fold_at: [i16; MAX_PORTAL_ENDS],
 }
 
 /// One player's move of a round, read off the round's board.
@@ -59,6 +62,10 @@ struct Plan {
     /// Its type before the move (the dropped or bought type): "a capture by P" means
     /// the piece that set out, as `make` reads it.
     piece_type: usize,
+    /// SR8d (R6): a castling's partner, `(its square, its castled square, its value)` on the
+    /// round's board; `None` for every other move. Only the king's arrival meets anything;
+    /// the partner moves after the meetings (`castle_partners`).
+    partner: Option<(usize, usize, u8)>,
 }
 
 /// A capture the round's meetings decided (§2.3, §4 step 4), for what captures cause.
@@ -205,6 +212,10 @@ impl<'t> Game<'t> {
     /// `side` is already `player`.
     fn generate_unbarred(&mut self, player: usize, out: &mut Vec<u32>, base: usize) {
         self.generate_pseudo_legal(out);
+        // R-L6c (F2): a move that leaves a piece outside its region is no move, as in a turn.
+        if self.t.region_play {
+            self.region_filter(out, base);
+        }
         if !self.bars.is_empty() {
             let mut write = base;
             for index in base..out.len() {
@@ -269,13 +280,28 @@ impl<'t> Game<'t> {
             let piece_type = move_promotion(m) as usize;
             return Plan {
                 m, kind, origin: None, target,
-                mover: t.arriving_value(player, piece_type, target),
+                mover: self.arriving(player, piece_type, target),
                 piece_type,
+                partner: None,
             };
         }
         let origin = move_from(m);
+        // SR8e (R9): a fold's own move writes no board byte; its piece is the fold's end.
+        if kind == MOVE_FOLD {
+            let portals = t.portals.as_deref().expect("a fold move without portals");
+            return Plan {
+                m, kind, origin: Some(origin), target, mover: 0,
+                piece_type: portals.first_type + move_fold(m),
+                partner: None,
+            };
+        }
         let mover = self.board[origin];
-        Plan { m, kind, origin: Some(origin), target, mover, piece_type: t.type_of(mover) }
+        let partner = (kind == MOVE_CASTLE).then(|| {
+            let (from, to) =
+                self.castling_rook_squares(player, origin, target, move_promotion(m) as i32);
+            (from, to, self.board[from])
+        });
+        Plan { m, kind, origin: Some(origin), target, mover, piece_type: t.type_of(mover), partner }
     }
 
     /// What a contact link (or the strike rule) says of `mover_type` meeting `victim`:
@@ -300,7 +326,8 @@ impl<'t> Game<'t> {
         let Some(strike) = self.t.strike.as_ref() else {
             return false;
         };
-        if strike.position != StrikePosition::Stay || plan.origin.is_none() {
+        // SR8d (R6): a castling takes nothing, even where a file-based king lands on its rook.
+        if strike.position != StrikePosition::Stay || plan.origin.is_none() || plan.kind == MOVE_CASTLE {
             return false;
         }
         let victim = self.board[plan.target];
@@ -344,6 +371,8 @@ impl<'t> Game<'t> {
     /// equal-speed round (every round of a game without speeds) is the round it always was.
     pub fn make_round(&mut self, moves: [u32; 2]) {
         let t = self.t;
+        // SR8a (H3): an entering piece under `only_lost` counts the board the round begins on.
+        self.tally_entries();
         let sim = self.sim();
         debug_assert_eq!(sim.void_run, 2, "the run is kept as one pair at count one");
         self.round_undo.push(RoundUndo {
@@ -369,6 +398,7 @@ impl<'t> Game<'t> {
             heading_back: self.heading_back,
             purse: self.purse,
             side: self.side,
+            fold_at: self.fold_at,
         });
         // SR7h: who had a spy before the round, for the phase both ways (`spy.rs`). One
         // test in a round game without a spy.
@@ -379,10 +409,13 @@ impl<'t> Game<'t> {
         let previous_unmoved = self.unmoved;
         let npc_mark = self.npc_log.len();
 
-        let plans = [self.plan(0, moves[0]), self.plan(1, moves[1])];
+        let mut plans = [self.plan(0, moves[0]), self.plan(1, moves[1])];
         let mut facts = StepFacts::new();
+        // SR8e (R9): a portal end a player moves. One `Option` test in a game without portals.
+        let portal = self.portal_moves(&plans);
+        let portal_round = portal[0] || portal[1];
         // Schema 28: one emptiness test in every game without speeds.
-        let faster = if sim.speed.is_empty() {
+        let faster = if portal_round || sim.speed.is_empty() {
             None
         } else {
             let speeds = [sim.speed[plans[0].piece_type], sim.speed[plans[1].piece_type]];
@@ -396,6 +429,15 @@ impl<'t> Game<'t> {
         let mut gone = [false; 2];
         let mut ended = false;
         match faster {
+            // SR8e (R9, ruled 2026-10-27): the round's portal moves are made first, and the
+            // piece move then reads the ends where they now stand (`portals_first`). A portal
+            // end rests nothing, so its player's rest only counts down (`gone`).
+            None if portal_round => {
+                let step = self.portals_first(&mut plans, portal, &mut facts);
+                arriving = step.arriving;
+                standing = step.standing;
+                gone = portal;
+            }
             None => {
                 let step = self.resolve_step(&plans, [true, true], &mut facts);
                 arriving = step.arriving;
@@ -566,7 +608,16 @@ impl<'t> Game<'t> {
     /// words (`Engine.describe_move`). A board to read, not a position to play on: the key,
     /// the clocks and the round's tail (wild pieces, rests, bars) are left as they were.
     pub fn resolve_alone(&mut self, player: usize, m: u32) {
+        self.tally_entries();
         let plan = self.plan(player, m);
+        // SR8e (R9): a portal end's move alone is the end's move.
+        let mut portal = [false; 2];
+        portal[player] = self.portal_moves(&[plan, plan])[player];
+        if portal[player] {
+            let mut facts = StepFacts::new();
+            self.move_portal_end(&plan, &mut facts);
+            return;
+        }
         let mut active = [false; 2];
         active[player] = true;
         let mut facts = StepFacts::new();
@@ -633,6 +684,9 @@ impl<'t> Game<'t> {
         self.departures(plans, roles, facts);
         let arrival = self.own_consequences(plans, active, roles, facts);
         self.meetings(plans, roles, arrival, facts, &mut takings);
+        if plans[0].partner.is_some() || plans[1].partner.is_some() {
+            self.castle_partners(plans, roles, facts);
+        }
         self.what_captures_cause(&takings, facts);
         self.blasts(&takings, facts);
         self.claims(plans, active, roles, facts);
@@ -776,6 +830,14 @@ impl<'t> Game<'t> {
                 Some(origin) => {
                     self.write(origin, 0);
                     facts.touched.set(origin);
+                    // SR8d (R6): a file-based king that lands on its own partner lifts it
+                    // with the departures; `castle_partners` puts it down after the meetings.
+                    if let Some((from, _, _)) = plan.partner {
+                        if from == plan.target {
+                            self.write(from, 0);
+                            facts.touched.set(from);
+                        }
+                    }
                 }
                 None if plan.kind == MOVE_BUY => {
                     let purse = t.purse.as_deref().expect("a buy without a purse");
@@ -814,7 +876,10 @@ impl<'t> Game<'t> {
             let plan = plans[i];
             if plan.kind == MOVE_ROTATE {
                 let origin = plan.origin.expect("a rotation has an origin");
-                self.write(origin, t.piece_value(i, move_promotion(plan.m) as usize, plan.piece_type));
+                // SR8i (O9): the turning piece's owner, nobody for a held piece (whose word
+                // names nobody's facing), the mover for every other.
+                let owner = t.owner_of(plan.mover);
+                self.write(origin, t.piece_value(owner, move_promotion(plan.m) as usize, plan.piece_type));
                 facts.touched.set(origin);
                 continue;
             }
@@ -830,8 +895,8 @@ impl<'t> Game<'t> {
             }
             let promotion = move_promotion(plan.m) as usize;
             let mut value = match plan.kind {
-                MOVE_PROMOTION => t.entering_value(i, promotion),
-                MOVE_PORTAL if promotion != 0 => t.entering_value(i, promotion - 1),
+                MOVE_PROMOTION => t.promoted_value(i, plan.m, promotion),
+                MOVE_PORTAL if promotion != 0 => t.promoted_value(i, plan.m, promotion - 1),
                 _ => plan.mover,
             };
             let occupant = self.board[plan.target];
@@ -840,7 +905,7 @@ impl<'t> Game<'t> {
                 // mover may change, and the merged piece is the one that meets.
                 let (_, mover_becomes, _) = self.meeting(plan.piece_type, occupant, i);
                 if mover_becomes >= 0 {
-                    value = t.arriving_value(i, mover_becomes as usize, plan.target);
+                    value = self.arriving(i, mover_becomes as usize, plan.target);
                 }
                 self.write(plan.target, 0);
                 facts.touched.set(plan.target);
@@ -1016,6 +1081,41 @@ impl<'t> Game<'t> {
         }
     }
 
+    /// SR8d (R6, ruled 2026-10-27): a castling's partner, after the meetings. Only the king's
+    /// arrival took part in them; the partner, standing on its square through step 4 (where
+    /// the other player may take it or change it), now moves to its castled square if that
+    /// square is empty, and otherwise stays where it is. A partner a file-based king landed
+    /// on was lifted with the departures: it goes to its castled square if empty, else it is
+    /// removed, nobody's capture -- its own square holds the king, since the one arrival
+    /// that filled the castled square did not meet it (`docs/reference/rounds.md` §4 step 4).
+    /// The castling spends both pieces' rights as `make`'s does, whatever became of the
+    /// partner.
+    #[cold]
+    #[inline(never)]
+    fn castle_partners(&mut self, plans: &[Plan; 2], roles: Roles, facts: &mut StepFacts) {
+        for (i, plan) in plans.iter().enumerate() {
+            let Some((from, to, value)) = plan.partner else { continue };
+            if !roles.arriving[i] {
+                continue;
+            }
+            if from == plan.target {
+                if self.board[to] == 0 {
+                    self.write(to, value);
+                    facts.touched.set(to);
+                } else {
+                    facts.material_changed = true;
+                }
+            } else if self.board[from] == value && self.board[to] == 0 {
+                self.write(from, 0);
+                self.write(to, value);
+                facts.touched.set(from);
+                facts.touched.set(to);
+            }
+            self.unmoved.clear(from);
+            self.unmoved.clear(to);
+        }
+    }
+
     /// Step 4's last clause: the enemy contacts whose movers stood still, on the board the
     /// arrivals left.
     #[inline(always)]
@@ -1177,6 +1277,7 @@ impl<'t> Game<'t> {
         self.heading_back = undo.heading_back;
         self.purse = undo.purse;
         self.side = undo.side;
+        self.fold_at = undo.fold_at;
         self.check_memo.set([-1, -1]);
     }
 
@@ -1281,7 +1382,7 @@ impl<'t> Game<'t> {
             let victim = self.board[plan.target];
             let (becomes, _, _) = self.meeting(plan.piece_type, victim, i);
             let survivor = if becomes >= 0 {
-                t.arriving_value(t.owner_of(victim), becomes as usize, plan.target)
+                self.arriving(t.owner_of(victim), becomes as usize, plan.target)
             } else {
                 0
             };
@@ -1314,19 +1415,19 @@ impl<'t> Game<'t> {
         }
         let promotion = move_promotion(taken.m) as usize;
         let mut value = match move_kind(taken.m) {
-            MOVE_PROMOTION => t.entering_value(taken.captor, promotion),
-            MOVE_PORTAL if promotion != 0 => t.entering_value(taken.captor, promotion - 1),
+            MOVE_PROMOTION => t.promoted_value(taken.captor, taken.m, promotion),
+            MOVE_PORTAL if promotion != 0 => t.promoted_value(taken.captor, taken.m, promotion - 1),
             _ => standing,
         };
         let (_, mover_becomes, flips) = self.meeting(taken.captor_type, taken.victim, taken.captor);
         // SR7n (R20): a held shooter stays nobody's (`Taking::block`).
         let flips = flips && taken.block != WILD;
         if mover_becomes >= 0 {
-            value = t.arriving_value(taken.block, mover_becomes as usize, origin);
+            value = self.arriving(taken.block, mover_becomes as usize, origin);
         }
         if flips {
             let now = if mover_becomes >= 0 { t.entering_value(taken.captor, mover_becomes as usize) } else { value };
-            value = t.rehome_value(now, 1 - taken.captor, origin);
+            value = self.rehome(now, 1 - taken.captor, origin);
         }
         if value != standing {
             self.write(origin, value);
@@ -1351,14 +1452,14 @@ impl<'t> Game<'t> {
         // stands (or as it now is, when it changed type), so it keeps its heading.
         let attacker = if flips {
             let now = if mover_becomes >= 0 { t.entering_value(player, as_type) } else { mover };
-            t.rehome_value(now, 1 - player, origin)
+            self.rehome(now, 1 - player, origin)
         } else if mover_becomes >= 0 {
-            t.arriving_value(block, as_type, origin)
+            self.arriving(block, as_type, origin)
         } else {
             mover
         };
         let survivor =
-            if becomes >= 0 { t.arriving_value(t.owner_of(victim), becomes as usize, plan.target) } else { 0 };
+            if becomes >= 0 { self.arriving(t.owner_of(victim), becomes as usize, plan.target) } else { 0 };
         self.write(origin, attacker);
         self.write(plan.target, survivor);
         touched.set(origin);
@@ -1388,9 +1489,9 @@ impl<'t> Game<'t> {
                 // TC1: a flip is the one change of allegiance, `rehome_value`'s; TC2: the
                 // captor as it stands (or as it now is), so it keeps its heading.
                 let now = if mover_becomes >= 0 { t.entering_value(taken.captor, as_type) } else { standing };
-                t.rehome_value(now, 1 - taken.captor, taken.square)
+                self.rehome(now, 1 - taken.captor, taken.square)
             } else {
-                t.arriving_value(taken.block, as_type, taken.square)
+                self.arriving(taken.block, as_type, taken.square)
             };
             self.write(taken.square, value);
         }
@@ -1408,7 +1509,7 @@ impl<'t> Game<'t> {
         };
         if let Some(square) = place {
             if self.board[square] == 0 {
-                self.write(square, t.arriving_value(owner, becomes as usize, square));
+                self.write(square, self.arriving(owner, becomes as usize, square));
                 touched.set(square);
                 if strike.position == StrikePosition::Home {
                     self.unmoved.set(square);
@@ -1606,5 +1707,148 @@ impl<'t> Game<'t> {
             }
         }
         total
+    }
+}
+
+/// SR8e (R9, `docs/reference/rounds.md` §4 step 1): a portal end a player moves, in a round.
+impl<'t> Game<'t> {
+    /// Which of the round's two moves move a portal end: a fold's own move (`MOVE_FOLD`), or a
+    /// momentum end's (its byte on the origin). Never in a game without portals.
+    #[inline]
+    fn portal_moves(&self, plans: &[Plan; 2]) -> [bool; 2] {
+        let t = self.t;
+        if t.portals.is_none() {
+            return [false; 2];
+        }
+        let moves_end = |plan: &Plan| {
+            plan.kind == MOVE_FOLD || (plan.origin.is_some() && t.is_portal_end(plan.mover))
+        };
+        [moves_end(&plans[0]), moves_end(&plans[1])]
+    }
+
+    /// Ruled 2026-10-27 (R9): the round's portal moves are made before its piece moves, and
+    /// the piece move then reads the ends where they now stand. Readings settled here (the
+    /// row left them unstated): two moves of one end to two squares, or of two ends to one
+    /// square, are both void (the ends stay; the same end to the same square is made once);
+    /// a portal end meets nothing, so the round's one piece move (at most one: each player
+    /// has one move) is then resolved alone, as an ordered round's slower move is, on the
+    /// board the portal moves left. A transit or a go-through keeps the end it went in by
+    /// and the momentum it set out with, and comes out where the far end now stands; the
+    /// word so read must be offered on that board (the piece still reaches the end, the exit
+    /// is on the board and open to it, its promotion is offered there), else the move is void
+    /// and the piece stays. Every other piece move must be offered as chosen.
+    #[cold]
+    #[inline(never)]
+    fn portals_first(&mut self, plans: &mut [Plan; 2], portal: [bool; 2], facts: &mut StepFacts) -> Step {
+        let t = self.t;
+        let portals = t.portals.as_deref().expect("a portal move without portals");
+        let ends_before = self.portal_squares(portals);
+        let folds_before = self.fold_at;
+        let mut made = portal;
+        if portal[0] && portal[1] {
+            let same_end = plans[0].piece_type == plans[1].piece_type;
+            let same_square = plans[0].target == plans[1].target;
+            if same_end && same_square {
+                made[1] = false;
+            } else if same_end || same_square {
+                made = [false, false];
+                for (i, plan) in plans.iter().enumerate() {
+                    self.round_log.push((EVENT_VOID, plan.origin.unwrap_or(plan.target), i as i8));
+                }
+            }
+        }
+        for i in 0..2 {
+            if made[i] {
+                let plan = plans[i];
+                self.move_portal_end(&plan, facts);
+            }
+        }
+        let mut step = Step { arriving: [false; 2], standing: [false; 2], void: [false; 2], struck: [false; 2] };
+        if portal[0] == portal[1] {
+            return step;
+        }
+        let s = usize::from(portal[0]);
+        let read = self.read_through_moved_ends(portals, s, plans[s].m, &ends_before, &folds_before);
+        match read {
+            Some(m) if self.offered(s, m) => {
+                plans[s] = self.plan(s, m);
+                let mut active = [false; 2];
+                active[s] = true;
+                let alone = self.resolve_step(&[plans[s], plans[s]], active, facts);
+                step.arriving[s] = alone.arriving[s];
+                step.standing[s] = alone.standing[s];
+            }
+            _ => {
+                let plan = plans[s];
+                self.round_log.push((EVENT_VOID, plan.origin.unwrap_or(plan.target), s as i8));
+            }
+        }
+        step
+    }
+
+    /// Make one portal end's move: a momentum end's byte moves (its rights spent, as `make`
+    /// spends them), a fold moves under whatever stands where it lands, keyed.
+    fn move_portal_end(&mut self, plan: &Plan, facts: &mut StepFacts) {
+        let t = self.t;
+        let origin = plan.origin.expect("a portal end's move has an origin");
+        let target = plan.target;
+        if plan.kind == MOVE_FOLD {
+            let portals = t.portals.as_deref().expect("a fold move without portals");
+            let folds = portals.folds.as_ref().expect("a fold move without folds");
+            let end = plan.piece_type - portals.first_type;
+            self.working_key ^= folds.key(t.n_squares, end, origin) ^ folds.key(t.n_squares, end, target);
+            self.set_fold(end, target as i16);
+        } else {
+            self.write(origin, 0);
+            self.write(target, plan.mover);
+            self.unmoved.clear(origin);
+            self.unmoved.clear(target);
+        }
+        facts.touched.set(origin);
+        facts.touched.set(target);
+    }
+
+    /// `player`'s move word `m` read through the ends where they now stand: a transit or a
+    /// go-through whose far end moved comes out where it stands now, in the same direction
+    /// (a transit) or on its square (a fold); `None` where that is off the board or the far
+    /// end stands nowhere. Every other word is itself.
+    fn read_through_moved_ends(
+        &self, portals: &PortalTables, player: usize, m: u32, ends_before: &[u16; MAX_PORTAL_ENDS],
+        folds_before: &[i16; MAX_PORTAL_ENDS],
+    ) -> Option<u32> {
+        let t = self.t;
+        let kind = move_kind(m);
+        let tag = ((m & MOVE_TAG_MASK) >> MOVE_TAG_SHIFT) as usize;
+        let retarget =
+            |square: usize| (m & !(0xFF << MOVE_TARGET_SHIFT)) | ((square as u32) << MOVE_TARGET_SHIFT);
+        if kind == MOVE_PORTAL {
+            let to = portals.dest[tag];
+            debug_assert!(to >= 0, "a transit through an end that leads nowhere");
+            let far = to as usize - portals.first_type;
+            let before = ends_before[far];
+            let now = self.portal_squares(portals)[far];
+            if now == before {
+                return Some(m);
+            }
+            if now == u16::MAX || before == u16::MAX {
+                return None;
+            }
+            let target = move_to(m) as i16;
+            let direction = (0..portals.n_dirs)
+                .find(|&d| portals.exit(t.n_squares, player, before as usize, d) == target)?;
+            let exit = portals.exit(t.n_squares, player, now as usize, direction);
+            return (exit >= 0).then(|| retarget(exit as usize));
+        }
+        if portals.folds.is_some() && (kind == MOVE_NORMAL || kind == MOVE_PROMOTION) && tag != 0 {
+            let to = portals.dest[portals.first_type + tag - 1];
+            debug_assert!(to >= 0, "a go-through by a fold that leads nowhere");
+            let far = to as usize - portals.first_type;
+            let now = self.fold_at[far];
+            if now == folds_before[far] {
+                return Some(m);
+            }
+            return (now >= 0).then(|| retarget(now as usize));
+        }
+        Some(m)
     }
 }

@@ -170,6 +170,7 @@ class TestTheWalkReadsEachKindAsThePassDoes:
         pairs = [("greedy", searching), (searching, "greedy")] + [("random", "random")] * 4
         records = [play_game(engine, pair, seed) for seed, pair in enumerate(pairs)]
         trials = 0
+        movable = analysis_pass.movable_types(spec)
         for index, record in enumerate(records):
             walked = legality.walk(
                 engine, evaluator, record, phase=slices.TOURNAMENT, game=index, series=True
@@ -177,6 +178,17 @@ class TestTheWalkReadsEachKindAsThePassDoes:
             assert walked.record.as_dict() == record.as_dict()
             own = analysis_pass._analyse_game(engine, evaluator, record, epsilon)
             assert replace(walked.positions, near_best=own.near_best) == own
+            # `v14`'s readings (R-S6e): each seat of a round named as the pass names it, and
+            # the pieces followed through both moves of a round.
+            read = legality.walk(
+                engine, evaluator, record, phase=slices.TOURNAMENT, game=index,
+                series=True, movable=movable,
+            ).positions
+            full = analysis_pass._analyse_game(engine, evaluator, record, epsilon, movable)
+            assert full.sample_movers is not None
+            assert replace(
+                read, near_best=full.near_best, sample_values=full.sample_values
+            ) == full
             trial = analysis_pass._one_blunder(
                 engine, record, analysis_pass.blunder_rng(0, record)
             )

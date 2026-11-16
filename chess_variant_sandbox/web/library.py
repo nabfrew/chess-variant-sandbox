@@ -27,6 +27,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from chess_variant_sandbox import measurement as _measurement
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.loop.archive import Archive, Entry, provisional_sentence
 from chess_variant_sandbox.loop.grid import (
@@ -43,6 +44,7 @@ from chess_variant_sandbox.measurement import (
     Measurement,
     built_fingerprint,
     fold_crlf,
+    strength_reading,
     tables_cache_path,
 )
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
@@ -67,6 +69,12 @@ ARCHIVE_DIR = Path("archive")
 CURRENT = "current"
 PROVISIONAL = "provisional"
 NONE = "none"
+# R-S8: a score whose own runs say its players could not tell their rungs apart
+# (`measurement.unread_reasons`). Shown as a provisional number is -- marked, never as
+# current, in no comparison, band or tier -- and it wins over `provisional`: a replay alone
+# does not clear it, so an unread score that is also out of date reads `unread`, with its
+# `staleness` beside it saying the second thing (`Game.status`).
+UNREAD = "unread"
 
 # A file in `archive/` that says it is a preview (`provenance.preview`, Q931): its own
 # source, beside *committed* and *archived*, so that no list of the library's sources holds
@@ -117,14 +125,20 @@ class Game:
         measurement = self.measurement
         if measurement is None:
             return NONE
-        if measurement.current:
-            return CURRENT
-        # Provisional only where the stale file is this game's own past estimate and can
-        # say what it rests on. A file with no basis cannot state its basis, and one whose
-        # basis names another ruleset is somebody else's number: neither is shown.
-        if measurement.basis is None or measurement.basis.ruleset_hash != self.hash:
+        if not measurement.current and (
+            measurement.basis is None or measurement.basis.ruleset_hash != self.hash
+        ):
+            # Provisional only where the stale file is this game's own past estimate and
+            # can say what it rests on. A file with no basis cannot state its basis, and
+            # one whose basis names another ruleset is somebody else's number: neither is
+            # shown.
             return NONE
-        return PROVISIONAL
+        # R-S8: unread before current and before provisional. Neither is current, and an
+        # unread score that is also stale must not read as merely awaiting a replay: the
+        # replay alone does not make its runs readable. Its staleness travels beside it.
+        if measurement.unread:
+            return UNREAD
+        return CURRENT if measurement.current else PROVISIONAL
 
     @property
     def score(self) -> dict[str, Any] | None:
@@ -199,6 +213,15 @@ class Game:
         # `compute-economy.md` §3.5): how large it was, so the page can say so beside the
         # number (`certifiedMarkHtml`). `None` on a score its games were played for.
         joined["certified"] = certified_payload(basis)
+        # R-S8: why the score cannot be read yet, and the sentence a page says it in; an
+        # empty list and `None` where it reads.
+        joined["unread"] = list(self.measurement.unread)
+        joined["unreadSaid"] = unread_sentence(
+            joined["unread"], stale=not self.measurement.current)
+        # R-S4c: whether stronger players would be likely to change it (the strength check),
+        # with the words a page says it in. Beside the score, never in it.
+        joined["strength"] = strength_payload(
+            strength_reading(self.hash, basis), unread=bool(joined["unread"]))
         return joined
 
     @property
@@ -354,6 +377,13 @@ class Game:
             # How large a sample re-certified it (C6), or `None`: the card says *from a
             # sample* beside a number its games were not all played for.
             "certified": None if score is None else score.get("certified"),
+            # R-S8: why the score cannot be read yet, and its sentence; `[]` and `None`
+            # where it reads. `status` is `unread` beside them.
+            "unread": [] if score is None else list(score.get("unread") or []),
+            "unreadSaid": None if score is None else score.get("unreadSaid"),
+            # R-S4c: the strength check's reading and its words (`strength_payload`), or
+            # `None` for a game with no score.
+            "strength": None if score is None else score.get("strength"),
             "viable": None if score is None else score.get("viable"),
             # False only for *not measured* (plan-teacher §10.16): the vote reached no
             # verdict. `viable` is False beside it, so every reader asks this first.
@@ -1709,28 +1739,172 @@ def _comparable(games: Iterable[Game]) -> tuple[_Measured, ...]:
     found: list[_Measured] = []
     # A preview is in no band, and is no other game's comparison either (Q931, `preview`).
     for game in scored(games):
-        score = current_only(game.score)
-        if score is None or score.get("weights_version") != DEFAULT_WEIGHTS:
-            continue
-        headline = score.get("combined")
-        if headline is None:
-            headline = score.get("total")
-        if headline is None:
-            continue
-        raw = score.get("interval")
-        interval: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}
-        found.append(
-            _Measured(
-                game=game.hash,
-                weights=str(score.get("weights_version", "")),
-                headline=float(headline),
-                ci_low=float(interval.get("ci_low", 0.0)),
-                ci_high=float(interval.get("ci_high", 0.0)),
-                sweeps=float(interval.get("deterministic_pairings", 0.0)),
-                bounded=bool(interval),
-            )
-        )
+        measured = _measured_of(game.hash, game.score)
+        if measured is not None:
+            found.append(measured)
     return tuple(sorted(found))
+
+
+def _measured_of(digest: str, score: Mapping[str, Any] | None) -> _Measured | None:
+    """One score as the separation rule reads it, or ``None`` where it may not be compared.
+
+    The door is `current_only` and the current weights version, as for the bands: a
+    provisional estimate, a score under another version and a score with no headline are
+    in no comparison.
+    """
+    current = current_only(dict(score) if score is not None else None)
+    if current is None or current.get("weights_version") != DEFAULT_WEIGHTS:
+        return None
+    headline = current.get("combined")
+    if headline is None:
+        headline = current.get("total")
+    if headline is None:
+        return None
+    raw = current.get("interval")
+    interval: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}
+    return _Measured(
+        game=digest,
+        weights=str(current.get("weights_version", "")),
+        headline=float(headline),
+        ci_low=float(interval.get("ci_low", 0.0)),
+        ci_high=float(interval.get("ci_high", 0.0)),
+        sweeps=float(interval.get("deterministic_pairings", 0.0)),
+        bounded=bool(interval),
+    )
+
+
+# ------------------------------------------------------- the tiers against chess (R-S6c)
+#
+# `docs/reference/v14-registration.md` §2.3, fixed before the page was built so the page
+# could not choose it: a game's tier is its relation to chess, the calibration baseline, by
+# the one separation rule (`bootstrap.clears`, through `IndexResult.separated_from`) and
+# nothing else -- *above chess*, *cannot be told from chess*, *below chess* -- and inside a
+# tier no order is implied, so a tier lists by name. No new threshold. `labelled-set.md`
+# §4.8: with S_pass unread, *the site shows tiers, not an order*.
+#
+# Three groups sit outside the tiers, because a tier is a comparison and these games are in
+# none: a game the checks refuse (gates disqualify, never deduct: it is shown with its
+# number and its mark, as before, under its own heading after the tiers), a game measured
+# with no number or interval to compare (or a library whose chess has no current score),
+# and a game with no current score at all (a provisional estimate, a visitor's own number,
+# nothing yet), which fills its tier by itself when it is measured again.
+
+ABOVE = "above"
+LEVEL = "level"
+BELOW = "below"
+REFUSED = "refused"
+UNPLACED = "unplaced"
+# R-S8: a game whose score is unread (`UNREAD`), in a group of its own rather than among
+# *not placed*: *not placed* says the score has no number or interval to compare, which a
+# replay can change; this says the players could not tell their own rungs apart, which a
+# replay on the same players does not, and the group's note says so in a visitor's words.
+UNREAD_GROUP = "unread"
+UNMEASURED = "unmeasured"
+
+TIERS = (ABOVE, LEVEL, BELOW)
+"""The three tiers, best first: the comparison the registration fixed."""
+
+TIER_ORDER = (ABOVE, LEVEL, BELOW, REFUSED, UNPLACED, UNREAD_GROUP, UNMEASURED)
+"""Every group a library game falls in, in the order a listing shows them."""
+
+TIER_WORDS: dict[str, dict[str, str]] = {
+    ABOVE: {"title": "above chess",
+            "note": "clearly higher than chess's score, by more than the uncertainty in both"},
+    LEVEL: {"title": "cannot be told from chess",
+            "note": "too close to chess's score to say which is higher"},
+    BELOW: {"title": "below chess",
+            "note": "clearly lower than chess's score, by more than the uncertainty in both"},
+    REFUSED: {"title": "turned down by the checks",
+              "note": "a game the checks refuse is not compared with chess, and is shown"
+                      " as it was measured"},
+    UNPLACED: {"title": "not placed against chess",
+               "note": "measured, but without a score that can be compared with chess's"},
+    UNREAD_GROUP: {"title": "scores that cannot be read yet",
+                   "note": "the computer players could not be told apart on these games, so"
+                           " their scores are not compared with chess's"},
+    UNMEASURED: {"title": "not yet measured under the current score",
+                 "note": "not compared with chess until it is measured again; a number"
+                         " from before is marked provisional"},
+}
+
+TIER_SENTENCE = (
+    "Ordered by score, the games are grouped by how each one's score compares with chess's,"
+    " the game every score is measured against: a game is above or below chess only where"
+    " the gap is bigger than the uncertainty in both scores. The scores are not precise"
+    " enough to put the games in a finer order, so inside each group they are listed by name."
+)
+
+
+def tier_of(
+    score: Mapping[str, Any] | None,
+    chess: Mapping[str, Any] | None,
+    *,
+    is_chess: bool = False,
+) -> str:
+    """Which group of `TIER_ORDER` a game with `score` falls in, against chess's `chess`.
+
+    The whole rule, in one place. `score` and `chess` are the stored scores as
+    `Game.score` gives them (any status); only a current score under the current weights
+    version is compared (`_measured_of`), and the comparison is `separated_from`, the one
+    that reads `bootstrap.clears`, both ways round. Chess itself is in the middle tier: it
+    cannot be told from itself.
+    """
+    if score is not None and score.get("status") == UNREAD:
+        # R-S8: before *not yet measured*, since measuring again on these players would not
+        # place it; an unread score is never compared, current or not.
+        return UNREAD_GROUP
+    if score is None or current_only(dict(score)) is None:
+        return UNMEASURED
+    if score.get("weights_version") != DEFAULT_WEIGHTS:
+        return UNMEASURED
+    if score.get("measured") is False:
+        return UNPLACED
+    if score.get("viable") is False:
+        return REFUSED
+    mine = _measured_of("game", score)
+    if mine is None or not mine.bounded:
+        return UNPLACED
+    if is_chess:
+        return LEVEL
+    theirs = _measured_of("chess", chess)
+    if theirs is None or not theirs.bounded:
+        return UNPLACED
+    if chess is not None and (chess.get("viable") is False or chess.get("measured") is False):
+        return UNPLACED
+    if _as_result(mine).separated_from(_as_result(theirs)):
+        return ABOVE
+    if _as_result(theirs).separated_from(_as_result(mine)):
+        return BELOW
+    return LEVEL
+
+
+def tiers(games: Iterable[Game]) -> dict[str, str]:
+    """Every library game's group by `tier_of`, keyed by hash; previews are in none.
+
+    The population is the whole library, as for the bands, so a card says the same tier
+    under any filter. Chess is found by its file (`reference_of`); a library without it
+    places nobody, and every scored game reads *not placed*.
+    """
+    listed = scored(games)
+    chess = reference_of(listed)
+    chess_score = None if chess is None else chess.score
+    return {
+        game.hash: tier_of(game.score, chess_score,
+                           is_chess=chess is not None and game.hash == chess.hash)
+        for game in listed
+    }
+
+
+def tier_legend() -> dict[str, Any]:
+    """The groups' words for a listing: their order, each title and note, and the sentence
+    saying what a tier means and why there is no finer order."""
+    return {
+        "order": list(TIER_ORDER),
+        "tiers": list(TIERS),
+        "groups": {key: dict(words) for key, words in TIER_WORDS.items()},
+        "sentence": TIER_SENTENCE,
+        "chess": "chess itself: every score is measured against it",
+    }
 
 
 @lru_cache(maxsize=8)
@@ -2687,6 +2861,123 @@ def _lineage(entry: Any, by_hash: dict[str, Any], run: str) -> dict[str, Any]:
         "theme": (entry.detail or {}).get("theme", ""),
         "notes": entry.notes,
     }
+
+
+UNREAD_SAID = (
+    "The computer players could not be told apart on this game: the stronger ones did not"
+    " reliably beat the weaker ones, so its score cannot be read yet."
+)
+"""R-S8's words for an unread score, on its page and in its card's note (`unread_sentence`)."""
+
+UNREAD_STALE_SAID = (
+    " It was also worked out before the latest change to how games are scored, and"
+    " measuring it again will not be enough on its own."
+)
+
+
+def unread_sentence(reasons: Iterable[str], *, stale: bool = False) -> str | None:
+    """The plain words for an unread score, or ``None`` where it reads.
+
+    One sentence for clause C, the only reason so far (`measurement.ROSTER`); a second
+    reason adds its own words here. ``stale`` adds that the number is also out of date, so
+    an unread score that is provisional too says both and reads as no more current than
+    either.
+    """
+    found = [reason for reason in reasons if reason]
+    if not found:
+        return None
+    return UNREAD_SAID + (UNREAD_STALE_SAID if stale else "")
+
+
+# ------------------------------------------------------------- the strength check (R-S4c)
+#
+# Beside a score, whether stronger computer players would be likely to change it: R-S4b's
+# reading (`measurement.strength_reading`), in a visitor's words. The words stay inside the
+# record's limits (`strength-check-all-games.md` §14): *held* says the check found nothing,
+# never that there is nothing, and *held with its own players* is the weaker check, said as
+# weaker, because no outside engine plays the game and half of §14.2's sample of such games
+# moved. A flagged score is still a score: it keeps its band and its tier, marked; only an
+# unread one (R-S8) shows no line of its own, since its own line already says the players
+# could not be told apart.
+
+STRENGTH_TAGS = {
+    _measurement.DEPENDS: "may change with stronger players",
+    _measurement.HELD: "held with stronger players",
+    _measurement.HELD_OWN: "held with its own players",
+    _measurement.NOT_CHECKED: "not checked yet",
+}
+"""The short words beside a score, one a reading word."""
+
+STRENGTH_SAID = {
+    _measurement.DEPENDS: (
+        "This score may change with stronger players. When the computer player that measured"
+        " it was re-played against a copy of itself given four times the search, or against"
+        " an engine written elsewhere, the games said the score rests on these players as"
+        " much as on the game. It is still this game's score and keeps its place, marked."),
+    _measurement.HELD: (
+        "This score held when stronger players re-played the game: a copy of its strongest"
+        " computer player given four times the search, and an engine written elsewhere"
+        " (Fairy-Stockfish), found nothing to say it rests on the players. That is a check,"
+        " not a guarantee."),
+    _measurement.HELD_OWN: (
+        "This score held when its own strongest computer player was re-played against a copy"
+        " of itself given four times the search. No engine written elsewhere plays this game,"
+        " so that is the weaker check: of five such games re-measured with every player"
+        " given four times the search, two still changed their score."),
+    _measurement.NOT_CHECKED: (
+        "Whether stronger computer players would change this score has not been checked"
+        " yet"),
+}
+"""The sentence behind each tag, on the game's page and in the card's hover."""
+
+STRENGTH_TIER_SAID = "this place may change with stronger players"
+"""Beside a flagged game's tier against chess (a comparison, so it carries the mark)."""
+
+
+def _day(iso: Any) -> str:
+    try:
+        day = date.fromisoformat(str(iso))
+    except ValueError:
+        return str(iso or "")
+    return f"{day.day} {day.strftime('%B')} {day.year}"
+
+
+def strength_payload(reading: dict[str, Any], *, unread: bool = False) -> dict[str, Any]:
+    """A reading with its words: ``tag``, ``said``, ``details`` and ``shown``.
+
+    Every field of `measurement.strength_reading` travels unchanged, so a script (R-P6b)
+    reads the same dict the page does. ``shown`` is false on an unread score (R-S8): its
+    own mark already says the players could not be told apart, and a second line would say
+    it twice or, for a *held* reading, the opposite. ``details`` are the game page's two
+    numbers, each with what it is, and the day and players it was read on.
+    """
+    word = str(reading.get("word") or _measurement.NOT_CHECKED)
+    said = STRENGTH_SAID[word]
+    if word == _measurement.NOT_CHECKED:
+        said += f": {reading.get('why') or 'this game has not been checked yet'}."
+    details: list[str] = []
+    if reading.get("recorded"):
+        day = _day(reading.get("readAt"))
+        whose = ("the computer players that measured this score" if reading.get("belongs")
+                 else "the computer players that measured an earlier score")
+        if word == _measurement.DEPENDS and not reading.get("belongs"):
+            said += f" This was found on {day}, on {whose}; it stands until it is checked again."
+        details.append(f"Checked on {day}, on {whose}.")
+        c = reading.get("c")
+        if isinstance(c, (int, float)):
+            details.append(
+                f"Against a copy of itself given four times the search, its strongest computer"
+                f" player scored {c:.2f} of 1: near a half means more search hardly helped,"
+                f" and 0.40 or more is counted as resting on the players.")
+        f1 = reading.get("f1")
+        if isinstance(f1, (int, float)):
+            details.append(
+                f"Against Fairy-Stockfish, an engine written elsewhere, given the same"
+                f" search, it scored {f1:.2f} of 1: below 0.30 is counted as resting on the"
+                f" players.")
+    return {**reading, "tag": STRENGTH_TAGS[word], "said": said, "details": details,
+            "shown": not unread,
+            "tierSaid": STRENGTH_TIER_SAID if word == _measurement.DEPENDS else None}
 
 
 def current_only(score: dict[str, Any] | None) -> dict[str, Any] | None:

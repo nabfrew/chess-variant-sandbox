@@ -293,6 +293,17 @@ function scoreTag(game) {
   // (`provisionalTag`), never as the score itself.
   const official = !stale && game.index !== null && game.index !== undefined;
   if (!official && game.provisional) return provisionalTag(game.provisional);
+  // R-S8: a score its players could not read is marked so before anything else, current or
+  // not; its number, where it has one, stays inside the pill as a provisional one does.
+  if (isUnread(game)) {
+    const shown = game.index !== null && game.index !== undefined
+      ? `${fmt(game.index)} ` : '';
+    const count = runCount(game.seeds)
+      ? `<span class="muted">${esc(runsShort(game.seeds))}</span> ` : '';
+    const why = (game.unreadSaid || '') + (ACCOUNTS || !stale ? '' : ' ' + stale.summary);
+    return `<span class="tag stale provisional" title="${esc(why)}">${shown}${count
+      }cannot be read yet</span>${info('unreadScore')}`;
+  }
   // EV2: a stale measurement with a number is the game's provisional estimate, drawn
   // with its number and the mark, never bare (`docs/archive/plan-evolving-score.md` §5.1). The
   // run count stays inside the pill, as on a current one.

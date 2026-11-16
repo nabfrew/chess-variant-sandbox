@@ -758,6 +758,10 @@ SPEEDLESS = sorted(
     and path.stem not in ("_simultaneous_market", "_simultaneous_market_blast")
     # SR7n's four held specs (R20), refused until generation 109, likewise.
     and not path.stem.startswith("_simultaneous_held")
+    # SR8d's two castling specs (R6), refused until generation 121, likewise.
+    and not path.stem.startswith("_simultaneous_castling")
+    # SR8e's moved portals (R9), refused until generation 122, likewise.
+    and path.stem != "_simultaneous_portals_moved"
 )
 
 # Taken with main's package and core (47490df3bfedc24b, before Q943a) and with this one, and

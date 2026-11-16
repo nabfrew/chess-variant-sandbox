@@ -7,7 +7,7 @@ state, in the key.
 
 Hand positions on a 6x6 board (the end turn, the block turn, the double block, a block on an
 end, the heading in the key, a taken piece's heading dropped, a return on a line), the inert
-spellings, the refusals and the words; then the oracle (`tests/turning_oracle.py`) walked over
+spellings, the refusals (check lifted by SR8h, generation 125) and the words; then the oracle (`tests/turning_oracle.py`) walked over
 seeded games of `tests/_turning_wolves.json`, and the key over a round game.
 """
 
@@ -160,11 +160,15 @@ class TestTheWalk:
         outcome = engine.terminal(state)
         assert outcome is not None and outcome.winner == 1
 
-    def test_a_walking_wolf_puts_nothing_in_check(self) -> None:
-        """Its line carries no attack source: the rule is refused where check is asked."""
+    def test_a_walking_wolf_threatens_the_square_it_steps_to(self) -> None:
+        """Generation 125 (SR8h, N5): its threat is the square ahead after its turn, so a king
+        ahead of it is in check, and one behind it is not (`tests/test_turning_beside_check.py`
+        has the rest)."""
         engine = _engine()
-        state = engine.make_state({"c3": ("K", 0), "f6": ("K", 1), "b3": ("W", 2)})
-        assert not engine.in_check(state, 0)
+        ahead = engine.make_state({"c3": ("K", 0), "f6": ("K", 1), "b3": ("W", 2)})
+        assert engine.in_check(ahead, 0)
+        behind = engine.make_state({"a3": ("K", 0), "f6": ("K", 1), "b3": ("W", 2)})
+        assert not engine.in_check(behind, 0)
 
 
 class TestTheHeading:
@@ -263,15 +267,15 @@ class TestRefusals:
         ],
         ids=["checkmate", "forbid_check", "reach-safe"],
     )
-    def test_beside_check(self, change: Any, said: str) -> None:
+    def test_beside_check_is_no_longer_refused(self, change: Any, said: str) -> None:
+        """Generation 125 (SR8h, N5): `tests/test_turning_beside_check.py` plays it."""
         spec = _spec()
         change(spec["rules"])
-        errors = self._errors(spec)
-        assert any(said in e and "depends on what blocks it" in e for e in errors), errors
+        assert self._errors(spec) == [], said
 
-    def test_beside_also_at(self) -> None:
-        errors = self._errors(_spec(also_at=["c3"]))
-        assert any("beside also_at" in e for e in errors), errors
+    def test_beside_also_at_is_no_longer_refused(self) -> None:
+        """Generation 123 (SR8f, N4): `tests/test_head_on_routes.py` plays it."""
+        assert self._errors(_spec(also_at=["c3"])) == []
 
     def test_on_one_square(self) -> None:
         spec = _spec()
@@ -289,7 +293,8 @@ class TestTheWords:
         text = describe_spec(_spec())
         assert "paces the line a3, b3, c3 and d3" in text or "paces the line" in text
         assert "turns round and steps the other way" in text
-        assert "in check from it" not in text
+        # Generation 125 (SR8h): its threat is the square it steps to after its turn.
+        assert "the one behind once it has turned round" in text
 
     def test_a_game_without_it_says_nothing_of_it(self) -> None:
         assert "turns round" not in describe_spec(_spec(turns_back=None))

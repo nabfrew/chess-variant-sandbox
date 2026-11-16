@@ -199,16 +199,21 @@ def test_the_calculator_models_the_function(win: float, loss: float) -> None:
 def test_steering_duel_plays_one_duels_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
     """Each look plays the next seeds, so the pairs are those of one 24-pair duel's prefix."""
     played: list[tuple[int, int]] = []
+    opened: list[tuple[int | None, bool]] = []
     outcome = [1.0, 0.0, 1.0, 1.0, 0.5, 1.0, 0.0, 1.0] + [1.0] * 8 + [0.5] * 8
 
-    def fake_duel(spec, candidate, reference, pairs, seed=0, workers=0, margin_weight=0.0):  # type: ignore[no-untyped-def]
+    def fake_duel(spec, candidate, reference, pairs, seed=0, workers=0, margin_weight=0.0,  # type: ignore[no-untyped-def]
+                  *, opening_plies=None, unopened=False):
         played.append((seed, pairs))
+        opened.append((opening_plies, unopened))
         block = tuple(outcome[seed - 100 : seed - 100 + pairs])
         return Duel(candidate, reference, 0.5, 0.0, block, identical=0)
 
     monkeypatch.setattr(duel_module, "duel", fake_duel)
     result = steering_duel({}, "a", "b", seed=100, workers=3)
     assert played == [(100, 8), (108, 8)]
+    # R-P1: every look is opened as the duel path opens one, unless asked otherwise.
+    assert opened == [(8, False), (8, False)]
     assert result.estimates == tuple(outcome[:16])
     assert result.steer == steer(outcome)
     assert result.steer.call == CANDIDATE and result.steer.pairs == 16

@@ -75,7 +75,7 @@ QUALITIES: dict[str, tuple[str, str]] = {
     "depth": ("Depth", "Does thinking pay?"),
     "decisions": ("Decisions", "Is there something to think about on most turns?"),
     "pacing": ("Pacing", "Are the choices a good size, and do games vary in length?"),
-    "drama": ("Drama", "Can a game turn round, and does a lead mean something?"),
+    "drama": ("Drama", "Can a game turn round after a mistake?"),
     "variety": ("Variety", "Do two games go to different places?"),
     "balance": ("Balance", "Is it fair to both sides, and do games finish?"),
 }
@@ -94,16 +94,18 @@ INGREDIENTS: dict[str, Ingredient] = {
             "120.",
         noun="rating points a doubling",
     ),
-    "decision_criticality": Ingredient(
+    "decision_cost": Ingredient(
         title="Decisions that matter",
-        asks="On a typical turn, how many of the moves on offer would cost you something.",
+        asks="On a typical turn, how many of the moves on offer would cost you a real "
+             "share of the game.",
         why="Near none, every move is as good as any other and nothing needs thinking "
-            "about; near all, there is one right move and the game is a puzzle. Of "
-            "everything measured, it tells a broken game from a real one best.",
+            "about; near all, there is one right move and the game is a puzzle.",
         how="In positions taken from the games played, every legal move is scored the same "
-            "way on every game, with the piece values the rules imply. This is the share of "
-            "moves that come out clearly worse than the best one: worse by more than the "
-            "cheapest piece is worth.",
+            "way on every game, and each score is turned into a chance of winning, learned "
+            "from how this game's own positions turned out (from its other runs, never the "
+            "run being read). This is the share of moves that give up a tenth of a game or "
+            "more against the best one. When the chances cannot be learned from the games, "
+            "it is left out rather than scored as zero.",
         unit="share",
     ),
     "piece_utilisation": Ingredient(
@@ -115,22 +117,23 @@ INGREDIENTS: dict[str, Ingredient] = {
             "as the others), so a game with three kinds of piece compares with one with "
             "nine.",
     ),
-    "instance_participation": Ingredient(
+    "piece_participation": Ingredient(
         title="Pieces that move",
-        asks="Whether the pieces on the board at the start ever move at all.",
+        asks="Whether the pieces that come onto the board ever move at all.",
         why="Use of the army looks at kinds of piece and cannot see five of one kind "
             "sitting at the back while a sixth does all the work. A designer testing a new "
             "game named that failure, so it is counted.",
-        how="The share of pieces on the board at the start that move at least once in a "
-            "game, over the games played. When few move the game is dull, and when every "
-            "single one must, the game may be a slog.",
+        how="Every piece that stood on the board at any time and could move, set at the "
+            "start or brought on later, is followed through the game; this is the share "
+            "that moved at least once, over the games played. A piece the rules never let "
+            "move is not counted against the game, and no marks come off when every piece "
+            "moves.",
         unit="share",
     ),
     "mean_branching": Ingredient(
         title="Choices per turn",
         asks="How many legal moves a player typically has.",
-        why="Too few and there is nothing to decide; too many and a position is soup "
-            "nobody can read.",
+        why="Too few and there is nothing to decide. Many choices take no marks off.",
         how="The number of legal moves, averaged over every turn of every game played.",
         noun="moves",
     ),
@@ -150,17 +153,6 @@ INGREDIENTS: dict[str, Ingredient] = {
         how="A bad move is forced into a real position from a game played, and the game is "
             "played on from there. This is the share of those trials the side that slipped "
             "still saved.",
-        unit="share",
-    ),
-    "lead_conversion": Ingredient(
-        title="Converting a lead",
-        asks="Whether being ahead is worth something.",
-        why="If a lead means nothing, the middle of a game is noise; if the first real lead "
-            "always wins, the rest of the game is a formality.",
-        how="Among the won games where one side was clearly ahead in material part of the "
-            "way through, the share that side went on to win. When a run has too few such "
-            "games, or the computer players cannot judge who is ahead in this game, it is "
-            "left out rather than scored as zero.",
         unit="share",
     ),
     "position_divergence": Ingredient(
@@ -913,8 +905,13 @@ HERO_IDEAS: tuple[Idea, ...] = (
     Idea("pieces nobody owns",
          "two golems nobody owns walked the middle, eating what stood in their way?",
          "pieces nobody owns", "the golem well"),
+    # R-W7: steady ferry, not ferry. Ferry's own page says its score rules it out (0 of 4
+    # runs: the strongest players draw it by undoing each other's door moves), so the front
+    # page held up a game its page turns down; steady ferry is the same doors with the ban
+    # that stops the undoing, and its score keeps it in (4 of 4).
+    # `tests/test_landing_story.py` holds every idea's game to a stored verdict that keeps it.
     Idea("the board", "there were doors across the board that either player could move?",
-         "portals the players move", "ferry"),
+         "portals the players move", "steady ferry"),
     Idea("how a game is won", "walking your king to the centre won the game?",
          "winning by arriving", "king of the hill"),
     Idea("who moves, and when", "both players moved at once, in secret?",
@@ -990,6 +987,21 @@ def seat_link(digest: str, side: str) -> str:
     return f"/game/{digest}?seat={quote(side)}"
 
 
+# R-W1 (`docs/roadmap-2026-11.md`): a play door's own address starts the game too, so a press
+# that follows the link (a new tab, a press before the page's script is ready) lands on a
+# board rather than on the opponent picker. `?play=<agent>` on a game's page starts a practice
+# game at once against that computer player (`detail.js` `askedPlay`); `PLAY_DEFAULT` asks
+# for the game's own default instead: the gentlest player of its ladder above random, which
+# `launch.opponents` reads off the game's rating table, or the ladder's order without one.
+PLAY_DEFAULT = "gentlest"
+
+
+def play_link(digest: str, side: str, agent: str | None = None) -> str:
+    """The fixed game's page, the visitor seated on `side`, starting at once against `agent`
+    (or the game's default opponent)."""
+    return f"{seat_link(digest, side)}&play={quote(agent or PLAY_DEFAULT, safe='')}"
+
+
 def play_door(story: dict[str, Any] | None, words: str, classes: str = "button") -> str:
     """A door that starts a practice game of the story's fixed game in the story's seat, or
     nothing for no story or a constructed one (its game is no library game)."""
@@ -1002,7 +1014,8 @@ def play_door(story: dict[str, Any] | None, words: str, classes: str = "button")
     # names the seat; without one, `landing.js` asks the game's page for its gentlest.
     against = story.get("opponent")
     agent = f' data-agent="{_e(against["agent"])}"' if against else ""
-    return (f'<a class="{classes}" href="{_e(seat_link(digest, seat["side"]))}" '
+    href = play_link(digest, seat["side"], against["agent"] if against else None)
+    return (f'<a class="{classes}" href="{_e(href)}" '
             f'data-play="{_e(digest)}" data-seat="{int(seat["index"])}"{agent}>'
             f'{_e(words.format(name=fixed["name"]))}</a>')
 
@@ -1110,8 +1123,8 @@ def drawn_intro(story: dict[str, Any] | None = None) -> str:
 
 # §2.1: one idea, start to finish, in six steps, written from a story `web/stories.py`
 # rendered: every sentence and number is the record's or its games' own (rule 3, and the
-# provisional rule: a story with a number that is not current is not in the pool, so never
-# drawn). The games' frames are not here: `landing.js` asks `/api/stories` for them and
+# provisional rule: a game whose number is not current is said to be measured again, its last
+# answer marked provisional, and no bars compare the two; R-S6f). The games' frames are not here: `landing.js` asks `/api/stories` for them and
 # plays them on the steps' boards; the verdicts stay hidden (`pending`) until each game ends.
 JOURNEY_TITLE = "One idea, start to finish"
 STEP_NAMES = ("an idea, as a rule", "what goes wrong", "the one change", "what it changes",
@@ -1147,6 +1160,22 @@ def _linked(text: str, names: dict[str, str]) -> str:
     return said
 
 
+PROVISIONAL = "provisional"  # `library.Game.status`'s word for the last estimate
+REMEASURED_SAID = ("is being measured again: the site has changed how it plays or scores games "
+                   "since its last measurement.")
+PROVISIONAL_SAID = "Its last answer, kept until then:"
+# Said where the two games' bars stand once both are measured again (R-S6f).
+BARS_WAIT_SAID = ("The two games' qualities, side by side, come back once both are measured "
+                  "again.")
+UNREAD = "unread"  # `library.Game.status`'s word for a score that cannot be read yet (R-S8)
+UNREAD_SAID = ("is a game the computer players could not be told apart on, so its score "
+               "cannot be read yet.")
+UNREAD_KEPT_SAID = "What the site last said of it:"
+# Said where the bars stand while either game's score cannot be read (R-S8).
+BARS_UNREAD_SAID = ("The two games' qualities are not set side by side while either score "
+                    "cannot be read.")
+
+
 def _verdict(side: dict[str, Any], good: bool, quote: str = "") -> str:
     """A game's answer, in the site's words with its basis, or a constructed one's example
     line and the designer's quick answers."""
@@ -1159,6 +1188,29 @@ def _verdict(side: dict[str, Any], good: bool, quote: str = "") -> str:
     name = f'<a href="/game/{_e(str(side["hash"]))}">{_e(side["name"])}</a>'
     words = _failings(list(side.get("words") or []))
     mark = ("verdict-word-good", "it stays in") if good else ("verdict-word-bad", "ruled out")
+    if side.get("status") == UNREAD:
+        # R-S8: as a provisional answer is drawn -- marked, never as current -- with the
+        # unread words first (and the line, which says *provisional* too where it is).
+        out = (f'<p class="small">{name} {_e(UNREAD_SAID)}</p>'
+               f'<p class="small provisionalMark"><span class="tag stale">cannot be read yet</span> '
+               f'{_e(UNREAD_KEPT_SAID)} <b class="{mark[0]}">{mark[1]}</b>.'
+               + (f' <span class="muted">{_e(words)}.</span>' if words and not good else "")
+               + f'</p><p class="muted small"><span class="mono" data-line>{_e(side["line"])}</span> '
+               f'· <a href="{SCORE_ROUTE}">{_e(SCORE_TITLE.lower())}</a></p>')
+        if good and quote:
+            out += f'<p class="small muted"><q>{_e(quote)}</q></p>'
+        return out
+    if side.get("status") == PROVISIONAL:
+        # R-S6f: the last answer, marked and never as current (the provisional rule).
+        out = (f'<p class="small">{name} {_e(REMEASURED_SAID)}</p>'
+               f'<p class="small provisionalMark"><span class="tag stale">provisional</span> '
+               f'{_e(PROVISIONAL_SAID)} <b class="{mark[0]}">{mark[1]}</b>.'
+               + (f' <span class="muted">{_e(words)}.</span>' if words and not good else "")
+               + f'</p><p class="muted small"><span class="mono" data-line>{_e(side["line"])}</span> '
+               f'· <a href="{SCORE_ROUTE}">{_e(SCORE_TITLE.lower())}</a></p>')
+        if good and quote:
+            out += f'<p class="small muted"><q>{_e(quote)}</q></p>'
+        return out
     out = (f'<p class="small">The site\'s answer for {name}, measured in minutes: '
            f'<b class="{mark[0]}">{mark[1]}</b>.'
            + (f' <span class="muted">{_e(words)}.</span>' if words and not good else "")
@@ -1213,6 +1265,12 @@ def _bars(failed: dict[str, Any], fixed: dict[str, Any]) -> str:
     `data-v`, never by a style attribute."""
     if failed.get("example") or fixed.get("example"):
         return ""
+    if UNREAD in (failed.get("status"), fixed.get("status")):
+        # R-S8: an unread score enters no comparison, as a provisional one does not.
+        return f'<p class="small muted pairWait">{_e(BARS_UNREAD_SAID)}</p>'
+    if PROVISIONAL in (failed.get("status"), fixed.get("status")):
+        # Two numbers side by side are a comparison, which a provisional one never enters.
+        return f'<p class="small muted pairWait">{_e(BARS_WAIT_SAID)}</p>'
     rows = []
     for name in _BAR_ORDER:
         a, b = failed["qualities"].get(name), fixed["qualities"].get(name)

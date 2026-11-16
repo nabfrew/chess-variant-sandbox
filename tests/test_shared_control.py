@@ -169,11 +169,13 @@ class TestRefusals:
         spec = _shared(win="royal_capture", simultaneous={})
         _refused(spec, 'control "shared"')
 
-    def test_with_a_price(self):
+    def test_with_a_price_it_is_for_hire(self):
+        """U2 lifted shared.price: hiring a shared piece makes it the hirer's own
+        (`tests/test_unheld_pairs_u2.py` plays it)."""
         spec = _shared(purse={"start": 2, "market": ["G"]})
         spec["pieces"][2]["price"] = 2
         spec["pieces"][-1]["price"] = 3
-        _refused(spec, 'control "shared" has a price')
+        assert validate_spec(spec) == []
 
     def test_on_a_royal(self):
         spec = _shared()

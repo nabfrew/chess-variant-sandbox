@@ -200,6 +200,14 @@ def refusal(submitted: Mapping[str, Any] | None, current: Basis) -> str | None:
             f"this server runs {here}), so the page fetches the current module and "
             "measures again"
         )
+    if stamp.readings != current.readings:
+        # R-S6e: a module from before the browser's pass kept `v14`'s readings is a
+        # cached old module too, with the same remedy.
+        return (
+            f"its analysis kept {stamp.readings or 'no move values or pieces followed'}, "
+            f"and this server keeps {current.readings or 'neither'}, so the page fetches "
+            "the current module and measures again"
+        )
     staleness = stamp.stale_against(current.in_browser())
     if staleness.needs:
         return "it was not measured on what the server measures now: " + "; ".join(
@@ -209,15 +217,18 @@ def refusal(submitted: Mapping[str, Any] | None, current: Basis) -> str | None:
 
 
 def other_build(submitted: Mapping[str, Any] | None, current: Basis) -> bool:
-    """Whether this stamp's games were played by a core built from other sources.
+    """Whether this stamp came from an older cached module: games played by a core built
+    from other sources, or (R-S6e) an analysis that kept other readings than the server's.
 
-    The case `refusal` asks first and names on its own, as a predicate, so a caller can
+    The cases `refusal` asks first and names on their own, as a predicate, so a caller can
     tell the page to fetch the current manifest rather than just print the sentence.
     """
     stamp = Basis.from_dict(dict(submitted) if isinstance(submitted, Mapping) else None)
     if stamp is None or stamp.played != BROWSER or stamp.checked:
         return False
-    return _build(stamp.engine) != _build(current.engine)
+    return (
+        _build(stamp.engine) != _build(current.engine) or stamp.readings != current.readings
+    )
 
 
 def _build(engine: str) -> str:

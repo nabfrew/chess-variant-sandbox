@@ -1280,7 +1280,7 @@ class MinimaxAgent:
                 heard = self._history.get(origin * squares + target, 0)
             gain = self._strike_gain(board, move) if strikes else None
             if gain is None:
-                gain = self._capture_gain(board, move)
+                gain = self._capture_gain(board, move, state.side_to_move)
             return (-gain, -killer, -heard)
 
         moves.sort(key=rank)
@@ -1338,7 +1338,7 @@ class MinimaxAgent:
         theirs = state.colour.count(2) * 0xC2B2AE3D27D4EB4F
         return state.key ^ (mine & _U64) ^ (theirs & _U64)
 
-    def _capture_gain(self, board: bytes, move: int) -> float:
+    def _capture_gain(self, board: bytes, move: int, side: int | None = None) -> float:
         """Order captures first, most valuable victim first. Cheap and generic.
 
         Same trap as `_is_loud`, and the mirror of `agents.rs::capture_gain`. A
@@ -1347,6 +1347,8 @@ class MinimaxAgent:
         move by the value of the mover's own piece. That is not a tie-break difference --
         on `weathervane` most of the move list is rotations, so the two searches would
         cut off in different places and play different games under one name.
+
+        ``side`` is the side to move, whose frame a held sweep's path is read in (SR8k).
         """
         if move_type(move) in (
             MOVE_ROTATE, MOVE_CASTLE, MOVE_FOLD, MOVE_DUCK, MOVE_KEEP, MOVE_PASS
@@ -1364,7 +1366,7 @@ class MinimaxAgent:
         gain = values[spec.type_of(victim)] if victim else 0.0
         # Schema 13: a sweep's path victims are summed onto the target's, in ray order, as
         # `agents.rs::capture_gain` sums them (`CompiledSpec.sweep_victims`).
-        for _, swept in spec.sweep_victims(board, move):
+        for _, swept in spec.sweep_victims(board, move, side):
             gain += values[spec.type_of(swept)]
         return gain
 

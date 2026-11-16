@@ -18,7 +18,13 @@ piece of either side may go in), where a landing on an empty fold may also go th
 same step judged on the far square (empty under a move mode, the other side's piece under a
 capture mode, never the origin), a sweep taking only what it passed before the fold and never
 landing on a square it sweeps; a piece standing in a fold is swept as anywhere, and a fold is
-floor to everything else. Check is a capture's definition: a royal is in check when some pseudo-legal move of
+floor to everything else. SR8b (W7): the promotion is any move's, a sweep's included, read
+by its landing square. R-L6e (F7): gating by ranks (``rules.drops.gating.ranks``, a stock
+that never fills from captures): a move that takes a piece off one of its side's gate ranks
+(counted from its own side) on its first move may also place any type its side holds there,
+one move per type held; a sweep over pieces never gates (its word names its ray), a sweep over
+an empty line is a slide's move and gates as one. Castling beside gating is not stated here.
+Check is a capture's definition: a royal is in check when some pseudo-legal move of
 the other side would take it, as a landing or as a piece swept. A move that leaves the
 mover's own royal in check, or sweeps it away, is illegal. CLAUDE.md rule 3 allows it: it
 is a declared test oracle.
@@ -59,6 +65,8 @@ class Position:
     unmoved: set[int]
     ep: tuple[int, int] | None = None
     history: list[Move] = field(default_factory=list)
+    # R-L6e: each side's hand, a count per type, in a gating game; None elsewhere.
+    hands: tuple[tuple[int, ...], tuple[int, ...]] | None = None
 
 
 class Oracle:
@@ -80,6 +88,12 @@ class Oracle:
         wrap = rules.get("wrap") or {}
         assert set(wrap) <= {"files"} and wrap.get("files", "both") == "both", wrap
         self.wrap_files = bool(wrap)
+        gating = (rules.get("drops") or {}).get("gating")
+        self.gate_ranks: set[int] | None = None
+        if gating is not None:
+            assert set(gating) == {"ranks"} and not castling and not self.folds, gating
+            assert rules["drops"].get("from_captures") is False, rules["drops"]
+            self.gate_ranks = set(gating["ranks"])
         for piece in spec["pieces"]:
             for move in piece["moves"]:
                 assert move["kind"] in ("leap", "slide", "sweep"), move
@@ -247,8 +261,31 @@ class Oracle:
                 out.append((origin, target, -1, "castle"))
         return out
 
+    def _gated(
+        self, pos: Position, candidates: list[tuple[Move, tuple[int, ...]]]
+    ) -> list[tuple[Move, tuple[int, ...]]]:
+        """R-L6e: ``candidates`` and, after them, each gating move (kind ``"<kind>+<type>"``)."""
+        if self.gate_ranks is None or pos.hands is None:
+            return candidates
+        out = list(candidates)
+        hand = pos.hands[pos.side]
+        for (origin, target, promotion, kind), taken in candidates:
+            if kind not in ("plain", "ep"):
+                continue
+            if kind == "plain" and any(square != target for square in taken):
+                continue  # a sweep over pieces: its word names its ray, never a gate
+            if origin not in pos.unmoved or self._relative_rank(origin, pos.side) not in self.gate_ranks:
+                continue
+            out.extend(((origin, target, promotion, f"{kind}+{t}"), taken)
+                       for t, held in enumerate(hand) if held > 0)
+        return out
+
     def make(self, pos: Position, move: Move, taken: tuple[int, ...] = ()) -> Position:
         origin, target, promotion, kind = move
+        gate = -1
+        if "+" in kind:
+            kind, placed = kind.split("+")
+            gate = int(placed)
         board = list(pos.board)
         held = board[origin]
         assert held is not None
@@ -267,17 +304,25 @@ class Oracle:
             board[square] = None
             board[origin + dx] = (side, self.castle_rook)
             unmoved.discard(square)
+        # SR8b: a sweep that took (a promoting piece may sweep) opens no window.
         if (
-            held[1] == self.promoter and self.en_passant
+            held[1] == self.promoter and self.en_passant and not taken
             and abs(target // self.width - origin // self.width) == 2
             and target % self.width == origin % self.width
         ):
             ep = ((origin + target) // 2, target)
-        return Position(board, 1 - side, unmoved, ep, [*pos.history, move])
+        hands = pos.hands
+        if gate >= 0:
+            assert hands is not None
+            board[origin] = (side, gate)
+            mine = list(hands[side])
+            mine[gate] -= 1
+            hands = (tuple(mine), hands[1]) if side == 0 else (hands[0], tuple(mine))
+        return Position(board, 1 - side, unmoved, ep, [*pos.history, move], hands)
 
     def legal(self, pos: Position) -> list[Move]:
         out = []
-        for move, taken in self.pseudo(pos, pos.side):
+        for move, taken in self._gated(pos, self.pseudo(pos, pos.side)):
             if not self.in_check(self.make(pos, move, taken), pos.side):
                 out.append(move)
         for move in self.castles(pos):
@@ -290,7 +335,8 @@ class Oracle:
         rays to one target are two moves where they take different squares, one where they
         take the same (SR6d)."""
         out: list[tuple[Move, frozenset[int]]] = []
-        candidates = [*self.pseudo(pos, pos.side), *((m, ()) for m in self.castles(pos))]
+        candidates = [*self._gated(pos, self.pseudo(pos, pos.side)),
+                      *((m, ()) for m in self.castles(pos))]
         for move, taken in candidates:
             key = (move, frozenset(taken))
             if key not in out and not self.in_check(self.make(pos, move, taken), pos.side):
@@ -313,13 +359,16 @@ class Oracle:
 
 
 def position_of(board: bytes, side: int, unmoved: int, n_types: int,
-                ep_target: int | None = None, ep_victim: int | None = None) -> Position:
+                ep_target: int | None = None, ep_victim: int | None = None,
+                hands: Any = None) -> Position:
     """An oracle position from the core's board bytes (one facing): byte ``v`` is player
-    ``(v - 1) // n_types`` and type ``(v - 1) % n_types``."""
+    ``(v - 1) // n_types`` and type ``(v - 1) % n_types``; ``hands`` the core's, a count per
+    type for each player (a gating game)."""
     cells: list[tuple[int, int] | None] = [
         None if value == 0 else ((value - 1) // n_types, (value - 1) % n_types)
         for value in board
     ]
     squares = {square for square in range(len(board)) if unmoved >> square & 1}
     ep = (ep_target, ep_victim) if ep_target is not None and ep_victim is not None else None
-    return Position(cells, side, squares, ep)
+    held = None if hands is None else (tuple(hands[0]), tuple(hands[1]))
+    return Position(cells, side, squares, ep, hands=held)

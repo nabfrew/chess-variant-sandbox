@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 
 from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.engine import compile as compile_module
 from chess_variant_sandbox.engine.bridge import canonical_tables, rust_supports
 from chess_variant_sandbox.engine.compile import WILD, compile_spec
 from chess_variant_sandbox.engine.moves import (
@@ -200,6 +201,22 @@ class TestTheSpelling:
         spec["rules"][key] = value
         errors = validate_spec(spec)
         assert any(f"rules.turn.parts beside rules.{key}" in error for error in errors), errors
+
+    def test_refused_beside_the_duck_as_the_engine_refuses_it(self, monkeypatch):
+        """SR8f (`refusal-debt.md` §7): L7's lift (SR8c) covered `moves` and `ramp` only, and
+        the duck beside parts validated while the engine refused it. Now the validator says why
+        first, and the bridge still holds a spec that reached the compiler some other way."""
+        spec = _drover()
+        spec["pieces"].append({"id": "D", "name": "duck", "value": 0, "moves": []})
+        spec["rules"]["duck"] = {"piece": "D"}
+        errors = validate_spec(spec)
+        assert any(
+            "rules.turn.parts beside rules.duck" in error and "no part admits" in error
+            for error in errors
+        ), errors
+        monkeypatch.setattr(compile_module, "validate_or_raise", lambda spec: None)
+        reason = rust_supports(compile_spec(spec))
+        assert reason is not None and "rules.turn.parts" in reason
 
     def test_the_bridge_holds_what_the_validator_refuses(self):
         compiled = compile_spec(_drover())

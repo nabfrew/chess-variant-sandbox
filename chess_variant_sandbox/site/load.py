@@ -129,6 +129,9 @@ CURRENT = "current"
 MISSING = "missing"
 """The two states `Staleness.needs` has no word for. `current` is its empty string, and
 `missing` is a game with a ladder and no measurement at all."""
+UNREAD = "unread"
+"""R-S8: an up-to-date measurement whose runs could not tell their players apart
+(`Measurement.unread`), held as no current number; `library.UNREAD`'s word."""
 
 
 # --------------------------------------------------------------------- what a run did
@@ -560,10 +563,15 @@ def load_measurements(
             state, basis, headline = MISSING, None, None
             ci_low, ci_high = None, None
         else:
-            state = measurement.staleness.needs or CURRENT
+            # R-S8: a score whose runs could not tell their players apart is no current
+            # number, so it carries no headline and no range and its state is `unread`
+            # where it would otherwise read `current`: every reader that asks for
+            # `current` (a badge, a round) passes it by. A stale one keeps its repair.
+            readable = measurement.current and not measurement.unread
+            state = measurement.staleness.needs or (CURRENT if readable else UNREAD)
             basis = measurement.basis.as_dict() if measurement.basis else None
-            headline = _headline(measurement) if measurement.current else None
-            ci_low, ci_high = _range(measurement) if measurement.current else (None, None)
+            headline = _headline(measurement) if readable else None
+            ci_low, ci_high = _range(measurement) if readable else (None, None)
         top, top_rating = top_rung(ladder)
         desired = (directory, state, basis, headline, ladder, top, top_rating,
                    ci_low, ci_high)

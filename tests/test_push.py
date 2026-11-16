@@ -561,7 +561,8 @@ def test_one_table_entry_pushes_a_landing_one_way() -> None:
     ]
     compile_spec(spec)  # one ray, one step
     _piece(spec, "R")["moves"][1]["push"] = {"along": "file"}
-    assert validate_spec(spec) == []
+    # U1: the validator names it (hold.H6); the compiler stays the second line.
+    assert refused_ids(validate_spec(spec)) == {"hold.H6"}
     with pytest.raises(SpecError, match="two ways"):
         compile_spec(spec)
 

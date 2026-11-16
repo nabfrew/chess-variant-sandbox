@@ -373,7 +373,9 @@ def analysis_digest(name: str, analyse: Callable[..., Any] = analyse_corpus) -> 
     spec = json.loads((ROOT / name).read_text(encoding="utf-8"))
     spec["rules"]["max_plies"] = 40
     records = _played(spec, ANALYSED[name])
-    analysed = analyse(spec, list(records), blunder_sample=2, seed=0, workers=1)
+    # Without `v14`'s readings (on by default since R-S6d, new fields beside the old): the
+    # digest pins the fields the pass wrote before speeds, which a speedless game keeps.
+    analysed = analyse(spec, list(records), blunder_sample=2, seed=0, workers=1, readings=False)
     text = json.dumps(analysed.as_dict(), sort_keys=True)
     return hashlib.sha256(text.encode()).hexdigest()
 

@@ -1,0 +1,2808 @@
+# Why each refused combination is refused: the one source (R-L1a; moved beside the tables by
+# R-L1b, 2026-11-14, so that the package can read it). `refusals.reason_counts` reads `reason`
+# for the counts `RULES.md` prints; `docs/reference/refusal-debt.md` is the record, and
+# `uv run python docs/reference/refusal-debt.py` holds this file one-to-one against the code
+# and says what it does not cover (`tests/test_refusal_debt.py` fails on it). A new refusal,
+# in `refusals.py` or `schema.py`, gets its entry here in the same commit; a lift deletes it.
+#
+# [[refusal]]: one combination the validator refuses today.
+#   id       this file's name for it: the row of `plan-schema-next.md` §2 it falls under (with a
+#            suffix where a row holds several), or `<family>.<what>` for one outside that inventory
+#   plan     that row's id; absent for a refusal the last inventory (the 192) did not hold
+#   family   the rule that brings it
+#   at       where the code says it: "table:<id>" or "table:<id>|<second>" for a row of
+#            `spec/refusals.py`, else "<function>: <words of the message>" for a literal of
+#            `spec/schema.py` (a list when two literals say one refusal; "=<words>" is a
+#            literal that is exactly those words)
+#   pair     the two things refused together, as key paths
+#   reason   contradictory | too_expensive | not_built   (inert: refusing it loses nothing; not debt)
+#   why      one line
+#   held_by  not_built only: the task that will lift it, or "none"
+#   cost, cost_basis   too_expensive only: the cost, and "cited: <where>" or "estimated"
+#
+# [[lifted]]: a row of the last inventory that is no longer refused (narrowed = true: a narrower
+# case of it still is, and a [[refusal]] names it as its plan row), and lifts outside it.
+#
+# [other]: every other message-like literal of schema.py, so that a new one cannot go unread.
+#   shape     a malformed spec: a type, a range, an unknown name, a square off the board
+#   needs     a rule that needs another to mean anything (a dependency, not a refusal beside)
+#   inert     a rule that could never fire here; the game meant is the game without it
+#   spelling  one thing said twice, or two spellings of one key
+#   fragment  part of another message, or not a refusal at all
+# "<function> (N)" covers every literal in it that no "<function>: <words>" line or
+# [[refusal]] claims, and says how many that is: a message added to the function (a refusal
+# above all) changes the count and fails the check until it is named. A literal that reads
+# like a pair is never covered that way.
+
+# --- rounds (rules.simultaneous) ---------------------------------------------------------------
+[[refusal]]
+id = "L4"
+plan = "L4"
+family = "rounds"
+at = "table:L4"
+pair = ["rules.simultaneous", "rules.turn (moves or ramp over 1)"]
+reason = "contradictory"
+why = "a round is one secret move each"
+
+[[refusal]]
+id = "R1"
+plan = "R1"
+family = "rounds"
+at = "_check_simultaneous_coherence: there is no check when both players move at once; use"
+pair = ["rules.simultaneous", 'rules.win: "checkmate"']
+reason = "contradictory"
+why = "no check when both move at once"
+
+[[refusal]]
+id = "R2"
+plan = "R2"
+family = "rounds"
+at = "table:R2"
+pair = ["rules.simultaneous", "rules.checkmate"]
+reason = "contradictory"
+why = "no checkmate when both move at once"
+
+[[refusal]]
+id = "R3"
+plan = "R3"
+family = "rounds"
+at = "table:R3"
+pair = ["rules.simultaneous", "rules.forbid_check"]
+reason = "contradictory"
+why = "no check when both move at once"
+
+[[refusal]]
+id = "R4"
+plan = "R4"
+family = "rounds"
+at = "table:R4"
+pair = ["rules.simultaneous", "rules.check_limit"]
+reason = "contradictory"
+why = "no check when both move at once"
+
+[[refusal]]
+id = "R5"
+plan = "R5"
+family = "rounds"
+at = "table:R5"
+pair = ["rules.simultaneous", 'rules.royal_facing: "forbidden"']
+reason = "contradictory"
+why = "two legal moves made together can open the file, which neither did alone"
+
+[[refusal]]
+id = "R7"
+plan = "R7"
+family = "rounds"
+at = "table:R7"
+pair = ["rules.simultaneous", "rules.en_passant"]
+reason = "contradictory"
+why = "en passant reads the last move, and a round has two at once"
+
+[[refusal]]
+id = "R8"
+plan = "R8"
+family = "rounds"
+at = "table:R8"
+pair = ["rules.simultaneous", 'pieces[].moves[].kind: "sweep"']
+reason = "contradictory"
+why = "what a sweep removes depends on who stood on its path when, and a round has no such time (ruled 2026-10-27)"
+
+[[refusal]]
+id = "R9.bar"
+plan = "R9"
+family = "rounds"
+at = "table:R9"
+pair = ["rules.simultaneous", "rules.portals[].no_straight_back"]
+reason = "not_built"
+held_by = "none"
+why = "the bar names the one next move, and whom it binds when both players move next is unwritten (SR8e's narrower row)"
+
+[[refusal]]
+id = "R10.strike"
+plan = "R10"
+family = "rounds"
+at = 'table:R10|rules.strike.position: "choose"'
+pair = ["rules.simultaneous", 'rules.strike.position: "choose"']
+reason = "contradictory"
+why = "the square is chosen before the other player's move is known"
+
+[[refusal]]
+id = "R10.contacts"
+plan = "R10"
+family = "rounds"
+at = 'table:R10|rules.contacts.position: "choose"'
+pair = ["rules.simultaneous", 'rules.contacts.position: "choose"']
+reason = "contradictory"
+why = "the square is chosen before the other player's move is known"
+
+[[refusal]]
+id = "R12"
+plan = "R12"
+family = "rounds"
+at = "table:R12"
+pair = ["rules.simultaneous", 'rules.contacts (an own link, position "swap")']
+reason = "contradictory"
+why = "the mover's own piece would be put on its origin before the meetings, where the other player's piece may arrive"
+
+[[refusal]]
+id = "R13"
+plan = "R13"
+family = "rounds"
+at = "table:R13"
+pair = ["rules.simultaneous", "rules.drops.no_mate"]
+reason = "contradictory"
+why = "it is about checkmate, and a round game has none"
+
+[[refusal]]
+id = "R14"
+plan = "R14"
+family = "rounds"
+at = "_check_simultaneous_coherence: both players place at once, and a royal could be traded"
+pair = ["rules.simultaneous", "a royal in a rules.drops.placement stock"]
+reason = "contradictory"
+why = "both place at once, so a royal could be traded before the game starts"
+
+[[refusal]]
+id = "R15"
+plan = "R15"
+family = "rounds"
+at = "table:R15"
+pair = ["rules.duck", "rules.simultaneous"]
+reason = "contradictory"
+why = "the duck is moved by the mover, and in a round nobody is the mover"
+
+[[refusal]]
+id = "R16"
+plan = "R16"
+family = "rounds"
+at = "_check_npc_pounce: in a game in rounds (rules.simultaneous)"
+pair = ["rules.simultaneous", "rules.npcs[].pounce"]
+reason = "contradictory"
+why = "a pounce takes the pieces of the player who just moved; both just moved, and no order between them is colour-blind"
+
+[[refusal]]
+id = "R17"
+plan = "R17"
+family = "rounds"
+at = "table:R17"
+pair = ['pieces[].sight effect "command"', "rules.simultaneous"]
+reason = "not_built"
+held_by = "SR10a"
+why = "two players could move one piece in one round; ruled 2026-10-27 a new rule, rules.simultaneous.contested (batch H)"
+
+[[refusal]]
+id = "R19.hire"
+plan = "R19"
+family = "rounds"
+at = "table:R19"
+pair = ["rules.purse (a hire or rules.purse.bribe)", "rules.simultaneous"]
+reason = "not_built"
+held_by = "none"
+why = "two players recruiting one piece in one round is the user's auction idea, in limbo/designer.md to be costed"
+
+[[refusal]]
+id = "R20.tie"
+plan = "R20"
+family = "rounds"
+at = "_check_simultaneous_coherence: is held (control \"majority\"): either player may move it"
+pair = ['rules.simultaneous.tie: "impossible"', 'pieces[].control: "majority"']
+reason = "contradictory"
+why = "either player may hold the type, so one of it can meet another and tie: the promise is false"
+
+# --- what a taken piece becomes ---------------------------------------------------------------
+[[refusal]]
+id = "T1.position"
+plan = "T1"
+family = "taken piece"
+at = 'table:T1|rules.strike.position (not "stay" or "home")'
+pair = ["rules.explode_on_capture.strikes", 'rules.strike.position (not "stay" or "home")']
+reason = "contradictory"
+why = "the blast destroys the capturer, and only stay and home place a struck piece without it (ruled 2026-10-27)"
+
+[[refusal]]
+id = "T1.rifle"
+plan = "T1"
+family = "taken piece"
+at = 'table:T1|rules.strike (effect "capture", position "stay")'
+pair = ["rules.explode_on_capture.strikes", 'rules.strike (effect "capture", position "stay")']
+reason = "inert"
+why = "such a strike only removes, as the blast already does, so the switch changes nothing"
+
+[[refusal]]
+id = "T1.choose"
+plan = "T1"
+family = "taken piece"
+at = "table:T1|rules.explode_on_capture"
+pair = ['rules.strike.position: "choose"', "rules.explode_on_capture"]
+reason = "not_built"
+held_by = "none"
+why = "an exploding capture would be offered once per chosen square, all one position; refused beside any blast, a narrowed one included"
+
+[[refusal]]
+id = "T1.rounds"
+plan = "T1"
+family = "taken piece"
+at = "table:T1|rules.strike"
+pair = ["rules.simultaneous", "rules.strike beside rules.explode_on_capture"]
+reason = "not_built"
+held_by = "none"
+why = "the order of a round's strikes and blasts is a rule not written"
+
+[[refusal]]
+id = "T2"
+plan = "T2"
+family = "taken piece"
+at = "table:T2"
+pair = ["rules.strike (keeping its victim)", "rules.drops"]
+reason = "contradictory"
+why = "a struck piece cannot both stand on the board and sit in a hand"
+
+[[refusal]]
+id = "T3"
+plan = "T3"
+family = "taken piece"
+at = "table:T3"
+pair = ["rules.contacts", "rules.strike"]
+reason = "contradictory"
+why = "two spellings of one rule: a strike is a contact table with no mover column"
+
+[[refusal]]
+id = "T4.switch"
+plan = "T4"
+family = "taken piece"
+at = "table:T4|rules.explode_on_capture.strikes"
+pair = ["rules.contacts", "rules.explode_on_capture.strikes"]
+reason = "contradictory"
+why = "a contact's links are about the capturer too, which the blast destroys (ruled 2026-10-27)"
+
+[[refusal]]
+id = "T4.choose"
+plan = "T4"
+family = "taken piece"
+at = "table:T4|rules.explode_on_capture"
+pair = ['rules.contacts.position: "choose"', "rules.explode_on_capture"]
+reason = "not_built"
+held_by = "none"
+why = "as T1.choose: an exploding capture would be offered once per chosen square"
+
+[[refusal]]
+id = "T4.rounds"
+plan = "T4"
+family = "taken piece"
+at = "table:T4|rules.contacts"
+pair = ["rules.simultaneous", "rules.contacts beside rules.explode_on_capture"]
+reason = "not_built"
+held_by = "none"
+why = "the order of a round's contacts and blasts is a rule not written"
+
+[[refusal]]
+id = "T5"
+plan = "T5"
+family = "taken piece"
+at = "table:T5"
+pair = ["rules.contacts (a link keeping its target)", "rules.drops"]
+reason = "contradictory"
+why = "a transformed piece cannot both stand on the board and sit in a hand"
+
+[[refusal]]
+id = "T11"
+plan = "T11"
+family = "taken piece"
+at = "_check_strike_coherence: rules.strike.switches_sides names the royal piece"
+pair = ["rules.strike.switches_sides", "pieces[].royal"]
+reason = "contradictory"
+why = "a royal never changes sides"
+
+[[refusal]]
+id = "T12"
+plan = "T12"
+family = "taken piece"
+at = "_check_strike_coherence: rules.strike.chain names the royal piece"
+pair = ["rules.strike.chain", "pieces[].royal"]
+reason = "contradictory"
+why = "a struck royal must be a captured royal"
+
+[[refusal]]
+id = "T13"
+plan = "T13"
+family = "taken piece"
+at = "_check_strike_coherence: is not in rules.strike.immune"
+pair = ["rules.strike (a royal not immune)", "pieces[].royal"]
+reason = "contradictory"
+why = "a struck royal must be a captured royal"
+
+[[refusal]]
+id = "T14"
+plan = "T14"
+family = "taken piece"
+at = ["_check_contact_coherence: is not in rules.contacts.immune", "_check_contact_coherence: -- and rules.contacts.links names"]
+pair = ["rules.contacts (a royal not immune)", "pieces[].royal"]
+reason = "contradictory"
+why = "a struck royal must be a captured royal"
+
+[[refusal]]
+id = "T15"
+plan = "T15"
+family = "taken piece"
+at = "_check_contact_coherence: turns the royal piece"
+pair = ["rules.contacts.links (a royal's mover_to)", "pieces[].royal"]
+reason = "contradictory"
+why = "a royal that stops being royal makes check a question about a piece not on the board"
+
+# --- promotion, the hand, extinction -----------------------------------------------------------
+[[refusal]]
+id = "H4"
+plan = "H4"
+family = "hand"
+at = "_check_either_face_coherence: beside a strike whose position is"
+pair = ["rules.drops.either_face", 'rules.strike.position (not "advance")']
+reason = "contradictory"
+why = "the strike already says where a taken piece goes, so what it comes back as has two answers (follows T2)"
+
+[[refusal]]
+id = "H5"
+plan = "H5"
+family = "hand"
+at = "table:H5"
+pair = ["rules.drops.either_face", "rules.strike.switches_sides"]
+reason = "contradictory"
+why = "a capture already changes a piece's side, so what a taken piece becomes has two answers"
+
+[[refusal]]
+id = "H7"
+plan = "H7"
+family = "hand"
+at = "_check_either_face_coherence: and a piece in hand has one other face"
+pair = ["rules.drops.either_face", "two pieces[].promoted_from naming one base"]
+reason = "contradictory"
+why = "either_face is a piece with two faces; a base with two other faces is not one"
+
+[[refusal]]
+id = "H8"
+plan = "H8"
+family = "hand"
+at = "_check_either_face_coherence: is both a face"
+pair = ["rules.drops.either_face", "a pieces[].promoted_from chain of three"]
+reason = "contradictory"
+why = "a piece that is a face and a base gives the hand a third face"
+
+[[refusal]]
+id = "H9"
+plan = "H9"
+family = "hand"
+at = "_check_either_face_coherence: pairs the royal piece"
+pair = ["rules.drops.either_face", "pieces[].royal"]
+reason = "contradictory"
+why = "a royal has one face"
+
+[[refusal]]
+id = "H10"
+plan = "H10"
+family = "hand"
+at = "_check_either_face_coherence: the other face of a piece in hand"
+pair = ["rules.drops.either_face", "rules.drops.stock (a face)"]
+reason = "contradictory"
+why = "a hand holds bases, each droppable as either face; stocking the face says the same slot twice"
+
+[[refusal]]
+id = "H12"
+plan = "H12"
+family = "hand"
+at = "_validate_coherence: rules.en_passant requires rules.promotion"
+pair = ["rules.en_passant", "no rules.promotion"]
+reason = "not_built"
+held_by = "SR9a"
+why = "en passant is defined against the one promoting piece; batch G gives it a list of pieces"
+
+[[refusal]]
+id = "H13"
+plan = "H13"
+family = "hand"
+at = "_validate_rules: rules.en_passant needs a single promoting piece"
+pair = ["rules.en_passant", "rules.promotion (two or more rules)"]
+reason = "not_built"
+held_by = "SR9a"
+why = "one ep_type in the core; batch G makes it a mask"
+
+[[refusal]]
+id = "H14"
+plan = "H14"
+family = "hand"
+at = "_check_placement_coherence: outside the placement phase"
+pair = ["rules.drops.stock (a royal)", "no rules.drops.placement"]
+reason = "contradictory"
+why = "a side could move its army with its royal still in hand"
+
+[[refusal]]
+id = "H15"
+plan = "H15"
+family = "hand"
+at = "_check_placement_coherence: a royal is stocked once"
+pair = ["rules.drops.stock (a royal, twice)", "pieces[].royal"]
+reason = "contradictory"
+why = "a side has one of its royal"
+
+[[refusal]]
+id = "H16"
+plan = "H16"
+family = "hand"
+at = "_check_placement_coherence: is both placed by setup.placements and stocked"
+pair = ["rules.drops.stock (a royal)", "setup.placements (the same royal)"]
+reason = "contradictory"
+why = "the side would hold two of its royal"
+
+# --- sweeps -----------------------------------------------------------------------------------
+[[refusal]]
+id = "W1.choose"
+plan = "W1"
+family = "sweeps"
+at = "table:W1"
+pair = ['pieces[].moves[].kind: "sweep"', 'rules.strike.position: "choose"']
+reason = "not_built"
+held_by = "none"
+why = "a sweep's move word names no landing square for the struck piece"
+
+[[refusal]]
+id = "W1.disagree"
+plan = "W1"
+family = "sweeps"
+at = "_check_sweep_effects: sweeps disagree on effects"
+pair = ['pieces[].moves[].effects: "path"', 'pieces[].moves[].effects: "landing" on the same piece']
+reason = "not_built"
+held_by = "none"
+why = "the sweep switch is read per piece, not per move"
+
+[[refusal]]
+id = "W2.choose"
+plan = "W2"
+family = "sweeps"
+at = "table:W2"
+pair = ['pieces[].moves[].kind: "sweep"', 'rules.contacts.position: "choose"']
+reason = "not_built"
+held_by = "none"
+why = "a sweep's move word names no landing square for the piece its contact keeps"
+
+[[refusal]]
+id = "W3.both"
+plan = "W3"
+family = "sweeps"
+at = "table:W3"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.explode_on_capture beside rules.strike or rules.contacts"]
+reason = "not_built"
+held_by = "none"
+why = "nobody has ordered a sweep's blasts and its strikes or contacts"
+
+[[refusal]]
+id = "W7.fold"
+plan = "W7"
+family = "sweeps"
+at = "_check_sweep_coherence: a promoting piece, and it sweeps, beside a"
+pair = ["a sweeper named by rules.promotion", 'rules.portals[].kind: "fold"']
+reason = "too_expensive"
+cost = "the move word's promotion field (bits 20-24) is the fold step of a sweep through a fold; holding both needs a wider move word, which every move list, record and stored game word reads: L and a replay"
+cost_basis = "estimated"
+why = "a sweep through a fold names its step where a promotion would name its type (SR8b's narrower row)"
+
+[[refusal]]
+id = "W9.duck"
+plan = "W9"
+family = "sweeps"
+at = "_check_duck_coherence: sweeps: a sweep removes what lies on its line"
+pair = ["rules.duck.piece", 'pieces[].moves[].kind: "sweep"']
+reason = "contradictory"
+why = "the duck captures nothing, and a sweep removes what lies on its line"
+
+# --- lines of sight ---------------------------------------------------------------------------
+[[refusal]]
+id = "V10"
+plan = "V10"
+family = "sight"
+at = "_check_sight_coherence: a royal cannot be commanded"
+pair = ['pieces[].sight effect "command"', "pieces[].royal"]
+reason = "contradictory"
+why = "the opponent could walk a commanded royal into capture"
+
+[[refusal]]
+id = "V11.command"
+plan = "V11"
+family = "sight"
+at = "_check_sight_coherence: nobody commands for it, so a command never touches it"
+pair = ['pieces[].sight effect "command" (affects)', "a wild type or the duck"]
+reason = "contradictory"
+why = "a command gives the piece's opponent its move, and a piece nobody owns has no opponent"
+
+[[refusal]]
+id = "V11.whose"
+plan = "V11"
+family = "sight"
+at = "_check_sight_coherence: only whose 'any' reaches it"
+pair = ["pieces[].sight whose own or enemy (affects)", "a wild type or the duck"]
+reason = "contradictory"
+why = "a wild piece has no side to be own or enemy"
+
+[[refusal]]
+id = "V12"
+plan = "V12"
+family = "sight"
+at = "_check_sight_coherence: which has no side; use 'any'"
+pair = ["pieces[].sight whose own or enemy", "on a wild type or a type placed for nobody"]
+reason = "contradictory"
+why = "a piece nobody owns has no side"
+
+[[refusal]]
+id = "V13"
+plan = "V13"
+family = "sight"
+at = "_check_sight_coherence: nobody commands for it; use freeze"
+pair = ['pieces[].sight effect "command"', "on a wild type or a type placed for nobody"]
+reason = "contradictory"
+why = "nobody commands for a piece nobody owns"
+
+[[refusal]]
+id = "V14"
+plan = "V14"
+family = "sight"
+at = "_check_sight_coherence: has no forward of its own, so its sight must be the same"
+pair = ["pieces[].sight (reading differently for the two players)", "on a wild type or a type placed for nobody"]
+reason = "contradictory"
+why = "a piece nobody owns has no forward"
+
+# --- wild pieces (rules.npcs) -------------------------------------------------------------------
+[[refusal]]
+id = "N1"
+plan = "N1"
+family = "wild"
+at = "_check_npc_coherence: is royal; a wild royal has no side to lose it"
+pair = ["rules.npcs[].piece", "pieces[].royal"]
+reason = "contradictory"
+why = "a wild royal has no side to lose it"
+
+[[refusal]]
+id = "N2"
+plan = "N2"
+family = "wild"
+at = "_check_npc_coherence: routes may not share a square"
+pair = ["rules.npcs[].route", "another rules.npcs[].route through one of its squares"]
+reason = "contradictory"
+why = "a route's next square is a fact about the square, and two routes give it two; walks that cross are batch I's steps (SR13a)"
+
+[[refusal]]
+id = "N3"
+plan = "N3"
+family = "wild"
+at = "_check_npc_coherence: a wild piece needs an empty square to start from"
+pair = ["rules.npcs[].route (its start)", "setup.placements (the same square)"]
+reason = "contradictory"
+why = "two pieces on one square"
+
+[[refusal]]
+id = "N6"
+plan = "N6"
+family = "wild"
+at = "_check_npc_pounce: beside forbid_check"
+pair = ["rules.npcs[].pounce", "rules.forbid_check"]
+reason = "contradictory"
+why = "whether a move gives check would be the opponent's pass test inside this move's filter (ruled 2026-10-27)"
+
+[[refusal]]
+id = "N8"
+plan = "N8"
+family = "wild"
+at = "_check_npc_pounce: turns_back beside a pounce"
+pair = ["rules.npcs[].turns_back", "rules.npcs[].pounce"]
+reason = "contradictory"
+why = "a pouncer off its route has no line to head along"
+
+[[refusal]]
+id = "N9"
+plan = "N9"
+family = "wild"
+at = "_check_npc_pounce: which has a facing: a wild piece has no forward"
+pair = ["rules.npcs[].pounce", "pieces[].facing"]
+reason = "contradictory"
+why = "a wild piece has no forward"
+
+[[refusal]]
+id = "N10"
+plan = "N10"
+family = "wild"
+at = "_check_npc_pounce: which has a region: a wild piece has no rank of its own"
+pair = ["rules.npcs[].pounce", "pieces[].region"]
+reason = "contradictory"
+why = "a wild piece has no rank of its own"
+
+[[refusal]]
+id = "N11"
+plan = "N11"
+family = "wild"
+at = "_check_npc_pounce: whose move reads differently for the two players"
+pair = ["rules.npcs[].pounce", "pieces[].moves (reading differently for the two players)"]
+reason = "contradictory"
+why = "a wild piece has no forward"
+
+[[refusal]]
+id = "N12"
+plan = "N12"
+family = "wild"
+at = "_check_npc_pounce: whose move has a condition"
+pair = ["rules.npcs[].pounce", "pieces[].moves[].condition"]
+reason = "contradictory"
+why = "a wild piece has no rank or first move of its own"
+
+[[refusal]]
+id = "N13"
+plan = "N13"
+family = "wild"
+at = "_check_npc_pounce: a hop whose screen names an owner"
+pair = ["rules.npcs[].pounce", "pieces[].moves[].screen own or enemy"]
+reason = "contradictory"
+why = "a wild piece has no own or enemy"
+
+[[refusal]]
+id = "N14"
+plan = "N14"
+family = "wild"
+at = "_check_npc_split: beside drops that fill a hand from captures"
+pair = ["rules.npcs[].split", "rules.drops.from_captures"]
+reason = "contradictory"
+why = "copies would mint pieces for hands without limit"
+
+[[refusal]]
+id = "N15"
+plan = "N15"
+family = "wild"
+at = "_check_npc_split: respawn beside split"
+pair = ["rules.npcs[].split", "rules.npcs[].respawn"]
+reason = "contradictory"
+why = "two counts of how many there should be"
+
+[[refusal]]
+id = "N16"
+plan = "N16"
+family = "wild"
+at = "_check_npc_split: without pounce \"attackers\""
+pair = ["rules.npcs[].split", 'rules.npcs[].pounce (not "attackers")']
+reason = "contradictory"
+why = "a copy grows on the square of a piece that attacked it, so only an attackers pouncer splits"
+
+[[refusal]]
+id = "N18"
+plan = "N18"
+family = "wild"
+at = "_check_rest_coherence: rest is on a wild piece"
+pair = ["pieces[].rest", "rules.npcs[].piece"]
+reason = "contradictory"
+why = "a wild piece moves in its own phase, never as a player's move"
+
+[[refusal]]
+id = "N19"
+plan = "N19"
+family = "wild"
+at = "_check_speed_coherence: speed is on a wild piece"
+pair = ["pieces[].speed", "rules.npcs[].piece"]
+reason = "contradictory"
+why = "a wild piece steps after both players' moves whatever its speed"
+
+# --- the duck ---------------------------------------------------------------------------------
+[[refusal]]
+id = "K1.win"
+plan = "K1"
+family = "duck"
+at = "table:K1|rules.win"
+pair = ["rules.duck", 'rules.win: "checkmate"']
+reason = "contradictory"
+why = "a move's legality would depend on the duck move after it"
+
+[[refusal]]
+id = "K1.forbid_check"
+plan = "K1"
+family = "duck"
+at = "table:K1|rules.forbid_check"
+pair = ["rules.duck", "rules.forbid_check"]
+reason = "contradictory"
+why = "as K1.win"
+
+[[refusal]]
+id = "K1.check_limit"
+plan = "K1"
+family = "duck"
+at = "table:K1|rules.check_limit"
+pair = ["rules.duck", "rules.check_limit"]
+reason = "contradictory"
+why = "as K1.win"
+
+[[refusal]]
+id = "K4"
+plan = "K4"
+family = "duck"
+at = ["_check_duck_coherence: is odd beside the duck", "_check_duck_coherence: beside the duck and rules.turn"]
+pair = ["rules.duck", "rules.max_plies (stopping on a duck half)"]
+reason = "contradictory"
+why = "the clock would stop a game between a move and its duck move"
+
+[[refusal]]
+id = "K5"
+plan = "K5"
+family = "duck"
+at = "_check_duck_coherence: is royal; the duck is nobody's"
+pair = ["rules.duck.piece", "pieces[].royal"]
+reason = "contradictory"
+why = "the duck is nobody's, and nothing takes it"
+
+[[refusal]]
+id = "K6"
+plan = "K6"
+family = "duck"
+at = "_check_duck_coherence: has captures; the duck takes nothing"
+pair = ["rules.duck.piece", "pieces[].captures"]
+reason = "contradictory"
+why = "the duck takes nothing"
+
+[[refusal]]
+id = "K7.facing"
+plan = "K7"
+family = "duck"
+at = "_check_duck_coherence: =the duck has no forward"
+pair = ["rules.duck.piece", "pieces[].facing"]
+reason = "contradictory"
+why = "the duck has no forward"
+
+[[refusal]]
+id = "K7.rest"
+plan = "K7"
+family = "duck"
+at = "_check_duck_coherence: the duck moves every turn"
+pair = ["rules.duck.piece", "pieces[].rest"]
+reason = "contradictory"
+why = "the duck moves every turn"
+
+[[refusal]]
+id = "K7.speed"
+plan = "K7"
+family = "duck"
+at = "_check_duck_coherence: the duck is never in rounds"
+pair = ["rules.duck.piece", "pieces[].speed"]
+reason = "contradictory"
+why = "the duck is never in rounds (R15)"
+
+[[refusal]]
+id = "K7.spy"
+plan = "K7"
+family = "duck"
+at = "_check_duck_coherence: =the duck is nobody's"
+pair = ["rules.duck.piece", "pieces[].spy"]
+reason = "contradictory"
+why = "the duck is nobody's"
+
+[[refusal]]
+id = "K7.region"
+plan = "K7"
+family = "duck"
+at = "_check_duck_coherence: the duck has no rank of its own"
+pair = ["rules.duck.piece", "pieces[].region"]
+reason = "contradictory"
+why = "the duck has no rank of its own"
+
+[[refusal]]
+id = "K8"
+plan = "K8"
+family = "duck"
+at = "_check_duck_coherence: has a move condition"
+pair = ["rules.duck.piece", "pieces[].moves[].condition"]
+reason = "contradictory"
+why = "the duck has no rank or first move of its own"
+
+[[refusal]]
+id = "K9"
+plan = "K9"
+family = "duck"
+at = "_check_duck_coherence: is a capture-only move"
+pair = ["rules.duck.piece", 'pieces[].moves[].mode: "capture"']
+reason = "contradictory"
+why = "the duck moves only onto empty squares"
+
+[[refusal]]
+id = "K10"
+plan = "K10"
+family = "duck"
+at = "_check_duck_coherence: reads differently for the two players: the duck has no forward"
+pair = ['rules.duck.goes: "by_moves"', "pieces[].moves (reading differently for the two players)"]
+reason = "contradictory"
+why = "the duck has no forward"
+
+[[refusal]]
+id = "K11"
+plan = "K11"
+family = "duck"
+at = "_check_duck_coherence: there is one duck, and only rules.duck moves it"
+pair = ["rules.duck.piece", "the same type named by another rule"]
+reason = "contradictory"
+why = "there is one duck, and only rules.duck moves it"
+
+# --- portals ----------------------------------------------------------------------------------
+[[refusal]]
+id = "P2"
+plan = "P2"
+family = "portals"
+at = "table:P2"
+pair = ["rules.portals", "rules.npcs"]
+reason = "not_built"
+held_by = "SR13a-SR13c"
+why = "a wild piece walks a fixed route and a portal moves; ruled 2026-10-28: a portal redirects a wild piece that walks steps (batch I)"
+
+[[refusal]]
+id = "P8.portal"
+plan = "P8"
+family = "portals"
+at = "_check_path_coherence: a turning path has no next direction past a seam it did not plan; a portal moves straight"
+pair = ["rules.portals[].moves[].path", "rules.portals"]
+reason = "contradictory"
+why = "a portal moves straight: a turning path has no next direction past a seam it did not plan"
+
+[[refusal]]
+id = "P8.piece"
+plan = "P8"
+family = "portals"
+at = "_check_path_coherence: beside rules.portals: a portal's exit carries a piece on"
+pair = ["pieces[].moves[].path", "rules.portals"]
+reason = "contradictory"
+why = "an exit carries a piece on in the direction it came, and a turning path has no next direction past it (ruled 2026-10-27)"
+
+[[refusal]]
+id = "P11"
+plan = "P11"
+family = "portals"
+at = "_check_portal_coherence: is the name of a portal end beside rules.portals"
+pair = ["pieces[].id", "rules.portals (an end's name)"]
+reason = "contradictory"
+why = "a name clash"
+
+[[refusal]]
+id = "P12"
+plan = "P12"
+family = "portals"
+at = "_validate_portal_moves: may not sweep"
+pair = ["rules.portals[].moves", 'kind: "sweep"']
+reason = "contradictory"
+why = "a portal never captures"
+
+[[refusal]]
+id = "P13"
+plan = "P13"
+family = "portals"
+at = "_validate_portal_moves: may not have a from_rank or region condition"
+pair = ["rules.portals[].moves", "moves[].condition from_rank or region"]
+reason = "contradictory"
+why = "those are read from a player's side, and a portal belongs to neither"
+
+[[refusal]]
+id = "P14"
+plan = "P14"
+family = "portals"
+at = "_validate_portal_moves: a portal moves only onto an empty square"
+pair = ["rules.portals[].moves", 'moves[].mode (not "move")']
+reason = "contradictory"
+why = "a portal moves only onto an empty square"
+
+[[refusal]]
+id = "P15"
+plan = "P15"
+family = "portals"
+at = "_check_fold_moves: may not have a first_move condition"
+pair = ['rules.portals[].kind: "fold"', "moves[].condition first_move"]
+reason = "contradictory"
+why = "a fold stands on no square of its own and so has no first move"
+
+[[refusal]]
+id = "P10.end"
+plan = "P10"
+family = "portals"
+at = "_check_portal_coherence: is a square a placement for nobody puts a piece on"
+pair = ['setup.placements[].player: "nobody"', "rules.portals (a momentum end's square)"]
+reason = "contradictory"
+why = "a momentum end is a board byte and a square holds one, as a player's placement there is refused (R-L6c, F1)"
+
+[[refusal]]
+id = "region.placement"
+family = "region"
+at = "_check_region_placements: is placed outside its region"
+pair = ["pieces[].region", "setup.placements (a player's square outside it)"]
+reason = "contradictory"
+why = "a region is the only squares the piece may ever stand on, and every other way a piece comes to stand obeys it (R-L6c)"
+
+[[refusal]]
+id = "portals.frame"
+family = "portals"
+at = "_check_portal_moves: a portal has no forward of its own"
+pair = ["rules.portals[].moves", "moves reading differently for the two players"]
+reason = "contradictory"
+why = "a portal has no forward of its own"
+
+[[refusal]]
+id = "portals.screen"
+family = "portals"
+at = "_validate_portal_moves: a portal's hop jumps any piece"
+pair = ["rules.portals[].moves", "moves[].screen naming piece types"]
+reason = "not_built"
+held_by = "none"
+why = "SR3c's screen by type was not given to a portal's own hop"
+
+# --- pieces nobody owns, the purse, bounties and prices -----------------------------------------
+[[refusal]]
+id = "O5"
+plan = "O5"
+family = "nobody"
+at = "_check_neutral_coherence: {}: a royal always belongs to a player"
+pair = ['setup.placements[].player: "nobody"', "pieces[].royal"]
+reason = "contradictory"
+why = "a royal always belongs to a player"
+
+[[refusal]]
+id = "O7"
+plan = "O7"
+family = "nobody"
+at = "_check_neutral_coherence: it does not stand for nobody"
+pair = ['setup.placements[].player: "nobody"', "rules.npcs[].piece"]
+reason = "contradictory"
+why = "a wild type walks its route, it does not stand for nobody"
+
+[[refusal]]
+id = "O8"
+plan = "O8"
+family = "nobody"
+at = "_check_neutral_coherence: has no turn to rest after"
+pair = ['setup.placements[].player: "nobody"', "pieces[].rest"]
+reason = "contradictory"
+why = "a piece nobody owns has no turn to rest after (ruled 2026-10-28)"
+
+[[refusal]]
+id = "O20"
+plan = "O20"
+family = "nobody"
+at = "_check_neutral_coherence: on a royal: a royal always belongs to a player"
+pair = ["pieces[].control", "pieces[].royal"]
+reason = "contradictory"
+why = "a royal always belongs to a player"
+
+[[refusal]]
+id = "O21"
+plan = "O21"
+family = "nobody"
+at = "_check_neutral_coherence: a wild piece walks its route"
+pair = ["pieces[].control", "rules.npcs[].piece"]
+reason = "contradictory"
+why = "a wild piece walks its route; nobody holds it"
+
+[[refusal]]
+id = "O23"
+plan = "O23"
+family = "purse"
+at = "_check_purse_coherence: a royal is never bought or sold"
+pair = ["pieces[].price", "pieces[].royal"]
+reason = "contradictory"
+why = "a royal is never bought or sold"
+
+[[refusal]]
+id = "O25"
+plan = "O25"
+family = "purse"
+at = "_check_purse_coherence: a wild piece is never a player's"
+pair = ["pieces[].price", "rules.npcs[].piece"]
+reason = "contradictory"
+why = "a wild piece is never a player's"
+
+[[refusal]]
+id = "O26"
+plan = "O26"
+family = "purse"
+at = "_check_purse_coherence: is royal: a royal is never bought"
+pair = ["rules.purse.market", "pieces[].royal"]
+reason = "contradictory"
+why = "a royal is never bought"
+
+[[refusal]]
+id = "O28"
+plan = "O28"
+family = "purse"
+at = "_check_purse_coherence: is nobody's piece (a wild piece or the duck)"
+pair = ["rules.purse.market", "a wild type or the duck"]
+reason = "contradictory"
+why = "a wild piece or the duck is never a player's"
+
+[[refusal]]
+id = "O29"
+plan = "O29"
+family = "purse"
+at = "_check_purse_coherence: a bought piece that never moves is a wall"
+pair = ["rules.purse.market", "pieces[].moves: []"]
+reason = "contradictory"
+why = "a bought piece that never moves is a wall (ruled 2026-10-28)"
+
+[[refusal]]
+id = "O30"
+plan = "O30"
+family = "purse"
+at = "_check_bounty_coherence: taking a royal decides the game"
+pair = ["pieces[].bounty", "pieces[].royal"]
+reason = "contradictory"
+why = "taking a royal decides the game, it is not paid for"
+
+[[refusal]]
+id = "O31"
+plan = "O31"
+family = "purse"
+at = "_check_bounty_coherence: a wild piece's bounty is its rules.npcs entry's"
+pair = ["pieces[].bounty", "rules.npcs[].piece"]
+reason = "contradictory"
+why = "a wild piece's bounty is its entry's, one bounty per piece"
+
+[[refusal]]
+id = "O32"
+plan = "O32"
+family = "purse"
+at = "_check_bounty_coherence: the duck is never taken"
+pair = ["pieces[].bounty", "rules.duck.piece"]
+reason = "contradictory"
+why = "the duck is never taken"
+
+[[refusal]]
+id = "O33"
+plan = "O33"
+family = "purse"
+at = "_check_purse_coherence: a purse holds whole coins"
+pair = ["rules.npcs[].bounty (a fraction)", "rules.purse"]
+reason = "contradictory"
+why = "a purse holds whole coins"
+
+[[refusal]]
+id = "purse.loser_wild"
+family = "purse"
+at = "_check_purse_coherence: bounty beside rules.purse.bounty_to"
+pair = ['rules.purse.bounty_to: "loser"', "rules.npcs[].bounty"]
+reason = "contradictory"
+why = "a wild piece is nobody's, so a bounty paid to its loser is paid to nobody"
+
+# --- the spy ----------------------------------------------------------------------------------
+[[refusal]]
+id = "Y1"
+plan = "Y1"
+family = "spy"
+at = "_check_spy_coherence: spy on a royal piece"
+pair = ["pieces[].spy", "pieces[].royal"]
+reason = "contradictory"
+why = "losing a royal ends the game, so its loss could never start a round"
+
+[[refusal]]
+id = "Y2"
+plan = "Y2"
+family = "spy"
+at = "_check_spy_coherence: spy on a wild piece"
+pair = ["pieces[].spy", "rules.npcs[].piece"]
+reason = "contradictory"
+why = "a wild piece is nobody's piece"
+
+[[refusal]]
+id = "Y3.foreign"
+plan = "Y3"
+family = "spy"
+at = "_foreign_spy_promotions: so promote each player into its own spy"
+pair = ["rules.promotion (into a spy type)", "pieces[].spy the promoting player does not start with"]
+reason = "not_built"
+held_by = "none"
+why = "a spy counts for the player whose spy type it is; a count for whoever holds the piece is unbuilt (asymmetric armies only)"
+
+[[refusal]]
+id = "Y4.foreign"
+plan = "Y4"
+family = "spy"
+at = "_foreign_spy_gains.foreign: so make each player's piece into its own spy"
+pair = ["rules.strike.chain (into a spy type)", "pieces[].spy the new owner does not start with"]
+reason = "not_built"
+held_by = "none"
+why = "as Y3.foreign"
+
+[[refusal]]
+id = "Y5.foreign"
+plan = "Y5"
+family = "spy"
+at = "_foreign_spy_gains.foreign: so make each player's piece into its own spy"
+pair = ["rules.strike.switches_sides (a spy type)", "pieces[].spy the new owner does not start with"]
+reason = "not_built"
+held_by = "none"
+why = "as Y3.foreign"
+
+[[refusal]]
+id = "Y6.foreign"
+plan = "Y6"
+family = "spy"
+at = "_foreign_spy_gains.foreign: so make each player's piece into its own spy"
+pair = ["rules.contacts.links (into a spy type)", "pieces[].spy the new owner does not start with"]
+reason = "not_built"
+held_by = "none"
+why = "as Y3.foreign"
+
+[[refusal]]
+id = "Y7.foreign"
+plan = "Y7"
+family = "spy"
+at = "_foreign_spy_drops: so stock each player's own spy"
+pair = ["rules.drops.stock (a spy type)", "pieces[].spy the dropper does not start with"]
+reason = "not_built"
+held_by = "none"
+why = "as Y3.foreign"
+
+[[refusal]]
+id = "Y8.foreign"
+plan = "Y8"
+family = "spy"
+at = "_foreign_spy_drops: so give both players one spy type"
+pair = ["rules.drops.from_captures", "pieces[].spy the taker does not start with"]
+reason = "not_built"
+held_by = "none"
+why = "as Y3.foreign"
+
+[[refusal]]
+id = "Y9"
+plan = "Y9"
+family = "spy"
+at = "_check_spy_coherence: counts the spy"
+pair = ["pieces[].spy", "rules.extinction.per_type (the spy counted alone)"]
+reason = "contradictory"
+why = "losing the spy would end the game, so its rounds would never be played"
+
+[[refusal]]
+id = "O27.foreign"
+plan = "O27"
+family = "spy"
+at = "_foreign_spy_buys: so sell only a spy type both players start with"
+pair = ["rules.purse.market (a spy type)", "pieces[].spy a buyer does not start with"]
+reason = "not_built"
+held_by = "none"
+why = "as Y3.foreign"
+
+# --- turning paths ----------------------------------------------------------------------------
+[[refusal]]
+id = "PA1"
+plan = "PA1"
+family = "paths"
+at = "_check_path_coherence: the piece rules.en_passant is about"
+pair = ["pieces[].moves[].path", "rules.en_passant (on its piece)"]
+reason = "contradictory"
+why = "two paths to one square pass different squares, so the square passed is not one square"
+
+[[refusal]]
+id = "PA3.leap"
+plan = "PA3"
+family = "paths"
+at = "_PATH_OFF_KIND: a leap is one jump, and has no path to turn"
+pair = ["pieces[].moves[].path", 'moves[].kind: "leap"']
+reason = "contradictory"
+why = "a leap is one jump, and has no path to turn"
+
+[[refusal]]
+id = "PA3.hop"
+plan = "PA3"
+family = "paths"
+at = "_PATH_OFF_KIND: a hop's screen is the first piece on a line"
+pair = ["pieces[].moves[].path", 'moves[].kind: "hop"']
+reason = "contradictory"
+why = "a hop's screen is the first piece on a line, and a turning path has no line"
+
+[[refusal]]
+id = "PA3.sweep"
+plan = "PA3"
+family = "paths"
+at = "_PATH_OFF_KIND: a sweep removes what lies on a line"
+pair = ["pieces[].moves[].path", 'moves[].kind: "sweep"']
+reason = "contradictory"
+why = "a sweep removes what lies on a line, and a turning path has no line"
+
+# --- lattice and shape --------------------------------------------------------------------------
+[[refusal]]
+id = "X2"
+plan = "X2"
+family = "lattice"
+at = "_validate_facing: a quarter turn of a neighbour is not a neighbour"
+pair = ["pieces[].facing.axes: 4", 'board.lattice: "hex"']
+reason = "contradictory"
+why = "a quarter turn of a hex neighbour is not a neighbour"
+
+[[refusal]]
+id = "X3"
+plan = "X3"
+family = "lattice"
+at = "_symmetry_refusals: expands vectors by the square's symmetries"
+pair = ["a square symmetry (lateral, rotate4, dihedral8)", 'board.lattice: "hex"']
+reason = "contradictory"
+why = "it carries vectors off the hex lattice"
+
+[[refusal]]
+id = "X4"
+plan = "X4"
+family = "lattice"
+at = "_symmetry_refusals: turns vectors by the hexagon's 60-degree turns"
+pair = ["a hex symmetry (rotate6, dihedral12)", 'board.lattice: "square"']
+reason = "contradictory"
+why = "only a hex lattice has 60-degree turns"
+
+[[refusal]]
+id = "X5"
+plan = "X5"
+family = "lattice"
+at = "table:X5"
+pair = ['setup.orientation (not "rotate")', 'board.lattice: "hex"']
+reason = "contradictory"
+why = "the rank reflection is not a hex symmetry"
+
+[[refusal]]
+id = "X6"
+plan = "X6"
+family = "lattice"
+at = "table:X6"
+pair = ["rules.reach.mirror: true", 'board.lattice: "hex"']
+reason = "contradictory"
+why = "true reflects the goal by rank, which is not a hex symmetry"
+
+[[refusal]]
+id = "X7"
+plan = "X7"
+family = "lattice"
+at = "_validate_promotion: a hexagon's far edge is not a rank"
+pair = ["rules.promotion rank or ranks", 'board.shape: "hexagon"']
+reason = "contradictory"
+why = "a hexagon's far edge is not a rank; squares says the zone"
+
+[[refusal]]
+id = "X9"
+plan = "X9"
+family = "lattice"
+at = "_check_hexagon_coherence: rules.drops.no_doubled on a hexagon"
+pair = ["rules.drops.no_doubled", "rules.wrap n_s or ne_sw on a hexagon"]
+reason = "contradictory"
+why = "a file is counted as a line, and across those seams a step up comes back onto another file"
+
+[[refusal]]
+id = "X10"
+plan = "X10"
+family = "lattice"
+at = "_check_hexagon_coherence: steps further than"
+pair = ["a vector longer than R + 1", "rules.wrap on a hexagon (a side joined)"]
+reason = "contradictory"
+why = "a longer step can land two copies of the board away and has no single way round the seams"
+
+[[refusal]]
+id = "X11.blast"
+plan = "X11"
+family = "lattice"
+at = "_check_hexagon_coherence: rules.explode_on_capture.blast reaches across"
+pair = ["rules.explode_on_capture.blast wider than R + 1", "rules.wrap on a hexagon (a side joined)"]
+reason = "contradictory"
+why = "a blast that wide can meet itself round the seams"
+
+[[refusal]]
+id = "X11.radius"
+plan = "X11"
+family = "lattice"
+at = "_check_hexagon_coherence: rules.explode_on_capture.radius {} reaches across"
+pair = ["rules.explode_on_capture.radius wider than R + 1", "rules.wrap on a hexagon (a side joined)"]
+reason = "contradictory"
+why = "a blast that wide can meet itself round the seams"
+
+[[refusal]]
+id = "X12"
+plan = "X12"
+family = "lattice"
+at = "table:X12"
+pair = ['board.shape: "hexagon"', 'board.lattice: "square"']
+reason = "contradictory"
+why = "a square lattice has no hexagon to cut"
+
+[[refusal]]
+id = "X13.files"
+plan = "X13"
+family = "lattice"
+at = "_validate_wrap: joins a rectangle's edges, and this board is a hexagon"
+pair = ["rules.wrap.files or ranks", 'board.shape: "hexagon"']
+reason = "contradictory"
+why = "those keys join a rectangle's edges"
+
+[[refusal]]
+id = "X13.sides"
+plan = "X13"
+family = "lattice"
+at = "_validate_wrap: joins a hexagon's sides, and this board is not one"
+pair = ["rules.wrap.n_s, ne_sw or nw_se", "a board that is not a hexagon"]
+reason = "contradictory"
+why = "those keys join a hexagon's sides"
+
+# --- royalty and facing ---------------------------------------------------------------------------
+[[refusal]]
+id = "Z1"
+plan = "Z1"
+family = "royalty"
+at = "_validate_facing: facing on a royal piece"
+pair = ["pieces[].facing", "pieces[].royal"]
+reason = "not_built"
+held_by = "none"
+why = "the check filter finds a royal by value and a facing royal is several; ruled to limbo (M-L), which no batch holds"
+
+[[refusal]]
+id = "Z3"
+plan = "Z3"
+family = "royalty"
+at = "table:Z3"
+pair = ['rules.win: "annihilation"', "pieces[].royal"]
+reason = "contradictory"
+why = "a royal under a rule with no royalty"
+
+[[refusal]]
+id = "Z4"
+plan = "Z4"
+family = "royalty"
+at = "_check_facing_coherence: and a square is one byte"
+pair = ["pieces[].facing (many types and facings)", "the board's one byte a square"]
+reason = "too_expensive"
+cost = "a board value wider than a byte: every table indexed by value, the position that crosses to Python, the nets' planes and every stored fingerprint move; L and a replay"
+cost_basis = "estimated"
+why = "types x facings x owners must stay under 256"
+
+# --- inside one rule ----------------------------------------------------------------------------
+[[refusal]]
+id = "I1"
+plan = "I1"
+family = "reach"
+at = "table:I1"
+pair = ["rules.reach.safe", 'rules.reach.on: "leave"']
+reason = "contradictory"
+why = "the piece that decides the game has just left the square safe asks about"
+
+[[refusal]]
+id = "blast.frame"
+family = "blast"
+at = "_check_blast_coherence: a blast is the board's, one shape round every square"
+pair = ["rules.explode_on_capture.blast", "a shape reading differently for the two players"]
+reason = "too_expensive"
+cost = "a blast table per frame in the core, for a narrow gain"
+cost_basis = "cited: plan-schema-next.md section 1.2, Considered and not ranked (no size given)"
+why = "the blast table is per square, not per frame"
+
+# === outside the last inventory: rules added since ================================================
+# --- the push (plan-push.md section 3.14) -------------------------------------------------------
+[[refusal]]
+id = "push.W4"
+family = "push"
+at = "table:push.W4"
+pair = ["pieces[].moves[].push", "rules.portals"]
+reason = "not_built"
+held_by = "none"
+why = "whether a pushed piece goes through an end, and whether a push transits one, are rules not written"
+
+[[refusal]]
+id = "push.X2.strike"
+family = "push"
+at = "table:push.X2|rules.strike"
+pair = ["pieces[].moves[].push", "rules.strike"]
+reason = "not_built"
+held_by = "none"
+why = "a strike acts on a capture landing, and a push that removes lands nowhere: what it strikes is unwritten"
+
+[[refusal]]
+id = "push.X2.contacts"
+family = "push"
+at = "table:push.X2|rules.contacts"
+pair = ["pieces[].moves[].push", "rules.contacts"]
+reason = "not_built"
+held_by = "none"
+why = "as push.X2.strike"
+
+[[refusal]]
+id = "push.X3"
+family = "push"
+at = "table:push.X3"
+pair = ["pieces[].moves[].push", "rules.explode_on_capture"]
+reason = "not_built"
+held_by = "none"
+why = "a push that removes has no capture square on the board to centre a blast on"
+
+[[refusal]]
+id = "push.S1"
+family = "push"
+at = "table:push.S1"
+pair = ["pieces[].moves[].push", "rules.simultaneous"]
+reason = "not_built"
+held_by = "none"
+why = "two pushes in one round can move each other's pushers, and a round has no order for a moved bystander"
+
+[[refusal]]
+id = "push.E2"
+family = "push"
+at = "table:push.E2"
+pair = ["pieces[].moves[].push (replacing a capture)", "rules.en_passant (on that piece)"]
+reason = "not_built"
+held_by = "none"
+why = "what the piece's en passant would push is unstated (round 2 lifted the rest of the pair)"
+
+[[refusal]]
+id = "push.N4"
+family = "push"
+at = "table:push.N4"
+pair = ["pieces[].moves[].push", 'pieces[].sight effect "command" with captures_own']
+reason = "not_built"
+held_by = "none"
+why = "whether a commanded landing on its owner's piece pushes is unstated (round 2 lifted the other sights)"
+
+[[refusal]]
+id = "push.D6"
+family = "push"
+at = "_push_entry_refusals: on a sweep (D6)"
+pair = ["pieces[].moves[].push", 'moves[].kind: "sweep" (the same move)']
+reason = "not_built"
+held_by = "none"
+why = "a push of the landing beside a cleared path is a second rule"
+
+[[refusal]]
+id = "push.D7"
+family = "push"
+at = "_push_entry_refusals: on a turning path (D7)"
+pair = ["pieces[].moves[].push", "moves[].path (the same move)"]
+reason = "not_built"
+held_by = "none"
+why = "which way a turning path pushes is not settled"
+
+[[refusal]]
+id = "push.H1"
+family = "push"
+at = "_push_entry_refusals: on a hex lattice (H1)"
+pair = ["pieces[].moves[].push.along rank or file", 'board.lattice: "hex"']
+reason = "contradictory"
+why = "an axial vector has no rank or file component"
+
+[[refusal]]
+id = "push.D8"
+family = "push"
+at = "_check_push_coherence: turns a quarter (facing.axes 4) and pushes along a rank or file"
+pair = ["pieces[].moves[].push.along rank or file", "pieces[].facing.axes: 4"]
+reason = "contradictory"
+why = "turned a quarter, a straight line has no such component"
+
+[[refusal]]
+id = "push.N2"
+family = "push"
+at = "_check_push_coherence: pushes and is nobody's"
+pair = ["pieces[].moves[].push", "on a wild type or the duck"]
+reason = "contradictory"
+why = "a wild piece walks its route and the duck is placed; neither pushes (plan-push: for good)"
+
+[[refusal]]
+id = "push.N1"
+family = "push"
+at = "_check_push_coherence: it blocks a push and is never pushed"
+pair = ["pieces[].pushes (naming a type)", "a wild type or the duck"]
+reason = "contradictory"
+why = "a wild piece or the duck blocks a push and is never pushed (plan-push: for good)"
+
+# --- upkeep, the pass, income (plan-hunger.md) ----------------------------------------------------
+[[refusal]]
+id = "upkeep.U1"
+family = "upkeep"
+at = "table:upkeep.U1"
+pair = ["rules.purse.upkeep", "rules.simultaneous"]
+reason = "not_built"
+held_by = "none"
+why = "a round's collisions need a rule for refunding a move that never arrived"
+
+[[refusal]]
+id = "upkeep.U2"
+family = "upkeep"
+at = "table:upkeep.U2"
+pair = ["rules.purse.upkeep", "rules.turn (moves or ramp over 1)"]
+reason = "not_built"
+held_by = "none"
+why = "a later move paid from the purse the earlier ones left is the reading, unbuilt"
+
+[[refusal]]
+id = "upkeep.U3"
+family = "upkeep"
+at = "table:upkeep.U3"
+pair = ["rules.purse.upkeep", "rules.portals"]
+reason = "not_built"
+held_by = "none"
+why = "a transit's exit and the square the move named disagree about where the piece arrives"
+
+[[refusal]]
+id = "upkeep.U4"
+family = "upkeep"
+at = "table:upkeep.U4"
+pair = ["rules.purse.upkeep", "rules.npcs"]
+reason = "not_built"
+held_by = "none"
+why = "a wild piece has no purse; harmless, but untested"
+
+[[refusal]]
+id = "upkeep.U5"
+family = "upkeep"
+at = "table:upkeep.U5"
+pair = ["rules.purse.upkeep", 'pieces[].sight effect "command"']
+reason = "not_built"
+held_by = "none"
+why = "whose purse pays for a commanded move is unsettled"
+
+[[refusal]]
+id = "upkeep.U6"
+family = "upkeep"
+at = "table:upkeep.U6"
+pair = ["rules.purse.upkeep", 'pieces[].control "majority" or "shared"']
+reason = "not_built"
+held_by = "none"
+why = "whose purse pays for a held or shared piece's move is unsettled"
+
+[[refusal]]
+id = "upkeep.U7"
+family = "upkeep"
+at = "table:upkeep.U7"
+pair = ["rules.purse.upkeep", "rules.drops"]
+reason = "not_built"
+held_by = "none"
+why = "what a drop costs beside a placement phase and a hand filled by captures is a design of its own"
+
+[[refusal]]
+id = "upkeep.U8"
+family = "upkeep"
+at = "table:upkeep.U8"
+pair = ["rules.purse.upkeep", 'board.lattice: "hex"']
+reason = "not_built"
+held_by = "none"
+why = "rows from a player's first row need one row direction for both sides; a hex distance is unwritten"
+
+[[refusal]]
+id = "upkeep.U9"
+family = "upkeep"
+at = "table:upkeep.U9"
+pair = ["rules.purse.upkeep", "rules.contacts"]
+reason = "not_built"
+held_by = "none"
+why = "a contact may change the moving piece, and which type pays for its square is unsettled"
+
+[[refusal]]
+id = "upkeep.U10"
+family = "upkeep"
+at = "table:upkeep.U10"
+pair = ["rules.purse.upkeep", "rules.strike.switches_sides"]
+reason = "not_built"
+held_by = "none"
+why = "a capturer that changes sides ends as the opponent's piece, and whose rows it pays for is unsettled"
+
+[[refusal]]
+id = "upkeep.wild"
+family = "upkeep"
+at = "_check_upkeep_coherence: a piece nobody owns is moved by nobody's purse"
+pair = ["pieces[].upkeep", "rules.npcs[].piece"]
+reason = "contradictory"
+why = "a wild piece is moved by nobody's purse"
+
+[[refusal]]
+id = "pass.P1"
+family = "pass"
+at = "table:pass.P1"
+pair = ["rules.pass", "rules.simultaneous"]
+reason = "not_built"
+held_by = "none"
+why = "a stand-still move in a round is a later value of the rule"
+
+[[refusal]]
+id = "pass.P2"
+family = "pass"
+at = "table:pass.P2"
+pair = ["rules.pass", "rules.duck"]
+reason = "not_built"
+held_by = "none"
+why = "whether a pass skips the duck's half of the turn is unsettled"
+
+[[refusal]]
+id = "pass.P3"
+family = "pass"
+at = "table:pass.P3"
+pair = ["rules.pass", "rules.turn (more than one move, or parts)"]
+reason = "not_built"
+held_by = "none"
+why = "whether a pass ends a long turn early or spends one of its moves is a later value of the rule"
+
+[[refusal]]
+id = "pass.P4"
+family = "pass"
+at = "table:pass.P4"
+pair = ["rules.pass", "rules.must_capture"]
+reason = "not_built"
+held_by = "none"
+why = "a pass would be the way out of every forced capture; a pass only where no capture is owed is unwritten"
+
+[[refusal]]
+id = "pass.P5"
+family = "pass"
+at = "table:pass.P5"
+pair = ["rules.pass", "rules.drops.placement"]
+reason = "not_built"
+held_by = "U3"
+why = "no pass is offered during a placement phase (unheld-pairs-plan.md section 2.2); the core offers one, U2's probe"
+
+[[refusal]]
+id = "pass.P6"
+family = "pass"
+at = "table:pass.P6"
+pair = ["rules.pass", "rules.npcs"]
+reason = "not_built"
+held_by = "none"
+why = "whether a pass sets the wild pieces' phase going is unsettled"
+
+[[refusal]]
+id = "pass.P7"
+family = "pass"
+at = "table:pass.P7"
+pair = ["rules.pass", "rules.portals"]
+reason = "not_built"
+held_by = "none"
+why = "whether a pass spends a straight-back bar is unsettled"
+
+[[refusal]]
+id = "pass.P8"
+family = "pass"
+at = "table:pass.P8"
+pair = ["rules.pass", "pieces[].moves[].push"]
+reason = "not_built"
+held_by = "none"
+why = "whether a pass spends the push's bar is unsettled"
+
+[[refusal]]
+id = "income.I2"
+family = "income"
+at = "table:income.I2"
+pair = ["rules.income", "rules.simultaneous"]
+reason = "not_built"
+held_by = "none"
+why = "a round has no start of one player's turn to pay at"
+
+# --- gating (Q1059a) ----------------------------------------------------------------------------
+[[refusal]]
+id = "gating.strike"
+family = "gating"
+at = "_GATING_EXCLUDES: a strike writes the move word's tag the gate rides in"
+pair = ["rules.drops.gating", "rules.strike"]
+reason = "not_built"
+held_by = "none"
+why = "the gate rides in the move word's tag a strike writes, and what a struck piece leaves on a gate square is unwritten"
+
+[[refusal]]
+id = "gating.contacts"
+family = "gating"
+at = "_GATING_EXCLUDES: as a strike: the tag"
+pair = ["rules.drops.gating", "rules.contacts"]
+reason = "not_built"
+held_by = "none"
+why = "as gating.strike"
+
+[[refusal]]
+id = "gating.blast"
+family = "gating"
+at = "_GATING_EXCLUDES: a blast can clear the square the piece has just entered"
+pair = ["rules.drops.gating", "rules.explode_on_capture"]
+reason = "not_built"
+held_by = "none"
+why = "the order of the blast and the entry is unwritten"
+
+[[refusal]]
+id = "gating.portals"
+family = "gating"
+at = "_GATING_EXCLUDES: a portal or fold writes the move word's tag"
+pair = ["rules.drops.gating", "rules.portals"]
+reason = "not_built"
+held_by = "none"
+why = "a portal or fold writes the move word's tag the gate rides in"
+
+[[refusal]]
+id = "gating.rounds"
+family = "gating"
+at = "_GATING_EXCLUDES: a round reads two moves at once"
+pair = ["rules.drops.gating", "rules.simultaneous"]
+reason = "not_built"
+held_by = "none"
+why = "two gates on one square in one round is unwritten"
+
+[[refusal]]
+id = "gating.sight"
+family = "gating"
+at = "gating_conflicts: beside a sight (pieces[].sight)"
+pair = ["rules.drops.gating", "pieces[].sight"]
+reason = "not_built"
+held_by = "none"
+why = "a commanded move sets the foreign bit beside the gate, and a frozen or shielded piece leaving a gate square is unwritten"
+
+[[refusal]]
+id = "gating.captures"
+family = "gating"
+at = "_check_gating_coherence: beside a hand that fills from captures"
+pair = ["rules.drops.gating", "rules.drops.from_captures"]
+reason = "not_built"
+held_by = "none"
+why = "a gating hand holds its stock alone; a hand that gates what it captures is unwritten"
+
+[[refusal]]
+id = "gating.placement"
+family = "gating"
+at = "_check_gating_coherence: a gating hand enters only on a vacated square, never by a drop"
+pair = ["rules.drops.gating", "rules.drops.placement"]
+reason = "contradictory"
+why = "a placement phase is drops, and a gating hand never drops"
+
+[[refusal]]
+id = "gating.either_face"
+family = "gating"
+at = "_check_gating_coherence: a gating hand enters only on a vacated square, never by a drop"
+pair = ["rules.drops.gating", "rules.drops.either_face"]
+reason = "not_built"
+held_by = "none"
+why = "which face a gated piece enters as is unwritten"
+
+# --- a held neutral that takes a royal (Q1077) ------------------------------------------------------
+[[refusal]]
+id = "takes_royal.sight"
+family = "takes_royal"
+at = "_check_takes_royal: beside a line of sight"
+pair = ["pieces[].takes_royal", "pieces[].sight"]
+reason = "not_built"
+held_by = "none"
+why = "what a shield or a freeze does to a held neutral's attack on a royal is unwritten"
+
+[[refusal]]
+id = "takes_royal.portals"
+family = "takes_royal"
+at = "_check_takes_royal: beside rules.portals"
+pair = ["pieces[].takes_royal", "rules.portals"]
+reason = "not_built"
+held_by = "none"
+why = "a held neutral's attack on a royal through a portal is unwritten (held_attacks reads no portal)"
+
+[[refusal]]
+id = "takes_royal.shared"
+family = "shared control"
+at = "_check_takes_royal: a piece both players move cannot be held against one"
+pair = ["pieces[].takes_royal", 'pieces[].control: "shared"']
+reason = "contradictory"
+why = "a piece both players move cannot be held against one"
+
+# --- scoring goals (TS1) ------------------------------------------------------------------------
+[[refusal]]
+id = "goals.leave"
+family = "scoring goals"
+at = "_check_reach_scoring: beside rules.reach.on \"leave\""
+pair = ["rules.reach.removes, count or both", 'rules.reach.on: "leave"']
+reason = "contradictory"
+why = "leaving is one side's one move, so nothing is banked, counted or reached by both at once"
+
+[[refusal]]
+id = "goals.royal"
+family = "scoring goals"
+at = ["_check_reach_scoring: rules.reach.removes on a royal type", "_check_reach_scoring: a banked royal would leave its side without one"]
+pair = ["rules.reach.removes", "pieces[].royal (a runner)"]
+reason = "contradictory"
+why = "a banked royal would leave its side without one"
+
+[[refusal]]
+id = "goals.rounds"
+family = "scoring goals"
+at = "_check_reach_scoring: a round's two arrivals are not yet read"
+pair = ["rules.reach.removes, count or both", "rules.simultaneous"]
+reason = "not_built"
+held_by = "none"
+why = "a round's two arrivals are not yet read by the counting goal"
+
+[[refusal]]
+id = "goals.held"
+family = "scoring goals"
+at = "_check_reach_scoring: a held arrival is one flag read off the move"
+pair = ["rules.reach.removes or count", 'pieces[].control "majority" or "shared" (a runner)']
+reason = "not_built"
+held_by = "none"
+why = "a held arrival is one flag read off the move, which neither banks nor counts"
+
+[[refusal]]
+id = "goals.checkmate"
+family = "scoring goals"
+at = "_check_reach_scoring: the legality filter plays a move without"
+pair = ["rules.reach.removes", 'rules.win: "checkmate"']
+reason = "not_built"
+held_by = "none"
+why = "the legality filter plays a move without its bank"
+
+[[refusal]]
+id = "goals.forbid_check"
+family = "scoring goals"
+at = "_check_reach_scoring: the legality filter plays a move without"
+pair = ["rules.reach.removes", "rules.forbid_check"]
+reason = "not_built"
+held_by = "none"
+why = "as goals.checkmate"
+
+[[refusal]]
+id = "goals.forbid_immobility"
+family = "scoring goals"
+at = "_check_reach_scoring: the legality filter plays a move without"
+pair = ["rules.reach.removes", "rules.forbid_immobility"]
+reason = "not_built"
+held_by = "none"
+why = "as goals.checkmate"
+
+# --- shared control (TS2) -----------------------------------------------------------------------
+[[refusal]]
+id = "shared.rounds"
+family = "shared control"
+at = "_check_shared_types: both players would move it in one round"
+pair = ['pieces[].control: "shared"', "rules.simultaneous"]
+reason = "not_built"
+held_by = "none"
+why = "both players would move it in one round; R17's contested move (SR10a) is the nearest reading, and it does not name this pair"
+
+[[refusal]]
+id = "shared.portal_end"
+family = "shared control"
+at = "_check_shared_types: a portal end moves by its group"
+pair = ['pieces[].control: "shared"', "a portal end"]
+reason = "contradictory"
+why = "a portal end is no piece and moves by its group's moved_by"
+
+# --- turn parts (TS3) ---------------------------------------------------------------------------
+[[refusal]]
+id = "parts.ramp"
+family = "turn parts"
+at = "_validate_turn: a ramp of parts has no spelling yet"
+pair = ["rules.turn.parts", "rules.turn.ramp"]
+reason = "not_built"
+held_by = "none"
+why = "a ramp of parts has no spelling yet"
+
+[[refusal]]
+id = "parts.rounds"
+family = "turn parts"
+at = "_check_turn_parts: a round is one move each"
+pair = ["rules.turn.parts", "rules.simultaneous"]
+reason = "contradictory"
+why = "a round is one move each (as L4)"
+
+[[refusal]]
+id = "parts.drops"
+family = "turn parts"
+at = "_check_turn_parts: a drop has no piece on its origin"
+pair = ["rules.turn.parts", "rules.drops"]
+reason = "not_built"
+held_by = "none"
+why = "which part a drop fills is unwritten"
+
+[[refusal]]
+id = "parts.purse"
+family = "turn parts"
+at = "_check_turn_parts: a buy or a hire has no piece moving"
+pair = ["rules.turn.parts", "rules.purse"]
+reason = "not_built"
+held_by = "none"
+why = "which part a buy or a hire fills is unwritten"
+
+[[refusal]]
+id = "parts.portals"
+family = "turn parts"
+at = "_check_turn_parts: a fold's own move has no piece"
+pair = ["rules.turn.parts", "rules.portals"]
+reason = "not_built"
+held_by = "none"
+why = "which part a portal's own move fills is unwritten"
+
+[[refusal]]
+id = "parts.rest"
+family = "turn parts"
+at = "_check_turn_parts: the rest's lift would read a list the parts then shorten"
+pair = ["rules.turn.parts", "pieces[].rest"]
+reason = "not_built"
+held_by = "none"
+why = "the rest's lift would read a list the parts then shorten"
+
+[[refusal]]
+id = "parts.must_capture"
+family = "turn parts"
+at = "_check_turn_parts: the compulsion would be read before the parts"
+pair = ["rules.turn.parts", "rules.must_capture"]
+reason = "not_built"
+held_by = "none"
+why = "the compulsion would be read before the parts"
+
+[[refusal]]
+id = "parts.npcs"
+family = "turn parts"
+at = "_check_turn_parts: whether the phase follows it is unsettled"
+pair = ["rules.turn.parts", "rules.npcs"]
+reason = "not_built"
+held_by = "none"
+why = "a keep moves nothing, and whether the wild phase follows it is unsettled"
+
+[[refusal]]
+id = "parts.duck"
+family = "turn parts"
+at = "_check_turn_parts: where its half falls among the parts is unsettled"
+pair = ["rules.turn.parts", "rules.duck"]
+reason = "not_built"
+held_by = "none"
+why = "the duck's move is nobody's piece, which no part admits, and where the duck half falls among the parts is unsettled"
+
+[[refusal]]
+id = "parts.command"
+family = "turn parts"
+at = "_check_turn_parts: a commanded piece is the opponent's"
+pair = ["rules.turn.parts", 'pieces[].sight effect "command"']
+reason = "not_built"
+held_by = "none"
+why = "a commanded piece is the opponent's, which no part names"
+
+# --- a hop over a run, and displacement (TS4) ------------------------------------------------------
+[[refusal]]
+id = "run.capture"
+family = "hop runs"
+at = "hop_run_refusals: needs mode 'move'"
+pair = ["pieces[].moves[].run or displace", 'moves[].mode (not "move")']
+reason = "not_built"
+held_by = "none"
+why = "a hop over a run or one that displaces lands only on an empty square in its first build"
+
+[[refusal]]
+id = "run.screen_range"
+family = "hop runs"
+at = "hop_run_refusals: screen_range beside run"
+pair = ["pieces[].moves[].run", "moves[].screen_range"]
+reason = "contradictory"
+why = "a run's hop lands on the first square past the run, so how far past is not the move's to say"
+
+[[refusal]]
+id = "run.push"
+family = "hop runs"
+at = "hop_run_refusals: a hop over a run pushes nothing"
+pair = ["pieces[].moves[].run or displace", "moves[].push (the same move)"]
+reason = "not_built"
+held_by = "none"
+why = "a hop over a run pushes nothing in its first build"
+
+[[refusal]]
+id = "run.portal_move"
+family = "hop runs"
+at = "_check_hop_runs: a portal end hops over no run"
+pair = ["pieces[].moves[].run or displace", "rules.portals[].moves"]
+reason = "not_built"
+held_by = "none"
+why = "a portal end hops over no run and displaces nothing in its first build"
+
+[[refusal]]
+id = "run.wrap"
+family = "hop runs"
+at = "_check_hop_runs: a run could come round onto its own origin"
+pair = ["pieces[].moves[].run or displace", "rules.wrap"]
+reason = "not_built"
+held_by = "none"
+why = "a run could come round onto its own origin"
+
+[[refusal]]
+id = "run.portals"
+family = "hop runs"
+at = "_check_hop_runs: a run through an end has no reading yet"
+pair = ["pieces[].moves[].run or displace", "rules.portals"]
+reason = "not_built"
+held_by = "none"
+why = "a run through an end has no reading yet"
+
+[[refusal]]
+id = "run.en_passant.self"
+family = "hop runs"
+at = "_check_hop_runs: and is the en passant piece"
+pair = ["pieces[].moves[].run or displace (on the en passant piece)", "rules.en_passant"]
+reason = "not_built"
+held_by = "U7"
+why = "the core reads the en passant piece's own hop as a double step and opens a window over the piece it jumped (U2's probe)"
+
+[[refusal]]
+id = "run.rounds"
+family = "hop runs"
+at = "_check_hop_runs: two runs in one round have no order"
+pair = ["pieces[].moves[].run or displace", "rules.simultaneous"]
+reason = "not_built"
+held_by = "none"
+why = "two runs in one round have no order"
+
+[[refusal]]
+id = "run.sweep"
+family = "hop runs"
+at = "_check_hop_runs: a sweep is the other path effect"
+pair = ["pieces[].moves[].run or displace", 'pieces[].moves[].kind: "sweep" (any piece)']
+reason = "not_built"
+held_by = "none"
+why = "a game with a sweeper and a run is refused whole; what a sweep does to a run is unwritten"
+
+[[refusal]]
+id = "run.npcs"
+family = "hop runs"
+at = "_check_hop_runs: a wild piece in a run has no reading yet"
+pair = ["pieces[].moves[].run or displace", "rules.npcs"]
+reason = "not_built"
+held_by = "none"
+why = "a wild piece in a run has no reading yet"
+
+[[refusal]]
+id = "run.duck"
+family = "hop runs"
+at = "_check_hop_runs: the duck in a run has no reading yet"
+pair = ["pieces[].moves[].run or displace", "rules.duck"]
+reason = "not_built"
+held_by = "none"
+why = "the duck in a run has no reading yet"
+
+[[refusal]]
+id = "run.sight"
+family = "hop runs"
+at = "_check_hop_runs: a shield or a freeze in a run is unread"
+pair = ["pieces[].moves[].run or displace", "pieces[].sight"]
+reason = "not_built"
+held_by = "none"
+why = "a shield or a freeze in a run is unread"
+
+[[refusal]]
+id = "run.rest"
+family = "hop runs"
+at = "_check_hop_runs: a displaced piece's rest is unread"
+pair = ["pieces[].moves[].run or displace", "pieces[].rest"]
+reason = "not_built"
+held_by = "none"
+why = "a displaced piece's rest is unread"
+
+[[refusal]]
+id = "run.nobody"
+family = "hop runs"
+at = "_check_hop_runs: a held or shared piece walks no run"
+pair = ["pieces[].moves[].run or displace", "a type nobody owns"]
+reason = "not_built"
+held_by = "none"
+why = "a held or shared piece walks no run in its first build"
+
+[[refusal]]
+id = "run.royal"
+family = "hop runs"
+at = "_check_hop_runs: a hop's displace beside a royal"
+pair = ['pieces[].moves[].displace: "back"', "pieces[].royal"]
+reason = "not_built"
+held_by = "none"
+why = "a displacement moves pieces the check filter's shortcut does not read"
+
+# --- what the engine held and the validator now names (U1, unheld-pairs-plan.md section 1) ------
+# Not new debt: each was refused before U1, by `bridge.rust_supports` or the compiler, after the
+# validator had accepted the file, and so was in no count. U1 moved the refusal to the validator
+# (`spec/engine_holds.py`); the six not built are old holds made visible, not a new rule's refusals.
+[[refusal]]
+id = "hold.H1"
+family = "push"
+at = "table:hold.H1"
+pair = ["pieces[].moves[].push", "rules.drops.gating"]
+reason = "not_built"
+held_by = "U10"
+why = "a first move that pushes would gate as any first move; the core holds every push beside gating (E5)"
+
+[[refusal]]
+id = "hold.H2"
+family = "push"
+at = "table:hold.H2"
+pair = ["pieces[].moves[].push", 'pieces[].control "majority" or "shared"']
+reason = "not_built"
+held_by = "U10"
+why = "a held or shared piece would push as its holder's piece; the core has no held piece's push"
+
+[[refusal]]
+id = "hold.H3"
+family = "push"
+at = "table:hold.H3"
+pair = ["pieces[].moves[].push", 'rules.npcs[].pounce "attackers"']
+reason = "not_built"
+held_by = "U10"
+why = "the attackers pouncer's attacker list does not read a push source"
+
+[[refusal]]
+id = "hold.H4"
+family = "upkeep"
+at = "table:hold.H4"
+pair = ["rules.purse.upkeep", "pieces[].moves[].push"]
+reason = "not_built"
+held_by = "U6"
+why = "the move's cost reads where the mover stands, and a push's charge is unwritten (the pusher pays for its landing)"
+
+[[refusal]]
+id = "hold.H5"
+family = "hop runs"
+at = "table:hold.H5"
+pair = ['pieces[].moves[].displace: "back"', "a second displacing hop of the same piece"]
+reason = "not_built"
+held_by = "U11"
+why = "the move word does not name which displacing entry it used, so two may not reach one square"
+
+[[refusal]]
+id = "hold.H6"
+family = "push"
+at = "table:hold.H6"
+pair = ["pieces[].moves[].push", "pieces[].moves[].push.along of a second move"]
+reason = "not_built"
+held_by = "U10"
+why = "a merged table entry holds one push direction per landing; the word could name it"
+
+# U1b (refusal-debt.md section 12): the eleventh, found by the fuzz (F5, fuzz-lifted-pairs.md section 5).
+# Not contradictory: the duck's piece carries no upkeep (refused by name), so its half would cost
+# nothing and a reading exists; the boundary holds it only because the duck's compiled turn is long.
+[[refusal]]
+id = "hold.H7"
+family = "upkeep"
+at = "table:hold.H7"
+pair = ["rules.purse.upkeep", "rules.duck"]
+reason = "not_built"
+held_by = "none"
+why = "the duck's compiled turn is two moves, and the core's move cost is unbuilt in any long turn (upkeep.U2's reading, reached through the duck)"
+
+[[refusal]]
+id = "hold.C1"
+family = "push"
+at = "table:hold.C1"
+pair = ["pieces[].moves[].push", "more than 32 push directions"]
+reason = "too_expensive"
+cost = "the move word's tag (bits 25-29) names a push direction; more than 32 needs a wider move word, which every move list, record and stored game word reads: L and a replay"
+cost_basis = "estimated"
+why = "five bits name a push direction"
+
+[[refusal]]
+id = "hold.C2"
+family = "sweeps"
+at = "table:hold.C2"
+pair = ['pieces[].moves[].kind: "sweep"', "more than 32 sweep rays from one square where two meet"]
+reason = "too_expensive"
+cost = "the move word's tag (bits 25-29) names a sweep's ray where two rays meet; more needs a wider move word, which every move list, record and stored game word reads: L and a replay"
+cost_basis = "estimated"
+why = "five bits name a sweep ray"
+
+[[refusal]]
+id = "hold.C3"
+family = "sweeps"
+at = "table:hold.C3"
+pair = ['pieces[].moves[].kind: "sweep"', 'rules.portals[].kind: "fold" (more than 32 rays, or a ray past 31 squares)']
+reason = "too_expensive"
+cost = "a sweep through a fold names its ray in the tag and its step in the promotion field, five bits each; more needs a wider move word, which every move list, record and stored game word reads: L and a replay"
+cost_basis = "estimated"
+why = "five bits each name a fold sweep's ray and its step"
+
+[[refusal]]
+id = "hold.C4"
+family = "taken piece"
+at = "table:hold.C4"
+pair = ['rules.strike or rules.contacts position "choose"', "more than 32 landing squares"]
+reason = "too_expensive"
+cost = "the move word's tag (bits 25-29) names the chosen landing; more than 32 needs a wider move word, which every move list, record and stored game word reads: L and a replay"
+cost_basis = "estimated"
+why = "five bits name a chosen landing"
+
+# U1 made one reclassification of unheld-pairs-plan.md section 2.3: the narrower case of goals.rounds.
+[[refusal]]
+id = "goals.rounds.mover"
+family = "scoring goals"
+at = "_check_reach_scoring: rules.reach.both \"mover\" beside rules.simultaneous without the initiative"
+pair = ['rules.reach.both "mover"', "rules.simultaneous (no initiative)"]
+reason = "contradictory"
+why = "a round has no one mover, and without the initiative nothing names one"
+
+# === lifted: rows of the last inventory no longer refused =========================================
+# pair: the two key paths now allowed together; by: the task; narrowed: a narrower case stays.
+[[lifted]]
+id = "L1"
+pair = ["rules.en_passant", "rules.turn"]
+by = "SR7a"
+[[lifted]]
+id = "L2"
+pair = ["pieces[].rest", "rules.turn"]
+by = "SR7d"
+[[lifted]]
+id = "L3"
+pair = ["rules.npcs", "rules.turn"]
+by = "SR7b"
+[[lifted]]
+id = "L5"
+pair = ['pieces[].control: "majority"', "rules.turn"]
+by = "SR2"
+[[lifted]]
+id = "L6"
+pair = ["rules.purse", "rules.turn"]
+by = "SR2"
+[[lifted]]
+id = "L7"
+pair = ["rules.duck", "rules.turn"]
+by = "SR8c"
+[[lifted]]
+id = "R6"
+pair = ["rules.simultaneous", "rules.castling"]
+by = "SR8d"
+[[lifted]]
+id = "R9"
+pair = ["rules.simultaneous", "rules.portals[].moved_by"]
+by = "SR8e"
+narrowed = true
+[[lifted]]
+id = "N4"
+pair = ["rules.npcs[].turns_back", "rules.npcs[].also_at"]
+by = "SR8f"
+[[lifted]]
+id = "N5"
+pair = ["rules.npcs[].turns_back", 'rules.win: "checkmate"']
+by = "SR8h"
+[[lifted]]
+id = "N5.forbid_check"
+pair = ["rules.npcs[].turns_back", "rules.forbid_check"]
+by = "SR8h"
+[[lifted]]
+id = "N5.safe"
+pair = ["rules.npcs[].turns_back", "rules.reach.safe"]
+by = "SR8h"
+[[lifted]]
+id = "N7"
+pair = ["rules.npcs[].respawn", "rules.npcs[].pounce"]
+by = "SR8g"
+[[lifted]]
+id = "R11"
+pair = ["rules.simultaneous", 'rules.strike.position: "stay"']
+by = "SR7e"
+[[lifted]]
+id = "R18"
+pair = ["rules.simultaneous", 'setup.placements[].player: "nobody"']
+by = "SR7f"
+[[lifted]]
+id = "R19"
+pair = ["rules.simultaneous", "rules.purse.market"]
+by = "SR7g"
+narrowed = true
+[[lifted]]
+id = "R20"
+pair = ["rules.simultaneous", 'pieces[].control: "majority"']
+by = "SR7n"
+narrowed = true
+[[lifted]]
+id = "T1"
+pair = ["rules.strike", "rules.explode_on_capture"]
+by = "SR5a"
+narrowed = true
+[[lifted]]
+id = "T2"
+pair = ["rules.strike (removing its victim)", "rules.drops"]
+by = "SR2"
+narrowed = true
+[[lifted]]
+id = "T4"
+pair = ["rules.contacts", "rules.explode_on_capture"]
+by = "SR5a"
+narrowed = true
+[[lifted]]
+id = "T5"
+pair = ["rules.contacts (links removing their target)", "rules.drops"]
+by = "SR2"
+narrowed = true
+[[lifted]]
+id = "T6"
+pair = ["rules.contacts", "rules.npcs"]
+by = "SR4e"
+[[lifted]]
+id = "T7"
+pair = ["rules.strike", "rules.npcs"]
+by = "SR4e"
+[[lifted]]
+id = "T8"
+pair = ["rules.npcs", "rules.explode_on_capture"]
+by = "SR4f"
+[[lifted]]
+id = "T9"
+pair = ["rules.contacts (an own link)", "rules.must_capture"]
+by = "SR4i"
+[[lifted]]
+id = "T10"
+pair = ["rules.strike.by", "rules.strike.switches_sides"]
+by = "SR4j"
+[[lifted]]
+id = "H1"
+pair = ["rules.promotion.only_lost", "rules.drops"]
+by = "SR2"
+[[lifted]]
+id = "H2"
+pair = ["rules.promotion.only_lost", 'rules.strike.position: "home"']
+by = "SR2"
+[[lifted]]
+id = "H3"
+pair = ["rules.promotion.only_lost", "rules.promote_on_entry"]
+by = "SR8a"
+[[lifted]]
+id = "H6"
+pair = ["rules.drops.either_face", "rules.explode_on_capture"]
+by = "SR2"
+[[lifted]]
+id = "H11"
+pair = ['rules.extinction.per_type: "own"', "rules.drops"]
+by = "SR4d"
+[[lifted]]
+id = "W1"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.strike"]
+by = "SR6a"
+narrowed = true
+[[lifted]]
+id = "W2"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.contacts"]
+by = "SR6b"
+narrowed = true
+[[lifted]]
+id = "W3"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.explode_on_capture"]
+by = "SR6c"
+narrowed = true
+[[lifted]]
+id = "W4"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.drops"]
+by = "SR4b"
+[[lifted]]
+id = "W5"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.npcs"]
+by = "SR4c"
+[[lifted]]
+id = "W6"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.wrap"]
+by = "SR6d"
+[[lifted]]
+id = "W7"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.promotion"]
+by = "SR8b"
+narrowed = true
+[[lifted]]
+id = "W8"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.portals"]
+by = "SR6e"
+[[lifted]]
+id = "W9"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.duck"]
+by = "SR2"
+narrowed = true
+[[lifted]]
+id = "W10"
+pair = ['pieces[].sight effect "shield"', 'pieces[].moves[].kind: "sweep"']
+by = "SR6g"
+[[lifted]]
+id = "V1"
+pair = ["pieces[].sight", "rules.portals"]
+by = "SR5c, SR5c2"
+[[lifted]]
+id = "V2"
+pair = ["pieces[].sight", "rules.explode_on_capture"]
+by = "SR5b"
+[[lifted]]
+id = "V3"
+pair = ['pieces[].sight effect "command"', "rules.reach"]
+by = "SR5d"
+[[lifted]]
+id = "V4"
+pair = ['pieces[].sight effect "command"', "rules.territory"]
+by = "SR5d"
+[[lifted]]
+id = "V5"
+pair = ['pieces[].sight effect "command"', "rules.strike"]
+by = "SR2b, SR4h"
+[[lifted]]
+id = "V6"
+pair = ['pieces[].sight effect "command"', "rules.contacts"]
+by = "SR2b, SR4h"
+[[lifted]]
+id = "V7"
+pair = ['pieces[].sight effect "command"', "pieces[].rest"]
+by = "SR5e"
+[[lifted]]
+id = "V8"
+pair = ['pieces[].sight effect "command"', 'pieces[].moves[].kind: "sweep"']
+by = "SR6f"
+[[lifted]]
+id = "V9"
+pair = ["pieces[].sight captures_own", "rules.drops.from_captures"]
+by = "SR4h"
+[[lifted]]
+id = "V11"
+pair = ["pieces[].sight affects", "a wild type or the duck"]
+by = "SR5f"
+narrowed = true
+[[lifted]]
+id = "V15"
+pair = ["pieces[].sight", 'setup.placements[].player: "nobody"']
+by = "SR5f"
+[[lifted]]
+id = "N17"
+pair = ["rules.npcs[].immune", "rules.drops"]
+by = "SR4g"
+[[lifted]]
+id = "N20"
+pair = ["pieces[].moves[].path", 'rules.npcs[].pounce: "prey"']
+by = "SR2"
+[[lifted]]
+id = "K2"
+pair = ["rules.duck", "rules.portals"]
+by = "SR3d"
+[[lifted]]
+id = "K3"
+pair = ["rules.duck", "rules.explode_on_capture, rules.strike or rules.contacts"]
+by = "SR3e"
+[[lifted]]
+id = "P1"
+pair = ["rules.portals", 'board.lattice: "hex"']
+by = "SR5g"
+[[lifted]]
+id = "P3"
+pair = ["rules.portals", "rules.strike"]
+by = "SR4m"
+[[lifted]]
+id = "P4"
+pair = ["rules.portals", "rules.contacts"]
+by = "SR4m"
+[[lifted]]
+id = "P5"
+pair = ["rules.portals", "rules.explode_on_capture"]
+by = "SR5h"
+[[lifted]]
+id = "P6"
+pair = ["rules.portals", "rules.territory"]
+by = "SR5i"
+[[lifted]]
+id = "P7"
+pair = ["pieces[].region", "rules.portals"]
+by = "SR5i"
+[[lifted]]
+id = "P9"
+pair = ["rules.purse", "rules.portals"]
+by = "SR3g"
+[[lifted]]
+id = "P10"
+pair = ['setup.placements[].player: "nobody"', "rules.portals"]
+by = "SR3g"
+narrowed = true
+[[lifted]]
+id = "O1"
+pair = ['setup.placements[].player: "nobody"', "rules.npcs"]
+by = "SR3f"
+[[lifted]]
+id = "O2"
+pair = ['setup.placements[].player: "nobody"', "rules.duck"]
+by = "SR3f"
+[[lifted]]
+id = "O3"
+pair = ['setup.placements[].player: "nobody"', "rules.strike"]
+by = "SR4k"
+[[lifted]]
+id = "O4"
+pair = ['setup.placements[].player: "nobody"', "rules.contacts"]
+by = "SR4k"
+[[lifted]]
+id = "O6"
+pair = ['setup.placements[].player: "nobody"', "pieces[].spy"]
+by = "SR7k"
+[[lifted]]
+id = "O9"
+pair = ['setup.placements[].player: "nobody"', "setup.placements[].facing"]
+by = "SR8i"
+[[lifted]]
+id = "O10"
+pair = ['pieces[].control: "majority"', "rules.territory"]
+by = "SR5k"
+[[lifted]]
+id = "O11"
+pair = ['pieces[].control: "majority"', "rules.reach"]
+by = "SR5k"
+[[lifted]]
+id = "O12"
+pair = ['pieces[].control: "majority"', "rules.explode_on_capture"]
+by = "SR5j"
+[[lifted]]
+id = "O13"
+pair = ['pieces[].control: "majority" or "shared"', "pieces[].facing"]
+by = "SR8i"
+[[lifted]]
+id = "O14"
+pair = ['pieces[].control: "majority" or "shared"', "pieces[].region"]
+by = "SR8i"
+[[lifted]]
+id = "O15"
+pair = ['pieces[].control: "majority" or "shared"', "rules.promotion"]
+by = "SR8j"
+[[lifted]]
+id = "O16"
+pair = ['pieces[].control: "majority" or "shared"', 'pieces[].moves[].kind: "sweep"']
+by = "SR8k"
+[[lifted]]
+id = "O17"
+pair = ['pieces[].control: "majority" or "shared"', "pieces[].moves (reading differently for the two players)"]
+by = "SR8i"
+[[lifted]]
+id = "O18"
+pair = ['pieces[].control: "majority" or "shared"', "pieces[].moves[].condition"]
+by = "SR8i"
+[[lifted]]
+id = "O19"
+pair = ['pieces[].control: "majority" or "shared"', "pieces[].moves[].screen own or enemy"]
+by = "SR8i"
+[[lifted]]
+id = "O22"
+pair = ["rules.purse", "rules.explode_on_capture"]
+by = "SR4l"
+[[lifted]]
+id = "O24"
+pair = ["pieces[].price", "pieces[].spy"]
+by = "SR7l"
+[[lifted]]
+id = "O27"
+pair = ["rules.purse.market", "pieces[].spy"]
+by = "SR7m"
+narrowed = true
+[[lifted]]
+id = "Y3"
+pair = ["rules.promotion", "pieces[].spy"]
+by = "SR7h"
+narrowed = true
+[[lifted]]
+id = "Y4"
+pair = ["rules.strike.chain", "pieces[].spy"]
+by = "SR7i"
+narrowed = true
+[[lifted]]
+id = "Y5"
+pair = ["rules.strike.switches_sides", "pieces[].spy"]
+by = "SR7i"
+narrowed = true
+[[lifted]]
+id = "Y6"
+pair = ["rules.contacts.links", "pieces[].spy"]
+by = "SR7i"
+narrowed = true
+[[lifted]]
+id = "Y7"
+pair = ["rules.drops.stock", "pieces[].spy"]
+by = "SR7j"
+narrowed = true
+[[lifted]]
+id = "Y8"
+pair = ["rules.drops.from_captures", "pieces[].spy"]
+by = "SR7j"
+narrowed = true
+[[lifted]]
+id = "PA2"
+pair = ["pieces[].moves[].path", 'board.lattice: "hex"']
+by = "SR1c"
+[[lifted]]
+id = "PA4"
+pair = ["pieces[].moves[].path", 'moves[].kind: "lame" (a rider)']
+by = "SR11a"
+[[lifted]]
+id = "X1"
+pair = ['pieces[].moves[].kind: "lame" (stating its legs)', 'board.lattice: "hex"']
+by = "SR1a"
+[[lifted]]
+id = "X8"
+pair = ["rules.obstacles.blocks_leaps (leaps stating their legs)", 'board.lattice: "hex"']
+by = "SR1a"
+[[lifted]]
+id = "Z2"
+pair = ["rules.castling.king", "a piece that is not royal"]
+by = "SR1d"
+# Lifts outside the last inventory: the push's round 2 (plan-push.md section 3.14, Q1074b8).
+[[lifted]]
+id = "push.N5"
+pair = ["pieces[].moves[].push", "pieces[].rest"]
+by = "Q1074b8"
+[[lifted]]
+id = "push.G1"
+pair = ["pieces[].moves[].push", "rules.reach"]
+by = "Q1074b8"
+[[lifted]]
+id = "push.G2"
+pair = ["pieces[].moves[].push", "rules.territory"]
+by = "Q1074b8"
+[[lifted]]
+id = "push.purse"
+pair = ["pieces[].moves[].push", "rules.purse"]
+by = "Q1074b8"
+[[lifted]]
+id = "push.sight"
+pair = ["pieces[].moves[].push", "pieces[].sight (but a command that captures_own: push.N4)"]
+by = "Q1074b8"
+
+# Lifts outside the last inventory: U2 (unheld-pairs-plan.md section 2.2), the core already
+# played each as the plan reads it; fed past the validator and held to an oracle.
+[[lifted]]
+id = "income.I1"
+pair = ["rules.income", 'rules.scoring.count "points"']
+by = "U2"
+[[lifted]]
+id = "gating.duck"
+pair = ["rules.drops.gating", "rules.duck"]
+by = "U2"
+[[lifted]]
+id = "gating.control"
+pair = ["rules.drops.gating", 'pieces[].control: "majority" or "shared"']
+by = "U2"
+[[lifted]]
+id = "goals.extinction"
+pair = ["rules.reach.removes", "rules.extinction"]
+by = "U2"
+[[lifted]]
+id = "goals.bare_royal"
+pair = ["rules.reach.removes", "rules.bare_royal"]
+by = "U2"
+[[lifted]]
+id = "shared.price"
+pair = ['pieces[].control: "shared"', "pieces[].price (on a shared type)"]
+by = "U2"
+[[lifted]]
+id = "run.territory"
+pair = ['pieces[].moves[].displace: "back"', "rules.territory"]
+by = "U2"
+[[lifted]]
+id = "run.en_passant"
+# not on the en passant piece itself: run.en_passant.self stays refused (U7)
+pair = ["pieces[].moves[].run or displace", "rules.en_passant"]
+by = "U2"
+
+# === every other literal of schema.py ============================================================
+[other]
+shape = [
+  "validate_spec (3)", "piece_shapes (1)", "_check_sight_geometry (5)", "_check_sight_coherence (10)",
+  "_check_speed_coherence (2)", "_check_spy_coherence: must be true or false",
+  "_check_chase_switches (2)", "_check_simultaneous_coherence (3)", "_check_extinction_coherence (2)",
+  "_validate_appearance (5)", "_validate_provenance (7)", "_validate_summary (4)", "_validate_coherence (1)",
+  "_check_named_squares (8)", "_validate_duck (4)", "_check_duck_coherence: a square the opening does not leave empty",
+  "_validate_board (6)", "_validate_pieces (11)", "_validate_screen_types (1)", "_validate_facing (5)",
+  "_validate_captures (4)", "_validate_squares (2)", "_validate_moves (22)", "legs_refusals (8)", "path_refusals (4)",
+  "_symmetry_refusals (1)", "_validate_vectors (4)", "_validate_condition (3)", "_validate_placement_facing (3)",
+  "_validate_setup (11)", "_validate_rules (12)", "_validate_explosion (9)", "_validate_drops (9)",
+  "_validate_gating (6)", "_validate_stock (1)", "_validate_stock_entries (3)", "_validate_stock_by_player (6)",
+  "_validate_reach (14)", "_validate_extinction (8)", "_validate_wrap (5)", "_validate_obstacles (2)",
+  "_validate_npc_also_at (6)", "_validate_npcs (10)", "_validate_portals (7)", "_validate_portal_moves (1)",
+  "_validate_portal_pair (10)", "_validate_portal_ends (12)", "_carries_problem (3)", "_check_portal_coherence (3)",
+  "_refuse_a_one_square_lame_leap (1)", "_check_portal_carries (4)", "_validate_control (5)",
+  "_check_neutral_squares (4)", "_check_one_immunity_per_type (1)", "_validate_npc_immune (3)",
+  "_validate_strike_shape (20)", "_validate_contacts_shape (20)", "_validate_landing (4)", "_validate_turn (6)",
+  "_validate_turn_parts (5)", "_check_turn_parts (3)", "_validate_territory (4)", "_validate_scoring (5)",
+  "_validate_promotion (14)", "_promotion_ranks_past_the_board (1)", "_validate_promotion_targets (3)",
+  "_validate_castling (8)", "_check_keys (2)", "_check_bounty_coherence (1)", "_validate_purse (13)",
+  "_check_purse_coherence (1)", "_check_upkeep_coherence: must be a whole number",
+  "_validate_income (5)", "_push_entry_refusals (6)", "_validate_push_rule (3)", "_validate_push_piece (2)",
+  "hop_run_refusals (3)", "_check_rest_coherence: must be a whole number of turns",
+  "_check_takes_royal: must be true or false",
+  "_check_npc_split: it would start over its cap",
+  "_check_npc_pounce: that disagree on",
+  "_check_majority_type: its control's geometry reads differently",
+]
+needs = [
+  "_check_entry_promotion_coherence (7)",
+  "_check_sight_coherence: captures_own means something only beside effect",
+  "_check_speed_coherence: orders the two moves of a round, and this game has none",
+  "_check_spy_coherence: declare rules.simultaneous",
+  "_check_spy_coherence: starts with no spy on the board",
+  "_check_chase_switches: settles an ending both players reach",
+  "_check_simultaneous_coherence: only matters in a simultaneous game",
+  "_check_gating_coherence: with nothing in rules.drops.stock",
+  "_validate_coherence: but no piece is marked royal",
+  "_validate_coherence: the game could never be won",
+  "_validate_coherence: no royal piece appears in setup.placements",
+  "_check_blast_strikes: with no rules.strike strikes nothing",
+  "_check_npc_coherence: needs a bounty above zero",
+  "_validate_moves: on a hex lattice must state its legs",
+  "_refuse_legs_nothing_reads (1)",
+  "_refuse_legs_nothing_reads: on a hex lattice, and must state its",
+  "_check_takes_royal: nobody would hold it",
+  "_check_takes_royal: there is no royal to take",
+  "_check_portal_moves: gives it no moves",
+  "_check_bounty_coherence: needs rules.scoring.count",
+  "_check_purse_coherence: has nothing to spend on",
+  "_check_purse_coherence: the region is where a bought piece goes",
+  "_check_purse_coherence: has no price",
+  "_check_upkeep_coherence: without rules.purse.upkeep",
+  "_check_income_coherence: without rules.purse",
+]
+inert = [
+  "_check_moveless_coherence (9)", "_check_only_lost_coherence (1)", "_check_own_extinction (4)",
+  "_check_fixed_facings (1)", "_check_facing_changes_something (1)", "_check_strike_by (2)", "_check_inert_rules (15)",
+  "_check_inert_rules: can never be reached",
+  "_check_portal_bar_can_bind (4)", "strike_states_nothing (4)", "_check_push_coherence (15)",
+  "_check_rest_coherence: a piece that never moves never rests",
+  "_check_sight_coherence: so the effect never binds it",
+  "_check_sight_coherence: affects nothing that could be there",
+  "_check_sight_coherence: is empty, which affects nothing",
+  "_check_speed_coherence: never orders a round",
+  "_check_spy_coherence: nothing can remove",
+  "_check_chase_switches: can never fire",
+  "_check_simultaneous_coherence: is what the piece beats when beats is left out",
+  "_check_simultaneous_coherence: is read only when two pieces of one speed collide",
+  "_check_simultaneous_coherence: can never be read",
+  "_check_simultaneous_coherence: can never decide anything",
+  "_check_gating_coherence: which says where a drop may",
+  "_check_gating_coherence: so no gate could ever open",
+  "_check_either_face_coherence: pairs nothing",
+  "_check_either_face_coherence: can never fire",
+  "_check_sweep_effects: and the game has none of them",
+  "_check_sweep_effects: strikes nothing it sweeps",
+  "_check_sweep_effects: names it as the mover",
+  "_check_sweep_effects: is set off by no capture of it",
+  "_check_path_coherence: its moves are never read",
+  "_check_blast_strikes: so the strike never acts",
+  "_check_blast_strikes: so no link is ever met",
+  "_check_npc_coherence: a strike and contacts never reach a piece of a wild type",
+  "_check_npc_turns_back: nothing to turn on",
+  "_check_npc_pounce: it would never pounce",
+  "_check_duck_coherence: would pass every turn",
+  "_check_duck_coherence: never reads them",
+  "_validate_facing: it has nothing to turn",
+  "path_refusals: is one jump, which never",
+  "path_refusals: is one step, which never turns",
+  "_check_reach_scoring: where nothing can take it",
+  "_check_reach_scoring: the goal can never be reached",
+  "_check_portal_coherence: so there is never a move to bar",
+  "_check_neutral_coherence: it would never be nobody's",
+  "_check_turn_parts: the part admits nothing",
+  "_check_purse_coherence: which nothing charges",
+  "_check_purse_coherence: no capture pays anything",
+  "_check_purse_coherence: with no priced piece a player can hold",
+  "_check_purse_coherence: has no square in rules.purse.region",
+  "_check_upkeep_coherence: every move would cost nothing",
+  "_check_upkeep_coherence: so the choice states nothing",
+  "_check_income_coherence: so no piece would ever earn",
+  "_check_pass_coherence: the rule would never be read",
+  "_push_entry_refusals: on a move that never captures",
+  "_push_entry_refusals: on a push of one's own pieces only",
+]
+spelling = [
+  "_validate_promotion: a zone is stated one way",
+  "_validate_turn: the parts are the turn's length",
+  "_validate_turn: only parts have an order to choose",
+  "_check_push_coherence: so say it once",
+]
+fragment = [
+  "BARE_ROYAL_HOLDER (1)", "_NEVER_ON_THE_BOARD (1)", "PLAYED_AS_CAPTURE (1)",
+  "path_refusals: turns a slide only",
+  "sight_can_bind (6)", "insufficient_material_roles (10)", "_never_in_a_hand (2)",
+  "_check_simultaneous_coherence.refuse (1)", "_foreign_spy_gains (2)",
+  "_check_sight_coherence: a wild piece (rules.npcs)",
+  "_check_sight_coherence: a piece nobody owns (placed for nobody)",
+  "_check_chase_switches: and has its speed",
+  "_check_simultaneous_coherence: a royal in a placement stock",
+  "gating_conflicts: rules.drops.gating beside rules.{}: {}; leave one out",
+  "_check_facing_coherence: two players and a wild third owner",
+  "_check_blast_strikes: rules.strike.position (not",
+  "_check_blast_strikes: rules.strike (effect",
+  "_check_npc_pounce: {} on {} (moves[{}])",
+  "_check_duck_coherence: {} has a {}: {}",
+  "_check_neutral_coherence: a placement for nobody of",
+  "_check_neutral_coherence: which a strike or a contact makes of a piece nobody owns",
+  "_check_majority_type: piece {} (control {})",
+  "_check_turn_parts: rules.turn.parts beside {}: {} (first build)",
+  "_check_hop_runs: a hop's run or displace beside {}: {} (first build)",
+  "_validate_promotion: the default 'rank': 'last'",
+]

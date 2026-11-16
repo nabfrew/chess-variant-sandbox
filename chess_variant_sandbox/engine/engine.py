@@ -69,7 +69,6 @@ from chess_variant_sandbox.engine.moves import (
     move_portal,
     move_push,
     move_ray,
-    move_through,
 )
 from chess_variant_sandbox.engine.state import (
     NO_SQUARE,
@@ -734,6 +733,11 @@ class Engine:
                 text += self._placed_on(state, move)
         if kind == MOVE_PROMOTION and not promotion_overridden:
             text += f"={spec.piece_ids[promoted]}"
+        elif kind == MOVE_SWEEP and not promotion_overridden:
+            # SR8b (W7): a promoting sweep, written as a promotion is (``Xa1xa8 (sweeps a4)=Q``).
+            swept_to = spec.sweep_promotion(move)
+            if swept_to is not None:
+                text += f"={spec.piece_ids[swept_to]}"
         elif kind == MOVE_CASTLE:
             text += " (castle)"
         elif kind == MOVE_EN_PASSANT:
@@ -1002,18 +1006,18 @@ class Engine:
 
     def sweep_fold_route(self, state: GameState, move: int) -> tuple[int, int] | None:
         """SR6e (W8): ``(way in, way out)`` for a sweep through a fold -- the fold's square on
-        the sweep's ray, which the word names by its ray and step (``move_through``), and the
+        the sweep's ray, which the word names by its ray and step (``CompiledSpec.sweep_through``), and the
         far end, where the move ends -- or ``None`` for any other move. A sweep through a fold
         over an empty path is a plain go-through, whose route is `fold_route`'s."""
         origin, target, kind, _ = decode_move(move)
-        if kind != MOVE_SWEEP or not move_through(move):
-            return None
         spec = self.spec
+        if kind != MOVE_SWEEP or not spec.sweep_through(move):
+            return None
         value = state.board[origin]
         if not value:
             return None
         entries = spec.sweeps[spec.frame_at(value)][spec.type_of(value)][origin]
-        ray_index, step = move_ray(move), move_through(move) - 1
+        ray_index, step = move_ray(move), spec.sweep_through(move) - 1
         if ray_index >= len(entries) or step >= len(entries[ray_index][0]):
             return None
         return entries[ray_index][0][step], target
@@ -1203,7 +1207,8 @@ class Engine:
                 if board[square] and spec.owner_of(board[square]) == 2
                 and spec.npcs is not None and spec.npcs.on_line(square)
             )),
-            # Generation 42: a duck game's turn is two halves; 2 owes the piece move.
+            # Generation 42: a duck game's turn is two halves; 2 owes the piece move (SR8c: in
+            # a long turn the turn's last piece move, as 1 is a long turn's last move).
             remaining=(1 if duck_owed else 2) if spec.duck is not None else 1,
             purse=(
                 (purse if purse is not None else (spec.purse.start, spec.purse.start))

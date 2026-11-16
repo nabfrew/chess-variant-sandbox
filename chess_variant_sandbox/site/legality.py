@@ -14,16 +14,22 @@ units send back, concatenated in part order, is that phase's whole output. The u
 those three texts and the stamp the browser made. `upload` writes it and `read_upload` reads it, and they are the only
 writer and reader, so there is one form and not two:
 
-    {"schema": 2, "basis": {...},
-     "phases": {"tournament": "<JSON Lines>", "analysis": ..., "blunder": ...}}
+    {"schema": 3, "basis": {...}, "encoding": "zlib+base64",
+     "phases": {"tournament": "<packed JSON Lines>", "analysis": ..., "blunder": ...}}
 
 It is *slim* because `upload` drops from each line the fields the walk rebuilds: a game's
-per-ply series, and every analysis field but `near_best`. Those are half of `analysis.json`
-and most of `games.jsonl`, and the position keys among them are the 64-bit values no
-JavaScript number may carry (§3). Every dropped field has a default, so a slim line is
-still a line `GameRecord.from_dict` and `GameAnalysis.from_dict` read, and a line that
-keeps them is read the same way with the copies ignored. JavaScript neither writes nor
-reads the text: Python writes it in the browser and Python reads it here.
+per-ply series, and every analysis field but the probe's, `near_best` and (form 3, R-S6e)
+`sample_values`, the move values `v14`'s `decision_cost` reads. Those are half of
+`analysis.json` and most of `games.jsonl`, and the position keys among them are the 64-bit
+values no JavaScript number may carry (§3). Every dropped field has a default, so a slim
+line is still a line `GameRecord.from_dict` and `GameAnalysis.from_dict` read, and a line
+that keeps them is read the same way with the copies ignored. Each phase's text is packed
+(`slices.pack`: zlib, then base64), because the move values alone run to a few MB on a wide
+game and the box admits no body over 2 MB; packed, a whole upload is a few hundred KB at
+most (`docs/reference/v14-registration.md` §15). `read_upload` opens each to at most
+`slices.UNPACKED_LIMIT` bytes. An upload in an older form is an older page's cached module,
+refused as `stale-build`. JavaScript neither writes nor reads the text: Python writes it in
+the browser and Python reads it here.
 
 ## What the job checks, in order
 
@@ -50,8 +56,8 @@ reads the text: Python writes it in the browser and Python reads it here.
 ## What stays unproven
 
 That the rostered players chose those moves; the search counters (`nodes`, `depth_sum`,
-`searches`); the probe's `near_best` counts, beyond their shape; and each blunder trial's
-new winner. Tier two replays a sample of all four. A forger who passes this tier has
+`searches`); the probe's `near_best` counts and move values, beyond their shape; and each
+blunder trial's new winner. Tier two replays a sample of all four. A forger who passes this tier has
 written legal games by hand and invented those numbers, which is why a `legal` result is
 shown to its designer alone.
 
@@ -93,6 +99,7 @@ carries the check's state as `spotCheck`, so the page knows to keep asking.
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 import threading
@@ -118,6 +125,7 @@ from chess_variant_sandbox.tournament.analysis import (
     BlunderTrial,
     CorpusAnalysis,
     GameAnalysis,
+    PieceFollower,
     SpyStep,
     blank_spy_counts,
     blunder_rng,
@@ -125,6 +133,7 @@ from chess_variant_sandbox.tournament.analysis import (
     count_round,
     count_sight,
     count_spy_holders,
+    movable_types,
     mover_kind,
     moves_an_instance,
     moves_no_piece,
@@ -151,9 +160,10 @@ REBUILT_ANALYSIS_FIELDS = slices.REBUILT_ANALYSIS_FIELDS
 # the sentence beside it names the game and the ply.
 BASIS = "basis"
 STALE_BUILD = "stale-build"
-"""A basis refused by its build fingerprint alone: the browser ran a core built from other
-sources, which is a stale cached manifest and wheel. It is named apart because it has a
-remedy the page acts on -- fetch the current manifest and measure again (B10)."""
+"""A stale cached manifest and wheel: a basis refused by its build fingerprint (the browser
+ran a core built from other sources) or by the readings its pass kept (R-S6e), or an upload
+in an older form. It is named apart because it has a remedy the page acts on -- fetch the
+current manifest and measure again (B10)."""
 UNREADABLE = "unreadable"
 MISSING_SEED = "missing-seed"
 UNSCHEDULED = "unscheduled-game"
@@ -254,12 +264,18 @@ def read_upload(text: str | bytes) -> Upload:
         raise Refused(UNREADABLE, "the upload is not JSON") from error
     if not isinstance(data, dict):
         raise Refused(UNREADABLE, "the upload is not one JSON object")
-    if data.get("schema") != SCHEMA:
+    schema = data.get("schema")
+    if schema != SCHEMA:
+        # An older form is an older page's module, cached (R-S6e: form 2 carried no move
+        # values), and its remedy is the stale build's: the page fetches the current one.
+        older = isinstance(schema, int) and not isinstance(schema, bool) and schema < SCHEMA
         raise Refused(
-            UNREADABLE,
-            f"the upload is in form {data.get('schema')!r} and this server reads form "
+            STALE_BUILD if older else UNREADABLE,
+            f"the upload is in form {schema!r} and this server reads form "
             f"{SCHEMA}, so the page fetches the current module",
         )
+    if data.get("encoding") != slices.PACKED:
+        raise Refused(UNREADABLE, f"the upload's phases are not {slices.PACKED}")
     phases = data.get("phases")
     if not isinstance(phases, dict):
         raise Refused(UNREADABLE, "the upload carries no phases")
@@ -271,11 +287,14 @@ def read_upload(text: str | bytes) -> Upload:
         raise Refused(UNREADABLE, f"the upload lacks the phases {missing}")
     if not all(isinstance(value, str) for value in phases.values()):
         raise Refused(UNREADABLE, "each phase is carried as the text its units sent back")
+    opened: dict[str, str] = {}
+    for name, value in phases.items():
+        try:
+            opened[str(name)] = slices.unpack(value)
+        except slices.SliceError as error:
+            raise Refused(UNREADABLE, f"{name}: {error}", phase=str(name)) from error
     basis = data.get("basis")
-    return Upload(
-        basis=basis if isinstance(basis, dict) else None,
-        phases={str(name): str(value) for name, value in phases.items()},
-    )
+    return Upload(basis=basis if isinstance(basis, dict) else None, phases=opened)
 
 
 # --------------------------------------------------------------------- the check
@@ -337,6 +356,9 @@ def check(spec: dict[str, Any], sent: Upload, current: Basis) -> Checked:
     same_schedule(slices.TOURNAMENT, tournament_sent, runner.schedule(roster))
 
     evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
+    # `v14`'s readings, as every pass writes them (R-S6e): the walk follows the pieces and
+    # names each sampled position's mover; the move values are the probe's, sent.
+    movable = movable_types(spec)
     walked = [
         walk(
             engine,
@@ -345,6 +367,7 @@ def check(spec: dict[str, Any], sent: Upload, current: Basis) -> Checked:
             phase=slices.TOURNAMENT,
             game=index,
             series=roster.collect_series,
+            movable=movable,
         )
         for index, record in enumerate(tournament_sent)
     ]
@@ -658,6 +681,7 @@ def walk(
     phase: str,
     game: int,
     series: bool = False,
+    movable: frozenset[int] | None = None,
 ) -> Walked:
     """Walk one game, asking the core at every ply, and rebuild what the positions decide.
 
@@ -676,9 +700,16 @@ def walk(
     `tests/test_site_legality.py` holds this copy to that one field by field.
 
     A game in rounds and a spy game are walked a step at a time (`_walk_steps`, Q1000).
+
+    ``movable`` (R-S6e) is the spec's types that can move (`analysis.movable_types`), given
+    when `v14`'s readings are rebuilt, as the pass is given it: the pieces are followed
+    (`analysis.PieceFollower`, the pass's own) and each sampled position's mover named
+    (`sample_movers`). Without it neither is, and the analysis is the one before `v14`.
     """
     if engine.spy or engine.simultaneous:
-        return _walk_steps(engine, evaluator, record, phase=phase, game=game, series=series)
+        return _walk_steps(
+            engine, evaluator, record, phase=phase, game=game, series=series, movable=movable
+        )
     called = _CALLED[phase]
     n_types = engine.spec.n_types
     moves = list(record.moves)
@@ -701,6 +732,8 @@ def walk(
     blunder = (0, 0)
     sight = sight_tally(engine)
     rest = rest_tally(engine)
+    movers: list[int] = []
+    follower = PieceFollower(engine, state.board, movable) if movable is not None else None
 
     for ply, move in enumerate(moves):
         legal = engine.legal_moves(state)
@@ -755,10 +788,13 @@ def walk(
             if ply % PLY_STRIDE == 0 and len(legal) > 1:
                 legal_counts.append(len(legal))
                 capture_counts.append(sum(1 for m in legal if takes(engine, board, m)))
+                movers.append(state.side_to_move)
 
         successor = engine.apply(state, move)
         if series:
             captures.append(1 if successor.halfmove == 0 else 0)
+        if follower is not None and counting:
+            follower.step(board, (move,), successor.board)
         state = successor
         if counting:
             keys.append(state.key)
@@ -799,6 +835,7 @@ def walk(
         position_keys=keys,
         sight=sight,
         rest=rest,
+        **_readings(movers, follower),
     )
     return Walked(
         record=rebuilt,
@@ -806,6 +843,22 @@ def walk(
         blunder_side=blunder[0],
         blunder_choices=blunder[1],
     )
+
+
+def _readings(movers: list[int], follower: PieceFollower | None) -> dict[str, Any]:
+    """The positions' half of `v14`'s readings (`analysis._v14_fields`), or none.
+
+    `sample_values` is the probe's and is not the walk's to rebuild: it starts empty, as
+    `near_best` does, and `rebuilt_analyses` sets the sent values once their shape holds.
+    """
+    if follower is None:
+        return {}
+    return {
+        "sample_values": [],
+        "sample_movers": movers,
+        "fielded_instances": follower.fielded,
+        "fielded_moved": follower.fielded_moved,
+    }
 
 
 def _held_to_its_verdict(
@@ -844,6 +897,7 @@ def _walk_steps(
     phase: str,
     game: int,
     series: bool,
+    movable: frozenset[int] | None = None,
 ) -> Walked:
     """`walk` for a game in rounds (schema 26) and a spy game (schema 27), a step at a time.
 
@@ -885,6 +939,8 @@ def _walk_steps(
     sight = sight_tally(engine)
     rest = rest_tally(engine)
     trial: Step | None = None
+    movers: list[int] = []
+    follower = PieceFollower(engine, state.board, movable) if movable is not None else None
 
     def refuse(name: str, sentence: str, ply: int) -> Refused:
         return Refused(
@@ -959,10 +1015,13 @@ def _walk_steps(
             else ply % PLY_STRIDE == 0
         )
         if sampled and all(lists):
-            for legal in lists:
+            for seat, legal in enumerate(lists):
                 if len(legal) > 1:
                     legal_counts.append(len(legal))
                     capture_counts.append(sum(1 for m in legal if takes(engine, board, m)))
+                    # A turn's mover is the side to move; a round's, each list's seat, as
+                    # the pass names them (`_sample_spy_step`, `_analyse_rounds`).
+                    movers.append(state.side_to_move if len(lists) == 1 else seat)
 
         events: tuple[tuple[int, int, int], ...] = ()
         if len(words) == 2:
@@ -971,6 +1030,8 @@ def _walk_steps(
             after = engine.apply(state, words[0])
         if series:
             captures.extend([1 if after.halfmove == 0 else 0] * len(words))
+        if follower is not None:
+            follower.step(board, words, after.board)
         step = Step(ply, state, words, lists, after, events, step_phase)
         if ply <= target < ply + len(words):
             trial = step
@@ -1025,6 +1086,7 @@ def _walk_steps(
         spy=spies,
         sight=sight,
         rest=rest,
+        **_readings(movers, follower),
     )
     return Walked(record=rebuilt, positions=positions, trial=trial, stepped=True)
 
@@ -1043,9 +1105,11 @@ def rebuilt_analyses(
     """The analysis the server stores: its own reading of the positions, the sent probe.
 
     The graded games are the pass's (`slices.analysis_units`), in its order, and the
-    submission has to cover exactly those. `near_best` is the one field kept from it, and
-    only in the shape it can have: one count per sampled ply, each at least one (the best
-    move is within the margin of itself) and at most the legal moves there.
+    submission has to cover exactly those. The probe's two fields are the ones kept from
+    it, each only in the shape it can have: `near_best`, one count per sampled ply, each at
+    least one (the best move is within the margin of itself) and at most the legal moves
+    there; and, where the walk rebuilt `v14`'s readings, `sample_values`, one finite number
+    per legal move at each sampled ply (`_move_values`, R-S6e).
     """
     units = slices.analysis_units(records, 1)
     graded = list(units[0].games) if units else []
@@ -1082,8 +1146,47 @@ def rebuilt_analyses(
                 game=index,
                 seed=record.seed,
             )
-        found.append(replace(own, near_best=list(counts)))
+        if own.sample_movers is None:
+            found.append(replace(own, near_best=list(counts)))
+            continue
+        values = _move_values(analysis.sample_values, own.legal_counts)
+        if values is None:
+            raise Refused(
+                ANALYSIS,
+                f"the move values for tournament game {index} (seed {record.seed}) are not "
+                f"one number for each legal move at each of its {len(own.legal_counts)} "
+                "sampled plies",
+                phase=slices.ANALYSIS,
+                game=index,
+                seed=record.seed,
+            )
+        found.append(replace(own, near_best=list(counts), sample_values=values))
     return found
+
+
+def _move_values(sent: Any, legal_counts: Sequence[int]) -> list[list[float]] | None:
+    """The probe's move values as sent, held to the only shape they can have, or `None`.
+
+    One list per sampled ply, one finite number per legal move there (R-S6e). What the
+    numbers are is the probe's, unproven here as `near_best` is; tier two's replay of the
+    analysis compares them whole. Each is kept as the float the pass writes.
+    """
+    if not isinstance(sent, list) or len(sent) != len(legal_counts):
+        return None
+    kept: list[list[float]] = []
+    for row, legal in zip(sent, legal_counts, strict=True):
+        if not isinstance(row, list) or len(row) != legal:
+            return None
+        numbers = []
+        for value in row:
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                return None
+            number = float(value)
+            if not math.isfinite(number):
+                return None
+            numbers.append(number)
+        kept.append(numbers)
+    return kept
 
 
 def rebuilt_trials(

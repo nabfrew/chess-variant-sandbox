@@ -73,6 +73,7 @@ from chess_variant_sandbox.engine.compile import (
     PromotionRule,
     _lame_path,
     frame_index,
+    piece_turn,
 )
 from chess_variant_sandbox.fairy import betza
 from chess_variant_sandbox.spec.complexity import expand_symmetry
@@ -87,6 +88,43 @@ from chess_variant_sandbox.spec.schema import (
     parse_square,
     path_of,
 )
+
+# Q1219: a blast beside a royal is refused by name. Fairy-Stockfish's blast is its own atomic
+# chess, and ours is not that game where the two royals come within one blast of each other:
+#
+# * There a capture whose blast would take the mover's own royal is illegal, even when it takes
+#   the other royal too, so a royal standing next to the other royal is never attacked (any
+#   capture of it would take its captor's royal as well). Ours admits a capture whose blast
+#   takes both royals (the legality filter's "the opponent's royal is gone" branch) and counts
+#   check by geometry alone, so a royal beside the other one is attacked by any piece that could
+#   take it. Seed 22 of R-P3b0's atomic cell at 1,600 nodes: their king stepped to g6, beside
+#   ours on h6, under our rook on g5, and our engine did not list the move
+#   (`8/2p4N/1p5k/3B1prK/p2bnP2/3R4/P7/8 w - - 27 42`: they have 23 moves we lack, among them
+#   `h5g6`; we have `f4g5` and `h7g5`, captures whose blast takes both kings, which they lack).
+# * Under `win: royal_capture` their royal (an extinction piece, a commoner) may capture and
+#   blow itself up; ours has no capture at all (`compile._without_self_destroying_captures`).
+#   A royal immune to the blast differs too. The late check found both on probes
+#   (`fairy/late.py`, record: *Atomic's touching kings*).
+#
+# No option there says "a capture taking both royals is legal" or "a royal next to the other
+# is attacked", so no translation of a blast beside a royal is exact. A blast in a game with no
+# royal still crosses.
+BLAST_BESIDE_A_ROYAL = (
+    "rules.explode_on_capture beside a royal piece: Fairy-Stockfish's blast is its atomic, "
+    "where a capture whose blast would take the mover's own royal is illegal and so a royal "
+    "beside the other royal is never attacked; here a capture whose blast takes both royals "
+    "is a move, and a royal beside the other is attacked by whatever could take it (Q1219)"
+)
+
+
+def _check_blast_beside_a_royal(compiled: CompiledSpec, reasons: list[str]) -> None:
+    """Refuse a blast in a game with a royal (`BLAST_BESIDE_A_ROYAL`, Q1219).
+
+    A function of its own so that a test can put the refused translation to Fairy-Stockfish
+    (what it did, and what its result rules say about it) by switching this one check off.
+    """
+    if compiled.explosion is not None and compiled.royal_types:
+        reasons.append(BLAST_BESIDE_A_ROYAL)
 
 # The one blast Fairy-Stockfish has (`blastOnCapture`): the eight squares round the capture.
 _KING_STEP = frozenset((dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0))
@@ -554,6 +592,7 @@ def _check_unsupported_rules(
             "rules.explode_on_capture.by / .of: blastOnCapture is a switch there, so "
             "every capture explodes and no option says which ones do"
         )
+    _check_blast_beside_a_royal(compiled, reasons)
     if compiled.orientation not in ("mirror", "rotate"):
         reasons.append(f"setup.orientation {compiled.orientation!r}")
     if compiled.n_facings > 1:
@@ -730,12 +769,26 @@ def _check_duck(compiled: CompiledSpec, reasons: list[str]) -> None:
             "rules.duck beside rules.npcs: nothing there moves between turns, so the wild "
             "phase after the duck's half has no counterpart"
         )
+    if piece_turn(compiled.turn, True) is not None:
+        # SR8c (L7): ours moves the duck once at the end of a long turn; theirs is one move a
+        # side, the wall set down with it.
+        reasons.append(
+            "rules.duck beside rules.turn: a side there moves once per turn, the duck with it"
+        )
     if compiled.explosion is not None:
         # SR3e (K3): ours spares the duck as an immune type; theirs is a wall, which no
         # piece letter names in `blastImmuneTypes`, and the pair is unprobed there.
         reasons.append(
             "rules.duck beside rules.explode_on_capture: the duck there is a wall, and a "
             "blast beside one is unchecked"
+        )
+    if _gating(compiled):
+        # Q1218 (U2 lifted `gating.duck`): ours gates a piece in on a first-rank move of the
+        # duck game's first half; under `wallingRule` theirs offers no gating move at all
+        # (pyffish 0.0.90: `b1c3n,c3d5` is ours alone from the opening).
+        reasons.append(
+            "rules.drops.gating beside rules.duck: Fairy-Stockfish offers no gating move "
+            "beside the duck's wall"
         )
 
 
@@ -1258,7 +1311,9 @@ def _royal_mode(compiled: CompiledSpec, reasons: list[str]) -> str:
         being the same question, and only the second one is the rule. Translating atomic
         with a real king produces a game where a rook may step onto an open file in
         front of the enemy queen -- a legal-looking game under rules nobody wrote, and
-        the first thing `verify.py` caught.
+        the first thing `verify.py` caught. Since Q1219 every game that would take this
+        mode is refused (`BLAST_BESIDE_A_ROYAL`): pseudo-royal is still *their* atomic,
+        which forbids a capture whose blast takes the mover's own royal, and ours does not.
     ``extinct``
         An ordinary piece under an extinction rule and no check filter at all, which is
         what ``win: royal_capture`` says: the game ends when the piece is taken, and

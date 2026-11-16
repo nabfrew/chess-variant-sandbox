@@ -55,6 +55,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     piece_upkeeps,
     player_stocks,
+    portal_groups,
     promoting_piece_ids,
     purse_bribes,
     purse_pays_loser,
@@ -80,7 +81,7 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 117
+LAST_BUMP = 128
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -2458,6 +2459,225 @@ def _schema_one_hundred_seventeen_uses(spec: dict[str, Any]) -> set[str]:
     return names
 
 
+def _schema_one_hundred_eighteen_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 118 added, by name (SR8a,
+    `docs/plan-schema-next.md` §2.5 row H3; numbered by order of landing, bumping no version;
+    built as generation 110 and renumbered when batch F merged, R-N5). One lifted refusal, no
+    key:
+
+    * ``rules.promote_on_entry.only_lost`` -- ``promote_on_entry`` beside a promotion that says
+      ``only_lost``: a piece entering its zone becomes the first target of its list its side
+      has lost, counted on the board before the move (or the round), and itself if none is.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if rules.get("promote_on_entry") is True and any(
+        isinstance(entry, dict) and entry.get("only_lost") is True
+        for entry in _promotion_entries(rules)
+    ):
+        return {"rules.promote_on_entry.only_lost"}
+    return set()
+
+
+def _schema_one_hundred_nineteen_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 119 added, by name (SR8b,
+    `docs/plan-schema-next.md` §2.6 row W7; numbered by order of landing, bumping no version;
+    built as generation 111, renumbered by R-N5). One lifted refusal, no key:
+
+    * ``pieces.moves.sweep.promotion`` -- a promoting piece that sweeps: it promotes by the
+      square its sweep lands on, in the move that clears its line (refused beside folds).
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    promoting = promoting_piece_ids(rules)
+    for piece in spec.get("pieces") or []:
+        if (
+            isinstance(piece, dict) and piece.get("id") in promoting
+            and any(
+                isinstance(m, dict) and m.get("kind") == "sweep" for m in piece.get("moves") or []
+            )
+        ):
+            return {"pieces.moves.sweep.promotion"}
+    return set()
+
+
+def _schema_one_hundred_twenty_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 120 added, by name (SR8c,
+    `docs/plan-schema-next.md` §2.2 row L7; numbered by order of landing, bumping no version;
+    built as generation 112, renumbered by R-N5). One lifted refusal, no key:
+
+    * ``rules.duck.turn`` -- the duck beside a long turn: the turn's piece moves, then one duck
+      move at its end (a turn of one move is the duck game it always was, so it uses nothing).
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if duck_piece(rules) is not None and turn_is_long(rules):
+        return {"rules.duck.turn"}
+    return set()
+
+
+def _schema_one_hundred_twenty_one_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 121 added, by name (SR8d,
+    `docs/plan-schema-next.md` §2.3 row R6; numbered by order of landing, bumping no version;
+    built as generation 113, renumbered by R-N5). One lifted refusal, no key:
+
+    * ``rules.castling.simultaneous`` -- castling in rounds: only the king's arrival meets the
+      other player's move, and the partner moves after the meetings, onto its castled square
+      only if that square is empty.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if isinstance(rules.get("castling"), dict) and isinstance(rules.get("simultaneous"), dict):
+        return {"rules.castling.simultaneous"}
+    return set()
+
+
+def _schema_one_hundred_twenty_two_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 122 added, by name (SR8e,
+    `docs/plan-schema-next.md` §2.3 row R9; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.portals.moved_by.simultaneous`` -- a portal a player moves, in rounds: the round's
+      portal moves are made before its piece moves, and a piece move then reads the ends where
+      they now stand.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    if isinstance(rules.get("simultaneous"), dict) and isinstance(rules.get("portals"), list) and any(
+        end["moved_by"] for group in portal_groups(rules) for end in group["ends"]
+    ):
+        return {"rules.portals.moved_by.simultaneous"}
+    return set()
+
+
+
+def _schema_one_hundred_twenty_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 123 added, by name (SR8f,
+    `docs/plan-schema-next.md` §2.8 row N4; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.npcs.turns_back.also_at`` -- several wild pieces pacing one line: they step front
+      first by their headings, and two meeting head-on step nearer the route's first square
+      first.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    npcs = rules.get("npcs")
+    if isinstance(npcs, list) and any(
+        npc_turns_back(npc) and isinstance(npc.get("also_at"), list) and npc["also_at"]
+        for npc in npcs
+    ):
+        return {"rules.npcs.turns_back.also_at"}
+    return set()
+
+
+def _schema_one_hundred_twenty_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 124 added, by name (SR8g,
+    `docs/plan-schema-next.md` §2.8 row N7; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.npcs.respawn.pounce`` -- a wild piece that comes back in a game where wild pieces
+      pounce: a pouncing entry counts its type anywhere on the board and comes back on its
+      first free start in the mover's reading order.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list):
+        return set()
+    entries = [npc for npc in npcs if isinstance(npc, dict)]
+    if any(npc_respawn(npc) for npc in entries) and any(npc_pounce(npc) for npc in entries):
+        return {"rules.npcs.respawn.pounce"}
+    return set()
+
+
+def _schema_one_hundred_twenty_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 125 added, by name (SR8h,
+    `docs/plan-schema-next.md` §2.8 row N5; numbered by order of landing, bumping no version).
+    One lifted refusal, no key:
+
+    * ``rules.npcs.turns_back.check`` -- a wild piece that turns back in a game that asks check
+      (``win: "checkmate"``, ``forbid_check`` or a safe goal): its threat is the square it steps
+      to after its turn.
+    """
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    assert isinstance(rules, dict)
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list) or not any(npc_turns_back(npc) for npc in npcs):
+        return set()
+    reach = rules.get("reach")
+    if (
+        rules.get("win", "checkmate") == "checkmate"
+        or rules.get("forbid_check") is True
+        or (isinstance(reach, dict) and reach.get("safe") is True)
+    ):
+        return {"rules.npcs.turns_back.check"}
+    return set()
+
+
+def _schema_one_hundred_twenty_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 126 added, by name (SR8i,
+    `docs/plan-schema-next.md` §2.11 rows O9, O13, O14, O17, O18, O19; numbered by order of
+    landing, bumping no version). Six lifted refusals, no key, one name:
+
+    * ``pieces.control.held.holders_frame`` -- a type a player moves but nobody owns (majority
+      or shared control) that reads differently for the two players: a facing, a region, a move
+      not alike under the reflection, a `from_rank` or `region` condition. A held piece of it
+      moves in its holder's frame (`schema.reads_for_its_holder`, the compiler's own test of
+      when that frame is not frame 0).
+    """
+    from chess_variant_sandbox.spec.schema import reads_for_its_holder
+
+    held = (majority_ids(spec) | shared_ids(spec)) & nobodys_ids(spec)
+    orientation = str((spec.get("setup") or {}).get("orientation", "mirror"))
+    for piece in spec.get("pieces") or []:
+        if isinstance(piece, dict) and piece.get("id") in held and reads_for_its_holder(
+            piece, orientation
+        ):
+            return {"pieces.control.held.holders_frame"}
+    return set()
+
+
+def _schema_one_hundred_twenty_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 127 added, by name (SR8j,
+    `docs/plan-schema-next.md` §2.11 row O15; numbered by order of landing, bumping no
+    version). One lifted refusal, no key, one name:
+
+    * ``pieces.control.held.promotes`` -- a type a player moves but nobody owns (majority or
+      shared control) that a promotion rule names with a target a held piece may become (not
+      a royal, a wild type or the duck: `schema.held_promotion_targets`). A held piece of it
+      promotes in its holder's zone and stays nobody's.
+    """
+    from chess_variant_sandbox.spec.schema import held_promotion_targets
+
+    held = (majority_ids(spec) | shared_ids(spec)) & nobodys_ids(spec)
+    if any(held_promotion_targets(spec, pid) for pid in sorted(held)):
+        return {"pieces.control.held.promotes"}
+    return set()
+
+
+def _schema_one_hundred_twenty_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 128 added, by name (SR8k,
+    `docs/plan-schema-next.md` §2.11 row O16; numbered by order of landing, bumping no
+    version). One lifted refusal, no key, one name:
+
+    * ``pieces.control.held.sweeps`` -- a type a player moves but nobody owns (majority or
+      shared control) placed for nobody, with a sweep among its moves. A held sweep removes
+      what its holder could capture with it, and the holder's pieces, a royal, another
+      nobody's piece and a shielded piece end its ray.
+    """
+    held = (majority_ids(spec) | shared_ids(spec)) & nobodys_ids(spec)
+    for piece in spec.get("pieces") or []:
+        if not isinstance(piece, dict) or piece.get("id") not in held:
+            continue
+        if any(
+            isinstance(move, dict) and move.get("kind") == "sweep"
+            for move in piece.get("moves") or []
+        ):
+            return {"pieces.control.held.sweeps"}
+    return set()
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -2568,4 +2788,15 @@ _COLLECTORS = {
     115: _schema_one_hundred_fifteen_uses,
     116: _schema_one_hundred_sixteen_uses,
     117: _schema_one_hundred_seventeen_uses,
+    118: _schema_one_hundred_eighteen_uses,
+    119: _schema_one_hundred_nineteen_uses,
+    120: _schema_one_hundred_twenty_uses,
+    121: _schema_one_hundred_twenty_one_uses,
+    122: _schema_one_hundred_twenty_two_uses,
+    123: _schema_one_hundred_twenty_three_uses,
+    124: _schema_one_hundred_twenty_four_uses,
+    125: _schema_one_hundred_twenty_five_uses,
+    126: _schema_one_hundred_twenty_six_uses,
+    127: _schema_one_hundred_twenty_seven_uses,
+    128: _schema_one_hundred_twenty_eight_uses,
 }

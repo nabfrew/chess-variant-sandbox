@@ -1248,6 +1248,11 @@ def validate_spec(spec: Any) -> list[str]:
     _validate_appearance(spec.get("appearance"), piece_ids, errors)
     _validate_provenance(spec.get("provenance"), errors)
     _validate_coherence(spec, errors)
+    if not errors:
+        # U1: the ten combinations the engine refuses, named here (`spec/engine_holds.py`).
+        from chess_variant_sandbox.spec.engine_holds import engine_hold_refusals
+
+        errors.extend(engine_hold_refusals(spec))
 
     return errors
 
@@ -2826,8 +2831,8 @@ def _check_simultaneous_coherence(
         errors.append(refusal("R4"))
     if rules.get("royal_facing") == "forbidden":
         errors.append(refusal("R5"))
-    if isinstance(rules.get("castling"), dict):
-        errors.append(refusal("R6"))
+    # R6 (castling in rounds) lifted by SR8d: only the king's arrival meets anything; the
+    # partner moves after the meetings, onto its castled square only if that is empty.
     if rules.get("en_passant") is True:
         errors.append(refusal("R7"))
     if turn_is_long(rules):
@@ -2840,7 +2845,9 @@ def _check_simultaneous_coherence(
         for piece in pieces
     ):
         errors.append(refusal("R8"))
-    if any(end["moved_by"] for group in portal_groups(rules) for end in group["ends"]):
+    # R9 (a portal a player moves) lifted by SR8e: its portal moves are made first. The
+    # straight-back bar stays refused, since a round has no one next mover.
+    if any(group["no_straight_back"] for group in portal_groups(rules)):
         errors.append(refusal("R9"))
     for key in ("strike", "contacts"):
         stated = rules.get(key)
@@ -2980,13 +2987,12 @@ def _check_only_lost_coherence(
     (`docs/plan-schema-next.md` §2.5 H1, H2) lifted the two refusals that asked what
     *lost* means where a taken piece comes back: beside ``drops`` a piece in a hand is not
     on the board, and beside a circe strike (``strike.position: "home"``) a piece reborn
-    on its home square is on it, which is what the core counts. One refusal stays
-    (`docs/archive/plan-schema-17-18.md` §9.3, *18c*):
+    on its home square is on it, which is what the core counts. SR8a (H3, generation 118)
+    lifted the third, beside ``promote_on_entry``: a piece entering its zone takes the first
+    target of its list still offered, counted on the board before the move, and none if
+    none is (`Game::arriving`).
 
-    * **beside ``promote_on_entry``** -- a piece entering its zone takes the first target
-      listed, with no move in which to offer it or withhold it.
-
-    And a target the side starts with none of could never be offered at all: nothing can
+    A target the side starts with none of could never be offered at all: nothing can
     be lost of it. That is a target written for nothing, refused per player as the
     inert-rule refusals are.
     """
@@ -2997,8 +3003,6 @@ def _check_only_lost_coherence(
     ]
     if not flagged:
         return
-    if rules.get("promote_on_entry") is True:
-        errors.append(refusal("H3"))
     # Who starts with what is a fact only of a board and an army that can be read. When
     # either was refused, a count of none would repeat that refusal, not state a fact.
     board = spec.get("board")
@@ -3163,7 +3167,10 @@ _GATING_EXCLUDES: tuple[tuple[str, str], ...] = (
     ("portals", "a portal or fold writes the move word's tag the gate rides in"),
     ("simultaneous", "a round reads two moves at once, and two gates on one square "
      "would be a second rule"),
-    ("duck", "a duck's turn is two moves, and the duck may stand on a vacated square"),
+    # U2 lifted the duck: the gated piece enters in the piece half, with the move, so the
+    # duck then lands only on empty squares. And a held or shared piece never gates: the core
+    # gates only its own generator's words, never a foreign one (`push_gates` runs before
+    # `push_foreign`), whatever unmoved mark a held type carries (SR8i).
 )
 
 
@@ -3183,7 +3190,6 @@ def gating_conflicts(spec: Any) -> list[str]:
         "explode_on_capture": bool(rules.get("explode_on_capture")),
         "portals": bool(rules.get("portals")),
         "simultaneous": bool(rules.get("simultaneous")),
-        "duck": duck_piece(rules) is not None,
     }
     found = [
         f"rules.drops.gating beside rules.{key}: {why}; leave one out"
@@ -3195,12 +3201,6 @@ def gating_conflicts(spec: Any) -> list[str]:
             "rules.drops.gating beside a sight (pieces[].sight): a commanded move sets the "
             "move word's foreign bit beside the gate, and a frozen or shielded piece leaving "
             "a gate square would be a second rule; leave one out"
-        )
-    if player_moved_nobodys_ids(spec):
-        found.append(
-            'rules.drops.gating beside pieces[].control: "majority" or "shared": a neutral '
-            "a player moves "
-            "with the foreign bit beside the gate; leave one out"
         )
     return found
 
@@ -3738,9 +3738,11 @@ def _check_sweep_coherence(
     a strike or contacts: one blast on the landing, or one more on each swept square).
 
     Four rules say what a taken piece becomes or how a move is named, and a sweep takes
-    several pieces along a path a move word does not carry. The fifth keeps a sweeper from
-    promoting: a move word's kind holds a promotion or a sweep, not both. That refusal is
-    also why no sweeper is ever the en passant piece.
+    several pieces along a path a move word does not carry. The fifth, W7, kept a sweeper
+    from promoting; SR8b (generation 119) lifted it but beside folds: a promoting sweeper
+    promotes by its landing square as any of its moves does, and its word carries the type
+    in the promotion field, which a sweep through a fold spends on its fold step
+    (`moves.move_through`), so a promoting sweeper beside a fold portal stays refused.
     """
     sweepers = {
         piece["id"]
@@ -3756,12 +3758,14 @@ def _check_sweep_coherence(
     for key in sweep_conflicts(rules):
         errors.append(refusal(rid[key]))
     _check_sweep_effects(pieces, rules, errors)
-    for pid in sorted(str(p) for p in promoting_piece_ids(rules) & sweepers):
-        errors.append(
-            f"rules.promotion makes {pid!r} a promoting piece, and it sweeps; a move is a "
-            "promotion or a sweep, never both, so a sweeper may not promote (promoting "
-            "into one is fine)"
-        )
+    if portal_has_folds(rules):
+        for pid in sorted(str(p) for p in promoting_piece_ids(rules) & sweepers):
+            errors.append(
+                f"rules.promotion makes {pid!r} a promoting piece, and it sweeps, beside a "
+                "fold portal: a sweep through a fold names its step where a promotion would "
+                "name its type, so a sweeper may not promote beside folds (promoting into one "
+                "is fine)"
+            )
 
 
 def _check_sweep_effects(
@@ -4378,6 +4382,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_only_lost_coherence(spec, rules, errors)
     _check_extinction_coherence(spec, rules, errors)
     _check_placement_coherence(spec, pieces, rules, errors)
+    _check_region_placements(spec, pieces, errors)
     _check_either_face_coherence(spec, pieces, rules, errors)
     _check_gating_coherence(spec, pieces, rules, errors)
     _check_portal_coherence(spec, pieces, rules, errors)
@@ -5121,6 +5126,64 @@ def castling_rank_walled_beyond_its_spans(spec: dict[str, Any]) -> bool:
     )
 
 
+def _check_region_placements(spec: dict[str, Any], pieces: list[Any], errors: list[str]) -> None:
+    """R-L6c: a player's piece placed outside its type's ``region``. The region is "the only
+    squares this piece may ever occupy", and every way a piece comes to stand obeys it (a move,
+    a promotion, a strike, a drop, a gate, a displacement, a push, a portal's exit), so a
+    placement outside it says two things at once. A placement for nobody is not read: a
+    nobody's piece reads its holder's region, and stands where it is placed."""
+    board = spec.get("board")
+    width = board.get("width") if isinstance(board, dict) else None
+    height = board.get("height") if isinstance(board, dict) else None
+    if not isinstance(width, int) or not isinstance(height, int):
+        return
+    setup: dict[str, Any] = spec["setup"] if isinstance(spec.get("setup"), dict) else {}
+    orientation = str(setup.get("orientation", "mirror"))
+    for piece in pieces:
+        region = piece.get("region") if isinstance(piece, dict) else None
+        if not isinstance(region, list) or not region:
+            continue
+        allowed: list[set[tuple[int, int]]] = [set(), set()]
+        for name in region:
+            coords = parse_square(name, width, height) if isinstance(name, str) else None
+            if coords is None:
+                return  # a malformed region is `_validate_squares`' to report
+            allowed[0].add(coords)
+            allowed[1].add(reflect_square(*coords, width, height, orientation))
+        outside = sorted(
+            (rank, file)
+            for player, file, rank in _placed_squares(setup, piece.get("id"), width, height, orientation)
+            if (file, rank) not in allowed[player]
+        )
+        if outside:
+            names = ", ".join(f"{chr(ord('a') + file)}{rank + 1}" for rank, file in outside)
+            errors.append(
+                f"pieces {piece.get('id')!r} is placed outside its region, on {names}; "
+                "a region is the only squares the piece may ever stand on"
+            )
+
+
+def _nobodys_squares(
+    setup: dict[str, Any], width: int, height: int, orientation: str
+) -> set[tuple[int, int]]:
+    """R-L6c (F1): ``(file, rank)`` of every square a placement for nobody puts a piece on,
+    mirrored as the setup mirrors (a mirrored nobody's piece is nobody's still)."""
+    placements = setup.get("placements")
+    mirrored = bool(setup.get("mirror", True))
+    squares: set[tuple[int, int]] = set()
+    for placement in placements if isinstance(placements, list) else []:
+        if not is_nobodys(placement) or not isinstance(placement.get("squares"), list):
+            continue
+        for name in placement["squares"]:
+            coords = parse_square(name, width, height) if isinstance(name, str) else None
+            if coords is None:
+                continue
+            squares.add(coords)
+            if mirrored:
+                squares.add(reflect_square(*coords, width, height, orientation))
+    return squares
+
+
 def _placed_squares(
     setup: dict[str, Any],
     piece_id: Any,
@@ -5524,7 +5587,7 @@ def _check_npc_coherence(
     # SR4f (T8, ruled 2026-10-27): a blast beside wild pieces is allowed. A wild piece's eat
     # never explodes (the phase writes its own steps), and a wild piece a player's blast
     # destroys pays its bounty to the mover, as taking it would (`Game::write_payments`).
-    _check_npc_turns_back(npcs, rules, errors)
+    _check_npc_turns_back(npcs, errors)
     _check_npc_pounce(npcs, by_id, rules, orientation, errors)
     _check_npc_split(npcs, rules, errors)
 
@@ -5550,27 +5613,18 @@ def _check_npc_coherence(
             )
 
 
-def _check_npc_turns_back(npcs: list[Any], rules: dict[str, Any], errors: list[str]) -> None:
+def _check_npc_turns_back(npcs: list[Any], errors: list[str]) -> None:
     """Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): a turning-back entry against the rest.
 
     * **a one-square route** -- nothing to turn on;
-    * **``also_at``** -- two pieces on one line meeting head-on would need an order the queue
-      rule (front first) does not give;
-    * **anywhere check is asked of a wild piece** -- ``win: "checkmate"``, ``forbid_check``
-      and ``reach.safe``: a turning piece threatens the square ahead, or the one behind when
-      the way ahead is blocked, so the square it threatens depends on what blocks it, and
-      rather than a second attack rule its line carries no attack source. ``check_limit``
-      counts only a player's checks and stays allowed.
+    * (``also_at`` was refused here until generation 123, SR8f, N4: two pieces on one line
+      meeting head-on step in the order the plan ruled, the one nearer the route's first square
+      first; ``turning.rs::LineOrder``);
+    * (check -- ``win: "checkmate"``, ``forbid_check`` and ``reach.safe`` -- was refused here
+      until generation 125, SR8h, N5: a turning piece threatens the square it steps to after
+      its turn, the square ahead or, where that holds a piece it may not take, the one behind,
+      read by the core's second attack source, ``turning.rs::line_threatens``).
     """
-    win = rules.get("win", "checkmate")
-    reach = rules.get("reach")
-    asks = []
-    if win == "checkmate":
-        asks.append('"win": "checkmate"')
-    if rules.get("forbid_check") is True:
-        asks.append('"forbid_check": true')
-    if isinstance(reach, dict) and reach.get("safe") is True:
-        asks.append('rules.reach.safe')
     for index, npc in enumerate(npcs):
         if not npc_turns_back(npc):
             continue
@@ -5578,17 +5632,6 @@ def _check_npc_turns_back(npcs: list[Any], rules: dict[str, Any], errors: list[s
         route = npc.get("route")
         if isinstance(route, list) and len(route) == 1:
             errors.append(f"{loc} on a one-square route: nothing to turn on")
-        if "also_at" in npc:
-            errors.append(
-                f"{loc} beside also_at: two pieces on one line meeting head-on would need an "
-                "order the queue rule does not give; give each piece a line of its own"
-            )
-        for rule in asks:
-            errors.append(
-                f"{loc} beside {rule}: the square a turning piece threatens depends on what "
-                'blocks it; turning back is for a game without check ("win": '
-                '"royal_capture", "annihilation" or "none", no forbid_check, no safe goal)'
-            )
 
 
 def _check_npc_pounce(
@@ -5610,9 +5653,9 @@ def _check_npc_pounce(
       pounce;
     * **two entries of one type that disagree on pounce or bounty** -- a pouncer leaves its
       route, so what it does and pays is read off its type, not its square;
-    * **respawn** and **turns_back** anywhere beside a pounce -- a pouncer leaves its route, so
-      the board no longer says which walk it belongs to, and a pouncer off its route has no
-      line to head along;
+    * **turns_back** anywhere beside a pounce -- a pouncer off its route has no line to head
+      along (respawn beside a pounce was lifted by generation 124, SR8g, N7: a pouncing entry
+      counts its pieces by type and returns one on its first free start);
     * **forbid_check** -- whether a move gives check would be the opponent's pass test inside
       this move's filter.
 
@@ -5636,11 +5679,6 @@ def _check_npc_pounce(
     for index, npc in enumerate(npcs):
         if not isinstance(npc, dict):
             continue
-        if npc_respawn(npc):
-            errors.append(
-                f"rules.npcs[{index}].respawn beside a pounce ({first_loc}): a pouncer leaves "
-                "its route, so the board no longer says which walk it belongs to"
-            )
         if npc_turns_back(npc):
             errors.append(
                 f"rules.npcs[{index}].turns_back beside a pounce ({first_loc}): a pouncer off "
@@ -5708,7 +5746,7 @@ def _check_npc_split(npcs: list[Any], rules: dict[str, Any], errors: list[str]) 
     * **split beside drops that fill a hand from captures** -- copies would mint pieces for
       hands without limit;
     * **respawn beside split** (§4.1) -- a hydra that both grows and comes back would have two
-      counts of how many it should have. The wider *respawn beside a pounce* refuses it too.
+      counts of how many it should have.
     """
     splitting = [(index, npc) for index, npc in enumerate(npcs) if npc_split(npc)]
     if not splitting:
@@ -5784,6 +5822,48 @@ def _validate_duck(
         errors.append(f"rules.duck.goes must be one of {DUCK_GOES}, got {duck['goes']!r}")
 
 
+def duck_turn_lengths(rules: dict[str, Any]) -> tuple[int, tuple[int, ...]] | None:
+    """SR8c (L7): a duck game's turn in plies, ``(steady, opening)``: each length of a
+    well-formed ``rules.turn`` plus the duck's move at the end of the turn. ``None`` without
+    a ``rules.turn`` that states more than one move anywhere (every turn two plies), or where
+    it is malformed (its own check says so)."""
+    turn = rules.get("turn")
+    if not isinstance(turn, dict) or not turn_is_long(rules):
+        return None
+    moves = turn.get("moves", 1)
+    ramp = turn.get("ramp") or []
+    if (
+        isinstance(moves, bool) or not isinstance(moves, int) or moves < 1
+        or not isinstance(ramp, list)
+        or any(isinstance(entry, bool) or not isinstance(entry, int) or entry < 1 for entry in ramp)
+    ):
+        return None
+    return moves + 1, tuple(entry + 1 for entry in ramp)
+
+
+def _ends_a_turn(plies: int, lengths: tuple[int, tuple[int, ...]]) -> bool:
+    """Whether ``plies`` is the sum of a game's first whole turns (`duck_turn_lengths`)."""
+    steady, opening = lengths
+    total = 0
+    for length in opening:
+        if total >= plies:
+            return total == plies
+        total += length
+    if total >= plies:
+        return total == plies
+    return (plies - total) % steady == 0
+
+
+def duck_clock_owes_a_duck_move(plies: int, rules: dict[str, Any]) -> bool:
+    """Whether a duck game's clock of ``plies`` would stop it between a move and its duck
+    move: an odd count in a turn of one piece move, else one ply short of a turn's end
+    (SR8c, `duck_turn_lengths`). The validator's predicate, which the operators ask too."""
+    lengths = duck_turn_lengths(rules)
+    if lengths is None:
+        return plies % 2 == 1
+    return _ends_a_turn(plies + 1, lengths)
+
+
 def _check_duck_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
@@ -5797,7 +5877,8 @@ def _check_duck_coherence(
     1. a check rule (checkmate, ``forbid_check``, ``check_limit``): a move's legality would
        depend on the duck move after it;
     2. rounds (``rules.simultaneous``, a spy game's too): nobody is the mover;
-    3. ``rules.turn``: a turn already has its two halves;
+    3. (lifted by SR8c, L7: beside ``rules.turn`` the turn is its piece moves, then one duck
+       move at its end);
     4. a duck type that sweeps (a player's sweep is allowed beside the duck since SR2,
        `docs/plan-schema-next.md` §2.7 W9: nothing captures the duck, so it blocks a sweep as
        any piece the sweeper may not capture does);
@@ -5810,7 +5891,10 @@ def _check_duck_coherence(
        too, which nothing of the duck's ever meets);
     10. a start the opening does not leave empty (a momentum end's start is not empty; a
         fold's is, the duck standing in it);
-    11. an odd ``max_plies``.
+    11. a ``max_plies`` that would stop a game between a move and its duck move: an odd one,
+        or beside ``rules.turn`` one ply short of a turn's end (each turn is its piece moves
+        and the duck's, a ply each, SR8c; a clock between two piece moves stops a long turn
+        as it does without the duck).
     """
     duck = rules.get("duck")
     if not isinstance(duck, dict):
@@ -5827,8 +5911,6 @@ def _check_duck_coherence(
         errors.append(refusal("K1", "rules.check_limit"))
     if "simultaneous" in rules:
         errors.append(refusal("R15"))
-    if "turn" in rules:
-        errors.append(refusal("L7"))
     if any(
         isinstance(p, dict) and p.get("id") == pid and any(
             isinstance(m, dict) and m.get("kind") == "sweep" for m in _listed(p.get("moves"))
@@ -5840,11 +5922,22 @@ def _check_duck_coherence(
             "duck captures nothing"
         )
     max_plies = rules.get("max_plies", 400)
-    if isinstance(max_plies, int) and not isinstance(max_plies, bool) and max_plies % 2:
-        errors.append(
-            f"rules.max_plies {max_plies} is odd beside the duck: the clock would stop a game "
-            "between a move and its duck move (each half is a ply; use an even number)"
-        )
+    if (
+        isinstance(max_plies, int) and not isinstance(max_plies, bool)
+        and duck_clock_owes_a_duck_move(max_plies, rules)
+    ):
+        if duck_turn_lengths(rules) is None:
+            errors.append(
+                f"rules.max_plies {max_plies} is odd beside the duck: the clock would stop "
+                "a game between a move and its duck move (each half is a ply; use an even "
+                "number)"
+            )
+        else:
+            errors.append(
+                f"rules.max_plies {max_plies} beside the duck and rules.turn: the clock would "
+                "stop a game between a move and its duck move (each turn is its piece moves and "
+                "one duck move, a ply each; add or take a ply)"
+            )
 
     if piece is None:
         return
@@ -6712,7 +6805,8 @@ def can_double_step(piece: dict[str, Any]) -> bool:
         if not isinstance(move, dict):
             return True
         kind = move.get("kind")
-        # A sweep never qualifies: a promoting piece may not sweep (schema 13).
+        # A sweep never qualifies: `compile._ep_passes` reads slides alone, and a sweep opens
+        # no window (`write_ep_window`), though a promoting piece may sweep since SR8b.
         if kind in ("leap", "hop", "sweep"):
             continue
         if kind == "lame":
@@ -6796,8 +6890,13 @@ def validate_or_raise(spec: Any) -> dict[str, Any]:
     The check ``compile_spec`` opens with, and its only caller. It loads rather than
     admits, so it asks `stored_spec_errors`: the one stored game a new spec's refusal
     turns away still builds its engine. A gate that admits a spec asks ``validate_spec``.
+    It asks no engine hold (`engine_holds.checking`): the compiler and the boundary that
+    follow refuse those themselves, and asking would compile the spec twice.
     """
-    errors = stored_spec_errors(spec)
+    from chess_variant_sandbox.spec.engine_holds import checking
+
+    with checking():
+        errors = stored_spec_errors(spec)
     if errors:
         raise SpecError(errors)
     return spec
@@ -7204,6 +7303,8 @@ def _validate_facing(
             f"{where}.facing on a piece with no moves: it has nothing to turn, so every "
             "way it points is the same piece; leave the facing out"
         )
+    else:
+        _check_facing_changes_something(piece, where, axes, errors)
 
     if piece.get("royal", False):
         errors.append(
@@ -7211,6 +7312,56 @@ def _validate_facing(
             "values rather than one, and the check filter finds a royal by value. "
             "Give the facing to a piece that is not royal."
         )
+
+
+def _check_facing_changes_something(
+    piece: dict[str, Any], where: str, axes: int, errors: list[str]
+) -> None:
+    """R-L6e (F10, R-L6b's soak, seed 2158850): a facing two of whose orientations read the
+    same moves, said by the validator rather than left to the compiler's null-rotation refusal
+    (`compile._reject_null_rotations`), which an author heard after a valid answer.
+
+    A facing turns each move's directions (clockwise, a quarter turn at a time, before the
+    second player's reflection) and nothing else: a region, a rank condition, a range or a mode
+    reads the same in every orientation. So two orientations whose moves, entry by entry, state
+    the same directions and the same everything else compile to the same tables, and the
+    compiler refuses them. This reads only that case, a subset of the compiler's (which also
+    sees walls or a board's edge making two different readings equal): it never refuses a spec
+    the compiler builds. A move with stated ``legs`` or a malformed entry is left to it. A
+    sideways-only rook (``[1, 0]`` by ``lateral``) given four axes is the soak's case: facing
+    backward it reads as facing forward."""
+    moves = piece.get("moves")
+    if not isinstance(moves, list) or axes < 2:
+        return
+    step = len(FACING_NAMES) // axes
+    readings: list[list[tuple[str, tuple[tuple[int, int], ...]]]] = []
+    for turn in range(axes):
+        quarters = turn * step
+        reading: list[tuple[str, tuple[tuple[int, int], ...]]] = []
+        for move in moves:
+            if not isinstance(move, dict) or "legs" in move:
+                return
+            directions = push_directions_of(move)
+            if not directions:
+                return
+            turned = set()
+            for dx, dy in directions:
+                for _ in range(quarters):
+                    dx, dy = dy, -dx
+                turned.add((dx, dy))
+            rest = {key: value for key, value in move.items() if key not in ("vectors", "symmetry")}
+            reading.append((json.dumps(rest, sort_keys=True, default=str), tuple(sorted(turned))))
+        readings.append(sorted(reading))
+    for later in range(1, axes):
+        for earlier in range(later):
+            if readings[later] == readings[earlier]:
+                errors.append(
+                    f"{where}.facing: facing {FACING_NAMES[later * step]} it moves exactly as "
+                    f"facing {FACING_NAMES[earlier * step]}, so its facing changes nothing "
+                    "(and turning between them would be a move that does nothing). Give the "
+                    "facing to a piece whose moves are not symmetric under it, or leave it out"
+                )
+                return
 
 
 def _validate_captures(
@@ -8386,7 +8537,9 @@ def _check_reach_scoring(
     * **removes beside a check rule** (``win: "checkmate"``, ``forbid_check``,
       ``forbid_immobility``): the legality filter plays the move without the bank (first
       build);
-    * **removes beside extinction or bare_royal**: a banked piece would read as a lost one;
+    * (U2 lifted **removes beside extinction or bare_royal**: a banked piece is off the
+      board, and both endings count the board; a bank that reaches the count wins first,
+      `reach` coming before both in the ending order);
     * **count above every side's supply**: a count no side's listed pieces can reach, where
       nothing (a hand, a purse, a promotion, a strike or contacts) can add one, never fires.
     """
@@ -8424,11 +8577,23 @@ def _check_reach_scoring(
             + "): a banked royal would leave its side without one; name the runners in "
             "rules.reach.piece"
         )
-    if isinstance(rules.get("simultaneous"), dict):
-        errors.append(
-            f"{', '.join(live)} beside rules.simultaneous: a round's two arrivals are not yet "
-            "read by the counting goal (first build)"
-        )
+    simultaneous = rules.get("simultaneous")
+    if isinstance(simultaneous, dict):
+        unread = live
+        # U1 (`unheld-pairs-plan.md` §2.3): "mover" names the side whose move made the
+        # position, and a round has no one mover; only the initiative could name one.
+        if both == "mover" and simultaneous.get("tie") != "initiative":
+            errors.append(
+                'rules.reach.both "mover" beside rules.simultaneous without the initiative: '
+                "both players move in a round, so no one mover made the position; use "
+                '"draw", or give the round tie "initiative"'
+            )
+            unread = [key for key in live if key != "rules.reach.both"]
+        if unread:
+            errors.append(
+                f"{', '.join(unread)} beside rules.simultaneous: a round's two arrivals are "
+                "not yet read by the counting goal (first build)"
+            )
     # TS2: only a held or shared type the goal admits arrives for a player; one the goal's
     # `piece` list leaves out never decides (`ReachRule::admits`), so it bars nothing.
     held_runners = player_moved_nobodys_ids(spec) & runners
@@ -8453,12 +8618,6 @@ def _check_reach_scoring(
                 f"rules.reach.removes beside {name}: the legality filter plays a move without "
                 "its bank (first build); a scoring goal is for a game without check"
             )
-        for key in ("extinction", "bare_royal"):
-            if rules.get(key):
-                errors.append(
-                    f"rules.reach.removes beside rules.{key}: a banked piece would read as a "
-                    "lost one; leave one out"
-                )
     if count > 1 and not reach_supply_grows(rules):
         counts = opening_counts(spec)
         named = set(reach_pieces(reach))
@@ -8643,6 +8802,44 @@ def npc_immunity_unbound(spec: Any) -> set[str]:
         if piece in placed or _arrives_after_setup(rules, piece):
             unbound.add(piece)
     return unbound
+
+
+def npc_owned_wild_attackers(spec: Any, npc: Any) -> set[str]:
+    """R-L6c (F4): the wild types ``npc``'s ``immune`` list binds too, beside
+    ``npc_immune_attackers``' declared types: every wild type it does not name of which a
+    piece that is *not* wild can stand on the board (placed for a player or for nobody, or
+    arriving after the setup, `_arrives_after_setup`). ``immune`` is a rule about the
+    players' pieces, and a player's piece of a wild type is one; only a wild piece is
+    exempt, and it never eats another wild piece anyway (``halts_wild``).
+
+    Empty where ``immune`` clears nothing or no such piece can stand, so a game without one
+    compiles the matrix it always did. The compiler clears these rows in the wild piece's
+    column only; the core reads a wild piece's own captures by the victim's column
+    (``victim_of``), which is the matrix without the immunity wherever such a piece can stand
+    (``npc_immunity_unbound``)."""
+    if not isinstance(spec, dict):
+        return set()
+    rules: dict[str, Any] = spec["rules"] if isinstance(spec.get("rules"), dict) else {}
+    piece_ids = [
+        p["id"] for p in _listed(spec.get("pieces")) if isinstance(p, dict) and isinstance(p.get("id"), str)
+    ]
+    if not npc_immune_attackers(rules, piece_ids, npc):
+        return set()
+    named = {pid for pid in npc.get("immune", []) if isinstance(pid, str)}
+    setup: dict[str, Any] = spec["setup"] if isinstance(spec.get("setup"), dict) else {}
+    placed = {
+        placement["piece"] for placement in _listed(setup.get("placements"))
+        if isinstance(placement, dict) and isinstance(placement.get("piece"), str)
+        and placement.get("squares")
+    }
+    wild = {
+        entry["piece"] for entry in _listed(rules.get("npcs"))
+        if isinstance(entry, dict) and isinstance(entry.get("piece"), str)
+    }
+    return {
+        pid for pid in wild
+        if pid not in named and (pid in placed or _arrives_after_setup(rules, pid))
+    }
 
 
 def npc_routes(
@@ -9269,6 +9466,9 @@ def _check_portal_coherence(
     occupied: set[tuple[int, int]] = set()
     for pid in declared:
         occupied |= {(f, r) for _, f, r in _placed_squares(setup, pid, width, height, orientation)}
+    # R-L6c (F1): a placement for nobody stands on a square as a player's does, so a momentum
+    # end may not start under one either: an end is a board byte, and a square holds one.
+    nobodys = _nobodys_squares(setup, width, height, orientation)
     seen: dict[str, str] = {}
     for group in groups:
         for end in group["ends"]:
@@ -9283,6 +9483,11 @@ def _check_portal_coherence(
             # Schema 22 (§3.2 rule 10): a fold is occupiable, so it may start under a piece.
             if (file, rank) in occupied and group["kind"] != "fold":
                 errors.append(f"{loc} {name} is a square setup.placements puts a piece on")
+            elif (file, rank) in nobodys and group["kind"] != "fold":
+                errors.append(
+                    f"{loc} {name} is a square a placement for nobody puts a piece on; a "
+                    "portal end and a piece cannot share a square (a fold may start under one)"
+                )
             if name in seen:
                 errors.append(f"{loc} {name} is also {seen[name]}; two portals on one square")
             seen.setdefault(name, loc)
@@ -9631,8 +9836,12 @@ def nobodys_ids(spec: Any) -> set[str]:
     compiled table's victim column, any capturer's row) and stays nobody's, and a held piece
     (a majority type) a link changes (its row's ``mover_to``) stays nobody's too.
 
-    Equal to `neutral_ids` in every game without a strike or contacts, which is every game
-    before SR4k, so no stored game's kinds or neighbours move."""
+    SR8j (O15): and what a held piece (a majority or shared type) promotes into, which stays
+    nobody's too (`held_promotion_targets`: never a royal or a wild type). Every route is
+    walked to one fixed point, so a struck piece that is held and promotes is followed.
+
+    Equal to `neutral_ids` in every game without a strike, contacts or a held type that
+    promotes, which is every game before SR4k, so no stored game's kinds or neighbours move."""
     placed = neutral_ids(spec)
     rules = spec.get("rules") if isinstance(spec, dict) else None
     if not placed or not isinstance(rules, dict):
@@ -9646,23 +9855,53 @@ def nobodys_ids(spec: Any) -> set[str]:
     held = {
         piece["id"] for piece in pieces if piece_control(piece) in ("majority", "shared")
     }
+    tables = [
+        compiled for key in ("strike", "contacts")
+        if (compiled := _compiled_strike(rules.get(key), key, piece_ids, wild_type_ids(rules)))
+        is not None
+    ]
     reached = {pid for pid in placed if pid in index}
-    for key in ("strike", "contacts"):
-        compiled = _compiled_strike(rules.get(key), key, piece_ids, wild_type_ids(rules))
-        if compiled is None:
-            continue
-        n = compiled.n_types
-        frontier = sorted(reached)
-        while frontier:
-            x = index[frontier.pop()]
-            made = {compiled.onto_to[mover * n + x] for mover in range(n)}
-            if piece_ids[x] in held:
-                made |= {compiled.mover_to[x * n + victim] for victim in range(n)}
-            for into in sorted(t for t in made if t >= 0):
-                if piece_ids[into] not in reached:
-                    reached.add(piece_ids[into])
-                    frontier.append(piece_ids[into])
+    frontier = sorted(reached)
+    while frontier:
+        pid = frontier.pop()
+        x = index[pid]
+        made: set[str] = set()
+        for compiled in tables:
+            n = compiled.n_types
+            into = {compiled.onto_to[mover * n + x] for mover in range(n)}
+            if pid in held:
+                into |= {compiled.mover_to[x * n + victim] for victim in range(n)}
+            made |= {piece_ids[t] for t in into if t >= 0}
+        if pid in held:
+            made |= held_promotion_targets(spec, pid)
+        for new in sorted(made - reached):
+            reached.add(new)
+            frontier.append(new)
     return reached | placed
+
+
+def held_promotion_targets(spec: Any, pid: str) -> set[str]:
+    """SR8j (`docs/plan-schema-next.md` §2.11 O15, *the mover's reading*): what a held piece
+    of ``pid`` may promote into, for either holder: every target a promotion rule naming
+    ``pid`` offers either player, less royals and wild types (a held piece never becomes one;
+    ruled 2026-10-28; nor the duck, which no player owns either). The compiler's
+    `NeutralRule.held_promotion` and `nobodys_ids` read it."""
+    rules = spec.get("rules") if isinstance(spec, dict) else None
+    if not isinstance(rules, dict):
+        return set()
+    royal = {
+        piece["id"] for piece in _listed(spec.get("pieces"))
+        if isinstance(piece, dict) and piece.get("royal") is True
+    }
+    found: set[str] = set()
+    for entry in _promotion_entries(rules):
+        if isinstance(entry, dict) and entry.get("piece") == pid:
+            found |= _promotion_target_ids(entry)
+    declared = {
+        piece["id"] for piece in _listed(spec.get("pieces"))
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    }
+    return (found & declared) - royal - _never_moved(rules)
 
 
 def majority_ids(spec: Any) -> set[str]:
@@ -9689,9 +9928,34 @@ def shared_ids(spec: Any) -> set[str]:
     } & nobodys_ids(spec)
 
 
+def reads_for_its_holder(piece: Any, orientation: str) -> bool:
+    """SR8i (`docs/plan-schema-next.md` §2.11, *the mover's reading*): whether a held type's
+    moves read differently for the two players, so that its holder's frame is not frame 0's:
+    a facing that turns it, a region, a move that is not alike under the second player's
+    reflection, or a condition that reads a rank or a region (`first_move` reads the piece's
+    own mark, which has no side). The compiler's `NeutralRule.in_holders_frame` and the
+    description's wording both read it."""
+    if not isinstance(piece, dict):
+        return False
+    facing = piece.get("facing")
+    if isinstance(facing, dict) and int(facing.get("axes", 1)) > 1:
+        return True
+    if "region" in piece:
+        return True
+    for move in _listed(piece.get("moves")):
+        if not isinstance(move, dict):
+            continue
+        if not reads_alike_for_both(move.get("vectors"), move.get("symmetry", "none"), orientation):
+            return True
+        condition = move.get("condition")
+        if isinstance(condition, dict) and ("from_rank" in condition or "region" in condition):
+            return True
+    return False
+
+
 def player_moved_nobodys_ids(spec: Any) -> set[str]:
     """The nobody's types a player moves as their own move: majority (TC3) and shared (TS2)
-    alike. Each moves in nobody's frame by its type's moves, so each reads alike for both."""
+    alike. Each moves in its mover's frame by its type's moves (SR8i)."""
     return majority_ids(spec) | shared_ids(spec)
 
 
@@ -9753,9 +10017,8 @@ def _check_neutral_coherence(
     half, a portal's moves), so a neutral is refused beside each of those until every such
     reader asks the block's control kind (since lifted: SR3f, SR3g, SR4k for a strike and
     contacts, SR7f for rounds, and SR7n for a held type in rounds). A majority type
-    must read alike for both players, since its holder moves it in the first player's frame,
-    and sits beside none of the rules that would make a second rule of what a nobody's mover
-    claims, reaches or blasts.
+    moves in its holder's frame (SR8i), and sits beside none of the rules that would make a
+    second rule of what a nobody's mover claims, reaches or blasts.
     """
     board = spec.get("board")
     hex_lattice = isinstance(board, dict) and board.get("lattice") == "hex"
@@ -9817,11 +10080,10 @@ def _check_neutral_coherence(
             errors.append(f"{where}: a piece nobody owns has no turn to rest after")
         # Generation 84 (SR5f, V15): a nobody's piece's sight reads as a wild piece's
         # (`_check_sight_coherence`: whose 'any', no command, alike for both players).
-    for index, placement in enumerate(_listed(setup.get("placements"))):
-        if is_nobodys(placement) and "facing" in placement:
-            errors.append(
-                f"setup.placements[{index}].facing for nobody: a piece nobody owns has no forward"
-            )
+    # SR8i (O9, lifted 2026-11-14): a placement for nobody may state a facing. It is where
+    # the piece points on the board, written relative to the first player's forward (nobody's
+    # frame, as its squares are); a mirrored setup reflects it with the square. Its forward is
+    # its arrow for whoever moves it (`compile.NeutralRule.held_frames`).
 
     # SR3f (O1, O2) lifted wild pieces and the duck: the block is shared by kind, a wild
     # piece eats a nobody's piece its type may capture, and the duck lands on empty squares.
@@ -9872,11 +10134,8 @@ def _check_shared_types(spec: dict[str, Any], rules: dict[str, Any], errors: lis
         errors.append(
             f'piece {pid!r} control "shared" on a portal end: a portal end moves by its group'
         )
-    for pid in sorted(shared & set(piece_prices(spec))):
-        errors.append(
-            f'piece {pid!r} control "shared" has a price: a hired or bribed piece belongs to '
-            "a player, and a shared one belongs to neither"
-        )
+    # U2 lifted a price (shared.price): hiring a shared piece makes it the hirer's own, as
+    # hiring any piece nobody owns does (`rehome_value`), and a bribe reads it as any.
 
 
 def _check_takes_royal(spec: dict[str, Any], pieces: list[Any], errors: list[str]) -> None:
@@ -9923,39 +10182,29 @@ def _check_majority_type(
     pid: str, piece: dict[str, Any], rules: dict[str, Any], orientation: str,
     hex_lattice: bool, errors: list[str],
 ) -> None:
-    """A majority type reads alike for both players (`docs/plan-turncoat.md` §4.4): its holder
-    moves it in the first player's frame, so nothing in it may name a side."""
+    """What a type a player moves but nobody owns (majority or shared control) stands beside.
+
+    SR8i (`docs/plan-schema-next.md` §2.11, *the mover's reading*; O9, O13, O14, O17, O18,
+    O19, lifted 2026-11-14): a held piece moves in its **holder's** frame, as the holder's own
+    piece of the type would, so a facing (its arrow), a region (the holder's), a move that
+    reads differently for the two players, a condition (`from_rank` from the holder's back
+    rank, `region` the holder's, `first_move` the piece's own mark) and a hop screen named by
+    owner (`own` the holder's pieces, `enemy` the other player's; a nobody's piece neither)
+    all read for the holder on the move. SR8j (O15, lifted 2026-11-14): a promotion too, in
+    the holder's zone, to a target the holder's promotion offers (never a royal or a wild
+    type, `held_promotion_targets`), chosen by the holder; the piece stays nobody's under the
+    target type's ``control``. SR8k (O16, lifted 2026-11-14): a sweep too, removing what its
+    holder could capture with it (the other player's non-royal pieces its capture list
+    allows); the holder's pieces, a royal, another nobody's piece and a shielded piece end
+    its ray. Still refused here: a control geometry (the count's neighbours) that reads
+    differently, since who holds it is asked before anyone does."""
     loc = f"piece {pid!r} (control {piece_control(piece)})"
-    if "facing" in piece:
-        errors.append(f"{loc} has a facing: a piece nobody owns has no forward")
-    if "region" in piece:
-        errors.append(f"{loc} has a region: a piece nobody owns has no rank of its own")
-    if any(
-        isinstance(entry, dict) and entry.get("piece") == pid
-        for entry in _promotion_entries(rules)
-    ):
-        errors.append(f"{loc} promotes: a held piece moves in nobody's frame and never promotes")
     vectors, symmetry = control_geometry(piece, hex_lattice)
     if not reads_alike_for_both([list(v) for v in vectors], symmetry, orientation):
         errors.append(
             f"{loc}: its control's geometry reads differently for the two players (use a "
             "symmetry that covers both, such as rotate4 or dihedral8)"
         )
-    for number, move in enumerate(_listed(piece.get("moves"))):
-        if not isinstance(move, dict):
-            continue
-        where = f"{loc} moves[{number}]"
-        if move.get("kind") == "sweep":
-            errors.append(f"{where} is a sweep: what a nobody's sweep removes is a second rule")
-        if not reads_alike_for_both(move.get("vectors"), move.get("symmetry", "none"), orientation):
-            errors.append(
-                f"{where} reads differently for the two players: a piece nobody owns has no "
-                "forward (use a symmetry that covers both, such as rotate4 or dihedral8)"
-            )
-        if "condition" in move:
-            errors.append(f"{where} has a condition: a piece nobody owns has no rank or first move")
-        if screen_names_an_owner(move):
-            errors.append(f"{where} is a hop whose screen names an owner: nobody has no own or enemy")
 
 
 def _check_neutral_squares(
@@ -10846,8 +11095,8 @@ def _check_turn_parts(spec: dict[str, Any], rules: dict[str, Any], errors: list[
     shared type, a turn every part of which may be kept (a turn that may move nothing),
     overlapping parts under ``order: "any"`` (a move would fill two), and, first build, the
     rules whose moves have no piece on their origin or that the filter would have to order:
-    rounds, drops, the purse, portals, rest, ``must_capture``, wild pieces and a command
-    (the duck is L7's, rounds L4's)."""
+    rounds, drops, the purse, portals, rest, ``must_capture``, wild pieces, a command and the
+    duck (L7's lift by SR8c covered ``moves`` and ``ramp`` only)."""
     turn = rules.get("turn")
     if not isinstance(turn, dict) or "parts" not in turn:
         return
@@ -10894,6 +11143,13 @@ def _check_turn_parts(spec: dict[str, Any], rules: dict[str, Any], errors: list[
         (any(piece_rests(spec).values()), "pieces[].rest", "the rest's lift would read a list the parts then shorten"),
         (bool(rules.get("must_capture")), "rules.must_capture", "the compulsion would be read before the parts"),
         (bool(rules.get("npcs")), "rules.npcs", "a keep moves nothing, and whether the phase follows it is unsettled"),
+        # SR8f (refusal-debt.md §7): L7, the one refusal that covered the pair, was lifted by
+        # SR8c for `moves` and `ramp` only; the core still refuses parts beside the duck.
+        (
+            rules.get("duck") is not None, "rules.duck",
+            "the duck's move is nobody's piece, which no part admits, and where its half falls "
+            "among the parts is unsettled",
+        ),
         (
             any(sight.effect == "command" for sights in piece_sights(spec).values() for sight in sights),
             'pieces[].sight effect "command"',
@@ -11837,8 +12093,8 @@ def _check_income_coherence(
       is §R2's later value);
     * **a region that states nothing** -- no square of it a piece could stand on (walls and a
       hexagon's absent cells taken out), for either player;
-    * **beside** (first build, `refusals.INCOME_REFUSALS`): ``scoring.count: "points"`` and
-      rounds.
+    * **beside** (first build, `refusals.INCOME_REFUSALS`): rounds (``scoring.count:
+      "points"`` lifted by U2: the points still count bounties alone).
     """
     if income_rule(rules) is None:
         return
@@ -11852,14 +12108,10 @@ def _check_income_coherence(
             "rules.income.region has no square a piece could stand on (walls and the hexagon's "
             "edge taken out), so no piece would ever earn"
         )
-    scoring = rules.get("scoring")
-    beside = (
-        ("I1", isinstance(scoring, dict) and scoring.get("count") == "points"),
-        ("I2", rules.get("simultaneous") not in (None, False)),
-    )
-    for rid, present in beside:
-        if present:
-            errors.append(refusal_rows(f"income.{rid}")[0].message)
+    # U2 lifted I1: beside a points count income still fills the purse alone (the core's
+    # `collect_income` writes no points), so the points count bounties as ever.
+    if rules.get("simultaneous") not in (None, False):
+        errors.append(refusal_rows("income.I2")[0].message)
 
 
 # ------------------------------------------------------------------------------- pass
@@ -12521,10 +12773,10 @@ def _check_hop_runs(
 ) -> None:
     """TS4's cross-field refusals, each by name (first build): a run or a displacement on a
     type a piece nobody owns can be (a held or shared piece moves by `foreign.rs`, which walks
-    no run), and beside a wrapped board (a run could come round on itself), portals, en
-    passant, rounds, a sweep, wild pieces, the duck, any sight and rest. A displacement also
-    beside a royal (the check filter's shortcut reads one moving piece) and territory (whether
-    a displaced piece claims its square is unsettled)."""
+    no run), on the en passant piece (its hop would open a window), and beside a wrapped board
+    (a run could come round on itself), portals, rounds, a sweep, wild pieces, the duck, any
+    sight and rest. A displacement also beside a royal (the check filter's shortcut reads one
+    moving piece). U2 lifted territory and en passant on any other piece."""
     for g_index, group in enumerate(_listed(rules.get("portals"))):
         moves = group.get("moves") if isinstance(group, dict) else None
         for m_index, move in enumerate(_listed(moves)):
@@ -12550,7 +12802,6 @@ def _check_hop_runs(
     beside = (
         (wrapped, "rules.wrap", "a run could come round onto its own origin"),
         (bool(rules.get("portals")), "rules.portals", "a run through an end has no reading yet"),
-        (bool(rules.get("en_passant")), "rules.en_passant", "a run's landing opens no window and none is settled"),
         (is_simultaneous(rules), "rules.simultaneous", "two runs in one round have no order"),
         (sweeps, "a sweep", "a sweep is the other path effect, not a companion"),
         (bool(rules.get("npcs")), "rules.npcs", "a wild piece in a run has no reading yet"),
@@ -12566,6 +12817,15 @@ def _check_hop_runs(
             f"piece {pid!r} hops over a run or displaces and a piece nobody owns can be one: a "
             "held or shared piece walks no run (first build)"
         )
+    # U2 narrowed run.en_passant: a hop by any other piece opens no window and the core plays
+    # it so; the en passant piece's own hop is read as a double step by `write_ep_window`,
+    # which opens a window over the square it jumped (U7's).
+    if rules.get("en_passant"):
+        for pid in sorted(set(movers) & en_passant_pieces(spec)):
+            errors.append(
+                f"piece {pid!r} hops over a run or displaces and is the en passant piece: its "
+                "hop would open an en passant window over the piece it jumped (first build)"
+            )
     if displacing_ids(pieces):
         royal = sorted(
             piece["id"] for piece in pieces
@@ -12577,8 +12837,5 @@ def _check_hop_runs(
                 f"a hop's displace beside a royal ({', '.join(royal)}): a displacement moves "
                 "pieces the check filter's shortcut does not read (first build)"
             )
-        if rules.get("territory"):
-            errors.append(
-                "a hop's displace beside rules.territory: whether a displaced piece claims its "
-                "square is unsettled (first build)"
-            )
+        # U2 lifted territory (run.territory): only the hopper claims, on its landing; a
+        # displaced piece claims nothing (`write_territory` reads the move's target alone).

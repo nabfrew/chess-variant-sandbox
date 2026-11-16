@@ -60,6 +60,15 @@ def source_fingerprint() -> str:
     return measurement.rust_source_fingerprint() or "unknown"
 
 
+def recipe() -> str:
+    """`train.py`'s `RECIPE`: which workload, run how, made the profile (R-L5e). Read off the
+    file, so a tree whose `train.py` predates it answers `threaded`."""
+    for line in (HERE / "train.py").read_text(encoding="utf-8").splitlines():
+        if line.startswith("RECIPE = "):
+            return line.split("=", 1)[1].split("#", 1)[0].strip().strip('"')
+    return "threaded"
+
+
 def check() -> int:
     if not STAMP.exists() or not PROFILE.exists():
         print("no committed profile")
@@ -128,7 +137,8 @@ def main(argv: list[str]) -> int:
             print("regenerate.py: training failed; rebuilding with the profile already on disk", file=sys.stderr)
             build(sync_args)
             raise
-    stamp = {**toolchain(), "source": source_fingerprint(), "trained_by": "rust/pgo/train.py"}
+    stamp = {**toolchain(), "source": source_fingerprint(), "trained_by": "rust/pgo/train.py",
+             "recipe": recipe()}
     STAMP.write_text(json.dumps(stamp, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {PROFILE.relative_to(ROOT)} ({PROFILE.stat().st_size:,} bytes) from {len(files)} raw profiles",
           flush=True)

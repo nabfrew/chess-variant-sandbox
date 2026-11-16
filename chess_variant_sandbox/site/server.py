@@ -706,6 +706,8 @@ class SiteApp(App):
         payload["firstStep"] = launch.first_step(
             offered, payload.get("opponents") or [], launch.today(),
             preview=lambda game: designing.opening_preview(game.spec),
+            # R-W1: the game page's own `firstGame`, so a door seats the player its page names.
+            chosen=lambda game: self._first_game(game, game.hash),
         )
         payload["launchSet"] = launch.launch_cards(offered)
         # Q603 (C2, `docs/archive/plan-return.md` §3): this month's game, by the calendar month.

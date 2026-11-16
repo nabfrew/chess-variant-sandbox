@@ -460,14 +460,16 @@ class TestASquareGameMadeHexagonsIsAGame:
             problems = validate_spec(designing.settled(made))
             if problems:
                 refused[path.stem] = problems
-        assert len(refused) <= 2, sorted(refused)
+        assert len(refused) <= 3, sorted(refused)
         for problems in refused.values():
             # SR1a: a hex lame is refused only until it states its legs. H1's U8: a move's
             # cost counts rows from home, which a hex board has no one direction for
-            # (`rulesets/hunger`, Q1159).
+            # (`rulesets/hunger`, Q1159). U1's C1: brink's twin pushes in 48 directions, more
+            # than the move word names; the engine always refused it, the validator now says so.
             assert all("must state its legs" in line or "facing.axes 4" in line
                        or "schema_version" in line
                        or line.startswith('rules.purse.upkeep beside board.lattice "hex"')
+                       or line.startswith("more than 32 push directions")
                        for line in problems), problems
 
     def test_a_rank_zone_becomes_the_cells_it_was(self) -> None:

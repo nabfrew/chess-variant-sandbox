@@ -240,13 +240,15 @@ class TestThePage:
 
     def test_the_landings_door_is_todays_game(self) -> None:
         """LP4: the hero's *Play today's game* is the day's game the server named
-        (`firstStep`), its own page, and `/game` until the listing says which."""
+        (`firstStep`), its own page starting the game at once (R-W1, `?play=`), and `/game`
+        until the listing says which."""
         from page_text import PAGE
 
         assert 'href="/game" data-today>' in landing.html_page()
         body = PAGE[PAGE.index("async function showLanding()"):]
         body = body[:body.index("\n}\n")]
-        assert "today.href = gamePath(data.firstStep.hash)" in body
+        assert "const step = data.firstStep;" in body
+        assert "today.href = playPath(step.hash)" in body
 
 
 # ------------------------------------------------------------ the pieces the shelf draws

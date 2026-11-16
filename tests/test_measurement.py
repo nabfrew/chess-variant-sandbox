@@ -675,7 +675,27 @@ class TestTheFingerprintsPointAtSomething:
 # "8f1d93d6fc5462c9" after Q1181.
 # **Moved 2026-11-09 by Q1173b**: `agents/evaluation.py` (see `FROZEN_ANALYSIS`). It was
 # "2c62c6fc8a59730b" after Q1173.
-FROZEN_METRICS = "22cb2f9c558aec1b"
+# **Moved 2026-11-13 by R-N5** (batch F merged): `engine/engine.py` (see `FROZEN_ANALYSIS`). It
+# was "22cb2f9c558aec1b" after Q1173b.
+# **Moved 2026-11-13 by R-S6b** (`docs/reference/v14-registration.md` §5 step 2): the `analysis`
+# files it reads (see `FROZEN_ANALYSIS`), `metrics/decision_cost.py` (new: `v14`'s expected-score
+# reading, and `others_fit` for one run from its siblings), `metrics/calibration.py` (the two
+# dials' `DOMAIN`), `metrics/components.py`
+# (`piece_participation`, `decision_cost`, read only where the
+# pass wrote their inputs) and `metrics/bootstrap.py` (a resample keeps its run's cost scale).
+# `v13` reads no new field, so no `v13` total moves. It was "1071ea364924bc4d" after R-N5.
+# **Moved 2026-11-14 by R-S6d** (`v14` made current, `v14-registration.md` §11): the `analysis`
+# files it reads (see `FROZEN_ANALYSIS`), `metrics/repeats.py` (the `repeats` block reads
+# each run's `decision_cost` on the scale fitted on the game's other runs, as the run's own
+# score does) and `metrics/components.py` (`ROUND_READINGS` and `SPY_READINGS` say how the two
+# new dials read rounds and a spy game; no number reads them). The library, already stale on the core and the pass, reads provisional under
+# `v14` until SR8r's replay. It was "db8cf5596f550f4c" after R-S6b.
+# **Moved 2026-11-15 by R-L6e** (F7, `fuzz-lifted-pairs.md` §11): `engine/moves.py::move_gate`
+# reads a gate off a gating kind's word only (a sweep's ray is never a gate), and
+# `engine.describe_move` with it. No stored game holds gating beside a sweep ray, so no stored
+# record reads differently; the library replay that follows R-L6e re-scores every game on this
+# core anyway. It was "3a1a391854f94ddf" after R-S6d.
+FROZEN_METRICS = "64754a1eeb0a0a61"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -1108,7 +1128,26 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # `k x goal_diameter` (`_per_racer`), with `Evaluator.racers_fixed` keeping Q1173's scale as the
 # control; still read only under the `racers` bit, never by the probe's ruler, so no
 # `analysis.json` reads differently. It was "67a8d963d3adcd52" after Q1173.
-FROZEN_ANALYSIS = "85400362f0da30c4"
+# **Moved 2026-11-13 by R-N5** (batch F merged, SR8b): `engine/engine.py` writes a promoting
+# sweep's `=X` and reads a sweep's fold step through `CompiledSpec.sweep_through` (the promotion
+# field is a fold step only in a fold game). No stored game has a promoting sweeper, so no
+# `analysis.json` reads differently; the core's build moved with it and the library replay owed
+# after batch F (SR8r) re-stamps the library. It was "85400362f0da30c4" after Q1173b.
+# **Moved 2026-11-13 by R-S6b** (`docs/reference/v14-registration.md` §5 step 2):
+# `tournament/analysis.py` can write what `v14` reads (`analyse_corpus(readings=True)`: every
+# sampled move's value and its mover, and the fielded pieces, followed by `PieceFollower`), off
+# by default, so a pass without it writes the bytes it wrote; `ANALYSIS_COMPONENTS` names its two new
+# components. The library reads stale by
+# re-analyse, as it already did on the engine; SR8r's replay brings it current. It was
+# "87911dd25c0ca102" after R-N5.
+# **Moved 2026-11-14 by R-S6d** (`v14` made current): `analyse_corpus(readings=True)` and
+# `_init_worker(readings=True)` by default, so every pass writes what `v14` reads. The library
+# reads stale by re-analyse, as it already did; SR8r's replay brings it current. It was
+# "86c8aae9605f45d7" after R-S6b.
+# **Moved 2026-11-15 by R-L6e** (F7): `engine/moves.py::move_gate`, as `FROZEN_METRICS` says;
+# no stored record reads differently, and the replay after R-L6e re-analyses the library. It
+# was "19a8b132d92af04f" after R-S6d.
+FROZEN_ANALYSIS = "d5c24499b62444e1"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

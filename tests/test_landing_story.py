@@ -65,6 +65,33 @@ def test_the_hero_games_are_listed_library_games() -> None:
         assert idea.family in families, idea.family
 
 
+def hero_verdicts(runs: Path, status: str) -> dict[str, str]:
+    """Each hero game's stored verdict as its own page words it, read as `status`."""
+    app = Roots(runs)
+    by_name = {str(load_spec(path).get("name")): (digest, path, source)
+               for digest, (path, source) in stories.library_paths(app).items()}
+    said = {}
+    for idea in landing.HERO_IDEAS:
+        digest, path, source = by_name[idea.game]
+        score = stories.read_score(app, digest, load_spec(path), path, source)
+        if score and score.get("measured") is not False:
+            said[idea.game] = stories.verdict(dict(score, status=status), idea.game)["verdict"]
+    return said
+
+
+@pytest.mark.parametrize("status", [stories.CURRENT, stories.PROVISIONAL])
+def test_no_hero_game_is_one_its_own_page_rules_out(status: str) -> None:
+    """R-W7: the front page held up ferry for *doors either player could move* while
+    ferry's page said its score rules it out. Every idea's game, by its stored measurement,
+    stays in, read as current (after a replay) and as provisional (before one): the
+    verdict is the stored one either way, only its mark differs. Reads this checkout's
+    `runs/`, so it skips in a worktree with no measurements and runs in the main checkout."""
+    said = hero_verdicts(ROOT / "runs", status)
+    if not said:
+        pytest.skip("no hero game is measured in this checkout's runs/")
+    assert all(verdict == "stays in" for verdict in said.values()), said
+
+
 def test_the_question_leads_with_the_storys_idea_and_leaves_out_its_family(
         first: str, rendered: dict[str, Any]) -> None:
     drawn = first
@@ -128,6 +155,63 @@ def test_the_qualities_are_paired_with_their_numbers(first: str, rendered: dict[
     for (a, b), name in zip(bars, landing._BAR_ORDER, strict=True):
         assert float(a) == pytest.approx(story["failed"]["qualities"][name], abs=1e-4)
         assert float(b) == pytest.approx(story["fixed"]["qualities"][name], abs=1e-4)
+
+
+def _provisional(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
+    """The four stories with every library estimate provisional: the days between a change to
+    the scorer, the core or the pass and the library's replay (R-S6f)."""
+    made = {}
+    for story in LIBRARY_STORIES:
+        made[story.wrong.game.hash] = made_score(False, status="provisional")
+        made[story.right.game.hash] = made_score(True, status="provisional")
+    monkeypatch.setattr(stories, "read_score",
+                        lambda app, digest, *_: copy.deepcopy(made.get(digest)))
+    return stories.render(Roots(tmp_path))
+
+
+def test_a_provisional_story_is_whole_and_says_it_is_measured_again(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """R-S6f: with every library estimate provisional the stories are all on the page, whole:
+    each verdict is the last answer, marked provisional with its version and day, and said to
+    be measured again; no pair of bars compares the two (a provisional number enters no
+    comparison), and a plain line stands in their place."""
+    rendered = _provisional(monkeypatch, tmp_path)
+    assert rendered["pool"] == ["stones", "door", "blast", "sweep"]
+    drawn = landing.html_page(stories=rendered["stories"])
+    for story in rendered["stories"]:
+        part = _part(drawn, story["key"])
+        assert re.findall(r'data-beat="(\d)"', part) == ["1", "2", "3", "4", "5", "6"]
+        assert part.count('class="verdictBlock pending"') == 2
+        assert part.count(landing._e(landing.REMEASURED_SAID)) == 2
+        assert part.count('<span class="tag stale">provisional</span>') == 2
+        for side in (story["failed"], story["fixed"]):
+            assert landing._e(side["line"]) in part
+            assert side["line"].startswith(stories.PROVISIONAL_LINE)
+        assert "pairBars" not in part and "data-v=" not in part
+        assert landing._e(landing.BARS_WAIT_SAID) in part
+        assert "measured in minutes" not in part  # the current verdict's words
+        assert "The site adds:" not in part  # no reading of a provisional score's seat
+
+
+def test_a_current_story_says_none_of_it(first: str) -> None:
+    assert "provisional" not in first
+    assert landing._e(landing.REMEASURED_SAID) not in first
+    assert landing._e(landing.BARS_WAIT_SAID) not in first
+    assert "pairBars" in first
+
+
+def test_the_api_hands_the_pin_the_marked_line(monkeypatch: pytest.MonkeyPatch,
+                                                tmp_path: Path) -> None:
+    """The pinned board's verdict (1400) is the line `/api/stories` sends, so it is marked too."""
+    from chess_variant_sandbox.web.server import App
+
+    rendered = _provisional(monkeypatch, tmp_path)
+    app = App.__new__(App)
+    monkeypatch.setattr(App, "stories", lambda self: rendered)
+    games = App.stories_payload(app)["games"]
+    for key, told in games.items():
+        assert told["failedLine"].startswith(stories.PROVISIONAL_LINE), key
+        assert told["fixedLine"].startswith(stories.PROVISIONAL_LINE), key
 
 
 def test_no_story_holding_leaves_the_hero_and_drops_the_journey() -> None:
@@ -384,8 +468,10 @@ def test_each_storys_play_doors_start_its_fixed_game_in_its_seat(
         fixed = story["fixed"]
         seat = story["seat"]
         agent = f' data-agent="{story["opponent"]["agent"]}"' if story["opponent"] else ""
-        door = (f'href="/game/{fixed["hash"]}?seat={seat["side"]}" data-play="{fixed["hash"]}" '
-                f'data-seat="{seat["index"]}"{agent}')
+        play = (story["opponent"]["agent"].replace(":", "%3A").replace("=", "%3D")
+                if story["opponent"] else landing.PLAY_DEFAULT)
+        door = (f'href="/game/{fixed["hash"]}?seat={seat["side"]}&amp;play={play}" '
+                f'data-play="{fixed["hash"]}" data-seat="{seat["index"]}"{agent}')
         assert part.count(door) == 2, story["key"]
         hero = part[:part.index('id="journey"')]
         assert f'class="button storyWay" {door}' in hero
@@ -409,7 +495,7 @@ def test_the_doors_ask_the_server_for_the_session_and_its_opponent() -> None:
     browse_js = (STATIC / "browse.js").read_text(encoding="utf-8")
     assert "await startPractice(hash, against, seat);" in landing_js
     assert "seats: seat === 1 ? [agent, 'human'] : ['human', agent]" in browse_js
-    assert "detailFor(hash)" in landing_js and "game.firstGame && game.firstGame.gentle" in landing_js
+    assert "return defaultOpponent(await detailFor(hash), null);" in landing_js
 
 
 def test_the_game_page_honours_the_seat() -> None:
@@ -496,14 +582,17 @@ def test_a_game_a_story_started_links_back_to_the_story() -> None:
     assert ("const story = !inline && !proven && !rules.scratch && !snapshot.puzzle" in board_js)
 
 
-def test_the_opponents_name_opens_the_picker_in_the_readers_seat() -> None:
-    """LP11 (§6.2 item 3): the computer's name on a practice board links to the game page's
-    picker with the reader's seat chosen (`?seat=`, which scrolls to it); chosen over *one
-    harder* on *new game*, because the reader clicked the name first and the picker holds the
-    whole ladder with its strengths."""
+def test_change_opponent_opens_the_picker_in_the_readers_seat() -> None:
+    """LP11 (§6.2 item 3), R-W1: *change opponent*, beside *new game* under a practice board,
+    links to the game page's picker with the reader's seat chosen (`?seat=`, which scrolls to
+    it), the whole ladder with its strengths. It was the computer's name in the side panel,
+    which nobody read as a control."""
     board_js = (STATIC / "board.js").read_text(encoding="utf-8")
-    assert "const picker = pickerPath(player);" in board_js
-    assert "data-picker title=\"${esc(PICKER_TITLE)}\"" in board_js
+    assert "const picker = pickerPath(seats.findIndex(seat => seat !== 'human'));" in board_js
+    assert "<button id=\"again\">new game</button>\n          ${changeOpponentHtml()}" in board_js
+    assert "data-picker=\"${esc(picker)}\">${esc(PICKER_SAID)}</button>" in board_js
+    assert "button.addEventListener('click', () => goPath(button.dataset.picker));" in board_js
+    assert "const PICKER_SAID = 'change opponent';" in board_js
     assert "return gamePath(rules.hash) + '?seat=' + encodeURIComponent(said);" in board_js
     assert ("if (!SESSION || BOARD_INLINE || BOARD_PROVEN || SESSION.correspondence "
             "|| SESSION.puzzle) {") in board_js
@@ -524,14 +613,15 @@ def test_the_picker_link_runs_for_a_practice_board_alone() -> None:
               "BOARD_INLINE = true")
     probe = ("(() => { const base = JSON.stringify(SESSION); const out = {"
              " paths: [pickerPath(0), pickerPath(1)],"
-             " seats: [seatHtml(0).includes('data-picker'), seatHtml(1).includes('data-picker')] };"
+             " seats: [changeOpponentHtml().includes('data-picker'),"
+             " changeOpponentHtml().includes('change opponent')] };"
              " SESSION.seats = ['greedy', 'human']; out.black = pickerPath(0); out.others = [];"
              + "".join(f" SESSION = JSON.parse(base); BOARD_INLINE = false; {one};"
                        " out.others.push(pickerPath(1));" for one in others)
              + " return out; })()")
     got = _in_page(_PRACTICE, probe)
     assert got["paths"] == [None, "/game/abcdef012345?seat=white"]
-    assert got["seats"] == [False, True]
+    assert got["seats"] == [True, True]
     assert got["black"] == "/game/abcdef012345?seat=black"
     assert got["others"] == [None] * len(others)
 

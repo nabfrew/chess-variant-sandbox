@@ -20,6 +20,24 @@ async function showGame(hash) {
   // out from an absent spec, and the local application, which sends no standing at all,
   // draws every game the ordinary way.
   const retired = !!(game.standing && game.standing.retired);
+  // R-W1: `?play=` (a front-page door followed as a link) starts the game at once, so the
+  // first press lands on a board; the picker is this page, one press back from that board.
+  // A start the server refuses draws the page, with the refusal under *start a game*.
+  let refused = null;
+  const play = retired ? null : askedPlay();
+  if (play !== null) {
+    dropAskedPlay();
+    const against = defaultOpponent(game, play);
+    if (against) {
+      try {
+        notePlayed(hash);
+        await startPractice(hash, against, askedSeat(game) === 1 ? 1 : 0);
+        return;
+      } catch (error) {
+        refused = error;
+      }
+    }
+  }
 
   // The name sits above the two columns rather than at the top of the left one. Stacked
   // on a phone the play column comes first, so a name inside the left column read after
@@ -200,6 +218,7 @@ async function showGame(hash) {
       document.getElementById('swap').click();
     }
     if (asked !== null) start.scrollIntoView({ block: 'center' });
+    if (refused) fail(refused, 'start');
   }
   wireCarryOn();
   wirePlayPerson(game, hash);
@@ -243,6 +262,52 @@ function askedSeat(game) {
   const at = names.indexOf(said);
   if (at >= 0) return at;
   return said === 'first' ? 0 : said === 'second' ? 1 : null;
+}
+
+// R-W1 (`docs/roadmap-2026-11.md`): the opponent the address asks to start against at once
+// (`?play=<agent>`, `landing.play_link`), `PLAY_DEFAULT` for the game's own default, or null
+// when it asks for no start.
+const PLAY_DEFAULT = 'gentlest';
+
+function askedPlay() {
+  try {
+    const query = new URLSearchParams(location.search);
+    return query.has('play') ? (query.get('play') || PLAY_DEFAULT) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// The start is asked once: the address loses `?play=`, so a step back from the board lands
+// on this page's picker rather than on another new game.
+function dropAskedPlay() {
+  try {
+    const address = new URL(location.href);
+    address.searchParams.delete('play');
+    history.replaceState(history.state, '', address.pathname + address.search + address.hash);
+  } catch (error) { /* the address stays as it was */ }
+}
+
+// A game's page, starting at once against `agent` (or the game's default), the visitor on
+// `side` when one is named.
+function playPath(hash, side, agent) {
+  return gamePath(hash) + '?' + (side ? 'seat=' + encodeURIComponent(side) + '&' : '')
+    + 'play=' + encodeURIComponent(agent || PLAY_DEFAULT);
+}
+
+// The computer player a one-press start seats, by one rule for every game: the one asked for
+// when this game's picker offers it; else the gentlest player of its ladder above random,
+// which the server read off the game's rating table, or the ladder's order without one
+// (`firstGame`, `launch.opponents`, the front page's first step's own rule); else the first
+// ladder rung above random; else the first computer player offered. Null when none is.
+function defaultOpponent(game, wanted) {
+  const offered = ((game && game.opponents) || []).filter(one => one.agent !== 'human');
+  const has = agent => !!agent && offered.some(one => one.agent === agent);
+  if (has(wanted)) return wanted;
+  const gentle = gentlestOf(game);
+  if (has(gentle)) return gentle;
+  const one = offered.find(o => o.store === 'ladder' && o.agent !== 'random') || offered[0];
+  return one ? one.agent : null;
 }
 
 // ------------------------------------------------------------- the start position
@@ -2568,19 +2633,50 @@ function seatCardsHtml(id, options, chosen, table, game) {
   const others = options.length > cards.length;
   const carded = cards.some(o => o.agent === chosen);
   const busy = seatNotes(game);
+  const side = seatSideName(id, game);
+  const ladder = cards.filter(o => o.agent !== 'human');
   const card = o => {
     const strength = o.agent === 'human' ? 'you play this side'
       : optionStrength(o.agent, table, game).replace(/^\s*\u00b7\s*/, '').trim();
+    const said = seatCardName(o, side, ladder.indexOf(o), ladder.length,
+      o.agent === gentlestOf(game), strength, busy[o.agent]);
     return `<button type="button" class="seatCard" data-agent="${esc(o.agent)}"
+      aria-label="${esc(said)}"
       aria-pressed="${o.agent === chosen}"><b>${esc(o.name || o.label)}</b>${
       o.agent === gentlestOf(game) ? '<span class="gentlest">gentlest</span>' : ''}${
       strength ? `<span class="muted">${esc(strength)}</span>` : ''}${
       busy[o.agent] ? `<span class="muted">${esc(busy[o.agent])}</span>` : ''}</button>`;
   };
-  return `<div class="seatCards" data-seat="${id}" role="group">${cards.map(card).join('')}${
+  return `<div class="seatCards" data-seat="${id}" role="group"
+    aria-label="${esc(`who plays ${side}`)}">${cards.map(card).join('')}${
     others ? `<button type="button" class="seatCard more" data-more="1"
+      aria-label="${esc(`${side}: more opponents, each playing with a plan`)}"
       aria-pressed="${!carded}"><b>more</b><span class="muted">with a plan</span></button>` : ''}
     </div><div class="seatMenu"${carded ? ' hidden' : ''}>${menu}</div>`;
+}
+
+// R-W7: what a screen reader says for a seat card. The card's own text is a word and a
+// line under it (*hard*, or *greedy* and *gentlest*), the same on both seats, so each
+// card is named whole: whose seat, which player and its place in the row, then how strong
+// in plain words, the server's own (`about`, `web.play.strength`: *looks at 1,600
+// positions before each move*), the rating line and a note where there is one. The side
+// leads, so the sixteen names on a page are sixteen different sentences.
+function seatSideName(id, game) {
+  const names = (game && game.sides) || ['white', 'black'];
+  const player = Number(String(id).replace(/^\D+/, '')) || 0;
+  return names[player] || (player === 0 ? 'first side' : 'second side');
+}
+
+function seatCardName(o, side, at, count, gentlest, strength, note) {
+  if (o.agent === 'human') return `${side}: you, playing this side yourself`;
+  const name = o.name || o.label || o.agent;
+  const place = at < 0 ? 'a computer player' : `computer player ${at + 1} of ${count}`;
+  const parts = [`${side}: ${name}, ${place}`];
+  if (gentlest) parts.push('the gentlest on this game');
+  if (o.about) parts.push(o.about);
+  if (strength) parts.push(strength);
+  if (note) parts.push(note);
+  return parts.join('; ');
 }
 
 // A card sets its seat's menu and says so through the menu's own change, so everything
@@ -3045,7 +3141,7 @@ function repeatsPercent(share) {
 
 function repeatsHtml(score) {
   const r = score && score.repeats;
-  if (!r || r.all === null || r.all === undefined || isProvisional(score)) return '';
+  if (!r || r.all === null || r.all === undefined || isNotCurrent(score)) return '';
   const games = Number(r.games || 0).toLocaleString('en');
   const known = v => v !== null && v !== undefined;
   const bands = [];
@@ -3117,9 +3213,10 @@ function scoreHtml(score, guide, band, trust) {
     ${isNotMeasured(score) ? `<div class="small u-mt-6">${
       esc(notMeasuredSentence(runCount(score.seeds)))}</div>` : ''}
     ${provisionalMarkHtml(score)}
+    ${strengthMarkHtml(score, true)}
     ${certifiedMarkHtml(score)}
     ${runsHtml(score)}
-    ${isProvisional(score) ? '' : bandHtml(band)}
+    ${isNotCurrent(score) ? '' : bandHtml(band)}
     ${trustHtml(trust, score.status)}
 
     ${(score.violations || []).length ? `<div class="verdict out">

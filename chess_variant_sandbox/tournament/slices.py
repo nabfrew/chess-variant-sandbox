@@ -283,8 +283,12 @@ def run_unit(
     if unit.phase == ANALYSIS:
         evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
         epsilon = analysis_pass._epsilon_for(engine)
+        # `v14`'s readings, as `analyse_corpus` writes them by default (R-S6e,
+        # `docs/reference/v14-registration.md` §15): the move values and the pieces
+        # followed, so a browser's score carries the dials a library score carries.
+        movable = analysis_pass.movable_types(spec)
         return _lines(
-            analysis_pass._analyse_game(engine, evaluator, record, epsilon).as_dict()
+            analysis_pass._analyse_game(engine, evaluator, record, epsilon, movable).as_dict()
             for record in records
         )
 
@@ -431,8 +435,13 @@ def _parse(text: str) -> list[dict[str, Any]]:
 # there because the one worker that gathers writes it, under Pyodide, and that worker
 # imports this module and nothing under `site/` (B10). `legality.upload` is this function.
 
-UPLOAD_SCHEMA = 2
-"""The upload's own version. A reader that does not know it refuses the upload."""
+UPLOAD_SCHEMA = 3
+"""The upload's own version. A reader that does not know it refuses the upload.
+
+Form 3 (R-S6e) carries the probe's move values (`GameAnalysis.sample_values`) beside
+`near_best`, and each phase's text compressed (`pack`): the values alone are up to a few MB
+on a wide game, and the box admits no body over 2 MB (`docs/reference/v14-registration.md`
+§15). Form 2 carried the text plain and no values."""
 
 REBUILT_RECORD_FIELDS: tuple[str, ...] = ("branching", "material", "captures")
 """The per-ply series of a game record, which the walk rebuilds from the positions."""
@@ -447,12 +456,58 @@ REBUILT_ANALYSIS_FIELDS: tuple[str, ...] = (
     "starting_instances",
     "moved_instances",
     "position_keys",
+    "sample_movers",
+    "fielded_instances",
+    "fielded_moved",
 )
-"""Every analysis field but `near_best`, `seed` and `agents`: functions of the positions."""
+"""Every analysis field but the probe's (`near_best`, `sample_values`), `seed` and
+`agents`: functions of the positions, which the walk rebuilds."""
+
+PACKED = "zlib+base64"
+"""How form 3 carries a phase's text: zlib at level 6, then base64 (`pack`, `unpack`)."""
+
+UNPACKED_LIMIT = 64 * 1024 * 1024
+"""The most text one packed phase may open to, so a small body cannot open to a huge one.
+The widest game in the library reads to under 4 MB of analysis."""
+
+
+def pack(text: str) -> str:
+    """A phase's text as form 3 carries it: zlib-compressed, then base64."""
+    import base64
+    import zlib
+
+    return base64.b64encode(zlib.compress(text.encode("utf-8"), 6)).decode("ascii")
+
+
+def unpack(packed: str, limit: int = UNPACKED_LIMIT) -> str:
+    """`pack` undone, or a `SliceError` saying why not: not base64, not zlib, not UTF-8,
+    cut short, or opening to more than ``limit`` bytes."""
+    import base64
+    import binascii
+    import zlib
+
+    try:
+        data = base64.b64decode(packed.encode("ascii"), validate=True)
+    except (binascii.Error, UnicodeEncodeError, ValueError) as error:
+        raise SliceError("a phase is not base64") from error
+    opener = zlib.decompressobj()
+    try:
+        opened = opener.decompress(data, limit + 1)
+    except zlib.error as error:
+        raise SliceError("a phase is not zlib-compressed text") from error
+    if len(opened) > limit or opener.unconsumed_tail:
+        raise SliceError(f"a phase opens to more than {limit} bytes")
+    if not opener.eof:
+        raise SliceError("a phase's compressed text is cut short")
+    try:
+        return opened.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise SliceError("a phase is not UTF-8 text") from error
 
 
 def upload(basis: Basis | dict[str, Any], phases: dict[str, str]) -> str:
-    """The slim upload: each phase's gathered text, less what the server's walk rebuilds.
+    """The slim upload: each phase's gathered text, less what the server's walk rebuilds,
+    each packed (`pack`).
 
     `phases` maps each of `PHASES` to the text its units sent back, concatenated in part
     order -- which is what the gathering half already holds. `basis` is the stamp, a
@@ -468,7 +523,12 @@ def upload(basis: Basis | dict[str, Any], phases: dict[str, str]) -> str:
     }
     stamp = basis.as_dict() if isinstance(basis, Basis) else dict(basis)
     return json.dumps(
-        {"schema": UPLOAD_SCHEMA, "basis": stamp, "phases": slim},
+        {
+            "schema": UPLOAD_SCHEMA,
+            "basis": stamp,
+            "encoding": PACKED,
+            "phases": {phase: pack(text) for phase, text in slim.items()},
+        },
         separators=(",", ":"),
     )
 

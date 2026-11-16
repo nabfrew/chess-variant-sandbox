@@ -277,6 +277,22 @@ _MOVEMENT_INERT: dict[str, Any] = {
 }
 
 
+def _region_stand(spec: CompiledSpec) -> list[int]:
+    """R-L6c: `CompiledSpec.region_stand` flattened per player and type over every square,
+    a type without a region (an internal type past the declared ones too) standing anywhere;
+    empty unless some type has a region."""
+    if not spec.region_stand:
+        return []
+    n_types, n_squares = spec.n_types, spec.n_squares
+    return [
+        int(not row or row[square])
+        for per_player in spec.region_stand
+        for piece_type in range(n_types)
+        for row in [per_player[piece_type] if piece_type < len(per_player) else ()]
+        for square in range(n_squares)
+    ]
+
+
 def _movement_fields(spec: CompiledSpec) -> dict[str, Any]:
     """The leap, slide and hop tables, the dedup and immobility masks, the capture matrix."""
     n_types, n_squares, n_frames = spec.n_types, spec.n_squares, spec.n_frames
@@ -303,6 +319,7 @@ def _movement_fields(spec: CompiledSpec) -> dict[str, Any]:
         "hop_squares": hop_squares,
         "hop_modes": hop_modes,
         "hop_runs": _hop_runs(spec),
+        "region_stand": _region_stand(spec),
         "hop_screen_types": [
             int(piece_type in listed)
             for listed in spec.screen_types
@@ -1071,6 +1088,14 @@ _NEUTRAL_INERT: dict[str, Any] = {
     "neutral_takes_royal": [],
     # TS2 (`docs/plan-tessabi.md` §2): per type, 1 where either player moves it (shared).
     "neutral_shared": [],
+    # SR8i (`docs/plan-schema-next.md` §2.11, O9-O19): `CompiledSpec.held_frames`, the frame a
+    # held piece moves in by holder and nobody's facing, where some held type reads
+    # differently for the two players; empty elsewhere (every held piece in frame 0).
+    "neutral_held_frames": [],
+    # SR8j (`docs/plan-schema-next.md` §2.11 O15): `NeutralRule.held_promotion`, per holder and
+    # target the nobody's facing a held piece's promotion takes, plus one (0: never offered);
+    # empty unless a held type promotes.
+    "neutral_held_promotion": [],
 }
 
 
@@ -1105,6 +1130,10 @@ def _neutral_fields(spec: CompiledSpec) -> dict[str, Any]:
             [int(piece_type in neutrals.shared) for piece_type in range(spec.n_types)]
             if neutrals.shared else []
         ),
+        "neutral_held_frames": (
+            list(spec.held_frames) if neutrals.in_holders_frame and neutrals.has_majority else []
+        ),
+        "neutral_held_promotion": list(neutrals.held_promotion) if neutrals.has_majority else [],
     }
 
 
@@ -1799,7 +1828,15 @@ _INERT_DEFAULTS: dict[str, Any] = {
 #
 # R14's feature geometry (`_feature_geometry_fields`): the board's shape restated per square
 # for the `advance` and `centrality` features.
-_DERIVED = frozenset({"control_kind", "feature_rank", "feature_rank_span", "feature_centre"})
+#
+# R-L6c's `region_stand`: each type's `region` restated per square, the region that already
+# confines every landing in the movement tables (mode 0 outside it). Where it changes play
+# (a promotion, a drop, a strike, a gate or a displacement that would stand a piece outside)
+# the change is the engine obeying a rule it already crossed, not a new one, and the build
+# fingerprint says so; fingerprinting it would move every regioned game's basis for nothing.
+_DERIVED = frozenset({
+    "control_kind", "feature_rank", "feature_rank_span", "feature_centre", "region_stand",
+})
 
 # Keys that are part of what every game means, whatever rules it declares: the board's
 # shape, the movement and attack tables, the opening array, the ending clocks, the
@@ -2086,6 +2123,18 @@ def rust_supports(spec: CompiledSpec) -> str | None:
         )
     # SR6e (W8): a sweep through a fold names its ray in the tag and its step on the ray in
     # the promotion field (`moves.move_through`), in any fold game.
+    if spec.fold_sweeps and any(
+        rule.piece_type < len(spec.sweeps[0]) and any(
+            entries for frame in spec.sweeps for entries in frame[rule.piece_type]
+        )
+        for rule in spec.promotions
+    ):
+        # SR8b (W7): a promoting sweep names its type in that field, so the two never share a
+        # game (the validator refuses a promoting sweeper beside folds).
+        return (
+            "pieces[].moves[] sweep on a promoting piece beside folds: a sweep through a fold "
+            "names its step where a promotion would name its type"
+        )
     if spec.has_sweep and spec.portals is not None and spec.portals.folds is not None:
         rays = [entries for frame in spec.sweeps for type_sweeps in frame for entries in type_sweeps]
         widest = max((len(entries) for entries in rays), default=0)
@@ -2111,6 +2160,13 @@ def rust_supports(spec: CompiledSpec) -> str | None:
             return (
                 f"rules.portals beside {', '.join(beside)}: the core's transit has no "
                 "reading for the combination"
+            )
+        # SR8e (R9's narrower row): a round makes its portal moves first and never sets the
+        # straight-back bar, which names the one move after an end's.
+        if spec.simultaneous is not None and any(spec.portals.no_back):
+            return (
+                "rules.portals[] no_straight_back beside rules.simultaneous: a round sets no "
+                "straight-back bar"
             )
     if spec.npcs is not None and not _CORE_KNOWS_NPCS:
         return (

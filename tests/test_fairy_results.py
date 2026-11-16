@@ -28,7 +28,7 @@ from fairy_shogi import SHOGI_FORWARD, shogi_forward
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.state import GameState
-from chess_variant_sandbox.fairy import position
+from chess_variant_sandbox.fairy import position, variant
 from chess_variant_sandbox.fairy.results import (
     RESULT_KEYS,
     Ending,
@@ -73,11 +73,26 @@ FOOLS_MATE = ["f2f3", "e7e5", "g2g4", "d8h4"]
 # shape alone: a hand that holds a piece that is not one-way, and one-way pieces off the
 # pawn slot.
 TRANSLATES = (
-    "almost", "antichess", "atomic", "bastion", "berolina", "capablanca", "chess",
+    "almost", "antichess", "bastion", "berolina", "capablanca", "chess",
     "courier", "crazyhouse", "dobutsu", "dull", "gardner", "horde", "kingofthehill",
     "knightmate", "losalamos", "makruk", "racingkings", "sardines", "shatranj",
     "shogi", SHOGI_FORWARD, "threecheck", "xiangqi",
 )
+
+
+@pytest.fixture
+def refused_atomic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Atomic's translation as it was before Q1219 refused it, for the tests that use it.
+
+    Q1219 refuses a blast beside a royal (`variant.BLAST_BESIDE_A_ROYAL`): their blast is
+    their atomic, where a capture taking the mover's own royal is illegal, and the two
+    engines' moves part where the royals come within one blast. The result rules these tests
+    hold (a blast that takes the royal, a pseudo-royal's mate on the clock's last ply) are
+    still true of that definition, and the notes and shapes in `results.py` that describe it
+    are kept for the day a blast beside a royal crosses again, so the tests ask it with the
+    one refusal switched off.
+    """
+    monkeypatch.setattr(variant, "_check_blast_beside_a_royal", lambda *_: None)
 
 
 def _pyffish() -> Any:
@@ -273,6 +288,7 @@ class TestTheCheckCoversEachResultKey:
         both = _Both(_spec(name))
         _agree(*both.ask(both.place(pieces, side_to_move=0)), winner=1, reason=reason)
 
+    @pytest.mark.usefixtures("refused_atomic")
     def test_a_blast_that_takes_the_royal_wins_in_both_and_by_their_moves_too(self) -> None:
         """1.Nf3 a6 2.Ne5 a5 3.Nxf7, and the black king beside f7 goes with it."""
         both = _Both(_spec("atomic"))
@@ -399,6 +415,7 @@ class TestWhichMovesResetTheNoProgressClock:
         assert "checkmate" not in both.variant.approximates
         assert not [note for note in both.variant.notes if "checkmate" in note]
 
+    @pytest.mark.usefixtures("refused_atomic")
     def test_a_pseudo_royal_is_never_mated_there_so_their_clock_draws_our_mate_as_noted(
         self,
     ) -> None:
@@ -517,6 +534,7 @@ class TestAMistranslatedResultIsCaughtHereAndNotByVerify:
         assert {difference.key for difference in result.differences} == {"no_progress_draw"}
         assert check_results(spec, both.referee, games=0).ok
 
+    @pytest.mark.usefixtures("refused_atomic")
     def test_a_mate_their_clock_draws_is_admitted_only_as_the_same_mate(self) -> None:
         """Atomic admits ``checkmate``: a mate here that their clock draws, and no other.
 
@@ -590,21 +608,24 @@ class TestWhatTheTranslationAdmits:
             assert noted is (name in {"crazyhouse", "dobutsu", "shogi", SHOGI_FORWARD}), name
 
     def test_a_mate_on_the_clocks_last_ply_is_noted_only_where_the_royal_is_pseudo_royal(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Only where a mate is possible and their royal is never in check: atomic.
 
         Until Q412 it was the other way round: every translation with a mate carried the
-        note except atomic.
+        note except atomic. Since Q1219 atomic is refused, so no committed translation
+        carries it; the refused definition still does.
         """
         noted = set()
         for name in TRANSLATES:
             spec = _spec(name)
             if "checkmate" in translate(spec).approximates:
                 noted.add(name)
-                assert "checkmate" in in_play(Engine(spec).spec), name
-                assert "explode_on_capture" in spec["rules"], name
-        assert noted == {"atomic"}
+        assert noted == set()
+        monkeypatch.setattr(variant, "_check_blast_beside_a_royal", lambda *_: None)
+        spec = _spec("atomic")
+        assert "checkmate" in translate(spec).approximates
+        assert "checkmate" in in_play(Engine(spec).spec)
 
     def test_every_admitted_key_is_a_result_rule_with_a_note(self) -> None:
         for spec in (

@@ -31,6 +31,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_PUSH,
     MOVE_SWEEP,
     move_from,
+    move_promotion,
     move_ray,
     move_through,
     move_to,
@@ -60,6 +61,7 @@ from chess_variant_sandbox.spec.schema import (
     has_rests,
     has_speeds,
     has_third_owner,
+    held_promotion_targets,
     hex_distance,
     hire_ids,
     hop_displaces,
@@ -74,6 +76,7 @@ from chess_variant_sandbox.spec.schema import (
     nobodys_ids,
     npc_immune_attackers,
     npc_immunity_unbound,
+    npc_owned_wild_attackers,
     npc_pounce,
     npc_respawn,
     npc_routes,
@@ -108,6 +111,7 @@ from chess_variant_sandbox.spec.schema import (
     push_rule,
     reach_pieces,
     reach_reflection,
+    reads_for_its_holder,
     reflect_square,
     screen_names_types,
     shared_ids,
@@ -233,6 +237,23 @@ def _coat_facing(headings: tuple[tuple[int, ...], ...]) -> tuple[tuple[int, ...]
             row.append(theirs.index(heading))
         coat.append(tuple(row))
     return tuple(coat)
+
+
+def _facing_headings(n_facings: int, orientation: str) -> tuple[tuple[int, ...], ...]:
+    """`CompiledSpec.facing_headings`, from the two numbers it reads (the initial position's
+    nobody's facings read it before a `CompiledSpec` exists)."""
+    headings: list[tuple[int, ...]] = []
+    for player in (0, 1):
+        per_facing: list[int] = []
+        for facing in range(n_facings):
+            dx, dy = _rotate(0, 1, facing_quarter_turns(facing, n_facings))
+            if player == 1:
+                dx, dy = (-dx, -dy) if orientation == "rotate" else (dx, -dy)
+            # Screen y runs the other way from board rank, and the icons are drawn
+            # pointing up, so "up" is zero and the angle grows clockwise.
+            per_facing.append({(0, 1): 0, (1, 0): 90, (0, -1): 180, (-1, 0): 270}[(dx, dy)])
+        headings.append(tuple(per_facing))
+    return (headings[0], headings[1])
 
 
 def _rotate(dx: int, dy: int, quarters: int) -> tuple[int, int]:
@@ -1115,6 +1136,22 @@ class NeutralRule:
     # foreign walk for a nobody's piece a player moves) with no neighbours; the core asks this
     # list before counting. Empty in every game without the value.
     shared: tuple[int, ...] = ()
+    # SR8i (`docs/plan-schema-next.md` §2.11, O9, O13, O14, O17, O18, O19): whether some type a
+    # player moves reads differently for the two players (a facing, a region, a move that is
+    # not alike under the second player's reflection, a `from_rank` or `region` condition).
+    # Then every held piece moves in its holder's frame (`CompiledSpec.held_frames`, crossed
+    # as `neutral_held_frames`); otherwise in frame 0, as before, so no stored game's tables,
+    # move order or fingerprint moves.
+    in_holders_frame: bool = False
+    # SR8j (`docs/plan-schema-next.md` §2.11 O15, *the mover's reading*): what a held piece
+    # promotes into, ``[holder * n_types + target]``: 0 where ``target`` is never offered to a
+    # held piece (a royal, a wild type, the duck: `schema.held_promotion_targets`), else one
+    # more than the facing its nobody's byte takes, the holder's own promoted piece pointing
+    # the same way on the board (the target's initial facing in the holder's frame, read into
+    # nobody's, which is the first player's; 0 for a type that does not face). Empty unless
+    # some held type promotes, so no stored game's tables move. Crossed as
+    # `neutral_held_promotion`; the core offers the holder's own targets through it.
+    held_promotion: tuple[int, ...] = ()
 
     @property
     def has_majority(self) -> bool:
@@ -1131,10 +1168,41 @@ class NeutralRule:
         )
 
 
+def _held_promotion(
+    spec: dict[str, Any], pieces: list[dict[str, Any]], held: set[str], orientation: str,
+    n_facings: int, facing_initial: tuple[int, ...], facing_axes: tuple[int, ...],
+) -> tuple[int, ...]:
+    """SR8j (O15): `NeutralRule.held_promotion`, empty unless a held type promotes.
+
+    A held piece promotes as its holder's own piece would (the holder's targets, chosen by the
+    holder) into a piece that stays nobody's: never a royal or a wild type
+    (`schema.held_promotion_targets`). It enters play as nobody's piece of the type: at the
+    type's initial facing read in nobody's frame (the first player's forward), as a nobody's
+    placement that states no facing stands, whoever held it (`Tables::promoted_value`'s
+    `entering_value(WILD, ..)`); a type that does not face at facing 0. The table is the same
+    for both holders; it is kept per holder so a reading that differs by holder needs no new
+    key."""
+    offered: set[str] = set()
+    for pid in sorted(held):
+        offered |= held_promotion_targets(spec, pid)
+    if not offered:
+        return ()
+    table: list[int] = []
+    for _holder in (0, 1):
+        for piece_type, piece in enumerate(pieces):
+            if piece["id"] not in offered:
+                table.append(0)
+                continue
+            facing = facing_initial[piece_type] if n_facings > 1 else 0
+            table.append(facing + 1)
+    return tuple(table)
+
+
 def _compile_neutrals(
     spec: dict[str, Any], pieces: list[dict[str, Any]],
     width: int, height: int, orientation: str, wrap: WrapRule | None,
     obstacles: frozenset[int], radius: int,
+    n_facings: int = 1, facing_initial: tuple[int, ...] = (), facing_axes: tuple[int, ...] = (),
 ) -> NeutralRule | None:
     """`NeutralRule`, or ``None`` when no placement is nobody's (every game before TC3).
 
@@ -1172,6 +1240,32 @@ def _compile_neutrals(
         shared=tuple(
             piece_type for piece_type, piece in enumerate(pieces) if piece["id"] in shared
         ),
+        in_holders_frame=any(
+            reads_for_its_holder(piece, orientation)
+            for piece in pieces if piece["id"] in placed and piece["id"] in held
+        ),
+        held_promotion=_held_promotion(
+            spec, pieces, held, orientation, n_facings, facing_initial, facing_axes,
+        ),
+    )
+
+
+def _held_first_movers(
+    pieces: list[dict[str, Any]], neutrals: NeutralRule | None
+) -> frozenset[int]:
+    """SR8i (O18): the held types with a ``first_move`` move, whose nobody's pieces start
+    with their own never-moved mark. Empty in every game where no held move asks for it, so
+    no stored opening moves."""
+    if neutrals is None:
+        return frozenset()
+    return frozenset(
+        piece_type for piece_type, piece in enumerate(pieces)
+        if neutrals.kind[piece_type] == CONTROL_MAJORITY
+        and any(
+            isinstance(move, dict) and isinstance(move.get("condition"), dict)
+            and move["condition"].get("first_move") is True
+            for move in piece.get("moves") or ()
+        )
     )
 
 
@@ -1265,6 +1359,9 @@ class NpcRule:
     # an entry with ``respawn``, then its mirrored half -- in ``rules.npcs`` order, which is
     # the order the phase's step 3 returns them in. ``starts`` are the half's own, first free
     # first. ``()`` when no entry comes back, which is every game before the rule.
+    # Generation 124 (SR8g, N7): a pouncing entry is one half, its mirrored starts after its
+    # own: a pouncer leaves its route, so the core counts its pieces by type
+    # (`respawn.rs`, `RespawnHalf::pool`) and returns one on the entry's first free start.
     respawn: tuple[tuple[int, tuple[int, ...]], ...] = ()
     # Generation 38 (N5, `docs/archive/plan-npc.md` §4.7): a turning-back entry's route is a **line**,
     # walked first to last and back. ``prev[square]`` is the square a piece walking it back
@@ -2165,12 +2262,22 @@ def _compile_sights(
         piece_type for piece_type, piece in enumerate(pieces)
         if piece["id"] in wild_ids and sights.get(piece["id"])
     ]
-    if wild_seeing:
+    # SR8i (O9, O13): a nobody's piece of a type that faces sees by its arrow, in nobody's
+    # frame turned by its facing, so the third block gets a frame per facing (`frame_at` of
+    # its byte), only where such a type sees; every other game keeps the one.
+    wild_facings = (
+        n_facings
+        if n_facings > 1 and any(facing_axes[piece_type] > 1 for piece_type in wild_seeing)
+        else 1
+    )
+    for wild_facing in range(wild_facings if wild_seeing else 0):
         wild_lines: list[list[tuple[SightLine, ...]]] = [
             [() for _ in range(n_squares)] for _ in range(n_types)
         ]
         for piece_type in wild_seeing:
-            piece_value = (WILD * n_facings) * n_types + piece_type + 1
+            if wild_facing and wild_facing % (n_facings // facing_axes[piece_type]):
+                continue  # a facing this type can never be in
+            piece_value = (WILD * n_facings + wild_facing) * n_types + piece_type + 1
             written = sights[pieces[piece_type]["id"]]
             for origin in range(n_squares):
                 seen_from: list[SightLine] = []
@@ -2182,7 +2289,8 @@ def _compile_sights(
                     }
                     built = _compile_square(
                         {"moves": [slide]}, 0, origin, width, height, orientation, wrap,
-                        obstacles, blocks_leaps, 0, radius,
+                        obstacles, blocks_leaps, facing_quarter_turns(wild_facing, n_facings),
+                        radius,
                     )
                     for ray, modes, _ in built[1]:
                         seen_from.append((number, tuple(ray), tuple(mode != 0 for mode in modes)))
@@ -2660,6 +2768,13 @@ class CompiledSpec:
     feature_rank: tuple[tuple[int, ...], ...] = ()
     feature_rank_span: int = 0
     feature_centre: tuple[tuple[int, ...], ...] = ()
+    # R-L6c (F2, F3): ``region_stand[player][type]``, per square, whether a piece of that type
+    # may stand there as that player's (its ``region``, `_region_squares`, reflected for the
+    # second player); ``()`` for a type without one and ``()`` whole unless some type has a
+    # region (`_portal_stand`'s reading, which a portal exit already read). Every way a
+    # piece comes to stand that is not its own move's landing asks it in the core
+    # (`Tables::may_stand`): a promotion's target, a drop, and `Game::region_filter`'s moves.
+    region_stand: tuple[tuple[tuple[bool, ...], ...], ...] = ()
 
     @property
     def rest_max(self) -> int:
@@ -2669,9 +2784,9 @@ class CompiledSpec:
     @property
     def rest_layers(self) -> int:
         """The most turns left a resting entry can hold (`rest_layers`): the key's layers and
-        the net's rest plane width. A duck game's compiled turn is its two halves, not a long
-        turn."""
-        return rest_layers(self.rest_max, None if self.duck is not None else self.turn)
+        the net's rest plane width. A duck game's compiled turn holds its duck half, which
+        is no piece move (`piece_turn`, SR8c)."""
+        return rest_layers(self.rest_max, piece_turn(self.turn, self.duck is not None))
 
     def turns(self, piece_type: int) -> bool:
         """Whether a move may turn this type: it has more than one orientation and its
@@ -2681,7 +2796,20 @@ class CompiledSpec:
             return False
         return not self.facing_turns or self.facing_turns[piece_type]
 
-    def sweep_path(self, board: bytes, move: int) -> tuple[int, ...]:
+    def held_mover_frame(self, value: int, holder: int) -> int:
+        """SR8k (O16): the frame the nobody's byte ``value`` moves in when ``holder`` holds
+        it, as `Tables::held_mover_frame` reads it: frame 0 where no held type reads
+        differently for the two players, else a type that faces through `held_frames` (its
+        arrow) and one that does not in the holder's forward frame (SR8j)."""
+        neutrals = self.neutrals
+        if neutrals is None or not (neutrals.in_holders_frame and neutrals.has_majority):
+            return 0
+        piece_type = self.type_of(value)
+        if self.facing_axes[piece_type] > 1:
+            return self.held_frames[holder * self.n_facings + self.facing_of(value)]
+        return holder * self.n_facings
+
+    def sweep_path(self, board: bytes, move: int, side: int | None = None) -> tuple[int, ...]:
         """The squares the sweep ``move`` passes over, in ray order.
 
         Read off the fourth table for the piece standing on its origin, as
@@ -2691,13 +2819,42 @@ class CompiledSpec:
 
         SR6e (W8): a sweep through a fold (``move_through``) names its ray in any game, and
         its path is that ray's squares before the fold; its target is the far end.
+
+        SR8k (O16): a held sweeper's rays are read in its holder's frame, the frame of
+        ``side``, the player the move is played for (`held_mover_frame`). A caller without
+        it (a drawing surface) gets the first holder's frame whose rays reach the target.
         """
         origin, target = move_from(move), move_to(move)
         value = board[origin]
         if not self.has_sweep or not value:
             return ()
-        entries = self.sweeps[self.frame_at(value)][self.type_of(value)][origin]
-        through = move_through(move)
+        neutrals = self.neutrals
+        if (
+            self.owner_of(value) == 2 and neutrals is not None
+            and neutrals.kind[self.type_of(value)] == CONTROL_MAJORITY
+        ):
+            if side is None:
+                for holder in (0, 1):
+                    path = self.sweep_path(board, move, holder)
+                    if path or target in self._sweep_reach(value, origin, holder):
+                        return path
+                return ()
+            frame = self.held_mover_frame(value, side)
+        else:
+            frame = self.frame_at(value)
+        return self._sweep_path_in(self.sweeps[frame][self.type_of(value)][origin], move)
+
+    def _sweep_reach(self, value: int, origin: int, holder: int) -> set[int]:
+        """SR8k: every square a held sweeper's rays reach in ``holder``'s frame."""
+        frame = self.held_mover_frame(value, holder)
+        return {
+            square for ray, *_ in self.sweeps[frame][self.type_of(value)][origin] for square in ray
+        }
+
+    def _sweep_path_in(self, entries: Any, move: int) -> tuple[int, ...]:
+        """`sweep_path` over the sweep entries of the mover's slot."""
+        target = move_to(move)
+        through = self.sweep_through(move)
         if through:
             ray_index = move_ray(move)
             if ray_index >= len(entries):
@@ -2748,20 +2905,44 @@ class CompiledSpec:
             back = square
         return line
 
-    def sweep_victims(self, board: bytes, move: int) -> tuple[tuple[int, int], ...]:
+    @property
+    def fold_sweeps(self) -> bool:
+        """SR6e (W8): a sweep beside folds, so a sweep may go through one and its word's
+        promotion field is a fold step (``moves.move_through``); `Tables::fold_sweeps`."""
+        return self.has_sweep and self.portals is not None and self.portals.folds is not None
+
+    def sweep_through(self, move: int) -> int:
+        """SR6e (W8): a ``MOVE_SWEEP``'s fold step plus one, 0 for a direct sweep and in every
+        game without folds, where the field is the sweep's promotion (SR8b);
+        `Tables::sweep_through`."""
+        return move_through(move) if self.fold_sweeps else 0
+
+    def sweep_promotion(self, move: int) -> int | None:
+        """SR8b (W7): the type a ``MOVE_SWEEP`` promotes its sweeper to (the promotion field
+        read as the type plus one), ``None`` for one that does not promote and in a fold game,
+        where no sweeper promotes (the validator); `Tables::sweep_promotion`."""
+        if move_type(move) != MOVE_SWEEP or self.fold_sweeps:
+            return None
+        field = move_promotion(move)
+        return field - 1 if field else None
+
+    def sweep_victims(
+        self, board: bytes, move: int, side: int | None = None
+    ) -> tuple[tuple[int, int], ...]:
         """The pieces ``move`` sweeps off ``board``, as ``(square, value)`` in ray order:
         every occupied square of its path, read off the position it is played in.
 
         The one answer the Python side gives to *what does a sweep remove*, mirroring
         `Tables::sweep_victims` in the core; every reader that names or prices a sweep's
         victims (`minimax._capture_gain`, `Engine.describe_move`, `viz.wrapped.sweep_transit`)
-        asks this. Empty for a move that is not a ``MOVE_SWEEP``.
+        asks this. Empty for a move that is not a ``MOVE_SWEEP``. ``side`` is the player the
+        move is played for, whose frame a held sweeper's rays are read in (SR8k).
         """
         if move_type(move) != MOVE_SWEEP:
             return ()
         return tuple(
             (square, board[square])
-            for square in self.sweep_path(board, move)
+            for square in self.sweep_path(board, move, side)
             if board[square]
         )
 
@@ -2899,18 +3080,30 @@ class CompiledSpec:
         wrong way, which is precisely the kind of geometry-by-arithmetic this project
         keeps out of the core.
         """
-        headings: list[tuple[int, ...]] = []
-        for player in (0, 1):
-            per_facing: list[int] = []
-            for facing in range(self.n_facings):
-                dx, dy = _rotate(0, 1, facing_quarter_turns(facing, self.n_facings))
-                if player == 1:
-                    dx, dy = (-dx, -dy) if self.orientation == "rotate" else (dx, -dy)
-                # Screen y runs the other way from board rank, and the icons are drawn
-                # pointing up, so "up" is zero and the angle grows clockwise.
-                per_facing.append({(0, 1): 0, (1, 0): 90, (0, -1): 180, (-1, 0): 270}[(dx, dy)])
-            headings.append(tuple(per_facing))
-        return (headings[0], headings[1])
+        return _facing_headings(self.n_facings, self.orientation)
+
+    @property
+    def held_frames(self) -> tuple[int, ...]:
+        """SR8i (`docs/plan-schema-next.md` §2.11, *the mover's reading*): the frame a piece
+        nobody owns moves in when a player holds it, ``[holder * n_facings + facing]``, where
+        ``facing`` is the index its nobody's byte carries (relative to the first player's
+        forward, nobody's frame, as its squares are). The holder's own piece of the type
+        pointing the same way on the board: for the first player the same index, for the
+        second ``coat_facing``'s. Without a facing, the holder's frame. SR8j: only a type that
+        faces is read through it; one that does not (axes 1) has no arrow, and the core moves
+        it in its holder's forward frame, ``holder * n_facings`` (`foreign.rs::push_held`).
+
+        The core reads it only where `NeutralRule.in_holders_frame` (a held type that reads
+        differently for the two players); everywhere else a held piece moves in frame 0 as
+        it always did, which is the same moves for a type that reads alike."""
+        n = self.n_facings
+        if n == 1:
+            return (0, 1)
+        coat = self.coat_facing
+        return tuple(
+            holder * n + (facing if holder == 0 else coat[0][facing])
+            for holder in (0, 1) for facing in range(n)
+        )
 
     def facing_step(self, piece_type: int) -> int:
         """How many facing indices one turn of this piece covers.
@@ -3103,6 +3296,12 @@ def _compile_frames(
             type_dirs: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
             type_push: list[PushSteps] = []
             ambiguous: set[int] = set()
+            # R-L6e (F9): a facing frame this type never stands in (another type faces, so the
+            # tables hold every frame) is never read; its moves there push nothing, so a push
+            # along a rank or file is not turned into a step with no such component (D3), which
+            # the validator rightly reads in the pusher's own facings alone.
+            axes = int((piece.get("facing") or {}).get("axes", 1))
+            stands = not (facing and facing % (n_facings // axes))
             for square in range(n_squares):
                 push_at: list[PushSteps] | None = [] if push else None
                 built, momentum = _compile_square_full(
@@ -3113,6 +3312,7 @@ def _compile_frames(
                     momentum=has_portals,
                     push_out=push_at,
                     hex_lattice=hex_lattice and has_portals,
+                    pushes=stands,
                 )
                 type_push.append(push_at[0] if push_at else ((), (), ()))
                 type_leaps.append(built[0])
@@ -3236,7 +3436,7 @@ def _compile(
         )
 
     base_matrix = _build_capture_matrix(pieces, index_of)
-    capture_allowed = settled(_apply_npc_immunity(base_matrix, rules, piece_ids, index_of))
+    capture_allowed = settled(_apply_npc_immunity(base_matrix, rules, piece_ids, index_of, spec))
     # SR4g (N17): a wild immunity holds only while the piece is wild. Where a piece of an
     # immune type can stand on the board without being wild, the core reads the matrix
     # without the immunity for every byte that is not a wild piece; elsewhere nothing
@@ -3251,6 +3451,7 @@ def _compile(
     # TC3: and for pieces nobody owns from the setup (refused beside the other three).
     neutrals = _compile_neutrals(
         spec, pieces, width, height, orientation, wrap, obstacles, radius,
+        n_facings, facing_initial, facing_axes,
     )
     n_owners = 3 if has_third_owner(spec) else 2
     promotions = _settle_on_leaving(
@@ -3260,10 +3461,14 @@ def _compile(
     board, unmoved = _build_initial_position(
         spec, index_of, width, height, n_types, n_facings, facing_initial, npcs,
         _portal_starts(spec, declared_types, width, height),
-        duck,
+        duck, facing_axes, _held_first_movers(pieces, neutrals),
     )
     digest = spec_hash(spec)
     simultaneous = rules.get("simultaneous")
+    turn_rule = (
+        _compile_duck_turn(_turn_as_written(spec)) if duck is not None
+        else _compile_turn(_turn_as_written(spec))
+    )
     (
         zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim, zob_rest,
         zob_respawn, zob_heading, zob_purse, zob_push_bar, zob_banked, zob_parts,
@@ -3289,6 +3494,9 @@ def _compile(
                 else 0
             ),
             parts=len(read_parts[0]) if (read_parts := _live_parts(spec)) is not None else 0,
+            turn_beyond=max(
+                (turn_rule.moves, *turn_rule.lengths) if turn_rule else (1,)
+            ) - MAX_MOVES_PER_TURN,
         )
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
@@ -3430,6 +3638,7 @@ def _compile(
         attack_sources=attack_sources,
         capture_allowed=capture_allowed,
         capture_owned=capture_owned,
+        region_stand=_portal_stand(pieces, width, height, orientation),
         has_capture_matrix=any(
             not allowed for row in capture_allowed for allowed in row
         ),
@@ -3479,9 +3688,9 @@ def _compile(
         ),
         scoring=_compile_scoring(rules.get("scoring"), width, height, orientation),
         territory=_compile_territory(rules.get("territory")),
-        # Generation 42 (N4b): a duck game's turn is two moves, the piece's and the duck's
-        # (the validator refuses `rules.turn` beside it).
-        turn=TurnRule(moves=2, lengths=()) if duck is not None else _compile_turn(_turn_as_written(spec)),
+        # Generation 42 (N4b): a duck game's turn is its piece moves and then the duck's
+        # (SR8c, L7: any `rules.turn`, the duck's half at its end).
+        turn=turn_rule,
         parts=_compile_parts(spec, index_of, zob_parts),
         wrap=wrap,
         obstacles=obstacles,
@@ -4013,6 +4222,7 @@ def _compile_square_full(
     momentum: bool = False,
     push_out: list[PushSteps] | None = None,
     hex_lattice: bool = False,
+    pushes: bool = True,
 ) -> tuple[_Built, tuple[_Momentum, _Momentum, _Momentum]]:
     """Build the four entry lists for one piece type standing on one square.
 
@@ -4023,6 +4233,9 @@ def _compile_square_full(
     was reached by and the runtime uniqueness pass folds the duplicates instead: on a seam
     a leap and a slide can reach one square from opposite sides. ``hex_lattice`` (SR5g, P1)
     reads each direction as the hex king's step nearest its angle (`portal_direction`).
+
+    ``pushes`` false (R-L6e, F9) builds the moves as pushing nothing: a facing frame the type
+    never stands in, whose entries no piece reads.
 
     ``push_out`` (Q1074b1, a push game) receives the step a pushed piece takes from every
     landing (`PushSteps`, parallel to the leaps, slides and hops returned), in the board's
@@ -4133,7 +4346,7 @@ def _compile_square_full(
 
         kind = descriptor["kind"]
         mode = _MODE_BITS[descriptor.get("mode", "both")]
-        pushed = move_push(descriptor) if push_out is not None else None
+        pushed = move_push(descriptor) if push_out is not None and pushes else None
         if pushed is not None:
             mode = _push_mode(mode, pushed)
         symmetry = descriptor.get("symmetry", "none")
@@ -5140,9 +5353,35 @@ def rest_layers(rest_max: int, turn: TurnRule | None) -> int:
     hold. An entry counts its player's turns still to rest, the one in progress counted, so
     in a long turn a piece that moves before its turn's last move (it rests the rest of that
     turn, then its ``rest`` turns) enters at ``rest + 1``: one layer more than the longest
-    rest. ``turn`` is the game's own long turn (``None`` in a turn of one move and in a duck
-    game, whose two halves hold one piece move); 0 without a rest."""
+    rest. ``turn`` is the game's own long turn as its piece moves count it (`piece_turn`:
+    ``None`` in a turn of one piece move, a duck game's two halves among them); 0 without a
+    rest."""
     return rest_max + 1 if rest_max and turn is not None else rest_max
+
+
+def piece_turn(turn: TurnRule | None, duck: bool) -> TurnRule | None:
+    """SR8c (L7, `docs/plan-schema-next.md` §2.2): the turn as its piece moves count it, the
+    duck half taken off a duck game's compiled turn (`_compile_duck_turn`); ``None`` where a
+    turn holds one piece move. Every reading of *a long turn* past the compiler reads this."""
+    if not duck or turn is None:
+        return turn
+    lengths = tuple(length - 1 for length in turn.lengths)
+    if turn.moves == 2 and all(length == 1 for length in lengths):
+        return None
+    return TurnRule(moves=turn.moves - 1, lengths=lengths)
+
+
+def _compile_duck_turn(turn: Any) -> TurnRule:
+    """SR8c (L7, ruled 2026-10-27): a duck game's turn is its piece moves, then one duck move
+    at the end of the turn: every length of the declared turn (`_compile_turn`, one move where
+    there is none) plus the duck's. `remaining` 1 still owes the duck half (`Game::duck_owed`),
+    so a turn of one piece move compiles to the two halves it always did."""
+    declared = _compile_turn(turn)
+    if declared is None:
+        return TurnRule(moves=2, lengths=())
+    return TurnRule(
+        moves=declared.moves + 1, lengths=tuple(length + 1 for length in declared.lengths)
+    )
 
 
 def _compile_turn(turn: Any) -> TurnRule | None:
@@ -5248,6 +5487,7 @@ def _apply_npc_immunity(
     rules: dict[str, Any],
     piece_ids: tuple[str, ...],
     index_of: dict[str, int],
+    spec: dict[str, Any] | None = None,
 ) -> tuple[tuple[bool, ...], ...]:
     """Schema 10: take a wild type out of the capture matrix for everyone not named.
 
@@ -5274,7 +5514,12 @@ def _apply_npc_immunity(
         if not isinstance(npc, dict) or npc.get("piece") not in index_of:
             continue
         victim = index_of[npc["piece"]]
-        for pid in npc_immune_attackers(rules, piece_ids, npc):
+        # R-L6c (F4): and the wild types it does not name of which a piece that is not wild
+        # can stand (`schema.npc_owned_wild_attackers`): a player's piece of a wild type is
+        # bound like any other. Their rows are cleared in the wild piece's column only; a
+        # wild piece's own captures read the victim's column (`Tables::victim_of`).
+        bound = npc_immune_attackers(rules, piece_ids, npc) | npc_owned_wild_attackers(spec, npc)
+        for pid in bound:
             cleared.setdefault(index_of[pid], set()).add(victim)
     if not cleared:
         return matrix
@@ -5298,8 +5543,22 @@ def _build_initial_position(
     npcs: NpcRule | None = None,
     portal_starts: tuple[tuple[int, int], ...] = (),
     duck: DuckRule | None = None,
+    facing_axes: tuple[int, ...] = (),
+    first_movers: frozenset[int] = frozenset(),
 ) -> tuple[bytes, int]:
+    """The opening board and its unmoved mask.
+
+    SR8i (O9, O13, O18): a nobody's piece of a type that faces stands at its placement's
+    facing, else its type's initial one, read in nobody's frame (the first player's forward,
+    as its squares are); its mirrored image points where the setup's reflection sends that
+    arrow (`coat_facing`'s second row). A nobody's piece of a held type with a `first_move`
+    move (``first_movers``) carries its own never-moved mark, which has no side. Every other
+    nobody's piece stands at facing 0 with no mark, as before."""
     board = bytearray(width * height)
+    coat = (
+        _coat_facing(_facing_headings(n_facings, spec["setup"].get("orientation", "mirror")))
+        if n_facings > 1 else ()
+    )
     # Schema 19: the portal ends, each its own internal type in the third owner's block
     # at facing 0. Placed before the unmoved mask is taken, so an end carries its bit as
     # any piece does: a portal's move may have a `first_move` condition.
@@ -5309,19 +5568,29 @@ def _build_initial_position(
     mirror = setup.get("mirror", True)
     rotate = setup.get("orientation", "mirror") == "rotate"
 
-    nobodys: list[tuple[int, int]] = []
+    nobodys: list[tuple[int, int, int]] = []
     for placement in setup["placements"]:
         piece_type = index_of[placement["piece"]]
         if is_nobodys(placement):
             # TC3: placed after the unmoved mask, as a wild piece is (no first move, no
-            # castling right), in the third block at facing 0; mirrored, still nobody's.
+            # castling right), in the third block; mirrored, still nobody's. SR8i: at its
+            # facing where its type faces (0 otherwise), the image's reflected.
+            facing = 0
+            faces = bool(coat) and piece_type < len(facing_axes) and facing_axes[piece_type] > 1
+            if faces:
+                facing = facing_initial[piece_type] if facing_initial else 0
+                if "facing" in placement:
+                    facing = FACING_NAMES.index(placement["facing"]) // (4 // n_facings)
             for square_name in placement["squares"]:
                 coords = parse_square(square_name, width, height)
                 assert coords is not None  # guaranteed by validation
-                images = {coords}
+                file, rank = coords
+                nobodys.append((rank * width + file, piece_type, facing))
                 if mirror:
-                    images.add(reflect_square(*coords, width, height, "rotate" if rotate else "mirror"))
-                nobodys.extend((rank * width + file, piece_type) for file, rank in images)
+                    image = reflect_square(file, rank, width, height, "rotate" if rotate else "mirror")
+                    if image != coords:
+                        image_facing = coat[1][facing] if faces else 0
+                        nobodys.append((image[1] * width + image[0], piece_type, image_facing))
             continue
         player = placement.get("player", 0)
         # Which way these pieces start pointing: the placement's answer where it gives
@@ -5353,8 +5622,10 @@ def _build_initial_position(
     # because the bit is a castling right and a first-move permission and a wild piece
     # has neither. Placing them earlier would set a bit that the phase then clears on
     # its first step, and `rights_changed` would call every opening ply irreversible.
-    for square, piece_type in nobodys:
-        board[square] = (WILD * n_facings) * n_types + piece_type + 1
+    for square, piece_type, facing in nobodys:
+        board[square] = (WILD * n_facings + facing) * n_types + piece_type + 1
+        if piece_type in first_movers:
+            unmoved |= 1 << square
     if npcs is not None:
         for square, piece_type in npcs.starts:
             board[square] = (WILD * n_facings) * n_types + piece_type + 1
@@ -7001,13 +7272,15 @@ def _respawn_halves(
 
     Read off ``schema.npc_starts``, the one reading of where a route's pieces start, split
     by the mirror label it gives: an entry's own starts, then its mirrored half's, each a
-    clock of its own (§4.1).
+    clock of its own (§4.1). A pouncing entry (generation 124, SR8g, N7) is one half, both
+    sets of starts on one clock: a pouncer leaves its route, so no route is its own.
     """
     npcs = rules["npcs"]
     halves: dict[tuple[int, bool], list[int]] = {}
     for index, label, square in npc_starts(rules, width, height, orientation):
         if npc_respawn(npcs[index]):
-            halves.setdefault((index, label.endswith("(mirrored)")), []).append(square)
+            mirrored = label.endswith("(mirrored)") and npc_pounce(npcs[index]) is None
+            halves.setdefault((index, mirrored), []).append(square)
     return tuple(
         (npc_respawn(npcs[index]), tuple(squares))
         for (index, _), squares in sorted(halves.items())
@@ -7050,6 +7323,16 @@ def _compile_drops(
             row[index_of[piece]] = _region_squares(
                 squares, player, width, height, orientation
             )
+        # R-L6c (F3): a piece is dropped only where it may stand, so a type's own `region`
+        # narrows its drop squares, as it narrows its landings (`_compile_square`) and a
+        # bought piece's squares (`schema.purse_squares`). What it enters as on a square (a
+        # paired face, a `promote_on_entry` target) is the core's (`Game::drop_stands`).
+        for piece in pieces:
+            own = _region_squares(piece.get("region"), player, width, height, orientation)
+            if own is not None and piece.get("id") in index_of:
+                slot = index_of[piece["id"]]
+                allowed = row[slot]
+                row[slot] = own if allowed is None else allowed & own
         if obstacles:
             for piece_type in range(n_types):
                 allowed = row[piece_type]
@@ -7229,6 +7512,7 @@ def _build_zobrist(
     push_bar: bool = False,
     bank_rows: int = 0,
     parts: int = 0,
+    turn_beyond: int = 0,
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
@@ -7335,6 +7619,12 @@ def _build_zobrist(
     # TS3 (`docs/plan-tessabi.md` §3, ``rules.turn.parts``): the mask of filled parts, one key
     # per mask, drawn last of all and only under the rule, so no other game's key moves.
     filled = tuple(rng.getrandbits(64) for _ in range(1 << parts)) if parts else ()
+    # SR8c (L7): a duck game whose piece turn is ``MAX_MOVES_PER_TURN`` long compiles to one
+    # move more (the duck's half), so ``remaining`` reaches one past the drawn counts: its keys
+    # are drawn last of all and only there, appended to the counts', so no other game's key
+    # moves.
+    if turn_beyond > 0:
+        turns += tuple(rng.getrandbits(64) for _ in range(turn_beyond))
     return (
         pieces, side, ep, colours, turns, bar, fold, sim, resting, respawn, heading, coins,
         push_bar_keys, banked, filled,

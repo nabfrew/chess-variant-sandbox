@@ -172,12 +172,12 @@ impl<'t> Game<'t> {
     }
 
     /// SR7d (L2): whether the move about to be made is the last of its player's turn, read
-    /// before `end_ply` spends it: always in a turn of one move, and in a duck game, whose
-    /// piece half is its turn's one piece move (the duck half writes no rest); otherwise on
-    /// the turn's last move.
+    /// before `end_ply` spends it: always in a turn of one move, otherwise on the turn's last
+    /// piece move. SR8c (L7): in a duck game that is the move before the duck's half, which
+    /// writes no rest (`duck_half`), so a turn of one piece move ends on its piece half.
     #[inline(always)]
     pub(super) fn rest_turn_ends(&self) -> bool {
-        self.t.turn.is_none() || self.t.duck.is_some() || self.remaining <= 1
+        self.t.turn.is_none() || self.remaining <= 1 + self.t.duck_half()
     }
 
     /// Q1074b8 (N5, `docs/plan-push.md` §3.9): a push moves every piece of its line, and a

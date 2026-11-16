@@ -54,7 +54,11 @@ impl<'t> Game<'t> {
             // H3 (D4): a pass places nothing, so it pays nothing.
             MOVE_HIRE | MOVE_KEEP | MOVE_DUCK | MOVE_FOLD | MOVE_PASS => 0,
             MOVE_BUY | MOVE_DROP => {
-                let arrives = t.arriving_value(player, move_promotion(m) as usize, target);
+                // SR8a (R-N5): the type it arrives as, `promote_on_entry` beside `only_lost`
+                // included, counted on the board before the move as `make` counts it. Asked
+                // outside `make`, so it counts the board itself rather than trust the scratch.
+                let tally = if t.entry_only_lost { self.entry_counts() } else { [[0; MAX_PIECE_TYPES]; 2] };
+                let arrives = self.arriving_in(&tally, player, move_promotion(m) as usize, target);
                 at(t.type_of(arrives), target)
             }
             MOVE_ROTATE => at(t.type_of(self.board[origin]), origin),

@@ -180,6 +180,9 @@ def _try_piece(
             procedure.pairs,
             procedure.seed,
             workers,
+            # Unopened by name (R-P1): `SEARCH`'s stored tables were searched from the start
+            # position, and their pinned digest names that search.
+            unopened=True,
         )
         spent += 1
         taken = _improved(result, procedure)
@@ -253,6 +256,7 @@ def _verdict(
         procedure.accept_pairs,
         procedure.accept_seed,
         workers,
+        unopened=True,
     )
     ladder = duel(
         spec,
@@ -263,6 +267,7 @@ def _verdict(
         # sample dressed as two measurements.
         procedure.accept_seed + 1,
         workers,
+        unopened=True,
     )
 
     final = _entry(

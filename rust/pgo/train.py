@@ -7,6 +7,15 @@ hill, a torus) and its three agent kinds at small budgets, plus perft. It delibe
 out chess, crazyhouse and torus chess at `minimax:nodes=25600`, seed 0: those are the timed
 tournaments that judged the profile (docs/reference/perf-c8-pgo-and-lto.md), and a profile
 trained on its own exam would grade itself.
+
+Everything runs on one thread (`--workers 1`, perft `--threads 1`), so a training is a pure
+function of the source (R-L5e, `docs/reference/speed-history.md` §4d). The instrumented core's
+counters are plain increments: on four threads lost updates moved the counts in 93 of 2,016
+functions, every training built different code, and chess perft spread by sigma 2.4% across
+five trainings of one source. Serially, two trainings give identical counts and the same code.
+`RECIPE` names this workload; `regenerate.py` stamps it, and the speed bar trains both its arms
+by the recipe of the tree it runs from (`.claude/scripts/speed_history.py`). Change the workload
+and you change `RECIPE`.
 """
 import subprocess
 import sys
@@ -26,6 +35,7 @@ GAMES = [
     "rulesets/duck-chess.json",
 ]
 AGENTS = ["random", "greedy", "minimax:nodes=1600"]
+RECIPE = "serial-1"  # R-L5e: one thread throughout; a new workload is a new name
 
 
 def cli(*args: str) -> None:
@@ -39,7 +49,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         for i, path in enumerate(GAMES):
             cli("tournament", path, "--agents", *AGENTS, "--games", "2", "--seed", "1000",
-                "--workers", "4", "--out", str(Path(tmp) / str(i)))
+                "--workers", "1", "--out", str(Path(tmp) / str(i)))
     return 0
 
 

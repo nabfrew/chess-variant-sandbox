@@ -1546,6 +1546,10 @@ of the mechanics moved (`rules.promotion`), so it is a new game, `0df9ea99bd82`;
 Measured 0.918 [0.892, 0.938] under `v12`, the mean of four runs, viable 4-0, against the parent's 0.954
 [0.933, 0.968]. Games ran longer (97 plies against 65), fewer were decided (83% against 92%), and the second
 player scored better (the first scored 0.43 against 0.52).
+The file itself sat untracked in the main checkout until R-N6b (2026-11-13) committed it, re-spelt, with its rows;
+that measurement is `v12`'s, so it owes `measure` on the current core. Its two sibling experiments of the same day
+(*chess with third step promotion* and *rear guard torus chess with swapped promotion*) are not in `archive/`
+(`docs/reference/rulesets-corpus-record.md`, *Three untracked `archive/` files*).
 
 ## `no-zugzwang.json`: chess where you may pass (Q1129, 2026-11-08)
 

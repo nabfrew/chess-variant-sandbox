@@ -33,6 +33,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_SWEEP,
     decode_move,
     move_from,
+    move_gate,
     move_ray,
     move_to,
     move_type,
@@ -227,7 +228,8 @@ class TestTheWord:
         spec["setup"]["placements"] = [
             {"piece": "X", "squares": ["a1"]}, {"piece": "K", "squares": ["f1"]},
         ]
-        assert validate_spec(spec) == []
+        # U1: the validator names it (hold.C2); the boundary stays the second line.
+        assert refused_ids(validate_spec(spec)) == {"hold.C2"}
         why = rust_supports(compile_spec(spec))
         assert why is not None and str(MAX_SWEEP_RAYS) in why
 
@@ -285,7 +287,14 @@ class TestAgainstTheOracle:
         assert engine.perft(state, 3) == _count(engine, state, 3)
 
     def test_walks_keep_the_key(self) -> None:
-        engine = _engine(_spec())
+        self._walk(_spec())
+
+    def test_walks_beside_gating_keep_the_key(self) -> None:
+        self._walk(_gating_spec())
+
+    @staticmethod
+    def _walk(spec: dict[str, Any]) -> None:
+        engine = _engine(spec)
         for seed in range(3):
             rng = random.Random(seed)
             state = engine.initial_state()
@@ -300,3 +309,78 @@ class TestAgainstTheOracle:
                 assert bytes(state.board) == board
                 assert after.key == engine._compute_hash(after)
                 state = after
+
+
+def _gating_spec() -> dict[str, Any]:
+    """R-L6e (F7's shape): the cylinder beside gating on each side's first rank, a sweeper and
+    a pawn in each stock. The sweepers start on a1 and f1, a rank the cylinder joins, so every
+    sweep word names its ray (`sweep_rays`) and a sweeper's first move off its gate square may
+    be a sweep of its own partner."""
+    spec = _spec(drops={"from_captures": False, "stock": {"X": 1, "P": 1},
+                        "gating": {"ranks": [0]}})
+    spec["pieces"][0].pop("captures")
+    spec["pieces"].pop()
+    spec["setup"]["placements"].pop()
+    return spec
+
+
+class TestBesideGating:
+    """F7 (R-L6b's soak, seeds 3169272, 2100807, 2111219, 2138576): a `MOVE_SWEEP`'s ray in bits
+    25-29 was read as a gate in a game with `drops.gating`, so a sweep put a stock piece on the
+    sweeper's origin. The gate is now the tag of a gating kind only (`tables.rs::move_gate`, and
+    `moves.move_gate` alike); a sweep over pieces never gates, a sweep over an empty line is the
+    slide's move and gates as one (R-L6e's reading, `sweep_oracle`'s)."""
+
+    def test_the_flag_holds_beside_gating(self) -> None:
+        assert compile_spec(_gating_spec()).sweep_rays
+
+    def test_a_sweep_leaves_its_origin_empty(self) -> None:
+        engine = _engine(_gating_spec())
+        state = engine.initial_state()
+        sweeps = [m for m in engine.legal_moves(state) if move_type(m) == MOVE_SWEEP]
+        assert sweeps and any(move_ray(m) for m in sweeps)
+        for move in sweeps:
+            after = engine.apply(state, move)
+            assert after.board[move_from(move)] == 0, engine.describe_move(state, move)
+            assert after.hands == state.hands
+            assert "/" not in engine.describe_move(state, move)
+
+    def test_a_slide_off_the_gate_rank_gates(self) -> None:
+        """The plain moves off a1 still gate: one more move per type held."""
+        engine = _engine(_gating_spec())
+        state = engine.initial_state()
+        gated = [m for m in engine.legal_moves(state) if move_gate(m)]
+        assert gated and all(move_type(m) != MOVE_SWEEP for m in gated)
+
+    @pytest.mark.parametrize("depth", [2, pytest.param(3, marks=pytest.mark.slow)])
+    def test_perft_against_the_oracle_and_apply(self, depth: int) -> None:
+        spec = _gating_spec()
+        engine = _engine(spec)
+        state = engine.initial_state()
+        pos = sweep_oracle.position_of(state.board, 0, state.unmoved, len(spec["pieces"]),
+                                       hands=state.hands)
+        oracle = sweep_oracle.Oracle(spec)
+        assert engine.perft(state, depth) == oracle.perft(pos, depth) == _count(engine, state, depth)
+
+    @pytest.mark.parametrize("seed", range(3))
+    def test_the_core_agrees_with_the_oracle_over_random_games(self, seed: int) -> None:
+        spec = _gating_spec()
+        engine = _engine(spec)
+        oracle = sweep_oracle.Oracle(spec)
+        n_types = len(spec["pieces"])
+        rng = random.Random(seed)
+        state = engine.initial_state()
+        for _ in range(40):
+            moves = engine.legal_moves(state)
+            pos = sweep_oracle.position_of(state.board, state.side_to_move, state.unmoved, n_types,
+                                           hands=state.hands)
+            mine = Counter((*decode_move(m)[:2], _taken(engine, state, m), move_gate(m)) for m in moves)
+            theirs = Counter(
+                (o, t, taken, int(kind.split("+")[1]) + 1 if "+" in kind else 0)
+                for (o, t, _, kind), taken in oracle.legal_taken(pos)
+            )
+            assert mine == theirs, (seed, state.ply)
+            if not moves or engine.terminal(state, moves) is not None:
+                break
+            sweeps = [m for m in moves if move_type(m) == MOVE_SWEEP]
+            state = engine.apply(state, rng.choice(sweeps if sweeps and rng.random() < 0.6 else moves))

@@ -107,9 +107,9 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     piece_speeds,
     placed_ids,
-    player_moved_nobodys_ids,
     player_stocks,
     portal_groups,
+    portal_has_folds,
     portal_open_ends,
     promoting_piece_ids,
     purse_bribes,
@@ -159,6 +159,7 @@ from chess_variant_sandbox.spec.transform import (
     set_territory,
     set_turn,
     set_wrap,
+    settle_duck_clock,
     settle_en_passant,
     settle_inert_rules,
     settle_push,
@@ -712,6 +713,13 @@ def _add_a_direction(spec: dict[str, Any], rng: random.Random) -> str | None:
     if vector in move.get("vectors", []) or _no_leg_for(move, vector) or "legs" in move:
         return None  # SR1a: a move with stated legs lists one per vector; `state-the-legs`
     move.setdefault("vectors", []).append(vector)
+    # U1: a direction can carry a game past what the move word names (more than 32 push
+    # directions or sweep rays, `refusals.HOLD_REFUSALS`); the validator's own check says so.
+    from chess_variant_sandbox.spec.engine_holds import engine_hold_refusals
+
+    if engine_hold_refusals(spec):
+        move["vectors"].pop()
+        return None
     return f"gave the {piece.get('name', piece['id'])} a {vector[0]},{vector[1]} step"
 
 
@@ -769,11 +777,11 @@ def _change_symmetry(spec: dict[str, Any], rng: random.Random) -> str | None:
     if _lattice_symmetries(spec) is HEX_SYMMETRIES:
         return _turn_a_hex_move(spec, movers, rng)
     piece, move = rng.choice(movers)
-    if str(piece.get("id")) in _pouncing_types(spec) | player_moved_nobodys_ids(spec):
+    if str(piece.get("id")) in _pouncing_types(spec):
         # Generation 39 (N3b): a pouncer's moves must read the same for both players (a wild
         # piece has no forward), so it draws only among the symmetries that keep them so
         # (N7's hydra was the first library game with a pouncer to meet this). A majority
-        # type's too (TC3: a held piece moves in nobody's frame), which SR7n's sweep met.
+        # type's no longer need to (SR8i, O17: a held piece moves in its holder's frame).
         orientation = (spec.get("setup") or {}).get("orientation", "mirror")
         current = move.get("symmetry", "none")
         alike = [
@@ -1125,16 +1133,9 @@ def _drop_royalty(spec: dict[str, Any], rng: random.Random) -> str | None:
     if is_simultaneous(rules):
         return None  # schema 26: there is no checkmate when both players move at once
     rules["win"] = "royal_capture" if current == "checkmate" else "checkmate"
-    said = f"the game is now won by {rules['win'].replace('_', ' ')}"
-    # N5: a wild piece that turns back is refused beside checkmate, so under it the walks go
-    # round again (the guard both ways: `pace-a-line` moves the other way).
-    npcs = rules.get("npcs")
-    if rules["win"] == "checkmate" and isinstance(npcs, list) and any(map(npc_turns_back, npcs)):
-        for npc in npcs:
-            if isinstance(npc, dict):
-                npc.pop("turns_back", None)
-        said += ", and the wild pieces walk their routes round again"
-    return said
+    # (N5's turning-back wild piece is allowed beside checkmate since generation 125, SR8h: its
+    # threat is the square it steps to after its turn, so the walks keep their lines.)
+    return f"the game is now won by {rules['win'].replace('_', ' ')}"
 
 
 def _a_hand_is_refused_beside_the_capture(spec: dict[str, Any]) -> bool:
@@ -1353,20 +1354,14 @@ def _add_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
         move, "move", hex_lattice=(spec.get("board") or {}).get("lattice") == "hex"
     ):
         move.pop("path", None)
-    if new_id in player_moved_nobodys_ids(spec):
-        # TC3 (`docs/plan-turncoat.md` §4.4): a majority type's moves read the same for both
-        # players, so the new piece, a majority type too, takes a symmetry that keeps them so
-        # (SR7n's sweep met a split condottiere refused).
-        orientation = (spec.get("setup") or {}).get("orientation", "mirror")
-        if not reads_alike_for_both(move.get("vectors"), move.get("symmetry", "none"), orientation):
-            alike = [
-                s for s in _lattice_symmetries(spec)
-                if reads_alike_for_both(move.get("vectors"), s, orientation)
-            ]
-            if not alike or "legs" in move:
-                return None
-            move["symmetry"] = rng.choice(alike)
-            change += f" under {move['symmetry']}"
+    # SR8i (O17) lifted what kept a majority type's new moves alike for both players: a held
+    # piece moves in its holder's frame.
+    # U1: the new step can carry a game past what the move word names (a pusher's copy past
+    # 32 push directions); the validator's own check says so (`refusals.HOLD_REFUSALS`).
+    from chess_variant_sandbox.spec.engine_holds import engine_hold_refusals
+
+    if engine_hold_refusals(spec):
+        return None
     return (
         f"some of the {source.get('name', source['id'])}s are now a new piece "
         f"{new_id} with {change}"
@@ -1461,12 +1456,12 @@ def _lengthen_the_turn(spec: dict[str, Any], rng: random.Random) -> str | None:
     exists because of it.
     """
     # Majority control and a purse sit beside a long turn since SR2 (`docs/plan-schema-next.md`
-    # §2.2 L5, L6), so neither guards this any more.
-    if duck_piece(spec.get("rules")) is not None:
-        return None  # generation 42 (N4b): refused beside the duck (a turn already has its two halves)
+    # §2.2 L5, L6), so neither guards this any more. The duck sits beside one since SR8c (L7):
+    # the turn's piece moves, then one duck move at its end (`set_turn` settles the clock).
     rules = spec.setdefault("rules", {})
     if rules.get("turn"):
         strip_rule(spec, "turn")
+        settle_duck_clock(spec)
         return "a turn is one move again"
     # Wild pieces stay beside the longer turn since SR7b (L3, generation 98): a phase follows
     # every move, the turn's first as its last.
@@ -1756,8 +1751,9 @@ def _upkeep_guarded(
     edit: Callable[[dict[str, Any], random.Random], str | None],
 ) -> Callable[[dict[str, Any], random.Random], str | None]:
     """H1 (`docs/plan-hunger.md` §2.4): a move's cost is refused beside rounds, a long turn,
-    portals, wild pieces, a command, a held or shared type, drops, a hex board, contacts and a
-    side switch, which many operators add. Every operator runs through this (`Operator.apply`):
+    the duck (U1b's `hold.H7`, whose message starts the same way), portals, wild pieces, a
+    command, a held or shared type, drops, a hex board, contacts and a side switch, which many
+    operators add. Every operator runs through this (`Operator.apply`):
     in a game with upkeep ``edit`` runs on a copy, and the child is kept only where the
     validator has no refusal of upkeep beside it; the random draws are the same either way, and
     every other game runs ``edit`` as it is."""
@@ -1806,7 +1802,8 @@ def _pass_guarded(
 def _income_guarded(
     edit: Callable[[dict[str, Any], random.Random], str | None],
 ) -> Callable[[dict[str, Any], random.Random], str | None]:
-    """H2 (`docs/plan-hunger.md` §3): income is refused beside a points count and rounds, which
+    """H2 (`docs/plan-hunger.md` §3): income is refused beside rounds (a points count lifted by
+    U2), which
     some operators add. Every operator runs through this (`Operator.apply`): in a game with
     income ``edit`` runs on a copy, and the child is kept only where the validator has no
     refusal of income beside it; the random draws are the same either way, and every other game
@@ -1860,7 +1857,8 @@ def _runs_guarded(
     edit: Callable[[dict[str, Any], random.Random], str | None],
 ) -> Callable[[dict[str, Any], random.Random], str | None]:
     """TS4 (`docs/plan-tessabi.md` §4): a hop over a run or one that displaces is refused beside
-    a wrapped board, rounds, wild pieces and (displacing) territory, first build. In a game with
+    a wrapped board, rounds and wild pieces, first build (territory beside a displacement lifted
+    by U2: the hopper alone claims). In a game with
     such a hop ``edit`` runs on a copy, and the child is kept only where the validator has no
     refusal of the hop beside it; the random draws are the same either way."""
 
@@ -2508,9 +2506,12 @@ def _fix_a_facing(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 # Schema 26 (Q918a): what a simultaneous game cannot be played beside and an operator may
 # simply drop on the way in -- each is one rule a round has no use for. Anything else §4 of
-# `docs/reference/rounds.md` refuses (a sweep, a moved portal, a strike that stays or
-# chooses, a long turn) is a design of its own, so the operator does not apply there.
-_DROPPED_FOR_ROUNDS = ("castling", "en_passant", "checkmate", "forbid_check", "check_limit")
+# `docs/reference/rounds.md` refuses (a sweep, a portal's straight-back bar, a strike that
+# chooses, a long turn) is a design of its own, so the operator does not apply there. (A
+# portal a player moves and a strike that stays are played in rounds: SR8e, SR7e.)
+# Castling stays since SR8d (R6, generation 121): a castling is the king's move for the
+# round's meetings, and the partner moves after them onto its castled square if empty.
+_DROPPED_FOR_ROUNDS = ("en_passant", "checkmate", "forbid_check", "check_limit")
 
 
 def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -2574,8 +2575,8 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
             for move in piece.get("moves", []):
                 move.pop("path", None)
     trial_rules["simultaneous"] = {}
-    # The rest of §4's refusals (a sweep, a moved portal, a strike that stays or chooses,
-    # a long turn, a royal in a placement stock) are designs of their own: not applied.
+    # The rest of §4's refusals (a sweep, a portal's straight-back bar, a strike that
+    # chooses, a long turn, a royal in a placement stock) are designs of their own: not applied.
     if any(error.startswith("rules.simultaneous beside") for error in validate_spec(trial)):
         return None
     spec.clear()
@@ -3410,8 +3411,8 @@ def _promote_only_lost(spec: dict[str, Any], rng: random.Random) -> str | None:
 
     Schema 18c's ``promotion.only_lost`` (Q783, Grand chess), both halves, one entry at a
     time. Offered only where the validator accepts it -- every target in both armies'
-    setup, and no hand, circe strike or entry promotion beside it -- which is a question
-    the validator answers rather than a second reading here.
+    setup (a hand and circe were lifted by SR2, entry promotion by SR8a, generation 118) --
+    which is a question the validator answers rather than a second reading here.
     """
     promotion = (spec.get("rules") or {}).get("promotion")
     listed = promotion if isinstance(promotion, list) else [promotion]
@@ -4310,9 +4311,10 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
 
     Schema 13's move kind (Q21), which no other operator writes. The descriptor keeps its
     vectors, symmetry, range and condition, so the piece reaches the same squares and only
-    what stands between stops mattering. A promoting piece is never offered, and neither
-    is a spec holding a rule the validator refuses beside a sweep: both would make every
-    draw a rejection.
+    what stands between stops mattering. A spec holding a rule the validator refuses beside
+    a sweep is never offered, and beside a fold portal neither is a promoting piece: both
+    would make every draw a rejection. SR8b (W7, generation 119): elsewhere a promoting
+    piece may sweep, promoting by its landing square.
     """
     # A player's sweep sits beside the duck since SR2 (W9: the duck blocks it); the duck's
     # own type never sweeps, and is never offered below.
@@ -4337,7 +4339,7 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules = spec.get("rules", {})
     if sweep_conflicts(rules):
         return None
-    promoting = promoting_piece_ids(rules)
+    promoting = promoting_piece_ids(rules) if portal_has_folds(rules) else set()
     movers = [
         (p, m) for p, m in _movers(spec, "slide")
         if p.get("id") not in promoting and p.get("id") != duck
@@ -4575,10 +4577,9 @@ def _pace_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
 
     In a game where some wild piece turns back, none does any more: the edit is "the walks
     go round again", not one route of several. Otherwise one entry with a route of two or
-    more squares and no ``also_at``, chosen at random, paces its route as a line. The
-    rule is refused where check is asked, so in a checkmate game (with no ``forbid_check``
-    and no safe goal) the game becomes one won by taking the king, which is the one edit that
-    lets the line in; the validator decides the rest.
+    more squares and no ``also_at``, chosen at random, paces its route as a line. Beside check
+    since generation 125 (SR8h, N5: its threat is the square it steps to after its turn), so
+    the game keeps its ending; the validator decides the rest.
     """
     rules = spec.get("rules") or {}
     npcs = rules.get("npcs")
@@ -4604,9 +4605,6 @@ def _pace_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
             f"the wild {npc.get('piece')} paces its route as a line, turning back at its ends "
             "and wherever it is blocked"
         )
-        if trial["rules"].get("win", "checkmate") == "checkmate" and royal_id(trial) is not None:
-            trial["rules"]["win"] = "royal_capture"
-            said += ", and the game is now won by taking the royal piece rather than mating it"
     if validate_spec(trial):
         return None
     spec.clear()
@@ -4623,9 +4621,11 @@ def _set_the_hounds(spec: dict[str, Any], rng: random.Random) -> str | None:
     chosen at random, pounces on every entry that walks it (entries of one type must agree),
     on its prey or on its attackers, chosen at random too (on its attackers, half the time it
     splits too, up to a cap drawn from its starts to ``SPLIT_MAX``),
-    and the returns and lines refused beside a pounce are dropped from every entry, so the
-    walks go round and a taken wild piece is gone; the validator decides the rest (a type whose
-    moves read differently for the two players, rounds, ``forbid_check``).
+    and the lines refused beside a pounce are dropped from every entry, so the walks go round.
+    A wild piece that comes back keeps its clock (generation 124, SR8g, N7: a pouncing entry
+    counts its type and returns one on its first free start), except on a type that splits,
+    where respawn stays refused; the validator decides the rest (a type whose moves read
+    differently for the two players, rounds, ``forbid_check``).
     """
     rules = spec.get("rules") or {}
     npcs = rules.get("npcs")
@@ -4663,12 +4663,12 @@ def _set_the_hounds(spec: dict[str, Any], rng: random.Random) -> str | None:
         for npc in trial["rules"]["npcs"]:
             if not isinstance(npc, dict):
                 continue
-            npc.pop("respawn", None)
             npc.pop("turns_back", None)
             if npc.get("piece") == kind:
                 npc["pounce"] = style
                 if cap:
                     npc["split"] = cap
+                    npc.pop("respawn", None)
         said = (
             f"after each move a wild {kind} pounces on a piece of the mover's "
             f"{'it attacks' if style == 'prey' else 'that attacks it'}, before the wild pieces step"
@@ -4695,9 +4695,10 @@ def _loose_a_duck(spec: dict[str, Any], rng: random.Random) -> str | None:
     In a game without a duck: a new moveless type (a spare id) becomes the classic duck, which
     the mover puts on any empty square after every move. The duck is refused beside check, so a
     checkmate game becomes one won by taking the royal piece (``forbid_check`` and
-    ``check_limit`` dropped), and an odd ply limit is made even; the validator decides the rest
-    (rounds, a turn; portals are allowed since SR3d, and a blast, a strike and contacts since
-    SR3e). In a game with one, one of four, at
+    ``check_limit`` dropped), and a ply limit that would stop a game on a duck half takes a ply
+    more (`settle_duck_clock`); the validator decides the rest (rounds; portals are allowed
+    since SR3d, a blast, a strike and contacts since SR3e, and a long turn since SR8c, the duck
+    moving once at its end). In a game with one, one of four, at
     random: the duck goes (its type with it, since nothing else may name it); it walks by a
     king's step instead of going anywhere, or anywhere again; it starts on an empty square, or
     off the board again; its type shields the eight squares round it, or no longer does. A new
@@ -4723,9 +4724,10 @@ def _loose_a_duck(spec: dict[str, Any], rng: random.Random) -> str | None:
             said += ", and the game is now won by taking the royal piece rather than mating it"
         trial_rules.pop("forbid_check", None)
         trial_rules.pop("check_limit", None)
-        plies = trial_rules.get("max_plies", 400)
-        if isinstance(plies, int) and plies % 2:
-            trial_rules["max_plies"] = plies + 1
+        # SR8c (L7): a clock that would stop a game on a duck half takes a ply more (an odd
+        # one made even in a turn of one piece move; beside `rules.turn`, one short of a turn's
+        # end made whole).
+        settle_duck_clock(trial)
         # A quarter of the time each, the new duck walks, starts on a square, or shields.
         added = trial["pieces"][-1]
         if rng.random() < 0.25:
@@ -4754,7 +4756,10 @@ def _loose_a_duck(spec: dict[str, Any], rng: random.Random) -> str | None:
         if choice == 0:
             del trial_rules["duck"]
             trial["pieces"] = [p for p in trial["pieces"] if p.get("id") != pid]
-            said = "the duck is gone: a turn is one move again"
+            said = (
+                "the duck is gone: a turn is its piece moves alone" if trial_rules.get("turn")
+                else "the duck is gone: a turn is one move again"
+            )
         elif choice == 1:
             if duck.get("goes") == "by_moves":
                 duck.pop("goes")

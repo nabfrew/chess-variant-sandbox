@@ -428,14 +428,18 @@ class TestRefusals:
         `tests/test_long_turn_turncoat.py` holds the core to it."""
         assert validate_spec(_spec(turn={"moves": 2})) == []
 
-    def test_a_majority_type_that_reads_unalike(self):
+    def test_a_majority_type_that_reads_unalike_is_lifted(self):
+        """SR8i (`docs/plan-schema-next.md` O17): a held piece moves by its holder's own
+        piece's moves; `tests/test_held_in_holders_frame.py` holds the core to it."""
         spec = _spec()
         spec["pieces"][3]["moves"] = [{"kind": "leap", "vectors": [[0, 1]]}]
-        _refused(spec, "reads differently for the two players")
+        assert validate_spec(spec) == []
 
-    def test_a_majority_type_that_faces_or_promotes(self):
+    def test_a_majority_type_that_promotes_is_lifted(self):
+        """SR8j (`docs/plan-schema-next.md` O15): a held piece promotes in its holder's zone
+        and stays nobody's; `tests/test_held_promotes.py` holds the core to it."""
         spec = _spec(promotion={"piece": "C", "rank": 5, "to": ["R"]})
-        _refused(spec, "never promotes")
+        assert validate_spec(spec) == []
 
     def test_a_nobodys_square_under_a_players_piece_or_its_image(self):
         spec = _spec()

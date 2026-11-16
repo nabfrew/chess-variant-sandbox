@@ -33,6 +33,7 @@ from chess_variant_sandbox.engine.compile import (
     CompiledSpec,
     compile_spec,
 )
+from chess_variant_sandbox.metrics import decision_cost
 from chess_variant_sandbox.metrics.seat import (
     SEAT_DECIDED_CHANCE,
     TOP_RUNG_FIRST_SEAT_SCORE,
@@ -123,6 +124,14 @@ ROUND_READINGS: dict[str, str] = {
     "instance_participation": "both moves of every round",
     "skill_gradient": "the round players' ladder, matrix:nodes=1600 to 102400",
     "lead_conversion": "seat 0's material after each round, written once per ply",
+    # `v14` (R-S6b; `v14-registration.md` §2.1 change 5: round games are read from the
+    # values their own probes already produce).
+    "decision_cost": (
+        "each seat's move values against the opponent's equilibrium mix, the values "
+        "decision_criticality reads, on the game's expected-score map; each seat with a "
+        "choice is a sample, scored for its own seat"
+    ),
+    "piece_participation": "every piece followed through both moves of every round",
 }
 
 
@@ -168,6 +177,12 @@ SPY_READINGS: dict[str, str] = {
     "instance_participation": "every move of every step",
     "skill_gradient": "minimax:nodes=400 to 25600 on the built-in objective, every phase",
     "lead_conversion": "seat 0's material before each step, written once per ply",
+    # `v14` (R-S6b): the values the probe reads for decision_criticality, by step as there.
+    "decision_cost": (
+        "the values decision_criticality reads on each step (a turn's as an alternating "
+        "game's, a round's per seat), on the game's expected-score map"
+    ),
+    "piece_participation": "every piece followed through every move of every step",
 }
 
 
@@ -497,7 +512,7 @@ def compute_components(
             diagnostics[WAITING_DETAIL] = waiting_detail
 
     if analysis is not None:
-        raw.update(_analysis_components(analysis, diagnostics, spec))
+        raw.update(_analysis_components(analysis, diagnostics, spec, records))
         raw.update(_keyed_components(graded, analysis, diagnostics))
 
     # The heuristic pass. Its games are a separate corpus and never reach `records`, so
@@ -1617,7 +1632,10 @@ def held_type_indices(spec: dict[str, Any], n_types: int) -> list[int]:
 
 
 def _analysis_components(
-    analysis: CorpusAnalysis, diagnostics: dict[str, Any], spec: dict[str, Any]
+    analysis: CorpusAnalysis,
+    diagnostics: dict[str, Any],
+    spec: dict[str, Any],
+    records: list[GameRecord] | None = None,
 ) -> dict[str, float]:
     """Components that needed positions, read back off the persisted analysis."""
     raw: dict[str, float] = {}
@@ -1700,6 +1718,27 @@ def _analysis_components(
     moved = sum(game.moved_instances for game in analysis.games)
     if starting > 0:
         raw["instance_participation"] = moved / starting
+
+    # --- `v14`'s two readings (R-S6b, `docs/reference/v14-registration.md` §2.1) -------
+    # Read only where the pass wrote them (`analyse_corpus(readings=True)`); a file
+    # without them supplies neither, and `v13` reads none of this.
+    #
+    # Change 3: of every piece that stood on the board at any time and can move, set or
+    # entering later, the share that moved, pieces followed rather than squares. Absent
+    # where no such piece stood on the board in any game: the dial has no subject.
+    games = list(analysis.games)
+    if games and all(game.fielded_instances is not None for game in games):
+        fielded = sum(game.fielded_instances or 0 for game in games)
+        diagnostics["fielded_instances"] = fielded
+        if fielded > 0:
+            raw["piece_participation"] = sum(game.fielded_moved or 0 for game in games) / fielded
+
+    # Change 5: the share of moves that give up a tenth of a game on the fitted map.
+    if decision_cost.written(analysis) and records is not None:
+        cost, cost_detail = decision_cost.reading(analysis, records)
+        diagnostics["decision_cost"] = cost_detail
+        if cost is not None:
+            raw["decision_cost"] = cost
 
     # --- what the rounds' resolutions did (schema 26, Q918d) ------------------------
     # Counted by the pass off the core's events; scored by nothing. What a game in rounds

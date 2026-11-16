@@ -193,7 +193,8 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "only into what was lost",
         "Yes offers a piece only while its side has fewer of it on the board than it "
         "started with, as in Grand chess: a pawn promotes only into a piece its side has "
-        "lost. No, the usual choice, offers every piece listed.",
+        "lost; a piece arriving in its zone without moving takes the first of those, or "
+        "stays as it is. No, the usual choice, offers every piece listed.",
     ),
     "rules.promotion.to": ("it may become", None),
     "rules.promotion.to_by_player": ("it may become, for each player", None),

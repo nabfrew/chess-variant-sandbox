@@ -84,6 +84,9 @@ NO_COUNTERPART = {
     # option forbids. The committed shogi was this game until Q454 put `on_leaving` on
     # its entries, and it translates since; the game it was is derived (`fairy_shogi`).
     SHOGI_ARRIVING: "out of the promotion zone",
+    # Q1219: their blast is their atomic, where a capture taking the mover's own royal is
+    # illegal and touching royals are never attacked; ours admits a blast that takes both.
+    "atomic": "rules.explode_on_capture beside a royal piece",
 }
 
 # Rulesets that must at least produce a variant definition. Every one is a published
@@ -91,7 +94,6 @@ NO_COUNTERPART = {
 MUST_TRANSLATE = (
     "chess",
     "crazyhouse",
-    "atomic",
     "antichess",
     "kingofthehill",
     "racingkings",
@@ -112,7 +114,6 @@ MUST_TRANSLATE = (
 TRANSLATES = (
     "almost",
     "antichess",
-    "atomic",
     "bastion",
     "berolina",
     "capablanca",
@@ -419,7 +420,14 @@ class TestAResultRuleOnlyTheKingSlotCarriesIsRefusedOutsideIt:
     REFUSED = (
         ("threecheck", {"win": "royal_capture"}, ("rules.check_limit beside rules.win",)),
         ("threecheck", {"win": "none"}, ('rules.win "none"', "rules.check_limit beside rules.win")),
-        ("atomic", {"check_limit": 3}, ("rules.check_limit beside rules.explode_on_capture",)),
+        (
+            "atomic",
+            {"check_limit": 3},
+            (
+                "rules.explode_on_capture beside a royal piece",
+                "rules.check_limit beside rules.explode_on_capture",
+            ),
+        ),
         ("chess", {"win": "none", "stalemate": "loss"}, ('rules.win "none"',)),
     )
 
@@ -429,7 +437,6 @@ class TestAResultRuleOnlyTheKingSlotCarriesIsRefusedOutsideIt:
         ("threecheck", {}, "king"),
         ("dobutsu", {}, "extinct"),
         ("chess", {"win": "royal_capture"}, "extinct"),
-        ("atomic", {}, "pseudo"),
         ("antichess", {}, "none"),
     )
 
@@ -489,6 +496,9 @@ class TestAResultRuleOnlyTheKingSlotCarriesIsRefusedOutsideIt:
         """
         spec = _shaped(name, **rules)
         monkeypatch.setattr(variant, "_royal_mode", _royal_mode_before_q403)
+        # Atomic's blast beside its royal is refused on its own since Q1219; this premise is
+        # about the check count, so that refusal is switched off for it.
+        monkeypatch.setattr(variant, "_check_blast_beside_a_royal", lambda *_: None)
         written = translate(spec)
         assert written.royalty != "king" and written.check_counting
         _, state, ours, theirs = _both_after(spec, written, self.CHECK)

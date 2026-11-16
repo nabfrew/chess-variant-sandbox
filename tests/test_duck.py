@@ -339,8 +339,14 @@ class TestTheRefusals:
     def test_in_rounds(self) -> None:
         _refused_pair(_small(simultaneous={}), "R15")
 
-    def test_beside_a_turn(self) -> None:
-        _refused_pair(_small(turn={"moves": 2}), "L7")
+    def test_beside_a_turn_since_sr8c(self) -> None:
+        """L7 is lifted (SR8c, `tests/test_duck_long_turn.py`): the turn's piece moves, then
+        one duck move at its end. The clock may not stop a game on a duck half: 200 plies
+        would, after a turn of three plies (201 ends one)."""
+        for turn, plies in (({"moves": 1}, 200), ({"moves": 2}, 199), ({"moves": 1, "ramp": [2]}, 199)):
+            spec = _small(turn=turn, max_plies=plies)
+            assert validate_spec(spec) == [], turn
+        assert validate_spec(_small(turn={"moves": 2})) != []
 
     def test_beside_portals_since_sr3d(self) -> None:
         """K2 is lifted (SR3d, `tests/test_duck_beside_portals.py`): a momentum pair and a fold

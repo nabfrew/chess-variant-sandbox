@@ -38,6 +38,7 @@ from chess_variant_sandbox.spec.schema import (
     Fields,
     Names,
     drop_face_pairs,
+    duck_clock_owes_a_duck_move,
     duck_piece,
     hire_ids,
     piece_bounties,
@@ -577,6 +578,21 @@ def strip_rule(spec: dict[str, Any], *keys: str) -> dict[str, Any]:
 
 def set_rule(spec: dict[str, Any], key: str, value: Any) -> dict[str, Any]:
     spec.setdefault("rules", {})[key] = value
+    return spec
+
+
+def settle_duck_clock(spec: dict[str, Any]) -> dict[str, Any]:
+    """SR8c (L7): beside the duck, a ``max_plies`` that would stop a game between a move and
+    its duck move (`schema.duck_clock_owes_a_duck_move`, the validator's predicate) takes one
+    ply more, which ends the turn. Nothing without a duck or an integer clock."""
+    rules = spec.get("rules")
+    if not isinstance(rules, dict) or duck_piece(rules) is None:
+        return spec
+    plies = rules.get("max_plies", 400)
+    if isinstance(plies, int) and not isinstance(plies, bool) and duck_clock_owes_a_duck_move(
+        plies, rules
+    ):
+        rules["max_plies"] = plies + 1
     return spec
 
 
@@ -1530,7 +1546,9 @@ def set_turn(spec: dict[str, Any], moves: int = 2) -> dict[str, Any]:
     """
     rules = spec.setdefault("rules", {})
     rules["turn"] = {"moves": moves, "ramp": [1]}
-    return settle_en_passant(spec)
+    # SR8c (L7): beside the duck the turn's piece moves come first, its duck move last; a
+    # clock that would stop a game on a duck half takes a ply more.
+    return settle_duck_clock(settle_en_passant(spec))
 
 
 def set_wrap(spec: dict[str, Any], axis: str = "files") -> dict[str, Any]:

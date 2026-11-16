@@ -56,6 +56,10 @@ builds the case it built before hexagons were added. The obstacle oracles read
 no change; `board.shape` is counted in the coverage like `piece.facing`.
 
 Run a soak with `python -m chess_variant_sandbox.fuzz --cases 2000`, which prints the report.
+
+The lifted pairs (R-L6a) have their own fuzz beside this one: `chess_variant_sandbox.fuzz_lifted` builds
+cases so that each pair the validator stopped refusing occurs, and holds a rule-obedience check for each
+(`docs/reference/fuzz-lifted-pairs.md`). Its runs read this module's oracles too.
 """
 
 from __future__ import annotations
@@ -499,6 +503,12 @@ def the_points_are_the_bounties_of_the_npcs_that_are_gone(engine: Engine, state:
     points = getattr(state, "points", None)
     if points is None:
         raise OracleFailure("a wild ruleset is being played on a state that carries no tally")
+    # R-L6a: a pouncer stands off its route (no route key) and is paid its type's bounty, and
+    # a type's own `pieces[].bounty` fills the same tally; this sum reads neither, so it says
+    # nothing beside them (`fuzz_lifted.checks.a_capture_pays_the_bounty_of_what_it_removed`
+    # reads every bounty, move by move).
+    if spec.pounce is not None or any(spec.bounty):
+        return
     missing: dict[int, int] = {}
     for start, _ in npcs.starts:
         key = _route_key(npcs, start)
@@ -566,7 +576,12 @@ def a_piece_that_entered_its_promotion_zone_has_promoted(engine: Engine, state: 
     entry = spec.entry_promotion
     if entry is None:
         return
-    mandatory = {rule.piece_type for rule in spec.promotions if rule.mandatory}
+    # R-L6a (H3, SR8a): under `only_lost` an entering piece stays itself when its side has
+    # lost no target, so an unpromoted piece in its zone is lawful there; such types are
+    # `fuzz_lifted.checks.a_promotion_takes_only_a_lost_target`'s.
+    mandatory = {
+        rule.piece_type for rule in spec.promotions if rule.mandatory and not rule.only_lost
+    }
     initial = spec.initial_board
     bad = []
     for square in range(spec.n_squares):

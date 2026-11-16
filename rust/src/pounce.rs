@@ -19,8 +19,9 @@
 //! squares; then every wild piece that did not pounce steps (`NpcOrder` over them, front
 //! first), walking a route only where the square's route is its own type's (`PounceTables::
 //! piece`, §3.3): a pouncer that left its loop stands until it pounces back onto it. The
-//! shields are read once, at the phase's start. Respawn and turning back are refused beside a
-//! pounce, so the phase has no step 3 and no line.
+//! shields are read once, at the phase's start. Turning back is refused beside a pounce, so
+//! the phase has no line; since generation 124 (SR8g, N7) a pouncing entry may respawn, and
+//! step 3, the returns, follows the steps (`respawn.rs`, a pouncing half counted by type).
 //!
 //! **Pounce on attackers** (generation 40, N3c, §4.4; `Game::pounce_attackers_on`). An
 //! `"attackers"` pouncer looks instead at the pieces of the player who just moved that attack
@@ -290,7 +291,7 @@ impl<'t> Game<'t> {
                 continue;
             }
             let victim_type = t.type_of(victim);
-            if !t.may_capture(ty, victim_type) || shields.get(target) || !Self::path_open(board, t, p, entry) {
+            if !t.may_capture(ty, t.victim_of(victim)) || shields.get(target) || !Self::path_open(board, t, p, entry) {
                 continue;
             }
             let key = Self::prey_key(t, p, reading, square, target, victim_type);
@@ -363,7 +364,7 @@ impl<'t> Game<'t> {
             }
             let attacker = t.type_of(source.piece_value);
             if !t.may_capture(attacker, ty)
-                || !t.may_capture(ty, attacker)
+                || !t.may_capture(ty, t.owned_victim(attacker))
                 || effects.shields.get(origin)
                 || effects.restrained.get(origin)
                 || !self.path_clear_on(board, mover, source)
@@ -451,7 +452,7 @@ impl<'t> Game<'t> {
         if t.halts_wild(standing) || effects.shields.get(next) || effects.disarmed.get(square) {
             return None;
         }
-        t.may_capture(t.type_of(value), t.type_of(standing)).then_some(next)
+        t.may_capture(t.type_of(value), t.victim_of(standing)).then_some(next)
     }
 
     /// The phase of a pounce game, walked once (CS10b) into `sink`, `mover` being the side
@@ -503,6 +504,13 @@ impl<'t> Game<'t> {
                     live.clear(square);
                     live.set(next);
                 }
+            }
+        }
+        // Step 3 (generation 124, SR8g, N7): the returns, after the pounces and the steps.
+        if self.t.respawn.is_some() {
+            let returned = self.respawn_walk_for(sink, &effects.shields, mover);
+            if S::TRACKS {
+                live = live.union(&returned);
             }
         }
         live
@@ -573,10 +581,12 @@ impl<'t> Game<'t> {
         let schedule = self.t.turn.as_ref().filter(|_| self.t.duck.is_none());
         let mut left = self.remaining.max(1);
         let mut turns = self.turns_taken;
-        // No clock and no heading beside a pounce (respawn and turns_back are refused).
+        // No heading beside a pounce (turns_back is refused); the clocks (generation 124,
+        // SR8g) move on a phase at a time, on a copy.
         let mut heading = SquareSet::EMPTY;
+        let mut clocks = self.respawn.clone();
         for steps in phases.iter_mut() {
-            let mut sink = Coming { saved: &mut saved, steps, clocks: &mut [], heading: &mut heading };
+            let mut sink = Coming { saved: &mut saved, steps, clocks: &mut clocks, heading: &mut heading };
             standing = self.pounce_walk(&mut sink, mover, standing);
             match schedule {
                 Some(_) if left > 1 => left -= 1,
@@ -596,7 +606,7 @@ impl<'t> Game<'t> {
     /// as the mover, would take one of `mover`'s royals. On a copy of the board: the pounces in
     /// order, true at the first that eats a royal; then any wild piece left whose step would
     /// eat one (step 2 cannot save a royal standing on a step's next square, whatever order it
-    /// walks). There is no step 3 beside a pounce.
+    /// walks). Step 3 is not played: a return never takes a royal (generation 124).
     pub(super) fn pass_takes_royal(&self, mover: usize) -> bool {
         let t = self.t;
         let royal_of_mover = |value: u8| value != 0 && t.owner_of(value) == mover && t.is_royal(t.type_of(value));

@@ -218,8 +218,30 @@ def _runs(seeds: Any) -> str:
 def score_line(score: Mapping[str, Any] | None, stale: bool) -> str:
     """The score in a sentence, with what it rests on, in the site's words
     (`docs/reference/plain-words.md` §2, §3): never a bare number, never a provisional one
-    as current, and *out of date* when there is no number to show."""
+    as current, and *out of date* when there is no number to show. R-S4c: where the score
+    has a number, the strength check's sentence follows it (`library.strength_payload`),
+    except on an unread score, whose own sentence already says the players could not be
+    told apart."""
+    said = _score_line(score, stale)
+    strength = None if score is None else score.get("strength")
     index = None if score is None else score.get("index")
+    if (isinstance(strength, Mapping) and strength.get("shown") and strength.get("said")
+            and isinstance(index, (int, float))):
+        said += f" {strength['said']}"
+        if not str(strength["said"]).endswith("."):
+            said += "."
+    return said
+
+
+def _score_line(score: Mapping[str, Any] | None, stale: bool) -> str:
+    index = None if score is None else score.get("index")
+    if score is not None and score.get("status") == "unread":
+        # R-S8: never as current, number or none; the server's sentence says why, and that
+        # it is out of date too where it is (`library.unread_sentence`).
+        said = str(score.get("unreadSaid") or "Its score cannot be read yet.")
+        if isinstance(index, (int, float)):
+            return f"Score {index:.3f} out of 1, which cannot be read yet. {said}"
+        return said
     if score is not None and isinstance(index, (int, float)):
         runs = _runs(score.get("seeds"))
         revision = score.get("revision") or score.get("weights_version")

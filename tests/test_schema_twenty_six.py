@@ -228,7 +228,7 @@ REFUSED = [
     ("R3", lambda s: s["rules"].update(forbid_check=True)),
     ("R4", lambda s: s["rules"].update(check_limit=3)),
     ("R5", lambda s: s["rules"].update(royal_facing="forbidden")),
-    ("R6", lambda s: s["rules"].update(castling={"king": "K", "rook": "R"})),
+    # R6 (castling) lifted by SR8d: `tests/test_castling_in_rounds.py`.
     ("R7", lambda s: s["rules"].update(en_passant=True)),
     ("L4", lambda s: s["rules"].update(turn={"moves": 2})),
     ("R8", lambda s: s["pieces"][3]["moves"].append(
@@ -261,9 +261,13 @@ def test_checkmate_by_default_is_refused() -> None:
     assert any(f"rules.simultaneous beside {words}" in error for error in errors), errors
 
 
-def test_a_portal_a_player_moves_is_refused() -> None:
+def test_a_portal_a_player_moves_is_allowed_but_not_its_straight_back_bar() -> None:
+    """SR8e lifted R9 (a round's portal moves are made first); its narrower row, the
+    straight-back bar, stays refused (`tests/test_portals_in_rounds.py`)."""
     spec = load("portals")
     spec["rules"]["portals"][0]["moved_by"] = {"orange": [0]}
+    assert "R9" not in refused_ids(validate_spec(spec))
+    spec["rules"]["portals"][0]["no_straight_back"] = True
     errors = validate_spec(spec)
     assert "R9" in refused_ids(errors), errors
 

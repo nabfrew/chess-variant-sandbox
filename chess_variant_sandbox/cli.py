@@ -824,7 +824,22 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             print(f"  - {error}")
         return 1
 
-    engine = Engine(spec)
+    # The validator names every refusal it knows of (U1 brought the engine's ten in); the
+    # compiler and `bridge.rust_supports` stay the second line, and what they refuse is said
+    # here as a refusal, never a traceback.
+    from chess_variant_sandbox.spec.schema import SpecError
+
+    try:
+        engine = Engine(spec)
+    except SpecError as error:
+        print(f"{args.ruleset}: {len(error.errors)} problem(s) found when compiling")
+        for message in error.errors:
+            print(f"  - {message}")
+        return 1
+    except NotImplementedError as error:
+        print(f"{args.ruleset}: the engine cannot play these rules yet")
+        print(f"  - {str(error).removeprefix('the core cannot play this ruleset: ')}")
+        return 1
     complexity = measure_complexity(spec)
     state = engine.initial_state()
     print(f"{spec['name']} [{spec_hash(spec)}] is valid")

@@ -1,0 +1,40 @@
+{
+  "schema_version": 26,
+  "name": "simultaneous castling by file",
+  "description": "SR8d's test spec (R6): castling by destination file in rounds, the king on f1 between rooks on b1 and g1, so the kingside king lands on its own rook's square (lifted with the departures) and the queenside rook may land where the king stood.",
+  "board": {"width": 7, "height": 6},
+  "pieces": [
+    {"id": "P", "name": "pawn", "value": 1, "moves": [
+      {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+      {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}]},
+    {"id": "N", "name": "knight", "value": 3, "moves": [
+      {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]},
+    {"id": "R", "name": "rook", "value": 5, "moves": [
+      {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "K", "name": "king", "value": 100, "royal": true, "moves": [
+      {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]}
+  ],
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "castling": {
+      "king": "K", "rook": "R",
+      "king_file": {"queenside": "c", "kingside": "g"},
+      "rook_file": {"queenside": "d", "kingside": "f"}
+    },
+    "promotion": {"piece": "P", "rank": "last", "to": ["R", "N"]},
+    "max_plies": 200,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "simultaneous": {}
+  },
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "R", "squares": ["b1", "g1"]},
+      {"piece": "K", "squares": ["f1"]},
+      {"piece": "N", "squares": ["c2", "e2"]},
+      {"piece": "P", "squares": ["a2", "b2", "d2", "f2", "g2"]}
+    ]
+  }
+}

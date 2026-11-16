@@ -61,6 +61,16 @@ import numpy as np
 from chess_variant_sandbox.agents.nets import encode
 from chess_variant_sandbox.agents.training.procedure import Parent, Procedure, Replay
 
+# The openings live with the duels since R-P1; their names stay importable from here.
+from chess_variant_sandbox.tournament.openings import (  # noqa: F401
+    _hashed,
+    _round_opening,
+    diverse_game,
+    opening_plies_for,
+    opening_seed,
+)
+from chess_variant_sandbox.tournament.openings import play_opened as _play_tasks
+
 Report = Callable[[str], None]
 
 
@@ -332,84 +342,6 @@ def _config(procedure: Procedure, workers: int) -> Any:
     )
 
 
-def _hashed(*parts: object) -> int:
-    """A 64-bit number named by ``parts``: how a game's seed becomes its opening's streams."""
-    blob = ":".join(str(part) for part in parts).encode("utf-8")
-    return int.from_bytes(hashlib.sha256(blob).digest()[:8], "little")
-
-
-def opening_plies_for(seed: int, most: int) -> int:
-    """How many random plies the game at ``seed`` opens with: uniform in ``0..most``."""
-    return _hashed("opening-plies", seed) % (most + 1) if most > 0 else 0
-
-
-def opening_seed(seed: int, ply: int) -> int:
-    """The stream the core's ``random`` agent draws opening ply ``ply`` of game ``seed`` from."""
-    return _hashed("opening-move", seed, ply)
-
-
-def diverse_game(
-    engine: Any, task: tuple[int, str, str], most: int
-) -> Any:
-    """One self-play game with a random opening: the core picks every move.
-
-    The opening's moves are the core's ``random`` agent's (``choose_move``), each from its
-    own stream named by the schedule seed and the ply; the roster then finishes the game
-    from that position at the schedule seed (``finish_game``, the core's ``play_from``).
-    Python only holds the position between the two and asks whether it is over.
-    """
-    from dataclasses import replace
-
-    from chess_variant_sandbox.tournament.play import choose_move, finish_game
-
-    seed, first, second = task
-    if engine.simultaneous:
-        # Q918g: a round game opens with random rounds, both seats from their own streams.
-        state, opening = _round_opening(engine, seed, most)
-    else:
-        state = engine.initial_state()
-        opening = []
-        for ply in range(opening_plies_for(seed, most)):
-            legal = engine.legal_moves(state)
-            if engine.terminal(state, legal) is not None:
-                break
-            move = choose_move(engine, "random", state, opening_seed(seed, ply))
-            if move is None:
-                break
-            opening.append(move)
-            state = engine.apply(state, move)
-    record = finish_game(engine, (first, second), state, seed)
-    moves = opening + list(record.moves)
-    return replace(record, moves=moves, plies=len(moves))
-
-
-def _round_opening(engine: Any, seed: int, most: int) -> tuple[Any, list[int]]:
-    """Q918g: a round game's random opening, ``opening_plies_for(seed, most) // 2`` rounds
-    (a round is two plies, ``docs/reference/rounds.md`` §2.6), each seat's move the core's
-    ``random`` agent's from its own stream (``opening_seed(seed, 2r + seat)``). The position
-    and the moves, each round's two in seat order; it stops where a round is over before
-    anyone chooses."""
-    from chess_variant_sandbox.agents.base import native_spec
-    from chess_variant_sandbox.tournament.play import eval_values
-
-    agent = native_spec("random")
-    values = eval_values(engine.spec)
-    state = engine.initial_state()
-    moves: list[int] = []
-    for round_index in range(opening_plies_for(seed, most) // 2):
-        if engine.terminal(state) is not None:
-            break
-        pair = [
-            engine.select_round(state, seat, agent, values, opening_seed(seed, 2 * round_index + seat))[0]
-            for seat in (0, 1)
-        ]
-        if pair[0] is None or pair[1] is None:
-            break
-        moves.extend((pair[0], pair[1]))
-        state = engine.apply_round(state, pair[0], pair[1])
-    return state, moves
-
-
 def self_play(
     spec: dict[str, Any], procedure: Procedure, workers: int = 0
 ) -> list[Any]:
@@ -450,28 +382,6 @@ def new_games(spec: dict[str, Any], procedure: Procedure, workers: int = 0) -> l
     if procedure.opening_plies <= 0:
         return list(run_tournament(spec, config).records)
     return _play_tasks(spec, config, schedule(config), procedure.opening_plies)
-
-
-def _play_tasks(spec: dict[str, Any], config: Any, tasks: list[Any], most: int) -> list[Any]:
-    """These schedule tasks, each opened by up to ``most`` random plies, in task order."""
-    from concurrent.futures import ThreadPoolExecutor
-
-    from chess_variant_sandbox.engine import Engine
-    from chess_variant_sandbox.tournament import checkpoint
-
-    engine = Engine(spec)
-    # Q732: inside a campaign directory, in sealed pieces a restart skips; the same games.
-    resumable = checkpoint.play_games(
-        {"ruleset_hash": engine.spec.hash, "opening_plies": most},
-        config.agents,
-        tasks,
-        lambda piece: [diverse_game(engine, task, most) for task in piece],
-        config.resolved_workers(),
-    )
-    if resumable is not None:
-        return resumable
-    with ThreadPoolExecutor(max_workers=config.resolved_workers()) as pool:
-        return list(pool.map(lambda task: diverse_game(engine, task, most), tasks))
 
 
 def new_game_count(procedure: Procedure) -> int:

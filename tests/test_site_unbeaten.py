@@ -529,9 +529,9 @@ def _cards(store: Scratch) -> list[dict[str, Any]]:
     """The three games as the games page sees them, with the store's columns on them."""
     found = browse.columns(store.connection, [ALPHA_HASH, BETA_HASH, GAMMA_HASH])
     summaries = [
-        {"hash": ALPHA_HASH, "name": "alpha", "index": 0.2},
-        {"hash": BETA_HASH, "name": "beta", "index": 0.8},
-        {"hash": GAMMA_HASH, "name": "gamma", "index": None},
+        {"hash": ALPHA_HASH, "name": "alpha", "index": 0.2, "tier": "below"},
+        {"hash": BETA_HASH, "name": "beta", "index": 0.8, "tier": "above"},
+        {"hash": GAMMA_HASH, "name": "gamma", "index": None, "tier": "unmeasured"},
     ]
     return browse.decorate(summaries, found)
 
@@ -582,8 +582,9 @@ class TestTheListing:
         assert found.human_games == 0
 
     def test_it_orders_by_index(self, store: Scratch) -> None:
-        """The card's own number, which is `canonical.json`'s. A game with no current
-        measurement has no index and sorts last rather than first."""
+        """By the card's tier against chess (R-S6c), which the listing reads off
+        `canonical.json`. A game with no current measurement is in no tier and sorts last
+        rather than first."""
         ordered = browse.order(_cards(store), browse.INDEX)
         assert _names(ordered) == ["beta", "alpha", "gamma"]
 

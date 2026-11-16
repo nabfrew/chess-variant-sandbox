@@ -1380,6 +1380,17 @@ def provenance_reads(played: str, checked: str) -> bool:
     return played == BROWSER and (not checked or read_check(checked) is not None)
 
 
+READINGS = "move-values,pieces-followed"
+"""`Basis.readings`: what the analysis pass writes beyond what `v13` reads (R-S6e).
+
+`v14`'s `decision_cost` reads the probe's move values and `piece_participation` the pieces
+followed (`analysis.GameAnalysis.sample_values`, `fielded_instances`); both are optional, so
+a run whose pass wrote neither is still scored, with the two dials absent. Every pass writes
+them now, the library's (`analyse_corpus`) and a visitor's browser's (`slices.run_unit`, the
+server's rebuild in `site/legality.py`), and a stamp names that, so a score scored without
+them -- under `v14` or any later version -- is never read as one scored with them.
+`docs/reference/v14-registration.md` §15."""
+
 BUILTIN_PLAYER = "builtin"
 """`Basis.net` for a `net=` procedure that resolves to no net: the built-in objective."""
 
@@ -1605,6 +1616,12 @@ class Basis:
     # *re-score*: the run's own games stand, and `corpus._run_seed` plays the schedule a run
     # lacks (`waiting.played`) before scoring it again.
     waiting: str = ""
+    # What the analysis pass wrote beyond `v13`'s fields (R-S6e): `READINGS` on a basis
+    # taken now, `""` on every stamp before the field. Compared wherever the reader names
+    # it: different, or absent on a browser's stamp, is a *re-analysis*, since the games
+    # stand and only `analysis.json` has to be written again (`stale_against` says why a
+    # server stamp's absence is read by its `analysis`). Written only where set.
+    readings: str = ""
     # The sample that re-certified these games on code that did not play them (C6,
     # `Certificate`), or ``None``: every stamp a played or re-scored measurement writes,
     # and every stamp before the field, so no stored file changes shape. Present, its
@@ -1668,6 +1685,7 @@ class Basis:
             players=players,
             agents_source=source_fingerprint("agents"),
             waiting=waiting,
+            readings=READINGS,
             engine_bytes=bytes_fingerprint("engine") + "-" + built,
             metrics_bytes=bytes_fingerprint("metrics"),
             analysis_bytes=bytes_fingerprint("analysis"),
@@ -1751,6 +1769,10 @@ class Basis:
         # Only where a schedule was played, so every stamp before Q1184 keeps its shape.
         if self.waiting:
             stamp["waiting"] = self.waiting
+        # Only where the pass's readings were named (R-S6e), so every stamp before keeps
+        # its shape.
+        if self.readings:
+            stamp["readings"] = self.readings
         # Only on a stamp a sample re-certified, so every played one keeps its shape.
         if self.certified is not None:
             stamp["certified"] = self.certified.as_dict()
@@ -1825,6 +1847,9 @@ class Basis:
                 agents_source=str(data.get("agents_source") or ""),
                 # Absent on every stamp before Q1184, where it means *none played*.
                 waiting=str(data.get("waiting") or ""),
+                # Absent on every stamp before R-S6e, where it means *not named*: stale
+                # against a reader that names them.
+                readings=str(data.get("readings") or ""),
                 certified=certified,
             )
         except (KeyError, TypeError, ValueError):
@@ -1959,6 +1984,26 @@ class Basis:
                 if self.analysis
                 else "the metrics changed since it was scored, and it does not record "
                 "whether the analysis pass was among them"
+            )
+            needs = needs or "reanalyse"
+        # What the pass wrote beyond `v13`'s fields (R-S6e). Only where the reader names
+        # it, so a basis built by hand without it compares as it always did. Said once: a
+        # pass that moved has already said the stronger thing. A stamp that names other
+        # readings owes the re-analysis that writes these. One that names none owes it
+        # where a browser played the games: until R-S6e the browser's pass wrote neither
+        # reading at the very `analysis` fingerprint the server's wrote both at (the
+        # server's pass has written them by default since R-S6d moved that fingerprint),
+        # so for a server stamp an unmoved `analysis` already says they were written.
+        elif (
+            current.readings
+            and self.readings != current.readings
+            and (self.readings or self.played)
+        ):
+            reasons.append(
+                "its analysis did not keep the move values and the pieces followed, which "
+                "two of the score's measurements read"
+                if not self.readings
+                else f"its analysis kept {self.readings}, and {current.readings} are kept now"
             )
             needs = needs or "reanalyse"
 
@@ -2099,6 +2144,166 @@ UNKNOWN = Staleness(
 )
 
 
+# ------------------------------------------------------------------ an unread score (R-S8)
+#
+# A score is *unread* when its own runs say the players that measured it could not tell
+# their own rungs apart. Each reason is one word in `unread_reasons`' answer; the only one
+# today is `ROSTER`, clause C of the strength check as R-S4a registered it
+# (`docs/reference/strength-check-all-games.md` §2.3): "in the score's own file, at least
+# half of its runs carry a non-empty `unreadable`, or `verdict.measured` is false". A later
+# reason (R-S4c's) is one more word here and one more line below, read by every reader that
+# already reads this answer.
+#
+# Read from the stored file, never stamped into `Basis`, on purpose. `Basis` is what the
+# number was made under and is compared with what it would be made under now; *unread* is
+# not a difference of code, so comparing it would hand `measure` and the refresher a repair
+# that no repair makes, and stamping it would mean rewriting every stored `canonical.json`.
+# Read from the runs, it cannot disagree with them: a replay whose runs read clears it, and
+# one whose runs still cannot keeps it. A reader shows an unread score as it shows a
+# provisional one -- never as current, in no comparison, band or tier -- through
+# `library.Game.status`, whose word for it is `unread`, so a reader that knows only
+# `current` reads it as not current.
+
+ROSTER = "roster"
+"""Clause C: at least half the score's runs could not be read by the roster."""
+
+UNREAD_REASONS = (ROSTER,)
+"""Every reason a score can be unread, in the order a reader names them."""
+
+
+def roster_could_not_order(stored: Any) -> bool:
+    """Clause C on one stored score: half or more of its runs unreadable, or no verdict.
+
+    `stored` is a `canonical.json` as read. A file in the single-run form, with no `runs`
+    list, is its own one run. Anything that is not a score answers ``False``: there is
+    nothing to read as unread.
+    """
+    if not isinstance(stored, dict):
+        return False
+    verdict = stored.get("verdict")
+    if isinstance(verdict, dict) and verdict.get("measured") is False:
+        return True
+    runs = stored.get("runs")
+    if not isinstance(runs, list):
+        runs = [stored] if "unreadable" in stored else []
+    runs = [run for run in runs if isinstance(run, dict)]
+    if not runs:
+        return False
+    unreadable = sum(1 for run in runs if run.get("unreadable"))
+    return 2 * unreadable >= len(runs)
+
+
+def unread_reasons(stored: Any) -> tuple[str, ...]:
+    """Why a stored score is unread, as words of `UNREAD_REASONS`; empty when it reads."""
+    return (ROSTER,) if roster_could_not_order(stored) else ()
+
+
+# ------------------------------------------------------------- the strength check (R-S4c)
+#
+# Whether a library score was found to depend on the players that measured it: R-S4b's
+# reading (`docs/reference/strength-check-all-games.md` §2.3, §14), one row a game, in the
+# tracked file `strength_check.json` beside this module. That file is written from the
+# readings R-S4b delivered (`runs/R-S4/readings/`, gitignored, never shipped to the site) by
+# `tests/strength_check_file.py` and held equal to them by a test, so the readings stay the
+# one source and the file is their published copy: it travels with the code to every reader,
+# the site included, where a `runs/<hash>/` file would need a write into every game's run
+# directory, which §5 of the record ruled out.
+#
+# Not stamped into `Basis`, for R-S8's reason: it is no difference of code, and a stamp would
+# hand `measure` a repair that no repair makes. A reading is beside the score, never in it
+# (`v14-registration.md`): it moves no number, gate, band, tier or trust level.
+#
+# A reading *belongs* to a measurement while that measurement is still on the players the
+# reading duelled: the same core and players code (`engine`, with `agents_source`), the
+# same compiled tables, and the same top rung in the roster. A re-score or a new weights
+# version leaves it belonging (§3: A and B stand; C is read again, and `unread_reasons`
+# reads it live). A replay onto other players does not, and then §3's asymmetry holds: a
+# reading that found dependence stays, dated, as *depended when last checked*; one that
+# found none is shown as *not checked* until the check is made again.
+
+STRENGTH_FILE = Path(__file__).with_name("strength_check.json")
+
+DEPENDS = "depends"
+"""The check found the score depends on the players (clause A, B or C held)."""
+HELD = "held"
+"""Neither the four-times copy nor Fairy-Stockfish found dependence."""
+HELD_OWN = "held_own"
+"""The four-times copy found none and no outside engine plays the game."""
+NOT_CHECKED = "not_checked"
+"""No reading that belongs to this score: never checked, or checked on other players."""
+
+STRENGTH_WORDS = (DEPENDS, HELD, HELD_OWN, NOT_CHECKED)
+"""Every word a reading can show, worst first."""
+
+_RECORD_WORDS = {
+    "depends on the players": DEPENDS,
+    "held": HELD,
+    "held, by its own players only": HELD_OWN,
+}
+
+
+@lru_cache(maxsize=4)
+def strength_file(path: Path = STRENGTH_FILE) -> dict[str, Any]:
+    """The tracked strength-check file, or an empty one where it is absent."""
+    try:
+        found = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"games": {}, "not_checked": {}}
+    return found if isinstance(found, dict) else {"games": {}, "not_checked": {}}
+
+
+def reading_belongs(row: dict[str, Any], basis: Basis | None) -> bool:
+    """Whether a reading was taken on the players that made this stamped score."""
+    if basis is None:
+        return False
+    return (row.get("engine") == f"{basis.engine}+{basis.agents_source}"
+            and row.get("tables") == basis.tables
+            and row.get("player") in basis.agents)
+
+
+def strength_reading(
+    ruleset_hash: str, basis: Basis | None, *, readings: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """The strength check's answer for one score, as data a script or a page reads.
+
+    ``word`` is the one a reader shows (`STRENGTH_WORDS`); ``recorded`` is the record's own
+    word as read, ``None`` where there is no reading. Every field of the reading travels:
+    ``clauses`` (which of A, B, C held), ``c`` and ``f1`` with their errors, ``f4``, the
+    day it was read, the release, build and weights it was read on, and ``belongs``
+    (`reading_belongs`). ``why`` says, for ``not_checked``, why there is no reading.
+    """
+    found = strength_file() if readings is None else readings
+    row = (found.get("games") or {}).get(ruleset_hash)
+    if row is None:
+        missing = (found.get("not_checked") or {}).get(ruleset_hash) or {}
+        return {"word": NOT_CHECKED, "recorded": None, "belongs": False,
+                "why": str(missing.get("why") or "this game has not been checked yet")}
+    recorded = _RECORD_WORDS.get(str(row.get("word")), NOT_CHECKED)
+    belongs = reading_belongs(row, basis)
+    word = recorded if belongs or recorded == DEPENDS else NOT_CHECKED
+    return {
+        "word": word,
+        "recorded": recorded,
+        "belongs": belongs,
+        "why": None if word != NOT_CHECKED else (
+            "checked on the computer players that measured an earlier score; not yet on"
+            " the ones that measured this one"),
+        "clauses": list(row.get("holding") or []),
+        "c": row.get("c"),
+        "cError": row.get("c_error"),
+        "f1": row.get("f1"),
+        "f1Error": row.get("f1_error"),
+        "f4": row.get("f4"),
+        "fairyPlays": bool(row.get("fairy_plays")),
+        "player": row.get("player"),
+        "readAt": row.get("read_at"),
+        "readOn": row.get("read_on"),
+        "build": row.get("build"),
+        "weights": found.get("weights"),
+        "beside": list(row.get("beside") or []),
+    }
+
+
 @dataclass(frozen=True)
 class Measurement:
     """One stored canonical-roster measurement, and whether it still holds.
@@ -2121,15 +2326,33 @@ class Measurement:
         return self.staleness.current
 
     @property
+    def unread(self) -> tuple[str, ...]:
+        """Why this score cannot be read yet (`unread_reasons`), empty where it reads.
+
+        Apart from `current` on purpose: `current` says whether the runs are the runs that
+        would be played now, which `measure` repairs; this says whether those runs could
+        tell their players apart, which no repair here changes. A reader showing a score
+        asks both (`library.Game.status`).
+        """
+        return unread_reasons(self.stored)
+
+    @property
+    def strength(self) -> dict[str, Any]:
+        """The strength check's reading for this score (`strength_reading`, R-S4c)."""
+        return strength_reading(self.directory.name, self.basis)
+
+    @property
     def standings(self) -> list[dict[str, Any]]:
         return list(self.stored.get("standings") or [])
 
     def as_dict(self) -> dict[str, Any]:
-        """What a reader renders. The staleness is never optional and never omitted."""
+        """What a reader renders. The staleness is never optional and never omitted, and
+        nor is `unread`, the reasons the score cannot be read yet (empty where it reads)."""
         return {
             **{k: v for k, v in self.stored.items() if k != "standings"},
             "source": self.directory.name,
             "staleness": self.staleness.as_dict(),
+            "unread": list(self.unread),
         }
 
     def save(self, path: Path) -> None:

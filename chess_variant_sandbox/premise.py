@@ -397,7 +397,8 @@ def _duel_part(
 
     if rule.curtailed:
         played = curtailed_duel(
-            spec, top, against, pairs, floor_verdict(floor), seed=rule.seed, workers=workers
+            spec, top, against, pairs, floor_verdict(floor), seed=rule.seed, workers=workers,
+            unopened=True,
         )
         return {
             **played.as_dict(),
@@ -405,7 +406,8 @@ def _duel_part(
             "floor": floor,
             "passes": played.verdict,
         }
-    held = duel(spec, top, against, pairs, seed=rule.seed, workers=workers)
+    # Unopened by name (R-P1): the check was registered and stored from the start position.
+    held = duel(spec, top, against, pairs, seed=rule.seed, workers=workers, unopened=True)
     return {
         **held.as_dict(),
         "pairs": list(held.pairs),

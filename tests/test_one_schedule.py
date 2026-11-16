@@ -347,6 +347,11 @@ class TestTheReanalysePathSharesThePool:
             corpus._rescore_seed(
                 candidate, seed, out, weighting, 1, lambda _: None, reanalyse=True
             )
+        # Since R-S6d a library run's `decision_cost` reads the scale fitted on its siblings'
+        # `analysis.json` (`corpus._fit_cost_from_siblings`), so a run is scored once every
+        # seed's pass is written, as `_measure_seeds` orders it: score each seed again now.
+        for out, seed in zip(outs, seeds, strict=True):
+            corpus._rescore_seed(candidate, seed, out, weighting, 1, lambda _: None)
         alone = {
             path: path.read_bytes() for out in outs
             for path in sorted(out.glob("*.json")) if path.name != "tournament.json"

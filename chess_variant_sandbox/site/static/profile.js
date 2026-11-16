@@ -172,7 +172,8 @@ function drawStart(counts, rows, busy = false, today = null) {
   build.href = BUILD;
   doors.appendChild(build);
   const play = el('a', 'button', TODAY_WORDS);
-  play.href = today && today.hash ? GAME + today.hash : START;
+  // R-W1: the day's game's address starts it against its default opponent (`detail.js`).
+  play.href = today && today.hash ? GAME + today.hash + '?play=gentlest' : START;
   doors.appendChild(play);
   where.appendChild(doors);
   where.appendChild(el('p', 'under', 'This page will hold the games you make, each on its '

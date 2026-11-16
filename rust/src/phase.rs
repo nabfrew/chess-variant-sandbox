@@ -159,15 +159,25 @@ impl PhaseSink for Filter<'_> {
         game.board[to] = game.board[parent];
     }
 
-    /// The headings are read, never written: each piece reads its own square's bit before
-    /// anything moves it, and the filter asks about one position.
+    /// Each piece reads its own square's bit before anything moves it.
     #[inline(always)]
     fn heading(&self, game: &Game<'_>, square: usize) -> bool {
         game.heading_back.get(square)
     }
 
+    /// Generation 125 (SR8h, N5): the headings move with the pieces, plain bits and no key,
+    /// so the filter's threat question reads the phase's headings; `npc_phase_for_filter_lines`
+    /// saved them first and `filter_headings_back` puts them back. Only a line game's walk
+    /// calls this.
     #[inline(always)]
-    fn turn(&mut self, _game: &mut Game<'_>, _from: usize, _step: TurnStep) {}
+    fn turn(&mut self, game: &mut Game<'_>, from: usize, step: TurnStep) {
+        game.heading_back.clear(from);
+        if step.back {
+            game.heading_back.set(step.to);
+        } else {
+            game.heading_back.clear(step.to);
+        }
+    }
 
     #[inline(always)]
     fn wait_turned(&mut self, _game: &mut Game<'_>, _square: usize) {}
@@ -283,18 +293,32 @@ impl<'t> Game<'t> {
     /// in a game without the rule.
     #[inline(always)]
     pub(super) fn respawn_walk<S: PhaseSink>(&mut self, sink: &mut S, sight: &WildSight) {
+        let mover = self.side;
+        self.respawn_walk_for(sink, &sight.shields, mover);
+    }
+
+    /// `respawn_walk` with the phase's shields and mover given: a pounce game's step 3
+    /// (generation 124, SR8g), whose mover reads a pouncing half's start. Returns the start of
+    /// every piece put back, for a walk that tracks its wild set.
+    #[inline(always)]
+    pub(super) fn respawn_walk_for<S: PhaseSink>(
+        &mut self, sink: &mut S, shields: &SquareSet, mover: usize,
+    ) -> SquareSet {
         let t = self.t;
+        let mut returned = SquareSet::EMPTY;
         let Some(rule) = t.respawn.as_deref() else {
-            return;
+            return returned;
         };
         for index in 0..rule.halves.len() {
             let before = sink.clock(self, index);
-            let (after, start) = self.respawn_due(index, before, &sight.shields);
+            let (after, start) = self.respawn_due(index, before, shields, mover);
             sink.set_clock(self, rule, index, before, after);
             if let Some(start) = start {
                 sink.put_back(self, start, rule.halves[index].value);
+                returned.set(start);
             }
         }
+        returned
     }
 
     /// The whole phase of a game with neither a line nor a pounce: the steps, then the

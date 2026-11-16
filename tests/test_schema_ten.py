@@ -56,7 +56,7 @@ from chess_variant_sandbox.engine.moves import (
     move_to,
     move_type,
 )
-from chess_variant_sandbox.fairy.variant import Untranslatable, translate
+from chess_variant_sandbox.fairy.variant import BLAST_BESIDE_A_ROYAL, Untranslatable, translate
 from chess_variant_sandbox.loop.operators import OPERATORS, mutate
 from chess_variant_sandbox.spec import validate_spec
 from chess_variant_sandbox.spec.canonical import spec_hash
@@ -759,9 +759,13 @@ class TestOnlySomeCapturesExplode:
         assert any(
             "explode_on_capture.by / .of" in reason for reason in refusal.value.reasons
         )
-        # Read off the compiled spec, so neither degenerate spelling refuses anything.
+        # Read off the compiled spec, so neither degenerate spelling refuses anything for
+        # `by`. Since Q1219 the whole-army spelling is atomic with its king, which is refused
+        # for the blast beside a royal (`BLAST_BESIDE_A_ROYAL`), and for nothing else.
         every = [piece["id"] for piece in _selective()["pieces"]]
-        translate(compile_spec(_selective(by=every)))
+        with pytest.raises(Untranslatable) as royal:
+            translate(compile_spec(_selective(by=every)))
+        assert royal.value.reasons == [BLAST_BESIDE_A_ROYAL]
         translate(compile_spec(_selective(by=[])))
 
     def test_the_page_is_told_which_captures_explode(self) -> None:

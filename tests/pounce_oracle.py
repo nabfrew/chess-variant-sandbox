@@ -32,8 +32,19 @@ a route square of its own type whose next square the royal stands on. The board 
 the core's with its phase taken back off the phase log, newest entry first; the oracle plays the
 phase itself and holds the core's board, phase log, legal list and check answer to its own.
 
-It reads no shield, no respawn and no line (refused beside a pounce: respawn and turning back;
-the walked spec has no sight), and the order among the steppers is the queue rule's (front first).
+`respawn` (generation 124, SR8g, N7, ruled *a pouncer respawns on its entry's first free
+start*): after the steps, each respawning entry's clock moves on, in `rules.npcs` order (a
+non-pouncing entry's mirrored half after its own). A pouncing entry is one count, its mirrored
+starts beside its own: its pieces are the wild pieces of its type anywhere on the board, less
+those the earlier pouncing entries of the type claim (each up to its starts), at most its starts;
+one comes back on the free start (empty, or a player's non-royal piece its type may take) first
+in the mover's reading order. A non-pouncing entry counts the wild pieces on its route and comes
+back on its first free start in the order written. The clock: idle (0) and short, it starts at
+`every`; it counts down a phase; at 0 a piece comes back, the clock starting again while still
+short, or, every start held, it tries again next phase.
+
+It reads no shield and no line (turning back is refused beside a pounce; the walked spec has no
+sight), and the order among the steppers is the queue rule's (front first).
 """
 
 from __future__ import annotations
@@ -43,7 +54,13 @@ from typing import Any
 from chess_variant_sandbox.engine import Engine, GameState
 from chess_variant_sandbox.engine.moves import move_from, move_to
 from chess_variant_sandbox.engine.state import NO_SQUARE
-from chess_variant_sandbox.spec.schema import npc_pounce, npc_routes, npc_split
+from chess_variant_sandbox.spec.schema import (
+    npc_pounce,
+    npc_respawn,
+    npc_routes,
+    npc_split,
+    npc_starts,
+)
 
 WILD = 2
 
@@ -76,6 +93,33 @@ class PounceOracle:
             piece_type = self.ids.index(rules["npcs"][index]["piece"])
             for position, square in enumerate(squares):
                 self.route[square] = (squares[(position + 1) % len(squares)], piece_type)
+        # Generation 124: the respawning counts, in the core's order.
+        self.units = self._respawn_units(rules)
+
+    def _respawn_units(self, rules: dict[str, Any]) -> list[tuple[int, list[int], int, bool, int, set[int]]]:
+        """``(every, starts, type, pool, before, route squares)`` per respawning count."""
+        width, height, orientation = self.width, self.height, self.orientation
+        grouped: dict[tuple[int, bool], list[int]] = {}
+        for index, label, square in npc_starts(rules, width, height, orientation):
+            npc = rules["npcs"][index]
+            if npc_respawn(npc):
+                pool = npc_pounce(npc) is not None
+                grouped.setdefault((index, label.endswith("(mirrored)") and not pool), []).append(square)
+        routes: dict[tuple[int, bool], set[int]] = {}
+        for label, squares in npc_routes(rules, width, height, orientation):
+            index = int(label.split("[")[1].split("]")[0])
+            routes.setdefault((index, label.endswith("(mirrored)")), set()).update(squares)
+        units = []
+        claimed: dict[int, int] = {}
+        for (index, mirrored), starts in sorted(grouped.items()):
+            npc = rules["npcs"][index]
+            piece_type = self.ids.index(npc["piece"])
+            pool = npc_pounce(npc) is not None
+            before = claimed.get(piece_type, 0) if pool else 0
+            if pool:
+                claimed[piece_type] = before + len(starts)
+            units.append((npc_respawn(npc), starts, piece_type, pool, before, routes[(index, mirrored)]))
+        return units
 
     # ------------------------------------------------------------------ the board
 
@@ -195,9 +239,11 @@ class PounceOracle:
                 return order
 
     def phase(
-        self, base: GameState, board: bytearray, mover: int
+        self, base: GameState, board: bytearray, mover: int, clocks: list[int] | None = None
     ) -> list[tuple[int, int, int, str]]:
-        """Play the phase on ``board`` in place, ``mover`` having just moved; return its log."""
+        """Play the phase on ``board`` in place, ``mover`` having just moved; return its log.
+        With ``clocks`` (the respawn clocks, moved on in place) step 3 is played too; the pass
+        test plays none, since a return never takes a royal."""
         wild = [sq for sq in range(len(board)) if board[sq] and self.owner_type(board[sq])[0] == WILD]
         pouncers = sorted(
             (sq for sq in wild if self.owner_type(board[sq])[1] in self.pounces),
@@ -235,7 +281,45 @@ class PounceOracle:
             if target is not None:
                 log.append((square, target, board[target], "step"))
                 board[target], board[square] = board[square], 0
+        if clocks is not None:
+            self.returns(board, mover, clocks, log)
         return log
+
+    def returns(
+        self, board: bytearray, mover: int, clocks: list[int], log: list[tuple[int, int, int, str]]
+    ) -> None:
+        """Step 3: every respawning count's clock moved on in place, and its pieces put back."""
+        for unit, (every, starts, piece_type, pool, before, route) in enumerate(self.units):
+            if pool:
+                of_type = sum(
+                    1 for value in board if value and self.owner_type(value) == (WILD, piece_type)
+                )
+                standing = min(max(0, of_type - before), len(starts))
+            else:
+                standing = sum(1 for sq in route if board[sq] and self.owner_type(board[sq])[0] == WILD)
+            left = clocks[unit]
+            if left == 0:
+                if standing >= len(starts):
+                    continue
+                left = every
+            left -= 1
+            if left > 0:
+                clocks[unit] = left
+                continue
+            free = [sq for sq in starts if self._free(board, sq, piece_type)]
+            if not free:
+                clocks[unit] = 1
+                continue
+            start = min(free, key=lambda sq: self.reading(mover, sq)) if pool else free[0]
+            clocks[unit] = every if standing + 1 < len(starts) else 0
+            log.append((start, start, board[start], "return"))
+            board[start] = self.engine.spec.encode_piece(WILD, piece_type)
+
+    def _free(self, board: bytearray, square: int, piece_type: int) -> bool:
+        if not board[square]:
+            return True
+        owner, victim = self.owner_type(board[square])
+        return owner != WILD and not self.royal[victim] and self.may_capture(piece_type, victim)
 
     # ------------------------------------------------------------------ check and legality
 
@@ -281,7 +365,7 @@ class PounceOracle:
         for step in reversed(phase):
             value = board[step.target]
             board[step.target] = step.eaten
-            if step.kind != "copy":
+            if step.kind not in ("copy", "return"):
                 board[step.origin] = value
         return after, [(s.origin, s.target, s.eaten, s.kind) for s in phase], board
 
@@ -295,7 +379,7 @@ class PounceOracle:
         legal = []
         for move in moves:
             _, _, board = self.after(state, move)
-            self.phase(state, board, side)
+            self.phase(state, board, side, list(state.respawn))
             royals = self.royals(board, side)
             if not royals or any(self.attacked_by_tables(state, board, r, 1 - side) for r in royals):
                 continue
@@ -305,7 +389,9 @@ class PounceOracle:
     def check(self, state: GameState, move: int) -> GameState:
         """Play ``move`` in the core and hold its phase, board and log to the oracle's."""
         after, core_log, board = self.after(state, move)
-        log = self.phase(state, board, state.side_to_move)
+        clocks = list(state.respawn)
+        log = self.phase(state, board, state.side_to_move, clocks)
         assert log == core_log, (self.engine.describe_move(state, move), log, core_log)
         assert bytes(board) == after.board
+        assert tuple(clocks) == tuple(after.respawn), (clocks, after.respawn)
         return after

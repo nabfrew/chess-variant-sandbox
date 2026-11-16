@@ -370,8 +370,11 @@ class _Scorer:
                 if (r.seed, r.agents) in by_game
             ]
             blunders = self.analysis.blunders
+            # The cost map's scale travels with the resample (R-S6b): each game is read
+            # with the scale its run was read with, never refitted on a resample.
             drawn = CorpusAnalysis(
-                games=matched, blunders=[blunders[position] for position in trials]
+                games=matched, blunders=[blunders[position] for position in trials],
+                cost_fit=self.analysis.cost_fit,
             )
         try:
             measured = compute_components(

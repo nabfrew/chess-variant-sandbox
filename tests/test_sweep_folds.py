@@ -269,7 +269,8 @@ class TestWithADeclaredRay:
         spec["setup"]["placements"] = [
             {"piece": "X", "squares": ["a1"]}, {"piece": "K", "squares": ["f1"]},
         ]
-        assert validate_spec(spec) == []
+        # U1: the validator names it (hold.C3); the boundary stays the second line.
+        assert refused_ids(validate_spec(spec)) == {"hold.C3"}
         why = rust_supports(compile_spec(spec))
         assert why is not None and str(MAX_SWEEP_THROUGH) in why
 

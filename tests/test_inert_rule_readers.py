@@ -164,7 +164,7 @@ READERS: dict[str, dict[str, str]] = {
         "no move reaches when nothing can be taken",
         "game.rs::blast_strikes": "SR5a: a blast's struck pieces, reached only from a blast, so "
         "only from a capture",
-        "game.rs::leaves_royal_attacked": "the blast in the legality filter, behind an "
+        "game.rs::leaves_royal_attacked_as": "the blast in the legality filter, behind an "
         "occupied target, and who is capturing; neither exists without a capture",
         "game.rs::generate_checked": "refuses the pin shortcut; the same verdict by the slower "
         "route, so it moves no answer",
@@ -277,7 +277,7 @@ READERS: dict[str, dict[str, str]] = {
     },
     # -- case 10.
     "royal_facing_forbidden": {
-        "game.rs::leaves_royal_attacked": "called only under `needs_check_filter()`, which "
+        "game.rs::leaves_royal_attacked_as": "called only under `needs_check_filter()`, which "
         "requires a royal type",
         "game.rs::generate_checked": "refuses the pin shortcut, inside the same royal-only "
         "branch",
@@ -391,6 +391,8 @@ READERS: dict[str, dict[str, str]] = {
         "piece: a phantom promotion's piece never stands, so it is never commanded",
         "foreign.rs::must_promote": "asked of a foreign piece (Q1007c; SR3g's held piece at a "
         "portal), which is a moving piece, as `push_foreign_piece` asks it",
+        "foreign.rs::push_foreign_sweeps": "SR8b: asked of a commanded sweeper (a moving "
+        "piece) for `on_leaving`, as `push_foreign_piece` asks it",
         "endgame.rs::standing_squares": "N1: asked of a piece a solved set places, to keep it "
         "out of a zone where it must promote; a phantom promotion's piece is in no set the "
         "game reaches, and its moves would promote it there as the moving piece's do",
@@ -410,13 +412,21 @@ READERS: dict[str, dict[str, str]] = {
         "far end), behind `is_promoting`, as the moving piece's are",
         "push.rs::push_offered": "asked of a pusher's landing, behind `promoting`, as "
         "`push_arrival` asks it (Q1074b2)",
+        "game.rs::push_sweeps": "SR8b: asked of a sweep's landing, behind `promoting`, as "
+        "`push_arrival` asks it",
+        "foreign.rs::push_foreign_sweeps": "SR8b: asked of a commanded sweeper's origin, "
+        "behind `is_promoting`, as `push_foreign_piece` asks it",
         "endgame.rs::standing_squares": "N1: asked of a placed piece's squares, behind "
         "`is_promoting`, as `push_arrival` asks a landing",
+        "game.rs::push_through_as": "SR8j: asked of a held piece's far square going through a "
+        "fold, behind `promoting`, as `push_arrival` asks it",
     },
     "promotes_on_leaving()": {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
         "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
         "foreign.rs::push_foreign_piece": "asked of a commanded piece (Q1007c), behind `is_promoting`",
+        "foreign.rs::push_foreign_sweeps": "SR8b: asked of a commanded sweeper, behind "
+        "`is_promoting`",
     },
     "promotion_optional()": {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
@@ -424,6 +434,10 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
         "game.rs::push_through_as": "asked of the moving piece going through a fold (schema 24)",
         "endgame.rs::standing_squares": "N1: asked of a placed piece, behind `is_promoting`",
+        "foreign.rs::push_held_promotions": "SR8j: asked of a held piece promoting in its "
+        "holder's zone, behind `is_promoting`, as `push_arrival` asks it",
+        "foreign.rs::push_held_sweep_promotions": "SR8k: asked of a held sweeper promoting in "
+        "its holder's zone, behind `is_promoting`, as `push_promoting_sweep` asks it",
     },
     "promotion_targets()": {
         "game.rs::push_hops": "asked of the moving piece at a hop's empty landing (CS4)",
@@ -432,13 +446,34 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::push_arrival": "asked of the moving piece",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
         "push.rs::push_offered": "asked of the pushing piece, as `push_arrival` asks it (Q1074b2)",
+        "game.rs::arriving_in": "SR8a: an entering piece's targets beside `only_lost`, read only "
+        "where `promote_on_entry` fired",
+        "game.rs::push_promoting_sweep": "SR8b: asked of a promoting sweeper landing in its "
+        "zone, as `push_arrival` asks it",
+        "foreign.rs::held_promotion_targets": "SR8j: asked of a held piece arriving in its "
+        "holder's zone, behind `is_promoting`, as `push_arrival` asks it",
     },
     "entry_promotion": {"tables.rs::arriving_value": "the accessor; its callers are followed"},
     "arriving_value()": {
+        "game.rs::arriving_in": "SR8a: its one caller, which every entry site asks through "
+        "`arriving` or directly; its callers are followed",
+        "game.rs::drop_stands": "R-L6c (F3): what a dropped face enters as, judged against its "
+        "region at generation; the entry rule itself, a no-op where nothing promotes on entry",
+    },
+    "arriving_in()": {
+        "game.rs::arriving": "SR8a: `arriving_in` against the scratch tally `make` and the "
+        "filters fill; its callers are followed",
+        "game.rs::drop_stands": "R-L6c (F3): the type a dropped face arrives as under "
+        "`only_lost`, counted off this board (asked at generation, so it holds its own tally)",
+        "upkeep.rs::move_cost": "H1: the type a bought piece arrives as, whose square's cost "
+        "the buy pays, as `write_entry` writes it, counted off the board before the move "
+        "(R-N5: asked outside `make`, so it holds its own tally)",
+    },
+    "arriving()": {
+        "game.rs::rehome": "SR8a: a piece changing sides enters play for its new owner, as a "
+        "struck piece does",
         "game.rs::write_entry": "`make`'s phase (CS8): the value of a piece entering play "
         "by drop or buy",
-        "upkeep.rs::move_cost": "H1: the type a bought piece arrives as, whose square's cost "
-        "the buy pays, as `write_entry` writes it",
         "game.rs::write_gate": "`make`'s phase (CS8): a gated piece's value, reached only "
         "under `drops.gating`",
         "game.rs::strike_writes": "the value a struck piece becomes where it lands",
@@ -462,10 +497,8 @@ READERS: dict[str, dict[str, str]] = {
         "rounds.rs::shots": "SR7e: a shot's victim struck in place, as `strike_writes`' stay arm",
         "rounds.rs::shooter_after": "SR7e: a shooter changed where it stands, as "
         "`strike_writes`' stay arm",
-        "tables.rs::rehome_value": "TC1: a piece changing sides on the board enters play for "
-        "its new owner, as a struck piece does",
     },
-    "rehome_value()": {
+    "rehome()": {
         "game.rs::strike_writes": "TC1: Andernach's switch and a contact flip, the value a "
         "struck piece becomes where it lands",
         "rounds.rs::contact_in_place": "TC1, schema 26: a contact flip, as `strike_writes`",
@@ -490,6 +523,10 @@ READERS: dict[str, dict[str, str]] = {
         "drop has no origin and is never asked, entering as its player's",
         "rounds.rs::held_arrivals": "SR7n (R20): whether a held move's piece is of a majority "
         "type, under `reach_held`; a drop has no origin and is never held",
+        "rounds.rs::portal_moves": "SR8e (R9): whether the moving piece is a portal end; a "
+        "drop has no origin and is never asked",
+        "rounds.rs::move_portal_end": "SR8e (R9): the momentum end's byte written onto its "
+        "target; only a portal end's move reaches it, never a drop",
     },
     # `multi_royal` moves only where the spec declares a real royal promotion beside the
     # phantom one; every reader counts royals standing on the board.
@@ -504,9 +541,9 @@ READERS: dict[str, dict[str, str]] = {
         "pass.rs::make_pass": "H3: the same `delivered` after a pass",
         "pass.rs::push_pass": "H3: whether the pass gives check under `forbid_check`, over "
         "standing royals",
-        "game.rs::leaves_royal_attacked": "the legality filter, over standing royals",
+        "game.rs::leaves_royal_attacked_as": "the legality filter, over standing royals",
         "game.rs::generate_checked": "the pin shortcut's single-royal premise",
-        "game.rs::restrict": "`forbid_check`'s filter, over standing royals",
+        "game.rs::gives_check_after": "`forbid_check`'s filter, over standing royals (R-L5d: out of `restrict`)",
         "game.rs::is_forbidden_drop_mate": "whether a drop checks a standing royal",
         "pounce.rs::in_check_by_pass": "generation 39: the pass test's check, over standing "
         "royals",
@@ -553,6 +590,12 @@ def _field(name: str) -> re.Pattern[str]:
     return re.compile(r"\." + name + r"\b(?!\s*\()")
 
 
+# `Game` methods that stand in for a `Tables` accessor, followed as one is (SR8a): every entry
+# site asks `Game::arriving` (and `Game::rehome`), which reads `arriving_value` and, under
+# `only_lost`, the board. Without the follow their callers would drop off the list unseen.
+GAME_ACCESSORS = frozenset({"arriving", "arriving_in", "rehome"})
+
+
 def read_sites() -> dict[str, set[str]]:
     """Every carrier of a refused key, and the ``file::function`` sites that read it.
 
@@ -578,7 +621,10 @@ def read_sites() -> dict[str, set[str]]:
                 if not pattern.search(code):
                     continue
                 found.setdefault(carrier, set()).add(f"{name}::{fn}")
-                if name == TABLES.name and fn in tables_fns and f"{fn}()" not in patterns:
+                follows = (name == TABLES.name and fn in tables_fns) or (
+                    name == "game.rs" and fn in GAME_ACCESSORS
+                )
+                if follows and f"{fn}()" not in patterns:
                     patterns[f"{fn}()"] = (
                         re.compile(r"(?:\.|\bSelf::|\bTables::)" + fn + r"\s*\("), None
                     )

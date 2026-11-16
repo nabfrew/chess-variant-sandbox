@@ -1723,7 +1723,7 @@ impl Player {
             for &m in &arena[base..end] {
                 let gain = match strikes.then(|| strike_gain(t, board, m, values)).flatten() {
                     Some(gain) => gain,
-                    None => capture_gain(t, board, m, values),
+                    None => capture_gain(t, board, m, values, game.side),
                 };
                 let killer: u8 = if m == killers[0] {
                     2
@@ -1973,7 +1973,7 @@ fn reply_blocks(game: &Game<'_>, reply: u32) -> [u64; 4] {
 }
 
 /// Order captures first, most valuable victim first. Cheap and generic.
-fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> f64 {
+fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64], side: usize) -> f64 {
     // Same trap as `is_loud`, and the same two kinds: a rotation's target is its own
     // square and a file-based castling's can be its own rook's, so reading a victim off
     // the target would order both ahead of every quiet move by the value of the mover's
@@ -2000,7 +2000,7 @@ fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> f64 {
     // Schema 13: a sweep also takes every piece on its path, and they are summed onto
     // the target's. Mirrored by `agents/minimax.py::_capture_gain`.
     if kind == MOVE_SWEEP {
-        let mut victims = t.sweep_victims(m, board[move_from(m)]);
+        let mut victims = t.sweep_victims(m, board[move_from(m)], side);
         while let Some((_, swept)) = victims.next_on(board) {
             gain += values[t.type_of(swept)];
         }

@@ -628,7 +628,7 @@ impl<'a> SightBarring<'a> {
             MOVE_CASTLE => {
                 // The partner would move too, so a frozen partner bars the castling.
                 let (rook_from, _) =
-                    game.castling_rook_squares(origin, target, move_promotion(m) as i32);
+                    game.castling_rook_squares(game.side, origin, target, move_promotion(m) as i32);
                 return if self.frozen.get(rook_from) { BARRED_FREEZE } else { 0 };
             }
             _ => {}

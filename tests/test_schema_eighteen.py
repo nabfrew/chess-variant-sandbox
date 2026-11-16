@@ -584,21 +584,18 @@ def _from(engine: Engine, state: Any, square: str) -> list[str]:
 
 
 class TestPromotionOnlyLost:
-    @pytest.mark.parametrize(
-        ("edit", "rid"),
-        [
-            # A capture hand and circe were lifted by SR2 (H1, H2): the board is counted
-            # (`tests/test_lost_and_held.py`).
-            ({"promote_on_entry": True}, "H3"),
-        ],
-    )
-    def test_a_rule_that_gives_a_piece_back_is_refused(
-        self, games: dict[str, dict[str, Any]], edit: dict[str, Any], rid: str
+    def test_no_rule_beside_it_is_refused_any_more(
+        self, games: dict[str, dict[str, Any]]
     ) -> None:
+        """A capture hand and circe were lifted by SR2 (H1, H2: the board is counted,
+        `tests/test_lost_and_held.py`), and `promote_on_entry` by SR8a (H3: the first target
+        still offered, `tests/test_entry_only_lost.py`). Grand chess has no way in for an
+        entering piece, so beside it the flag is refused only for that."""
         spec = copy.deepcopy(games["grand"])
-        spec["rules"].update(edit)
+        spec["rules"]["promote_on_entry"] = True
         errors = validate_spec(spec)
-        assert rid in refused_ids(errors), errors
+        assert "H3" not in refused_ids(errors), errors
+        assert not any("only_lost" in error for error in errors), errors
 
     def test_a_stone_only_hand_is_accepted(self, games: dict[str, dict[str, Any]]) -> None:
         spec = copy.deepcopy(games["grand"])

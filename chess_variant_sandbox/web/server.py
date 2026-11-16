@@ -400,7 +400,7 @@ class App:
         """LP4: the landing's stories (`web/stories.py`), the holding ones drawn into the
         landing every page carries (`landing.use`). Read again when a file under one of their
         games' `runs/<hash>/` changes, so a re-score that breaks a pair takes the story off the
-        page at the next request, and a provisional number never shows."""
+        page at the next request, and a provisional number shows only marked (R-S6f)."""
         with self._stories_lock:
             found = stories.inputs(self)
             if self._stories is None or found != self._stories_from:
@@ -465,9 +465,16 @@ class App:
             # is not a fact about that game alone -- it takes the whole listing to work
             # out, and the server works it out so that no page compares two scores.
             band = library.bands(games)
+            # R-S6c: each game's group against chess (`library.tier_of`, the registration's
+            # rule), worked out here for the same reason the band is: no page compares two
+            # scores. The score ordering lists by group, and by name inside one.
+            tier = library.tiers(games)
+            chess = library.reference_of(games)
             # Each card's thumbnail, the opening position (V6), with its pieces' drawings
             # sent once for the whole listing rather than once a card.
             cards = [{**game.summary(), "band": band.get(game.hash),
+                      "tier": tier.get(game.hash, library.UNMEASURED),
+                      "tierChess": chess is not None and game.hash == chess.hash,
                       "still": library.still(game)} for game in games]
             art: dict[str, str] = {}
             for game in everything:
@@ -477,12 +484,15 @@ class App:
             library.save_card_answers()
             return {"games": cards,
                     # A preview's card has no band: it is in no comparison (Q931).
-                    "previews": [{**game.summary(), "band": None,
+                    "previews": [{**game.summary(), "band": None, "tier": None,
+                                  "tierChess": False,
                                   "still": library.still(game)} for game in previews],
                     "pieceArt": art,
                     # The leaderboard's header (EV3): how many of those numbers are
                     # provisional, or null when none is and the header says nothing.
                     "provisionalScores": library.provisional_count(cards),
+                    # R-S6c: the groups the score ordering shows, and what they mean.
+                    "tiers": library.tier_legend(),
                     "coverage": library.coverage(games),
                     # What the list can be ordered by, in words. Sent once with the
                     # listing rather than fetched when the menu opens: it is four

@@ -296,7 +296,9 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/crooked-bishops": "2ead2536dfc6a8ff",  # T2, generation 34
     "archive/circling-queen": "6cc108310afcc1ea",  # T3, generation 34
     "archive/horse-archers": "7b5260ad7ddcaad2",  # A2, generation 35
-    "archive/the-shepherds-duck": "fcb8e3a5a79c519c",  # N6, generations 36 to 38 and 42
+    # SR8h (generation 125, 2026-11-14): its wolves now say a royal on the square they step to
+    # next is in check from them (was "fcb8e3a5a79c519c").
+    "archive/the-shepherds-duck": "be930181987f3fe6",  # N6, generations 36 to 38 and 42
     "archive/the-hydra": "9f2e615018f91bc5",  # N7, generations 39 to 41
     "archive/the-herd": "53d4d557420812eb",  # N9, generations 37 and 42
     "archive/the-crowd": "f5076162e983dafd",  # TC8, generation 43; Q1077 its condottiere takes royals (was 1cab715f899193d4)

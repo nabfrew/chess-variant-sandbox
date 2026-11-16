@@ -925,6 +925,15 @@ def rescore_kept(
             raise CorpusError(behind)
         fresh = analyse_seeds(candidate.spec, [corpora[seed] for seed in owed], workers)
         analyses.update(zip(owed, fresh, strict=True))
+    if len(order) > 1:
+        # `v14`'s cost scale, each kept run's from its kept siblings, as `_score_run` reads
+        # a library run (R-S6d); one kept run keeps the one-run rule.
+        from chess_variant_sandbox.metrics import decision_cost
+
+        fits = decision_cost.cross_run_fits([(analyses[s], corpora[s]) for s in order])
+        for seed, fit in zip(order, fits, strict=True):
+            if decision_cost.written(analyses[seed]):
+                analyses[seed].cost_fit = fit
     totals: list[float | None] = []
     for seed in order:
         records, analysis = corpora[seed], analyses[seed]
@@ -1417,6 +1426,37 @@ def _read_seed(
     )
 
 
+def _fit_cost_from_siblings(
+    candidate: Candidate, seed: int, out: Path, analysis: CorpusAnalysis
+) -> None:
+    """Set ``analysis.cost_fit`` from the game's other runs beside ``out`` (R-S6d).
+
+    `v14`'s `decision_cost` reads a library run on the scale fitted on the game's *other*
+    runs (`docs/reference/v14-registration.md` §2.1 change 5, §11): each sibling's
+    `analysis.json` and `games.jsonl`, a missing one skipped, a sibling without the values
+    adding no points (`decision_cost.others_fit`). A game owed one run, or a pass that did
+    not write the values, leaves the fit unset, and the reading falls to the one-run rule.
+    `_play_seeds` and `_reanalyse_seeds` write every seed's `analysis.json` before any is
+    scored, so the siblings are the ones this measurement combines.
+    """
+    from chess_variant_sandbox.metrics import decision_cost
+    from chess_variant_sandbox.tournament import read_records
+
+    seeds = expected_seeds(candidate.stage)
+    if len(seeds) < 2 or not decision_cost.written(analysis):
+        return
+    others: list[tuple[Any, list[Any]]] = []
+    for other in seeds:
+        if other == seed:
+            continue
+        sibling = out.parent / f"{candidate.hash}-{other}"
+        analysis_path, games = sibling / "analysis.json", sibling / "games.jsonl"
+        if not (analysis_path.exists() and games.exists()):
+            continue
+        others.append((CorpusAnalysis.load(analysis_path), list(read_records(games))))
+    analysis.cost_fit = decision_cost.others_fit(analysis, others)
+
+
 def _score_run(
     candidate: Candidate,
     seed: int,
@@ -1443,6 +1483,8 @@ def _score_run(
         {"name": standing.name, "rating": standing.rating, "games": standing.games}
         for standing in ratings.standings
     ]
+    if analysis is not None:
+        _fit_cost_from_siblings(candidate, seed, out, analysis)
     try:
         result = score_ruleset(
             candidate.spec, records, ratings, weights=weighting, analysis=analysis,

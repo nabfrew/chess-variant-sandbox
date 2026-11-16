@@ -176,9 +176,49 @@ pub struct NeutralTables {
     /// `controller_of` answers -1 (nobody holds it) and `push_held` asks this first. Empty in
     /// every game without the value.
     shared: Vec<bool>,
+    /// SR8i (`docs/plan-schema-next.md` §2.11, *the mover's reading*; O9-O19): the frame a
+    /// held piece moves in, `[holder * n_facings + facing]` (`facing` the one its nobody's
+    /// byte carries), its holder's own piece of the type pointing the same way
+    /// (`compile.CompiledSpec.held_frames`). Empty where every held type reads alike for both
+    /// players, and then every held piece moves in frame 0, as TC3 built it.
+    held_frames: Vec<u8>,
+    /// SR8j (`docs/plan-schema-next.md` §2.11 O15, *the mover's reading*): what a held piece
+    /// promotes into, `[holder * n_types + target]`: 0 where the target is never offered to a
+    /// held piece (a royal, a wild type, the duck), else one more than the facing its nobody's
+    /// byte takes (`compile.NeutralRule.held_promotion`). Empty unless some held type
+    /// promotes, so in every other game no held piece is of a promoting type (the
+    /// validator's O15 refusal went only with this table).
+    held_promotion: Vec<u8>,
 }
 
 impl NeutralTables {
+    /// SR8j (O15): the nobody's byte a held piece promoting to `target` for `holder` becomes,
+    /// or `None` where that target is never offered to a held piece.
+    #[inline]
+    pub fn held_promoted(&self, t: &Tables, holder: usize, target: usize) -> Option<u8> {
+        match self.held_promotion.get(holder * t.n_types + target).copied() {
+            Some(facing) if facing > 0 => Some(t.piece_value(WILD, facing as usize - 1, target)),
+            _ => None,
+        }
+    }
+
+    /// SR8i: whether a held piece moves in its holder's frame (`held_frame`), not frame 0.
+    #[inline]
+    pub fn in_holders_frame(&self) -> bool {
+        !self.held_frames.is_empty()
+    }
+
+    /// SR8i: the frame a held piece whose nobody's byte carries `facing` moves in for
+    /// `holder`; frame 0 where no held type reads differently for the two players.
+    #[inline]
+    pub fn held_frame(&self, n_facings: usize, holder: usize, facing: usize) -> usize {
+        if self.held_frames.is_empty() {
+            0
+        } else {
+            self.held_frames[holder * n_facings + facing] as usize
+        }
+    }
+
     /// Q1077: whether a held piece of `piece_type` may take a royal.
     #[inline]
     pub fn takes_royal(&self, piece_type: usize) -> bool {
@@ -238,6 +278,9 @@ pub const SWEEP_LENGTH_SHIFT: u8 = 2;
 /// |       |           | a sweep through a fold, in any game                              |
 /// | 20-24 | through   | SR6e: a `MOVE_SWEEP` through a fold: the near end's index on the |
 /// |       |           | ray + 1 (`with_through`, < `MAX_SWEEP_THROUGH`); 0 a direct sweep|
+/// |       |           | (only where `Tables::fold_sweeps`)                               |
+/// | 20-24 | promotion | SR8b: a `MOVE_SWEEP` elsewhere: the promoted type + 1, 0 none    |
+/// |       |           | (`Tables::sweep_promotion`)                                      |
 /// | 30    | foreign   | a move of a piece the mover does not own (`with_foreign`)        |
 /// | 31    | gate_rook | Q1059a: a gating castle places on the rook's origin, not the     |
 /// |       |           | king's (`with_gate`); 0 on every other word                      |
@@ -270,9 +313,11 @@ pub const SWEEP_LENGTH_SHIFT: u8 = 2;
 /// `MAX_SWEEP_THROUGH`), which a sweep word leaves free since a sweeper never promotes. The
 /// ray and the step locate the near end in the table, so the path is the table's and the
 /// word reads without the position; the end is whichever fold stands there. SR8b (W7, a
-/// promoting sweep) wanted bits 20-24 for the promoted type: it fits beside the ray and
-/// beside foreign (SR6f's commanded sweep, bit 30), but not beside a fold step, so a
-/// promoting sweeper beside folds is SR8b's to refuse or widen.
+/// promoting sweep) put the promoted type + 1 in bits 20-24 of a `MOVE_SWEEP` word, beside
+/// the ray and beside foreign. It does not fit beside a fold step, so **a promoting sweeper
+/// beside folds is refused** (the validator, and `bridge.rust_supports` beside it): the field is
+/// a fold step in a fold game (`Tables::sweep_through`) and a promotion in every other
+/// (`Tables::sweep_promotion`), and the two never share a game.
 pub const MOVE_ORIGIN_SHIFT: u32 = 0;
 pub const MOVE_ORIGIN_BITS: u32 = 8;
 pub const MOVE_TARGET_SHIFT: u32 = 8;
@@ -432,9 +477,16 @@ pub fn with_fold(m: u32, value: usize) -> u32 {
 
 /// Q1059a (`drops.gating`): the type a gating move places on a vacated square, plus one; 0
 /// on a move that places nothing.
+///
+/// R-L6e (F7): the gate is the tag **of a gating kind only** (`MOVE_NORMAL`,
+/// `MOVE_EN_PASSANT`, `MOVE_CASTLE`, `MOVE_PROMOTION`, kinds 0 to 3, the only words
+/// `push_gates` tags). Another kind's tag is another field: a `MOVE_SWEEP`'s ray where
+/// `Tables::sweep_rays` holds, which a gating game read as a gate and so put a held piece on the
+/// sweeper's origin. A sweep never gates (its word has no room for a gate beside its ray); a
+/// sweep over an empty line is the slide's `MOVE_NORMAL` and gates as any move.
 #[inline(always)]
 pub fn move_gate(m: u32) -> usize {
-    move_tag(m)
+    if move_kind(m) <= MOVE_PROMOTION { move_tag(m) } else { 0 }
 }
 
 /// Q1074b2: a `MOVE_PUSH`'s direction id (`PushTables::next`'s row).
@@ -450,10 +502,12 @@ pub fn with_ray(m: u32, ray: usize) -> u32 {
     with_tag(m, ray, "sweep ray")
 }
 
-/// SR6e (W8): a `MOVE_SWEEP`'s fold step, the promotion field read as the index on its ray of
-/// the fold it went through plus one; 0 for a direct sweep. A sweeper never promotes.
+/// SR6e (W8): a `MOVE_SWEEP`'s fold step in a fold game, the promotion field read as the
+/// index on its ray of the fold it went through plus one; 0 for a direct sweep. Read it
+/// through `Tables::sweep_through`, which knows whether the game has folds (SR8b: elsewhere
+/// the field is the sweep's promotion).
 #[inline(always)]
-pub fn move_through(m: u32) -> usize {
+fn move_through(m: u32) -> usize {
     move_promotion(m) as usize
 }
 
@@ -1709,6 +1763,13 @@ pub struct RespawnHalf {
     pub value: u8,
     /// Where this half's `every` keys begin in `RespawnTables::zobrist`.
     pub key_base: usize,
+    /// Generation 124 (SR8g, N7): `Some(before)` for a pouncing type's entry, which is one
+    /// half (its mirrored starts with its own, `starts` spanning both routes, `route` empty):
+    /// a pouncer leaves its route, so its pieces are the wild pieces of its type anywhere on
+    /// the board, less the `before` claimed by the earlier pouncing entries of the type, at
+    /// most its starts; a piece comes back on the first free start in the mover's reading
+    /// order. `None` for every other half, which counts its route.
+    pub pool: Option<usize>,
 }
 
 /// H2 (`docs/plan-hunger.md` §3, §R2): income. At the start of each of a player's turns the bank
@@ -1843,6 +1904,12 @@ pub struct LineTables {
     pub squares: SquareSet,
     /// `[square]`: the key of a piece on a line walking it back; 0 off every line.
     pub zobrist: Vec<u64>,
+    /// Generation 123 (SR8f, N4): whether some line starts with more than one wild piece
+    /// (`also_at`), derived from the opening board as `Tables::npc_queues` is, nothing
+    /// crossing. Only then does the phase step in `turning.rs::LineOrder`; every other line
+    /// game walks `NpcOrder`, the order it always had, which is `LineOrder`'s with one piece a
+    /// line.
+    pub queues: bool,
 }
 
 impl LineTables {
@@ -2240,6 +2307,16 @@ pub struct Tables {
     /// `promo_opening[player][type]` -> how many of that type the player started with.
     /// Read only behind `promo_only_lost_flags`; zeros where nothing says `only_lost`.
     promo_opening: [[u32; MAX_PIECE_TYPES]; 2],
+    /// R-L6c (F2): the promoting types whose targets `promotion_offered` must ask about:
+    /// those whose promotion says `only_lost`, and those with a target that has a `region`
+    /// (a target is offered only where it may stand). All false for every game with
+    /// neither, so `promotion_offered` stays one load and a branch.
+    promo_checked_flags: [bool; MAX_PIECE_TYPES],
+    /// R-L6c: `[(player * n_types + type) * n_squares + square]` -> whether `player`'s piece
+    /// of that type may stand there (its `region`, reflected for the second player; a type
+    /// without one anywhere). Empty unless some type has a region, which is the flag every
+    /// region test below asks first (`may_stand`, `has_region`).
+    region_stand: Vec<bool>,
 
     pub castling: Option<(usize, usize, i32)>,
     /// Schema 2 castling by destination file: (king_qs, king_ks, rook_qs, rook_ks).
@@ -2427,6 +2504,11 @@ pub struct Tables {
     /// target and already decided that `mandatory` does not apply, so what is here is the
     /// answer and not the rule.
     entry_promotion: Vec<i16>,
+    /// SR8a (H3, `docs/plan-schema-next.md` §2.5): `promote_on_entry` beside a type whose
+    /// promotion says `only_lost`, where what an entering piece becomes reads the board
+    /// (`Game::arriving`). Derived from the two crossed tables, nothing crosses for it; false
+    /// in every game without the pair, where the table's answer is the whole answer.
+    pub entry_only_lost: bool,
     /// Declared piece values, indexed by type. Used by a material scoring rule and by
     /// nothing else -- the agents get their own values handed to them, because what a
     /// piece is *worth* is an opinion and what a rule *counts* must not be.
@@ -2436,6 +2518,13 @@ pub struct Tables {
     pub forbid_immobility: bool,
     /// H3 (`docs/plan-hunger.md` §4): `rules.pass`, the side to move may make no move.
     pub passes: bool,
+    /// R-L6c (F2): a game where some type has a `region` and a rule that can leave a piece
+    /// standing other than where its own move's tables land it: a strike or contact (a
+    /// survivor, a changed or switched capturer), a displacing hop, gating, castling's
+    /// partner, a hire or a bribe, a buy that promotes on entry. There `Game::region_filter` plays each candidate and
+    /// drops one that leaves a player's piece newly outside its region. False everywhere
+    /// else: one flag test per list.
+    pub region_play: bool,
     pub royal_facing_forbidden: bool,
     pub check_limit: u32,
     /// `None` when the rule is off; otherwise tri-state from the point of view of the
@@ -2493,15 +2582,30 @@ impl Tables {
         self.piece_value(player, facing, piece_type)
     }
 
+    /// The byte a piece moved by `player` with the word `m` becomes when it promotes to
+    /// `promoted`: the player's own piece entering play (`entering_value`), or, SR8j (O15),
+    /// for a held piece's word (`MOVE_FOREIGN`: a commanded piece never promotes) a piece that
+    /// stays nobody's: nobody's piece of the type entering play, at its initial facing in
+    /// nobody's frame (`entering_value(WILD, ..)`), what `NeutralTables::held_promoted` names.
+    /// Branch-free arithmetic on the owner: a branch and a cold call here cost chess 8%
+    /// without PGO, and a derived table (a new `Tables` field) 1.5%, its arms being inlined
+    /// into `make` and the filter (SR8j's record).
+    #[inline(always)]
+    pub fn promoted_value(&self, player: usize, m: u32, promoted: usize) -> u8 {
+        let foreign = ((m >> MOVE_FOREIGN_SHIFT) & 1) as usize;
+        self.entering_value(player + foreign * (WILD - player), promoted)
+    }
+
     /// The value a piece takes when it enters play **on a particular square**: schema 9's
     /// `promote_on_entry`, which turns a piece appearing inside its own promotion zone
     /// into the first type that rule lists for its owner.
     ///
-    /// **One method is the whole rule, and it has four callers** -- the drop branch of
-    /// `make`, `strike_writes`, the immobility filter and the drop-mate test. Stated once
-    /// because a rule stated in more than one place is a rule that can be stated
-    /// differently in one of them; `entering_value` where the table is empty, which is
-    /// every ruleset before this one.
+    /// **One method is the whole rule, and it has one caller**, `Game::arriving`, which every
+    /// entry site asks (a drop, a buy, a gate, a hire, a strike's or a link's survivor, the
+    /// filter, the immobility filter, the drop-mate test and the round), and which reads the
+    /// board where the rule says `only_lost` (SR8a, H3). Stated once because a rule stated in
+    /// more than one place is a rule that can be stated differently in one of them;
+    /// `entering_value` where the table is empty, which is every ruleset before this one.
     #[inline]
     pub fn arriving_value(&self, player: usize, piece_type: usize, square: usize) -> u8 {
         // SR4k (O3, O4): a piece nobody owns that a strike or a contact leaves standing has no
@@ -2578,11 +2682,15 @@ impl Tables {
     /// take the arriving answer instead: a type with one orientation (nothing to keep), and
     /// `promote_on_entry` firing on the square (the piece becomes another type, which enters
     /// play at its initial facing, as every type change does).
+    ///
+    /// SR8a (H3): `arrived` is what the piece would be entering play for `new_owner` there,
+    /// handed in by `Game::rehome` (its only caller) from `Game::arriving`, which under
+    /// `only_lost` reads the board: another type enters at its initial facing, the same
+    /// type keeps its heading.
     #[inline]
-    pub fn rehome_value(&self, value: u8, new_owner: usize, square: usize) -> u8 {
+    pub fn rehome_value(&self, value: u8, new_owner: usize, arrived: u8) -> u8 {
         debug_assert!(value != 0 && new_owner < 2);
         let piece_type = self.type_of(value);
-        let arrived = self.arriving_value(new_owner, piece_type, square);
         let from_owner = self.owner_of(value);
         if self.coat_facing.is_empty()
             || from_owner > 1
@@ -2616,6 +2724,34 @@ impl Tables {
     #[inline(always)]
     pub fn frame_of_value(&self, value: u8) -> usize {
         self.value_frame[value as usize] as usize
+    }
+
+    /// SR8k (O16): the frame a held piece's byte `value` moves in for `holder`, the one
+    /// statement `foreign.rs::push_held` and a held sweep's path (`sweep_path`) read. Frame 0
+    /// where no held type reads differently for the two players (TC3); else (SR8i) a type that
+    /// faces reads its arrow through `NeutralTables::held_frame`, and one that does not (SR8j)
+    /// the holder's forward, `holder * n_facings`.
+    #[cold]
+    #[inline(never)]
+    pub fn held_mover_frame(&self, value: u8, holder: usize) -> usize {
+        let Some(rule) = self.majority.as_deref() else {
+            return 0;
+        };
+        if !rule.in_holders_frame() {
+            0
+        } else if self.facings_of(self.type_of(value)) > 1 {
+            rule.held_frame(self.n_facings, holder, self.facing_of_value(value))
+        } else {
+            holder * self.n_facings
+        }
+    }
+
+    /// The facing index a board byte carries, relative to its owner's forward (for a
+    /// nobody's byte, SR8i, the first player's: nobody's frame). Read off the encoding, not
+    /// `value_frame`, which a majority byte keeps at 0.
+    #[inline]
+    pub fn facing_of_value(&self, value: u8) -> usize {
+        ((value as usize - 1) / self.n_types) % self.n_facings
     }
 
     /// `(piece type, frame)` for a value already known to belong to `player`, whose
@@ -2827,13 +2963,20 @@ impl Tables {
         &[]
     }
 
-    pub(crate) fn sweep_path(&self, m: u32, moving: u8) -> &[u16] {
+    pub(crate) fn sweep_path(&self, m: u32, moving: u8, holder: usize) -> &[u16] {
         if !self.has_sweep || moving == 0 {
             return &[];
         }
         let (origin, target) = (move_from(m), move_to(m));
-        let slot = self.slot(self.frame_of_value(moving), self.type_of(moving), origin);
-        let through = move_through(m);
+        // SR8k (O16): a held sweeper's rays are its holder's frame's, the side whose move it
+        // is (`holder`); a player's or a commanded piece's are its byte's own frame.
+        let frame = if self.kind_of(moving) == CONTROL_MAJORITY {
+            self.held_mover_frame(moving, holder)
+        } else {
+            self.frame_of_value(moving)
+        };
+        let slot = self.slot(frame, self.type_of(moving), origin);
+        let through = self.sweep_through(m);
         if through != 0 {
             return match self.sweeps.entries(slot).get(move_ray(m)) {
                 Some(entry) => {
@@ -2855,6 +2998,23 @@ impl Tables {
         &[]
     }
 
+    /// SR6e (W8): a `MOVE_SWEEP`'s fold step plus one (`with_through`), 0 for a direct sweep
+    /// and in every game without folds, where the field is the promotion's (SR8b).
+    #[inline(always)]
+    pub fn sweep_through(&self, m: u32) -> usize {
+        if self.fold_sweeps { move_through(m) } else { 0 }
+    }
+
+    /// SR8b (W7, `docs/plan-schema-next.md` §2.6): the type a `MOVE_SWEEP` promotes its
+    /// sweeper to, from the promotion field read as the type plus one (as a promoting transit
+    /// or push carries it); `None` for a sweep that does not promote, and in a fold game,
+    /// where the field is the fold step and no sweeper promotes (the validator).
+    #[inline(always)]
+    pub fn sweep_promotion(&self, m: u32) -> Option<usize> {
+        let field = move_promotion(m) as usize;
+        if self.fold_sweeps || field == 0 { None } else { Some(field - 1) }
+    }
+
     /// Schema 13 (R4): the pieces a sweep by `moving` from `origin` to `target` clears, as
     /// `(square, value)` in ray order -- every occupied square of its path, read off
     /// `board` as it stood before the move. The one answer to what a sweep removes:
@@ -2869,9 +3029,12 @@ impl Tables {
     /// A cursor handed the board at each step (`SweepVictims::next_on`), so a caller may
     /// clear each victim as it is named: the path's squares are distinct and hold neither
     /// end of the move, so clearing one never changes the next answer.
+    ///
+    /// SR8k (O16): `holder` is the side the move is played for, whose frame a held sweeper's
+    /// rays are read in; nothing else reads it.
     #[inline]
-    pub fn sweep_victims(&self, m: u32, moving: u8) -> SweepVictims<'_> {
-        SweepVictims { path: self.sweep_path(m, moving).iter() }
+    pub fn sweep_victims(&self, m: u32, moving: u8, holder: usize) -> SweepVictims<'_> {
+        SweepVictims { path: self.sweep_path(m, moving, holder).iter() }
     }
 
     /// SR6d: the path of ray `ray` of `slot` up to `target`, nothing where it does not
@@ -2901,6 +3064,23 @@ impl Tables {
             Some(value) if self.turn.is_some() => *value,
             _ => 0,
         }
+    }
+
+    /// SR8c (L7): the moves of a turn that are no piece move: 1 in a duck game, whose turn
+    /// ends in the duck's half, else 0. `remaining > 1 + duck_half()` is *more piece moves of
+    /// this turn follow*, read before `end_ply` spends one.
+    #[inline(always)]
+    pub fn duck_half(&self) -> u32 {
+        self.duck.is_some() as u32
+    }
+
+    /// SR8c (L7): the longest turn in piece moves (the duck's half taken off), 1 in a turn
+    /// of one move. More than 1 is a long turn as the rest reads it.
+    pub fn longest_piece_turn(&self) -> u32 {
+        // A duck game's turn is always compiled (`TurnRule { moves: 2 }` at the least).
+        self.turn.as_ref().map_or(1, |rule| {
+            rule.ramp.iter().copied().fold(rule.moves, u32::max) - self.duck_half()
+        })
     }
 
     /// The key contribution of one square's colour. Zero for an uncoloured square, so
@@ -3044,6 +3224,36 @@ impl Tables {
     #[inline(always)]
     pub fn promotes_only_lost(&self, piece_type: usize) -> bool {
         self.promo_only_lost_flags[piece_type]
+    }
+
+    /// R-L6c (F2): whether a target of this promoting type is ever withheld (`only_lost`,
+    /// or a target with a region): the one flag `promotion_offered` reads first.
+    #[inline(always)]
+    pub fn promotion_checked(&self, piece_type: usize) -> bool {
+        self.promo_checked_flags[piece_type]
+    }
+
+    /// R-L6c: whether some type has a `region`. Every region test outside the movement
+    /// tables (which confine a landing themselves) asks this first.
+    #[inline(always)]
+    pub fn has_region(&self) -> bool {
+        !self.region_stand.is_empty()
+    }
+
+    /// R-L6c: whether `player`'s piece of `piece_type` may stand on `square` (its region).
+    /// True for a type without a region, for every square of a game without one, and for
+    /// the third owner (a wild piece has no region; a held piece is asked as its holder's).
+    #[inline]
+    pub fn may_stand(&self, player: usize, piece_type: usize, square: usize) -> bool {
+        self.region_stand.is_empty()
+            || player > 1
+            || self.region_stand[(player * self.n_types + piece_type) * self.n_squares + square]
+    }
+
+    /// R-L6c: `may_stand` for the piece `value` encodes, as its owner's.
+    #[inline]
+    pub fn value_may_stand(&self, value: u8, square: usize) -> bool {
+        value == 0 || self.may_stand(self.owner_of(value), self.type_of(value), square)
     }
 
     /// Schema 18 (Q783): how many of `piece_type` the player started with.
@@ -3288,6 +3498,31 @@ impl Tables {
         let (win, stalemate, checkmate_result) = Self::endings(source)?;
         let (castling, castle_files) = Self::castling_rule(source)?;
         let promotion = Self::promotion_rule(source, n_types, n_squares)?;
+        let region_stand = flags(source, keys::REGION_STAND)?;
+        if !region_stand.is_empty() && region_stand.len() != 2 * n_types * n_squares {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "region_stand holds {} flags for {} types on {} squares",
+                region_stand.len(), n_types, n_squares,
+            )));
+        }
+        let promo_checked_flags = {
+            let mut checked = type_flags(&promotion.only_lost);
+            let regioned = |target: u32| {
+                !region_stand.is_empty()
+                    && (0..2).any(|player| {
+                        let row = (player * n_types + target as usize) * n_squares;
+                        region_stand[row..row + n_squares].iter().any(|stands| !stands)
+                    })
+            };
+            for &piece_type in &promotion.piece_types {
+                if promotion.targets.iter().any(|per_type| {
+                    per_type.get(piece_type).is_some_and(|targets| targets.iter().any(|&t| regioned(t)))
+                }) {
+                    checked[piece_type] = true;
+                }
+            }
+            checked
+        };
         let bare_royal = Self::bare_royal_rule(source)?;
         let explosion = Self::explosion_rule(source, n_squares)?;
         let strike = Self::strike_rule(source, n_types, n_squares)?;
@@ -3322,9 +3557,19 @@ impl Tables {
         let entry_promotion = Self::entry_promotion_rule(source, n_types, n_squares)?;
         let bytes = Self::board_byte(source, n_owners, n_types, n_facings, &neutral_control)?;
         let ([value_owner, value_frame, value_type, value_kind], has_majority) = bytes;
-        let majority = Self::majority_rule(source, has_majority, has_portals, n_types, n_squares)?;
+        let majority =
+            Self::majority_rule(source, has_majority, has_portals, n_types, n_squares, n_facings)?;
         let (royal_types, royal_flags, royal_at_start) =
             Self::royal_rule(source, &initial_board[..n_squares], &value_owner, &value_type, drops.as_mut())?;
+
+        // R-L6c (F2): the rules read off the boundary's locals, never a `Tables` member read
+        // back at build (`tests/test_inert_rule_readers.py`); the purse and the hops are added
+        // once they are read.
+        let entry_promotes = !entry_promotion.is_empty();
+        let region_places = !region_stand.is_empty()
+            && (strike.is_some()
+                || castling.is_some()
+                || drops.as_ref().is_some_and(|rule| rule.gates.is_some()));
 
         let capture_allowed = flags(source, keys::CAPTURE_ALLOWED)?;
         let (capture_matrix, capture_stride, value_victim) =
@@ -3391,6 +3636,8 @@ impl Tables {
             promo_targets: promotion.targets,
             promo_optional: promotion.optional,
             promo_opening: promotion.opening,
+            promo_checked_flags,
+            region_stand,
             promo_piece_types: promotion.piece_types,
             castling,
             castle_files,
@@ -3439,12 +3686,14 @@ impl Tables {
             npc_lines: None,
             pounce: None,
             duck: None,
+            entry_only_lost: !entry_promotion.is_empty() && !promotion.only_lost.is_empty(),
             entry_promotion,
             piece_values: field(source, keys::PIECE_VALUES)?,
             must_capture: field(source, keys::MUST_CAPTURE)?,
             forbid_check: field(source, keys::FORBID_CHECK)?,
             forbid_immobility: field(source, keys::FORBID_IMMOBILITY)?,
             passes: field(source, keys::PASSES)?,
+            region_play: false,
             royal_facing_forbidden: field(source, keys::ROYAL_FACING_FORBIDDEN)?,
             check_limit: field(source, keys::CHECK_LIMIT)?,
             capture_allowed,
@@ -3470,8 +3719,10 @@ impl Tables {
         tables.income = Self::income_rule(&tables, source)?;
         // Read before the respawning halves, which walk a line to its end.
         tables.npc_lines = Self::turning_back_rule(&tables, source)?;
-        tables.respawn = Self::respawn_rule(&tables, source)?;
+        // Generation 124 (SR8g): the pounce tables first, since a pouncing type's respawning
+        // entry counts its pieces by type (`RespawnHalf::pool`).
         tables.pounce = Self::pounce_rule(&tables, source)?;
+        tables.respawn = Self::respawn_rule(&tables, source)?;
         if has_portals {
             tables.portals = Some(Box::new(Self::portal_tables(source, &tables)?));
         }
@@ -3492,6 +3743,13 @@ impl Tables {
         tables.npc_tamed = tables.has_npcs && tables.sight.as_ref().is_some_and(|sight| sight.tamed);
         tables.npc_sight = tables.npc_shield || tables.npc_tamed;
         tables.spy = Self::spy_rule(&tables, source)?;
+        // R-L6c (F2): read last, once every rule that can place a piece is.
+        tables.region_play = region_places
+            || (tables.has_region()
+                && (tables.hop_runs.iter().any(|&code| code & HOP_DISPLACE != 0)
+                    || tables.purse.as_deref().is_some_and(PurseTables::contested)
+                    // A bought piece that promotes on entering may enter as a regioned type.
+                    || (tables.purse.is_some() && entry_promotes)));
 
         // SR7g (R19): a purse with a market plays in rounds (a buy is an arrival with the
         // round's moves, `rounds.rs`); one that can hire or bribe stays refused there, as the
@@ -3562,6 +3820,8 @@ impl Tables {
             tables.fold_sweeps =
                 tables.portals.as_deref().is_some_and(|portals| portals.folds.is_some());
             let longest = tables.sweeps.longest_entry();
+            // SR8b: a sweep's promotion and its fold step share bits 20-24, so a promoting
+            // sweeper beside folds is refused by the validator and `bridge.rust_supports`.
             if tables.fold_sweeps && (widest > MAX_SWEEP_RAYS || longest > MAX_SWEEP_THROUGH) {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
                     "a sweeper beside folds with {widest} rays from one square or a ray of \
@@ -4489,6 +4749,7 @@ impl Tables {
         has_portals: bool,
         n_types: usize,
         n_squares: usize,
+        n_facings: usize,
     ) -> PyResult<Option<Box<NeutralTables>>> {
         let neighbour_index: Vec<u32> = field(source, keys::NEIGHBOUR_INDEX)?;
         let neighbour_squares: Vec<u8> = field(source, keys::NEIGHBOUR_SQUARES)?;
@@ -4539,6 +4800,33 @@ impl Tables {
                  neighbours and takes no royal)",
             ));
         }
+        // SR8i: the holder's frame by holder and nobody's facing, empty where frame 0 serves.
+        let held_frames: Vec<u8> = field(source, keys::NEUTRAL_HELD_FRAMES)?;
+        if !held_frames.is_empty()
+            && (!has_majority
+                || held_frames.len() != 2 * n_facings
+                || held_frames
+                    .iter()
+                    .enumerate()
+                    .any(|(at, &frame)| frame as usize / n_facings != at / n_facings))
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "neutral_held_frames does not fit this board's majority types (one frame of the \
+                 holder's per holder and facing)",
+            ));
+        }
+        // SR8j (O15): per holder and target, the facing a held promotion takes plus one.
+        let held_promotion: Vec<u8> = field(source, keys::NEUTRAL_HELD_PROMOTION)?;
+        if !held_promotion.is_empty()
+            && (!has_majority
+                || held_promotion.len() != 2 * n_types
+                || held_promotion.iter().any(|&facing| facing as usize > n_facings))
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "neutral_held_promotion does not fit this board's majority types (a facing plus \
+                 one, or 0, per holder and target)",
+            ));
+        }
         Ok(has_majority.then(|| {
             Box::new(NeutralTables {
                 index: neighbour_index,
@@ -4546,6 +4834,8 @@ impl Tables {
                 takes_royal,
                 threatens_royals,
                 shared,
+                held_frames,
+                held_promotion,
             })
         }))
     }
@@ -4768,8 +5058,11 @@ impl Tables {
             while cursor != square {
                 lowest = lowest.min(cursor);
                 let after = self.npc_next[cursor] as usize;
-                // Generation 38: a line's last square holds itself, and a line starts
-                // where its piece does, so the walk to it has seen the whole line.
+                // Generation 38: a line's last square holds itself. Since generation 123 a
+                // line may hold several pieces (`also_at`), and a walk from a later one sees
+                // only the line's tail, so two pieces on one line may miss each other here:
+                // no reader asks, since a game with a line always steps in
+                // `turning.rs::LineOrder` and never reads `npc_queues`.
                 if after == cursor {
                     break;
                 }
@@ -5043,11 +5336,11 @@ impl Tables {
             return Ok(None);
         }
         let max = piece_rest.iter().copied().max().unwrap_or(0) as usize;
-        // SR7d (L2): a long turn (never a duck game's two halves, one piece move a turn)
-        // keys one layer more, and a player's list takes up to a turn's moves a turn.
-        let long = tables.turn.as_ref().filter(|_| tables.duck.is_none());
-        let moves = long.map_or(1, |rule| rule.ramp.iter().copied().fold(rule.moves, u32::max) as usize);
-        let layers = max + long.is_some() as usize;
+        // SR7d (L2): a long turn keys one layer more, and a player's list takes up to a
+        // turn's moves a turn. SR8c (L7): counted in piece moves, so a duck game's two
+        // halves are one move a turn, and its long turn is its piece moves.
+        let moves = tables.longest_piece_turn() as usize;
+        let layers = max + (moves > 1) as usize;
         if piece_rest.len() != tables.n_types
             || max == 0
             || max > REST_MAX
@@ -5272,7 +5565,24 @@ impl Tables {
             }
             squares.set(square);
         }
-        Ok(LineTables { prev, squares, zobrist })
+        // Generation 123 (SR8f, N4): whether a line starts with two wild pieces (`also_at`).
+        // Key each line by its first square (the one that holds itself walking back).
+        let mut firsts: Vec<usize> = Vec::new();
+        let mut queues = false;
+        for square in squares.iter() {
+            if !tables.is_wild_piece(tables.initial_board[square]) {
+                continue;
+            }
+            let mut first = square;
+            while prev[first] as usize != first {
+                first = prev[first] as usize;
+            }
+            if firsts.contains(&first) {
+                queues = true;
+            }
+            firsts.push(first);
+        }
+        Ok(LineTables { prev, squares, zobrist, queues })
     }
 
     /// Generation 39 (N3b): read the pounce tables, each checked for its size. A pounce needs
@@ -5401,6 +5711,22 @@ impl Tables {
             if !tables.has_npcs || value == 0 || tables.owner_of(value) != WILD || tables.npc_next[first] < 0 {
                 return Err(bad());
             }
+            // Generation 124 (SR8g): a pouncing type's entry, every start a route square
+            // holding its piece at the opening, counted by type (`RespawnHalf::pool`).
+            let pounces = tables.pounce.as_deref().is_some_and(|p| p.kind[tables.type_of(value)] != 0);
+            if pounces {
+                if starts.iter().any(|s| tables.initial_board[*s as usize] != value || tables.npc_next[*s as usize] < 0) {
+                    return Err(bad());
+                }
+                let before = halves
+                    .iter()
+                    .filter(|half: &&RespawnHalf| half.pool.is_some() && half.value == value)
+                    .map(|half| half.starts.len())
+                    .sum();
+                halves.push(RespawnHalf { every: every as u8, starts, route: Vec::new(), value, key_base, pool: Some(before) });
+                key_base += every as usize;
+                continue;
+            }
             let mut route = vec![first as u16];
             let mut cursor = tables.npc_next[first] as usize;
             while cursor != first {
@@ -5418,7 +5744,7 @@ impl Tables {
             if starts.iter().any(|s| !route.contains(s)) {
                 return Err(bad());
             }
-            halves.push(RespawnHalf { every: every as u8, starts, route, value, key_base });
+            halves.push(RespawnHalf { every: every as u8, starts, route, value, key_base, pool: None });
             key_base += every as usize;
         }
         if zobrist.len() != key_base {
@@ -5597,6 +5923,18 @@ mod tests {
             assert_eq!(gated & MOVE_BASE_MASK, base);
         }
         assert_eq!(move_gate(base), 0);
+    }
+
+    /// R-L6e (F7): only a gating kind's tag is a gate; a sweep's ray, a portal's end or a push's
+    /// direction in the same bits never is.
+    #[test]
+    fn only_a_gating_kind_s_tag_is_a_gate() {
+        for kind in [MOVE_NORMAL, MOVE_EN_PASSANT, MOVE_CASTLE, MOVE_PROMOTION] {
+            assert_eq!(move_gate(with_gate(encode_move(1, 2, kind, 0), 4, false)), 5);
+        }
+        assert_eq!(move_gate(with_ray(encode_move(1, 2, MOVE_SWEEP, 0), 3)), 0);
+        assert_eq!(move_gate(with_portal(encode_move(1, 2, MOVE_PORTAL, 0), 3)), 0);
+        assert_eq!(move_ray(with_ray(encode_move(1, 2, MOVE_SWEEP, 0), 3)), 3);
     }
 
     /// CS2: each encoder writes its field and each accessor reads its own field only, so a
@@ -5950,6 +6288,8 @@ pub mod keys {
         NEUTRAL_CONTROL => "neutral_control",
         NEUTRAL_TAKES_ROYAL => "neutral_takes_royal",
         NEUTRAL_SHARED => "neutral_shared",
+        NEUTRAL_HELD_FRAMES => "neutral_held_frames",
+        NEUTRAL_HELD_PROMOTION => "neutral_held_promotion",
         NO_PROGRESS_DRAW => "no_progress_draw",
         NPC_BOUNTY => "npc_bounty",
         PIECE_BOUNTY => "piece_bounty",
@@ -5997,6 +6337,7 @@ pub mod keys {
         REACH_RESULT => "reach_result",
         REACH_SAFE => "reach_safe",
         REACH_SQUARES => "reach_squares",
+        REGION_STAND => "region_stand",
         REPETITION_DRAW => "repetition_draw",
         ROYAL_FACING_FORBIDDEN => "royal_facing_forbidden",
         ROYAL_TYPES => "royal_types",

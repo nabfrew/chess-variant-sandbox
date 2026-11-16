@@ -79,6 +79,7 @@ from chess_variant_sandbox.spec.schema import (
     player_stocks,
     portal_groups,
     portal_stand_in_shape,
+    promoting_piece_ids,
     purse_bribes,
     purse_market,
     purse_pays_loser,
@@ -87,6 +88,7 @@ from chess_variant_sandbox.spec.schema import (
     push_rule,
     pushing_ids,
     reach_pieces,
+    reads_for_its_holder,
     shared_ids,
     sight_affects_wild,
     simultaneous_switch,
@@ -352,6 +354,15 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
             f"{castling['rook']}, which jumps to the square it crossed."
         )
     lines.extend(_describe_common_castling(spec, rules))
+    if isinstance(rules.get("castling"), dict) and rules.get("simultaneous"):
+        # SR8d (R6): castling in rounds is the king's move for the round's meetings.
+        castling = rules["castling"]
+        lines.append(
+            f"In a round, a castling is {castling['king']}'s move: only its arrival meets the "
+            f"other player's move; after the meetings the {castling['rook']} moves to its "
+            "castled square if that square is empty, and otherwise stays where it is (one "
+            f"the {castling['king']} lands on goes there if it can, else it is removed)."
+        )
     lines.extend(
         _describe_extra_rules(rules, (spec.get("board") or {}).get("lattice") == "hex")
     )
@@ -362,6 +373,7 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_swept_blast(spec, rules))
     lines.extend(_describe_swept_round(spec, rules))
     lines.extend(_describe_swept_portals(spec, rules))
+    lines.extend(_describe_swept_promotion(spec, rules))
     lines.extend(_describe_wild_beside_strike(spec, rules))
     lines.extend(_describe_wild_beside_blast(spec, rules))
     lines.extend(_describe_immunity_while_wild(spec))
@@ -555,6 +567,26 @@ def _describe_swept_round(spec: dict[str, Any], rules: dict[str, Any]) -> list[s
         "Round the joined edges a sweep can reach one square two ways, passing over different "
         "pieces: each way is its own move, which says what it sweeps, and two ways that sweep "
         "the same pieces are one move. Each way gives check, or is blocked, on its own."
+    ]
+
+
+def _describe_swept_promotion(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """SR8b (W7, `docs/plan-schema-next.md` §2.6): a promoting sweeper, which promotes by
+    its landing square in the move that clears its line."""
+    if not uses_sweep(spec):
+        return []
+    promoting = promoting_piece_ids(rules)
+    names = [
+        str(piece.get("name") or piece.get("id"))
+        for piece in spec.get("pieces", [])
+        if isinstance(piece, dict) and piece.get("id") in promoting
+        and any(isinstance(m, dict) and m.get("kind") == "sweep" for m in piece.get("moves", []))
+    ]
+    if not names:
+        return []
+    return [
+        f"A sweep by the {', '.join(names)} promotes by the square it lands on, as any of its "
+        "moves does: it clears its line and arrives promoted, in one move."
     ]
 
 
@@ -881,7 +913,11 @@ def _moveless_fates(spec: dict[str, Any], listed: list[dict[str, Any]]) -> dict[
     for piece_id in moveless:
         victim = compiled.piece_ids.index(piece_id)
         if piece_id == duck:
-            fates[piece_id] = _MOVELESS["duck"]
+            # SR8c (L7): beside a long turn the duck's move ends the turn, after its piece moves.
+            fates[piece_id] = (
+                _MOVELESS["duck"].replace("the second half of every turn", "the end of every turn")
+                if turn_is_long(spec.get("rules")) else _MOVELESS["duck"]
+            )
         elif piece_id in royal and win in ("royal_capture", "checkmate"):
             fates[piece_id] = _MOVELESS[win]
         elif any(
@@ -2352,6 +2388,37 @@ def _describe_purse(spec: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _held_frame_words(spec: dict[str, Any], ids: list[str], who: str) -> str:
+    """How a held (or shared) piece moves: *its type does, the same for either player* where
+    every listed type reads alike for both, else (SR8i, the mover's reading) as the
+    ``who``'s own piece of its type would."""
+    orientation = str((spec.get("setup") or {}).get("orientation", "mirror"))
+    pieces = {piece.get("id"): piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)}
+    if not any(reads_for_its_holder(pieces.get(pid), orientation) for pid in ids):
+        return "its type does, the same for either player"
+    return (
+        f"the {who}'s own piece of its type would (the {who}'s forward, ranks, region and "
+        f"screens; a piece that faces by its arrow, and the {who} may turn it)"
+    )
+
+
+def _held_promotion_words(spec: dict[str, Any], ids: list[str], who: str) -> str:
+    """What a held (or shared) piece does about promotion: never, or (SR8j, O15, the mover's
+    reading) in the ``who``'s zone as the ``who``'s own piece would, staying nobody's."""
+    from chess_variant_sandbox.spec.schema import held_promotion_targets
+
+    promoting = [pid for pid in ids if held_promotion_targets(spec, pid)]
+    if not promoting:
+        return "; it never promotes, castles or captures en passant"
+    return (
+        f"; it never castles or captures en passant, and a piece of type {', '.join(promoting)} "
+        f"promotes in the {who}'s promotion zone as the {who}'s own piece would, into a type "
+        f"the {who} chooses from what that promotion offers (never a royal, a wild piece's "
+        "type or the duck), and the promoted piece stays nobody's, moved as its new type's "
+        "control says"
+    )
+
+
 def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
     """TC3 (`docs/plan-turncoat.md` §4): pieces nobody owns from the setup, and majority
     control with its tie rule."""
@@ -2396,12 +2463,14 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
         lines.append(
             f"A piece nobody owns of type {', '.join(held)} may be moved by the player with "
             f"strictly more of their own pieces {where}, royals included, as that player's "
-            "move; on a tie, none against none included, nobody may move it. It moves as its "
-            "type does, the same for either player, onto an empty square or capturing "
+            "move; on a tie, none against none included, nobody may move it. It moves as "
+            + _held_frame_words(spec, held, "holder")
+            + ", onto an empty square or capturing "
             + ("a non-royal piece" if not takers else "a piece") + " of the other player"
             + (f" (a royal only for {', '.join(takers)})" if takers and plain else "")
-            + "; it never promotes, castles or captures en passant, and stays nobody's after "
-            "it moves. Who holds it is read from the board at the start of every move."
+            + _held_promotion_words(spec, held, "holder")
+            + ", and stays nobody's after it moves. Who holds it is read from the board at the "
+            "start of every move."
         )
         if plain:
             lines.append(
@@ -2424,12 +2493,27 @@ def _describe_neutrals(spec: dict[str, Any]) -> list[str]:
     if shared:
         lines.append(
             f"A piece nobody owns of type {', '.join(shared)} is shared: either player may move "
-            "it as their move, whoever stands next to it. It moves as its type does, the same "
-            "for either player, onto an empty square or capturing a non-royal piece of the "
-            "other player its type may take, never the mover's own; it never promotes, "
-            "castles or captures en passant, attacks nothing and gives no check, and stays "
-            "nobody's after it moves. Where these rules speak of a held piece, a shared piece "
-            "is held by whoever moves it."
+            "it as their move, whoever stands next to it. It moves as "
+            + _held_frame_words(spec, shared, "mover")
+            + ", onto an empty square or capturing a non-royal piece of the "
+            "other player its type may take, never the mover's own"
+            + _held_promotion_words(spec, shared, "mover")
+            + ", attacks nothing and gives no check, and stays nobody's after it moves. "
+            "Where these rules speak of a held piece, a shared piece is held by whoever moves it."
+        )
+    # SR8k (O16, the mover's reading): a held sweep.
+    sweepers = [
+        str(piece.get("id")) for piece in spec.get("pieces") or []
+        if isinstance(piece, dict) and piece.get("id") in set(held) | set(shared)
+        and any(isinstance(m, dict) and m.get("kind") == "sweep" for m in piece.get("moves") or [])
+    ]
+    if sweepers:
+        lines.append(
+            f"A held piece of type {', '.join(sorted(sweepers))} sweeps only what its holder "
+            "could capture with it: the other player's non-royal pieces its type may take. Its "
+            "holder's own pieces, a royal, another piece nobody owns and a shielded piece end "
+            "its line, which it neither passes nor lands on, so a royal on that line is not in "
+            "check from it."
         )
     # SR3f (O1, O2): beside wild pieces and the duck.
     rules = spec.get("rules")
@@ -3091,13 +3175,28 @@ def _describe_duck(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             f" No {'strike' if rules.get('strike') else 'contact'} reaches the {name}, "
             f"which nothing takes."
         )
+    # SR8c (L7, `docs/plan-schema-next.md` §2.2): beside a long turn, the turn's piece moves
+    # first and one duck move at its end.
+    if turn_is_long(rules):
+        halves = (
+            f"Every turn is the player's piece moves, as many as the turn allows, then one move "
+            f"of the {name} ({pid}) at the turn's end"
+        )
+        counted = "never with a {name} move owed"
+        plies = "Each move is a ply"
+    else:
+        halves = (
+            f"Every turn is two halves: the player moves a piece, then moves the {name} ({pid})"
+        )
+        counted = "only at a turn's start"
+        plies = "Each half is a ply"
     return [
-        f"Every turn is two halves: the player moves a piece, then moves the {name} ({pid}), "
-        f"a piece nobody owns, {goes}; with nowhere to go it stays and the turn ends. {where} "
+        f"{halves}, a piece nobody owns, {goes}; with nowhere to go it stays and the turn "
+        f"ends. {where} "
         f"The {name} blocks lines like any piece, nothing may capture it and it captures "
         f"nothing. A move that takes a royal ends the game at once, with no {name} move. "
-        f"Each half is a ply of the game's length; repetition and the clocks are counted "
-        f"only at a turn's start.{beside}"
+        f"{plies} of the game's length; repetition and the clocks are counted "
+        f"{counted.format(name=name)}.{beside}"
     ]
 
 
@@ -3227,11 +3326,22 @@ def _describe_entry_promotion(rules: dict[str, Any]) -> str:
         elif promotion.get("to"):
             becomes.append(f"{promotion['piece']} to {promotion['to'][0]}")
     into = f" ({'; '.join(becomes)})" if becomes else ""
-    return (
+    sentence = (
         "A piece that enters play inside its promotion zone -- dropped there, or left "
         "standing there by a strike -- promotes at once, to the first piece listed"
         f"{into}, whether or not it could otherwise have declined."
     )
+    if any(
+        isinstance(promotion, dict) and promotion.get("only_lost") is True
+        for promotion in _promotion_rules(rules)
+    ):
+        # SR8a (H3): beside `only_lost` the first piece listed is the first still offered.
+        sentence += (
+            " Where only a lost piece may be chosen, it becomes the first one listed that "
+            "its side has fewer of on the board than it started with, counted before the "
+            "move, and stays as it is if there is none."
+        )
+    return sentence
 
 
 def _jumps_past_a_square(spec: dict[str, Any]) -> bool:
@@ -3600,9 +3710,19 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         if captures is None or captures:
             eats += "; a piece it eats is gone for good"
             if turns:
-                # Generation 38: refused beside check, so its threat is nobody's check.
+                # Generation 125 (SR8h, N5): its threat is the square it steps to after its
+                # turn (`turning.rs::line_threatens`).
                 if threatens_royal:
-                    eats += ", a royal piece among them"
+                    eats += (
+                        ", and a royal piece standing on the square it would step to next is "
+                        "in check from it: the square ahead, or, where that holds a piece it "
+                        "may not take, the one behind once it has turned round"
+                    )
+                elif royals:
+                    eats += (
+                        ", but it cannot take a royal piece, so one standing where it steps "
+                        "next is not in check from it"
+                    )
             elif threatens_royal:
                 eats += (
                     ", and a royal piece standing where it steps next is in check from it"
@@ -3629,7 +3749,19 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         # Schema 23: more wild pieces of this kind on the same route, in step.
         also = [name for name in npc.get("also_at") or [] if isinstance(name, str)]
         more = ""
-        if also:
+        if also and turns and len(route) > 1:
+            # Generation 123 (SR8f, N4): several on one line, front first by heading, and the
+            # head-on order the plan ruled.
+            count = "Another" if len(also) == 1 else f"{_count(len(also)).capitalize()} more"
+            more = (
+                f" {count} {'starts' if len(also) == 1 else 'start'} on {_squares(also)} and "
+                f"{'paces' if len(also) == 1 else 'pace'} the same line, each facing forward "
+                "at the start; one walking behind another moves after it, and follows it when "
+                f"it moves on. Two that meet head-on move nearer {route[0]} first: that one "
+                "turns round on the other, which then moves into the square it left, or turns "
+                "round too."
+            )
+        elif also:
             count = "Another" if len(also) == 1 else f"{_count(len(also)).capitalize()} more"
             more = (
                 f" {count} {'starts' if len(also) == 1 else 'start'} on {_squares(also)} and "
@@ -3750,6 +3882,20 @@ def _respawn_words(
         else f"on the first of {_squares(starts)} that it may come back onto"
     )
     halves = " Each walk keeps its own count." if npc.get("mirror") else ""
+    if npc_pounce(npc) is not None:
+        # Generation 124 (SR8g, N7): a pouncer leaves its route, so it is counted by its kind
+        # and comes back on the free start nearest the mover, as a pounce reads its prey.
+        named = _squares(starts) if len(starts) > 1 else starts[0]
+        reflected = " or their reflections" if npc.get("mirror") else ""
+        where = (
+            f"on whichever of {named}{reflected} it may come back onto is nearest the first "
+            "rank of the player who has just moved (then furthest to that player's left)"
+        )
+        halves = (
+            " Since a hunter leaves its route, what is missing is counted by its kind: every "
+            "wild piece of the kind on the board counts, wherever it stands"
+            + (", and both walks share one count." if npc.get("mirror") else ".")
+        )
     return (
         f" Once taken, it comes back {where}, {clock}, eating a piece standing there unless "
         "that piece is royal, another wild piece or one it may not take; while its square "
@@ -3934,6 +4080,16 @@ def _describe_portals(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             f"{_group_word(group, 'group')} {group['number']} has ends on "
             f"{', '.join(squares[:-1])} and {squares[-1]}: {'; '.join(leads)}; "
             f"{moved}.{barred}{filters}"
+        )
+    if is_simultaneous(rules) and any(end["moved_by"] for group in groups for end in group["ends"]):
+        # SR8e (R9, generation 122): the round's portal moves are made first.
+        lines.append(
+            "In a round, a portal's move is made before the pieces move: a piece going through "
+            "a portal that round comes out where the far end now stands, in the direction it "
+            "would have come out, and a move the portal's new place no longer allows (an end "
+            "no longer in reach, an exit off the board, a square an end now stands on) is void, "
+            "and the piece stays. Two moves of one end to two squares, or of two ends to one "
+            "square, are both void."
         )
     return lines
 

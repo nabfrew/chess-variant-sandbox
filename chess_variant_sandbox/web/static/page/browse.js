@@ -22,6 +22,11 @@
 
 // ------------------------------------------------------------------ the library
 
+// R-S6c: the groups the score ordering shows (`library.tier_legend`): their order, each
+// one's title and note, and the sentence saying what a tier means. Null until a listing
+// arrives.
+let TIERS = null;
+
 async function showLibrary() {
   stopPolling();
   SESSION = null;
@@ -51,6 +56,7 @@ async function showLibrary() {
   takePieceArt(data);
   OPPONENTS = data.opponents;
   COVERAGE = data.coverage;
+  TIERS = data.tiers || null;
   METRICS = data.metrics;
   // Null on the local application, which has no store and so no stars, no human games
   // and no tag. Every control and every chip below is drawn only where this arrives.
@@ -427,9 +433,26 @@ function binOf(game, axis) {
   return index < 0 ? null : (game.cellBins || [])[index];
 }
 
+// R-S6c (`docs/reference/v14-registration.md` §2.3): ordered by score, a list is ordered by
+// each game's group against chess, which the server decided (`card.tier`), and by name
+// inside a group; the number orders nothing. The direction turns the three tiers round and
+// leaves the games outside them (refused, not placed, not yet measured) last either way.
+function tierRank(game) {
+  const order = (TIERS && TIERS.order) || [];
+  const tiers = (TIERS && TIERS.tiers) || [];
+  const at = order.indexOf(game.tier);
+  if (at < 0) return order.length;
+  if (at < tiers.length && !BROWSE.descending) return tiers.length - 1 - at;
+  return at;
+}
+
 function ordered(games) {
   const key = BROWSE.sort;
   const sign = BROWSE.descending ? -1 : 1;
+  if (key === 'index' && TIERS) {
+    return games.slice().sort((a, b) =>
+      tierRank(a) - tierRank(b) || a.name.localeCompare(b.name));
+  }
   return games.slice().sort((a, b) => {
     const left = sortValue(a, key), right = sortValue(b, key);
     if (left === null && right === null) return a.name.localeCompare(b.name);
@@ -445,6 +468,9 @@ function ordered(games) {
 // relatives, and forty cards in alphabetical order is exactly the arrangement that hides
 // which four of them are revisions of the same idea.
 function grouped(games) {
+  // Ordered by score with no other grouping, the groups are the tiers, in `ordered`'s
+  // order (R-S6c): each with its heading and what it means.
+  if (BROWSE.group === 'none' && BROWSE.sort === 'index' && TIERS) return tierGroups(games);
   if (BROWSE.group === 'none') return [{ title: '', note: '', games }];
   const buckets = new Map();
   for (const game of games) {
@@ -471,6 +497,22 @@ function grouped(games) {
   }
   return found.sort((a, b) =>
     b.games.length - a.games.length || a.title.localeCompare(b.title));
+}
+
+// The tiers as groups, in the order `ordered` left the games in; an empty one is not drawn.
+function tierGroups(games) {
+  const found = [];
+  for (const game of games) {
+    const key = TIERS.order.includes(game.tier) ? game.tier : 'unmeasured';
+    let group = found.find(one => one.key === key);
+    if (!group) {
+      const words = TIERS.groups[key] || { title: key, note: '' };
+      group = { key, title: words.title, note: words.note, games: [] };
+      found.push(group);
+    }
+    group.games.push(game);
+  }
+  return found;
 }
 
 function groupOf(game) {
@@ -715,8 +757,11 @@ function paintResults() {
   const count = found.length === held.length
     ? `${held.length} games`
     : `${found.length} of ${held.length} games`;
+  const tiered = BROWSE.sort === 'index' && TIERS;
   box.innerHTML = `<div class="muted small u-mb-6">${count}${
-    BROWSE.group === 'none' ? '' : ` in ${groups.length} groups`}</div>`
+    BROWSE.group === 'none' && !tiered ? '' : ` in ${groups.length} groups`}</div>`
+    + (tiered ? `<p class="muted small u-mb-10" id="tierSentence">${
+      esc(TIERS.sentence)}</p>` : '')
     + pillLegendHtml()
     + groups.map(group => (group.title ? `
       <div class="groupHead">
@@ -772,8 +817,8 @@ function cardHtml(game) {
   // game looks like, and the pills are the level and the score with how far to trust it.
   // Every other fact is a quiet line under them, the same words with their hover, no
   // border.
-  const notes = unbeatenTag(game) + untriedTag(game) + unplayedTag(game) + fairyTag(game)
-    + playableTag(game);
+  const notes = (game.preview ? '' : strengthTag(game)) + unbeatenTag(game) + untriedTag(game)
+    + unplayedTag(game) + fairyTag(game) + playableTag(game);
   return `
     <div class="panel card ${styleClass(paperSheet(game.hash))}" data-hash="${esc(game.hash)}">
       ${thumbHtml(game)}
@@ -938,7 +983,17 @@ function cardSeatHtml(game) {
 // draw nothing under the index ordering either. `bandHtml` is `core.py`'s and the game's
 // own page calls the same one.
 function cardBandHtml(game) {
-  return BROWSE.sort === 'index' ? bandHtml(game.band) : '';
+  if (BROWSE.sort !== 'index') return '';
+  // Chess's own card says why it is where it is: it is the comparison, not compared.
+  const chess = game.tierChess && TIERS
+    ? `<div class="muted small u-mt-6">${esc(TIERS.chess)}</div>` : '';
+  // R-S4c: a place against chess is a comparison, so a score the strength check found
+  // resting on its players carries the mark beside its tier (`library.STRENGTH_TIER_SAID`).
+  const s = strengthShown(game);
+  const tiered = TIERS && (TIERS.tiers || []).includes(game.tier);
+  const marked = tiered && s && s.tierSaid
+    ? `<div class="muted small u-mt-6" data-tier-strength>${esc(s.tierSaid)}</div>` : '';
+  return chess + marked + bandHtml(game.band);
 }
 
 // The measurement the list is currently ordered by, on every card in it. A ranking whose

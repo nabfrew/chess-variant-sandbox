@@ -37,8 +37,10 @@ def _raw(version: str) -> dict[str, Any]:
     return data
 
 
-def test_it_is_the_default() -> None:
-    assert DEFAULT_WEIGHTS == "v13"
+def test_it_was_the_default_until_v14() -> None:
+    # R-S6d (2026-11-14): `v14` is current (`tests/test_v14_weights.py`); `v13` stays loadable.
+    assert DEFAULT_WEIGHTS == "v14"
+    assert load_weights("v13").version == "v13"
 
 
 def test_only_the_reference_ends_moved_from_v12() -> None:

@@ -1,0 +1,273 @@
+{
+  "schema_version": 31,
+  "name": "rear guard torus chess with even promotion",
+  "description": "Chess on a board with no edges, made playable by a rear guard. On a seven by fourteen board with both pairs of opposite edges joined, a piece leaving any edge reappears on the opposite one, and an army has no safe back: whatever lies behind it leads through the join to the enemy. So behind each army's pieces stands a second rank of pawns, placed facing backwards towards the join and never turned round: ordinary pawns that step, double-step on their first move and capture the way they face. Each army is a sandwich rather than a front, deciding how far to push forward while its rear guard holds the way round the back. Every pawn promotes on the rank the enemy king starts on, the eleventh for White and the fourth for Black, so a front pawn and a rear pawn are each six steps from promotion, one across the enemy army and the other back through the join. With empty ranks there instead, the back ranks lie open to each other through the join and the opening is a scramble of captures; the rear guard closes that route and halves the moves on offer at the start, so the game opens like chess.",
+  "summary": [
+    "The board has no edges: left joins right and top joins bottom.",
+    "Behind each army stands a second row of pawns facing backwards, towards the join; a pawn never turns.",
+    "Played on a 7 by 14 board; castling stays on its rank, and otherwise it is chess."
+  ],
+  "board": {
+    "width": 7,
+    "height": 14
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "first_move": true
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "facing": {
+        "axes": 2,
+        "turns": false
+      }
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a5",
+          "b5",
+          "c5",
+          "d5",
+          "e5",
+          "f5",
+          "g5"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3"
+        ],
+        "facing": "backward"
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a4"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b4",
+          "g4"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c4",
+          "f4"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d4"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e4"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "ranks": [
+        10
+      ],
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "wrap": {
+      "files": "both",
+      "ranks": "both"
+    }
+  },
+  "provenance": {
+    "added": "2026-11-05",
+    "origin": "designed",
+    "author": "the user",
+    "theme": "a board with no corners",
+    "parents": [
+      "8d9fb1b4c0b4"
+    ],
+    "history": "The user's fix to rear guard torus chess (2026-11-05): its rear pawns promoted three steps back across the join, so every pawn now promotes on the enemy king's starting rank, six steps from either pawn rank."
+  },
+  "appearance": {
+    "icons": {
+      "P": "pawn",
+      "N": "knight",
+      "B": "bishop",
+      "R": "rook",
+      "Q": "queen",
+      "K": "king"
+    }
+  }
+}

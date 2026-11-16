@@ -214,7 +214,6 @@ class TestThePhases:
         assert _phase(engine, fled) == ("announced", 1)
 
     @pytest.mark.parametrize(("rule", "rid"), [
-        ({"castling": {"king": "K", "rook": "R", "king_steps": 2}}, "R6"),
         ({"en_passant": True}, "R7"),
         ({"win": "checkmate"}, "R1"),
     ])

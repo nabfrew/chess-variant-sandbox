@@ -194,12 +194,16 @@ class TestTheValidator:
         set_npc(spec, "N", ["c3", "c4", "d4", "d3"])
         assert "W5" not in refused_ids(validate_spec(spec))
 
-    def test_a_promoting_piece_may_not_sweep(self, sweeping: dict[str, Any]) -> None:
-        """So no sweeper is ever the en passant piece, and no sweep opens a window."""
+    def test_a_promoting_piece_may_sweep_but_beside_folds(self, sweeping: dict[str, Any]) -> None:
+        """SR8b lifted W7 (`tests/test_sweep_promotes.py` plays it); beside a fold portal a
+        sweep's word spends the promotion field on its fold step, so it stays refused. A sweep
+        still opens no en passant window."""
         spec = copy.deepcopy(sweeping)
         spec["pieces"][0]["moves"].append({"kind": "sweep", "vectors": [[0, 1]]})
+        assert not any("rules.promotion" in e and "sweep" in e for e in validate_spec(spec))
+        spec["rules"]["portals"] = [{"orange": "c3", "blue": "f6", "kind": "fold"}]
         errors = validate_spec(spec)
-        assert any("rules.promotion" in e and "sweep" in e for e in errors), errors
+        assert any("rules.promotion" in e and "fold portal" in e for e in errors), errors
 
     def test_promoting_into_a_sweeper_is_fine(self, sweeping: dict[str, Any]) -> None:
         assert "B" in sweeping["rules"]["promotion"]["to"]
@@ -537,4 +541,4 @@ class TestTheOtherSurfaces:
         ]
         pawn = engine.spec.piece_ids.index("P")
         assert agent._is_loud(state, move)
-        assert agent._capture_gain(state.board, move) == agent.evaluator.values[pawn]
+        assert agent._capture_gain(state.board, move, state.side_to_move) == agent.evaluator.values[pawn]

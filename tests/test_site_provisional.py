@@ -95,6 +95,9 @@ class TestTheTwoBasisFields:
             # Dobutsu plays a rated net since L2 (plan-teacher §10.11), and a game that
             # seats one names it in its stamp.
             "net",
+            # R-S6e: what the analysis pass kept beyond `v13`'s fields; every server
+            # stamp gains it at the re-analysis the library owes anyway (SR8r).
+            "readings",
         }
         assert Basis.from_dict(stamp) == _now()
 
@@ -195,6 +198,17 @@ class TestTheRefusalByFingerprint:
         for reason, stamp in cases.items():
             said = provisional.refusal(_sent(stamp), now)
             assert said is not None and reason in said, (reason, said)
+
+    def test_a_module_that_kept_no_readings_is_an_old_cached_module(self) -> None:
+        """R-S6e: a page from before the browser's pass kept `v14`'s readings stamps none;
+        it is refused as a stale module, whose remedy the page acts on."""
+        now = _now()
+        assert now.readings == measurement.READINGS
+        old = replace(now, readings="")
+        said = provisional.refusal(_sent(old), now)
+        assert said is not None and "fetches the current module" in said
+        assert provisional.other_build(_sent(old), now)
+        assert not provisional.other_build(_sent(now), now)
 
     def test_a_stamp_that_cannot_vouch_for_itself_is_refused(self) -> None:
         now = _now()
@@ -538,6 +552,25 @@ class TestItShowsOnlyUnderAMatchingBasis:
             for viewer in (store.designer, store.other, None):
                 assert store.shown(viewer, later) is None, (why, viewer)
 
+    def test_a_score_stored_without_the_readings_is_hidden(self, store: Store) -> None:
+        """R-S6e, `v14-registration.md` §15: a visitor's score stored before the browser's
+        pass kept the move values and the pieces followed -- `v14`, with both dials
+        absent -- reads stale by the existing rule and shows no number to anybody."""
+        before = replace(_now(store.spec), readings="")
+        found = store.submit(submitted=_sent(before), current=before)
+        provisional.spot_checked(store.connection, found.id, 32)
+        store.connection.commit()
+
+        def then(digest: str, spec: Any) -> Basis:
+            return replace(_one_run(digest, spec), readings="")  # type: ignore[arg-type]
+
+        assert store.shown(store.other, then) is not None, "it showed on its own basis"
+        for viewer in (store.designer, store.other, None):
+            assert store.shown(viewer) is None, viewer
+        staleness = found.basis.stale_against(_now(store.spec).in_browser(found.basis.checked))
+        assert staleness.needs == "reanalyse"
+        assert any("move values" in reason for reason in staleness.reasons)
+
     def test_no_rules_to_compile_is_no_basis_and_no_number(self, store: Store) -> None:
         store.submit()
         assert store.shown(store.designer, lambda digest, spec: None) is None
@@ -558,12 +591,13 @@ class TestItRanksNothing:
 
     def test_the_index_sort_never_reads_it(self) -> None:
         """A card carries the number under `provisional`, never `index`, so it sorts as a
-        game with no score: last, in both directions (`browse`)."""
+        game with no score: last (`browse`). Since R-S6c the index orders by the card's
+        tier against chess, which the listing works out from the game's own score alone."""
         cards = [
-            {"hash": "a", "name": "a", "index": None,
+            {"hash": "a", "name": "a", "index": None, "tier": "unmeasured",
              "provisional": {"index": 0.99, "state": "spot-checked"}},
-            {"hash": "b", "name": "b", "index": 0.40},
-            {"hash": "c", "name": "c", "index": 0.50},
+            {"hash": "b", "name": "b", "index": 0.40, "tier": "below"},
+            {"hash": "c", "name": "c", "index": 0.50, "tier": "level"},
         ]
         ordered = [card["hash"] for card in browse.order(cards, browse.INDEX)]
         assert ordered[-1] == "a"

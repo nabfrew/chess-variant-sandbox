@@ -310,6 +310,35 @@ class TestTheOtherRefusals:
         rows[0]["near_best"].append(1)
         assert refused(honest, honest.upload(analysis=lines(rows))).name == legality.ANALYSIS
 
+    def test_move_values_out_of_shape(self, honest: Measured) -> None:
+        """R-S6e: one finite number per legal move at each sampled ply, and nothing else."""
+        first = next(
+            i for i, row in enumerate(honest.rows(slices.ANALYSIS)) if row["sample_values"]
+        )
+        breakages = {
+            "missing": lambda row: row.pop("sample_values"),
+            "a ply short": lambda row: row["sample_values"].pop(),
+            "a move short": lambda row: row["sample_values"][0].pop(),
+            "a move over": lambda row: row["sample_values"][0].append(0.0),
+            "not a number": lambda row: row["sample_values"][0].__setitem__(0, "0.5"),
+            "a truth value": lambda row: row["sample_values"][0].__setitem__(0, True),
+            "not finite": lambda row: row["sample_values"][0].__setitem__(0, float("nan")),
+        }
+        for said, breaking in breakages.items():
+            rows = honest.rows(slices.ANALYSIS)
+            breaking(rows[first])
+            found = refused(honest, honest.upload(analysis=lines(rows)))
+            assert found.name == legality.ANALYSIS, said
+            assert "move values" in str(found), said
+
+    def test_a_stamp_without_the_readings_is_a_stale_module(self, honest: Measured) -> None:
+        """R-S6e: a page whose module kept no readings stamps none, and fetches the current."""
+        assert honest.stamp.readings == measurement.READINGS
+        old = replace(honest.stamp, readings="")
+        found = refused(honest, honest.upload(basis=old))
+        assert found.name == legality.STALE_BUILD
+        assert "fetches the current module" in str(found)
+
     def test_trials_the_sampler_did_not_draw(self, honest: Measured) -> None:
         rows = honest.rows(slices.BLUNDER)
         assert rows, "the small roster's games are long enough to be sampled"
@@ -339,17 +368,35 @@ class TestTheOtherRefusals:
         data = json.loads(text)
         cases = {
             "not JSON": "{",
-            # Form 1 carried the fit and its acceptance match, gone in Q558.
-            "form": json.dumps({**data, "schema": 1}),
+            "form": json.dumps({**data, "schema": legality.SCHEMA + 1}),
             "lacks the phases": json.dumps({**data, "phases": {slices.TOURNAMENT: ""}}),
             "no measurement has": json.dumps(
                 {**data, "phases": {**data["phases"], "extra": ""}}
+            ),
+            "are not zlib": json.dumps({**data, "encoding": "plain"}),
+            "not base64": json.dumps(
+                {**data, "phases": {**data["phases"], slices.ANALYSIS: "%%%"}}
+            ),
+            "not zlib-compressed": json.dumps(
+                {**data, "phases": {**data["phases"], slices.ANALYSIS: "aGVsbG8="}}
+            ),
+            "cut short": json.dumps(
+                {**data, "phases": {
+                    **data["phases"], slices.ANALYSIS: data["phases"][slices.ANALYSIS][:-8]
+                }}
             ),
         }
         for said, bad in cases.items():
             with pytest.raises(Refused, match=said) as caught:
                 legality.read_upload(bad)
-            assert caught.value.name == legality.UNREADABLE
+            assert caught.value.name == legality.UNREADABLE, said
+        # An older form is an older page's cached module (form 1 carried the fit, gone in
+        # Q558; form 2 the text plain and no move values, R-S6e): the page fetches the
+        # current one, as it does for a stale build.
+        for older in (1, 2):
+            with pytest.raises(Refused, match="fetches the current module") as caught:
+                legality.read_upload(json.dumps({**data, "schema": older}))
+            assert caught.value.name == legality.STALE_BUILD
         rows = honest.rows(slices.TOURNAMENT)
         rows[0]["moves"][0] = "e2e4"
         found = refused(honest, honest.upload(tournament=lines(rows)))
@@ -371,37 +418,59 @@ class TestTheOtherRefusals:
 # -------------------------------------------------------------------- the slim form
 
 
+def opened(text: str) -> dict[str, str]:
+    """An upload's phases as text, each unpacked (form 3, R-S6e)."""
+    data = json.loads(text)
+    return {name: slices.unpack(value) for name, value in data["phases"].items()}
+
+
+def packed(phases: dict[str, str]) -> dict[str, str]:
+    return {name: slices.pack(text) for name, text in phases.items()}
+
+
 class TestTheSlimForm:
     def test_the_upload_leaves_out_what_the_walk_rebuilds(self, honest: Measured) -> None:
         data = json.loads(honest.upload())
         assert data["schema"] == legality.SCHEMA
-        assert set(data["phases"]) == set(slices.PHASES)
-        for line in data["phases"][slices.TOURNAMENT].splitlines():
+        assert data["encoding"] == slices.PACKED
+        phases = opened(honest.upload())
+        assert set(phases) == set(slices.PHASES)
+        for line in phases[slices.TOURNAMENT].splitlines():
             assert not set(legality.REBUILT_RECORD_FIELDS) & set(json.loads(line))
-        for line in data["phases"][slices.ANALYSIS].splitlines():
+        for line in phases[slices.ANALYSIS].splitlines():
             row = json.loads(line)
             assert not set(legality.REBUILT_ANALYSIS_FIELDS) & set(row)
-            assert "near_best" in row
-        assert data["phases"][slices.BLUNDER] == honest.phases[slices.BLUNDER]
-        assert set(data) == {"schema", "basis", "phases"}
+            # The probe's two fields, which no walk can rebuild (R-S6e: the move values).
+            assert "near_best" in row and "sample_values" in row
+        assert phases[slices.BLUNDER] == honest.phases[slices.BLUNDER]
+        assert set(data) == {"schema", "basis", "encoding", "phases"}
 
     def test_a_slim_line_is_still_b0s_line(self, honest: Measured) -> None:
         """No second parser: B0's own readers read the slim text."""
-        data = json.loads(honest.upload())
-        slim = slices.parse_records(data["phases"][slices.TOURNAMENT])
+        phases = opened(honest.upload())
+        slim = slices.parse_records(phases[slices.TOURNAMENT])
         full = slices.parse_records(honest.phases[slices.TOURNAMENT])
         assert [(r.seed, r.moves, r.winner, r.reason) for r in slim] == [
             (r.seed, r.moves, r.winner, r.reason) for r in full
         ]
-        assert [a.near_best for a in slices.parse_analyses(data["phases"][slices.ANALYSIS])] == [
-            a.near_best for a in slices.parse_analyses(honest.phases[slices.ANALYSIS])
+        sent = slices.parse_analyses(phases[slices.ANALYSIS])
+        made = slices.parse_analyses(honest.phases[slices.ANALYSIS])
+        assert [(a.near_best, a.sample_values) for a in sent] == [
+            (a.near_best, a.sample_values) for a in made
         ]
+
+    def test_packing_round_trips_and_is_bounded(self, honest: Measured) -> None:
+        text = honest.phases[slices.ANALYSIS]
+        assert slices.unpack(slices.pack(text)) == text
+        with pytest.raises(slices.SliceError, match="opens to more than"):
+            slices.unpack(slices.pack(text), limit=len(text.encode("utf-8")) - 1)
+        assert slices.unpack(slices.pack(text), limit=len(text.encode("utf-8"))) == text
 
     def test_a_line_that_keeps_the_rebuilt_fields_reads_the_same(
         self, honest: Measured
     ) -> None:
         data = json.loads(honest.upload())
-        data["phases"] = dict(honest.phases)
+        data["phases"] = packed(honest.phases)
         full = legality.score(
             honest.check(json.dumps(data)), honest.current.weights_version
         ).files
@@ -419,18 +488,24 @@ class TestTheSlimForm:
         for row in analyses:
             row["position_keys"] = [7] * len(row["position_keys"])
             row["revisited_plies"] = 0
-        data["phases"] = {
+        for row in analyses:
+            # R-S6e: the movers and the pieces followed are the walk's too.
+            row["sample_movers"] = [1 - mover for mover in row["sample_movers"]]
+            row["fielded_moved"] = 0
+            row["fielded_instances"] = 1
+        data["phases"] = packed({
             **honest.phases,
             slices.TOURNAMENT: lines(tournament),
             slices.ANALYSIS: lines(analyses),
-        }
+        })
         scored = legality.score(honest.check(json.dumps(data)), honest.current.weights_version)
         assert scored.headline == honest.index
         assert scored.files["games.jsonl"] == honest.files["games.jsonl"]
+        assert scored.files["analysis.json"] == honest.files["analysis.json"]
 
     def test_the_slim_form_is_the_smaller(self, honest: Measured) -> None:
         """What it leaves out is most of the two phases that carry positions."""
-        slim = json.loads(honest.upload())["phases"]
+        slim = opened(honest.upload())
         rebuilt = (slices.TOURNAMENT, slices.ANALYSIS)
         assert sum(len(slim[p]) for p in rebuilt) < 0.6 * sum(
             len(honest.phases[p]) for p in rebuilt
@@ -462,6 +537,9 @@ class TestTheWalkReadsAsTheCoreAndThePassDo:
         ]
         kinds = {move_type(m) for record in records for m in record.moves}
         assert WALKED_KINDS.get(name, set()) <= kinds, "the games play what they are here for"
+        # Without `v14`'s readings and with them (R-S6e): the movers and the pieces followed
+        # are the walk's; the move values are the probe's, as `near_best` is.
+        movable = analysis_pass.movable_types(spec)
         for index, record in enumerate(records):
             walked = legality.walk(
                 engine, evaluator, record, phase=slices.TOURNAMENT, game=index, series=True
@@ -469,6 +547,15 @@ class TestTheWalkReadsAsTheCoreAndThePassDo:
             assert walked.record.as_dict() == record.as_dict()
             own = analysis_pass._analyse_game(engine, evaluator, record, epsilon)
             assert replace(walked.positions, near_best=own.near_best) == own
+            read = legality.walk(
+                engine, evaluator, record, phase=slices.TOURNAMENT, game=index,
+                series=True, movable=movable,
+            ).positions
+            full = analysis_pass._analyse_game(engine, evaluator, record, epsilon, movable)
+            assert full.fielded_instances is not None and full.sample_movers is not None
+            assert replace(
+                read, near_best=full.near_best, sample_values=full.sample_values
+            ) == full
             if record.plies >= 12:
                 trial = analysis_pass._one_blunder(
                     engine, record, analysis_pass.blunder_rng(0, record)

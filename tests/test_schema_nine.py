@@ -270,6 +270,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/quarry.json": ("51d9b36b4e93", "7bed2a6503798054"),  # was b03c53fbdc1c2346
     "archive/queen-bomb.json": ("313c913a5b3b", "6898bebfab0e245a"),  # was fa021e91cdc7782d (Q1032)
     "archive/queens-wake.json": ("328cab4db5cc", "882d0cc13661cae0"),  # was 185b194e58d513eb (Q1032)
+    # R-N6b, 2026-11-13: the user's fix to `torus-less-extended` (2026-11-05), tracked at last.
+    "archive/rear-guard-torus-even-promotion.json": ("0df9ea99bd82", "5773ade0bac90794"),
     "archive/reckoning.json": ("ffc7b604bea0", "165fff189589d44f"),
     # The two stone games moved **both** numbers on 2026-09-08 (Q131), which is the row
     # kind the header calls out: a ruleset whose *spec* is edited, not a compiler

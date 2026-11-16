@@ -338,7 +338,6 @@ class TestRefusals:
         ("change", "said"),
         [
             (lambda s: s["rules"].update(forbid_check=True), "beside forbid_check"),
-            (lambda s: s["rules"]["npcs"][3].update(respawn=4), "respawn beside a pounce"),
             (lambda s: s["rules"]["npcs"][3].update(turns_back=True), "turns_back beside a pounce"),
             (lambda s: s["rules"]["npcs"][1].update(bounty=7), "disagree on bounty"),
             (lambda s: s["rules"]["npcs"][1].pop("pounce"), "disagree on pounce"),
@@ -351,7 +350,7 @@ class TestRefusals:
                 {"kind": "hop", "vectors": [[1, 0]], "symmetry": "dihedral8", "screen": "enemy"}),
              "screen names an owner"),
         ],
-        ids=["forbid-check", "respawn", "turns-back", "bounty", "pounce", "attacks-nothing",
+        ids=["forbid-check", "turns-back", "bounty", "pounce", "attacks-nothing",
              "forward", "condition", "screen"],
     )
     def test_refused(self, change: Any, said: str) -> None:

@@ -151,7 +151,8 @@ def test_one_schedule_call_plays_the_duels_and_the_controls_games() -> None:
     spec = load_spec(Path("rulesets/dull.json"))
     rung = "minimax:nodes=40"
     played = waiting.play(spec, ("random", rung), seed=0, workers=1)
-    duel = duel_records(spec, f"{rung},{waiting.CONTEMPT}", rung, waiting.PAIRS, seed=500, workers=1)
+    duel = duel_records(spec, f"{rung},{waiting.CONTEMPT}", rung, waiting.PAIRS, seed=500, workers=1,
+                        unopened=True)
     control = run_tournament(
         spec, TournamentConfig(agents=(rung,), games_per_pairing=waiting.CONTROL, seed=500,
                                workers=1, collect_series=False),

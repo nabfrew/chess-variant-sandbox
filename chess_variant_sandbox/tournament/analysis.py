@@ -76,6 +76,9 @@ ANALYSIS_COMPONENTS = (
     "position_revisit_rate",
     "capture_availability",
     "instance_participation",
+    # R-S6b (`v14`): written only under `analyse_corpus(readings=True)`.
+    "decision_cost",
+    "piece_participation",
 )
 
 # Every Nth ply is scored in full. Eight is short enough that a 60-ply game still
@@ -166,10 +169,28 @@ class GameAnalysis:
     # `NEUTRAL_SERIES`, the core's answers. ``None`` for a game without a piece nobody owns,
     # and then absent from the file.
     neutral: dict[str, list[int]] | None = None
+    # R-S6b (`docs/reference/v14-registration.md` §2.1 change 5): per sampled position, every
+    # move's probe value for the side that chose there (rounded to four places), and that
+    # side, so a scorer can put the values on a fitted expected-score map. Written only when
+    # the pass is asked for `v14`'s readings (`analyse_corpus(..., readings=True)`); ``None``
+    # otherwise, and then absent from the file, as ``rounds`` is.
+    sample_values: list[list[float]] | None = None
+    sample_movers: list[int] | None = None
+    # R-S6b (change 3, `empty-board-participation.md` §3.1): of every piece that stood on the
+    # board at any time and is of a type that can move, set at the start or entering later by
+    # a drop, a buy or a gate, how many there were and how many moved, followed as pieces
+    # (`PieceFollower`). Written only beside `sample_values`.
+    fielded_instances: int | None = None
+    fielded_moved: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["agents"] = list(self.agents)
+        for optional in (
+            "sample_values", "sample_movers", "fielded_instances", "fielded_moved"
+        ):
+            if data[optional] is None:
+                del data[optional]
         if self.rounds is None:
             del data["rounds"]
         if self.spy is None:
@@ -233,6 +254,11 @@ class CorpusAnalysis:
 
     games: list[GameAnalysis] = field(default_factory=list)
     blunders: list[BlunderTrial] = field(default_factory=list)
+    # R-S6b: the expected-score map's scale for `decision_cost`, fitted on the game's other
+    # runs by the caller that holds them (`metrics.components.cost_fits`). Never persisted:
+    # it is a reading of several runs' files, not a fact of this one. ``None`` reads the
+    # one-run rule (even games fit the odd ones and the reverse).
+    cost_fit: Any = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -264,6 +290,7 @@ def analyse_corpus(
     seed: int = 0,
     progress: bool = False,
     workers: int = 0,
+    readings: bool = True,
 ) -> CorpusAnalysis:
     """Run the second pass over a finished corpus.
 
@@ -271,23 +298,31 @@ def analyse_corpus(
     the cost and every game is independent. Workers compile the ruleset once and keep
     it, because compilation builds a table per (player, piece type, square) triple and
     paying for that per game would cost more than the analysis.
+
+    ``readings`` (R-S6b; on by default since R-S6d made `v14` current) also writes what
+    `v14` reads: every sampled move's value and its mover (`GameAnalysis.sample_values`),
+    and the fielded pieces (`fielded_instances`). Off, the file is the bytes the pass wrote
+    before R-S6b.
     """
     engine = Engine(spec)
     epsilon = _epsilon_for(engine)
+    movable = movable_types(spec) if readings else None
 
     graded = [r for r in records if _searching(r)] or records
     resolved = workers if workers > 0 else max(1, (os.cpu_count() or 2) - 1)
 
     if resolved == 1 or len(graded) < 8:
         evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
-        analyses = [_analyse_game(engine, evaluator, record, epsilon) for record in graded]
+        analyses = [
+            _analyse_game(engine, evaluator, record, epsilon, movable) for record in graded
+        ]
         blunders = _blunder_trials(engine, graded, blunder_sample, seed, progress)
         return CorpusAnalysis(games=analyses, blunders=blunders)
 
     chosen = _blunder_choices(graded, blunder_sample, seed)
     try:
         with ProcessPoolExecutor(
-            max_workers=resolved, initializer=_init_worker, initargs=(spec,)
+            max_workers=resolved, initializer=_init_worker, initargs=(spec, readings)
         ) as pool:
             analyses = list(pool.map(_analyse_one, graded, chunksize=2))
             trials = list(pool.map(_blunder_one, [(r, seed) for r in chosen], chunksize=1))
@@ -303,7 +338,9 @@ def analyse_corpus(
             flush=True,
         )
         evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
-        analyses = [_analyse_game(engine, evaluator, record, epsilon) for record in graded]
+        analyses = [
+            _analyse_game(engine, evaluator, record, epsilon, movable) for record in graded
+        ]
         trials = [_one_blunder(engine, record, blunder_rng(seed, record))
                   for record in chosen]
 
@@ -330,18 +367,22 @@ def _epsilon_for(engine: Engine) -> float:
 _WORKER_ENGINE: Engine | None = None
 _WORKER_EVALUATOR: Evaluator | None = None
 _WORKER_EPSILON = 1.0
+_WORKER_MOVABLE: frozenset[int] | None = None
 
 
-def _init_worker(spec: dict[str, Any]) -> None:
-    global _WORKER_ENGINE, _WORKER_EVALUATOR, _WORKER_EPSILON
+def _init_worker(spec: dict[str, Any], readings: bool = True) -> None:
+    global _WORKER_ENGINE, _WORKER_EVALUATOR, _WORKER_EPSILON, _WORKER_MOVABLE
     _WORKER_ENGINE = Engine(spec)
     _WORKER_EVALUATOR = Evaluator.for_engine(_WORKER_ENGINE, mobility_weight=0.0)
     _WORKER_EPSILON = _epsilon_for(_WORKER_ENGINE)
+    _WORKER_MOVABLE = movable_types(spec) if readings else None
 
 
 def _analyse_one(record: GameRecord) -> GameAnalysis:
     assert _WORKER_ENGINE is not None and _WORKER_EVALUATOR is not None
-    return _analyse_game(_WORKER_ENGINE, _WORKER_EVALUATOR, record, _WORKER_EPSILON)
+    return _analyse_game(
+        _WORKER_ENGINE, _WORKER_EVALUATOR, record, _WORKER_EPSILON, _WORKER_MOVABLE
+    )
 
 
 def _blunder_one(task: tuple[GameRecord, int]) -> BlunderTrial | None:
@@ -650,12 +691,18 @@ def _count_wild(
 
 
 def _analyse_game(
-    engine: Engine, evaluator: Evaluator, record: GameRecord, epsilon: float
+    engine: Engine,
+    evaluator: Evaluator,
+    record: GameRecord,
+    epsilon: float,
+    movable: frozenset[int] | None = None,
 ) -> GameAnalysis:
+    """One game's facts. ``movable`` (R-S6b) is the spec's types that can move, given only
+    when `v14`'s readings are asked for (`analyse_corpus(readings=True)`)."""
     if engine.spy:
-        return _analyse_spy(engine, evaluator, record, epsilon)
+        return _analyse_spy(engine, evaluator, record, epsilon, movable)
     if engine.simultaneous:
-        return _analyse_rounds(engine, evaluator, record, epsilon)
+        return _analyse_rounds(engine, evaluator, record, epsilon, movable)
     n_types = engine.spec.n_types
     moves_by_type = [0] * n_types
     captures_by_type = [0] * n_types
@@ -686,6 +733,8 @@ def _analyse_game(
     duck = _duck_tally(engine)
     purse = _purse_tally(engine)
     neutral = _neutral_tally(engine)
+    values = ValueSamples() if movable is not None else None
+    follower = PieceFollower(engine, state.board, movable) if movable is not None else None
 
     for index, move in enumerate(record.moves):
         board = state.board
@@ -715,6 +764,8 @@ def _analyse_game(
                 best = max(scores)
                 near_best.append(sum(1 for s in scores if best - s <= epsilon))
                 legal_counts.append(len(legal))
+                if values is not None:
+                    values.add(scores, state.side_to_move)
                 # Same sample, so the two ratios are over the same plies. "Occupied
                 # destination" is the same reading of a capture that
                 # `captures_by_type` uses two lines up; en passant is missed by both,
@@ -730,6 +781,8 @@ def _analyse_game(
         if duck is not None:
             _count_duck(engine, duck, mover, move, state)
         _count_purse(engine, purse, before, move, state)
+        if follower is not None:
+            follower.step(board, (move,), state.board)
         walked += 1
         position_keys.append(state.key)
         if state.key in seen_keys:
@@ -756,7 +809,158 @@ def _analyse_game(
         duck=duck,
         purse=purse,
         neutral=neutral,
+        **_v14_fields(values, follower),
     )
+
+
+# ------------------------------------------------------- R-S6b: what `v14` reads
+#
+# `docs/reference/v14-registration.md` §2.1, changes 3 and 5. Both are written only when the
+# pass is asked for them (`analyse_corpus(readings=True)`), so a file written without them is
+# the bytes it always was and `v13` reads every field it read.
+
+
+def movable_types(spec: dict[str, Any]) -> frozenset[int]:
+    """The spec's piece types that can move (`moves` not empty): the only ones
+    `fielded_instances` counts (`empty-board-participation.md` §3.1 item 1)."""
+    return frozenset(
+        index for index, piece in enumerate(spec.get("pieces") or []) if piece.get("moves")
+    )
+
+
+class ValueSamples:
+    """Every sampled position's move values, for the side that chose there."""
+
+    __slots__ = ("values", "movers")
+
+    def __init__(self) -> None:
+        self.values: list[list[float]] = []
+        self.movers: list[int] = []
+
+    def add(self, scores: list[float], mover: int) -> None:
+        self.values.append([round(float(score), 4) for score in scores])
+        self.movers.append(int(mover))
+
+
+class PieceFollower:
+    """Pieces followed through a game, not squares (R-S6b, change 3).
+
+    Every piece that stands on the board at some time gets a name: the opening board's
+    pieces (a portal end left out, as `starting_squares` leaves it), and each piece that
+    appears later where no named piece came from (a drop, a buy, a gated piece). A move
+    carries the name on its origin to its target; a piece that leaves one square and the same
+    byte appears on another in the same step (a castling partner) is the same piece, moved;
+    a piece standing where it stood keeps its name, whatever its byte became (a promotion, a
+    hire). Only a name of a type that can move is counted, and only such a name is credited
+    with moving, so a piece that cannot move is never credited (§3.1 item 1).
+
+    Two kinds stay out of the entering count: the duck (a piece nobody owns, put on by the
+    duck half) and a wild piece; a wild piece standing at the start is counted as the
+    opening board always counted it, and only a player's move credits it.
+    """
+
+    def __init__(self, engine: Engine, board: bytes, movable: frozenset[int]) -> None:
+        self.engine = engine
+        self.movable = movable
+        self.live: dict[int, int] = {}
+        self.counted: set[int] = set()
+        self.moved: set[int] = set()
+        self.named = 0
+        for square in sorted(starting_squares(engine, board)):
+            self._name(square, board[square])
+
+    def _name(self, square: int, value: int) -> None:
+        name = self.named
+        self.named += 1
+        self.live[square] = name
+        if self.engine.spec.type_of(value) in self.movable:
+            self.counted.add(name)
+
+    def _enters(self, value: int) -> bool:
+        spec = self.engine.spec
+        kind = spec.type_of(value)
+        if spec.portals is not None and spec.portals.is_end(kind):
+            return False
+        if spec.duck is not None and kind == spec.duck.piece_type:
+            return False
+        return spec.owner_of(value) != 2
+
+    def step(self, before: bytes, moves: tuple[int, ...], after: bytes) -> None:
+        """One ply (one move) or one round (two moves), from the board before to after."""
+        placed: dict[int, int] = {}
+        left: set[int] = set()
+        for move in moves:
+            if not moves_an_instance(move):
+                continue
+            origin, target = move_from(move), move_to(move)
+            name = self.live.get(origin)
+            if name is None:
+                continue
+            self.moved.add(name)
+            if after[target] != 0 and target not in placed:
+                placed[target] = name
+                if target != origin:
+                    left.add(origin)
+            elif after[origin] != 0 and origin not in placed:
+                # A capture that stays (a shot): the mover is where it was.
+                placed[origin] = name
+            else:
+                left.add(origin)
+        for square, name in self.live.items():
+            if square in left or square in placed or after[square] == 0:
+                continue
+            placed[square] = name
+        carried = set(placed.values())
+        # Named pieces that are gone from where they stood: off a square now empty (it may
+        # reappear elsewhere, moved by the same step), or under a square another took.
+        vacated = [s for s, n in self.live.items() if n not in carried and after[s] == 0]
+        taken = [s for s, n in self.live.items() if n not in carried and after[s] != 0]
+        for square in range(len(after)):
+            value = after[square]
+            if value == 0 or square in placed:
+                continue
+            twin = next((v for v in vacated if before[v] == value), None)
+            if twin is not None:
+                vacated.remove(twin)
+                name = self.live[twin]
+                placed[square] = name
+                if self.engine.spec.owner_of(value) != 2:
+                    self.moved.add(name)
+                continue
+            reborn = next((v for v in taken if before[v] == value), None)
+            if reborn is not None:
+                # A piece taken and set back on the board in the same step (circe's
+                # rebirth): the same piece, not one more, and it did not move.
+                taken.remove(reborn)
+                placed[square] = self.live[reborn]
+            elif self._enters(value):
+                name = self.named
+                self.named += 1
+                placed[square] = name
+                if self.engine.spec.type_of(value) in self.movable:
+                    self.counted.add(name)
+        self.live = placed
+
+    @property
+    def fielded(self) -> int:
+        return len(self.counted)
+
+    @property
+    def fielded_moved(self) -> int:
+        return len(self.moved & self.counted)
+
+
+def _v14_fields(
+    values: ValueSamples | None, follower: PieceFollower | None
+) -> dict[str, Any]:
+    if values is None or follower is None:
+        return {}
+    return {
+        "sample_values": values.values,
+        "sample_movers": values.movers,
+        "fielded_instances": follower.fielded,
+        "fielded_moved": follower.fielded_moved,
+    }
 
 
 def _is_wild_piece(spec: Any, value: int) -> bool:
@@ -1158,7 +1362,11 @@ def _is_swap(first: int, second: int) -> bool:
 
 
 def _analyse_rounds(
-    engine: Engine, evaluator: Evaluator, record: GameRecord, epsilon: float
+    engine: Engine,
+    evaluator: Evaluator,
+    record: GameRecord,
+    epsilon: float,
+    movable: frozenset[int] | None = None,
 ) -> GameAnalysis:
     """`_analyse_game` for a game in rounds (the reading above `ROUND_COUNTS`)."""
     n_types = engine.spec.n_types
@@ -1183,6 +1391,8 @@ def _analyse_rounds(
     position_keys: list[int] = []
     revisited = 0
     walked = 0
+    values = ValueSamples() if movable is not None else None
+    follower = PieceFollower(engine, state.board, movable) if movable is not None else None
 
     for index in range(0, len(record.moves) - 1, 2):
         pair = (record.moves[index], record.moves[index + 1])
@@ -1216,12 +1426,16 @@ def _analyse_rounds(
                         capture_counts.append(
                             sum(1 for move in lists[seat] if takes(engine, board, move))
                         )
+                        if values is not None:
+                            values.add(reading.values[seat], seat)
 
         before = state
         state, _, events = engine.apply_round_with_phase(state, pair[0], pair[1])
         count_round(counts, pair, events)
         for seat in (0, 1):
             _count_purse(engine, purse, before, pair[seat], state, seat)
+        if follower is not None:
+            follower.step(board, pair, state.board)
 
         # Two plies a round, as every per-ply series in the record: the key after the
         # round twice, and a revisit counted on both, so the rate is per round.
@@ -1250,6 +1464,7 @@ def _analyse_rounds(
         rest=rest,
         purse=purse,
         neutral=neutral,
+        **_v14_fields(values, follower),
     )
 
 
@@ -1638,7 +1853,11 @@ def read_announced(
 
 
 def _analyse_spy(
-    engine: Engine, evaluator: Evaluator, record: GameRecord, epsilon: float
+    engine: Engine,
+    evaluator: Evaluator,
+    record: GameRecord,
+    epsilon: float,
+    movable: frozenset[int] | None = None,
 ) -> GameAnalysis:
     """`_analyse_game` for a spy game (the reading above `SPY_COUNTS`)."""
     n_types = engine.spec.n_types
@@ -1660,6 +1879,8 @@ def _analyse_spy(
 
     sight = sight_tally(engine)
     rest = rest_tally(engine)
+    values = ValueSamples() if movable is not None else None
+    follower = PieceFollower(engine, start.board, movable) if movable is not None else None
 
     for step in spy_steps(engine, record):
         state, board = step.state, step.state.board
@@ -1678,10 +1899,13 @@ def _analyse_spy(
 
         if any((step.ply + k) % PLY_STRIDE == 0 for k in range(len(step.moves))):
             _sample_spy_step(
-                engine, evaluator, step, epsilon, near_best, legal_counts, capture_counts
+                engine, evaluator, step, epsilon, near_best, legal_counts, capture_counts,
+                values,
             )
 
         after = step.after
+        if follower is not None:
+            follower.step(board, step.moves, after.board)
         if len(step.moves) == 1:
             spy["alternating_plies" if step.phase.name == "alternating" else "reply_turns"] += 1
             walked += 1
@@ -1720,6 +1944,7 @@ def _analyse_spy(
         spy=spy,
         sight=sight,
         rest=rest,
+        **_v14_fields(values, follower),
     )
 
 
@@ -1731,6 +1956,7 @@ def _sample_spy_step(
     near_best: list[int],
     legal_counts: list[int],
     capture_counts: list[int],
+    values: ValueSamples | None = None,
 ) -> None:
     """The probe on one sampled step of a spy game, appended to the three series: a turn as
     an alternating ply is, a round one sample for each seat with a choice."""
@@ -1743,6 +1969,8 @@ def _sample_spy_step(
             near_best.append(sum(1 for s in scores if best - s <= epsilon))
             legal_counts.append(len(legal))
             capture_counts.append(sum(1 for m in legal if takes(engine, board, m)))
+            if values is not None:
+                values.add(scores, state.side_to_move)
         return
     lists = (step.lists[0], step.lists[1])
     if step.phase.name == "announced":
@@ -1759,6 +1987,8 @@ def _sample_spy_step(
             near_best.append(reading.near_best(seat, epsilon))
             legal_counts.append(len(lists[seat]))
             capture_counts.append(sum(1 for move in lists[seat] if takes(engine, board, move)))
+            if values is not None:
+                values.add(reading.values[seat], seat)
 
 
 def _one_spy_blunder(

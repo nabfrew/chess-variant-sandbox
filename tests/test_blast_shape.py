@@ -258,7 +258,14 @@ def test_distance_tells_a_shape_from_the_box() -> None:
     assert features(atomic(CROSS))["explodes_shaped"] == 1.0
 
 
-def test_fairy_translates_the_kings_step_and_refuses_every_other_shape() -> None:
+def test_fairy_translates_the_kings_step_and_refuses_every_other_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Q1219 refuses a blast beside a royal on its own (`variant.BLAST_BESIDE_A_ROYAL`); the
+    # shape is the question here, so that refusal is switched off.
+    from chess_variant_sandbox.fairy import variant
+
+    monkeypatch.setattr(variant, "_check_blast_beside_a_royal", lambda *_: None)
     assert "blastOnCapture = true" in translate(atomic(KING_STEP)).config
     for shape in (CROSS, FILE):
         with pytest.raises(Untranslatable) as refused:

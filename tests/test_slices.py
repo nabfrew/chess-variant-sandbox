@@ -639,7 +639,13 @@ class TestSlicingDoesNotChangeTheGames:
         self, played, count
     ) -> None:
         spec, config, records = played
-        reference = analyse_corpus(spec, records, seed=config.seed, workers=1)
+        # The sliced pass is the browser's, and since R-S6e it writes `v14`'s readings as the
+        # one call does by default (R-S6d), so the two are held together with the readings
+        # on both sides (`docs/reference/v14-registration.md` §15). The reference spells
+        # `readings=True` so a default moving on either side cannot pass unseen.
+        reference = analyse_corpus(spec, records, seed=config.seed, workers=1, readings=True)
+        assert all(game.sample_values is not None for game in reference.games)
+        assert all(game.fielded_instances is not None for game in reference.games)
 
         analyses = []
         for unit in slices.analysis_units(records, count):

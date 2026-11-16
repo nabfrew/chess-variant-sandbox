@@ -27,6 +27,7 @@ from typing import Any
 
 from chess_variant_sandbox.spec.describe import RULE_WORDS
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
+from chess_variant_sandbox.spec.refusals import reason_counts
 from chess_variant_sandbox.spec.schema import (
     _APPEARANCE_KEYS,
     _PROVENANCE_KEYS,
@@ -524,6 +525,8 @@ promotion), two rules that cannot be played together are not, and a rule that co
 fire is refused rather than kept. A rule written at the value that means no rule (`"rest":
 0`, `"tie": "both"`) is not refused: it is the game without it.
 
+{combinations}
+
 Each line below is what `validate` prints for one mistake made to the first worked
 example.
 """
@@ -898,8 +901,28 @@ def _count(low: int | None, high: int | None, unit: str) -> str:
     return ""
 
 
+def _render_combinations() -> str:
+    """How many pairs of rules the language refuses together, by reason (R-L1b). The counts
+    are `refusals.reason_counts`, read from the classification beside the refusal tables."""
+    counts = reason_counts()
+    total = sum(counts.values())
+    return "\n".join([
+        f"Today {total} pairs of rules are refused in one game, each for one of three reasons:",
+        "",
+        f"- **Contradictory ({counts['contradictory']}).** The two rules cannot mean anything",
+        "  together, whatever is built: check in a game where both players move at once, or a",
+        "  side and a forward direction for a piece that nobody owns.",
+        f"- **Too expensive ({counts['too_expensive']}).** A reading exists, but playing it would",
+        "  need a wider change to how the engine stores a position, a move or a table than the",
+        "  pair is yet worth.",
+        f"- **Not built yet ({counts['not_built']}).** The pair could mean something and nobody",
+        "  has built it yet. This is the language's unfinished work, and the aim is that this",
+        "  number reaches zero.",
+    ])
+
+
 def _render_refusals() -> str:
-    out = [_REFUSALS_INTRO]
+    out = [_REFUSALS_INTRO.replace("{combinations}", _render_combinations())]
     for what, spec in _mistakes():
         errors = validate_spec(spec)
         if not errors:

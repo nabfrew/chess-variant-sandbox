@@ -25,7 +25,7 @@ edit here, never a lookup that follows the name.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Protocol
@@ -268,6 +268,7 @@ def first_step(
     roster: Iterable[Mapping[str, Any]],
     day: date,
     preview: Any = None,
+    chosen: Callable[[Any], dict[str, Any] | None] | None = None,
 ) -> dict[str, Any] | None:
     """The front page's first step on `day`: the featured game, its sentence, its board and
     its two opponents.
@@ -276,6 +277,9 @@ def first_step(
     day's game when it is offered, else the next in the rotation that is, so a withdrawn
     game never leaves the front page empty; None only when none of the five is offered.
     `preview(game)` draws the opening position (`designing.board_payload`), or is None.
+    `chosen(game)` is the game page's own `firstGame` (R-W1: the same rule over the same
+    ladder and rating table, so the front page and the game's page name one player); without
+    it, `opponents` over `roster` and the game's own ratings.
     """
     listed = {game.hash: game for game in games}
     roster = list(roster)
@@ -290,7 +294,8 @@ def first_step(
             "hash": entry.hash,
             "sentence": entry.sentence,
             "day": day.isoformat(),
-            "opponents": opponents(roster, getattr(game, "ratings", None)),
+            "opponents": (chosen(game) if chosen is not None
+                          else opponents(roster, getattr(game, "ratings", None))),
             # The game's hash on the drawing too, so its wood is the library card's.
             "preview": None if preview is None else {**preview(game), "hash": entry.hash},
         }

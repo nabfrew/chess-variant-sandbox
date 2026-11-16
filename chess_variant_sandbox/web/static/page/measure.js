@@ -232,6 +232,8 @@ const HERE_OFF = {
 async function hereStanding(hash) {
   if (typeof DRAFT_STANDING !== 'undefined' && DRAFT_STANDING
       && DRAFT_STANDING.hash === hash) return DRAFT_STANDING;
+  // A visitor is never sent a standing (R-W7, `design.js` `signedOutHere`).
+  if (ACCOUNTS && !VIEWER) return null;
   try {
     return await api('/api/design/standing/' + hash);
   } catch (error) {

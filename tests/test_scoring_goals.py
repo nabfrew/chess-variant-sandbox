@@ -137,11 +137,10 @@ def test_a_count_without_a_bank_counts_the_standing_pieces() -> None:
         (lambda s: s["rules"].update(win="checkmate") or s["pieces"][0].update(royal=True),
          "royal type"),
         (lambda s: s["rules"].update(forbid_immobility=True), "forbid_immobility"),
-        (lambda s: s["rules"].update(extinction={"pieces": "any"}), "rules.extinction"),
         (lambda s: s["rules"]["reach"].update(count=15), "can never be reached"),
         (lambda s: s["rules"].update(simultaneous={}), "rules.simultaneous"),
     ],
-    ids=["leave", "safe", "royal", "immobility", "extinction", "supply", "rounds"],
+    ids=["leave", "safe", "royal", "immobility", "supply", "rounds"],
 )
 def test_a_scoring_goal_is_refused_where_it_has_no_reading(edit: Any, words: str) -> None:
     spec = _crossings()

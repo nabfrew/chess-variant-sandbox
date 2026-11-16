@@ -376,6 +376,9 @@ DOMAIN: dict[str, tuple[float, float | None]] = {
     # zero end is unreachable and the component can never score badly.
     "progress_irreversibility": (0.0, 1.0),
     "instance_participation": (0.0, 1.0),
+    # v14 (R-S6b): both shares, so both are bounded by 0 and 1.
+    "piece_participation": (0.0, 1.0),
+    "decision_cost": (0.0, 1.0),
     "lead_conversion": (0.0, 1.0),
     # `v11`'s variety component (`docs/archive/plan-variety.md` §5.4 C2). A mean Jaccard distance
     # between position sets, so a share; `higher_better` on a band as wide as this one

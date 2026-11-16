@@ -153,6 +153,7 @@ async function showBoard(snapshot, how) {
           ${snapshot.puzzle ? `<button id="again"
             title="a new practice game from the same proven position, against hardest"
             >try it again from the position</button>` : `<button id="again">new game</button>
+          ${changeOpponentHtml()}
           ${mixed ? `<button id="swap" title="the same game from the other side">
             play the other side</button>` : ''}
           ${watched ? '' : `<button id="watch" title="${esc(watchTitle())}">
@@ -967,6 +968,14 @@ function foldsShown() { return (AT && AT.folds) || SESSION.folds || []; }
 
 function pieceAt(square) { return pieceOf(position()[square]); }
 
+// The on-screen heading of each facing index for a piece of `player`'s (`facingAngles`, the
+// compiler's `facing_headings`). SR8i (O9): a piece nobody owns (player 2) carries its facing
+// in nobody's frame, which is the first player's, so it reads the first row.
+function facingRow(player) {
+  const rows = SESSION.ruleset.facingAngles || [];
+  return rows[player === 2 ? 0 : player] || [];
+}
+
 // Schema 19: the compiled facts about a portal end's type (`portal_payload`), or null.
 function portalEnd(type) {
   const portals = SESSION && SESSION.ruleset && SESSION.ruleset.portals;
@@ -1429,7 +1438,7 @@ function drawPiece(piece, x, y, cell, square) {
     // way round on screen. The one other rotation is ownership: a single-colour set
     // (shogi) has both armies in one colour and marks the second by turning the tile.
     const heading = (SESSION.ruleset.directional || [])[piece.type]
-      ? (SESSION.ruleset.facingAngles || [])[piece.player] : null;
+      ? facingRow(piece.player) : null;
     const angle = heading ? heading[piece.facing || 0] || 0 : (icon.rotate ? 180 : 0);
     const spin = angle ? ` transform="rotate(${angle} ${cx} ${cy})"` : '';
     inner = `${based ? wildBase(cx, cy, cell, hireable(SESSION.ruleset, piece.type)) : ''}<image href="${esc(icon.href)}" x="${
@@ -2165,7 +2174,7 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
       const node = svg.querySelector(`[data-piece="${sq}"]`);
       if (!node) continue;
       const oldP = pieceOf(before[sq]), newP = pieceOf(after[sq]);
-      const headings = (SESSION.ruleset.facingAngles || [])[newP.player] || [];
+      const headings = facingRow(newP.player);
       const oldAngle = headings[oldP.facing || 0] || 0;
       let newAngle = headings[newP.facing || 0] || 0;
       // Pick the shortest arc: if old=270 and new=0, spin +90 not -270.
@@ -3044,12 +3053,22 @@ function seatLabel(player) {
 // Under the name, how hard that seat thinks: the server's plain words off the budget it
 // plays at (`web/play.py::strength`). A name alone left two machines reading "hard vs
 // hard" with nothing to say what hard meant (Q288). Nothing under a person.
-// LP11 (`landing-cold-read.md` §6.2 item 3): the computer's name on a practice board is the
-// way to another opponent, the picker on the game's page with the reader's own seat chosen
-// (`?seat=`, which `detail.js` scrolls to). A reader who won clicked it first. Only a board one
+// LP11 (`landing-cold-read.md` §6.2 item 3): a practice board has a way to another opponent,
+// the picker on the game's page with the reader's own seat chosen (`?seat=`, which
+// `detail.js` scrolls to); R-W1 made it the *change opponent* button. Only a board one
 // person plays against the computer, of a library game: a draft, a try from a proven position,
 // a game between two people and a watched one have no picker to go to.
-const PICKER_TITLE = 'choose another opponent';
+const PICKER_SAID = 'change opponent';
+
+// R-W1: a front-page door seats an opponent without asking, so the way to another is a
+// button of its own in the row under the board, beside *new game*, where a phone shows it
+// next to the board (the computer's name in the side panel was a link nobody read as one).
+function changeOpponentHtml() {
+  const seats = (SESSION && SESSION.seats) || [];
+  const picker = pickerPath(seats.findIndex(seat => seat !== 'human'));
+  return picker
+    ? `<button type="button" data-picker="${esc(picker)}">${esc(PICKER_SAID)}</button>` : '';
+}
 
 function pickerPath(player) {
   if (!SESSION || BOARD_INLINE || BOARD_PROVEN || SESSION.correspondence || SESSION.puzzle) {
@@ -3065,14 +3084,10 @@ function pickerPath(player) {
   return gamePath(rules.hash) + '?seat=' + encodeURIComponent(said);
 }
 
-// The picker's link is followed without loading the page again, as the router's own.
+// The picker is opened without loading the page again, as the router's own links are.
 function wireOpponentPicker(root) {
-  root.querySelectorAll('a[data-picker]').forEach(link => {
-    link.addEventListener('click', event => {
-      if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      goPath(link.getAttribute('href'));
-    });
+  root.querySelectorAll('button[data-picker]').forEach(button => {
+    button.addEventListener('click', () => goPath(button.dataset.picker));
   });
 }
 
@@ -3084,12 +3099,9 @@ function seatHtml(player) {
   // And links to their page (R1): only a member with a mark has one, never somebody who
   // left.
   const member = between && between.marks && between.marks[player];
-  const picker = pickerPath(player);
   const label = member && between.players && between.players[player]
     ? `<a href="/players/${esc(between.players[player])}">${mark}${esc(seatLabel(player))}</a>`
-    : picker ? `<a href="${esc(picker)}" data-picker title="${esc(PICKER_TITLE)}">${
-      esc(seatLabel(player))}</a>`
-      : `${mark}${esc(seatLabel(player))}`;
+    : `${mark}${esc(seatLabel(player))}`;
   return `<b>${esc(sideName(player))}</b>
     <span class="muted">${label}</span>${initiativeHtml(player)}${purseSlotHtml(player)}${
     bankSlotHtml(player)}${
@@ -4676,8 +4688,10 @@ const ROTATION_LABELS = ['up', 'right', 'down', 'left'];
 function chooseRotation(candidates) {
   const hand = document.getElementById('hand');
   const nf = SESSION.ruleset.nFacings || 4;
-  const player = SESSION.sideToMove;
-  const headings = (SESSION.ruleset.facingAngles || [])[player] || [];
+  // The turning piece's owner: the mover, or (SR8i) nobody for a held piece, whose word
+  // names nobody's facing.
+  const turning = candidates.length ? pieceAt(candidates[0].from) : null;
+  const headings = facingRow(turning ? turning.player : SESSION.sideToMove);
   hand.innerHTML = '<span class="muted u-as-center">rotate to:</span>' +
     candidates.map(m => {
       const facing = m.rotation;

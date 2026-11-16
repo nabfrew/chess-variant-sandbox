@@ -1,0 +1,39 @@
+{
+  "schema_version": 26,
+  "name": "simultaneous castling",
+  "description": "SR8d's test spec (R6): a seven by six board in rounds with castling by steps; only the king's arrival meets anything, and the rook moves after the meetings onto its castled square only if that square is empty.",
+  "board": {"width": 7, "height": 6},
+  "pieces": [
+    {"id": "P", "name": "pawn", "value": 1, "moves": [
+      {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+      {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}]},
+    {"id": "N", "name": "knight", "value": 3, "moves": [
+      {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]},
+    {"id": "R", "name": "rook", "value": 5, "moves": [
+      {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "Q", "name": "queen", "value": 9, "moves": [
+      {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "K", "name": "king", "value": 100, "royal": true, "moves": [
+      {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]}
+  ],
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "N"]},
+    "max_plies": 200,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "simultaneous": {}
+  },
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "R", "squares": ["a1", "g1"]},
+      {"piece": "K", "squares": ["d1"]},
+      {"piece": "N", "squares": ["c2", "e2"]},
+      {"piece": "P", "squares": ["a2", "b2", "f2", "g2"]},
+      {"piece": "Q", "squares": ["d2"]}
+    ]
+  }
+}

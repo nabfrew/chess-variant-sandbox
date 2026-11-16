@@ -1,5 +1,9 @@
 {
   "_written_by": "uv run python tests/corpus_pins.py",
-  "descriptions": {},
-  "features": {}
+  "descriptions": {
+    "archive/rear-guard-torus-even-promotion": "11bc1c8cedcdfac6"
+  },
+  "features": {
+    "archive/rear-guard-torus-even-promotion": "3d457fc3caed6218"
+  }
 }

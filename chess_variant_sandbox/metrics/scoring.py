@@ -124,7 +124,16 @@ WEIGHTS_DIR = Path(__file__).parent / "weights"
 # every reference end re-read by v12's own rules from Q1104's library replay on the new roster,
 # every domain, gate and meaning end, weight, family, curve kind and gate v12's to the digit.
 # Pre-registration, read and grading in docs/reference/v13-calibration.md.
-DEFAULT_WEIGHTS = "v13"
+#
+# v14 is v13 with six registered changes and nothing else (docs/reference/v14-registration.md
+# §2.1): the depth dial's top end at its stated meaning (400 log10 3, 190.85), mean_branching
+# higher-better with no upper cut, piece_participation (pieces followed, over every piece
+# fielded) in place of instance_participation at a pinned end, decision_cost (moves giving up a
+# tenth of a game on a per-game expected-score map, the scale fitted on the game's other runs)
+# in place of decision_criticality, and lead_conversion dropped, its weight to its family's
+# survivors. The two new dials are optional. Read once on 2026-11-14 (R-S6b, §10): every line
+# of §3 held, so by §3.7 it is current (R-S6d). v13 is kept, unedited.
+DEFAULT_WEIGHTS = "v14"
 
 # Floor applied to a family score before it enters the geometric mean. Without it a
 # single zeroed family collapses the index to zero for every candidate that has one,

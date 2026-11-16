@@ -42,6 +42,7 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
     MOVE_DROP,
+    MOVE_DUCK,
     MOVE_EN_PASSANT,
     MOVE_FOLD,
     MOVE_NORMAL,
@@ -110,8 +111,9 @@ def after_turn(
 
 def ends_turn(engine: Engine, state: GameState) -> bool:
     """Whether the side to move's next move is the last of its turn: the turn's own count of
-    moves left (`GameState.remaining`), a duck game's piece half its one piece move."""
-    return engine.spec.duck is not None or state.remaining <= 1
+    moves left (`GameState.remaining`). SR8c (L7): a duck game's turn ends in the duck's half,
+    which is no piece move, so its last piece move is the one with two moves left."""
+    return state.remaining <= (2 if engine.spec.duck is not None else 1)
 
 
 def end_of_move(engine: Engine, before: GameState, after: GameState, move: int) -> int | None:
@@ -228,6 +230,10 @@ def apply(engine: Engine, state: GameState, move: int) -> tuple[GameState, Lists
     """An alternating move: the core's position, and the rest lists the oracle says it must
     carry (the caller compares ``as_rest`` of them with the position's)."""
     after = engine.apply(state, move)
+    if decode_move(move)[2] == MOVE_DUCK:
+        # SR8c (L7): the duck's half is no piece move and writes no rest; the turn's last
+        # piece move before it counted the lists down (`ends_turn`).
+        return after, lists_of(state)
     mover = state.side_to_move
     owner = mover
     if move_foreign(move):

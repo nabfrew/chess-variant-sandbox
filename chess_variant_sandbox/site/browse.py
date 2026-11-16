@@ -27,7 +27,12 @@ number and sorts by another is exactly what that rule exists to prevent. The sto
 reader with no `runs/` in reach will use -- a user game in phase 2, say. On the box the
 two are the same number because the loader read the directory the page reads.
 
-**A stale measurement sorts by its provisional number** (EV2, `docs/archive/plan-evolving-score.md`
+**The index orders by tier, never by the number** (R-S6c, `docs/reference/v14-registration.md`
+§2.3): above chess, cannot be told from chess, below chess, then the games outside the
+tiers, each group by name (`library.tier_of` decides, `card["tier"]` carries it). A
+three-decimal order is more than the score can support.
+
+**A stale measurement was sorted by its provisional number** (EV2, `docs/archive/plan-evolving-score.md`
 §5.2, decided A): the card carries the number with `status` *provisional* and draws the
 mark, and nothing here compares it with a current one. A game with no number at all sorts
 last, in both directions. An unvoted game and an unplayed game sort last the same way:
@@ -43,6 +48,7 @@ from typing import Any
 
 from chess_variant_sandbox.site import matches as match_rows
 from chess_variant_sandbox.site import rating, unbeaten, votes
+from chess_variant_sandbox.web import library
 
 STARS = "stars"
 HUMAN_GAMES = "human_games"
@@ -417,6 +423,12 @@ def _key(card: Mapping[str, Any], sort: str) -> tuple[int, float, str]:
     }[sort]
     value = card.get(field)
     name = str(card.get("name", "")).lower()
+    if sort == INDEX:
+        # R-S6c: the group's place, then the name; no order inside a group. A card that
+        # carries no group is read as unmeasured, last.
+        group = str(card.get("tier") or library.UNMEASURED)
+        order = library.TIER_ORDER
+        return (0, float(order.index(group) if group in order else len(order)), name)
     if value is None:
         return (1, 0.0, name)
     if sort == NEWEST:

@@ -97,6 +97,8 @@ def distinct_records(
     return kept, CorpusAnalysis(
         games=[g for g in analysis.games if (g.seed, tuple(g.agents)) in games],
         blunders=[b for b in analysis.blunders if (b.seed, tuple(b.agents)) in games],
+        # The run's cost scale, fitted on the whole runs, travels with the games kept.
+        cost_fit=analysis.cost_fit,
     )
 
 
@@ -139,6 +141,21 @@ class Run:
     counted: bool
 
 
+def _fit_costs(runs: Sequence[Run]) -> None:
+    """Each run's `decision_cost` scale from the other runs, on their whole games, as the
+    run's own score reads it (`corpus._score_run`, R-S6d); one run keeps the one-run rule."""
+    from chess_variant_sandbox.metrics import decision_cost
+
+    held = [run for run in runs if run.analysis is not None]
+    if len(runs) < 2 or not held:
+        return
+    fits = decision_cost.cross_run_fits([(run.analysis, run.records) for run in held])
+    for run, fit in zip(held, fits, strict=True):
+        assert run.analysis is not None
+        if run.analysis.cost_fit is None and decision_cost.written(run.analysis):
+            run.analysis.cost_fit = fit
+
+
 def reading(
     spec: dict[str, Any],
     runs: Sequence[Run],
@@ -154,6 +171,7 @@ def reading(
     needs (`seeds.minimum_totals`). Pure in its inputs: the runs are taken in seed order.
     """
     ordered = sorted(runs, key=lambda run: run.seed)
+    _fit_costs(ordered)
     pooled = [record for run in ordered for record in run.records]
     per_run: list[dict[str, Any]] = []
     totals: list[float] = []

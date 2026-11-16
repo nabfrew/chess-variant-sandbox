@@ -118,6 +118,17 @@ _NUMBER_WORDS = {
     115: "one_hundred_fifteen",
     116: "one_hundred_sixteen",
     117: "one_hundred_seventeen",
+    118: "one_hundred_eighteen",
+    119: "one_hundred_nineteen",
+    120: "one_hundred_twenty",
+    121: "one_hundred_twenty_one",
+    122: "one_hundred_twenty_two",
+    123: "one_hundred_twenty_three",
+    124: "one_hundred_twenty_four",
+    125: "one_hundred_twenty_five",
+    126: "one_hundred_twenty_six",
+    127: "one_hundred_twenty_seven",
+    128: "one_hundred_twenty_eight",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -2074,7 +2085,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 117
+_FEATURES_ARE_FOR_SCHEMA = 128
 
 
 @dataclass(frozen=True)
@@ -3238,6 +3249,104 @@ def _parent_held_in_rounds() -> dict:
     return spec
 
 
+def _parent_entry_only_lost() -> dict:
+    """SR8a's test game, a six by six army whose pawns promote only into what was lost, on
+    entering their zone from a hand too (H3): a dropped pawn takes the first target lost."""
+    from tests.test_entry_only_lost import HAND, _spec
+
+    spec = _spec(**HAND)
+    assert spec["rules"]["promote_on_entry"] is True
+    return spec
+
+
+def _parent_promoting_sweep() -> dict:
+    """SR8b's test game, a six by six army whose sweeper promotes on the last rank (W7): a
+    sweep onto it clears its line and arrives promoted."""
+    from tests.test_sweep_promotes import _spec
+
+    return _spec()
+
+
+def _parent_portals_moved_in_rounds() -> dict:
+    """SR8e's test game, the simultaneous Gardner board with a portal pair and a pair of folds
+    the players move (R9): the round's portal moves are made first."""
+    spec = load_spec(ROOT / "tests" / "_simultaneous_portals_moved.json")
+    assert spec["rules"]["simultaneous"] == {}
+    return spec
+
+
+def _parent_respawning_pouncers() -> dict:
+    """SR8g's test game, the pounce hounds with every entry coming back (N7): a pouncing
+    entry counts its type anywhere on the board."""
+    spec = load_spec(ROOT / "tests" / "_pounce_hounds.json")
+    for npc in spec["rules"]["npcs"]:
+        npc["respawn"] = 4
+    return spec
+
+
+def _parent_held_in_holders_frame() -> dict:
+    """SR8i's game shape, the crowd with its condottiere leaping forward only (O17): a held
+    piece moves in its holder's frame, so it jumps toward whoever does not hold it."""
+    spec = load_spec(ROOT / "archive" / "the-crowd.json")
+    held = next(piece for piece in spec["pieces"] if piece.get("control") == "majority")
+    held["moves"] = [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "lateral", "mode": "both"}]
+    return spec
+
+
+def _parent_held_promotes() -> dict:
+    """SR8j's game shape, the crowd with its condottiere promoting to a rook on its holder's
+    last two ranks (O15): a held piece promotes in its holder's zone and stays nobody's."""
+    spec = load_spec(ROOT / "archive" / "the-crowd.json")
+    spec["rules"]["promotion"] = [
+        spec["rules"]["promotion"], {"piece": "C", "ranks": [6, 7], "to": ["R"]},
+    ]
+    del spec["rules"]["en_passant"]  # defined against a single promoting piece
+    return spec
+
+
+def _parent_held_sweeps() -> dict:
+    """SR8k's game shape, the crowd with its condottiere sweeping as a rook (O16): a held
+    sweep removes the other player's non-royal pieces it may capture, and the holder's pieces,
+    a royal and another nobody's piece end its ray."""
+    spec = load_spec(ROOT / "archive" / "the-crowd.json")
+    held = next(piece for piece in spec["pieces"] if piece.get("control") == "majority")
+    held["moves"] = [{"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    return spec
+
+
+def _parent_turning_beside_check() -> dict:
+    """SR8h's game shape, the turning wolves won by checkmate (N5): a wolf's threat is the
+    square it steps to after its turn."""
+    spec = load_spec(ROOT / "tests" / "_turning_wolves.json")
+    spec["rules"]["win"] = "checkmate"
+    return spec
+
+
+def _parent_head_on_routes() -> dict:
+    """SR8f's test game, the turning wolves with a second wolf on each pacing line (N4): the
+    wolves on one line step front first by heading, and head-on nearer the first square first."""
+    spec = load_spec(ROOT / "tests" / "_turning_wolves.json")
+    spec["rules"]["npcs"][0]["also_at"] = ["c4"]
+    spec["rules"]["npcs"][1]["also_at"] = ["g4"]
+    return spec
+
+
+def _parent_castling_in_rounds() -> dict:
+    """SR8d's test game, castling by steps on a seven by six board in rounds (R6): only the
+    king's arrival meets anything, and the rook moves after the meetings."""
+    spec = load_spec(ROOT / "tests" / "_simultaneous_castling.json")
+    assert spec["rules"]["simultaneous"] == {} and spec["rules"]["castling"]
+    return spec
+
+
+def _parent_duck_in_a_long_turn() -> dict:
+    """SR8c's test game, a five by five pen with the duck (L7): a long turn's piece moves,
+    then one duck move at its end."""
+    from tests.test_duck_long_turn import _pen
+
+    return _pen({"moves": 2, "ramp": [1]})
+
+
 def _parent_market_in_rounds() -> dict:
     """SR7g's test game, a market selling pawns and knights onto the shared middle rank of a
     five by five board in rounds (R19): a buy is an arrival with the round's moves."""
@@ -4243,18 +4352,83 @@ def _has_purse(spec: dict) -> bool:
     return isinstance((spec.get("rules") or {}).get("purse"), dict)
 
 
+#
+# Generations 118 to 121 (batch F, `docs/plan-schema-next.md` §3.2: SR8a to SR8d, built as
+# generations 110 to 113 off main and renumbered above H2's 117 when R-N5 merged them).
+#
+# Generation 118 (SR8a, §2.5 H3): one name, `promote_on_entry` beside `only_lost` (a lifted
+# refusal; an entering piece takes the first target still offered, none if none).
+# `promote-on-entry` enters it on a game whose promotion says `only_lost` and that has a way
+# in, and `promote-only-lost` on a game with `promote_on_entry` (both declined there until
+# then, the validator refusing the pair); each one's other half leaves it. Its row retired with
+# generation 119, in no game (`_IN_NO_GAME`). H2's rows retired with it; income's names are
+# shown by `rulesets/hunger.json` and its archived arms.
+#
+# Generation 119 (SR8b, §2.6 W7): one name, a promoting piece that sweeps (a lifted refusal
+# but beside folds; it promotes by its landing square). `sweep-a-slider` enters it on a game
+# whose promoting piece slides (it declined there until then, the validator refusing the pair)
+# and leaves it by turning the sweep back into a slide. Its row retired with generation 120, in
+# no game (`_IN_NO_GAME`).
+#
+# Generation 120 (SR8c, §2.2 L7): one name, the duck beside a long turn (a lifted refusal; the
+# duck moves once at the turn's end). `lengthen-the-turn` enters it on a duck game (it declined
+# there until then, the validator refusing the pair) and leaves it by striking the turn;
+# `loose-a-duck` enters it on a long-turn game and leaves it by taking the duck away. Its row
+# retired with generation 121, in no game (`_IN_NO_GAME`).
+#
+# Generation 121 (SR8d, §2.3 R6): one name, castling in rounds (a lifted refusal; only the
+# king's arrival meets anything, the partner moving after the meetings). `play-at-once` enters
+# it on a castling game (it dropped castling on the way in until then) and leaves it on the way
+# back out; `toggle-a-rule` leaves it by taking castling away. Its row retired with
+# generation 122, in no game (`_IN_NO_GAME`).
+#
+# Generation 122 (SR8e, §2.3 R9): one name, a portal a player moves in rounds (a lifted
+# refusal; the round's portal moves are made first). `play-at-once` enters it on a game whose
+# portals a player moves (it declined there until then, asking the validator) and leaves it on
+# the way back out. Its row retired with generation 123, in no game (`_IN_NO_GAME`).
+#
+# Generation 123 (SR8f, §2.8 N4): one name, several wild pieces pacing one line (a lifted
+# refusal; front first by heading, head-on nearer the first square first). `share-a-walk`
+# enters it on a game whose wild piece turns back (it declined there until then, asking the
+# validator) and leaves it, as `pace-a-line` does by taking the turn away. Its row retired
+# with generation 124, in no game (`_IN_NO_GAME`).
+#
+# Generation 124 (SR8g, §2.8 N7): one name, a wild piece that comes back beside a pounce (a
+# lifted refusal; a pouncing entry counts its type anywhere). `bring-them-back` enters it on a
+# pounce game (it declined there until then, asking the validator) and leaves it on the way
+# back out (the pounce operator keeps the clock since SR8h, save on a splitting type). Its row
+# retired with generation 125, in no game (`_IN_NO_GAME`).
+#
+# Generation 125 (SR8h, §2.8 N5): one name, a wild piece that turns back in a game that asks
+# check (a lifted refusal; its threat is the square it steps to after its turn). `pace-a-line`
+# enters it on a checkmate game with wild pieces (it switched the game to royal capture until
+# then) and leaves it by taking the turn away; `change-the-win-condition` keeps the lines both
+# ways now. Its row retired with generation 126, in no game (`_IN_NO_GAME`).
+#
+# Generation 126 (SR8i, §2.11 O9, O13, O14, O17, O18, O19): one name, a held type that reads
+# differently for the two players (six lifted refusals; a held piece moves in its holder's
+# frame). `change-symmetry` enters it on a held type (it kept them alike until then) and leaves
+# it; `gather-a-crowd` leaves it by taking the control away. Its row retired with generation
+# 127, in no game (`_IN_NO_GAME`).
+#
+# Generation 127 (SR8j, §2.11 O15): one name, a held type that promotes (a lifted refusal; a
+# held piece promotes in its holder's zone and stays nobody's). `gather-a-crowd` enters it by
+# giving control to a standing promoting type and leaves it by taking the control away. Its row
+# retired with generation 128, in no game (`_IN_NO_GAME`).
+#
+# Generation 128 (SR8k, §2.11 O16): one name, a held type that sweeps (a lifted refusal; a held
+# sweep removes what its holder could capture with it). `sweep-a-slider` enters it on a held
+# slider (two edits from any stored game, `_CANNOT_ENTER`) and leaves it by turning the sweep
+# back into a slide; `gather-a-crowd` leaves it by taking the control away. In no game
+# (`_IN_NO_GAME`).
 _FEATURES: dict[str, _Feature] = {
-    "H2 income": _Feature(
-        None, frozenset({"rules.income"}), True, "chess with upkeep and income", _parent_income,
-        likely=_has_purse,
-    ),
-    "H2 income per piece": _Feature(
-        "income", frozenset({"rules.income.per_piece"}), True, "chess with upkeep and income",
-        _parent_income, likely=_has_purse,
-    ),
-    "H2 income region": _Feature(
-        "income", frozenset({"rules.income.region"}), True, "chess with upkeep and income",
-        _parent_income, likely=_has_purse,
+    "SR8k a held sweeper": _Feature(
+        None, frozenset({"pieces.control.held.sweeps"}), True,
+        "held-sweeps", _parent_held_sweeps,
+        likely=lambda spec: any(
+            isinstance(placement, dict) and placement.get("player") == "nobody"
+            for placement in (spec.get("setup") or {}).get("placements") or []
+        ),
     ),
 }
 
@@ -4528,6 +4702,17 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     115: frozenset({"pieces.upkeep", "rules.purse.upkeep", "rules.purse.upkeep.promotion"}),
     116: frozenset({"rules.pass"}),
     117: frozenset({"rules.income", "rules.income.per_piece", "rules.income.region"}),
+    118: frozenset({"rules.promote_on_entry.only_lost"}),
+    119: frozenset({"pieces.moves.sweep.promotion"}),
+    120: frozenset({"rules.duck.turn"}),
+    121: frozenset({"rules.castling.simultaneous"}),
+    122: frozenset({"rules.portals.moved_by.simultaneous"}),
+    123: frozenset({"rules.npcs.turns_back.also_at"}),
+    124: frozenset({"rules.npcs.respawn.pounce"}),
+    125: frozenset({"rules.npcs.turns_back.check"}),
+    126: frozenset({"pieces.control.held.holders_frame"}),
+    127: frozenset({"pieces.control.held.promotes"}),
+    128: frozenset({"pieces.control.held.sweeps"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -4685,9 +4870,24 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
 # The generations that update numbered: SR1a to SR2b (47 to 51) and SR3b to SR11a (59 to
 # 110). 52 to 58 between them are other plans' (Seirawan's gating, Q1063, the turncoat's
 # TC9c, Q1069a, the push, Q1077), save 57, SR3a, whose rule *runners* shows. A later
-# generation of the update joins this set when it lands.
-_SCHEMA_NEXT_GENERATIONS = frozenset(range(47, 52)) | frozenset(range(57, 111)) - {58}
+# generation of the update joins this set when it lands: batch F's SR8a to SR8d are 118 to
+# 121 (built as 110 to 113 off main, renumbered by R-N5 above Tessabi's and Hunger's 111 to
+# 117), and SR8e to SR8k, built on main, are 122 to 128.
+_SCHEMA_NEXT_GENERATIONS = (
+    frozenset(range(47, 52)) | frozenset(range(57, 111)) - {58} | frozenset(range(118, 129))
+)
 _IN_NO_GAME: dict[str, str] = {
+    "schema 128: pieces.control.held.sweeps": "SRH2, no man's land (its neutral sweeper)",
+    "schema 127: pieces.control.held.promotes": "SR8s10, a neutral that promotes",
+    "schema 126: pieces.control.held.holders_frame": "SR8s9, a neutral piece in its holder's frame",
+    "schema 125: rules.npcs.turns_back.check": "SR8s8, a turning-back wild piece beside check",
+    "schema 124: rules.npcs.respawn.pounce": "SR8s7, a respawning pouncer",
+    "schema 123: rules.npcs.turns_back.also_at": "SR8s6, head-on routes",
+    "schema 122: rules.portals.moved_by.simultaneous": "SR8s5, portals moved in rounds",
+    "schema 121: rules.castling.simultaneous": "SR8s4, castling in rounds",
+    "schema 120: rules.duck.turn": "SR8s3, the duck in a long turn",
+    "schema 119: pieces.moves.sweep.promotion": "SR8s2, a promoting sweeper",
+    "schema 118: rules.promote_on_entry.only_lost": "SR8s1, only_lost on entry",
     "schema 110: pieces.moves.lame.path": "SR11a, a turning lame rider; never a candidate",
     "schema 109: pieces.control.majority.simultaneous": "SR7s11, a held piece in rounds",
     "schema 108: rules.purse.market.spy": "SR7s10, a spy for sale",
@@ -4893,7 +5093,34 @@ def _feature_parents() -> dict[str, dict]:
 # game `open-a-market` puts the spy on sale
 # (`tests/test_spy_for_sale.py::test_open_a_market_sells_a_spy_game_s_spy` holds the second
 # edit). It retired with generation 108's `_FEATURES` rows.
-_CANNOT_ENTER: dict[str, str] = {}
+#
+# SR8a adds one: `only_lost` on entry is two edits from any stored game. The stored games that
+# say `only_lost` (`archive/grand`, `archive/sittuyin`) have no way in for a pawn (no hand that
+# takes one, no strike), so `promote-what-arrives` declines there, and the one stored game with
+# `promote_on_entry` (`archive/shogi-drop-promoted`) promotes into faces neither army starts
+# with, which `only_lost` refuses. A hand, then either half
+# (`tests/test_entry_only_lost.py::TestTheLoopReachesIt` holds the second edit). It retired
+# with generation 118's `_FEATURES` row.
+#
+# SR8j adds one: a held type that promotes is two edits from any stored game. No stored game
+# places a promoting type for nobody (the crowd's and boulder's nobody's types promote in no
+# rule), and no operator gives a type a promotion rule or places a promoting type for nobody.
+# A promoting type standing for nobody, then `gather-a-crowd` hands it to the majority
+# (`tests/test_held_promotes.py::TestTheLoopReachesIt` holds the second edit). It retired
+# with generation 127's `_FEATURES` row.
+#
+# SR8k adds one: a held type that sweeps is two edits from any stored game. No stored game has
+# a type a player moves but nobody owns that slides (the crowd's condottieri leap, boulder's
+# boulder leaps), and `gather-a-crowd`'s new type steps as a king by a leap. A held type that
+# slides, then `sweep-a-slider` turns its slide into a sweep
+# (`tests/test_held_sweep.py::TestTheLoopReachesIt` holds the second edit).
+_CANNOT_ENTER: dict[str, str] = {
+    "SR8k a held sweeper": (
+        "two edits from any stored game: no stored game has a held or shared type that "
+        "slides, and gather-a-crowd's new type leaps; sweep-a-slider then turns a held "
+        "slider's slide into a sweep (tests/test_held_sweep.py::TestTheLoopReachesIt)"
+    ),
+}
 _CANNOT_LEAVE: dict[str, str] = {}
 
 
@@ -6637,3 +6864,52 @@ def test_a_mutant_inherits_neither_its_parents_summary_nor_its_provenance(seed: 
     assert "summary" not in mutation.spec
     assert "provenance" not in mutation.spec
     assert parent.get("summary"), "the parent keeps its own"
+
+
+def _operator(name: str) -> Any:
+    return next(op for op in OPERATORS if op.name == name)
+
+
+class TestWildOperatorsAfterSR8h:
+    """SR8g's leftover and SR8h's own: the pounce operator keeps a returning wild piece's clock
+    (generation 124, N7, lifted), and a line is allowed beside checkmate (generation 125, N5)."""
+
+    def test_the_hounds_keep_their_returns(self) -> None:
+        spec = load_spec(ARCHIVE / "wolves.json")
+        for npc in spec["rules"]["npcs"]:
+            npc["respawn"] = 3
+        assert validate_spec(spec) == []
+        kept = 0
+        for seed in range(40):
+            child = copy.deepcopy(spec)
+            if _operator("set-the-hounds").apply(child, random.Random(seed)) is None:
+                continue
+            assert validate_spec(child) == []
+            for npc in child["rules"]["npcs"]:
+                if npc.get("split"):
+                    assert "respawn" not in npc  # respawn beside split stays refused
+                else:
+                    assert npc.get("respawn") == 3
+                    kept += 1
+        assert kept
+
+    def test_pace_a_line_keeps_checkmate(self) -> None:
+        spec = load_spec(ARCHIVE / "wolves.json")
+        assert spec["rules"]["win"] == "checkmate"
+        for seed in range(10):
+            child = copy.deepcopy(spec)
+            said = _operator("pace-a-line").apply(child, random.Random(seed))
+            assert said is not None and "won by" not in said
+            assert child["rules"]["win"] == "checkmate"
+            assert any(npc.get("turns_back") for npc in child["rules"]["npcs"])
+            assert validate_spec(child) == []
+
+    def test_a_change_to_checkmate_keeps_the_lines(self) -> None:
+        spec = load_spec(ROOT / "tests" / "_turning_wolves.json")
+        assert spec["rules"]["win"] == "royal_capture"
+        child = copy.deepcopy(spec)
+        said = _operator("change-the-win-condition").apply(child, random.Random(0))
+        assert said is not None and "round again" not in said
+        assert child["rules"]["win"] == "checkmate"
+        assert any(npc.get("turns_back") for npc in child["rules"]["npcs"])
+        assert validate_spec(child) == []

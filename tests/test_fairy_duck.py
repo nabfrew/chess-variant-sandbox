@@ -70,6 +70,19 @@ class TestTheTranslation:
         atomic["rules"]["explode_on_capture"] = {"radius": 1}
         assert any("rules.duck beside rules.explode_on_capture" in r for r in _refusals(atomic))
 
+    def test_a_gate_beside_the_duck_is_refused_by_name(self) -> None:
+        """Q1218: U2 lifted `gating.duck` in the validator, and Fairy-Stockfish offers no
+        gating move beside `wallingRule` (pyffish 0.0.90 lacked every `b1c3n,c3d5`)."""
+        gated = copy.deepcopy(DUCK)
+        gated["rules"]["drops"] = {
+            "from_captures": False, "stock": {"N": 1}, "gating": {"ranks": [0]},
+        }
+        said = _refusals(gated)
+        assert said == [
+            "rules.drops.gating beside rules.duck: Fairy-Stockfish offers no gating move "
+            "beside the duck's wall"
+        ]
+
     def test_the_duck_is_a_wall_in_the_fen_and_a_turn_one_move(self) -> None:
         engine = Engine(DUCK)
         variant = translate(DUCK)

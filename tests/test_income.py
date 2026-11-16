@@ -283,7 +283,6 @@ def _set(key: str, value: Any) -> Any:
 
 
 REFUSED = {
-    "income.I1": _set("scoring", {"count": "points"}),
     "income.I2": _set("simultaneous", {}),
 }
 

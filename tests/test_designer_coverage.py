@@ -308,13 +308,15 @@ class TestRoundsIsOneStepFromChess:
         assert isinstance(made["rules"]["simultaneous"], dict)
         assert _problems(made) == []
         assert made["rules"]["win"] == "royal_capture"
-        assert "castling" not in made["rules"] and "en_passant" not in made["rules"]
+        # SR8d (R6, generation 121): castling stays; in a round it is the king's move.
+        assert made["rules"]["castling"] == CHESS["rules"]["castling"]
+        assert "en_passant" not in made["rules"]
         said = " ".join(answer["changes"])
-        assert len(answer["changes"]) == 3, answer["changes"]
-        for words in ("checkmate", "castling", "passing"):
+        assert len(answer["changes"]) == 2, answer["changes"]
+        for words in ("checkmate", "passing"):
             assert words in said, words
         assert not _RAW_PATH.search(said), said
-        assert CHESS["rules"].get("castling"), "the draft asked about is not changed in place"
+        assert CHESS["rules"].get("en_passant"), "the draft asked about is not changed in place"
 
     def test_the_way_back_clears_what_only_rounds_reads(self) -> None:
         rounds = designing.take_turns(CHESS, "rounds")["draft"]
@@ -379,12 +381,14 @@ class TestRoundsIsOneStepFromChess:
 class TestEveryReasonAtOnceInPlainWords:
     """Fix 2. A refused rule said the validator's first sentence, raw."""
 
-    def test_rounds_from_chess_names_all_three_conflicts(self) -> None:
+    def test_rounds_from_chess_names_both_conflicts(self) -> None:
+        """Checkmate and taking in passing; castling is a round's since SR8d (R6)."""
         answer = designing.refusals(CHESS, {"simultaneous": {}})
         reasons = answer["refused"]["simultaneous"]
-        assert isinstance(reasons, list) and len(reasons) == 3, reasons
+        assert isinstance(reasons, list) and len(reasons) == 2, reasons
         said = " ".join(reasons)
-        for words in ("checkmate", "castling", "passing"):
+        assert "castling" not in said, said
+        for words in ("checkmate", "passing"):
             assert words in said, words
         for line in reasons:
             assert not _RAW_PATH.search(line), line

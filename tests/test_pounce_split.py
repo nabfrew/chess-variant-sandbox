@@ -244,7 +244,6 @@ class TestTheRefusals:
         spec["rules"]["npcs"][LURKER]["respawn"] = 4
         errors = self._errors(spec)
         assert any("respawn beside split" in e for e in errors), errors
-        assert any("respawn beside a pounce" in e for e in errors)
 
     def test_two_entries_of_one_type_disagreeing(self) -> None:
         spec = _spec(pounce="attackers")

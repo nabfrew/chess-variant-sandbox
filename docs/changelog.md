@@ -12,6 +12,100 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-16
+
+### Every library game measured again under the new way of scoring
+
+All 132 games in the library were played and scored again, with the newest computer players and the
+newest version of the score. Most scores are about 0.03 to 0.04 lower than before (the middle of the
+games that pass the checks went from 0.89 to 0.85), because the new version no longer gives full marks
+for depth so easily; chess reads 0.915 and is tenth. The duck and gift games fell the most; kyoto and
+the rock-paper-scissors games rose. No game changed whether it passes the checks.
+
+What you will see: the *provisional* marks are gone, since every score is current again, and the
+library is grouped once more into games that sit level with chess and games below it (47 level, 68
+below, none above, with the games the checks turn down and the five whose score cannot be read yet
+in their own groups). The line saying a score *held* against stronger players now reads *not checked
+yet* on most games: that check was made on the players before this measurement, and it is shown
+again once it is made on these. A few games, atomic among them, play slightly differently than
+before, because of fixes to the rules engine; their scores moved by at most 0.03.
+
+## 2026-11-14
+
+### Every score says whether stronger players might change it
+
+A game's score comes from games between computer players, so a natural question is whether better players would
+give a different one. Every game in the library now answers it beside its score, on its card and on its own page.
+*May change with stronger players*: when the strongest player was matched against a copy of itself with four times
+the search, or against Fairy-Stockfish, an engine written elsewhere, the games said the score rests on the players
+as much as on the game; 34 games read so, chess among them, and five more already say their score *cannot be read
+yet*. Such a score is still shown and still compared, marked.
+*Held with stronger players*: neither found anything (one game, kyoto). *Held with its own players*: the copy found
+nothing, but no outside engine plays the game, so it is a weaker check, and some games that passed it still changed
+when every player got stronger (91 games). One game added since the check reads *not checked yet*. A game's page
+gives the check's two numbers and what each means, under *the check's numbers*.
+
+### A score the computer players could not read now says so
+
+A game's score comes from games between computer players of different strengths, and on a few games the stronger
+players did not reliably beat the weaker ones. Those scores are now marked *cannot be read yet*, on the game's card
+and on its own page, with a sentence saying why. They are not compared with chess or with any other game: ordered by
+score, they are listed under their own heading, *scores that cannot be read yet*. Five games read so today, among
+them the watering hole. Measuring one again with the same players will not clear the mark; it goes once its games can
+tell the players apart.
+
+### Three small fixes: opponent names, a front-page example, the designer when signed out
+
+Each opponent card on a game's page now has a full name a screen reader can say: which side, which computer player,
+and how hard it plays (*black: medium, looks at 1,600 positions before each move*), so the sixteen cards no longer
+sound alike. The front page's example of doors either player can move is now [steady ferry](/game/dd17d71412a7),
+whose score keeps it in, rather than ferry, whose own page says its score rules it out. And building a game without
+signing in no longer shows a failed check: the steps that need an account now say *sign in to run it* and *sign in
+to save it*.
+
+### One press from the front page to a board
+
+The front page's play buttons now start the game straight away against the gentlest computer player that game
+offers, so your first move is one press away. To play someone else, press *change opponent* beside *new game* under
+the board.
+
+### A score measured on your computer counts every part the library's does
+
+A game you measure on your own computer is now scored on the same parts as a library game, including *decisions
+that matter* and *pieces that move*, which it used to leave out. A score kept from before this is out of date and
+shows no number until you measure the game again. What your computer sends the site is now packed small, so even a
+game with very many moves a turn fits.
+
+### Games ordered by score are grouped against chess, not ranked
+
+Ordering the games by score no longer lines them up by the third decimal place, an order the scores are not precise
+enough to support. Instead they are grouped by how each game's score compares with chess's, the game every score is
+measured against: *above chess*, *cannot be told from chess* and *below chess*, with a game counted above or below
+only where the gap is bigger than the uncertainty in both scores. Inside a group the games are listed by name, and
+every game still shows its own score. Games the checks turn down, and games not yet measured under the current score,
+are listed after the groups under their own headings. Until the library is measured again, every game is in that
+last group.
+
+### The new version of the score is now the score
+
+The version of the score that passed its tests is switched on. The page that explains the score lists its parts
+as they now are: *decisions that matter* counts the moves that give up a tenth of a game, learned from each game's
+own results; *pieces that move* follows every piece that comes onto the board; *converting a lead* is gone; and
+many choices a turn no longer costs marks. Until the library is measured again, every game's score is the one
+worked out under the earlier version, so it is marked *provisional* with the date it was taken, and is left out of
+every comparison between games.
+
+### A new version of the score passed its tests
+
+A new version of the games' score was written down, with the bar it had to clear, before any of it was computed,
+and then tested once on all 174 games. It repairs five parts that earlier tests found at fault (among them: many
+moves a turn no longer costs marks, and a costly move is now one that gives up a tenth of a game rather than one
+piece's worth). It cleared every one of the sixteen lines set for it: no game changed whether it is viable, every
+known good game stayed above every proven broken one, and the order of games barely moved. It is not shown to rank
+good games better, and nothing on the site has changed yet: it becomes the score when it is switched on with the
+next re-measurement of the library, and then almost every score will read a few hundredths lower (chess from 0.938
+to 0.915). The full test is on [what the score has been tested against](/score-tests).
+
 ## 2026-11-13
 
 ### What the score has been tested against

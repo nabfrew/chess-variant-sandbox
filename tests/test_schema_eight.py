@@ -438,7 +438,10 @@ class TestWhatTheValidatorRefuses:
         spec["pieces"][1]["moves"] = [
             {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4"}
         ]
-        assert validate_spec(spec) == []  # the validator cannot see it; the compiler can
+        # R-L6e (F10): the validator says it where the moves read alike entry by entry; the
+        # compiler keeps its exact refusal on the tables as the second line.
+        errors = validate_spec(spec)
+        assert len(errors) == 1 and "does nothing" in errors[0], errors
         with pytest.raises(SpecError, match="does nothing"):
             Engine(spec)
 

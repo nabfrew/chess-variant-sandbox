@@ -99,7 +99,7 @@ SEED = 40
 @pytest.fixture(scope="module")
 def full() -> dict[str, list[float]]:
     return {
-        name: list(duel(SPEC, *players, PAIRS, seed=SEED, workers=1).pairs)
+        name: list(duel(SPEC, *players, PAIRS, seed=SEED, workers=1, unopened=True).pairs)
         for name, players in DUELS.items()
     }
 
@@ -111,7 +111,8 @@ def test_a_curtailed_duel_gives_the_full_verdict_at_any_worker_count(
 ) -> None:
     verdict, pairs = VERDICTS[name], full[fixture]
     one, four = (
-        curtailed_duel(SPEC, *DUELS[fixture], PAIRS, verdict, seed=SEED, workers=workers)
+        curtailed_duel(SPEC, *DUELS[fixture], PAIRS, verdict, seed=SEED, workers=workers,
+                       unopened=True)
         for workers in (1, 4)
     )
     assert one.verdict == verdict(pairs)

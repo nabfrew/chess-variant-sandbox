@@ -472,6 +472,9 @@ _OPERATIONAL: dict[str, tuple[str, ...]] = {
     ),
     "progress_irreversibility": ("plies that cannot be undone", "share of irreversible"),
     "instance_participation": ("share of pieces that ever moved",),
+    # Scored from v14 (R-S6b, `docs/reference/v14-registration.md` §2.1 changes 3 and 5).
+    "piece_participation": ("share of pieces that ever moved", "every piece fielded"),
+    "decision_cost": ("a tenth of a game", "share of moves that give up"),
     # Weighted from v11 (docs/archive/plan-variety.md §5.4, C2). The brief's *Variety* bullet asks
     # that two strong players not play the same game twice, which is the family's question
     # and not this measurement; these are what the measurement sounds like.

@@ -1017,8 +1017,10 @@ class TestTheIndexBandReachesTheSite:
 
     def test_decorating_and_ordering_leave_it_alone(self) -> None:
         cards = browse.decorate(
-            [{"hash": "aaaa", "name": "one", "index": 0.5, "band": self.BAND},
-             {"hash": "bbbb", "name": "two", "index": 0.9, "band": None}],
+            # Since R-S6c the index orders by the card's tier against chess, then name.
+            [{"hash": "aaaa", "name": "one", "index": 0.5, "band": self.BAND,
+              "tier": "below"},
+             {"hash": "bbbb", "name": "two", "index": 0.9, "band": None, "tier": "level"}],
             {},
         )
         assert [card["band"] for card in cards] == [self.BAND, None]
@@ -5036,7 +5038,7 @@ class TestAnEmptyProfileSaysWhatToDo:
                            today={"name": "los alamos", "hash": "fcbb53d53ce4"})
         assert said["links"] == [
             ["/#/design", "Start building a game", "button primary"],
-            ["/game/fcbb53d53ce4", "Play today's game", "button"],
+            ["/game/fcbb53d53ce4?play=gentlest", "Play today's game", "button"],
         ]
 
     def test_without_a_day_s_game_the_second_door_is_the_games(self) -> None:

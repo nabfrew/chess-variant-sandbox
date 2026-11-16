@@ -11,11 +11,25 @@ compiled tables.
 
 **The phase is played here**, on the board the move leaves: the core's move with its phase taken
 back off the phase log (mechanically, newest entry first), then every wild piece standing on it,
-ascending, stepped by the rule above, headings first cleared under the pieces a player took. The
-oracle answers the board, the headings and the phase log, and the tests hold the core to all
-three. It reads one piece per route, no shields and no returns (the walked spec has neither
-``also_at``, a sight nor, on the walked entries, a ``respawn`` that is due: a game in which a
-return falls is skipped from the comparison at that ply and said so).
+stepped by the rule above in the order below, headings first cleared under the pieces a player
+took. The oracle answers the board, the headings and the phase log, and the tests hold the core
+to all three. It reads no shields and no returns (the walked specs have no sight; a game in
+which a return falls is skipped from the comparison at that ply and said so).
+
+**Beside check** (generation 125, SR8h, N5, ruled 2026-10-27: *its attack is the square ahead
+after the turn*): a wild piece threatens the square the phase would step it to, played on the
+board as it stands -- for a line piece the square ahead, or, where that holds a piece it may not
+take, the one behind after it turns. ``legal_moves`` is the core's pseudo-legal list less the
+moves that leave the mover's royal eaten by the phase or, on the board the phase leaves (with the
+headings it leaves), attacked by the opponent's pseudo-legal captures or by the next phase's
+steps; under ``forbid_check`` less the moves that leave the other royal so attacked.
+
+**The order** (generation 123, SR8f, N4, ruled 2026-10-27), for several pieces on one route
+(``also_at``): passes over the pieces still to step, ascending; in a pass a piece whose square
+ahead (by its heading on a line, its route's next on a cycle) holds a piece still to step waits
+for a later pass, unless the two are head-on (each ahead of the other) and it is the one with
+the lower place on its route (nearer the route's first square). A pass in which nothing steps
+ends the phase, every piece left waiting where it stands.
 """
 
 from __future__ import annotations
@@ -23,6 +37,8 @@ from __future__ import annotations
 from typing import Any
 
 from chess_variant_sandbox.engine import Engine, GameState
+from chess_variant_sandbox.engine.moves import move_to
+from chess_variant_sandbox.engine.state import NO_SQUARE
 from chess_variant_sandbox.spec.schema import npc_routes, npc_turns_back
 
 WILD = 2
@@ -47,6 +63,7 @@ class TurningOracle:
             piece["id"]: piece.get("captures") for piece in self.raw["pieces"]
         }
         self.ids = list(spec.piece_ids)
+        self.royal = {piece["id"] for piece in self.raw["pieces"] if piece.get("royal")}
 
     def _owner_type(self, value: int) -> tuple[int, str]:
         spec = self.engine.spec
@@ -68,6 +85,37 @@ class TurningOracle:
         at = squares.index(square) + (-1 if back else 1)
         return squares[at] if 0 <= at < len(squares) else None
 
+    def _ahead_of(self, square: int, heading: set[int]) -> int | None:
+        """The square ahead of the piece on ``square`` as the phase starts."""
+        squares, line = self.routes[square]
+        if line:
+            return self._ahead(square, square in heading)
+        if len(squares) == 1:
+            return None
+        return squares[(squares.index(square) + 1) % len(squares)]
+
+    def _order(self, wild: list[int], heading: set[int]) -> list[int]:
+        """The stepping order, read off the start headings alone (the module's *order*)."""
+        pending = set(wild)
+        order: list[int] = []
+        while pending:
+            stepped = False
+            for square in sorted(pending):
+                if square not in pending:
+                    continue
+                ahead = self._ahead_of(square, heading)
+                if ahead is not None and ahead in pending:
+                    squares, _ = self.routes[square]
+                    head_on = self._ahead_of(ahead, heading) == square
+                    if not (head_on and squares.index(square) < squares.index(ahead)):
+                        continue
+                pending.discard(square)
+                order.append(square)
+                stepped = True
+            if not stepped:
+                break
+        return order
+
     def _landed(self, to: int, back: bool) -> bool:
         return (not back) if self._ahead(to, back) is None else back
 
@@ -78,7 +126,7 @@ class TurningOracle:
         wild = [sq for sq in range(len(board)) if board[sq] and self._owner_type(board[sq])[0] == WILD]
         heading &= set(wild)
         log: list[tuple[int, int, int, str]] = []
-        for square in wild:
+        for square in self._order(wild, set(heading)):
             value = board[square]
             squares, line = self.routes[square]
             if not line:
@@ -135,3 +183,65 @@ class TurningOracle:
         assert bytes(board) == after.board
         assert tuple(sorted(heading)) == after.heading_back, (heading, after.heading_back)
         return after
+
+    # ------------------------------------------------------------------ beside check
+
+    def _royals(self, board: bytes | bytearray, player: int) -> list[int]:
+        found = []
+        for sq, value in enumerate(board):
+            if value:
+                owner, piece = self._owner_type(value)
+                if owner == player and piece in self.royal:
+                    found.append(sq)
+        return found
+
+    def _attacked(
+        self, base: GameState, board: bytes | bytearray, heading: set[int], square: int, by: int
+    ) -> bool:
+        """``by``'s pseudo-legal captures onto ``square``, or a step of the next phase onto it,
+        played on a copy of ``board`` and ``heading``."""
+        asked = base.with_(
+            board=bytes(board), side_to_move=by, unmoved=0, ep_target=NO_SQUARE, ep_victim=NO_SQUARE,
+        )
+        if any(move_to(move) == square for move in self.engine.pseudo_legal_moves(asked)):
+            return True
+        steps = self.phase(bytearray(board), set(heading))
+        return any(target == square and origin != target for origin, target, _, _ in steps)
+
+    def _after_phase(self, state: GameState, move: int) -> tuple[bytearray, set[int]]:
+        """The board and headings ``move`` and its phase leave, the phase played here."""
+        after, phase = self.engine.apply_with_phase(state, move)
+        board = bytearray(after.board)
+        for step in reversed(phase):
+            value = board[step.target]
+            board[step.target] = step.eaten
+            board[step.origin] = value
+        heading = set(state.heading_back)
+        self.phase(board, heading)
+        return board, heading
+
+    def legal_moves(self, state: GameState) -> list[int]:
+        """The legal list beside check (the module's *beside check*), or the pseudo-legal list
+        where nothing asks check."""
+        rules = self.raw["rules"]
+        mate = rules.get("win", "checkmate") == "checkmate" and bool(self.royal)
+        forbid = rules.get("forbid_check") is True and bool(self.royal)
+        moves = self.engine.pseudo_legal_moves(state)
+        if not (mate or forbid):
+            return moves
+        side = state.side_to_move
+        before = len(self._royals(state.board, side))
+        legal = []
+        for move in moves:
+            board, heading = self._after_phase(state, move)
+            mine = self._royals(board, side)
+            if mate and (len(mine) < before or any(
+                self._attacked(state, board, heading, r, 1 - side) for r in mine
+            )):
+                continue
+            if forbid and any(
+                self._attacked(state, board, heading, r, side) for r in self._royals(board, 1 - side)
+            ):
+                continue
+            legal.append(move)
+        return legal

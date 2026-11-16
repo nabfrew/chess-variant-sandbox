@@ -79,7 +79,7 @@ impl<'t> Game<'t> {
         };
         if promoting && (leaving || t.promotes_on(player, piece_type, target)) {
             for &promoted in t.promotion_targets(player, piece_type) {
-                if self.promotion_offered(player, piece_type, promoted) {
+                if self.promotion_offered(player, piece_type, promoted, target) {
                     out.push(word(promoted + 1));
                 }
             }

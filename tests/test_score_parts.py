@@ -178,19 +178,24 @@ class TestTheBrowseMenuOffersTheDefaultVersionsParts:
         assert "rule_yield" not in legend["components"]
         assert len(legend["components"]) == 12
 
-    def test_under_v13_the_menu_offers_v11s_parts(self) -> None:
+    def test_under_v14_the_menu_offers_v14s_parts(self) -> None:
         """`v12` (EV4) is `v11`'s design with its ends given sources and `v13` (Q1104) is
-        `v12`'s with its reference ends re-read, so the menu is still `v11`'s six families
-        and eleven components. Before `v11` (C2, Q391) this read `v10`'s menu, elegance and
-        all."""
+        `v12`'s with its reference ends re-read, so under `v13` the menu was `v11`'s six
+        families and eleven components. `v14` (R-S6d) keeps the six families, puts
+        `decision_cost` and `piece_participation` in place of `decision_criticality` and
+        `instance_participation`, and drops `lead_conversion`: ten components. Before `v11`
+        (C2, Q391) this read `v10`'s menu, elegance and all."""
         legend = library.metric_legend()
-        assert legend["version"] == scoring.DEFAULT_WEIGHTS == "v13"
+        assert legend["version"] == scoring.DEFAULT_WEIGHTS == "v14"
         assert len(legend["families"]) == 6
         assert "elegance" not in legend["families"]
         assert "rule_yield" not in legend["components"]
         assert "position_divergence" in legend["components"]
         assert "opening_diversity" not in legend["components"]
-        assert len(legend["components"]) == 11
+        assert {"decision_cost", "piece_participation"} <= set(legend["components"])
+        assert not {"decision_criticality", "instance_participation",
+                    "lead_conversion"} & set(legend["components"])
+        assert len(legend["components"]) == 10
 
     def test_the_glossary_still_explains_rule_yield_on_an_older_score(
         self, six_families: str

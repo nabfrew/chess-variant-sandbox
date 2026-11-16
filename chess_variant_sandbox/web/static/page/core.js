@@ -540,6 +540,25 @@ const GLOSS = {
     + " never current: it has no band, no trust level and no place in a comparison until"
     + " the repair named beside it runs and the estimate is current again." + SCORE_MORE,
     { link: SCORE_LINK }],
+  // R-S8: clause C of the strength check (`docs/reference/strength-check-all-games.md`
+  // §2.3), read from the score's own runs by `measurement.unread_reasons`.
+  // R-S4c: R-S4b's strength check (`docs/reference/strength-check-all-games.md` §2.3,
+  // §14), read from `strength_check.json` by `measurement.strength_reading`.
+  strengthCheck: ['The strength check',
+    "R-S4b's reading, beside the score and never in it. Clause A: the top rung scored c >= 0.40"
+    + " against itself at four times the nodes. Clause B: it scored f1 < 0.30 against"
+    + " Fairy-Stockfish at its own budget. Clause C: half its runs unreadable (shown as"
+    + " unread instead). Any clause: depends on the players, which keeps the score's band and"
+    + " tier, marked. Held (own) means no outside engine plays the game: the weaker check;"
+    + " 2 of the 5 such games in §14.2's sample moved on the four-times roster." + SCORE_MORE,
+    { link: SCORE_LINK }],
+  unreadScore: ['Unread',
+    "At least half of this score's runs could not order the roster (each carries an"
+    + " `unreadable` list), or the runs reached no verdict: the players did not get"
+    + " reliably stronger with search on this game, so the number describes them as much"
+    + " as the game. It is treated as a provisional number is: no band, no trust level, no"
+    + " tier and no place in a comparison. A replay on the same players does not clear it;"
+    + " runs that read do." + SCORE_MORE, { link: SCORE_LINK }],
   // C6 (`docs/reference/compute-economy.md` §3.5, the user's answer B of 2026-10-02): a
   // current score whose games a sample re-certified on code that did not play them.
   certifiedScore: ['Re-certified from a sample',
@@ -904,6 +923,22 @@ const SITE_GLOSS = {
     + " happens on its own. Until then it is not compared with other games, so it says"
     + " nothing about which of two games is clearly better, and how far to trust it is"
     + " not shown." + SCORE_MORE, { link: SCORE_LINK }],
+  // R-S8: an unread score, in a visitor's words.
+  // R-S4c: the strength check, in a visitor's words.
+  strengthCheck: ['Would stronger players change it?',
+    "A score is worked out from games between computer players. To see whether it depends on"
+    + " them, the strongest one was re-played against a copy of itself given four times the"
+    + " search and, where it can play the game, against Fairy-Stockfish, an engine written"
+    + " elsewhere. If the copy hardly did better, or the outside engine won clearly, the"
+    + " score may change with stronger players. It is still shown and compared, marked."
+    + " Where only the copy could play, the check is weaker, and some games that passed it"
+    + " still changed when every player got stronger." + SCORE_MORE, { link: SCORE_LINK }],
+  unreadScore: ['Cannot be read yet',
+    "A score is worked out from games between computer players of different strengths."
+    + " On this game the stronger players did not reliably beat the weaker ones, so the"
+    + " games say more about the players than about the game. Until players that can be"
+    + " told apart measure it, its score is not compared with other games and how far to"
+    + " trust it is not shown." + SCORE_MORE, { link: SCORE_LINK }],
   // C6: the same fact in a visitor's words (`docs/reference/plain-words.md`).
   certifiedScore: ['Kept from a sample',
     "The computer players changed after this game was measured, in a way that should not"
@@ -1074,13 +1109,13 @@ function exhibitHtml(said) {
 // current basis and a provisional estimate has none (§5.1). The server already sends none;
 // `status` withholds it here too, so a stale payload can never draw one.
 function trustTag(trust, status) {
-  if (status === 'provisional') return '';
+  if (status === 'provisional' || status === 'unread') return '';
   return trust && trust.level
     ? `<span class="tag trustLevel">${esc(trust.level)}</span>${info('trust', trust.said)}` : '';
 }
 
 function trustHtml(trust, status) {
-  if (status === 'provisional' || !trust || !trust.level) return '';
+  if (status === 'provisional' || status === 'unread' || !trust || !trust.level) return '';
   const more = trust.more || [];
   const numbers = trust.numbers || [];
   return `<div class="trust"><strong>How far to trust it: ${esc(trust.level)}.</strong> ${
@@ -1160,17 +1195,63 @@ function provisionalSentence(estimate) {
     basis ? ` (${basis})` : ''}. It will be measured again.`;
 }
 
-// The mark beside a provisional number: the word and its (i), then the sentence.
+// R-S8: a score whose own runs say the computer players could not be told apart. Drawn as
+// a provisional one is -- marked, never as current, with no band, gap or trust level -- and
+// its words are the server's (`library.unread_sentence`, sent as `unreadSaid`), which say
+// too where the number is also out of date, so it reads no more current than either alone.
+function isUnread(estimate) {
+  return !!estimate && estimate.status === 'unread';
+}
+
+// Neither a provisional nor an unread number is read beside another one.
+function isNotCurrent(estimate) {
+  return isProvisional(estimate) || isUnread(estimate);
+}
+
+// The mark beside a provisional number: the word and its (i), then the sentence. An unread
+// one is marked in the same place, with its own word.
 function provisionalMarkHtml(estimate) {
+  if (isUnread(estimate)) {
+    return `<div class="small provisionalMark unreadMark"><span class="tag stale">cannot be read yet</span>${
+      info('unreadScore')} ${esc(estimate.unreadSaid || '')}</div>`;
+  }
   if (!isProvisional(estimate)) return '';
   return `<div class="small provisionalMark"><span class="tag stale">provisional</span>${
     info('provisionalScore')} ${esc(provisionalSentence(estimate))}</div>`;
 }
 
+// R-S4c: whether stronger computer players would be likely to change the score, beside it
+// (`library.strength_payload`). The server's words; nothing on an unread score (`shown`),
+// whose own mark already says the players could not be told apart. `details` adds the
+// game page's two numbers in a closed line.
+function strengthShown(estimate) {
+  const s = estimate && estimate.strength;
+  return s && s.shown && s.tag ? s : null;
+}
+
+function strengthMarkHtml(estimate, details) {
+  const s = strengthShown(estimate);
+  if (!s) return '';
+  const tone = s.word === 'depends' ? 'tag stale' : 'tag';
+  const more = details && (s.details || []).length
+    ? `<details class="small muted u-mt-5"><summary>the check's numbers</summary>${
+      s.details.map(line => `<div>${esc(line)}</div>`).join('')}</details>` : '';
+  return `<div class="small provisionalMark strengthMark" data-strength="${esc(s.word)}"><span class="${
+    tone}">${esc(s.tag)}</span>${info('strengthCheck')} ${esc(s.said || '')}${more}</div>`;
+}
+
+// The card's quiet line: the short words, the sentence in the hover.
+function strengthTag(game) {
+  const s = strengthShown(game);
+  if (!s) return '';
+  return `<span class="tag${s.word === 'depends' ? ' stale' : ''}" data-strength="${
+    esc(s.word)}" title="${esc(s.said || '')}">${esc(s.tag)}</span>`;
+}
+
 // C6: a current score some of whose games were not played by today's code, kept because a
 // sample of them replayed exactly (`library.certified_payload`). Empty for any other.
 function isCertified(estimate) {
-  return !!estimate && !!estimate.certified && !isProvisional(estimate);
+  return !!estimate && !!estimate.certified && !isNotCurrent(estimate);
 }
 
 function certifiedSentence(estimate) {

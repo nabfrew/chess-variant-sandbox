@@ -124,12 +124,13 @@ def _walk_start(engine: Engine) -> GameState:
 
 
 def _expected(engine: Engine, twin: Engine, state: GameState) -> set[int]:
-    """The oracle: the twin's moves less a capture of a *wild* wolf by anything but a guard or
-    a wolf (an immunity never binds a wild type, `schema.npc_immune_attackers`, so a player's
-    wolf may take a wild one)."""
+    """The oracle: the twin's moves less a capture of a *wild* wolf by anything but a guard.
+    R-L6c (F4): a player's wolf is bound too (it read "or a wolf" until then: an immunity
+    exempted the wild type by type, so a player's wolf took a wild one); only a wild piece is
+    exempt, and it never eats another wild piece."""
     spec = engine.spec
     wolf = spec.piece_ids.index("W")
-    takers = {spec.piece_ids.index("N"), wolf}
+    takers = {spec.piece_ids.index("N")}
     kept = set()
     for move in twin.legal_moves(state):
         taken = state.board[move_to(move)]

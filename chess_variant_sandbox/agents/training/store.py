@@ -43,7 +43,6 @@ from chess_variant_sandbox.agents.nets import (
 from chess_variant_sandbox.agents.training.data import (
     Dataset,
     harvest,
-    opening_plies_for,
     relabel,
     self_play,
 )
@@ -60,6 +59,7 @@ from chess_variant_sandbox.agents.training.procedure import (
     Procedure,
 )
 from chess_variant_sandbox.metrics.components import plays_in_rounds
+from chess_variant_sandbox.tournament.openings import count_openings
 
 Report = Callable[[str], None]
 
@@ -353,14 +353,8 @@ def accept(
         records = play(seed, pairs)
         found = grade(records, candidate, reference)
         accepted = accepts(found.pairs)
-    # A round game opens with whole rounds, `opening_plies_for // 2` of them (Q918g).
-    def opened(seed: int) -> int:
-        plies = opening_plies_for(seed, opening_plies)
-        return 2 * (plies // 2) if rounds else plies
-
-    openings = 1 if opening_plies <= 0 else len(
-        {tuple(r.moves[: opened(r.seed)]) for r in records}
-    )
+    # A round game opens with whole rounds (Q918g); the duel path's count (R-P1).
+    openings = count_openings(records, opening_plies, rounds)
     spent = [0, 0]
     for record in records:
         seat = 0 if record.agents[0] == candidate else 1
@@ -384,17 +378,17 @@ def accept(
 
 
 def _opening_duel(spec: dict[str, Any], config: Any, most: int) -> list[Any]:
-    """The paired schedule's games, each opened as a self-play game is (``data``'s opening).
+    """The paired schedule's games, each opened as a self-play game is: the public duel
+    path's opened schedule (``tournament/openings.py``, R-P1).
 
     The opening is a function of the seed alone, and both games of a pair share the seed,
     so they share the opening. One game per core call on the config's threads; records in
     schedule order, so the answer does not depend on the thread count. Self-play's own
-    loop (``data._play_tasks``), so a campaign directory resumes it as it does self-play.
+    loop (``openings.play_opened``), so a campaign directory resumes it as it does self-play.
     """
-    from chess_variant_sandbox.agents.training.data import _play_tasks
-    from chess_variant_sandbox.tournament.runner import schedule
+    from chess_variant_sandbox.tournament.openings import play_opened_schedule
 
-    return _play_tasks(spec, config, schedule(config), most)
+    return play_opened_schedule(spec, config, most)
 
 
 def train_ruleset(

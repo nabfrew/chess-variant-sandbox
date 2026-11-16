@@ -465,6 +465,32 @@ MEASUREMENTS: dict[str, Measurement] = {
                 "count cannot tell a wide game from a wide move list with one sane "
                 "entry in it.",
     ),
+    "decision_cost": Measurement(
+        title="decisions that matter",
+        what="How much of the move list would give up a real share of the game.",
+        how="From the analysis pass: every legal move in a sampled position is scored at "
+            "a full window by the same ruler as `decision_criticality`, and each value is "
+            "put on a map to expected score fitted to the game's own results (one scale "
+            "per game, fitted on the game's other runs, never on the run it reads). A move "
+            "is costly when it gives up a tenth of a game against the best; this is the "
+            "share of moves that are. Absent where the map cannot be fitted "
+            "(`v14-registration.md` §2.1 change 5).",
+        reading="A band by meaning: full marks from one move in four to three in four "
+                "costly; near 0 nothing you do matters, near 1 there is one move. Read in "
+                "chances of winning rather than piece values, so it means the same in a "
+                "game where pieces are not the currency.",
+    ),
+    "piece_participation": Measurement(
+        title="pieces that move",
+        what="Whether the individual pieces on the board are doing something.",
+        how="From the analysis pass: of every piece that stood on the board at any time "
+            "and is of a kind that can move, set at the start or brought on later by a "
+            "drop, a purchase or a gate, the share that moved. Pieces are followed, not "
+            "squares. Absent where no such piece ever stood on the board.",
+        reading="Higher is better, with full marks from the second-lowest of the twenty "
+                "published band games; no marks off when every piece moves. A piece the "
+                "rules make immovable is scenery the rules put there and is not counted.",
+    ),
     "piece_utilisation": Measurement(
         title="use of the army",
         what="Whether all the kinds of piece are doing something.",
@@ -676,6 +702,17 @@ SITE_WORDS: dict[str, dict[str, str]] = {
                    "game is a puzzle. It tells broken games from real ones better than "
                    "anything else measured: a count of moves cannot tell many good choices "
                    "from many moves with one sensible one among them.",
+    },
+    "decision_cost": {
+        "reading": "Best in the middle: full marks when between one move in four and three in "
+                   "four would give up a tenth of a game. Near 0 nothing you choose matters; "
+                   "near 1 there is only one move. Counted in chances of winning, learned "
+                   "from the game's own results, not in piece values.",
+    },
+    "piece_participation": {
+        "reading": "Higher is better. Of all the pieces that were ever on the board and could "
+                   "move, including ones brought on later, the share that did. A piece that "
+                   "can never move is not counted against the game.",
     },
     "piece_utilisation": {
         "reading": "1 is every kind of piece pulling its weight; low means some pieces are "
