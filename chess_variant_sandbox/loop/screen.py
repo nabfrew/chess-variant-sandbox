@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chess_variant_sandbox.agents.base import parse_agent
-from chess_variant_sandbox.loop.gates import check_row
+from chess_variant_sandbox.loop.gates import check_row, count_row, rate_row
 from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.spec.schema import is_spy_game
 from chess_variant_sandbox.tournament import TournamentConfig, run_tournament
@@ -242,14 +242,17 @@ def screen(
             f"no computer player won any of {len(records)} games: either nobody can win "
             "this game, or winning it takes a stronger player than these two small ones"
         )
-        checks.append(check_row("decisive", decisive, MIN_DECISIVE, "min"))
+        checks.append(count_row("decisive", decisive, MIN_DECISIVE, "min", len(records)))
     if stats["quick_kill_rate"] > MAX_QUICK_KILL:
         reasons.append(
             f"{stats['quick_kill_rate'] * 100:.0f}% of games were over within "
             f"{QUICK_KILL_PLIES} turns, which is a trap in the opening rather than a game"
         )
         checks.append(
-            check_row("quick_kill_rate", stats["quick_kill_rate"], MAX_QUICK_KILL, "max")
+            rate_row(
+                "quick_kill_rate", stats["quick_kill_rate"], MAX_QUICK_KILL, "max",
+                len(records),
+            )
         )
     return ScreenResult(
         passed=not reasons, reasons=reasons, stats=stats, checks=checks, roster=players

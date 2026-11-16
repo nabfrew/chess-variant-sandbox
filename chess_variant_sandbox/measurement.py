@@ -619,6 +619,12 @@ ANALYSIS_SOURCES = (
 # fingerprinted source imports it.
 DISPLAY_ONLY = ("chess_variant_sandbox/metrics/glossary.py",)
 
+# Read by the design loop's refusals and by no score (R-S17j): the standard error of a failed
+# check, from the games it read, for `loop/refusals.narrow`. Left out of the code reading as
+# the glossary is, on the same premise, pinned by `tests/test_measurement.py`: no
+# fingerprinted source imports it, so a score that read it cannot exist.
+LOOP_ONLY = ("chess_variant_sandbox/metrics/spread.py",)
+
 _SOURCE_SETS = {
     "engine": ENGINE_SOURCES,
     "metrics": METRICS_SOURCES,
@@ -629,7 +635,7 @@ _SOURCE_SETS = {
 
 def fingerprinted(kind: str) -> list[Path]:
     """The files one side's fingerprint reads."""
-    prose = set(_sources(*DISPLAY_ONLY))
+    prose = set(_sources(*DISPLAY_ONLY, *LOOP_ONLY))
     return [path for path in _sources(*_SOURCE_SETS[kind]) if path not in prose]
 
 

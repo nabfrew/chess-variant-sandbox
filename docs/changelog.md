@@ -14,6 +14,23 @@ any other address keeps its brackets.
 
 ## 2026-11-16
 
+### Eight published games unlike chess join the library
+
+Breakthrough, minishogi, minixiangqi, Gliński's hexagonal chess (with mirrored armies), janggi, gorogoro plus,
+clobber and cannon shogi are now in the library, each scored on four runs like every other game there. They were
+measured earlier as a test of whether the score only rewards games that look like chess, and a rule kept that test
+set out of the library; the test has been read, so the rule now lets a published game through on the ordinary bar.
+They score from 0.63 (clobber) to 0.95 (Gliński's). None has been checked against stronger players yet.
+
+### A design run may look past a narrow refusal
+
+*For maintainers.*
+
+Until now a game the system turned down was a dead end: nothing was ever designed from it. A design run can now
+spend up to one generation in eight revising a game whose refusal was narrow, or rested on a single unsure
+reading. Such a game is never shown or counted as a viable one; only what is designed from it can be. Whether
+this finds good games is not known yet: that is the next thing to be measured.
+
 ### A refused game says why, and how sure that is
 
 When a game is ruled out, the site now says which test it failed, on how many runs, and whether that is

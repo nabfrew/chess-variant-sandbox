@@ -20,10 +20,15 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
+from chess_variant_sandbox.metrics import spread as spread_module
+
 RULES = "rules"
+# Set on every refusal written since R-S17j, whose rows carry ``n`` and ``se`` where their
+# check reads games: an older one has neither, and is never `eligible`.
+SPREAD = "spread"
 PLAYERS = "players"
 BOTH = "both"
 
@@ -166,7 +171,7 @@ def kind_of(kinds: Iterable[str]) -> str:
 
 def _row(check: str, kind: str, reason: str, found: dict[str, Any] | None) -> dict[str, Any]:
     row: dict[str, Any] = {"check": check, "kind": kind, "reason": reason}
-    for key in ("value", "line", "side", "margin"):
+    for key in ("value", "line", "side", "margin", "n", "se"):
         row[key] = (found or {}).get(key)
     return row
 
@@ -195,6 +200,7 @@ def cheap_refusal(
         "lines": dict(lines),
         "weights_version": weights_version,
         "seed": seed,
+        SPREAD: True,
     }
 
 
@@ -220,15 +226,25 @@ def full_refusal(
     roster: Sequence[str],
     weights_version: str,
     seed: int,
+    spread: Callable[[str, float | None], dict[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     """The refusal of the full roster, from the scoring's sentences. A sentence that is not
     a failed test (*this roster cannot read*, *not measured*) adds no check; a refusal with
-    none is `PLAYERS`, since what it lacks is a reading these players could give."""
+    none is `PLAYERS`, since what it lacks is a reading these players could give.
+
+    ``spread``, given a check and its line, says how many games it read and the standard
+    error of its number (`metrics.spread.check_spread` over the tournament's records), for
+    `narrow`; a check it says nothing of has neither and is never narrow."""
     rows = []
     for text in violations:
         found = violation_check(text)
         if found is not None:
-            rows.append(_row(found[0], found[1], str(text), _numbers(text)))
+            numbers = _numbers(text)
+            if spread is not None and found[1] == PLAYERS:
+                said = spread(found[0], (numbers or {}).get("line"))
+                if said:
+                    numbers = {**(numbers or {}), "n": said.get("n"), "se": said.get("se")}
+            rows.append(_row(found[0], found[1], str(text), numbers))
     return {
         "rung": FULL,
         "kind": kind_of(row["kind"] for row in rows),
@@ -236,6 +252,7 @@ def full_refusal(
         "roster": list(roster),
         "weights_version": weights_version,
         "seed": seed,
+        SPREAD: spread is not None,
     }
 
 
@@ -315,3 +332,179 @@ def count(entries: Iterable[Any]) -> Counter[tuple[str, str, str]]:
         for row in rows:
             counted[(str(refusal["rung"]), str(row["check"]), str(row["kind"]))] += 1
     return counted
+
+
+# ------------------------------------------------------- exploring past a refusal (R-S17j)
+#
+# One generation in eight may take as its parent a refused game whose refusal was read off
+# the players and was close, or could not be read at all (`docs/reference/wrong-no.md` §10).
+# The rule for *narrow* (`narrow`), for a refusal as a whole (`eligible`) and for what one
+# way of going wrong is (`family`) lives here and nowhere else. Nothing here rewrites a
+# refused entry or calls one viable: the mark is on its children, `detail["past_refusal"]`.
+
+# The checks a margin can be narrow on (§10.2's table): the cheap check's four outcome
+# rates, the screen's two, and the full roster's rates, means and gradient. Every other
+# check is never narrow -- a check by the rules, the clock, a roster that cannot play, the
+# seat gates (their test has already allowed for chance at one in a thousand), a
+# measurement the score did not get, and a sentence nothing recognises.
+NARROWABLE = frozenset(
+    {"stall_rate", "decided", "forced_rate", "seat_skew", "decisive", "quick_kill_rate"}
+    | spread_module.FULL_CHECKS
+)
+# Narrow is a margin of at most this many standard errors of the check's own number: the
+# size the project already calls a real move (`strength-check-all-games.md` §14.2).
+STANDARD_ERRORS = 2.0
+# The children's mark, in `Entry.detail`.
+PAST_REFUSAL = "past_refusal"
+# At most one generation in this many explores past a refusal, as a count (§10.5).
+CAP_EVERY = 8
+# Generations a family gets for the life of the archive (§10.4).
+FAMILY_GENERATIONS = 2
+
+FamilyId = tuple[str, str, tuple[str, ...]]
+
+
+def narrow(row: dict[str, Any]) -> bool:
+    """Whether one failed check fell within two standard errors of its line, the standard
+    error read from that refusal's own games (§10.2). A check by the rules is never narrow,
+    whatever its margin, and neither is one with no stored ``n`` and ``se``."""
+    if row.get("kind") != PLAYERS or str(row.get("check")) not in NARROWABLE:
+        return False
+    margin, se, games = row.get("margin"), row.get("se"), row.get("n")
+    if margin is None or se is None or not games:
+        return False
+    return float(margin) <= STANDARD_ERRORS * float(se) + 1e-9
+
+
+def unsure(refusal: dict[str, Any]) -> bool:
+    """A full-roster refusal that names no failed check: *this roster cannot read this
+    ruleset*, or *not measured*. No line was crossed; the players could not read the game."""
+    return refusal.get("rung") == FULL and not refusal.get("checks")
+
+
+def eligible(refusal: dict[str, Any] | None) -> bool:
+    """Whether a refused game may parent a generation that explores past it (§10.2): read
+    entirely off the players, stored with its basis and its spreads (not reconstructed, and
+    not written before R-S17j), and either every check narrow or the refusal unsure. One
+    check far past its line keeps it out."""
+    if not refusal or refusal.get("reconstructed") or refusal.get("kind") != PLAYERS:
+        return False
+    if not refusal.get(SPREAD) or "roster" not in refusal or "seed" not in refusal:
+        return False
+    checks = refusal.get("checks") or []
+    if not checks:
+        return unsure(refusal)
+    return all(narrow(row) for row in checks)
+
+
+def _refused(entry: Any) -> bool:
+    return entry is not None and refusal_of(entry) is not None
+
+
+def family(archive: Any, entry: Any) -> dict[str, Any]:
+    """One way one game goes wrong (§10.4): the nearest ancestor that is not refused
+    (walking ``parent`` up through refused entries; where there is none, the top of the
+    chain), the rung, and the failed checks. Seven refused children of one elite, refused
+    at the screen for no decisive game, are one family; so is a chain of refused children
+    of refused children."""
+    refusal = refusal_of(entry) or {}
+    current, root = entry, entry.hash
+    walked = {entry.hash}
+    while True:
+        above_hash = getattr(current, "parent", None)
+        if above_hash is None or above_hash in walked:
+            root = current.hash
+            break
+        walked.add(above_hash)
+        above = archive.latest(above_hash)
+        if above is None or not _refused(above):
+            root = above_hash
+            break
+        current = above
+    checks = sorted({str(row["check"]) for row in refusal.get("checks") or []})
+    return {"root": root, "rung": refusal.get("rung"), "checks": checks or [UNREAD_CHECK]}
+
+
+def family_id(key: dict[str, Any]) -> FamilyId:
+    """A family's key as something a set can hold."""
+    return (str(key.get("root")), str(key.get("rung")), tuple(key.get("checks") or ()))
+
+
+def marked(entries: Iterable[Any]) -> list[Any]:
+    """The children of generations that explored past a refusal, by their mark."""
+    return [e for e in entries if (getattr(e, "detail", None) or {}).get(PAST_REFUSAL)]
+
+
+def explored_generations(entries: Iterable[Any]) -> set[int]:
+    """The generations that explored past a refusal."""
+    return {int(e.generation) for e in marked(entries)}
+
+
+def under_cap(entries: Iterable[Any], generation: int) -> bool:
+    """Whether ``generation`` may explore past a refusal: with it, such generations number
+    at most one in `CAP_EVERY` of the generations the archive holds (``generation`` + 1,
+    counting from zero). The first seven never may (§10.5)."""
+    return CAP_EVERY * (len(explored_generations(entries)) + 1) <= generation + 1
+
+
+def closed_families(entries: Iterable[Any]) -> set[FamilyId]:
+    """The families no generation may explore again: tried in `FAMILY_GENERATIONS`
+    generations, or with a viable child (the direction has a viable game; the ordinary loop
+    revises it)."""
+    tried: dict[FamilyId, set[int]] = {}
+    succeeded: set[FamilyId] = set()
+    for entry in marked(entries):
+        key = family_id(entry.detail[PAST_REFUSAL].get("family") or {})
+        tried.setdefault(key, set()).add(int(entry.generation))
+        if entry.status == "evaluated" and entry.viable:
+            succeeded.add(key)
+    return succeeded | {key for key, gens in tried.items() if len(gens) >= FAMILY_GENERATIONS}
+
+
+def open_families(archive: Any) -> dict[FamilyId, list[Any]]:
+    """Every family still open, with its eligible members in archive order: each hash's
+    latest entry, refused on an eligible refusal, with its spec on disk."""
+    closed = closed_families(archive.entries)
+    families: dict[FamilyId, list[Any]] = {}
+    met: set[str] = set()
+    for first in archive.entries:
+        if first.hash in met:
+            continue
+        met.add(first.hash)
+        entry = archive.latest(first.hash)
+        if entry is None or entry.status not in ("rejected", "evaluated"):
+            continue
+        if not eligible(getattr(entry, "refusal", None)):
+            continue
+        if archive.load_spec(entry.hash) is None:
+            continue
+        key = family_id(family(archive, entry))
+        if key in closed:
+            continue
+        families.setdefault(key, []).append(entry)
+    return families
+
+
+def mark(archive: Any, entry: Any) -> dict[str, Any]:
+    """What every child of a generation past ``entry`` carries: the refused parent's hash and
+    name, its rung, the names of its checks, and its family."""
+    refusal = refusal_of(entry) or {}
+    return {
+        "parent": entry.hash,
+        "name": entry.name,
+        "rung": refusal.get("rung"),
+        "checks": [str(row["check"]) for row in refusal.get("checks") or []],
+        "family": family(archive, entry),
+    }
+
+
+def counted(entries: Iterable[Any]) -> tuple[int, int, int]:
+    """The summary's line, children only: how many generations explored past a refusal,
+    how many of their children were measured, and how many of those are viable."""
+    children = marked(entries)
+    measured = [e for e in children if e.status == "evaluated" and e.measured]
+    return (
+        len({int(e.generation) for e in children}),
+        len(measured),
+        sum(1 for e in measured if e.viable),
+    )

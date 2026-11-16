@@ -33,9 +33,14 @@ GAMES = [
     "archive/torus-less-extended.json",
     "rulesets/atomic.json",
     "rulesets/duck-chess.json",
+    # R-L5c2 (`docs/reference/common-path-plan.md` §5): the common path is compiled twice, and
+    # each copy has its own counters. Chess's perft and the king of the hill train the lean
+    # copy; a wild game and a sweep game give the full copy's rare arms a profile.
+    "archive/wolves.json",
+    "archive/short-sweeping-bishop-chess.json",
 ]
 AGENTS = ["random", "greedy", "minimax:nodes=1600"]
-RECIPE = "serial-1"  # R-L5e: one thread throughout; a new workload is a new name
+RECIPE = "serial-2"  # R-L5e: one thread throughout; a new workload is a new name (R-L5c2: two games)
 
 
 def cli(*args: str) -> None:

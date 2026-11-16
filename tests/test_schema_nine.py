@@ -78,6 +78,15 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q1069a, 2026-10-30: `rules.insufficient_material` switched on, a mechanics edit; its runs stay. was 14a126b38a1a / f2b419020c29d309
     "rulesets/berolina.json": ("d06cfc337d9c", "4945059532fe19a2"),
     "rulesets/brink.json": ("07484b9a09a5", "b041b3f25ccbe796"),  # Q1074bg1, 2026-10-30: the push showcase on chess
+    # R-S17g, 2026-11-16: the eight published games unlike chess, promoted as copies of `labelled/`
+    "rulesets/breakthrough.json": ("bb208e1b1211", "4feb6a456a980899"),
+    "rulesets/cannon-shogi.json": ("f9242927e9f4", "65ec03309ac854d6"),
+    "rulesets/clobber.json": ("53355cbda889", "a37bb741a73cef70"),
+    "rulesets/glinski-hexagonal-chess-with-mirrored.json": ("d7be83b7f1f9", "c62b974b79792094"),
+    "rulesets/gorogoro-plus.json": ("d4bf795ef1fe", "825d4294a0b8b08e"),
+    "rulesets/janggi.json": ("58fe9dad9711", "cad85460c99cfd67"),
+    "rulesets/minishogi.json": ("91974dda36cb", "836a3bc888b62c72"),
+    "rulesets/minixiangqi.json": ("6a4da609da21", "e54c33f6ab70892a"),
     "rulesets/dohyo.json": ("559e947e585a", "103c80d7810a23a8"),  # Q1074bd, 2026-10-31: the corner ring (was 242c02248dd2, the whole 7x7, Q1074bg2)
     "rulesets/rock-paper-shove.json": ("e926b98681ab", "787007e4001fe4d8"),  # Q1074bs, 2026-10-31: a circle of pushes
     "rulesets/capablanca.json": ("2eefcd835b3b", "304b04afb9d2d47b"),

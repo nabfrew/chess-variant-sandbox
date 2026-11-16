@@ -79,8 +79,11 @@ class TestTheFile:
         holding = [tuple(row["holding"]) for row in HELD["games"].values()]
         assert holding.count(("B",)) == 22 and holding.count(("A",)) == 11
         assert holding.count(("A", "C")) == 5
+        # R-S17g's eight published games joined after the check, not checked yet either.
         assert sorted(row["name"] for row in HELD["not_checked"].values()) == [
-            "atomic", "rear guard torus chess with even promotion"]
+            "atomic", "breakthrough", "cannon shogi", "clobber",
+            "glinski hexagonal chess with mirrored armies", "gorogoro plus", "janggi",
+            "minishogi", "minixiangqi", "rear guard torus chess with even promotion"]
 
     def test_atomics_reading_is_withdrawn_and_says_why(self) -> None:
         """Q1219: its word rested on games against Fairy-Stockfish, which plays another

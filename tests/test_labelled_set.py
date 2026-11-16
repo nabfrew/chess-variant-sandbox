@@ -330,10 +330,14 @@ def test_every_spec_in_the_set_has_a_label() -> None:
 
 
 def test_the_set_is_not_in_the_library_nor_the_sites_listing(tmp_path: Path) -> None:
+    """Save its published games, which may be promoted as copies since R-S17g
+    (`tests/test_published_promotion.py`); their files stay here as the set was read."""
     from chess_variant_sandbox.web import library
 
-    ours = {spec_hash(load_spec(path)) for path in _spec_files()}
-    assert ours, "labelled/ holds no game of its own"
+    held = {spec_hash(load_spec(path)) for path in _spec_files()}
+    assert held, "labelled/ holds no game of its own"
+    ours = {digest for digest in held if corpus.published_label(digest, LABELS) is None}
+    assert ours, "labelled/ holds no proven-bad game or control"
     assert not ours & set(corpus.corpus_hashes())
     assert not ours & set(corpus.committed_candidates())
     listed = {game.hash for game in library.discover(runs_dir=tmp_path, archive_dir=library.ARCHIVE_DIR)}

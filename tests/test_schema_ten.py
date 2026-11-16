@@ -1500,6 +1500,10 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
         "placement-chess",
         # Q1059b's `seirawan` holds a hawk and an elephant in a stock, entering by gating.
         "seirawan",
+        # R-S17g's three published shogi cousins hold hands filled from captures.
+        "cannon-shogi",
+        "gorogoro-plus",
+        "minishogi",
         "shogi",
         "shogi-backward-drops",
         "shogi-drop-promoted",
@@ -2083,6 +2087,9 @@ class TestTheBumpIsInertOnEveryRulesetThatDoesNotUseIt:
             # Q1059b, 2026-10-29: Seirawan chess joined the corpus new, its hawk and
             # elephant held in a stock that enters by gating; no existing hash moved.
             "seirawan.json": ["rules.drops.stock"],
+            # R-S17g, 2026-11-16: gorogoro plus joined the corpus from `labelled/`, its knight
+            # and lance in hand from the start; no existing hash moved.
+            "gorogoro-plus.json": ["rules.drops.stock"],
             # Q1079, 2026-10-31: standard duck chess joined the corpus new; its duck is the
             # piece with no moves of its own. No existing hash moved.
             "duck-chess.json": ["a piece with no moves of its own"],

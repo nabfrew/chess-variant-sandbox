@@ -88,7 +88,10 @@ from chess_variant_sandbox.spec.spelling import current_spelling
 # r3: a matched pair whose names differ is named from both sides (Q861). No count moves;
 # the bump is for the stored sentences, which the graph's pair file and the site's
 # `links` rows hold under this stamp and so recompute instead of showing the old words.
-RELATE_VERSION = "r3"
+# r4: a hop screen named by type (SR3c) is compared through the pairing of the two armies,
+# not by its letters (R-S17g: janggi, the first library game with one, read as two games
+# under a re-lettering).
+RELATE_VERSION = "r4"
 
 # Which kind of rule each `rules` key is. Exhaustive over `schema._RULES_KEYS`, and a
 # test fails when the schema grows a key with no row here -- a link with no kind is a
@@ -773,6 +776,61 @@ def _move_form(piece: dict[str, Any]) -> frozenset[Any]:
     return frozenset((attrs, frozenset(dirs)) for attrs, dirs in merged.items())
 
 
+_SCREEN_AT = 6  # where `_move_form` puts a move's screen in its attributes
+
+
+def _form_under(form: frozenset[Any], ids: dict[str, str]) -> frozenset[Any]:
+    """A piece's movement with any hop screen named by type read through ``ids``.
+
+    `_move_form` keeps such a screen as the letters written, which is right inside one game
+    and wrong between two that letter their pieces differently: the comparison asks it in
+    the first game's letters, as it asks `captures` (`_folded`). A form with no such screen
+    comes back as it is.
+    """
+    if not any(isinstance(attrs[_SCREEN_AT], tuple) for attrs, _ in form):
+        return form
+    out: set[Any] = set()
+    for attrs, dirs in form:
+        screen = attrs[_SCREEN_AT]
+        if isinstance(screen, tuple):
+            screen = tuple(sorted(ids.get(pid, pid) for pid in screen))
+            attrs = (*attrs[:_SCREEN_AT], screen, *attrs[_SCREEN_AT + 1:])
+        out.add((attrs, dirs))
+    return frozenset(out)
+
+
+def _letter_free_forms(form: NormalForm) -> dict[str, frozenset[Any]]:
+    """Every piece's movement with a hop screen named by type read without letters.
+
+    The tiers of `similarity` (`mechanisms`, `piece_identity`) compare two games with no
+    pairing of their armies, so a screen written as letters would make a re-lettering a
+    different game. Each named type is read as what it is, its own movement (with any
+    screen of its own left as the bare word ``"types"``) and royalty, sorted. A game with
+    no such screen keeps its forms as they are.
+    """
+    if not any(
+        isinstance(attrs[_SCREEN_AT], tuple)
+        for moves in form.forms.values() for attrs, _ in moves
+    ):
+        return form.forms
+
+    def blank(moves: frozenset[Any]) -> frozenset[Any]:
+        return frozenset(
+            ((*attrs[:_SCREEN_AT], "types", *attrs[_SCREEN_AT + 1:]), dirs)
+            if isinstance(attrs[_SCREEN_AT], tuple) else (attrs, dirs)
+            for attrs, dirs in moves
+        )
+
+    what = {
+        pid: repr((sorted(blank(moves), key=repr), bool(form.pieces[pid].get("royal"))))
+        for pid, moves in form.forms.items()
+    }
+    return {
+        pid: _form_under(moves, what)
+        for pid, moves in form.forms.items()
+    }
+
+
 def _directions(form: frozenset[Any]) -> set[Any]:
     return {(attrs[0], step) for attrs, dirs in form for step in dirs}
 
@@ -1079,7 +1137,9 @@ def _compare(
         one, other = first.pieces[id_a], second.pieces[id_b]
         name = str(one.get("name", id_a))
         words = _PairWords(name, str(other.get("name", id_b)))
-        moved = first.forms[id_a] != second.forms[id_b]
+        moved = _form_under(first.forms[id_a], ids_a) != _form_under(
+            second.forms[id_b], ids_b
+        )
         crowned = bool(one.get("royal")) != bool(other.get("royal"))
         if moved:
             found.append(Difference("pieces", "piece.moves", words.moves()))
@@ -1502,7 +1562,7 @@ def mechanisms(form: NormalForm) -> frozenset[Any]:
     has adds none, and a game's set of mechanisms holds no board and no piece count.
     """
     found: set[Any] = set()
-    for moves in form.forms.values():
+    for moves in _letter_free_forms(form).values():
         for attrs, dirs in moves:
             orbits: dict[tuple[int, int], set[Any]] = defaultdict(set)
             for member in dirs:
@@ -1527,7 +1587,7 @@ def piece_identity(form: NormalForm, pid: str) -> tuple[Any, ...]:
     """
     piece = form.pieces[pid]
     return (
-        form.forms[pid],
+        _letter_free_forms(form)[pid],
         bool(piece.get("royal")),
         _frozen(piece.get("facing")),
         _frozen(piece.get("region")),

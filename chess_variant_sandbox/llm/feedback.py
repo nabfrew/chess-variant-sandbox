@@ -384,6 +384,12 @@ def describe_failures(entries: Sequence[Entry]) -> str:
 
     Same rule as everything else in this module: what failed and why, never how it
     scored.
+
+    Each refusal is worded by its kind (R-S17h, `docs/reference/wrong-no.md` §8.3), read
+    from `loop.refusals.refusal_of`, the rule the site and the loop share: one by the rules
+    is a fact of the rules, true whoever plays; one read off the players is how these
+    computer players played it, which a different attempt or stronger players may not
+    repeat. The kind alone is said: never the check's number, its line or its margin.
     """
     if not entries:
         return ""
@@ -395,15 +401,47 @@ def describe_failures(entries: Sequence[Entry]) -> str:
         if entry.status == "invalid":
             what = "did not satisfy the schema"
         elif entry.status == "rejected":
-            what = "was thrown out before it could be played"
+            what = "was thrown out before it could be played" + _refusal_kind(entry)
         elif not entry.measured:
             # *Not measured* (plan-teacher §10.16): no verdict, so not a disqualification.
             what = ("was played, but the programs could not work out how to win it, so "
                     "there is no verdict either way")
         else:
-            what = "was played and disqualified"
+            what = "was played and disqualified" + _refusal_kind(entry)
         lines.append(f"- {entry.name}: {what} -- {headline}")
     return "\n".join(lines)
+
+
+# What a refusal rests on, said to the proposer (R-S17h). A refusal by the rules is a fact
+# of the rules; one read off the players is a reading of these computer players at the
+# strength they were given, so it is worded as an outcome of *this attempt as they played
+# it*, not as a closed direction. Neither claims more than that: not that the players were
+# wrong, and nothing of what the score measures.
+RULES_WORDS = (", by a fact of its rules that holds whoever plays it, so the same rules "
+               "will fail the same way")
+PLAYERS_WORDS = (", by how these computer players played it: that is an outcome of this "
+                 "attempt with these players, which a different attempt at the idea or "
+                 "stronger players may not repeat")
+BOTH_WORDS = (", partly by a fact of its rules that holds whoever plays it, and partly by "
+              "how these computer players played it")
+
+
+def _refusal_kind(entry: Entry) -> str:
+    """The words for what refused this entry: its rules, these players, or both.
+
+    Imported here, not at the top: `loop/` imports this module, and `loop.refusals` is the
+    one place the split lives (`web/sitescore.py` reads it too)."""
+    from chess_variant_sandbox.loop.refusals import BOTH, RULES, refusal_of
+
+    refusal = refusal_of(entry)
+    if refusal is None:
+        return ""
+    kind = refusal.get("kind")
+    if kind == RULES:
+        return RULES_WORDS
+    if kind == BOTH:
+        return BOTH_WORDS
+    return PLAYERS_WORDS
 
 
 def _fire(rules: list[tuple[str, Any, str]], raw: dict[str, float]) -> list[str]:

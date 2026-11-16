@@ -153,7 +153,8 @@ READERS: dict[str, dict[str, str]] = {
     },
     # -- case 3.
     "must_capture": {
-        "game.rs::restrict": "the antichess filter; it keeps the captures when there are "
+        "tables.rs::rare_in_use": "R-L5c2: whether the rule is present, to choose the copy of the common path; both copies answer alike (tests/test_lean_path.py)",
+        "game.rs::restrict_as": "the antichess filter; it keeps the captures when there are "
         "some, and with nothing takeable there are never any (Q118 closed en passant's hole)",
         "agents.rs::null_for": "R-P2b: switches the null move off under forced capture. "
         "**Player, not rules**: an arm off by default, read once in `Player::new`; it moves no "
@@ -164,6 +165,7 @@ READERS: dict[str, dict[str, str]] = {
     },
     # -- case 4.
     "explosion": {
+        "tables.rs::rare_in_use": "R-L5c2: whether the rule is present, to choose the copy of the common path; both copies answer alike (tests/test_lean_path.py)",
         "game.rs::write_blast": "`make`'s phase (CS8): the blast, behind `captured != 0`, which no move reaches when "
         "nothing can be taken",
         "game.rs::blast_sets_off": "SR5a: whether a capture explodes, behind `captured != 0`, which "
@@ -195,6 +197,7 @@ READERS: dict[str, dict[str, str]] = {
     },
     # -- cases 5 and 6.
     "drops": {
+        "tables.rs::rare_in_use": "R-L5c2: whether the rule is present, to choose the copy of the common path; both copies answer alike (tests/test_lean_path.py)",
         "game.rs::initial": "the opening hands: empty, since the refusals need no stock",
         "game.rs::write_entry": "`make`'s drop branch (CS8): spends a hand slot, which is "
         "empty for the life of the game, so no drop is ever generated to reach it",
@@ -222,7 +225,7 @@ READERS: dict[str, dict[str, str]] = {
         "leaves the hand, which is empty for the life of the game",
         "rounds.rs::what_captures_cause": "schema 26's fill, as `make`'s (§4 step 5): behind "
         "a capture and `from_captures`",
-        "game.rs::restrict": "the drop-mate filter; it filters drops, and there are none",
+        "game.rs::restrict_as": "the drop-mate filter; it filters drops, and there are none",
         "eval.rs::new": "`mean_non_royal` skips unlimited types; the refusals need no "
         "stock, so no type is unlimited and the mean is the undeclared one; also copies "
         "`has_drops`",
@@ -280,13 +283,15 @@ READERS: dict[str, dict[str, str]] = {
     },
     # -- cases 9 and 11.
     "forbid_check": {
-        "game.rs::restrict": "guarded by `!t.royal_types.is_empty()` in the core itself "
+        "tables.rs::rare_in_use": "R-L5c2: whether the rule is present, to choose the copy of the common path; both copies answer alike (tests/test_lean_path.py)",
+        "game.rs::restrict_as": "guarded by `!t.royal_types.is_empty()` in the core itself "
         "(case 9); in case 11 it is the rule, not the refused one",
         "pass.rs::push_pass": "H3: the same filter asked of the null move, guarded by "
         "`!t.royal_types.is_empty()` (case 9); in case 11 it is the rule",
     },
     # -- case 10.
     "royal_facing_forbidden": {
+        "tables.rs::rare_in_use": "R-L5c2: whether the rule is present, to choose the copy of the common path; both copies answer alike (tests/test_lean_path.py)",
         "game.rs::leaves_royal_attacked_as": "called only under `needs_check_filter()`, which "
         "requires a royal type",
         "game.rs::generate_checked": "refuses the pin shortcut, inside the same royal-only "
@@ -494,7 +499,7 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::sweep_mover_change": "SR6b: the value a sweeper becomes by a swept contact's "
         "`mover_to`, behind `StrikeRule::strikes_path`",
         "game.rs::play_move_for_filter": "the same write in the legality filter",
-        "game.rs::restrict": "the immobility filter, asking of a dropped piece as it "
+        "game.rs::restrict_as": "the immobility filter, asking of a dropped piece as it "
         "stands after arrival",
         "game.rs::is_forbidden_drop_mate": "the dropped piece's value",
         "game.rs::gate_for_filter": "Q1059a: a gated piece's value in the legality filter, "
@@ -518,7 +523,7 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::write_board": "`make`'s board phase (CS8), TC6: a hire or a bribe, the bought piece entering play for its "
         "new owner where it stands (`promote_on_entry` counts both as a way in)",
         "game.rs::play_move_for_filter": "TC6: the same hire or bribe in the legality filter",
-        "game.rs::restrict": "TC6: the immobility filter, asking of a hired or bribed piece "
+        "game.rs::restrict_as": "TC6: the immobility filter, asking of a hired or bribed piece "
         "as it stands after the change of side",
     },
     "rounds.rs:mover": {
@@ -541,6 +546,7 @@ READERS: dict[str, dict[str, str]] = {
     # `multi_royal` moves only where the spec declares a real royal promotion beside the
     # phantom one; every reader counts royals standing on the board.
     "multi_royal": {
+        "tables.rs::rare_in_use": "R-L5c2: whether the rule is present, to choose the copy of the common path; both copies answer alike (tests/test_lean_path.py)",
         "game.rs::royal_values": "which values are royal, for the royal hint",
         "game.rs::royal_square": "where a side's royal stands",
         "game.rs::royal_count": "how many royals a side has standing",

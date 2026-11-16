@@ -1,9 +1,23 @@
 {
   "_written_by": "uv run python tests/corpus_pins.py",
   "descriptions": {
-    "archive/rear-guard-torus-even-promotion": "11bc1c8cedcdfac6"
+    "archive/rear-guard-torus-even-promotion": "11bc1c8cedcdfac6",
+    "rulesets/breakthrough": "3a48cfee43115df3",
+    "rulesets/cannon-shogi": "c92ff92cf8d88343",
+    "rulesets/clobber": "3e08dca5e369e69a",
+    "rulesets/gorogoro-plus": "0beb9f8c6e622883",
+    "rulesets/janggi": "c37eb3f79e4d86d8",
+    "rulesets/minishogi": "dba9e03ddc922eb6",
+    "rulesets/minixiangqi": "661954e48ce8ba12"
   },
   "features": {
-    "archive/rear-guard-torus-even-promotion": "3d457fc3caed6218"
+    "archive/rear-guard-torus-even-promotion": "3d457fc3caed6218",
+    "rulesets/breakthrough": "6f9d039f8e458e87",
+    "rulesets/cannon-shogi": "c4f8ee175660b787",
+    "rulesets/clobber": "1620968f0d32fcac",
+    "rulesets/gorogoro-plus": "2923b4bcd3821ded",
+    "rulesets/janggi": "0407ab22e0c5c680",
+    "rulesets/minishogi": "f67f223bde6ede1f",
+    "rulesets/minixiangqi": "85e10b3d0063d2a9"
   }
 }

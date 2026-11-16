@@ -1806,6 +1806,33 @@ class TestTheGlossaryIsNotFingerprinted:
                 assert not any("glossary" in word for word in names), name
 
 
+class TestTheLoopsSpreadIsNotFingerprinted:
+    """`metrics/spread.py` (R-S17j): a failed check's standard error, read by the design
+    loop's refusals and by no score, so adding or changing it stales nothing."""
+
+    def test_it_is_outside_every_code_reading(self) -> None:
+        loop_only = measurement.ROOT / "chess_variant_sandbox" / "metrics" / "spread.py"
+        assert loop_only.exists()
+        assert loop_only in set(measurement._sources(*measurement.METRICS_SOURCES))
+        for kind in ("engine", "metrics", "analysis"):
+            assert loop_only not in measurement.fingerprinted(kind), kind
+
+    def test_no_fingerprinted_source_imports_it(self) -> None:
+        """The premise for leaving it out. A score that read it would be blind to it."""
+        import ast
+
+        for name, tree in TestTheCodeReading._fingerprinted_trees():
+            for node in ast.walk(tree):  # type: ignore[arg-type]
+                if isinstance(node, ast.ImportFrom):
+                    module = node.module or ""
+                    names = [alias.name for alias in node.names]
+                    assert module != "chess_variant_sandbox.metrics.spread", name
+                    assert not (module == "chess_variant_sandbox.metrics" and "spread" in names), name
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        assert alias.name != "chess_variant_sandbox.metrics.spread", name
+
+
 class TestAStampFromBeforeTheCodeReading:
     """Every stored basis on the day the code reading landed holds the bytes reading.
 

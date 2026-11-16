@@ -776,6 +776,137 @@ def test_failed_siblings_reach_the_proposer(tmp_path) -> None:
     assert "elsewhere" not in prompt
 
 
+# ------------------------------------- a failure is worded by what it rests on (R-S17h)
+#
+# `docs/reference/wrong-no.md` §8.3: the proposer was told every failed child the same way,
+# *do not repeat them*, whether the rules or these computer players said it. A players'
+# refusal is a reading of weak players, and the sentence steered the model away from it as
+# from a fact. Each failure now says its kind, read from `loop.refusals.refusal_of`.
+
+def _failed(name: str, status: str, kind: str | None, checks: list[dict] | None = None,
+            detail: dict | None = None, notes: str = "It went wrong.") -> Entry:
+    refusal = None
+    if kind is not None:
+        refusal = {"rung": "smoke" if status == "rejected" else "full", "kind": kind,
+                   "checks": checks or [], "roster": ["random"], "weights_version": "v14",
+                   "seed": 0}
+    return Entry(hash=name, name=name, generation=1, parent="p", status=status,
+                 viable=False if status == "evaluated" else None, notes=notes,
+                 detail=detail or {}, refusal=refusal)
+
+
+def _line_of(text: str, name: str) -> str:
+    return next(line for line in text.splitlines() if line.startswith(f"- {name}:"))
+
+
+def test_a_players_failure_and_a_rules_failure_read_differently() -> None:
+    from chess_variant_sandbox.llm import feedback
+    from chess_variant_sandbox.loop import refusals
+
+    entries = [
+        _failed("stuck", "rejected", refusals.RULES,
+                notes="Rejected before smoke: the first player has no legal move"),
+        _failed("stalled", "rejected", refusals.PLAYERS,
+                notes="Rejected before smoke: 99% of random games ended in a stall"),
+        _failed("flat", "evaluated", refusals.RULES),
+        _failed("shallow", "evaluated", refusals.PLAYERS),
+        _failed("mixed", "evaluated", refusals.BOTH),
+    ]
+    text = feedback.describe_failures(entries)
+
+    for name in ("stuck", "flat"):
+        assert feedback.RULES_WORDS in _line_of(text, name)
+        assert feedback.PLAYERS_WORDS not in _line_of(text, name)
+    for name in ("stalled", "shallow"):
+        line = _line_of(text, name)
+        assert feedback.PLAYERS_WORDS in line and feedback.RULES_WORDS not in line
+        # What a players' refusal is: these players, this attempt, open to stronger ones.
+        assert "these computer players" in line and "stronger players" in line
+    assert feedback.BOTH_WORDS in _line_of(text, "mixed")
+    # The stage is still said: before it could be played, or played and disqualified.
+    assert "thrown out before it could be played" in _line_of(text, "stuck")
+    assert "played and disqualified" in _line_of(text, "shallow")
+    assert feedback.RULES_WORDS != feedback.PLAYERS_WORDS != feedback.BOTH_WORDS
+
+
+def test_an_old_entry_is_worded_by_the_kind_read_back_from_its_sentences() -> None:
+    """An entry written before refusals were stored is read with `refusal_of`, the site's
+    and the loop's one rule, never a copy of it."""
+    from chess_variant_sandbox.llm import feedback
+
+    rules = _failed("narrow", "evaluated", None,
+                    detail={"violations": ["mean_branching=1.2 below minimum 1.5"]})
+    players = _failed("dull", "evaluated", None,
+                      detail={"violations": ["skill_gradient=3.1 below minimum 8"]})
+    smoke = _failed("frozen", "rejected", None,
+                    detail={"smoke": {"reasons": ["the first player has no legal move"]}})
+    text = feedback.describe_failures([rules, players, smoke])
+    assert feedback.RULES_WORDS in _line_of(text, "narrow")
+    assert feedback.PLAYERS_WORDS in _line_of(text, "dull")
+    assert feedback.RULES_WORDS in _line_of(text, "frozen")
+
+
+def test_the_kind_of_a_failure_leaks_no_number_line_or_component() -> None:
+    """A check's name is a quality; its number, line and margin are not, and neither is the
+    component it reads. What the refusal stores reaches the prompt as its kind alone."""
+    from chess_variant_sandbox.llm import feedback
+    from chess_variant_sandbox.loop import refusals
+    from chess_variant_sandbox.metrics import load_weights
+
+    checks = [{"check": "skill_gradient", "kind": refusals.PLAYERS, "value": 3.137,
+               "line": 8.25, "side": "min", "margin": 5.113,
+               "reason": "skill_gradient=3.137 below minimum 8.25"},
+              {"check": "mean_branching", "kind": refusals.RULES, "value": 1.237,
+               "line": 1.5, "side": "min", "margin": 0.263,
+               "reason": "mean_branching=1.237 below minimum 1.5"}]
+    entries = [_failed(name, "evaluated", kind, checks=checks)
+               for name, kind in (("a", refusals.PLAYERS), ("b", refusals.RULES),
+                                  ("c", refusals.BOTH))]
+    added = feedback.describe_failures(entries).lower().replace("it went wrong.", "")
+    for number in ("3.137", "8.25", "5.113", "1.237", "1.5", "0.263"):
+        assert number not in added
+    for component in load_weights().components():
+        assert component not in added and component.replace("_", " ") not in added
+    for term in ("index", "weight", "score", "component", "margin", "line", "band",
+                 "minimum", "chess"):
+        assert term not in added
+
+
+def test_the_proposer_is_told_what_each_failure_rests_on(tmp_path) -> None:
+    """The words reach the model: ask the prompt `_produce` sends."""
+    import random
+
+    from chess_variant_sandbox.llm import feedback
+    from chess_variant_sandbox.loop import refusals
+    from chess_variant_sandbox.loop.orchestrator import LoopConfig, _produce
+
+    archive = Archive(tmp_path)
+    archive.record(Entry(hash="p", name="parent", generation=0, parent=None,
+                         status="evaluated", index=0.6, objective=0.6, viable=True))
+    archive.record(_failed("stuck", "rejected", refusals.RULES))
+    archive.record(_failed("shallow", "evaluated", refusals.PLAYERS))
+
+    class Recorder:
+        model = "claude-opus-4-8"
+
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def structured(self, system, user, schema, max_tokens=16000):
+            self.prompts.append(user)
+            return copy.deepcopy(PLAYABLE)
+
+    recorder = Recorder()
+    _produce(
+        1, LoopConfig(mechanical_rate=0.0, directory=tmp_path), archive, random.Random(0),
+        recorder, archive.entries[0], PLAYABLE, "", "", lambda _: None,
+    )
+    prompt = recorder.prompts[0]
+    assert feedback.RULES_WORDS in _line_of(prompt, "stuck")
+    assert feedback.PLAYERS_WORDS in _line_of(prompt, "shallow")
+    assert "a fact of the rules holds whoever plays" in prompt
+
+
 # --------------------------------------------------------- what the API will accept
 
 def _every_schema_this_project_sends() -> dict[str, dict]:

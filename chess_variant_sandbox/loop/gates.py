@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.metrics.spread import binomial_se, count_se
 from chess_variant_sandbox.spec.plain import plain_problems
 from chess_variant_sandbox.spec.schema import SpecError
 
@@ -85,17 +86,39 @@ class SmokeResult:
 
 
 def check_row(
-    check: str, value: float | None = None, line: float | None = None, side: str = ""
+    check: str,
+    value: float | None = None,
+    line: float | None = None,
+    side: str = "",
+    n: int | None = None,
+    se: float | None = None,
 ) -> dict[str, Any]:
     """One failed check as the archive keeps it: what it read, the line, and how far past
     the line it fell (`margin`, in the check's own units, never negative). A check with no
-    number (no opening move, a clock) has no margin."""
+    number (no opening move, a clock) has no margin.
+
+    ``n`` is the games the check read and ``se`` the standard error of its number, from
+    those games (R-S17j, `docs/reference/wrong-no.md` §10.2): `refusals.narrow` reads the
+    two. A check that reads no games, or whose number is a fact of the rules, has neither."""
     row: dict[str, Any] = {"check": check, "value": value, "line": line, "side": side}
     row["margin"] = (
         round(abs(float(value) - float(line)), 4)
         if value is not None and line is not None else None
     )
+    row["n"] = n
+    row["se"] = None if se is None else round(float(se), 6)
     return row
+
+
+def rate_row(check: str, value: float, line: float, side: str, n: int) -> dict[str, Any]:
+    """A failed check on a rate over ``n`` games, its standard error binomial at the line."""
+    return check_row(check, value, line, side, n=n, se=binomial_se(line, n))
+
+
+def count_row(check: str, value: float, line: float, side: str, n: int) -> dict[str, Any]:
+    """A failed check on a count out of ``n`` games, its standard error binomial at the
+    line, in games."""
+    return check_row(check, value, line, side, n=n, se=count_se(line, n))
 
 
 def _over_at_the_start(winner: int | None, reason: str) -> str:
@@ -258,7 +281,9 @@ def smoke_test(
         reasons.append(
             f"{stall_rate:.0%} of random games {STALLED}: the pieces can't force a result"
         )
-        checks.append(check_row("stall_rate", round(stall_rate, 4), MAX_RANDOM_STALL, "max"))
+        checks.append(
+            rate_row("stall_rate", round(stall_rate, 4), MAX_RANDOM_STALL, "max", played)
+        )
     if decided == 0 and played >= NO_WINNER_GAMES:
         # Distinct from the stall check above, and it took a test to notice: a game can
         # reach a definite ending every time -- stalemate, repetition -- and still have
@@ -268,13 +293,15 @@ def smoke_test(
             f"none of {played} random games had a winner; from this start, the way to win "
             "may be out of reach"
         )
-        checks.append(check_row("decided", 0, 1, "min"))
+        checks.append(count_row("decided", 0, 1, "min", played))
     if forced_rate > MAX_FORCED_RATE:
         reasons.append(
             f"{forced_rate:.0%} of games end within {FORCED_RESULT_PLIES} turns even when "
             "both sides move at random: the game is decided before it begins"
         )
-        checks.append(check_row("forced_rate", round(forced_rate, 4), MAX_FORCED_RATE, "max"))
+        checks.append(
+            rate_row("forced_rate", round(forced_rate, 4), MAX_FORCED_RATE, "max", played)
+        )
     if decided >= SKEW_DECIDED_GAMES:
         # Under random play the two seats should be close to symmetric. A wide gap
         # means the first player's advantage is structural rather than strategic --
@@ -289,7 +316,9 @@ def smoke_test(
                 f"one side wins {skew:.0%} more often than the other even when both move "
                 "at random: the starting position itself is lopsided"
             )
-            checks.append(check_row("seat_skew", round(skew, 4), MAX_RANDOM_SKEW, "max"))
+            checks.append(
+                rate_row("seat_skew", round(skew, 4), MAX_RANDOM_SKEW, "max", decided)
+            )
 
     return SmokeResult(
         passed=not reasons,

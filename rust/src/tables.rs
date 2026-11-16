@@ -569,6 +569,45 @@ pub fn with_foreign(m: u32) -> u32 {
     m | MOVE_FOREIGN
 }
 
+/// R-L5c2 (`docs/reference/common-path-plan.md` §2.2): whether a game uses any rare family, so
+/// plays the full copy of the common path. Reads **every field a gate reads** (`rare!`,
+/// `rare_opt` in this crate; `tests/test_lean_path.py` holds the two together): a field read
+/// behind a gate and not here would let the lean copy skip a rule in use. Read once, by
+/// `Tables::from_py`. A free function, not a method: it answers which copy plays, never what a
+/// rule does, and both copies answer alike (`tests/test_inert_rule_readers.py` lists it so).
+pub fn rare_in_use(t: &Tables) -> bool {
+    // HAND, CAPTURE, MATRIX
+    t.drops.is_some()
+        || t.strike.is_some()
+        || t.explosion.is_some()
+        || t.has_capture_matrix
+        // SWEEP, PUSH (a landing's `MODE_PUSH` is compiled only under it), HOPS
+        || t.has_sweep
+        || t.push.is_some()
+        || t.hops.n_entries() != 0
+        || !t.hop_runs.is_empty()
+        || t.has_hop_attacks
+        // PORTALS, SIGHT, HELD, WILD, DUCK, PURSE
+        || t.portals.is_some()
+        || t.sight.is_some()
+        || t.majority.is_some()
+        || t.has_npcs
+        || t.duck.is_some()
+        || t.purse.is_some()
+        // TURN
+        || t.rest.is_some()
+        || t.parts.is_some()
+        || t.passes
+        // FACING, ROYALS, RESTRICT
+        || t.has_facing
+        || t.multi_royal
+        || t.royal_facing_forbidden
+        || t.forbid_check
+        || t.forbid_immobility
+        || t.must_capture
+        || t.region_play
+}
+
 /// Whether anything rides in bits 25 to 31: a landing, an end, a fold, the foreign bit.
 #[inline(always)]
 pub fn move_extended(m: u32) -> bool {
@@ -2408,6 +2447,10 @@ pub struct Tables {
     /// and it is the branch that keeps the phase, the third owner's attack block and the
     /// tally free for them.
     pub has_npcs: bool,
+    /// R-L5c2 (`docs/reference/common-path-plan.md` §2): no rare rule is in use
+    /// (`!rare_in_use()`), so the lean copy of the common path plays this game
+    /// (`crate::path`). Set last in `from_py`; beside `has_npcs`, which the plan asked.
+    pub lean: bool,
     /// `npc_next[square]` -> the square a wild piece standing here steps to. `-1` off
     /// every route; the square itself for a one-square route, which is a wild piece that
     /// never moves. Empty when nothing is wild.
@@ -3099,6 +3142,20 @@ impl Tables {
         self.zobrist_ep[square as usize % self.width]
     }
 
+    /// `decode_owned` behind the facing family's gate: `facing` false is the lean copy's
+    /// one-frame arithmetic, with the facing test deleted.
+    #[inline(always)]
+    pub fn decode_owned_if(&self, facing: bool, value: u8, low: u16, player: usize) -> (usize, usize) {
+        debug_assert!(facing || !self.has_facing, "a lean copy met a facing game");
+        if facing {
+            return self.decode_owned(value, low, player);
+        }
+        debug_assert_eq!(self.owner_of(value), player, "a wild byte reached decode_owned");
+        let quick = ((value as u16 - low) as usize, player);
+        debug_assert_eq!(quick, (self.type_of(value), self.frame_of_value(value)));
+        quick
+    }
+
     #[inline(always)]
     pub fn needs_check_filter(&self) -> bool {
         self.win == Win::Checkmate && !self.royal_types.is_empty()
@@ -3662,6 +3719,7 @@ impl Tables {
             territory,
             turn,
             has_npcs,
+            lean: false,
             npc_next,
             npc_bounty,
             npc_squares,
@@ -3831,6 +3889,9 @@ impl Tables {
             }
         }
         tables.build_scan_groups();
+        // R-L5c2: the copy of the common path this game runs, chosen once, last, from the
+        // fields every gate reads (`rare_in_use`); the test-only switch forces the full one.
+        tables.lean = !rare_in_use(&tables) && !crate::path::forced_full();
         Ok(tables)
     }
 }

@@ -1973,6 +1973,43 @@ def a_pushed_piece_standing_on_its_goal_decides(v: View) -> None:
             _fail(step, f"after a push player {side}'s piece stands on its goal {sq} and the game went on")
 
 
+# ------------------------------------------------------------------- the lean copy
+
+def full_copy_engine(spec: dict[str, Any]) -> Any:
+    """``spec``'s engine built on the full copy of the core's common path, whatever its
+    tables (R-L5c2, `docs/reference/common-path-plan.md` §2.5 item 4): the test-only switch
+    is set for this one build and put back."""
+    from chess_variant_sandbox import _core
+    from chess_variant_sandbox.engine import Engine
+
+    before = _core.force_full_path(True)
+    try:
+        return Engine(spec)
+    finally:
+        _core.force_full_path(before)
+
+
+def the_lean_copy_offers_what_the_full_copy_offers(v: View) -> None:
+    """R-L5c2 (§2.5 item 5): a case the core plays on its lean copy (no rare rule in use) is
+    offered, at every position of its alternating play, exactly the moves the full copy offers
+    there, in the same order (order is tie-break order). The lean copy is the full one with
+    the rare arms compiled out, so a difference is a gate whose family `rare_in_use` forgets.
+    Judges nothing on a case that plays the full copy."""
+    if not v.engine.core.lean_path():
+        return
+    full = full_copy_engine(v.spec)
+    if full.core.lean_path():
+        _fail(None, "the forced-full switch built a lean engine")
+    for step in _alternating(v.record):
+        v.judged += 1
+        offered = tuple(full.legal_moves(step.before))
+        if offered != step.offered:
+            missing = sorted(set(offered) - set(step.offered))
+            extra = sorted(set(step.offered) - set(offered))
+            _fail(step, f"the lean copy offered {len(step.offered)} moves, the full copy "
+                        f"{len(offered)} (only on the full: {missing[:4]}; only on the lean: {extra[:4]})")
+
+
 # ---------------------------------------------------------------------------- the list
 
 CHECKS: tuple[Check, ...] = (
@@ -2078,6 +2115,9 @@ CHECKS: tuple[Check, ...] = (
           ("push.sight",), a_push_moves_no_shielded_or_bound_piece),
     Check("a_pushed_piece_standing_on_its_goal_decides", ("pieces[].moves[].push", "rules.reach"),
           ("push.G1",), a_pushed_piece_standing_on_its_goal_decides),
+    # R-L5c2: on every case; judges only one the core plays on its lean copy.
+    Check("the_lean_copy_offers_what_the_full_copy_offers", (), (),
+          the_lean_copy_offers_what_the_full_copy_offers),
 )
 
 

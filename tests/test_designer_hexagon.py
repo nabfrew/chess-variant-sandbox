@@ -460,13 +460,17 @@ class TestASquareGameMadeHexagonsIsAGame:
             problems = validate_spec(designing.settled(made))
             if problems:
                 refused[path.stem] = problems
-        assert len(refused) <= 3, sorted(refused)
+        # R-S17g brought janggi and minixiangqi, two more xiangqi-family games with a lame.
+        assert len(refused) <= 5, sorted(refused)
         for problems in refused.values():
             # SR1a: a hex lame is refused only until it states its legs. H1's U8: a move's
             # cost counts rows from home, which a hex board has no one direction for
             # (`rulesets/hunger`, Q1159). U1's C1: brink's twin pushes in 48 directions, more
             # than the move word names; the engine always refused it, the validator now says so.
+            # R-S17g: janggi, the first library game to state its legs, keeps the square
+            # lattice's legs, which no longer match the hex twin's vectors.
             assert all("must state its legs" in line or "facing.axes 4" in line
+                       or ".legs must be an array with one entry per vector" in line
                        or "schema_version" in line
                        or line.startswith('rules.purse.upkeep beside board.lattice "hex"')
                        or line.startswith("more than 32 push directions")

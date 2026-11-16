@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.loop import grid as grid_module
+from chess_variant_sandbox.loop import refusals
 from chess_variant_sandbox.metrics.bootstrap import clears
 
 LINEAGE_FILE = "lineage.jsonl"
@@ -451,6 +452,17 @@ class Archive:
             lines.append(
                 f"\n  {grid.filled} {kinds} of game found, of {grid_module.CELLS} the "
                 "grid can express"
+            )
+
+        # The generations that explored past a refusal (R-S17j), counted by their children
+        # only: the refused parents are not candidates of this line, and never counted as
+        # viable anywhere.
+        explored, measured, viable = refusals.counted(self._entries)
+        if explored:
+            generations = "generation" if explored == 1 else "generations"
+            lines.append(
+                f"\n  {explored} {generations} explored past a refusal: {measured} of their "
+                f"children measured, {viable} of those viable"
             )
 
         judged = [e for e in self._entries if e.separated is not None]

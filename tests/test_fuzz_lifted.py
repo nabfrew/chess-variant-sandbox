@@ -1186,6 +1186,26 @@ def test_the_bounty_check_fires_on_a_push_off_that_paid_nothing() -> None:
     assert "paid the mover 0" in _fires("a_capture_pays_the_bounty_of_what_it_removed", planted)
 
 
+def test_the_lean_copy_check_fires_on_a_move_the_lean_copy_skipped() -> None:
+    """R-L5c2 (`common-path-plan.md` §2.5 item 5): a lean case's offered lists equal the full
+    copy's; planted, a lean copy that skipped one move (as a gate whose family `rare_in_use`
+    forgets would skip its arm) is caught at the step it was offered."""
+    name = "the_lean_copy_offers_what_the_full_copy_offers"
+    record = _judged_record(name, _six(), seeds=4)
+    assert record.engine.core.lean_path()
+    index = _first(record, lambda step: len(step.offered) > 1)
+    steps = list(record.steps)
+    steps[index] = dataclasses.replace(steps[index], offered=steps[index].offered[:-1])
+    assert "the lean copy offered" in _fires(name, _with_steps(record, steps))
+
+
+def test_the_lean_copy_check_judges_nothing_on_a_full_case() -> None:
+    spec = _six(must_capture=True)
+    record = play(spec, 0)
+    assert not record.engine.core.lean_path()
+    assert _check("the_lean_copy_offers_what_the_full_copy_offers")(record) == 0
+
+
 def test_every_built_case_is_one_the_core_plays() -> None:
     """The run's `except NotImplementedError` is reached by no built case: over a hundred seeds
     (thousands in the record, §5 and U1b's scan) every one passes `bridge.rust_supports`. F5's

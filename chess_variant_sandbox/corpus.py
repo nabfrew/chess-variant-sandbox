@@ -2059,20 +2059,65 @@ def _rescore_seed(
 
 # -------------------------------------------------------------- archive and promote
 
-# A labelled game never joins the library: a proven-broken game must not reach the site or
-# the corpus counts, and a member that moved would leave the set's reading without it
-# (`docs/reference/labelled-set.md` §3.1, §3.3).
+# A labelled game's file never leaves `labelled/`: a member that moved would leave the set's
+# reading without it (`docs/reference/labelled-set.md` §3.1, §3.3). Nor is one archived. But
+# a *published* one -- labelled good by the record of play -- may be promoted, as a copy, on
+# `promote`'s ordinary bar (R-S17g, `docs/reference/wrong-no.md` §2 item 5): the set was read
+# once, and the rule that kept the test set out of the library had begun to keep a whole kind
+# of game out of it. A proven-bad game or a control (label bad or null, by proof) never joins
+# the library, since a proven-broken game must not reach the site or the corpus counts.
 _LABELLED_STAYS = (
     f"a game in {LABELLED_DIR}/ is a member of the labelled set and stays there: it is "
     "neither archived nor promoted (docs/reference/labelled-set.md §3)"
 )
-# Nor does a game of the unlike search: it tests the score, and whether one joins the library
-# is a separate decision nobody is asked to make there (`docs/reference/unlike-search.md` §5).
+# A game of the unlike search the same way: a designed game has no label the labelled set
+# accepts, so nothing vouches for it as published, and whether one joins the library is a
+# design task's call (`docs/reference/unlike-search.md` §5, its 2026-11-16 note).
 _UNLIKE_STAYS = (
     f"a game in {UNLIKE_DIR}/ was designed for the search for strong games unlike chess and "
     "stays there: it is neither archived nor promoted (docs/reference/unlike-search.md §5)"
 )
 _STAYS = {"labelled": _LABELLED_STAYS, "unlike": _UNLIKE_STAYS}
+LABELS_DIR = LABELLED_DIR / "labels"
+
+
+def published_label(digest: str, labels_dir: Path = LABELS_DIR) -> dict[str, Any] | None:
+    """The labelled set's label calling this game published and played, or ``None``.
+
+    A label is *good* by the source *record* (`labelled-set.md` §1.1: a record of play, lowest
+    W at 2 or above) and names the game by today's hash. Nothing else qualifies: a proof's
+    label is *bad* or *null*, and a designed game has no label at all.
+    """
+    if not Path(labels_dir).is_dir():
+        return None
+    for path in sorted(Path(labels_dir).glob("*.json")):
+        label = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            label.get("spec_hash") == digest
+            and label.get("label") == "good"
+            and label.get("source") == "record"
+        ):
+            return dict(label)
+    return None
+
+
+def _stays(candidate: Candidate, labels_dir: Path) -> str | None:
+    """Why a game of `labelled/` or `unlike/` cannot be promoted, or ``None`` if it may be."""
+    if candidate.stage not in _STAYS:
+        return None
+    if published_label(candidate.hash, labels_dir) is not None:
+        return None
+    if candidate.stage == "labelled":
+        return (
+            f"a game in {LABELLED_DIR}/ is a member of the labelled set and joins the library "
+            "only if its label calls it published and played (good, by the record); this one's "
+            "does not, so it stays there (docs/reference/labelled-set.md §3)"
+        )
+    return (
+        f"a game in {UNLIKE_DIR}/ was designed for the search for strong games unlike chess "
+        "and no label calls it published and played, so it stays there "
+        "(docs/reference/unlike-search.md §5)"
+    )
 
 
 def archive_game(
@@ -2106,6 +2151,7 @@ def promote(
     ruleset_dir: Path = RULESET_DIR,
     runs_dir: Path = RUNS_DIR,
     name: str = "",
+    labels_dir: Path = LABELS_DIR,
 ) -> Path:
     """Admit this game to the calibration corpus, with the argument for doing so.
 
@@ -2118,7 +2164,7 @@ def promote(
     * no reason -- `rulesets/` is a set of games that each pin down something no other
       one does, and that sentence is the only part of this a command cannot supply.
     """
-    blocker = promotion_blocker(candidate, runs_dir, ruleset_dir)
+    blocker = promotion_blocker(candidate, runs_dir, ruleset_dir, labels_dir)
     if blocker is not None:
         raise CorpusError(blocker)
 
@@ -2133,7 +2179,9 @@ def promote(
 
     # A game is on one rung at a time. Left in `archive/` as well, it would be a second,
     # staler copy of a ruleset the corpus now owns -- and the archive's whole meaning is
-    # "kept, and not part of what the index is calibrated against".
+    # "kept, and not part of what the index is calibrated against". A published game of
+    # `labelled/` is the exception, copied and never moved: the set it was read in stays as it
+    # was read, and the library's copy reads first (`find`).
     if candidate.stage == "archived" and candidate.path.exists():
         candidate.path.unlink()
 
@@ -2144,6 +2192,7 @@ def promotion_blocker(
     candidate: Candidate,
     runs_dir: Path = RUNS_DIR,
     ruleset_dir: Path = RULESET_DIR,
+    labels_dir: Path = LABELS_DIR,
 ) -> str | None:
     """Why this game cannot enter the corpus yet, in one sentence, or ``None``.
 
@@ -2161,8 +2210,9 @@ def promotion_blocker(
     """
     if candidate.stage == "committed":
         return f"{candidate.name} is already in {ruleset_dir}/"
-    if candidate.stage in _STAYS:
-        return _STAYS[candidate.stage]
+    stays = _stays(candidate, labels_dir)
+    if stays is not None:
+        return stays
 
     errors = validate_spec(candidate.spec)
     if errors:

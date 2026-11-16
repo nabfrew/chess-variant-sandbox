@@ -127,11 +127,13 @@ class TestDescriptors:
         assert cells["leapfrog"][5] == 1
         # TS5's tessabi (Q1135): its runners and gatekeeper take nothing, likewise.
         assert cells["tessabi"][5] == 1
+        # R-S17g's janggi: a cannon may not take a cannon.
+        assert cells["janggi"][5] == 1
         assert all(
             cells[name][5] == 0
             for name in CORPUS
             if not name.startswith("rps-")
-            and name not in ("intransitive", "boulder", "drover", "leapfrog", "tessabi")
+            and name not in ("intransitive", "boulder", "drover", "leapfrog", "tessabi", "janggi")
         )
         # ...and it is not merely the board or the army doing the work: hierarchy chess
         # is chess's board and chess's army, filed apart from chess.

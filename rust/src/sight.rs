@@ -448,7 +448,8 @@ impl<'t> Game<'t> {
         if self.t.portals.as_deref().is_some_and(|portals| portals.folds.is_some()) {
             return self.generate_folded(out);
         }
-        self.generate_pseudo_legal_as::<false>(out)
+        // R-L5c2: the full copy, correct for every game (rounds' geometry question is rare).
+        self.generate_pseudo_legal_as::<Full>(out)
     }
 
     /// `Core.effects` (§3.4): every square's effect bits, the moves the filter removed for the

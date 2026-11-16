@@ -363,6 +363,12 @@ def _build_parser() -> argparse.ArgumentParser:
              "call; 1.0 runs the whole loop without contacting a model at all",
     )
     evolve.add_argument(
+        "--refused-rate", type=float, default=None,
+        help="share of generations that may revise a refused game whose refusal was read "
+             "off the players and was narrow or unsure (at most one in eight, the default; "
+             "0 turns it off); the refused game is never shown or counted as viable",
+    )
+    evolve.add_argument(
         "--from", dest="seeds", nargs="*", type=Path, default=None,
         help="rulesets to start from; each is measured on this run's roster first",
     )
@@ -1250,6 +1256,7 @@ def _cmd_evolve(args: argparse.Namespace) -> int:
         promote=args.promote,
         seeds=tuple(args.seeds) if args.seeds else (),
         directory=args.out,
+        **({} if args.refused_rate is None else {"refused_rate": args.refused_rate}),
     )
     evolve(config)
     return 0

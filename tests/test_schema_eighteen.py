@@ -102,7 +102,12 @@ RETIRED_SHOWCASES = frozenset({"hex-glinski-turned", "hex-glinski-turned-mirrore
 # schema 18: `"per_type": "own"` (schema 27) is a value on 18c's `per_type`.
 # Q1074bs's rock paper shove states `per_type: true` as a push game's ending, not as a
 # showcase of schema 18.
-LATER_USERS = frozenset({"riders-and-leapers", "rock-paper-shove"})  # Q936s, `extinction-any-kind.md` §5
+# R-S17g's Gliński game with mirrored armies, a published game promoted from `labelled/`, moves
+# on hexagons by `symmetry: "dihedral12"` as any hex game does, and is no showcase of it.
+LATER_USERS = frozenset({
+    "riders-and-leapers", "rock-paper-shove",  # Q936s, `extinction-any-kind.md` §5
+    "glinski-hexagonal-chess-with-mirrored",
+})
 KEEPING = "rules.contacts.mover_to=mover(promotion)"
 WALLED = "rules.castling(walled rank)"
 PER_TYPE = "rules.extinction.per_type"

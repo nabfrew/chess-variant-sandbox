@@ -3855,6 +3855,38 @@
   }
  },
  "not_checked": {
+  "bb208e1b1211": {
+   "name": "breakthrough",
+   "why": "this game joined the library after the check was made on 13 November 2026"
+  },
+  "91974dda36cb": {
+   "name": "minishogi",
+   "why": "this game joined the library after the check was made on 13 November 2026"
+  },
+  "6a4da609da21": {
+   "name": "minixiangqi",
+   "why": "this game joined the library after the check was made on 13 November 2026"
+  },
+  "d7be83b7f1f9": {
+   "name": "glinski hexagonal chess with mirrored armies",
+   "why": "this game joined the library after the check was made on 13 November 2026"
+  },
+  "58fe9dad9711": {
+   "name": "janggi",
+   "why": "this game joined the library after the check was made on 13 November 2026"
+  },
+  "d4bf795ef1fe": {
+   "name": "gorogoro plus",
+   "why": "this game joined the library after the check was made on 13 November 2026"
+  },
+  "53355cbda889": {
+   "name": "clobber",
+   "why": "this game joined the library after the check was made on 13 November 2026"
+  },
+  "f9242927e9f4": {
+   "name": "cannon shogi",
+   "why": "this game joined the library after the check was made on 13 November 2026"
+  },
   "0df9ea99bd82": {
    "name": "rear guard torus chess with even promotion",
    "why": "this game joined the library after the check was made on 13 November 2026"

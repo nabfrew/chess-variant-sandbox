@@ -14,6 +14,7 @@
 
 use std::cell::Cell;
 
+use crate::path::{rare, rare_opt, Folded, Full, Lean, Path};
 use crate::tables::*;
 
 // Schema 26 (Q918a): rounds, a child of this module so it walks the same private state.
@@ -1984,7 +1985,7 @@ impl<'t> Game<'t> {
     /// `on_leaving`, so it promotes wherever it lands.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
-    fn push_arrival(
+    fn push_arrival<P: Path>(
         &self, out: &mut Vec<u32>, origin: usize, target: usize, piece_type: usize,
         player: usize, promoting: bool, leaving: bool, promo_optional: bool, fan: bool,
     ) {
@@ -1994,19 +1995,19 @@ impl<'t> Game<'t> {
                 if !self.promotion_offered(player, piece_type, promoted, target) {
                     continue;
                 }
-                self.push_capture(
+                self.push_capture::<P>(
                     out, encode_move(origin, target, MOVE_PROMOTION, promoted), piece_type,
                     player, target, fan,
                 );
             }
             if promo_optional {
-                self.push_capture(
+                self.push_capture::<P>(
                     out, encode_move(origin, target, MOVE_NORMAL, 0), piece_type, player,
                     target, fan,
                 );
             }
         } else {
-            self.push_capture(
+            self.push_capture::<P>(
                 out, encode_move(origin, target, MOVE_NORMAL, 0), piece_type, player, target,
                 fan,
             );
@@ -2022,11 +2023,11 @@ impl<'t> Game<'t> {
     /// never the target the attacker lands on. The index is into the static list, so a
     /// stored move names the same square in any position. No legal candidate is no move.
     #[inline(always)]
-    fn push_capture(
+    fn push_capture<P: Path>(
         &self, out: &mut Vec<u32>, m: u32, mover_type: usize, player: usize,
         captured_square: usize, fan: bool,
     ) {
-        if fan {
+        if rare!(P::CAPTURE, fan) {
             self.fan_out_landing(out, m, mover_type, player, captured_square);
         } else {
             out.push(m);
@@ -4430,29 +4431,49 @@ impl<'t> Game<'t> {
     /// node on the path, which is the difference between one allocation per ply and
     /// one per node.
     pub fn generate_pseudo_legal(&self, out: &mut Vec<u32>) {
+        // R-L5c2: the one dispatch to this game's copy (`crate::path`).
+        if self.t.lean {
+            self.generate_pseudo_legal_p::<Lean>(out)
+        } else {
+            self.generate_pseudo_legal_full(out)
+        }
+    }
+
+    /// `generate_pseudo_legal`'s full copy, out of line (not cold: a full game runs nothing
+    /// else) so the lean copy is the one inlined.
+    #[inline(never)]
+    fn generate_pseudo_legal_full(&self, out: &mut Vec<u32>) {
+        self.generate_pseudo_legal_p::<Full>(out)
+    }
+
+    /// `generate_pseudo_legal` on the copy `P`.
+    #[inline(always)]
+    fn generate_pseudo_legal_p<P: Path>(&self, out: &mut Vec<u32>) {
+        let t = self.t;
         // Generation 42 (N4b): a duck half lists the duck's moves alone.
-        if self.duck_owed() {
+        if rare!(P::DUCK, self.duck_owed()) {
             return self.push_duck_moves(out);
         }
         // Schema 22: one dispatch per call to a copy monomorphised on whether the game has
         // folds, so chess and every game without them run the walks they always ran
         // (`docs/archive/plan-portals-2.md` §3.4).
-        if self.t.portals.as_deref().is_some_and(|portals| portals.folds.is_some()) {
+        if rare_opt(P::PORTALS, t.portals.as_deref()).is_some_and(|portals| portals.folds.is_some()) {
             return self.generate_folded(out);
         }
         // Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.4): the sight's filter binds every
         // caller of the generator; one null test in a game without one. The fold copy above
         // runs it too (SR5c, V1).
         let base = out.len();
-        self.generate_pseudo_legal_as::<false>(out);
-        if let Some(sight) = self.t.sight.as_deref() {
+        self.generate_pseudo_legal_as::<P>(out);
+        let held = rare_opt(P::HELD, t.majority.as_deref()).is_some();
+        if let Some(sight) = rare_opt(P::SIGHT, t.sight.as_deref()) {
             // Q1007c (`docs/archive/plan-schema-31.md` §3.7): the opponent's commanded pieces are a
             // second source of moves, filtered with the rest; TC3's held neutrals a third.
-            if sight.has_command || self.t.majority.is_some() {
+            if sight.has_command || held {
                 self.push_foreign(out);
             }
             self.sight_filter(sight, out, base);
-        } else if self.t.majority.is_some() {
+        } else if held {
             // TC3 (`docs/plan-turncoat.md` §4.3): the neutrals the side to move holds.
             self.push_foreign(out);
         }
@@ -4464,7 +4485,7 @@ impl<'t> Game<'t> {
     #[inline(never)]
     fn generate_folded(&self, out: &mut Vec<u32>) {
         let base = out.len();
-        self.generate_pseudo_legal_as::<true>(out);
+        self.generate_pseudo_legal_as::<Folded>(out);
         // SR3g (P10): the neutrals the side to move holds, and SR5c2 (V1) the opponent's
         // commanded pieces, as in `generate_pseudo_legal`.
         if self.t.majority.is_some() || self.t.sight.as_deref().is_some_and(|sight| sight.has_command) {
@@ -4476,17 +4497,20 @@ impl<'t> Game<'t> {
         }
     }
 
+    /// The side to move's own pieces' moves on the copy `P` (`crate::path`). `P::FOLDS` is
+    /// schema 22's fold walk (`generate_folded`'s copy).
     #[inline(always)]
-    fn generate_pseudo_legal_as<const FOLDS: bool>(&self, out: &mut Vec<u32>) {
+    fn generate_pseudo_legal_as<P: Path>(&self, out: &mut Vec<u32>) {
         let t = self.t;
         let player = self.side;
-        let folded = if FOLDS { t.portals.as_deref() } else { None };
+        let folded = if P::FOLDS { t.portals.as_deref() } else { None };
         // Q1059a: where this call's moves begin, for gating to read back (`push_gates`).
         let base = out.len();
         // Schema 18 (Q784): the placement phase. While the side to move holds anything in
         // hand, a drop is its only move (Fairy-Stockfish's `mustDrop`). One `Option` test
         // for a ruleset with no hand, which is the price every other game pays.
-        if let Some(rule) = t.drops.as_ref() {
+        let drops = rare_opt(P::HAND, t.drops.as_ref());
+        if let Some(rule) = drops {
             if rule.placement && self.hands[player].iter().any(|held| *held > 0) {
                 self.generate_drops(out);
                 return;
@@ -4527,10 +4551,10 @@ impl<'t> Game<'t> {
             && ep_victim != NO_SQUARE
             && t.ep_type >= 0
             && !(low <= ep_occupant && ep_occupant < high)
-            && may_take(t, t.ep_type as usize, ep_occupant);
+            && may_take_as::<P>(t, t.ep_type as usize, ep_occupant);
         // Schema 12: a capture under `position: "choose"` fans out over its landing squares.
-        let choosing =
-            t.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Choose);
+        let choosing = rare_opt(P::CAPTURE, t.strike.as_ref())
+            .is_some_and(|rule| rule.position == StrikePosition::Choose);
 
         // The mover's pieces, in ascending square order -- the order the scan this
         // replaced visited them in, and therefore the order their moves come out in.
@@ -4541,7 +4565,7 @@ impl<'t> Game<'t> {
             // forward and, since schema 8, on which way the piece itself is pointing --
             // so the answer comes off the piece's own board value and not off whose
             // turn it is.
-            let (piece_type, frame) = t.decode_owned(raw, low, player);
+            let (piece_type, frame) = t.decode_owned_if(P::FACING, raw, low, player);
             let origin_unmoved = self.unmoved.get(origin);
             let promoting = t.is_promoting(piece_type);
             let capturable_ep = ep_permitted && piece_type == t.ep_type as usize;
@@ -4568,7 +4592,7 @@ impl<'t> Game<'t> {
                     let mode = modes[index];
                     if occupant == 0 {
                         if capturable_ep && target as i16 == ep_target && mode & 2 != 0 {
-                            self.push_capture(
+                            self.push_capture::<P>(
                                 out,
                                 encode_move(origin, target, MOVE_EN_PASSANT, 0),
                                 piece_type,
@@ -4578,7 +4602,7 @@ impl<'t> Game<'t> {
                             );
                         }
                         // Schema 24: a landing on an empty fold may also go through.
-                        if FOLDS && mode != 0 && self.fold_on(target) {
+                        if P::FOLDS && mode != 0 && self.fold_on(target) {
                             self.push_through(out, origin, target, mode, piece_type, leaving);
                         }
                         if mode & 1 == 0 {
@@ -4588,17 +4612,17 @@ impl<'t> Game<'t> {
                         // Q1074b2: a landing that may push offers the push beside (or, its
                         // capture bit off, instead of) the capture. One bit test here for
                         // every game without a push.
-                        if mode & MODE_PUSH != 0 {
+                        if rare!(P::PUSH, mode & MODE_PUSH != 0) {
                             self.push_offered(
                                 out, origin, target, piece_type, player, mode, PUSH_ARM_LEAP,
                                 entry.start as usize + index, promoting, leaving, promo_optional,
                             );
                         }
-                        if !may_land(t, mode, piece_type, occupant, low, high) {
+                        if !may_land_as::<P>(t, mode, piece_type, occupant, low, high) {
                             continue;
                         }
                     }
-                    self.push_arrival(
+                    self.push_arrival::<P>(
                         out, origin, target, piece_type, player, promoting, leaving,
                         promo_optional, choosing && occupant != 0,
                     );
@@ -4617,7 +4641,7 @@ impl<'t> Game<'t> {
                     let mode = modes[index];
                     if occupant == 0 {
                         if capturable_ep && target as i16 == ep_target && mode & 2 != 0 {
-                            self.push_capture(
+                            self.push_capture::<P>(
                                 out,
                                 encode_move(origin, target, MOVE_EN_PASSANT, 0),
                                 piece_type,
@@ -4628,7 +4652,7 @@ impl<'t> Game<'t> {
                         }
                         // Schema 24: a fold is floor to a slide that runs on past it;
                         // one that may end on it may also go through.
-                        if FOLDS && mode != 0 && self.fold_on(target) {
+                        if P::FOLDS && mode != 0 && self.fold_on(target) {
                             self.push_through(out, origin, target, mode, piece_type, leaving);
                         }
                         if mode & 1 == 0 {
@@ -4637,20 +4661,20 @@ impl<'t> Game<'t> {
                     } else {
                         // Q1074b2: a slider pushes only at its first occupied square, where
                         // a capture would have been (§1.3).
-                        if mode & MODE_PUSH != 0 {
+                        if rare!(P::PUSH, mode & MODE_PUSH != 0) {
                             self.push_offered(
                                 out, origin, target, piece_type, player, mode, PUSH_ARM_SLIDE,
                                 entry.start as usize + index, promoting, leaving, promo_optional,
                             );
                         }
-                        if !may_land(t, mode, piece_type, occupant, low, high) {
+                        if !may_land_as::<P>(t, mode, piece_type, occupant, low, high) {
                             // An occupied square ends the ray whether or not it can be
                             // taken: a piece this one may not capture blocks it exactly as
                             // a friendly piece with no own contact link does.
                             break;
                         }
                     }
-                    self.push_arrival(
+                    self.push_arrival::<P>(
                         out, origin, target, piece_type, player, promoting, leaving,
                         promo_optional, choosing && occupant != 0,
                     );
@@ -4664,17 +4688,20 @@ impl<'t> Game<'t> {
                 origin, slot, piece_type, player, low, high, origin_unmoved, promoting, leaving,
                 promo_optional, capturable_ep, choosing,
             };
-            self.push_hops::<FOLDS>(out, &piece);
+            // R-L5c2: the hop walk behind its family, so the lean copy has no hop loop at all.
+            if rare!(P::HOPS, t.hops.n_entries() != 0) {
+                self.push_hops::<P>(out, &piece);
+            }
             // Schema 13: one test for every game without a sweep.
-            if t.has_sweep {
-                self.push_sweeps::<FOLDS>(out, &piece);
+            if rare!(P::SWEEP, t.has_sweep) {
+                self.push_sweeps::<P>(out, &piece);
             }
 
             // Schema 24: a go-through to a square also reached directly, or through two
             // folds, is one move (`dedup_fold_segment`); only a segment holding a tagged
             // word can have one, or (SR4m) under `choose`, where a go-through capture that
             // places a survivor carries its landing, which may be 0.
-            if FOLDS && (choosing || out[segment_start..].iter().any(|&m| move_fold(m) != 0)) {
+            if P::FOLDS && (choosing || out[segment_start..].iter().any(|&m| move_fold(m) != 0)) {
                 dedup_fold_segment(out, segment_start, |m| choosing && self.word_fans_out(m, player));
             } else if ambiguous {
                 dedup_segment(out, segment_start);
@@ -4687,7 +4714,7 @@ impl<'t> Game<'t> {
             // the compiler refuses a facing whose rotation changes nothing, so none of
             // these is a pass. A facing no move turns (schema 25) has one orientation
             // to turn through, so it gets none.
-            let axes = if t.has_facing { t.turns_of(piece_type) } else { 1 };
+            let axes = if rare!(P::FACING, t.has_facing) { t.turns_of(piece_type) } else { 1 };
             if axes > 1 {
                 let step = t.n_facings / axes;
                 let facing = frame % t.n_facings;
@@ -4701,18 +4728,18 @@ impl<'t> Game<'t> {
         // Schema 19: every move through a portal and every portal's own move, after the
         // ordinary moves of every piece. One null test here is what a game without
         // portals pays: inside the loop, the same test per piece cost chess perft(6) 5%.
-        if let Some(portals) = t.portals.as_deref() {
+        if let Some(portals) = rare_opt(P::PORTALS, t.portals.as_deref()) {
             self.push_portal_moves(out, portals);
         }
         // Schema 22: every fold the side may move, after the momentum ends' moves.
-        if let (true, Some(portals)) = (FOLDS, folded) {
+        if let (true, Some(portals)) = (P::FOLDS, folded) {
             self.push_fold_own_moves(out, portals);
         }
 
         if t.castling.is_some() {
             self.generate_castling(out);
         }
-        if let Some(rule) = t.drops.as_ref() {
+        if let Some(rule) = drops {
             // Q1059a: a gating hand enters only on a square a move vacates, never by a drop.
             if let Some(gates) = rule.gates.as_ref() {
                 self.push_gates(out, base, gates);
@@ -4723,7 +4750,7 @@ impl<'t> Game<'t> {
         // TC5 (`docs/plan-turncoat.md` §5.4): buys from the market. One null test for every
         // game without a purse.
         // TC6 (§5.5): hires and bribes, behind the same test.
-        if let Some(purse) = t.purse.as_deref() {
+        if let Some(purse) = rare_opt(P::PURSE, t.purse.as_deref()) {
             self.generate_buys(out);
             if purse.contested() {
                 self.generate_hires(out, purse);
@@ -4737,7 +4764,7 @@ impl<'t> Game<'t> {
     /// first piece past it that it may take. Its own function so a task that edits hops
     /// edits one body (R20); `#[inline(always)]` keeps it in the movegen loop.
     #[inline(always)]
-    fn push_hops<const FOLDS: bool>(&self, out: &mut Vec<u32>, piece: &PieceAt) {
+    fn push_hops<P: Path>(&self, out: &mut Vec<u32>, piece: &PieceAt) {
         let t = self.t;
         let PieceAt {
             origin, slot, piece_type, player, low, high, origin_unmoved, promoting, leaving,
@@ -4796,7 +4823,7 @@ impl<'t> Game<'t> {
                     // passed square is its own screen, so `_ep_passes` builds none --
                     // but a slide's double step opens one a hop can reach.
                     if capturable_ep && target as i16 == ep_target && mode & 2 != 0 {
-                        self.push_capture(
+                        self.push_capture::<P>(
                             out,
                             encode_move(origin, target, MOVE_EN_PASSANT, 0),
                             piece_type,
@@ -4805,7 +4832,7 @@ impl<'t> Game<'t> {
                             choosing,
                         );
                     }
-                    if FOLDS && mode != 0 && self.fold_on(target) {
+                    if P::FOLDS && mode != 0 && self.fold_on(target) {
                         self.push_through(out, origin, target, mode, piece_type, leaving);
                     }
                     if mode & 1 != 0 {
@@ -4830,14 +4857,14 @@ impl<'t> Game<'t> {
                     continue;
                 }
                 // Q1074b2: a hop pushes the first piece past its screen (D5).
-                if mode & MODE_PUSH != 0 {
+                if rare!(P::PUSH, mode & MODE_PUSH != 0) {
                     self.push_offered(
                         out, origin, target, piece_type, player, mode, PUSH_ARM_HOP,
                         entry.start as usize + index, promoting, leaving, promo_optional,
                     );
                 }
-                if may_land(t, mode, piece_type, occupant, low, high) {
-                    self.push_arrival(
+                if may_land_as::<P>(t, mode, piece_type, occupant, low, high) {
+                    self.push_arrival::<P>(
                         out, origin, target, piece_type, player, promoting, leaving,
                         promo_optional, choosing,
                     );
@@ -4943,14 +4970,14 @@ impl<'t> Game<'t> {
     /// anywhere; a momentum end is a piece nobody may take, so it ends the ray, and no sweep
     /// transits. A landing on an empty fold may also go through (`push_sweep_through`).
     #[inline(always)]
-    fn push_sweeps<const FOLDS: bool>(&self, out: &mut Vec<u32>, piece: &PieceAt) {
+    fn push_sweeps<P: Path>(&self, out: &mut Vec<u32>, piece: &PieceAt) {
         let t = self.t;
         let PieceAt { origin, slot, piece_type, player, low, high, origin_unmoved, promoting, leaving, .. } =
             *piece;
         // SR6d (W6): where two rays reach one target, a sweep's word names its ray, and two
         // rays that remove the same pieces are one move, the lower ray's (`keep_sweep`).
         // SR6e: a sweep through a fold may meet a direct sweep or another at its far square.
-        let named = t.sweep_rays || (FOLDS && t.fold_sweeps);
+        let named = t.sweep_rays || (P::FOLDS && t.fold_sweeps);
         // SR6g (W10): a shielded piece may not be captured, so it ends the ray too.
         let shields = t.sight.as_deref().is_some_and(|sight| sight.has_shield);
         let start = out.len();
@@ -4967,7 +4994,7 @@ impl<'t> Game<'t> {
                 let target = squares[index] as usize;
                 let occupant = self.board[target] as u16;
                 if occupant != 0
-                    && (!may_take(t, piece_type, occupant) || (shields && self.sweep_shielded(target)))
+                    && (!may_take_as::<P>(t, piece_type, occupant) || (shields && self.sweep_shielded(target)))
                 {
                     break;
                 }
@@ -4975,7 +5002,7 @@ impl<'t> Game<'t> {
                 let lands = if occupant == 0 {
                     mode & 1 != 0
                 } else {
-                    may_land(t, mode, piece_type, occupant, low, high)
+                    may_land_as::<P>(t, mode, piece_type, occupant, low, high)
                 };
                 if lands {
                     // SR8b (W7): a promoting sweeper promotes by its landing square (or, under
@@ -4994,7 +5021,7 @@ impl<'t> Game<'t> {
                     }
                 }
                 if occupant == 0 {
-                    if FOLDS && mode != 0 && t.fold_sweeps && self.fold_on(target) {
+                    if P::FOLDS && mode != 0 && t.fold_sweeps && self.fold_on(target) {
                         self.push_sweep_through(out, start, piece, ray, index, path_holds_piece, None);
                     }
                 } else {
@@ -5725,7 +5752,7 @@ impl<'t> Game<'t> {
             return;
         }
         let start = out.len();
-        self.push_arrival(
+        self.push_arrival::<Full>(
             out, origin, far, piece_type, player, promoting, leaving, promo_optional, fans,
         );
         if !fans {
@@ -7009,36 +7036,55 @@ impl<'t> Game<'t> {
     }
 
     pub fn generate_legal(&mut self, out: &mut Vec<u32>) {
+        // R-L5c2: the one dispatch to this game's copy (`crate::path`).
+        if self.t.lean {
+            self.generate_legal_as::<Lean>(out)
+        } else {
+            self.generate_legal_full(out)
+        }
+    }
+
+    /// `generate_legal`'s full copy, out of line (not cold: a full game runs nothing else).
+    #[inline(never)]
+    fn generate_legal_full(&mut self, out: &mut Vec<u32>) {
+        self.generate_legal_as::<Full>(out)
+    }
+
+    /// `generate_legal` on the copy `P`.
+    #[inline(always)]
+    fn generate_legal_as<P: Path>(&mut self, out: &mut Vec<u32>) {
+        let t = self.t;
         // Generation 42 (N4b): a duck half lists the duck's moves alone, unfiltered: a duck
         // game has no check and the duck never rests; beside portals (SR3d) the half moves
         // the duck alone, never an end.
-        if self.duck_owed() {
+        if rare!(P::DUCK, self.duck_owed()) {
             return self.push_duck_moves(out);
         }
         let base = out.len();
-        self.generate_checked(out, base);
-        if self.t.rest.is_some() {
+        self.generate_checked::<P>(out, base);
+        if rare_opt(P::TURN, t.rest.as_deref()).is_some() {
             self.rest_then_restrict(out, base);
         } else {
-            self.restrict(out, base);
+            self.restrict_as::<P>(out, base);
         }
         // TS3: the turn's parts, last, over the list every other rule has filtered.
-        if self.t.parts.is_some() {
+        if rare_opt(P::TURN, t.parts.as_deref()).is_some() {
             self.parts_filter(out, base);
         }
         // H3 (`docs/plan-hunger.md` §4): the pass, after every filter, so it changes no other
         // move's offer; one flag test in every other game.
-        if self.t.passes {
+        if rare!(P::TURN, t.passes) {
             self.push_pass(out);
         }
     }
 
     /// `generate_legal`'s tail under a rest, out of line so a game without one carries
-    /// neither it nor a second copy of the generator (Q983a's benches).
+    /// neither it nor a second copy of the generator (Q983a's benches). A rest is rare, so
+    /// this is the full copy's alone.
     #[inline(never)]
     fn rest_then_restrict(&mut self, out: &mut Vec<u32>, base: usize) {
         let rested = self.rest_filter(self.side, out, base);
-        self.restrict(out, base);
+        self.restrict_as::<Full>(out, base);
         if rested && out.len() == base {
             self.regenerate_checked(out, base);
         }
@@ -7048,21 +7094,21 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn regenerate_checked(&mut self, out: &mut Vec<u32>, base: usize) {
-        self.generate_checked(out, base);
-        self.restrict(out, base);
+        self.generate_checked::<Full>(out, base);
+        self.restrict_as::<Full>(out, base);
     }
 
     /// The side to move's pseudo-legal moves less those that leave its royal attacked,
-    /// appended to `out` from `base`.
+    /// appended to `out` from `base`, on the copy `P`.
     #[inline(always)]
-    fn generate_checked(&mut self, out: &mut Vec<u32>, base: usize) {
+    fn generate_checked<P: Path>(&mut self, out: &mut Vec<u32>, base: usize) {
         let t = self.t;
-        self.generate_pseudo_legal(out);
+        self.generate_pseudo_legal_p::<P>(out);
 
         if t.needs_check_filter() {
             let player = self.side;
 
-            if t.multi_royal {
+            if rare!(P::ROYALS, t.multi_royal) {
                 // Multi-royal: verify every candidate
                 let mut write = base;
                 for index in base..out.len() {
@@ -7127,12 +7173,12 @@ impl<'t> Game<'t> {
                     // C5 (Q1113): the same three loads say whether a royal's own plain step
                     // may be asked as one attack query (`royal_step_attacked`), so the
                     // in-check arm reads them once more rather than a new `Tables` field.
-                    let shortcut_premise = !(t.explosion.is_some()
-                        || t.royal_facing_forbidden
-                        || t.has_npcs
-                        || t.has_sweep
-                        || t.portals.is_some()
-                        || t.majority.as_deref().is_some_and(|m| m.threatens_royals));
+                    let shortcut_premise = !(rare_opt(P::CAPTURE, t.explosion.as_ref()).is_some()
+                        || rare!(P::ROYALS, t.royal_facing_forbidden)
+                        || rare!(P::WILD, t.has_npcs)
+                        || rare!(P::SWEEP, t.has_sweep)
+                        || rare_opt(P::PORTALS, t.portals.as_deref()).is_some()
+                        || rare_opt(P::HELD, t.majority.as_deref()).is_some_and(|m| m.threatens_royals));
                     if !shortcut_premise || self.in_check_at(player, royal) {
                         let mut write = base;
                         for index in base..out.len() {
@@ -7151,12 +7197,12 @@ impl<'t> Game<'t> {
                     } else {
                         // Out of check: pin shortcut
                         let pinned = self.pinned_squares(1 - player, royal);
-                        let mut hop_lines = if t.has_hop_attacks {
+                        let mut hop_lines = if rare!(P::HOPS, t.has_hop_attacks) {
                             t.hop_line(1 - player, royal)
                         } else {
                             SquareSet::EMPTY
                         };
-                        if let Some(sight) = t.sight.as_deref() {
+                        if let Some(sight) = rare_opt(P::SIGHT, t.sight.as_deref()) {
                             if sight.bears_on_check {
                                 hop_lines = hop_lines.union(&self.effect_lines(sight, player, royal));
                             }
@@ -7170,15 +7216,15 @@ impl<'t> Game<'t> {
                         }
                         // TC3: a held neutral starts on nobody's square, which may be the sole
                         // blocker of a line onto the royal, so every move from one is asked.
-                        if t.majority.is_some() {
+                        if rare_opt(P::HELD, t.majority.as_deref()).is_some() {
                             hop_lines = hop_lines.union(&self.occupied()[WILD]);
                         }
                         let hop_relevant = !hop_lines.is_empty();
 
-                        let has_strike = t.strike.is_some();
+                        let has_strike = rare_opt(P::CAPTURE, t.strike.as_ref()).is_some();
                         // Q1074b2 (R5): a push moves a second piece, which may have been the
                         // sole blocker of a line onto the royal, so every push is asked.
-                        let has_push = t.push.is_some();
+                        let has_push = rare_opt(P::PUSH, t.push.as_deref()).is_some();
                         let mut write = base;
                         for index in base..out.len() {
                             let m = out[index];
@@ -7192,7 +7238,8 @@ impl<'t> Game<'t> {
                                 // `hop_lines` then, asked below), a sight's effect (its rays
                                 // are on `hop_lines` too) or a second royal; so only a royal's
                                 // entry is asked. A checking build asks the rest anyway.
-                                || (enters_play(move_kind(m))
+                                // C4: only a hand or a market enters a piece into play.
+                                || (rare!(P::HAND || P::PURSE, enters_play(move_kind(m)))
                                     && t.royal_types.contains(&(move_promotion(m) as usize)))
                                 || (has_push && move_kind(m) == MOVE_PUSH)
                                 || (hop_relevant && (hop_lines.get(origin) || hop_lines.get(move_to(m))))
@@ -7225,7 +7272,7 @@ impl<'t> Game<'t> {
                         }
                         out.truncate(write);
                     }
-                } else if self.royal_in_hand(player) {
+                } else if rare!(P::HAND, self.royal_in_hand(player)) {
                     // Schema 18 (Q784): the royal is still in hand, so nothing on the
                     // board can be left attacking it, and the one move that can expose
                     // it is its own drop. Each royal drop is asked; every other move
@@ -7247,14 +7294,14 @@ impl<'t> Game<'t> {
         }
         // H1 (`docs/plan-hunger.md` §2.3): a move the purse cannot pay for is not legal. After
         // the check filter (so only legal moves pay the read) and before the rest and its lift.
-        if let Some(purse) = t.purse.as_deref() {
+        if let Some(purse) = rare_opt(P::PURSE, t.purse.as_deref()) {
             if !purse.upkeep.is_empty() {
                 self.upkeep_filter(purse, out, base);
             }
         }
         // R-L6c (F2): a move that leaves a piece outside its region is no move. One flag
         // test in every game but a region game with a rule that places pieces.
-        if t.region_play {
+        if rare!(P::RESTRICT, t.region_play) {
             self.region_filter(out, base);
         }
     }
@@ -7350,12 +7397,23 @@ impl<'t> Game<'t> {
         self.gives_check_after::<true>(m, player, opponent)
     }
 
-    /// Apply the restriction rules that narrow an already-legal move list.
+    /// Apply the restriction rules that narrow an already-legal move list, on this game's
+    /// copy (R-L5c2; rounds' caller).
     fn restrict(&mut self, out: &mut Vec<u32>, base: usize) {
+        if self.t.lean {
+            self.restrict_as::<Lean>(out, base)
+        } else {
+            self.restrict_as::<Full>(out, base)
+        }
+    }
+
+    /// `restrict` on the copy `P`. No inline hint, as `restrict` had none: the lean copy's
+    /// body is a few loads and LLVM inlines it; the full one stays the function it was.
+    fn restrict_as<P: Path>(&mut self, out: &mut Vec<u32>, base: usize) {
         let t = self.t;
 
         // forbid_check: racing kings — giving check is illegal
-        if t.forbid_check && !t.royal_types.is_empty() {
+        if rare!(P::RESTRICT, t.forbid_check) && !t.royal_types.is_empty() {
             let player = self.side;
             let opponent = 1 - player;
             let mut write = base;
@@ -7379,7 +7437,7 @@ impl<'t> Game<'t> {
         }
 
         // forbid_immobility: shogi — no move may strand a piece
-        if t.forbid_immobility {
+        if rare!(P::RESTRICT, t.forbid_immobility) {
             let player = self.side;
             self.tally_entries();
             let mut write = base;
@@ -7449,7 +7507,7 @@ impl<'t> Game<'t> {
         }
 
         // Drop-mate check: shogi forbids finishing by dropping a pawn on the king
-        if let Some(rule) = t.drops.as_ref().filter(|_| !self.checking_drop_mate) {
+        if let Some(rule) = rare_opt(P::HAND, t.drops.as_ref()).filter(|_| !self.checking_drop_mate) {
             if rule.no_mate.iter().any(|&v| v) {
                 let mut write = base;
                 for index in base..out.len() {
@@ -7468,7 +7526,7 @@ impl<'t> Game<'t> {
         }
 
         // must_capture: antichess — a capture on offer is the only move
-        if t.must_capture {
+        if rare!(P::RESTRICT, t.must_capture) {
             // A capture takes an enemy piece off the board, and three move kinds can.
             // A leap, a slide and a hop refuse a friendly occupant unless an own contact
             // link (`contacts.links[].own`) lets the mover merge with it, so an occupied
@@ -8350,7 +8408,13 @@ impl<'t> Game<'t> {
 /// capture is -- perft would count all three and notice none of it.
 #[inline(always)]
 fn may_take(t: &Tables, attacker: usize, occupant: u16) -> bool {
-    if !t.has_capture_matrix {
+    may_take_as::<Full>(t, attacker, occupant)
+}
+
+/// `may_take` on the copy `P` (`crate::path`): the lean copy reads no matrix.
+#[inline(always)]
+fn may_take_as<P: Path>(t: &Tables, attacker: usize, occupant: u16) -> bool {
+    if !rare!(P::MATRIX, t.has_capture_matrix) {
         return true;
     }
     t.may_capture(attacker, t.victim_of(occupant as u8))
@@ -8364,16 +8428,22 @@ fn may_take(t: &Tables, attacker: usize, occupant: u16) -> bool {
 /// piece blocks, as it always has.
 #[inline(always)]
 fn may_land(t: &Tables, mode: u8, attacker: usize, occupant: u16, low: u16, high: u16) -> bool {
+    may_land_as::<Full>(t, mode, attacker, occupant, low, high)
+}
+
+/// `may_land` on the copy `P` (`crate::path`): the lean copy reads no own link and no matrix.
+#[inline(always)]
+fn may_land_as<P: Path>(t: &Tables, mode: u8, attacker: usize, occupant: u16, low: u16, high: u16) -> bool {
     if mode & 2 == 0 {
         return false;
     }
     if low <= occupant && occupant < high {
-        return t.strike.as_ref().is_some_and(|rule| {
+        return rare_opt(P::CAPTURE, t.strike.as_ref()).is_some_and(|rule| {
             !rule.own_link.is_empty()
                 && rule.own_link[attacker * rule.n_types + t.type_of(occupant as u8)]
         });
     }
-    may_take(t, attacker, occupant)
+    may_take_as::<P>(t, attacker, occupant)
 }
 
 /// Map a stated ending result to an `Outcome`. `actor` is the side the ending

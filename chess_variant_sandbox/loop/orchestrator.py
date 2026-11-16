@@ -41,6 +41,7 @@ from chess_variant_sandbox.loop.preference import PreferenceLog
 from chess_variant_sandbox.loop.screen import SCREEN_AGENTS, roster_for, screen
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, load_weights, score_ruleset
 from chess_variant_sandbox.metrics.bootstrap import clears
+from chess_variant_sandbox.metrics.spread import check_spread
 from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
 from chess_variant_sandbox.tournament import TournamentConfig, run_tournament
 from chess_variant_sandbox.tournament.analysis import analyse_corpus
@@ -49,6 +50,10 @@ DEFAULT_AGENTS = ("random", "greedy", "minimax:nodes=400", "minimax:nodes=1600")
 
 # Who plays the cheap check: both sides at random, whatever the run's roster.
 SMOKE_ROSTER = ("random",)
+
+# The share of generations that may explore past a narrow or unsure refusal, and its
+# ceiling (R-S17j, `docs/reference/wrong-no.md` §10.5).
+REFUSED_RATE = 1.0 / refusals.CAP_EVERY
 
 # Design language for the weakest family, so a revision has a direction. These say what
 # to work on, never how it is scored -- see llm/feedback.py for where that line sits.
@@ -151,6 +156,14 @@ class LoopConfig:
     batch: int = 8
     promote: int = 1
     directory: Path = field(default_factory=lambda: Path("runs/design"))
+    # The share of generations that may take as parent a refused game whose refusal was
+    # read off the players and was narrow, or could not be read (R-S17j,
+    # `docs/reference/wrong-no.md` §10). One in eight: `promote`'s one look in eight, under
+    # half of `explore_rate`, and taken from the elites' share. It is also a count, not only
+    # a rate (`refusals.under_cap`), and a family gets two generations. 0 turns it off, and
+    # the run makes exactly the draws it made before. A larger share is refused: raising it
+    # is a registered change after §10.6's reading, never a flag.
+    refused_rate: float = REFUSED_RATE
 
     def __post_init__(self) -> None:
         _require_measurable_ladder(self.agents)
@@ -158,6 +171,11 @@ class LoopConfig:
             raise ValueError("batch must be at least 1")
         if not 1 <= self.promote <= self.batch:
             raise ValueError("promote must be between 1 and batch")
+        if not 0.0 <= self.refused_rate <= REFUSED_RATE:
+            raise ValueError(
+                f"refused_rate must be between 0 and {REFUSED_RATE} (one generation in "
+                f"{refusals.CAP_EVERY}): raising the share is a registered change, not a flag"
+            )
 
     def as_dict(self) -> dict[str, Any]:
         data = {k: v for k, v in self.__dict__.items()}
@@ -362,12 +380,31 @@ def _run_generation(
     # one must not draw it. It used to: at `--mechanical-rate 1.0` roughly
     # `explore_rate` of every run's generations chose no parent, found no model to
     # propose from scratch, and produced nothing at all.
-    parent_entry = _choose_parent(
-        archive, config, rng, preferences, explore=proposer is not None
-    )
+    explore = proposer is not None
+    fresh = _draws_fresh_start(config, rng, explore)
+    # After the explore draw and before the elites' (R-S17j): one generation in eight may
+    # take a refused game as its parent. Drawn only where it could be taken, so a run with
+    # nothing eligible makes exactly the draws it made before.
+    past = None if fresh else _past_refusal_parent(archive, config, rng, generation, explore)
+    parent_entry: Entry | None
+    past_mark: dict[str, Any] | None
+    if past is not None:
+        parent_entry, past_mark = past
+    else:
+        past_mark = None
+        parent_entry = None if fresh else _elite_parent(archive, config, rng, preferences)
     parent_spec = archive.load_spec(parent_entry.hash) if parent_entry else None
-    feedback = parent_entry.notes if parent_entry else ""
-    goal = _focus_for(parent_entry, weights) if parent_entry else ""
+    if past_mark is not None and parent_entry is not None:
+        # What the proposer is told of a refused parent is R-S17h's wording of its refusal,
+        # a quality and never a number or a line; no focus is computed from it.
+        feedback = (
+            "This ruleset was itself refused, and is revised here anyway:\n"
+            + describe_failures([parent_entry])
+        )
+        goal = ""
+    else:
+        feedback = parent_entry.notes if parent_entry else ""
+        goal = _focus_for(parent_entry, weights) if parent_entry else ""
     target = _target_cell(archive, parent_entry, config, rng)
     if target is not None:
         # Ordinary MAP-Elites mutates blindly and hopes to land in an empty cell. A model
@@ -384,7 +421,15 @@ def _run_generation(
         # different kinds of instruction and the run was started for the first one.
         goal = f"{config.theme}\n\nAlso worth attention: {goal}" if goal else config.theme
 
-    if parent_entry:
+    if past_mark is not None and parent_entry is not None:
+        # Never `scored_as()`: a full-roster refusal can carry an index, and that number
+        # must not be shown as a standing.
+        report(
+            f"exploring past a refusal: {parent_entry.name} [{parent_entry.hash}], refused "
+            f"at the {_RUNG_WORDS.get(str(past_mark['rung']), past_mark['rung'])} as these "
+            "players played it"
+        )
+    elif parent_entry:
         # The parent's number as the archive shows it, with the runs it rests on.
         report(f"revising {parent_entry.name} [{parent_entry.hash}] ({parent_entry.scored_as()})")
     else:
@@ -392,7 +437,7 @@ def _run_generation(
 
     candidates = _produce(
         generation, config, archive, rng, proposer, parent_entry, parent_spec,
-        feedback, goal, report, version=weights.version,
+        feedback, goal, report, version=weights.version, mark=past_mark,
     )
     if not candidates:
         report("  nothing to evaluate this generation")
@@ -436,7 +481,9 @@ def _run_generation(
             batch_seconds=gate_seconds / len(chosen),
             generation=generation,
             parent=parent_hash,
-            parent_entry=parent_entry,
+            # A refused game is nothing to beat: a child past a refusal is compared with
+            # no parent, and its `separated` is None (§10.3).
+            parent_entry=None if past_mark is not None else parent_entry,
             config=config,
             archive=archive,
             weights=weights,
@@ -445,6 +492,14 @@ def _run_generation(
             report=report,
             origin=origin,
         )
+
+
+# The rungs in the run's words, for the line that names a refusal explored past.
+_RUNG_WORDS = {
+    refusals.SMOKE: "cheap check",
+    refusals.SCREEN: "screen",
+    refusals.FULL: "full roster",
+}
 
 
 def _produce(
@@ -459,6 +514,7 @@ def _produce(
     goal: str,
     report: Callable[[str], None],
     version: str | None = None,
+    mark: dict[str, Any] | None = None,
 ) -> list[tuple[dict[str, Any], str | None, dict[str, Any]]]:
     """This generation's children: at most one model call, and free siblings.
 
@@ -474,14 +530,20 @@ def _produce(
     reproduce a game the archive already holds -- and within one batch, two draws can
     easily reproduce each other -- and a duplicate that reaches the gates costs a
     smoke test and a screen to discover what a hash lookup already knew.
+
+    ``mark``, in a generation that explores past a refusal (R-S17j), is carried by every
+    entry this generation writes, as ``detail["past_refusal"]``: measured, rejected,
+    duplicate or invalid.
     """
     produced: list[tuple[dict[str, Any], str | None, dict[str, Any]]] = []
+    marked_with = {refusals.PAST_REFUSAL: dict(mark)} if mark else {}
     # Every hash met before, less a refusal read off the players whose players, lines or
     # weights have moved since (R-S17c): that one is measured again rather than skipped.
     seen = archive.settled_hashes(_retry_rule(archive, config, version or config.weights))
     met = archive.seen_hashes()
 
     def keep(spec: dict[str, Any], parent: str | None, origin: dict[str, Any]) -> bool:
+        origin = {**origin, **marked_with}
         digest = spec_hash(spec)
         if digest in seen:
             archive.record(
@@ -576,6 +638,7 @@ def _produce(
                 parent=proposal.parent_hash,
                 status="invalid",
                 notes="; ".join(proposal.errors[:6]),
+                detail=dict(marked_with),
             )
         )
         return produced
@@ -898,9 +961,14 @@ def measure(
             notes=describe(result, spec),
             # A non-viable child's refusal and the basis it was read on (R-S17c): the full
             # roster's players and the weights version it was scored under.
+            # Each check's games and standard error ride on its row (R-S17j), from the
+            # tournament's records and the index's resamples, for `refusals.narrow`.
             refusal=(
                 None if result.viable else refusals.full_refusal(
-                    result.violations, players, result.weights_version, config.seed
+                    result.violations, players, result.weights_version, config.seed,
+                    spread=lambda check, line: check_spread(
+                        check, line, tournament.records, tournament.ratings, result.interval
+                    ),
                 )
             ),
             detail={
@@ -1113,10 +1181,76 @@ def _choose_parent(
     direction does not come back until the judge supplies a tie-break the index cannot.
     Ties are broken uniformly rather than by any near-index quantity, because anything
     else smuggles the discredited ordering back in under a different name.
+
+    The generation itself draws these two halves apart (`_draws_fresh_start`, then
+    `_elite_parent`), with R-S17j's draw between them; this is the two without it.
     """
-    if rng.random() < config.explore_rate and explore:
+    if _draws_fresh_start(config, rng, explore):
+        return None
+    return _elite_parent(archive, config, rng, preferences)
+
+
+def _draws_fresh_start(config: LoopConfig, rng: random.Random, explore: bool) -> bool:
+    """The explore draw: start from nothing. Drawn whether or not anything can act on it."""
+    return rng.random() < config.explore_rate and explore
+
+
+def _past_refusal_parent(
+    archive: Archive,
+    config: LoopConfig,
+    rng: random.Random,
+    generation: int,
+    explore: bool,
+) -> tuple[Entry, dict[str, Any]] | None:
+    """A refused game to revise in place of an elite, with the mark its children carry, or
+    None (R-S17j, `docs/reference/wrong-no.md` §10.3-§10.5).
+
+    Only while such generations stay at most one in eight of the archive's, as a count
+    (`refusals.under_cap`), and only where some family is open; the draw is made only then,
+    so a run with ``refused_rate`` 0, or with nothing eligible, makes exactly the draws it
+    made before. The draw's chance is ``refused_rate / (1 - explore_rate)`` where a fresh
+    start was possible, since it follows a failed explore draw, and ``refused_rate`` in a
+    run with no model, so the share is one eighth in both.
+
+    The pick is over families, never over entries: first the families with a member whose
+    cell holds no elite, then uniform; inside the family, uniform over its members. It
+    reads the archive's refused entries and never the grid's elites, which it leaves alone.
+    """
+    if config.refused_rate <= 0.0 or not refusals.under_cap(archive.entries, generation):
+        return None
+    families = refusals.open_families(archive)
+    if not families:
+        return None
+    chance = config.refused_rate
+    if explore:
+        chance = config.refused_rate / max(1.0 - config.explore_rate, 1e-9)
+    if rng.random() >= chance:
         return None
 
+    filled = set(archive.grid().elites)
+    keys = list(families)
+    uncovered = [
+        key for key in keys
+        if any(_cell_of(archive, member) not in filled for member in families[key])
+    ]
+    key = rng.choice(uncovered or keys)
+    entry = rng.choice(families[key])
+    return entry, refusals.mark(archive, entry)
+
+
+def _cell_of(archive: Archive, entry: Entry) -> tuple[int, ...] | None:
+    spec = archive.load_spec(entry.hash)
+    return tuple(descriptor(spec)) if spec is not None else None
+
+
+def _elite_parent(
+    archive: Archive,
+    config: LoopConfig,
+    rng: random.Random,
+    preferences: PreferenceLog | None = None,
+) -> Entry | None:
+    """The elites' half of `_choose_parent`: uniform over the grid's elites, or the tied
+    top group in an archive with no cells."""
     table = preferences.table() if preferences is not None else None
 
     # Uniform over the elites of the behaviour grid: one candidate parent per *kind* of
@@ -1179,7 +1313,9 @@ def _separated_from_parent(result: Any, parent: Entry | None) -> bool | None:
     ``None`` when there was no parent, which is different from ``False`` and has to stay
     different: a candidate proposed from scratch did not fail to improve on anything.
     """
-    if parent is None or parent.index is None:
+    # A refused parent is nothing to beat, though a full-roster refusal can hold an index
+    # (R-S17j, `wrong-no.md` §10.3).
+    if parent is None or parent.index is None or not parent.viable:
         return None
     if result.interval is None or parent.index_ci_high is None:
         return bool(result.headline > parent.index)

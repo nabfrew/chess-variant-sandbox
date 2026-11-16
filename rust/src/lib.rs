@@ -14,6 +14,7 @@ mod features;
 mod game;
 mod net;
 mod parallel;
+mod path;
 mod play;
 mod probe;
 mod rng;
@@ -445,6 +446,11 @@ impl Core {
         Ok(Self {
             tables: Arc::new(Tables::from_py(tables)?),
         })
+    }
+
+    /// R-L5c2: whether this game plays the lean copy of the common path (`Tables::lean`).
+    fn lean_path(&self) -> bool {
+        self.tables.lean
     }
 
     fn initial_state<'py>(&self, py: Python<'py>) -> StateOut<'py> {
@@ -1340,10 +1346,21 @@ fn regret_solve(
     Ok(agents::solve(&values, rows, cols, iterations))
 }
 
+/// R-L5c2 (`docs/reference/common-path-plan.md` §2.5 item 4): while on, every `Core` built
+/// from then on plays the full copy of the common path, lean or not, so a test can hold a
+/// lean game's two copies to one answer. Tests only; returns the setting it replaced.
+#[pyfunction]
+fn force_full_path(on: bool) -> bool {
+    let before = path::forced_full();
+    path::force_full(on);
+    before
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Core>()?;
     m.add_function(wrap_pyfunction!(native_agent_kinds, m)?)?;
+    m.add_function(wrap_pyfunction!(force_full_path, m)?)?;
     m.add_function(wrap_pyfunction!(regret_solve, m)?)?;
     // Which sources this extension was built from, hashed by `build.rs`. Python compares
     // it against the same hash taken from `rust/src/` on disk, which is the only way to

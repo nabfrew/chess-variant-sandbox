@@ -437,7 +437,9 @@ def _build_task(
         parts.append(
             "\nAlready tried from here, and what went wrong. These are outcomes rather "
             "than opinions: do not repeat them, and do not treat a whole direction as "
-            "closed because one attempt at it failed.\n"
+            "closed because one attempt at it failed. Each says what it rests on: a fact "
+            "of the rules holds whoever plays; how these computer players played it is "
+            "an outcome of that attempt with those players, not of the idea.\n"
         )
         parts.append(failures)
 
