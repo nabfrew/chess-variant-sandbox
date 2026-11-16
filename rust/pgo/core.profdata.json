@@ -2,7 +2,7 @@
   "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
   "host": "x86_64-pc-windows-msvc",
   "llvm": "22.1.2",
-  "source": "7892b1922fa4cf8d",
+  "source": "7cfb6fbbd01498ac",
   "trained_by": "rust/pgo/train.py",
   "recipe": "serial-1"
 }

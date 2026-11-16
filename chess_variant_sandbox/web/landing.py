@@ -777,7 +777,11 @@ def _ingredients_html(version: str) -> str:
         f'{"".join(parts)}'
         f'<div class="quality" data-quality="rule-outs"><h4>What rules a game out</h4>'
         f"<p>Some failings are not marked down but rule a game out: its score still shows, "
-        f"and means nothing. A game is <i>viable</i> when it passes all of these.</p>"
+        f"and ranks nothing. A game is <i>viable</i> when it passes all of these. "
+        f"<i>Choices per turn</i> is a fact of the rules, true whoever plays; every other "
+        f"test reads how these computer players played the game, so a game it rules out "
+        f"may pass when it is measured again or the players get stronger. A refused game "
+        f"says which test it failed, and on how many runs.</p>"
         f'<ul class="ruleOuts">{tests}</ul><p class="muted">{_e(WORSE_HALF)}</p></div>'
         f"</div></details>")
 
@@ -819,8 +823,10 @@ def _viable_section() -> str:
         "games finish, they are not almost all drawn or won by an opening trap, a "
         "player who thinks beats one who moves at random, thinking longer pays, and "
         "neither side wins just by moving first. A game that fails one is ruled out, "
-        "however well it does elsewhere. The tests and their numbers are under the score "
-        "below.</p>"))
+        "however well it does elsewhere. Most of these tests read how these computer "
+        "players played it, and they are far from expert, so a game ruled out that way "
+        "may pass when it is measured again or the players get stronger. The tests and their "
+        "numbers are under the score below.</p>"))
 
 
 def _score_section(version: str) -> str:

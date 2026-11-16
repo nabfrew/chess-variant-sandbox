@@ -11,7 +11,15 @@ check never reached, with its reason. Nothing here plays a game or reads a score
     uv run python tests/strength_check_file.py check [--readings <dir>]
 
 `check` exits non-zero and names each row that differs; `tests/test_strength_reading.py` runs it
-whenever the main checkout's readings are on disk.
+whenever the main checkout's readings are on disk (`--rows-only` in the fast suite, whole in
+the slow tier).
+
+R-S4d (§18 of the record): a reading stands while the records it was taken on are
+byte-identical to the current ones. `write` compares, per game, the tournament and waiting
+records of the score's current runs with those of the kept measurement the reading was taken
+beside (`previous/<n>/`, found by the reading's stamp), the wall clock aside
+(`measurement.records_digest`), and where they are equal writes the proof into the row as
+`identical`. Reading the records is all it does: nothing is played.
 """
 
 from __future__ import annotations
@@ -22,6 +30,8 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+
+from chess_variant_sandbox import measurement
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -81,7 +91,54 @@ def _row(reading: dict[str, Any], day: str) -> dict[str, Any]:
     return row
 
 
-def build(readings: Path, library: list[str], names: dict[str, str]) -> dict[str, Any]:
+def _stamp(stored: dict[str, Any]) -> tuple[str, str]:
+    basis = stored.get("basis") or {}
+    return f"{basis.get('engine', '')}+{basis.get('agents_source', '')}", str(
+        basis.get("tables", ""))
+
+
+def _read_beside(score: Path, row: dict[str, Any]) -> tuple[Path, dict[str, Any]] | None:
+    """The kept measurement the reading was taken beside: the newest under `previous/<n>/`
+    stamped with the reading's engine, players code and tables."""
+    kept = [p for p in (score / "previous").glob("*/canonical.json") if p.parent.name.isdigit()]
+    for path in sorted(kept, key=lambda p: int(p.parent.name), reverse=True):
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        if _stamp(stored) == (row["engine"], row["tables"]):
+            return path, stored
+    return None
+
+
+def identity(runs: Path, digest: str, row: dict[str, Any]) -> dict[str, Any] | None:
+    """R-S4d's proof for one reading, or ``None`` where the reading needs none or has none.
+
+    None where the current score is stamped with the reading's own engine and tables (the
+    reading belongs as taken), where either measurement's records are not on disk, or where
+    they differ; otherwise the current stamp and the records' digest, which
+    `measurement.reading_stands_by` reads as *stands by identity*."""
+    current = runs / digest / "canonical.json"
+    if not current.is_file():
+        return None
+    now = json.loads(current.read_text(encoding="utf-8"))
+    engine, tables = _stamp(now)
+    if (engine, tables) == (row["engine"], row["tables"]):
+        return None
+    beside = _read_beside(runs / digest, row)
+    if beside is None:
+        return None
+    before_runs = measurement.run_directories(*beside)
+    now_runs = measurement.run_directories(current, now)
+    if before_runs is None or now_runs is None:
+        return None
+    before = measurement.records_digest(before_runs)
+    if before is None or before != measurement.records_digest(now_runs):
+        return None
+    return {"engine": engine, "tables": tables, "records": before,
+            "read_beside": beside[0].parent.relative_to(runs / digest).as_posix(),
+            "rule": "docs/reference/strength-check-all-games.md#18"}
+
+
+def build(readings: Path, library: list[str], names: dict[str, str],
+          runs: Path | None = None) -> dict[str, Any]:
     games: dict[str, Any] = {}
     for path in sorted(readings.glob("*.json")):
         reading = json.loads(path.read_text(encoding="utf-8"))
@@ -89,7 +146,11 @@ def build(readings: Path, library: list[str], names: dict[str, str]) -> dict[str
             path.stat().st_mtime, datetime.timezone.utc).date().isoformat()
         if str(reading["hash"]) in WITHDRAWN:
             continue
-        games[str(reading["hash"])] = _row(reading, day)
+        row = _row(reading, day)
+        same = identity(runs, str(reading["hash"]), row) if runs is not None else None
+        if same is not None:
+            row["identical"] = same
+        games[str(reading["hash"])] = row
     missing = {digest: {"name": names.get(digest, digest),
                         "why": WITHDRAWN.get(digest, JOINED_LATER)}
                for digest in library if digest not in games}
@@ -97,7 +158,10 @@ def build(readings: Path, library: list[str], names: dict[str, str]) -> dict[str
         "about": ("R-S4b's strength check of every library game, one row a game, as read "
                   "(docs/reference/strength-check-all-games.md sections 2.3 and 14). "
                   "Written by tests/strength_check_file.py from runs/R-S4/readings; "
-                  "never edited by hand."),
+                  "never edited by hand. A row's 'identical' entry is R-S4d's proof (section "
+                  "18): the current score's records are byte-identical, the wall clock aside, "
+                  "to those the reading was taken beside, so the reading stands by identity "
+                  "on that score's stamp."),
         "record": "docs/reference/strength-check-all-games.md#14",
         "weights": "v13",
         "games": dict(sorted(games.items())),
@@ -125,16 +189,30 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("write", "check"))
     parser.add_argument("--readings", type=Path, default=READINGS)
+    parser.add_argument("--runs", type=Path, default=main_runs(),
+                        help="the library's runs, for R-S4d's identity proof")
+    parser.add_argument("--rows-only", action="store_true",
+                        help="check: compare the readings' rows, leaving R-S4d's identity "
+                             "proof (seconds of hashing) unchecked")
     args = parser.parse_args(argv)
+    if args.rows_only and args.action == "write":
+        parser.error("--rows-only only checks; a write always makes the identity proof")
     hashes, names = _library()
-    made = build(args.readings, hashes, names)
+    made = build(args.readings, hashes, names, None if args.rows_only else args.runs)
     text = json.dumps(made, indent=1, sort_keys=False, ensure_ascii=False) + "\n"
     if args.action == "write":
         TARGET.write_text(text, encoding="utf-8")
+        same = [row for row in made["games"].values() if "identical" in row]
         print(f"wrote {TARGET.name}: {len(made['games'])} read, "
-              f"{len(made['not_checked'])} not checked")
+              f"{len(made['not_checked'])} not checked, {len(same)} standing by identity")
+        for digest, row in made["games"].items():
+            if "identical" not in row:
+                print(f"  no identity: {digest} {row['name']} ({row['word']})")
         return 0
     held = json.loads(TARGET.read_text(encoding="utf-8"))
+    if args.rows_only:
+        for row in held["games"].values():
+            row.pop("identical", None)
     bad = [digest for digest in set(held["games"]) | set(made["games"])
            if held["games"].get(digest) != made["games"].get(digest)]
     for digest in sorted(bad):

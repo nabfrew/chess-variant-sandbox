@@ -296,6 +296,7 @@ function mapScoreWords(node) {
   const rested = runsPhrase(score.seeds);
   return `scores ${fmt(score.index)}${rested ? ', as the ' + rested : ''}${
     isNotMeasured(score) ? ', and not measured'
+      : score.refusal ? '. ' + refusalText(score.refusal).replace(/\.$/, '')
       : score.viable === false ? ', and ruled out' : ''}`;
 }
 

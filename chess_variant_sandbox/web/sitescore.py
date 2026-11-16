@@ -21,6 +21,8 @@ import copy
 import re
 from typing import Any
 
+from chess_variant_sandbox.loop import refusals
+
 # What a visitor reads for each test a game must pass (G29): its name, and why it is a
 # test, keyed by the component the test reads. `units` follows a number where the bare
 # number would not say what it counts. *Worse half* is defined once, above the list
@@ -114,24 +116,18 @@ def _percent(share: float, tolerated: float) -> tuple[str, str]:
     return whole if whole[0] != whole[1] else (f"{share:.1%}", f"{tolerated:.1%}")
 
 
-_PLACE = re.compile(r"^run (\d+): (.*)$", re.S)
-_UNREADABLE = re.compile(
-    r"^this roster cannot read this ruleset: (.*?), so (.*) would describe the players "
-    r"rather than the game$", re.S)
-_ABSENT = re.compile(r"^could not be measured on this \w+: (.*)$", re.S)
-_UNMEASURED = re.compile(r"^(\w+) was not measured$")
-_SEAT_RUN = re.compile(
-    r"^(\w+)=\S+ below minimum \S+: the (first|second) seat went (\d+)-(\d+) with (\d+) "
-    r"draws over the (\d+) games", re.S)
+# The scoring's sentences, matched where the design loop's memory of a refusal matches them
+# (`loop/refusals.py`, R-S17c), so the site and the loop read one sentence one way.
+_PLACE = refusals.PLACE
+_UNREADABLE = refusals.UNREADABLE
+_ABSENT = refusals.ABSENT
+_UNMEASURED = refusals.UNMEASURED
+_SEAT_RUN = refusals.SEAT_RUN
 # Since Q953a the per-run sentence adds the split it tested, each different game once.
 _SEAT_RUN_DISTINCT = re.compile(r", (\d+)-(\d+) with each different game counted once")
-_SEAT_POOLED = re.compile(
-    r"^(\w+)=\S+ below minimum \S+: the (first|second) seat took (\d+)% of the (\d+) "
-    r"decided games(, each different game counted once)?.* rules out a seat held to "
-    r"(\d+)% or less", re.S)
-# The third verdict's own sentence (`seeds._violations`): no verdict, not a failure.
-_NOT_MEASURED = re.compile(r"^Not measured: (.*?)\.?$", re.S)
-_GATE = re.compile(r"^(\w+)=(\S+) (below minimum|above maximum) (\S+?)(?: \(.*\))?$", re.S)
+_SEAT_POOLED = refusals.SEAT_POOLED
+_NOT_MEASURED = refusals.NOT_MEASURED
+_GATE = refusals.GATE
 
 
 def violation(text: str, seeds: list[int] | None = None) -> str:
@@ -200,6 +196,135 @@ def violation(text: str, seeds: list[int] | None = None) -> str:
     return FAILED
 
 
+# ------------------------------------------------------------------ what a refusal rests on
+#
+# R-S17a (`docs/reference/wrong-no.md` §2 items 2 and 4). A refusal used to say *ruled out*
+# and nothing of which test, how many runs, or that the project's own computer players
+# produced it, so a person told their game *does not work* stopped. Each refusal now says
+# all three, and splits by which test failed -- never by a new verdict -- into the two kinds:
+#
+# - **by its rules** (`RULES`): true whoever plays. No move at the start, over before the
+#   first move, the rules not fitting together, and under one and a half moves a turn.
+# - **as these players play it** (`PLAYERS`): every test that reads games the computer
+#   players played, random play included. Those players are far from expert, so such a
+#   verdict is a reading that can change with a re-measure or stronger players.
+#
+# A sentence nothing here recognises reads as `PLAYERS`, the kind that admits it may be
+# wrong: the costly error is the wrong "no" (the owner, 2026-11-15). Words only, as above:
+# nothing here moves a verdict, a score or a stamp.
+#
+# The split itself is `loop/refusals.py`'s, the one rule the design loop also reads when it
+# decides whether a refused child is measured again (R-S17c): these words and that memory
+# cannot drift apart.
+
+RULES = refusals.RULES
+PLAYERS = refusals.PLAYERS
+RULES_GATES = refusals.RULES_GATES
+
+RULES_NOTE = ("This is a fact of the rules themselves, true whoever plays: stronger players "
+              "would not change it, but a change to the rules can.")
+PLAYERS_NOTE = ("This is how the project's own computer players played it, and they are far "
+                "from expert. It is a reading, not a final judgement: it can change when the game "
+                "is measured again or the players get stronger.")
+BOTH_NOTE = ("Some of this is a fact of the rules, true whoever plays; the rest is how the "
+             "project's own computer players played it, and they are far from expert, so that "
+             "part can change when the game is measured again or the players get stronger.")
+RANDOM_NOTE = ("This is how its games went with both sides moving at random, a quick first "
+               "look and not a final judgement: thoughtful play can go differently.")
+
+def check_of(text: str) -> tuple[str, str] | None:
+    """One stored refusal as the test it names and its kind, or None for a sentence that
+    is not a failed test: a split, *not measured*, or *this roster cannot read*."""
+    found = refusals.violation_check(text)
+    if found is None:
+        return None
+    check, kind = found
+    if check == refusals.ABSENT_CHECK:
+        return "a measurement the score needs", kind
+    if check == refusals.UNKNOWN_CHECK:
+        return "one of the tests a game must pass", kind
+    return _title(check), kind
+
+
+def _kind(kinds: set[str]) -> str:
+    return refusals.kind_of(kinds)
+
+
+def _note(kind: str) -> str:
+    return {RULES: RULES_NOTE, PLAYERS: PLAYERS_NOTE}.get(kind, BOTH_NOTE)
+
+
+def _names(titles: list[str]) -> str:
+    named = [f"“{title}”" for title in titles]
+    return named[0] if len(named) == 1 else ", ".join(named[:-1]) + " and " + named[-1]
+
+
+def refusal(score: dict[str, Any] | None) -> dict[str, Any] | None:
+    """What a scored refusal rests on, in a visitor's words, or None where it is not one.
+
+    `head` names the tests that failed and how many runs refused; `note` says whether the
+    failure is a fact of the rules or a reading of these players, and so whether it can
+    change. Read only from what the measurement stored.
+    """
+    if not score or score.get("viable") is not False or score.get("measured") is False:
+        return None
+    checks: list[dict[str, str]] = []
+    for text in score.get("violations") or []:
+        found = check_of(text)
+        if found and all(found[0] != check["title"] for check in checks):
+            checks.append({"title": found[0], "kind": found[1]})
+    if not checks:
+        checks = [{"title": "one of the tests a game must pass", "kind": PLAYERS}]
+    kind = _kind({check["kind"] for check in checks})
+    total = len(score.get("seeds") or []) or 1
+    verdict = score.get("verdict") or score.get("runVerdict") or {}
+    # The runs that voted to refuse; none where the four runs pooled refused on the seat.
+    refused = int(verdict.get("refuse") or 0) if "refuse" in verdict else total
+    if total == 1:
+        runs = "on its one run"
+    elif refused >= total:
+        runs = f"on all {_word(total)} of its runs"
+    elif refused == 0:
+        runs = f"over its {_word(total)} runs taken together"
+    else:
+        runs = f"by {_word(refused)} of its {_word(total)} runs"
+    tests = "test" if len(checks) == 1 else "tests"
+    how = ("by its rules" if kind == RULES else "as these computer players play it"
+           if kind == PLAYERS else "partly by its rules")
+    return {
+        "kind": kind,
+        "checks": checks,
+        "runs": total,
+        "refused": refused,
+        "head": f"Ruled out {runs}, {how}: it failed the {tests} {_names([c['title'] for c in checks])}.",
+        "note": _note(kind),
+    }
+
+
+def refusal_words() -> dict[str, Any]:
+    """What the designer's page needs to word a refusal it measured itself, in the browser,
+    which no server has scored: the tests that are facts of the rules, by the component
+    that opens the scoring's sentence, and the three notes. Sent with the design kit."""
+    return {"rulesGates": sorted(RULES_GATES), "rulesNote": RULES_NOTE,
+            "playersNote": PLAYERS_NOTE, "bothNote": BOTH_NOTE}
+
+
+smoke_kind = refusals.smoke_kind
+
+
+def smoke_refusal(reasons: list[str] | tuple[str, ...] | None) -> dict[str, Any] | None:
+    """The cheap check's refusal, with its kind and the sentence saying what it rests on."""
+    if not reasons:
+        return None
+    kinds = {smoke_kind(reason) for reason in reasons}
+    kind = _kind(kinds)
+    note = (RULES_NOTE if kind == RULES else RANDOM_NOTE if kind == PLAYERS
+            else "Some of this is a fact of the rules, true whoever plays; the rest is how "
+                 "its games went with both sides moving at random, a quick first look and "
+                 "not a final judgement.")
+    return {"kind": kind, "note": note}
+
+
 def split(verdict: dict[str, Any] | None, viable: bool | None) -> str:
     """How the runs split, in a visitor's words (*pass it*, *rule it out*), or nothing.
 
@@ -265,7 +390,8 @@ def worded(score: dict[str, Any] | None) -> dict[str, Any] | None:
     The score itself is untouched (a game's score is memoised and read by everything).
     Each run gains `site.violations`, the verdict `site.split`, the seat `site.lean`, and
     the score `site.violations`: every sentence the score panel and the card draw, beside
-    the one the measurement wrote.
+    the one the measurement wrote. A refused score gains `refusal` (R-S17a), and every
+    other score `refusal: None`.
     """
     if not score:
         return score
@@ -282,6 +408,8 @@ def worded(score: dict[str, Any] | None) -> dict[str, Any] | None:
         said if verdict and text == verdict.get("split") else violation(text, seeds)
         for text in found.get("violations") or []
     ]}
+    # R-S17a: which tests, how many runs, and whether it is the rules or these players.
+    found["refusal"] = refusal(found)
     return found
 
 

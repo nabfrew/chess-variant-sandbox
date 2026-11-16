@@ -10,6 +10,7 @@ lengths of time. The strategic-depth metric compares exactly those pairs.
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import replace
 from typing import Any
@@ -42,6 +43,7 @@ from chess_variant_sandbox.agents.objective_options import objective_weights as 
 from chess_variant_sandbox.agents.portal_reach import portal_reach_values
 from chess_variant_sandbox.engine import Engine, GameState, Outcome
 from chess_variant_sandbox.engine.compile import SIGHT_PATH_AURA, WILD
+from chess_variant_sandbox.engine.engine import _pack, _unpack
 from chess_variant_sandbox.engine.moves import (
     DUCK_STEP,
     MOVE_BUY,
@@ -51,6 +53,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_DUCK,
     MOVE_EN_PASSANT,
     MOVE_FOLD,
+    MOVE_HIRE,
     MOVE_KEEP,
     MOVE_NORMAL,
     MOVE_PASS,
@@ -60,6 +63,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_ROTATE,
     MOVE_SWEEP,
     decode_move,
+    encode_move,
     move_foreign,
     move_promotion,
     move_to,
@@ -188,6 +192,22 @@ STRIKE_GAIN = 262144
 #   and a net (whose search orders by the derived table); unread without portals and beside a
 #   weight vector (``h=``, ``values=``).
 PORTAL_REACH = 524288
+# * ``null``, ``lmr``, ``pvs`` (R-P2b, `docs/reference/selective-search-duel.md` §3): the three
+#   selective-search arms, each off by default and off wherever its ``*_for`` says so (then the
+#   player is today's, node for node). ``null``: at a main-search node of depth 3 or more, out of
+#   check, with 8 legal moves or more and a standing evaluation at least ``beta``, the side to move
+#   passes and the child is searched at ``depth - 3`` on the zero window below ``beta``; a cut is
+#   verified by the node's own move loop at ``depth - 2``, null moves off below it, before the node
+#   returns ``beta``. ``lmr``: a quiet late move (fourth or later, not a killer, an entry or a hire,
+#   the side changing after it, nobody in check about it) is searched one ply shallower at depth 3
+#   or more, and again at full depth only if it answers above ``alpha``. ``pvs``: at depth 2 or
+#   more, and at the root from the second iteration, every move after the first is asked on the
+#   zero window above ``alpha`` and searched again only if it lands between ``alpha`` and
+#   ``beta``. Mirrors of `agents.rs`'s ``NULL_MOVE``, ``LMR`` and ``PVS``.
+NULL_MOVE = 1048576
+LMR = 2097152
+PVS = 4194304
+_PASS = encode_move(0, 0, MOVE_PASS)
 # T3: the contempt's weight in mean non-royal pieces; ``rust/src/eval.rs``'s copy is exported as
 # ``_core.CONTEMPT_PIECES`` and held to this by ``tests/test_contempt.py``.
 CONTEMPT_PIECES = 0.5
@@ -236,6 +256,51 @@ def contempt_weight(spec: Any, evaluator: object) -> float:
     return CONTEMPT_PIECES * _mean_non_royal(
         tuple(evaluator.values), spec.royal_types, inexhaustible_types(spec)
     )
+
+
+def null_for(spec: Any) -> bool:
+    """R-P2b (`selective-search-duel.md` §3.1): whether the null move may be read in this game, off
+    compiled flags only: not in rounds or a spy game, under forced capture, where losing is winning
+    (an extinction of any piece that wins, a stalemate that wins), beside the duck, a long turn or
+    parts, wild pieces, portals, a push, a placement phase or rest, nor with income and no pass.
+    The first eight are ``spec/refusals.py::PASS_REFUSALS``. `agents.rs::null_for`."""
+    extinction = spec.extinction
+    losing_wins = (
+        extinction is not None and extinction.any_piece and extinction.result == "win"
+    ) or spec.stalemate == "win"
+    drops = spec.drops
+    return not (
+        spec.simultaneous is not None
+        or spec.spy is not None
+        or spec.must_capture
+        or losing_wins
+        or spec.duck is not None
+        or spec.turn is not None
+        or spec.parts is not None
+        or spec.npcs is not None
+        or spec.portals is not None
+        or spec.push is not None
+        or (drops is not None and drops.placement)
+        or bool(spec.rest)
+        or (spec.income is not None and not spec.passes)
+    )
+
+
+def lmr_for(spec: Any) -> bool:
+    """R-P2b (§3.2): whether late-move reductions may be read: not in rounds or a spy game, under
+    forced capture or beside wild pieces. `agents.rs::lmr_for`."""
+    return not (
+        spec.simultaneous is not None
+        or spec.spy is not None
+        or spec.must_capture
+        or spec.npcs is not None
+    )
+
+
+def pvs_for(spec: Any) -> bool:
+    """R-P2b (§3.3): whether zero windows may be read: not in rounds or a spy game.
+    `agents.rs::pvs_for`."""
+    return spec.simultaneous is None and spec.spy is None
 
 
 def _path_open(spec: Any, board: bytes, entry: int, lifted: int) -> bool:
@@ -296,6 +361,9 @@ REPAIR_OPTIONS = {
     "afford": AFFORD,
     "strike_gain": STRIKE_GAIN,
     "portal_reach": PORTAL_REACH,
+    "null": NULL_MOVE,
+    "lmr": LMR,
+    "pvs": PVS,
 }
 # Which repairs a player that spells none of them searches with: the ones that won their
 # pre-registered duel (general-player.md §4.3 E9, graded in §6.7). ``threats`` won and is
@@ -446,6 +514,17 @@ class MinimaxAgent:
         self._prices: dict[int, int] = (
             dict(zip(purse.market, purse.price, strict=True)) if purse is not None else {}
         )
+        # R-P2b: the selective-search arms, each its bit and its game (`agents.rs::Player::new`).
+        spec = engine.spec
+        self._null = bool(repairs & NULL_MOVE) and null_for(spec)
+        self._lmr = bool(repairs & LMR) and lmr_for(spec)
+        self._pvs = bool(repairs & PVS) and pvs_for(spec)
+        self._late = self._lmr or self._pvs
+        self._checks = spec.win == "checkmate" and bool(spec.royal_types)
+        # The null move's child's ply while it is searched (-1: none), and how many
+        # verifications are open (null moves off below any).
+        self._null_child_ply = -1
+        self._verifying = 0
         # Which search this is, for ``keep``'s aging; the core's is a wrapping u16 and
         # only equality with this search and the previous one is ever asked.
         self._generation = 0
@@ -493,6 +572,8 @@ class MinimaxAgent:
 
     def _begin_search(self) -> None:
         self._nodes = 0
+        self._null_child_ply = -1
+        self._verifying = 0
         self._generation = (self._generation + 1) & 0xFFFF
         if self.repairs & KEEP_TABLE:
             now, previous = self._generation, (self._generation - 1) & 0xFFFF
@@ -764,12 +845,19 @@ class MinimaxAgent:
         if self.repairs & DUCK_MOBILITY:
             self._note_turn(moves, 0)
         scored = False
-        for move in moves:
+        for index, move in enumerate(moves):
             # See ``_negamax``: the negation and the window flip are only right when the
             # side actually changed, which a turn longer than one move makes conditional.
             child = engine.apply(state, move)
             try:
-                if child.side_to_move != state.side_to_move:
+                if self._pvs and depth >= 2 and index > 0:
+                    # R-P2b (``pvs``): the zero window above alpha, then ``(alpha, +inf)``
+                    # if it answers above alpha (`agents.rs::root_zero_window`).
+                    flipped = child.side_to_move != state.side_to_move
+                    score = self._late_searches(
+                        child, depth, 0, alpha, INFINITY, flipped, True, False
+                    )
+                elif child.side_to_move != state.side_to_move:
                     score = -self._negamax(child, depth - 1, 1, -INFINITY, -alpha)
                 else:
                     score = self._negamax(child, depth - 1, 1, alpha, INFINITY)
@@ -835,6 +923,10 @@ class MinimaxAgent:
             # number about a position nobody would ever stop in.
             return self._quiesce(state, QUIESCENCE_DEPTH, ply, alpha, beta)
 
+        # R-P2b (``null``): after the table and the list, before ordering.
+        if self._null and depth >= 3 and self._null_move(state, moves, depth, ply, beta, hint):
+            return beta
+
         # WK2: a duck half under either ordering repair (``duck_front``, ``duck_refute``).
         duck_half = bool(self.repairs & (DUCK_FRONT | DUCK_REFUTE)) and (
             move_type(moves[0]) == MOVE_DUCK
@@ -863,11 +955,15 @@ class MinimaxAgent:
             # that is the only form that cannot drift out of step with the engine: a ramp
             # means the answer differs between one ply and the next.
             quiet = not self._is_loud(state, move)
-            child = engine.apply(state, move)
-            if child.side_to_move != state.side_to_move:
-                score = -self._negamax(child, depth - 1, ply + 1, -beta, -alpha)
+            if self._late and index > 0 and depth >= 2:
+                # R-P2b (``lmr``, ``pvs``): a move after the first.
+                score = self._late_move(state, move, quiet, index, depth, ply, alpha, beta)
             else:
-                score = self._negamax(child, depth - 1, ply + 1, alpha, beta)
+                child = engine.apply(state, move)
+                if child.side_to_move != state.side_to_move:
+                    score = -self._negamax(child, depth - 1, ply + 1, -beta, -alpha)
+                else:
+                    score = self._negamax(child, depth - 1, ply + 1, alpha, beta)
             if score > best:
                 best = score
                 best_move = move
@@ -900,6 +996,146 @@ class MinimaxAgent:
             kept = best_move
         self._table[key] = (depth, best, bound, self._generation, kept)
         return best
+
+    # ------------------------------------------------- R-P2b: the selective-search arms
+
+    def _null_move(
+        self, state: GameState, moves: list[int], depth: int, ply: int, beta: float, hint: int
+    ) -> bool:
+        """``null``: whether this node is cut by a verified null move. ``moves`` is the node's
+        legal list, unordered, and is left as it was. `agents.rs::null_move`."""
+        if not math.isfinite(beta) or self._verifying or self._null_child_ply == ply:
+            return False
+        engine = self.engine
+        side = state.side_to_move
+        if self._checks and engine.in_check(state, side):
+            return False
+        if len(moves) < 8 or self.evaluator.evaluate(engine, state, side, len(moves)) < beta:
+            return False
+        floor = math.nextafter(beta, -INFINITY)
+        saved = self._null_child_ply
+        self._null_child_ply = ply + 1
+        # The engine's own pass, played whether or not the game offers it (`Game::make` routes
+        # it by kind), so past `Engine.apply`'s offered-move check.
+        child = _unpack(engine.core.apply(_pack(state), _PASS, False)[0])
+        try:
+            if child.side_to_move != side:
+                score = -self._negamax(child, depth - 3, ply + 1, -beta, -floor)
+            else:
+                score = self._negamax(child, depth - 3, ply + 1, floor, beta)
+        finally:
+            self._null_child_ply = saved
+        if score < beta:
+            return False
+        self._verifying += 1
+        try:
+            verified = self._move_loop(state, list(moves), depth - 2, ply, floor, beta, hint)
+        finally:
+            self._verifying -= 1
+        return verified >= beta
+
+    def _move_loop(
+        self,
+        state: GameState,
+        moves: list[int],
+        depth: int,
+        ply: int,
+        alpha: float,
+        beta: float,
+        hint: int,
+    ) -> float:
+        """The null move's verification: the main move loop at ``depth`` on ``(alpha, beta)``,
+        writing no table entry. `agents.rs::move_loop`."""
+        engine = self.engine
+        self._order(state, moves, ply)
+        if self.repairs & TT_MOVE and hint != NO_MOVE and hint in moves:
+            moves.remove(hint)
+            moves.insert(0, hint)
+        best = -INFINITY
+        for index, move in enumerate(moves):
+            quiet = not self._is_loud(state, move)
+            if self._late and index > 0 and depth >= 2:
+                score = self._late_move(state, move, quiet, index, depth, ply, alpha, beta)
+            else:
+                child = engine.apply(state, move)
+                if child.side_to_move != state.side_to_move:
+                    score = -self._negamax(child, depth - 1, ply + 1, -beta, -alpha)
+                else:
+                    score = self._negamax(child, depth - 1, ply + 1, alpha, beta)
+            if score > best:
+                best = score
+            if best > alpha:
+                alpha = best
+            if alpha >= beta:
+                self._remember(move, quiet, depth, ply, state.side_to_move)
+                self._refuters[min(ply, MAX_PLY - 1)] = move
+                break
+        return best
+
+    def _late_move(
+        self,
+        state: GameState,
+        move: int,
+        quiet: bool,
+        nth: int,
+        depth: int,
+        ply: int,
+        alpha: float,
+        beta: float,
+    ) -> float:
+        """``lmr`` and ``pvs``: a move after the first, its score from the node's side.
+        `agents.rs::late_move`."""
+        engine = self.engine
+        mover = state.side_to_move
+        kind = move_type(move)
+        reducible = (
+            self._lmr
+            and depth >= 3
+            and nth >= 3
+            and quiet
+            and move not in self._killers[min(ply, MAX_PLY - 1)]
+            and kind not in (MOVE_DROP, MOVE_BUY, MOVE_HIRE, MOVE_DUCK)
+            and not (self._checks and engine.in_check(state, mover))
+        )
+        zero = self._pvs and depth >= 2
+        child = engine.apply(state, move)
+        flipped = child.side_to_move != mover
+        reduce = (
+            reducible
+            and flipped
+            and not (self._checks and engine.in_check(child, child.side_to_move))
+        )
+        return self._late_searches(child, depth, ply, alpha, beta, flipped, zero, reduce)
+
+    def _late_searches(
+        self,
+        child: GameState,
+        depth: int,
+        ply: int,
+        alpha: float,
+        beta: float,
+        flipped: bool,
+        zero: bool,
+        reduce: bool,
+    ) -> float:
+        """`agents.rs::late_searches`: the reduced search, the full-depth one, and the full
+        window's, each where it applies."""
+        high = math.nextafter(alpha, INFINITY) if zero else beta
+        if reduce:
+            reduced = self._child_score(child, depth - 2, ply, alpha, high, flipped)
+            if reduced <= alpha:
+                return reduced
+        score = self._child_score(child, depth - 1, ply, alpha, high, flipped)
+        if zero and alpha < score < beta:
+            return self._child_score(child, depth - 1, ply, alpha, beta, flipped)
+        return score
+
+    def _child_score(
+        self, child: GameState, depth: int, ply: int, low: float, high: float, flipped: bool
+    ) -> float:
+        if flipped:
+            return -self._negamax(child, depth, ply + 1, -high, -low)
+        return self._negamax(child, depth, ply + 1, low, high)
 
     def _quiesce(
         self, state: GameState, depth: int, ply: int, alpha: float, beta: float

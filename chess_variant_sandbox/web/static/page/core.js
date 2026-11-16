@@ -523,9 +523,11 @@ const GLOSS = {
     + " (only they have), checked (something else agrees with them) or questioned"
     + " (something found more than they see). The score itself does not change."],
   gated: ['Disqualified',
-    "Something about this game does not work -- almost every game is drawn, say, or"
-    + " thinking harder buys nothing. It is ruled out rather than marked down, because"
-    + " those are different verdicts."],
+    "It failed one of the tests a game must pass -- almost every game is drawn, say, or"
+    + " thinking harder buys nothing -- so it is ruled out rather than marked down. A few"
+    + " of these tests are facts of the rules, true whoever plays. The rest read how the"
+    + " computer players played it, on the runs named, and can change when it is measured"
+    + " again or the players get stronger."],
   stale: ['Out of date',
     "It has been measured, but not by the code in this checkout. The engine, the"
     + " opponents or the scoring changed since then. Where the old measurement has a"
@@ -907,8 +909,11 @@ const SITE_GLOSS = {
     + " the higher one."],
   gated: ['Ruled out',
     "It failed a basic test of a working game, such as games that never finish, or a"
-    + " player who thinks being no better than one who moves at random. It is ruled out"
-    + " rather than marked down, because a game that does not work is not a weak one."],
+    + " player who thinks being no better than one who moves at random, so it is ruled out"
+    + " rather than marked down. A few of these tests are facts of the rules, true whoever"
+    + " plays. Most read how the site's computer players played it, and they are far from"
+    + " expert: that kind can change when the game is measured again or the players get"
+    + " stronger."],
   // A2.
   stale: ['Out of date',
     "Since it was measured, the computer players or the scoring have changed. Its last"
@@ -1339,6 +1344,35 @@ function splitSentences(verdict, runs) {
 // the site and the server sent some, else nothing, and the caller draws the measurement's.
 function siteSaid(holder, key) {
   return (ACCOUNTS && holder && holder.site && holder.site[key]) || null;
+}
+
+// ---------------------------------------------------------------- what a refusal rests on
+//
+// R-S17a (`docs/reference/wrong-no.md` §2 items 2 and 4). No refusal is drawn as a bare
+// *ruled out*: each says which test failed, on how many runs, and whether that is a fact
+// of the rules (true whoever plays) or how these computer players played it (a reading
+// that can change with a re-measure or stronger players). The words are the server's
+// (`web/sitescore.py`: `refusal` on a score, `smoke_refusal` on the cheap check); the page
+// classifies nothing. The screen's refusal is always two small players' reading, so its
+// sentence is this one constant.
+const SCREEN_REFUSAL_NOTE = 'Two small computer players, the weakest that think ahead, on one'
+  + ' short match: a quick look, not a final judgement. Stronger players might play it'
+  + ' differently.';
+
+// The block a refused score draws: the head (tests, runs, kind), the note, then the
+// measurement's own lines (`lines`, already in the site's words where this is the site).
+function refusalHtml(refusal, lines) {
+  if (!refusal) return '';
+  return `<div class="verdict out" data-refusal="${esc(refusal.kind)}">
+      <div>${esc(refusal.head)}${info('gated')}</div>
+      <div class="small u-fw-400 u-mt-5">${esc(refusal.note)}</div>${
+      (lines || []).length ? `<div class="small u-fw-400 u-mt-5">${
+        lines.map(esc).join('<br>')}</div>` : ''}</div>`;
+}
+
+// The same in one line, for a pill's hover or a rung: the head and the note.
+function refusalText(refusal) {
+  return refusal ? `${refusal.head} ${refusal.note}` : '';
 }
 
 // How far a ranked game leans toward one seat, in a sentence, or nothing.

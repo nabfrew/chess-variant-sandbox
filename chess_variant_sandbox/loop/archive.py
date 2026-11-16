@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -86,6 +86,13 @@ class Entry:
     notes: str = ""
     detail: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
+    # What refused it, for a rejected or non-viable candidate (R-S17c,
+    # `loop/refusals.py`): the rung, each check with its number, line and margin, the kind
+    # (*by its rules* or *as these players play it*) and the basis it was read on -- the
+    # rung's players and lines and the weights version. The loop measures a players' refusal
+    # again when that basis moves. An entry written before it loads with none and is final,
+    # as every refusal used to be; `refusals.refusal_of` reads one back from its sentences.
+    refusal: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -189,6 +196,31 @@ class Archive:
     def seen_hashes(self) -> set[str]:
         return {entry.hash for entry in self._entries}
 
+    def latest(self, digest: str) -> Entry | None:
+        """The last entry that measured or refused this hash: a *duplicate* line only says
+        it was met again, so it is passed over."""
+        for entry in reversed(self._entries):
+            if entry.hash == digest and entry.status != "duplicate":
+                return entry
+        return None
+
+    def settled_hashes(self, retry: Callable[[Entry], bool]) -> set[str]:
+        """The hashes the loop skips: every one it has met, less those whose latest entry
+        ``retry`` says to measure again (R-S17c, a players' refusal whose players, lines or
+        weights have moved since). With ``retry`` always false this is ``seen_hashes``."""
+        settled = set()
+        for digest in self.seen_hashes():
+            entry = self.latest(digest)
+            if entry is None or not retry(entry):
+                settled.add(digest)
+        return settled
+
+    def superseded(self, entry: Entry) -> bool:
+        """Whether a later entry measured this hash again (R-S17c): an old refusal of a game
+        that has since been measured is history, and is not shown as a failure."""
+        latest = self.latest(entry.hash)
+        return latest is not None and latest is not entry
+
     def next_generation(self) -> int:
         return max((entry.generation for entry in self._entries), default=-1) + 1
 
@@ -240,7 +272,9 @@ class Archive:
         return grid_module.build(self.evaluated(), prefer=prefer)
 
     def failures(self, limit: int = 8) -> list[Entry]:
-        return [e for e in self._entries if e.status in _FAILED][-limit:]
+        return [
+            e for e in self._entries if e.status in _FAILED and not self.superseded(e)
+        ][-limit:]
 
     def failed_children(self, parent_hash: str | None, limit: int = 6) -> list[Entry]:
         """What was already tried from this parent and did not work.
@@ -256,7 +290,7 @@ class Archive:
         siblings = [
             entry
             for entry in self._entries
-            if entry.parent == parent_hash and _failed(entry)
+            if entry.parent == parent_hash and _failed(entry) and not self.superseded(entry)
         ]
         return siblings[-limit:]
 

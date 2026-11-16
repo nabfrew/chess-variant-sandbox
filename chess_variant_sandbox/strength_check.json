@@ -1,5 +1,5 @@
 {
- "about": "R-S4b's strength check of every library game, one row a game, as read (docs/reference/strength-check-all-games.md sections 2.3 and 14). Written by tests/strength_check_file.py from runs/R-S4/readings; never edited by hand.",
+ "about": "R-S4b's strength check of every library game, one row a game, as read (docs/reference/strength-check-all-games.md sections 2.3 and 14). Written by tests/strength_check_file.py from runs/R-S4/readings; never edited by hand. A row's 'identical' entry is R-S4d's proof (section 18): the current score's records are byte-identical, the wall clock aside, to those the reading was taken beside, so the reading stands by identity on that score's stamp.",
  "record": "docs/reference/strength-check-all-games.md#14",
  "weights": "v13",
  "games": {
@@ -26,7 +26,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "fbc3a913fa88ef48",
+    "records": "ceb470493bfd49b988ba80ee50bee189271b2b820fff74ab78dcb572cfd1dd6d",
+    "read_beside": "previous/13",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "03aa7c3f2f18": {
    "name": "three stones",
@@ -48,7 +55,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "b3d9e4ca986272a9",
+    "records": "209938f71ef721fd82bfbef1b556e8c479960c8b1be33f90cf76ccb5dfd27cd0",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "0448722861a3": {
    "name": "crease",
@@ -70,7 +84,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "ac98338606812bdf",
+    "records": "ae1595bce245cb1dfdf9eb0b3954ddf9ba80f987195f60561a1c3bb93191473a",
+    "read_beside": "previous/42",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "07484b9a09a5": {
    "name": "brink",
@@ -92,7 +113,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "b041b3f25ccbe796",
+    "records": "1368f2cae0fde64077f3361a0bafdaf34454bf7dad955ff051451491965575fb",
+    "read_beside": "previous/14",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "0b96463ffba7": {
    "name": "courier",
@@ -116,7 +144,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "43c2fe4fb1ab1401",
+    "records": "05f368da47d4fc1287b07017e21b4772c3c958322184904f8c1c13842dcfe9c8",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "0be72e61ef24": {
    "name": "marchfield",
@@ -138,7 +173,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "3a2d5a7fddb76113",
+    "records": "80fd1545f898a10829a9b5bb10495539f539837ad1b2fd0b6d69d6206e36fa71",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "0f126fe608ef": {
    "name": "the hydra",
@@ -160,7 +202,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "2fa09f528586afbd",
+    "records": "0598c371a0704fc2618b54d3e71cb4acd097770e18d2bc5ef186d917b8cb006d",
+    "read_beside": "previous/20",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "1501615e08e2": {
    "name": "ferry",
@@ -184,7 +233,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "e7770d3fc50aee5a",
+    "records": "ea3b3022c8bde20d93a05288fae6b35a26c8e2047fdae7678c026a1df53d51a7",
+    "read_beside": "previous/48",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "151582aed409": {
    "name": "xiangqi",
@@ -206,7 +262,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "d3c8d6d4fac6ef02",
+    "records": "0b81cd6e49d2bddf8e420b346c57fea793ba9cb7dd3b6edff5a67cef9fe2d0d5",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "15593fc47f6d": {
    "name": "horde",
@@ -230,7 +293,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "abcf4aed8c6ec0b9",
+    "records": "d584e63166fdcf801a6a6f39d918333dacab3fa03f0785be5dfba396a8a3d204",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "1605b8619844": {
    "name": "almost chess",
@@ -254,7 +324,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "19191d0e94b59804",
+    "records": "22c0b64759131371e80c0cdbd3280018c0c0338e3283d1d0d060e9ef25bc7a59",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "1aa8c4705681": {
    "name": "chess with a sheltering king",
@@ -276,7 +353,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "64883471fd520e34",
+    "records": "16b14eda37f5a4178d4baf36762545b56f003d9aceb61bb55d95306a562e6556",
+    "read_beside": "previous/27",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "1ba3d61e5961": {
    "name": "gift chess",
@@ -298,7 +382,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "f5326430599d6230",
+    "records": "4121ccd1169b0826c5ec56d60e7ee3024f210c66c2bbd13dbe8edb2eb26c1700",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "1cb062a21f06": {
    "name": "no zugzwang",
@@ -324,7 +415,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "ee38137f86850a6e",
+    "records": "ce20e08ebbcc3826ea0b28d2620e4ceecdad3930dcf28b185b097b12fc897fdb",
+    "read_beside": "previous/3",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "1e6b3dbb8039": {
    "name": "leapfrog",
@@ -348,7 +446,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "a5f918c453eaec23",
+    "records": "c40a1e26b04f4ff31c2dd411b1cd3e73d732fa40420569c18411ca1ec7d58385",
+    "read_beside": "previous/4",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "1f85f50a23f6": {
    "name": "divide",
@@ -370,7 +475,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "b2afc37a1693de09",
+    "records": "617fd33cb97dcd7ffc3cba22f3f4f60e1f20081e2243379c3580a67fbbaa2a64",
+    "read_beside": "previous/48",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "1fced818630e": {
    "name": "los alamos with shove or take",
@@ -392,7 +504,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "eeaf13ab0f86e086",
+    "records": "0bd9e4dbbf2f096530d56436688f6935bbb268baf4a585caaab7e8314f113710",
+    "read_beside": "previous/13",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "2135109e8191": {
    "name": "the herd",
@@ -414,7 +533,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "a8d032c3aafb1648",
+    "records": "011697f938018440e174bda14a5925d6c9f2d51b962af5750f95a768e65289a1",
+    "read_beside": "previous/20",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "2261f8203948": {
    "name": "rps annihilation",
@@ -436,7 +562,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "b079ab1b18c454a6",
+    "records": "6a11c73f528a19759851ecb94f782819cbc0b9edafe897e5cc30294f5437eb1f",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "241fcd286e26": {
    "name": "weathervane",
@@ -458,7 +591,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "f54c6980ccd8992d",
+    "records": "803ea59c255874d09d2b661a123650dbd3dd07bee595477cd4eac933f11cd8d7",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "26636602fae0": {
    "name": "riders and leapers",
@@ -480,7 +620,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "8e384b6a8a7868c2",
+    "records": "df22e4d1d30bbebedd2e871f558bdd0098d2f1a4e248d773fe008aeeefc52802",
+    "read_beside": "previous/33",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "29d5213b02b2": {
    "name": "intransitive",
@@ -502,7 +649,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "44343f5d0820d0f8",
+    "records": "4d4194b4d519bd0b7b6be0e9b71c351e7439c2914601883c0838392cb4cca9db",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "2cb9cb3c018c": {
    "name": "placement chess",
@@ -526,7 +680,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "230ba2d2ea235f42",
+    "records": "e601ac2a77396b03ca12ded0eedf0f8711ec40aa0489ecec368739dcab4e4a4b",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "2eefcd835b3b": {
    "name": "capablanca",
@@ -550,7 +711,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "304b04afb9d2d47b",
+    "records": "2ac2559063ce697a641cd08b043b0da741a2d80285398c57e2a6fa297217629e",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "313c913a5b3b": {
    "name": "queen bomb",
@@ -618,7 +786,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "f19895f2038e8832",
+    "records": "5fc138bb3ae3ea9b3856241550a29421d91ad31db347ed0f94c01b9986953f60",
+    "read_beside": "previous/48",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "38ba9c25e715": {
    "name": "madrasi chess",
@@ -640,7 +815,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "3501c15429a2135f",
+    "records": "5234b440a8ca3c0dd6392f6b5d4268a21dbd72b9a554056b903c8fa77e833dcf",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "393dfeada70d": {
    "name": "grand",
@@ -664,7 +846,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "dfd7945f0fab0e70",
+    "records": "a8d66ba4e0a687bced39d0d1223cb9faa7bb33462e001f72b1c05a904b098381",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "3c639d277808": {
    "name": "demotion chess",
@@ -686,7 +875,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "c98f538601b4afe5",
+    "records": "56d312eca5c8fc1e7f119cb03f78f4b887d636726e06d93384f737afe7f390a9",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "3dafe910108f": {
    "name": "seirawan",
@@ -710,7 +906,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "8160793ce6039e0f",
+    "records": "96e3303c5d0d3ae05097f42838431899636db22b3dafa0b14ecd192104a147b1",
+    "read_beside": "previous/18",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "3ec1560124c3": {
    "name": "antichess",
@@ -734,7 +937,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "fe591ce72b1ac298",
+    "records": "03bbf569a4b0e4e347321941ad285a746d953de453195128d118a14fa8b1f379",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "3fdad4d69d87": {
    "name": "chess with daunting knights",
@@ -756,7 +966,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "f609ea475b989439",
+    "records": "24754988935ad47068c9cff0176cc5955943fb7fc2ae21c87ac061b690001a86",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "417c19c2f6bd": {
    "name": "watering hole",
@@ -781,7 +998,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5bffaf00c8f5c5d4",
+    "records": "e3b2d452df0bc26c6f704dcb4271c2512507d018bc3daee2f2b6899c970064bc",
+    "read_beside": "previous/29",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "482ddc556331": {
    "name": "gift from afar",
@@ -803,7 +1027,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "353b16ba98f79721",
+    "records": "89e7e7198b0d4105a457419086153035764f37b33fef2afd710b4e5f71637c98",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "4bf09661fdd9": {
    "name": "the circling queen",
@@ -825,7 +1056,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "0409a5b5227b3d5b",
+    "records": "175d16296579180d8c7b97fa13c3550b5526783bd8618d9a9148049acaf1f4ac",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "50a3da8f75e7": {
    "name": "knightmate",
@@ -847,7 +1085,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "09bf8280bead8d65",
+    "records": "9b5745eb37a6b3412632bbe3ec1321d8da92d5c257d7ae4b545f67bf8033204a",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "51d9b36b4e93": {
    "name": "quarry",
@@ -869,7 +1114,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "7bed2a6503798054",
+    "records": "3e86e3dd8dccd0bb41b49da5c88ff9eca9882fab81392b2a89b43f9b4748dbd5",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "54a0a193da0f": {
    "name": "circe",
@@ -891,7 +1143,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "b6ab29ca41ad93ee",
+    "records": "d3fc4d95329feea39b149eac10760be61193d65ebd73f413fe72b08d79485df8",
+    "read_beside": "previous/52",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "54b38fb8cba8": {
    "name": "wolf hunt",
@@ -913,7 +1172,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "6435d2c15d411b4d",
+    "records": "0690f8327eeed284fcf28ac386dd8b08cafcf6fa174817c3afcbf0d6b8c1c86c",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "54c731ca6e95": {
    "name": "shogi",
@@ -937,7 +1203,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "ae0af217d07baaa2",
+    "records": "95dc2be00e62caad59fb4d4779a777c1bcfa8a2fc0af1de3c8fd33e9c6e0bda5",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "559e947e585a": {
    "name": "dohyo",
@@ -959,7 +1232,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "103c80d7810a23a8",
+    "records": "5016775acb8610078c77e9204e1aa9a9e38e874e743b4693678a907207b062af",
+    "read_beside": "previous/14",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "57667d7861ad": {
    "name": "amazon ladder",
@@ -983,7 +1263,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "0da72ea2e0260133",
+    "records": "abac975fae19ca8d8ab14c1f4a9d059e1b602ccb20d3e2cc02925e11fe74588d",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "58afebca2286": {
    "name": "shut wormhole",
@@ -1007,7 +1294,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "70627853a1fe6053",
+    "records": "ff78d5adf19104a6e361a491cad822a562cf94ace8ed1a28cc3635e9bc3ad494",
+    "read_beside": "previous/48",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "5abb0b804cf6": {
    "name": "cylinder wormhole",
@@ -1029,7 +1323,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "f4527ef755dee62c",
+    "records": "ceac7f8683231ac2130f2733e1b86098f466e23c5e3fc6c41fe28519c620b8b3",
+    "read_beside": "previous/48",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "5ef0203555c0": {
    "name": "hunger chess where pawns forage",
@@ -1051,7 +1352,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5cfce1da720c4286",
+    "records": "0b13251f696289cac0ce449247ad1f710203c9691db37a004c249b9354a7b4a4",
+    "read_beside": "previous/1",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "5f9c1bfcf85a": {
    "name": "torus chess",
@@ -1073,7 +1381,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "e10795221943c852",
+    "records": "7eb0eeb8d7a58b4b6286420e78221250531afca2c3692e900902c4a65c84c39a",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "61c4e247dc3c": {
    "name": "pinwheel",
@@ -1095,7 +1410,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "9cc78fa02cf12867",
+    "records": "4317ffe916ca0400de466bbb109fd4ec4003472d7375da8462ddd31cf72b402e",
+    "read_beside": "previous/43",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "643743c84589": {
    "name": "drover",
@@ -1117,7 +1439,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "710c04f27ce06b46",
+    "records": "1eefc511ff61f5a64517b9abf22cbc7fe331d18ce67cbebcf15049a68e683fe2",
+    "read_beside": "previous/4",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "66b001f1b790": {
    "name": "racing kings",
@@ -1141,7 +1470,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "48c162212370a86a",
+    "records": "b46ef300d54e827c2b308c120ceda3928c2118fb6d3f7662c07f89a856a3b497",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "67270a8805a0": {
    "name": "shatranj",
@@ -1165,7 +1501,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "14a6ff87ac93cbe0",
+    "records": "95437fd6a07b07e17d1f27fcff0e04d20e0b2d081a78de9206dbda97628f612f",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "6784c35550d8": {
    "name": "about face",
@@ -1187,7 +1530,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "9565a1ca033bf369",
+    "records": "5f5daaca12f3b18ab62122bc66a35cbf334ea48a9d249dfc0702167e4f18e6f3",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "684b14652b2b": {
    "name": "tessabi",
@@ -1209,7 +1559,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "d54b1bb38db2b6f0",
+    "records": "0467c82b0da28176f9ca56715153f06ee0772e4c051f4e66a6ea6b28515b9ab5",
+    "read_beside": "previous/4",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "6cd3785c7246": {
    "name": "kamikaze",
@@ -1231,7 +1588,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "636ce6ef33ffa7cb",
+    "records": "baa278122fbf90a8029d8cd23da3ea9e3309f7f9fc3f4a70fd583d0490830c51",
+    "read_beside": "previous/52",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "6eaaad41673b": {
    "name": "glinski hexagonal chess",
@@ -1253,7 +1617,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "502b6c432a0489b4",
+    "records": "d521ff411db7133b6551d0fa25c500b81f8bc252efc569c12253f5ad763116d7",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "71912ea8ba7f": {
    "name": "king of the hill",
@@ -1277,7 +1648,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "58ed70e1e5ca6fd5",
+    "records": "433d8023e5d4ff2136c3d9c9dfcec626aafc4b5342f8aa6711c11de9630569c0",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "771c1a22e182": {
    "name": "sittuyin",
@@ -1299,7 +1677,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "59fcaa6f1987dac3",
+    "records": "894fb5ce3cead7bab0c5db5ae3da67019116b6bcf105c3466d55311d523408b4",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "78130df01edd": {
    "name": "thrown gifts",
@@ -1321,7 +1706,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5f32c46b0cd9e3f9",
+    "records": "0ba7bf043274ae137fe3c84aa570c761ae0d5a305cc6203753653981c076db31",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "7acb867a99aa": {
    "name": "duck chess",
@@ -1345,7 +1737,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "06ae7548db734adb",
+    "records": "c6779e06e5a5b486039689ec5bf18cfec89c3d520fb28a6979046531b9bb13e8",
+    "read_beside": "previous/12",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "7cddf4ba316b": {
    "name": "chess with turning pawns",
@@ -1367,7 +1766,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "3bdcb214014fbf5b",
+    "records": "192d4d59bbab5a665b53bd5b501db1fe2d9329a183155e890fb9dac71704e9d9",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "7e57cab1fd7e": {
    "name": "crooked bishops",
@@ -1389,7 +1795,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "f1b7e71f411451ff",
+    "records": "89c466d35924109bf9a32d6e6abb7b201266d4b82f1c8c14094ce8e5ce9e7cd2",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "82a4788c02f0": {
    "name": "rps territory",
@@ -1411,7 +1824,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "096cd759f1426837",
+    "records": "d3966dae2ad9b105394cb4bb9448a14481f3de8c17ca405b131edd31fe4f8cc4",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "831c77e75650": {
    "name": "chess",
@@ -1435,7 +1855,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "2c8ea5ae0183c323",
+    "records": "9d123145008cdf6cac833ab34d888cbf5db055ced08596267c639fba85edb953",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "8478a3301cfd": {
    "name": "backward drop shogi",
@@ -1457,7 +1884,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "fd7946431f88a7cb",
+    "records": "f3ad599e7dca6286c745915c1931f92a6961822462283cea67ce6d4588f0a74b",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "85555467a4ca": {
    "name": "merger",
@@ -1479,7 +1913,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "d4079562891aafd2",
+    "records": "e0540c676c98d223f62fa4d36924f8aa113404d81b71edb3f998c0e6d4000f5b",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "8d9fb1b4c0b4": {
    "name": "rear guard torus chess",
@@ -1501,7 +1942,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "802c13af5c7fbcf1",
+    "records": "a167d7c9eeb7e12bf7e9c698b211173582b46f027fc5a6d06803b07c5a263a7b",
+    "read_beside": "previous/42",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "93b02b591c87": {
    "name": "stones",
@@ -1527,7 +1975,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "8b2add48413f7969",
+    "records": "85b737e9aed033a1d9eeefb797cd124154f53e566ce9aa0eb9f712977fdcd6a9",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "9574b0bf9095": {
    "name": "bastion",
@@ -1551,7 +2006,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "c7b2c37ce93eaaa3",
+    "records": "7bd40e95cb3c69af5074b2288f8e20e3b6ba6f2c1dc80edd94f5c94773d71eba",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "9598e603241d": {
    "name": "torus crazyhouse",
@@ -1573,7 +2035,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5842b620af27402b",
+    "records": "0606143430754a8de7a7ee3f2df6ee62c033211706f79e674886f62340cce1f9",
+    "read_beside": "previous/42",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "975dde173f01": {
    "name": "gardner",
@@ -1597,7 +2066,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "c70b9b68c5e7108a",
+    "records": "8623c850cd58a2712cfa3a04775f2636919e80e49e0b129ffaf5113d75165128",
+    "read_beside": "previous/57",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "9c90463dc10f": {
    "name": "the horse archers",
@@ -1619,7 +2095,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "77560229c453887c",
+    "records": "e609a6c902bb5bf82853de37df5644fb6eb8a7827f74d0e6b89cc4b13138fd9b",
+    "read_beside": "previous/24",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "9e34937a3cb1": {
    "name": "hunger chess with cheap promotion",
@@ -1641,7 +2124,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "668b167219e0846d",
+    "records": "73d26202cfc6aeaaff844b8752f136bf91af0ea69d6b4a5289f9d5ea743f575f",
+    "read_beside": "previous/1",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "a1805ac1adc1": {
    "name": "kyoto",
@@ -1663,7 +2153,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "e18bfb3c15b95c45",
+    "records": "a12301b4aeaa2a5f6ede4c45df73cf8f8e753bad3c0cb7da2ce224a9a3b9d32c",
+    "read_beside": "previous/52",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "a2f0c65ceedf": {
    "name": "dobutsu",
@@ -1687,7 +2184,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "d158e949aa940a34",
+    "records": "69f06b038979dbfd2e2266caf453ded2440e16719d0c1e2210790e666bbbf8c4",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "a5e2a7e05c9a": {
    "name": "perpetual",
@@ -1711,7 +2215,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "433c4033a4faf829",
+    "records": "a13f159bb157d76b75122b982fea50cc6ad71b5d2b1dc3e9a96a244ccac8950e",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "a628a77ab8e3": {
    "name": "runners",
@@ -1733,7 +2244,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "43f6c285058edcba",
+    "records": "1aa41741242cc73e1f743b7b15c0d6b7dc7ef4d9abf02767fe34574749014e29",
+    "read_beside": "previous/8",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "a7b6f22e6b73": {
    "name": "rps both endings",
@@ -1755,7 +2273,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "32c2dec25152fa8b",
+    "records": "d7ee49491889e3c9d83f2cbd4bab242e374ae596433f8ef941243a667007c085",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "a9306688fe57": {
    "name": "cylinder chess",
@@ -1777,7 +2302,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "6a56433c2492eaf3",
+    "records": "077712f11dd3383f34a14223dcdff43ad4f615b08d4f49bf1f7690e0ed0777bb",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "accd659f2c76": {
    "name": "sardines",
@@ -1801,7 +2333,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "3d8af62d5a84cc9b",
+    "records": "6841038fe0df68355c17e562aa7296b6c750f28d0e4021baa38c3be5ecd9d7fa",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ad0750e4ec47": {
    "name": "the golem well",
@@ -1823,7 +2362,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "a8fa59329182c00f",
+    "records": "3fa96c0226b056212e336dd03a63c5b7f1fa190216c019fa3e91bf35df18bcc4",
+    "read_beside": "previous/28",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "add543cc28c3": {
    "name": "rps repaint",
@@ -1845,7 +2391,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5e6ef0f6db086829",
+    "records": "4af2dd720e6a0baecd384e44208b69c9684569323a5aac5a1574431851629d25",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "b02bbe8da72c": {
    "name": "one-way cylinder chess",
@@ -1867,7 +2420,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "0449ce95d1a9ac76",
+    "records": "48b129c97902edf8034cb4e7d5fa058dd3c068ad4d16938114ecd507976a3670",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "b1f536573c22": {
    "name": "three-check",
@@ -1891,7 +2451,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "72cf8d36fe5262ee",
+    "records": "7ebf8011b6d3e0d7bdba8410017a0585dc281b9dc1826d58aab9ed11011af81c",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "b2011455c4af": {
    "name": "wolf circuit",
@@ -1913,7 +2480,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5b144080a51061e1",
+    "records": "5400ecc803fe5d4fc60a07f547e61ab0d292822d88f82f1300f634d936e2a690",
+    "read_beside": "previous/44",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "b48942ad079f": {
    "name": "chess with a weary queen",
@@ -1935,7 +2509,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "b67f54263d64f2a5",
+    "records": "365ab708ff6b2c6a92c812da53d02a1c39b92e7f611e672c9f5f7fb5bdf2edc0",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "b51b26942977": {
    "name": "boulder",
@@ -1962,7 +2543,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "b34f512ffd7c7e27",
+    "records": "2dd418629f630619c2854d1ecb4804517960ea21b519994eeb54a5cb950a1d2a",
+    "read_beside": "previous/4",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "b8687024cfc6": {
    "name": "breather",
@@ -1984,7 +2572,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "dea79e1326627218",
+    "records": "da8588df2ade361a1765598a60fd49989744814919be2e21d24fb70f6dbb664d",
+    "read_beside": "previous/28",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "bafc4a7011a3": {
    "name": "chess with preaching bishops",
@@ -2006,7 +2601,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "2750cd4caa033e97",
+    "records": "f60feb5e591f77717ab207afb1dc070238c76d6b809d5c1b49fdd7979cc839fc",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "bb5d97520084": {
    "name": "crazyhouse",
@@ -2030,7 +2632,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "97ab14ffca01037a",
+    "records": "38e67c0e5ca9dd1bf22397ef135b540c8a8d359514eda705087036475a37ddbe",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "bdf2801ade24": {
    "name": "rps race",
@@ -2054,7 +2663,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "05becb3282c4dcbe",
+    "records": "e409816b95057b9b4a35f54183f75d0517437915fa3ecd9a10c0804e9b3be77a",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "beb7faafde7a": {
    "name": "hunger chess with rich forage",
@@ -2076,7 +2692,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "3571d8417be3583b",
+    "records": "37b4a0fa7ed014d38c88a6facdc24c23a9b35177fa3985deb860e44dd5a1d773",
+    "read_beside": "previous/1",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "c0e0c35f78b1": {
    "name": "hierarchy chess",
@@ -2103,7 +2726,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "cee254479fe50d0f",
+    "records": "4ad2b45b373b6a4361f81a7c83425d4d8d2d01deda35db90b750720556e66583",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "c2925e027455": {
    "name": "cannonade",
@@ -2125,7 +2755,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "9f90ad036c9a6a53",
+    "records": "726066a9edb32c95e426d5ad6470b2804de3b525c1aabf406736582ead6b7743",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "c538506f18e4": {
    "name": "crossings",
@@ -2147,7 +2784,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "a2126f2d4b05eef0",
+    "records": "57e9ecdff8c4ee56ddeb4676ec7ce80ac585aeaf8b0208f677d1e25bbca0dfd5",
+    "read_beside": "previous/4",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "c68b69c57219": {
    "name": "omega",
@@ -2171,7 +2815,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "59fe2b96b67ee042",
+    "records": "12306e6c2eae124ca88a69526d5305b3450690d2221e93d55e398dc62fbd51e0",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "c6ff883e5919": {
    "name": "one-way torus chess",
@@ -2193,7 +2844,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "05787a033547e413",
+    "records": "14ff207d02d68c0cb97887daab6b02bf3b720c3b60507a1abbe4c36d85eaf015",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ca1fdd0b00bb": {
    "name": "extinction chess",
@@ -2215,7 +2873,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5fdfec30333e4dba",
+    "records": "6527c5561989bcb127bcffc9ff99e97e02a6b64db441b37905d0b2084037d3e6",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ce17f9cdcd55": {
    "name": "chess with nightriders",
@@ -2239,7 +2904,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "1a5cc1141ac9f9ab",
+    "records": "e3c80f79df232ae3ca2b8985928f124db94d621dd3780d6f125de75c758be861",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ce406100becc": {
    "name": "opposite colours",
@@ -2261,7 +2933,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "2b08f4f685f2a455",
+    "records": "348720b1ad169d1121695bdf0833eeb61da407d37c0770d41bef207965051185",
+    "read_beside": "previous/26",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ceb4916bdabc": {
    "name": "wolves",
@@ -2283,7 +2962,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5a0c6e8ef7f53176",
+    "records": "fecdbcc6864fa797c7af151f95fa23d57b2d20c0c538c9e29efcb7a63a786ad1",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ceec60c5fbbc": {
    "name": "short sweeping bishop chess",
@@ -2307,7 +2993,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "8155b937c3059a03",
+    "records": "c33d0048fd4de5d4a92b40d23ca44f05f5ece82afc73d2347bb42ef24aecb5fb",
+    "read_beside": "previous/13",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "d06cfc337d9c": {
    "name": "berolina",
@@ -2329,7 +3022,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "4945059532fe19a2",
+    "records": "685a3b461b84b91183452c05fac73a370574338ac8ad983c6f21a8f2241954a5",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "d2a722b461ff": {
    "name": "pitchfork",
@@ -2351,7 +3051,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "f7fe75d2793c461a",
+    "records": "016e537d0814a8d137cbc3cbf84efde7fc55a4cedd449d5c32b9a101305cb064",
+    "read_beside": "previous/42",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "d32ef74e88c0": {
    "name": "circe mortal diagonals",
@@ -2373,7 +3080,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "273c90637bf038ff",
+    "records": "1ead2c387ea8ca17dd63cda79eb4eef149b226d90e0d9f4298e0edde1fc7266e",
+    "read_beside": "previous/29",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "d50c552b49da": {
    "name": "pawn knockdown",
@@ -2397,7 +3111,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "89578d839100f40d",
+    "records": "429a0329f7b7c5ec394028d910609a25d16095177d67ed683703692626dd8607",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "d6cb641394dd": {
    "name": "anchors",
@@ -2419,7 +3140,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5caf97001f5a1db8",
+    "records": "ab1fe64b54920c2c3f54c8e4db42c8d6fdedfffdf68ef3446b2c1e8be66b090a",
+    "read_beside": "previous/24",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "d90706fec9c0": {
    "name": "einstein",
@@ -2441,7 +3169,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "996d6281b00fcd83",
+    "records": "4a626e7658f1909f773e86836bfed28883695caa5a659654a8f4fff9cfd32cf3",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "daa6917bd359": {
    "name": "los alamos with a closed edge",
@@ -2463,7 +3198,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "d582b198ce058357",
+    "records": "9e3defe559f49c5abd66730d2883d42b6b3ae2c8dd4091bd3c0690f6527b6572",
+    "read_beside": "previous/13",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "dd17d71412a7": {
    "name": "steady ferry",
@@ -2485,7 +3227,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "0bdeb43fbc2e4d7d",
+    "records": "77ddf774c83c38ce316728931eaf1ec83c94c0bd66fe2c7955977176fc6bc63b",
+    "read_beside": "previous/47",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "e1bb4740516e": {
    "name": "chess with galloping knights",
@@ -2507,7 +3256,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "299bf2a242982945",
+    "records": "6843a7068b3e12ea59726d79973e319ffdc3a459fa70f6639af7497c158b31bb",
+    "read_beside": "previous/15",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "e271933cd127": {
    "name": "gardner with bishops that shove straight",
@@ -2531,7 +3287,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "82ac0eef158609ca",
+    "records": "9c08321714f63a34955b0371a59964af4d907821db6a18b87f753c84a495e000",
+    "read_beside": "previous/13",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "e7293070b5be": {
    "name": "succession",
@@ -2553,7 +3316,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "ce754901363a2c3b",
+    "records": "6c9347e0d1ca69fbc1b068d3fb569e6012daa29b382255101aa851dd4fd99dd2",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "e72a8715217c": {
    "name": "los alamos with crushing pillars",
@@ -2575,7 +3345,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "5c8cedae6167969c",
+    "records": "87a46d53eb39debc566dfc01d0e990e5f2e0b748e935bb38b3a773b33ccd8433",
+    "read_beside": "previous/13",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "e7d2d7406586": {
    "name": "the shepherds duck",
@@ -2621,7 +3398,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "787007e4001fe4d8",
+    "records": "105c3dd79cbd5f6bf06819d04bfd597210aff23abdeaab2a7b597fefe3f44cbb",
+    "read_beside": "previous/13",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ea249ab8fbfc": {
    "name": "kraken ford",
@@ -2643,7 +3427,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "a8451b0cdbc3b454",
+    "records": "1672b3a4f96571ee59fef6e9c980127fa6348b9638cf7d35b331a0948d9518c3",
+    "read_beside": "previous/28",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ea7aa465cbfb": {
    "name": "the crowd",
@@ -2665,7 +3456,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "f967d14e362885f7",
+    "records": "091ead8270dd6f7050e81e6d169212d277955e2348d19539aac95136ffc73160",
+    "read_beside": "previous/12",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "eaa48ed29ad7": {
    "name": "makruk",
@@ -2689,7 +3487,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "fc1b479eb1a32a55",
+    "records": "bd5c2e1c5fe745ad10145ae4a854a41a4bd32b7b01044df8660bd89e26c0c8f6",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "f1e40e35a6d9": {
    "name": "carousel",
@@ -2711,7 +3516,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "69a08feee1d2d3ae",
+    "records": "99dc8433c7c1407064a5ee64c161cf8bebbc978ecf202b95d0b34d543119ac7e",
+    "read_beside": "previous/48",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "f3c624d2f297": {
    "name": "sluice",
@@ -2733,7 +3545,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "f84bca5f42fba51f",
+    "records": "507e28888abb8b58c1f10cb91f13ccfcf9aa19e9d3c5c00370d8e4746a6d18d2",
+    "read_beside": "previous/42",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "f7a789809758": {
    "name": "rifle",
@@ -2755,7 +3574,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "0fb33501ce9f14b3",
+    "records": "682247a33a4f266ecb825d5025db9a19d8c06cd0faacb347b887228f85c76952",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "f858b7a63dea": {
    "name": "the free companies",
@@ -2777,7 +3603,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "1c12b1b92fd5fdfb",
+    "records": "91945fe294e8864360b42b4db877cff79cda916193e2d3547165f59153ee4eba",
+    "read_beside": "previous/17",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "f9e5dbf3ff1f": {
    "name": "andernach",
@@ -2801,7 +3634,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "05eec37015be2352",
+    "records": "00ded4dd95b1930b5cb7fe8374f765bd00b56478d8424773cfc06958e4b1c80f",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "fb8a67625131": {
    "name": "jeson mor",
@@ -2823,7 +3663,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "afef964377992171",
+    "records": "c36dd81251b73f56f0f208076c315f145932afd4bac8cee4b07c8159663bb252",
+    "read_beside": "previous/52",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "fcbb53d53ce4": {
    "name": "los alamos",
@@ -2847,7 +3694,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "48e1a3d58f9c6bd5",
+    "records": "bb7bb4df375c96482ef3d63a8b8e9318e444b08b98d5fe002732a31a706a9319",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "fe7c42772c71": {
    "name": "dull",
@@ -2874,7 +3728,14 @@
    "fairy_engine": "Fairy-Stockfish 14 LB@2fe12ff0fcad",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "0909393f145e303c",
+    "records": "47985ec0a59a142516a96571bd6dd450fd646479df6a5442787feb23da81391b",
+    "read_beside": "previous/55",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "feaad3754a7e": {
    "name": "pawnproof wormhole",
@@ -2896,7 +3757,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "fa4f817969d2b144",
+    "records": "94fd5ca291aadf58e8185acd5b4f858aa7c85c064d090622549f1aa817340a98",
+    "read_beside": "previous/42",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "feab18e258db": {
    "name": "hunger chess",
@@ -2918,7 +3786,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "7cfc0f510cbdbdfc",
+    "records": "a82900c046b6d968cfd43e456e38dbd9712e8fa6e9b16397ce62de9251f003fb",
+    "read_beside": "previous/1",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ffb9a99dbd01": {
    "name": "promoted drop shogi",
@@ -2940,7 +3815,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "6811d5a31d92a207",
+    "records": "bf3a2f894c73d15e9b0f236913b9b0e24de3e1be8142a0c12e28403fd979cf96",
+    "read_beside": "previous/51",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   },
   "ffc7b604bea0": {
    "name": "reckoning",
@@ -2962,7 +3844,14 @@
    "fairy_engine": "",
    "rule": "strength-check-all-games.md §2 @ 29e95e52e",
    "script": "524dca8fd0f30546",
-   "read_at": "2026-11-13"
+   "read_at": "2026-11-13",
+   "identical": {
+    "engine": "f0b28a2e4f883c15-7892b1922fa4cf8d+33545e447752cdb6",
+    "tables": "165fff189589d44f",
+    "records": "9477020e4ffbbde23a4f318dda1a1ec10d2941caab67fc0181cee516ef8b0dbc",
+    "read_beside": "previous/56",
+    "rule": "docs/reference/strength-check-all-games.md#18"
+   }
   }
  },
  "not_checked": {

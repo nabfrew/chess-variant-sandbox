@@ -465,10 +465,9 @@ function hereResultHtml(run) {
     ${moved ? `<div class="muted small u-mt-6">This is ${esc(r.name)} as it
       stood when you pressed the button${ACCOUNTS ? '' : ` (<code>${esc(r.hash)}</code>)`}; the rules have changed
       since, so it is not a number for the draft on screen.</div>` : ''}
-    ${(r.violations || []).length ? `<div class="verdict out">
-        <div>It is ruled out${info('gated')}, not marked down.</div>
-        <div class="small u-fw-400 u-mt-5">${
-          r.violations.map(esc).join('<br>')}</div></div>` : ''}
+    ${(r.violations || []).length ? (hereRefusal(r) ? refusalHtml(hereRefusal(r), r.violations)
+      : `<div class="verdict"><div class="small u-fw-400">${
+          r.violations.map(esc).join('<br>')}</div></div>`) : ''}
     ${components.length ? `<div class="muted small u-mt-8">What it is made of${
       kept ? ', as your browser scored it' : ''}, each out of 1, the ones that count most
       first:</div>
@@ -477,6 +476,35 @@ function hereResultHtml(run) {
         .join('')}</ul>` : ''}
     <details class="u-mt-6"><summary class="muted small">how long it took</summary>
       <div class="muted small u-mt-4">${hereTimesHtml(run)}</div></details>`;
+}
+
+// A refusal this browser measured, which no server scored, worded as `sitescore.refusal`
+// words one (R-S17a): its one run, and whether the tests it failed are facts of the rules
+// or how these computer players played it. Which tests are the rules' is the server's
+// (`DESIGN_KIT.refusalWords`, read off the component that opens each sentence); a
+// sentence naming no test reads as the players', the kind that admits it may be wrong.
+// Null for a result that is not a refusal (`isNotMeasured`, or viable).
+function hereRefusal(r) {
+  if (!r || r.viable !== false || isNotMeasured(r)) return null;
+  const words = (DESIGN_KIT || {}).refusalWords;
+  if (!words) return null;
+  const kinds = new Set((r.violations || [])
+    .filter(line => !/^this roster cannot read/.test(line))
+    .map(line => {
+      const found = /^(\w+)=/.exec(line);
+      return found && words.rulesGates.includes(found[1]) ? 'rules' : 'players';
+    }));
+  if (!kinds.size) kinds.add('players');
+  const kind = kinds.size > 1 ? 'both' : [...kinds][0];
+  const how = kind === 'rules' ? 'by its rules'
+    : kind === 'players' ? 'as these computer players play it' : 'partly by its rules';
+  return {
+    kind,
+    head: `Ruled out on its one run, ${how}: it failed the ${
+      (r.violations || []).length > 1 ? 'tests' : 'test'} named below.`,
+    note: kind === 'rules' ? words.rulesNote
+      : kind === 'players' ? words.playersNote : words.bothNote,
+  };
 }
 
 // The browser's own number, under the label that says where it was made and that nothing
@@ -567,7 +595,8 @@ function hereKeptHtml(check, p) {
   return `<div class="u-fs-26 u-fw-600 u-lh-1_1">${
       scored ? Number(p.index).toFixed(4) : '<span class="muted">no score</span>'}</div>
     <div class="muted small">${esc(words.label)}${info('provisional')}${
-      isNotMeasured(p) ? ', and not measured' : p.viable === false ? ', and ruled out' : ''
+      isNotMeasured(p) ? ', and not measured' : p.viable === false
+        ? ', and ruled out as these computer players play it' : ''
     } &middot; ${esc(runsPhrase(p.seeds))}${
       p.weights ? ' &middot; ' + esc(rulesVersion(p.weights)) : ''}${info('weights')}</div>
     <div class="small u-mt-6">Checked by the site${esc(took)}. ${

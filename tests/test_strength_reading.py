@@ -99,7 +99,132 @@ class TestTheFile:
     @pytest.mark.skipif(not strength_check_file.READINGS.is_dir(),
                         reason="R-S4b's readings are only in the main checkout's runs/")
     def test_the_file_equals_the_readings(self) -> None:
-        assert strength_check_file.main(["check"]) == 0
+        assert strength_check_file.main(["check", "--rows-only"]) == 0
+
+    def test_the_replay_left_127_readings_standing_by_identity(self) -> None:
+        """R-S4d (§18): after SR8r's replay onto core 7892b1922fa4cf8d, every reading whose
+        game's records came out byte-identical carries the proof; the three read games that
+        play differently (`replay-2026-11-15.md`; atomic's is withdrawn) carry none."""
+        rows = HELD["games"]
+        same = {digest for digest, row in rows.items() if row.get("identical")}
+        assert len(same) == 127
+        assert sorted(rows[d]["name"] for d in set(rows) - same) == [
+            "queen bomb", "queens wake", "the shepherds duck"]
+        for digest in same:
+            proof = rows[digest]["identical"]
+            assert proof["engine"].startswith("f0b28a2e4f883c15-7892b1922fa4cf8d+")
+            assert len(proof["records"]) == 64 and proof["read_beside"].startswith("previous/")
+            assert proof["rule"].endswith("#18")
+
+
+@pytest.mark.slow  # 4 s: hashes every library game's records, twice
+@pytest.mark.skipif(not strength_check_file.READINGS.is_dir(),
+                    reason="R-S4b's readings are only in the main checkout's runs/")
+def test_the_identity_proofs_are_the_records() -> None:
+    """R-S4d: each `identical` entry is re-made from the main checkout's records."""
+    assert strength_check_file.main(["check"]) == 0
+
+
+# ------------------------------------------------------------------ R-S4d's rule
+
+
+def _run(root: Path, digest: str, seed: int, lines: list[dict[str, Any]],
+         waiting: list[dict[str, Any]] | None = None) -> None:
+    run = root / f"{digest}-{seed}"
+    run.mkdir(parents=True)
+    (run / "games.jsonl").write_text(
+        "".join(json.dumps(line, separators=(",", ":")) + "\n" for line in lines),
+        encoding="utf-8")
+    if waiting is not None:
+        (run / "waiting.jsonl").write_text(
+            "".join(json.dumps(line, separators=(",", ":")) + "\n" for line in waiting),
+            encoding="utf-8")
+
+
+def _game(moves: list[int], ms: float) -> dict[str, Any]:
+    return {"ruleset_hash": "abc", "moves": moves, "winner": 0, "duration_ms": ms}
+
+
+def _stored(engine: str, tables: str = "t") -> dict[str, Any]:
+    return {"hash": "abc", "basis": {"ruleset_hash": "abc", "seeds": [0, 1000],
+                                     "engine": engine, "agents_source": "a", "tables": tables,
+                                     "agents": ["random", "minimax:nodes=25600"],
+                                     "weights_version": "v14", "games_per_pairing": 4,
+                                     "metrics": "m", "analysis": "n",
+                                     "verdict_rule": "r"}}
+
+
+class TestTheIdentityRule:
+    """A reading stands while the records it was taken on are byte-identical to the current
+    ones, the wall clock (`duration_ms`) aside (`strength-check-all-games.md` §18)."""
+
+    def _library_runs(self, tmp_path: Path, *, moved: bool) -> Path:
+        runs = tmp_path / "runs"
+        kept = runs / "abc" / "previous" / "3"
+        kept.mkdir(parents=True)
+        (kept / "canonical.json").write_text(json.dumps(_stored("old")), encoding="utf-8")
+        (runs / "abc" / "canonical.json").write_text(json.dumps(_stored("new")),
+                                                     encoding="utf-8")
+        for seed in (0, 1000):
+            _run(kept, "abc", seed, [_game([1, 2, 3], 12.5)], [_game([4], 1.0)])
+            _run(runs, "abc", seed, [_game([1, 2, 3 + (moved and seed == 1000)], 99.25)],
+                 [_game([4], 7.0)])
+        return runs
+
+    def _row(self) -> dict[str, Any]:
+        return {"name": "abc", "word": "held, by its own players only", "engine": "old+a",
+                "tables": "t", "player": "minimax:nodes=25600"}
+
+    def test_the_wall_clock_aside_identical_records_have_one_digest(
+            self, tmp_path: Path) -> None:
+        runs = self._library_runs(tmp_path, moved=False)
+        old = measurement.run_directories(runs / "abc" / "previous" / "3" / "canonical.json",
+                                          _stored("old"))
+        new = measurement.run_directories(runs / "abc" / "canonical.json", _stored("new"))
+        assert old and new and old[0].parent != new[0].parent
+        assert (old[0] / "games.jsonl").read_bytes() != (new[0] / "games.jsonl").read_bytes()
+        assert measurement.records_digest(old) == measurement.records_digest(new)
+
+    def test_one_move_moved_is_another_digest(self, tmp_path: Path) -> None:
+        runs = self._library_runs(tmp_path, moved=True)
+        assert strength_check_file.identity(runs, "abc", self._row()) is None
+
+    def test_a_run_without_its_records_proves_nothing(self, tmp_path: Path) -> None:
+        runs = self._library_runs(tmp_path, moved=False)
+        (runs / "abc-1000" / "games.jsonl").unlink()
+        assert strength_check_file.identity(runs, "abc", self._row()) is None
+
+    def test_identical_records_carry_the_proof_and_the_reading_stands(
+            self, tmp_path: Path) -> None:
+        runs = self._library_runs(tmp_path, moved=False)
+        proof = strength_check_file.identity(runs, "abc", self._row())
+        assert proof is not None
+        assert proof["engine"] == "new+a" and proof["tables"] == "t"
+        assert proof["read_beside"] == "previous/3"
+        row = {**self._row(), "identical": proof}
+        now = measurement.Basis.from_dict(_stored("new")["basis"])
+        reading = measurement.strength_reading("abc", now, readings={"games": {"abc": row}})
+        assert reading["word"] == measurement.HELD_OWN and reading["belongs"]
+        assert reading["standsBy"] == "identity" and reading["identical"] == proof
+        # Without the proof the same reading is not checked on the new stamp (§16.2).
+        bare = measurement.strength_reading("abc", now,
+                                            readings={"games": {"abc": self._row()}})
+        assert bare["word"] == measurement.NOT_CHECKED and bare["standsBy"] is None
+
+    def test_the_proof_holds_only_for_the_stamp_it_names(self) -> None:
+        """A later replay onto yet another core is a new stamp: the proof made for the last
+        one does not carry over, and the reading reads *not checked* until it is made again."""
+        row = {**self._row(), "identical": {"engine": "new+a", "tables": "t", "records": "d"}}
+        later = measurement.Basis.from_dict(_stored("later")["basis"])
+        reading = measurement.strength_reading("abc", later, readings={"games": {"abc": row}})
+        assert reading["word"] == measurement.NOT_CHECKED and not reading["belongs"]
+        other_tables = measurement.Basis.from_dict(_stored("new", tables="u")["basis"])
+        assert measurement.reading_stands_by(row, other_tables) is None
+
+    def test_a_reading_taken_on_the_score_stands_as_read(self) -> None:
+        row = {**self._row(), "identical": {"engine": "new+a", "tables": "t", "records": "d"}}
+        old = measurement.Basis.from_dict(_stored("old")["basis"])
+        assert measurement.reading_stands_by(row, old) == "reading"
 
 
 # ------------------------------------------------------------------ the words
@@ -256,7 +381,13 @@ def test_the_library_today_shows_the_records_counts() -> None:
     no reading taken on `80dee3d13bd9330d` belongs any more (§16.2: a *held* reading is never
     shown across a replay; a *depends* one stays, dated). The 91 *held by its own players* and
     kyoto's *held* now read *not checked yet*: 94 with the two that were. Was
-    `{"depends": 33, "unread": 5, "held": 1, "held_own": 91, "not_checked": 2}`."""
+    `{"depends": 33, "unread": 5, "held": 1, "held_own": 91, "not_checked": 2}`.
+
+    Moved again 2026-11-16 (R-S4d, the record's §18): a reading stands while the records it
+    was taken on are byte-identical to the current ones. 127 are, so kyoto reads *held* and 88
+    *held by its own players* again; *not checked* is the five whose records changed or that
+    have no reading (atomic, queen bomb, queens wake, the shepherd's duck, rear guard torus
+    chess with even promotion). Was `{"depends": 33, "unread": 5, "not_checked": 94}`."""
     games = {game.hash: game for game in library.discover(
         ROOT / "rulesets", MAIN_RUNS, ROOT / "archive")}
     shown: dict[str, int] = {}
@@ -269,4 +400,5 @@ def test_the_library_today_shows_the_records_counts() -> None:
         assert strength["tag"] and strength["said"], game.name
         key = strength["word"] if strength["shown"] else "unread"
         shown[key] = shown.get(key, 0) + 1
-    assert shown == {"depends": 33, "unread": 5, "not_checked": 94}, json.dumps(shown)
+    assert shown == {"depends": 33, "unread": 5, "held": 1, "held_own": 88,
+                     "not_checked": 5}, json.dumps(shown)

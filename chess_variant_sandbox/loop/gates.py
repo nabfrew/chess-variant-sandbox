@@ -40,6 +40,28 @@ FORCED_RESULT_PLIES = 6
 # is where anything needing competent play belongs.
 MAX_RANDOM_STALL = 0.98
 
+# The rest of the check's lines, named so a refusal can store the line it fell on and the
+# loop can tell when one has moved (R-S17c, `docs/reference/wrong-no.md` §1.2).
+MIN_RANDOM_BRANCHING = 1.5
+MAX_FORCED_RATE = 0.5
+MAX_RANDOM_SKEW = 0.85
+# The denominators the two outcome checks need before they read anything.
+NO_WINNER_GAMES = 30
+SKEW_DECIDED_GAMES = 20
+
+LINES: dict[str, float] = {
+    "mean_branching": MIN_RANDOM_BRANCHING,
+    "stall_rate": MAX_RANDOM_STALL,
+    "no_winner_games": NO_WINNER_GAMES,
+    "forced_rate": MAX_FORCED_RATE,
+    "forced_result_plies": FORCED_RESULT_PLIES,
+    "seat_skew": MAX_RANDOM_SKEW,
+    "skew_decided_games": SKEW_DECIDED_GAMES,
+}
+"""Every line the cheap check draws. A refused child stores them, and the loop measures a
+refusal that reads random play again when any of them has moved since: the stall line has
+moved once already, from 0.90 to 0.98, after it refused makruk, courier and shatranj."""
+
 # The words each refusal is said in, a visitor's (`docs/archive/plan-understanding.md` D42-D44): a
 # *side*, *turns* and *the rules*, never a seat, plies or a compile. The stall sentence is
 # matched by the designer, which appends which counter fired, so its words live here once.
@@ -53,9 +75,27 @@ class SmokeResult:
     passed: bool
     reasons: list[str] = field(default_factory=list)
     stats: dict[str, float] = field(default_factory=dict)
+    # One row per refusal, in `reasons`' order: the check, the number it read and the line
+    # it fell on (`check_row`). Not in `as_dict`, whose shape the designer's pages read; the
+    # loop's archive stores it as the refusal (R-S17c).
+    checks: list[dict[str, Any]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {"passed": self.passed, "reasons": self.reasons, "stats": self.stats}
+
+
+def check_row(
+    check: str, value: float | None = None, line: float | None = None, side: str = ""
+) -> dict[str, Any]:
+    """One failed check as the archive keeps it: what it read, the line, and how far past
+    the line it fell (`margin`, in the check's own units, never negative). A check with no
+    number (no opening move, a clock) has no margin."""
+    row: dict[str, Any] = {"check": check, "value": value, "line": line, "side": side}
+    row["margin"] = (
+        round(abs(float(value) - float(line)), 4)
+        if value is not None and line is not None else None
+    )
+    return row
 
 
 def _over_at_the_start(winner: int | None, reason: str) -> str:
@@ -107,7 +147,11 @@ def smoke_test(
     except SpecError as error:
         # In the designer's words, as the editor lists them (`spec.plain`, D44).
         said = " ".join(plain_problems(error.errors, spec))
-        return SmokeResult(passed=False, reasons=[f"the rules don't fit together: {said}"])
+        return SmokeResult(
+            passed=False,
+            reasons=[f"the rules don't fit together: {said}"],
+            checks=[check_row("rules_fit")],
+        )
     except NotImplementedError as error:
         # `bridge.rust_supports` holding an intermediate state shut: the compiler knows a
         # rule the core does not yet. A candidate the core cannot play fails the first
@@ -119,6 +163,7 @@ def smoke_test(
                 "the computer can't play one of these rules yet: "
                 + str(error).removeprefix("the core cannot play this ruleset: ")
             ],
+            checks=[check_row("core_plays")],
         )
 
     state = engine.initial_state()
@@ -140,6 +185,7 @@ def smoke_test(
             passed=False,
             reasons=[stuck],
             stats={"opening_moves": 0},
+            checks=[check_row("opening_moves", 0, 1, "min")],
         )
     over = engine.terminal(state)
     if over is not None:
@@ -151,6 +197,7 @@ def smoke_test(
             passed=False,
             reasons=[_over_at_the_start(over.winner, over.reason)],
             stats={"opening_moves": float(opening_moves)},
+            checks=[check_row("over_at_start")],
         )
 
     threads = workers if workers > 0 else max(1, (os.cpu_count() or 2) - 1)
@@ -187,6 +234,7 @@ def smoke_test(
                 f"checked in the {time_budget:g} seconds allowed ({finished} finished)"
             ],
             stats={"opening_moves": float(opening_moves), "games": float(played)},
+            checks=[check_row("clock", played, games, "min")],
         )
 
     mean_plies = sum(plies) / len(plies)
@@ -197,16 +245,21 @@ def smoke_test(
     forced_rate = sum(1 for p in plies if p <= FORCED_RESULT_PLIES) / played
     decided = outcomes["win_first"] + outcomes["win_second"]
 
-    if mean_branching < 1.5:
+    checks: list[dict[str, Any]] = []
+    if mean_branching < MIN_RANDOM_BRANCHING:
         reasons.append(
             f"a player has {mean_branching:.2f} moves to choose from on average; there is "
             "nothing to decide"
+        )
+        checks.append(
+            check_row("mean_branching", round(mean_branching, 4), MIN_RANDOM_BRANCHING, "min")
         )
     if stall_rate > MAX_RANDOM_STALL:
         reasons.append(
             f"{stall_rate:.0%} of random games {STALLED}: the pieces can't force a result"
         )
-    if decided == 0 and played >= 30:
+        checks.append(check_row("stall_rate", round(stall_rate, 4), MAX_RANDOM_STALL, "max"))
+    if decided == 0 and played >= NO_WINNER_GAMES:
         # Distinct from the stall check above, and it took a test to notice: a game can
         # reach a definite ending every time -- stalemate, repetition -- and still have
         # no reachable win. Random play is bad at winning, but across dozens of games
@@ -215,12 +268,14 @@ def smoke_test(
             f"none of {played} random games had a winner; from this start, the way to win "
             "may be out of reach"
         )
-    if forced_rate > 0.5:
+        checks.append(check_row("decided", 0, 1, "min"))
+    if forced_rate > MAX_FORCED_RATE:
         reasons.append(
             f"{forced_rate:.0%} of games end within {FORCED_RESULT_PLIES} turns even when "
             "both sides move at random: the game is decided before it begins"
         )
-    if decided >= 20:
+        checks.append(check_row("forced_rate", round(forced_rate, 4), MAX_FORCED_RATE, "max"))
+    if decided >= SKEW_DECIDED_GAMES:
         # Under random play the two seats should be close to symmetric. A wide gap
         # means the first player's advantage is structural rather than strategic --
         # which no amount of skilful play will fix.
@@ -229,15 +284,17 @@ def smoke_test(
         # rejected the dull control off a single decisive result out of sixty, where
         # the skew is 100% by construction and means nothing at all.
         skew = abs(outcomes["win_first"] - outcomes["win_second"]) / decided
-        if skew > 0.85:
+        if skew > MAX_RANDOM_SKEW:
             reasons.append(
                 f"one side wins {skew:.0%} more often than the other even when both move "
                 "at random: the starting position itself is lopsided"
             )
+            checks.append(check_row("seat_skew", round(skew, 4), MAX_RANDOM_SKEW, "max"))
 
     return SmokeResult(
         passed=not reasons,
         reasons=reasons,
+        checks=checks,
         stats={
             "games": float(played),
             "opening_moves": float(opening_moves),

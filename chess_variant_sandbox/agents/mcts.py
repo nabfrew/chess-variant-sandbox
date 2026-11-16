@@ -14,7 +14,13 @@ import math
 import random
 from typing import Any
 
-from chess_variant_sandbox.agents.base import NativeSpec, SearchStats, register, register_native
+from chess_variant_sandbox.agents.base import (
+    NativeSpec,
+    SearchStats,
+    refuse_unknown_options,
+    register,
+    register_native,
+)
 from chess_variant_sandbox.engine import Engine, GameState, Outcome
 
 EXPLORATION = 1.4
@@ -156,8 +162,14 @@ class MCTSAgent:
             node = parent
 
 
+# Every option an MCTS player reads; any other is refused (`refuse_unknown_options`), so a
+# minimax option spelled on it (``null=``, ``threats=``) is never a player it silently ignores.
+MCTS_OPTIONS = ("nodes", "rollout_depth", "exploration")
+
+
 @register("mcts")
 def _build_mcts(engine: Engine, options: dict[str, Any]) -> MCTSAgent:
+    refuse_unknown_options(options, MCTS_OPTIONS, "mcts")
     return MCTSAgent(
         engine,
         nodes=int(options.get("nodes", 2_000)),
@@ -168,6 +180,7 @@ def _build_mcts(engine: Engine, options: dict[str, Any]) -> MCTSAgent:
 
 @register_native("mcts")
 def _native_mcts(options: dict[str, Any], ruleset_hash: str = "") -> NativeSpec:
+    refuse_unknown_options(options, MCTS_OPTIONS, "mcts")
     return (
         "mcts",
         int(options.get("nodes", 2_000)),

@@ -26,6 +26,7 @@ from chess_variant_sandbox import corpus
 from chess_variant_sandbox.loop.archive import Archive
 from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.plain import plain_problems
+from chess_variant_sandbox.web import sitescore
 from chess_variant_sandbox.web.designing import DESIGNED_RUN, DesignError, settled
 
 NOMINATIONS = "nominations.jsonl"
@@ -175,7 +176,9 @@ def measured(game: Any) -> dict[str, Any]:
         return {"state": "current", "index": score.get("index"),
                 "viable": score.get("viable"), "measured": score.get("measured") is not False,
                 "weights": score.get("weights_version"),
-                "seeds": list(score.get("seeds") or [])}
+                "seeds": list(score.get("seeds") or []),
+                # R-S17a: a refusal's tests, run count and kind, never *ruled out* bare.
+                "refusal": sitescore.refusal(score)}
     staleness = game.staleness
     if staleness is not None:
         return {"state": "stale", "needs": staleness.get("needs") or "replay",

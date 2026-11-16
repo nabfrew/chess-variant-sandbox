@@ -21,8 +21,8 @@ use crate::game::{Game, Outcome, Reason, Snapshot};
 use crate::net::{Net, NetEvaluator};
 use crate::rng::PyRandom;
 use crate::tables::{
-    move_foreign, move_kind, move_from, move_promotion, move_to, StrikePosition, Tables, Win, WILD,
-    DUCK_STEP, MOVE_CASTLE, MOVE_DROP,
+    encode_move, enters_play, move_foreign, move_kind, move_from, move_promotion, move_to, StrikePosition,
+    Tables, Win, WILD, DUCK_STEP, MOVE_CASTLE, MOVE_DROP, MOVE_HIRE,
     MOVE_DISPLACE, MOVE_DUCK, MOVE_EN_PASSANT, MOVE_FOLD, MOVE_KEEP, MOVE_NORMAL, MOVE_PASS, MOVE_PORTAL, MOVE_PROMOTION, MOVE_PUSH, MOVE_ROTATE,
     MOVE_SWEEP, SIGHT_PATH_AURA, SIGHT_PATH_SQUARE,
 };
@@ -253,6 +253,24 @@ pub const STRIKE_GAIN: u32 = 262144;
 /// they start. Material, its normalisation, capture ordering and every weight in mean pieces read
 /// it. Unread without portals and for a heuristic or searched-values player (a weight vector).
 pub const PORTAL_REACH: u32 = 524288;
+/// R-P2b (`docs/reference/selective-search-duel.md` §3.1): **the null move, verified.** At a main
+/// search node of depth 3 or more, out of check, with at least 8 legal moves and a standing
+/// evaluation at least `beta`, the side to move passes (the engine's own `MOVE_PASS`) and the child
+/// is searched at `depth - 3` with the zero window below `beta`; if that holds `beta`, the node's
+/// own move loop is run at `depth - 2` on the same window with null moves off below it, and only if
+/// that holds too does the node return `beta`. Off wherever `null_for` says so. Off by default: an
+/// arm for R-P2c's duel.
+pub const NULL_MOVE: u32 = 1048576;
+/// R-P2b (§3.2): **late moves one ply shallower.** In a main search node of depth 3 or more, a
+/// quiet move from the fourth in the ordered list on (not a killer, not an entry or a hire, the
+/// side changing after it, neither side in check about it) is searched at `depth - 2`, and again
+/// at `depth - 1` only if it answers above `alpha`. Off wherever `lmr_for` says so; off by default.
+pub const LMR: u32 = 2097152;
+/// R-P2b (§3.3): **zero windows after the first move.** At a main search node of depth 2 or more,
+/// and at the root from the second iteration, every move after the first is asked first on the
+/// zero window above `alpha`, and searched again on the node's window only if it lands strictly
+/// between `alpha` and `beta`. Off wherever `pvs_for` says so; off by default.
+pub const PVS: u32 = 4194304;
 /// Every bit a spec may carry. A bit outside it is a player nobody has defined.
 pub const REPAIRS: u32 = KEEP_TABLE
     | THREATS
@@ -273,7 +291,10 @@ pub const REPAIRS: u32 = KEEP_TABLE
     | RACERS_FIXED
     | AFFORD
     | STRIKE_GAIN
-    | PORTAL_REACH;
+    | PORTAL_REACH
+    | NULL_MOVE
+    | LMR
+    | PVS;
 /// The repairs a minimax player that spells none of them searches with: the ones that won
 /// their pre-registered duel (`general-player.md` §4.3 E9, §6.7). `THREATS` won (0.542
 /// over twelve cells); `KEEP_TABLE` and `LOUD_DROPS` lost and stay off. WK2's pair
@@ -622,6 +643,19 @@ pub struct Player {
     /// (`quiet_cannot_win`). Where it holds, the `threats` chase need not play a quiet move
     /// below the horizon, and at the horizon asks only for check.
     quiet_never_wins: bool,
+    /// R-P2b (`NULL_MOVE`): the bit, a minimax player, and `null_for`; false, the player is
+    /// today's node for node.
+    null_on: bool,
+    /// R-P2b (`LMR`, `PVS`): the bit and `lmr_for` / `pvs_for`.
+    lmr_on: bool,
+    pvs_on: bool,
+    /// `lmr_on || pvs_on`: the one test the main move loop asks before a late move.
+    late_arms: bool,
+    /// R-P2b: the ply of the null move's child while it is searched (`usize::MAX`: none), so
+    /// that child plays no null move of its own.
+    null_child_ply: usize,
+    /// R-P2b: how many verification searches are open; null moves are off below every one.
+    verifying: u32,
 }
 
 /// C3 (Q1112): whether `terminal_prefix`, asked after a quiet move (one `is_loud` says
@@ -710,6 +744,42 @@ fn afford_for(t: &Tables, spec: &AgentSpec, eval: &Objective) -> bool {
         && t.purse.as_deref().is_some_and(|purse| !purse.upkeep.is_empty())
 }
 
+/// R-P2b (`selective-search-duel.md` §3.1): whether the null move may be read in this game at
+/// all. False where passing is not giving a turn away, read off compiled flags only: rounds and
+/// spy games; forced capture; an extinction rule that wins or a stalemate that wins (losing is
+/// winning); the duck; a long turn or parts; wild pieces; portals; a push; a placement phase; rest;
+/// income without the pass. The first eight are `spec/refusals.py::PASS_REFUSALS`, held to it by
+/// `tests/test_selective_search.py`. `agents/minimax.py::null_for` is the oracle.
+pub fn null_for(t: &Tables) -> bool {
+    let losing_wins = t.extinction.as_ref().is_some_and(|rule| rule.any_piece && rule.result > 0)
+        || t.stalemate == crate::tables::Stalemate::Win;
+    !(t.simultaneous.is_some()
+        || t.spy.is_some()
+        || t.must_capture
+        || losing_wins
+        || t.duck.is_some()
+        || t.turn.is_some()
+        || t.parts.is_some()
+        || t.has_npcs
+        || t.portals.is_some()
+        || t.push.is_some()
+        || t.drops.as_ref().is_some_and(|drops| drops.placement)
+        || t.rest.is_some()
+        || (t.income.is_some() && !t.passes))
+}
+
+/// R-P2b (§3.2): whether late-move reductions may be read in this game: not in rounds or a spy
+/// game, under forced capture or beside wild pieces. `agents/minimax.py::lmr_for`.
+pub fn lmr_for(t: &Tables) -> bool {
+    !(t.simultaneous.is_some() || t.spy.is_some() || t.must_capture || t.has_npcs)
+}
+
+/// R-P2b (§3.3): whether zero windows may be read in this game: not in rounds or a spy game.
+/// `agents/minimax.py::pvs_for`.
+pub fn pvs_for(t: &Tables) -> bool {
+    !(t.simultaneous.is_some() || t.spy.is_some())
+}
+
 /// How many plies from the root the killer table has room for. `MAX_DEPTH` is 64 and a
 /// quiescence search runs past it, so this is the sum with a little room.
 const MAX_PLY: usize = 96;
@@ -794,7 +864,17 @@ impl Player {
         } else {
             Vec::new()
         };
+        let minimax = spec.kind == Kind::Minimax;
+        let null_on = minimax && spec.repairs & NULL_MOVE != 0 && null_for(t);
+        let lmr_on = minimax && spec.repairs & LMR != 0 && lmr_for(t);
+        let pvs_on = minimax && spec.repairs & PVS != 0 && pvs_for(t);
         Self {
+            null_on,
+            lmr_on,
+            pvs_on,
+            late_arms: lmr_on || pvs_on,
+            null_child_ply: usize::MAX,
+            verifying: 0,
             round_win,
             mopup,
             contempt,
@@ -1009,6 +1089,8 @@ impl Player {
     /// or cleared by the repairs), the killers and the history.
     fn begin_search(&mut self) {
         self.nodes = 0;
+        self.null_child_ply = usize::MAX;
+        self.verifying = 0;
         self.generation = self.generation.wrapping_add(1);
         if self.spec.repairs & KEEP_TABLE != 0 {
             // `retain` visits entries in bucket order, but the predicate reads only the
@@ -1058,27 +1140,33 @@ impl Player {
         }
 
         let mut exhausted = false;
-        for m in moves {
-            // See `negamax` below: the negation and the window flip are only right when
-            // the side actually changed, which a turn longer than one move makes
-            // conditional.
-            let mover = game.side;
-            step::<SPY>(game, *m);
-            let flipped = game.side != mover;
-            let child = if flipped {
-                self.negamax::<SPY>(game, &mut arena, depth - 1, 1, f64::NEG_INFINITY, -alpha)
+        for (index, m) in moves.iter().enumerate() {
+            // R-P2b (`PVS`): from the second iteration, every move after the first is asked
+            // on the zero window first.
+            let child = if !SPY && self.pvs_on && depth >= 2 && index > 0 {
+                self.root_zero_window::<SPY>(game, &mut arena, *m, depth, alpha)
             } else {
-                self.negamax::<SPY>(game, &mut arena, depth - 1, 1, alpha, f64::INFINITY)
+                // See `negamax` below: the negation and the window flip are only right when
+                // the side actually changed, which a turn longer than one move makes
+                // conditional.
+                let mover = game.side;
+                step::<SPY>(game, *m);
+                let flipped = game.side != mover;
+                let child = if flipped {
+                    self.negamax::<SPY>(game, &mut arena, depth - 1, 1, f64::NEG_INFINITY, -alpha)
+                } else {
+                    self.negamax::<SPY>(game, &mut arena, depth - 1, 1, alpha, f64::INFINITY)
+                };
+                unstep::<SPY>(game);
+                child.map(|value| if flipped { -value } else { value })
             };
-            unstep::<SPY>(game);
             match child {
                 Err(Exhausted) => {
                     exhausted = true;
                     break;
                 }
-                Ok(value) => {
+                Ok(score) => {
                     scored = true;
-                    let score = if flipped { -value } else { value };
                     if score > alpha {
                         alpha = score;
                         best_move = *m;
@@ -1182,6 +1270,21 @@ impl Player {
             return self.quiesce_moves::<SPY>(game, arena, base, QUIESCENCE_DEPTH, ply, alpha, beta);
         }
 
+        // R-P2b (`NULL_MOVE`): after the table and the list, before ordering.
+        if !SPY && self.null_on && depth >= 3 {
+            match self.null_move::<SPY>(game, arena, base, end, depth, ply, beta, hint) {
+                Err(Exhausted) => {
+                    arena.truncate(base);
+                    return Err(Exhausted);
+                }
+                Ok(true) => {
+                    arena.truncate(base);
+                    return Ok(beta);
+                }
+                Ok(false) => {}
+            }
+        }
+
         // WK2: a duck half under either ordering repair (`DUCK_FRONT`, `DUCK_REFUTE`).
         let duck_half = self.spec.repairs & (DUCK_FRONT | DUCK_REFUTE) != 0
             && move_kind(arena[base]) == MOVE_DUCK;
@@ -1215,20 +1318,31 @@ impl Player {
             // a ramp means the answer differs between one ply and the next.
             let mover = game.side;
             let quiet = !self.is_loud(game, m);
-            step::<SPY>(game, m);
-            let flipped = game.side != mover;
-            let child = if flipped {
-                self.negamax::<SPY>(game, arena, depth - 1, ply + 1, -beta, -alpha)
-            } else {
-                self.negamax::<SPY>(game, arena, depth - 1, ply + 1, alpha, beta)
-            };
-            unstep::<SPY>(game);
-            let score = match child {
-                Err(Exhausted) => {
-                    arena.truncate(base);
-                    return Err(Exhausted);
+            let score = if !SPY && self.late_arms && index > base && depth >= 2 {
+                // R-P2b (`LMR`, `PVS`): a move after the first, out of line.
+                match self.late_move::<SPY>(game, arena, m, quiet, index - base, depth, ply, alpha, beta) {
+                    Err(Exhausted) => {
+                        arena.truncate(base);
+                        return Err(Exhausted);
+                    }
+                    Ok(score) => score,
                 }
-                Ok(value) => if flipped { -value } else { value },
+            } else {
+                step::<SPY>(game, m);
+                let flipped = game.side != mover;
+                let child = if flipped {
+                    self.negamax::<SPY>(game, arena, depth - 1, ply + 1, -beta, -alpha)
+                } else {
+                    self.negamax::<SPY>(game, arena, depth - 1, ply + 1, alpha, beta)
+                };
+                unstep::<SPY>(game);
+                match child {
+                    Err(Exhausted) => {
+                        arena.truncate(base);
+                        return Err(Exhausted);
+                    }
+                    Ok(value) => if flipped { -value } else { value },
+                }
             };
             if score > best {
                 best = score;
@@ -1270,6 +1384,244 @@ impl Player {
         };
         self.table.insert(key, (depth, best, bound, self.generation, kept));
         Ok(best)
+    }
+
+    /// R-P2b (`NULL_MOVE`, `selective-search-duel.md` §3.1): whether this node is cut by a
+    /// verified null move. `arena[base..end]` is the node's legal list, not yet ordered; it is
+    /// left as it was. Every position visited is a `negamax` node and costs one; the evaluation
+    /// and the check question are uncounted, as everywhere. Cold and out of line, so the default
+    /// player's `negamax` carries one untaken branch.
+    #[cold]
+    #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
+    fn null_move<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        arena: &mut Vec<u32>,
+        base: usize,
+        end: usize,
+        depth: i32,
+        ply: usize,
+        beta: f64,
+        hint: u32,
+    ) -> Result<bool, Exhausted> {
+        // Conditions 2 to 6, in the registration's order (1, the game, is `null_on`).
+        if !beta.is_finite() || self.verifying != 0 || self.null_child_ply == ply {
+            return Ok(false);
+        }
+        let side = game.side;
+        if game.t.needs_check_filter() && game.in_check(side) {
+            return Ok(false);
+        }
+        let count = end - base;
+        if count < 8 || self.eval.evaluate(game, side, count) < beta {
+            return Ok(false);
+        }
+        let floor = beta.next_down();
+        let saved = self.null_child_ply;
+        self.null_child_ply = ply + 1;
+        step::<SPY>(game, encode_move(0, 0, MOVE_PASS, 0));
+        let flipped = game.side != side;
+        let child = if flipped {
+            self.negamax::<SPY>(game, arena, depth - 3, ply + 1, -beta, -floor)
+        } else {
+            self.negamax::<SPY>(game, arena, depth - 3, ply + 1, floor, beta)
+        };
+        unstep::<SPY>(game);
+        self.null_child_ply = saved;
+        let value = child?;
+        let score = if flipped { -value } else { value };
+        if score < beta {
+            return Ok(false);
+        }
+        // Verification: this node's own move loop, two plies shallower, on the same window,
+        // with null moves off below it. It works on a copy of the list, so the ordinary loop
+        // that may follow orders the list as it would have.
+        self.verifying += 1;
+        let start = arena.len();
+        arena.extend_from_within(base..end);
+        let stop = arena.len();
+        let verified = self.move_loop::<SPY>(game, arena, start, stop, depth - 2, ply, floor, beta, hint);
+        arena.truncate(start);
+        self.verifying -= 1;
+        Ok(verified? >= beta)
+    }
+
+    /// R-P2b: the null move's verification, the main move loop over `arena[base..end]` at
+    /// `depth` on `(alpha, beta)`: ordered as `negamax` orders (the table's move first under
+    /// `TT_MOVE`), late moves to `late_move`, killers and history raised on a cutoff. Returns the
+    /// best score; writes no table entry (a null cut writes none for the node). Never on a duck
+    /// half, since the null move is off beside the duck.
+    #[allow(clippy::too_many_arguments)]
+    fn move_loop<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        arena: &mut Vec<u32>,
+        base: usize,
+        end: usize,
+        depth: i32,
+        ply: usize,
+        alpha: f64,
+        beta: f64,
+        hint: u32,
+    ) -> Result<f64, Exhausted> {
+        self.order(game, arena, base, end, ply);
+        if self.spec.repairs & TT_MOVE != 0 && hint != NO_MOVE {
+            if let Some(at) = arena[base..end].iter().position(|&m| m == hint) {
+                arena[base..=base + at].rotate_right(1);
+            }
+        }
+        let mut best = f64::NEG_INFINITY;
+        let mut alpha = alpha;
+        for index in base..end {
+            let m = arena[index];
+            let mover = game.side;
+            let quiet = !self.is_loud(game, m);
+            let score = if self.late_arms && index > base && depth >= 2 {
+                self.late_move::<SPY>(game, arena, m, quiet, index - base, depth, ply, alpha, beta)?
+            } else {
+                step::<SPY>(game, m);
+                let flipped = game.side != mover;
+                let child = if flipped {
+                    self.negamax::<SPY>(game, arena, depth - 1, ply + 1, -beta, -alpha)
+                } else {
+                    self.negamax::<SPY>(game, arena, depth - 1, ply + 1, alpha, beta)
+                };
+                unstep::<SPY>(game);
+                let value = child?;
+                if flipped { -value } else { value }
+            };
+            if score > best {
+                best = score;
+            }
+            if best > alpha {
+                alpha = best;
+            }
+            if alpha >= beta {
+                self.remember(m, quiet, depth, ply, mover);
+                self.refuters[ply.min(MAX_PLY - 1)] = m;
+                break;
+            }
+        }
+        Ok(best)
+    }
+
+    /// R-P2b (`LMR`, `PVS`, `selective-search-duel.md` §3.2 and §3.3): a move after the first
+    /// at a main search node of `depth` on `(alpha, beta)`, its score from the node's side.
+    /// `nth` is its place in the ordered list from 0.
+    ///
+    /// Under `PVS` (depth 2 or more) it is asked on the zero window above `alpha`, and searched
+    /// again on `(alpha, beta)` only if it lands strictly between them. Under `LMR`, where §3.2's
+    /// six conditions hold, it is first searched at `depth - 2`, and at `depth - 1` only if that
+    /// answers above `alpha`. With both, the reduced search and the full-depth one each take the
+    /// zero window, and the full window follows only where the full-depth zero window lands
+    /// between `alpha` and `beta`. Where neither applies it is the ordinary search, exactly.
+    #[cold]
+    #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
+    fn late_move<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        arena: &mut Vec<u32>,
+        m: u32,
+        quiet: bool,
+        nth: usize,
+        depth: i32,
+        ply: usize,
+        alpha: f64,
+        beta: f64,
+    ) -> Result<f64, Exhausted> {
+        let mover = game.side;
+        let kind = move_kind(m);
+        let checks = game.t.needs_check_filter();
+        // §3.2 conditions 1 to 4, the duck half of 5 (a duck half lists duck moves alone) and
+        // the mover's half of 6, all before the move.
+        let reducible = self.lmr_on
+            && depth >= 3
+            && nth >= 3
+            && quiet
+            && !self.killers[ply.min(MAX_PLY - 1)].contains(&m)
+            && !enters_play(kind)
+            && kind != MOVE_HIRE
+            && kind != MOVE_DUCK
+            && !(checks && game.in_check(mover));
+        let zero = self.pvs_on && depth >= 2;
+        step::<SPY>(game, m);
+        let flipped = game.side != mover;
+        // The rest of 5 and 6: the side changed, and the opponent is not in check after it.
+        let reduce = reducible && flipped && !(checks && game.in_check(game.side));
+        let searched = self.late_searches::<SPY>(game, arena, depth, ply, alpha, beta, flipped, zero, reduce);
+        unstep::<SPY>(game);
+        searched
+    }
+
+    /// `late_move`'s searches, with the move made.
+    #[allow(clippy::too_many_arguments)]
+    fn late_searches<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        arena: &mut Vec<u32>,
+        depth: i32,
+        ply: usize,
+        alpha: f64,
+        beta: f64,
+        flipped: bool,
+        zero: bool,
+        reduce: bool,
+    ) -> Result<f64, Exhausted> {
+        let high = if zero { alpha.next_up() } else { beta };
+        if reduce {
+            let reduced = self.child_score::<SPY>(game, arena, depth - 2, ply, alpha, high, flipped)?;
+            if reduced <= alpha {
+                return Ok(reduced);
+            }
+        }
+        let score = self.child_score::<SPY>(game, arena, depth - 1, ply, alpha, high, flipped)?;
+        if zero && score > alpha && score < beta {
+            return self.child_score::<SPY>(game, arena, depth - 1, ply, alpha, beta, flipped);
+        }
+        Ok(score)
+    }
+
+    /// The child's `negamax` on the window `(low, high)` of the node's side, its value returned
+    /// from the node's side: negated and the window flipped only where the side changed.
+    #[allow(clippy::too_many_arguments)]
+    fn child_score<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        arena: &mut Vec<u32>,
+        depth: i32,
+        ply: usize,
+        low: f64,
+        high: f64,
+        flipped: bool,
+    ) -> Result<f64, Exhausted> {
+        if flipped {
+            Ok(-self.negamax::<SPY>(game, arena, depth, ply + 1, -high, -low)?)
+        } else {
+            self.negamax::<SPY>(game, arena, depth, ply + 1, low, high)
+        }
+    }
+
+    /// R-P2b (`PVS`): a root move after the first, from the second iteration: the zero window
+    /// above `alpha`, then `(alpha, +inf)` if it answers above `alpha`. The root's best score
+    /// stays exact. Its score from the root's side.
+    #[cold]
+    #[inline(never)]
+    fn root_zero_window<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        arena: &mut Vec<u32>,
+        m: u32,
+        depth: i32,
+        alpha: f64,
+    ) -> Result<f64, Exhausted> {
+        let mover = game.side;
+        step::<SPY>(game, m);
+        let flipped = game.side != mover;
+        let searched = self.late_searches::<SPY>(game, arena, depth, 0, alpha, f64::INFINITY, flipped, true, false);
+        unstep::<SPY>(game);
+        searched
     }
 
     /// Search on past the horizon until nothing is hanging.

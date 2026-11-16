@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chess_variant_sandbox.agents.base import parse_agent
+from chess_variant_sandbox.loop.gates import check_row
 from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.spec.schema import is_spy_game
 from chess_variant_sandbox.tournament import TournamentConfig, run_tournament
@@ -83,6 +84,15 @@ MIN_DECISIVE = 1
 # only catches a ruleset that is over before it starts in nearly every game.
 MAX_QUICK_KILL = 0.75
 QUICK_KILL_PLIES = 12
+
+LINES: dict[str, float] = {
+    "decisive": MIN_DECISIVE,
+    "quick_kill_rate": MAX_QUICK_KILL,
+    "quick_kill_plies": QUICK_KILL_PLIES,
+    "games_per_pairing": SCREEN_GAMES,
+}
+"""Every line the screen draws, stored with a refusal so the loop can tell when one has moved
+(R-S17c), as `gates.LINES` is for the cheap check."""
 
 
 # Schema 26 (Q932): `minimax:` is refused on a game played in rounds, and `matrix:` on one
@@ -160,6 +170,10 @@ class ScreenResult:
     passed: bool
     reasons: list[str] = field(default_factory=list)
     stats: dict[str, float] = field(default_factory=dict)
+    # One row per refusal (`gates.check_row`), outside `as_dict` as `SmokeResult.checks` is.
+    checks: list[dict[str, Any]] = field(default_factory=list)
+    # The players who played it, after `roster_for`; empty where none could.
+    roster: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {"passed": self.passed, "reasons": self.reasons, "stats": self.stats}
@@ -183,7 +197,11 @@ def screen(
     try:
         players = roster_for(spec, agents)
     except ValueError as error:
-        return ScreenResult(passed=False, reasons=[f"no computer player here can test it: {error}"])
+        return ScreenResult(
+            passed=False,
+            reasons=[f"no computer player here can test it: {error}"],
+            checks=[check_row("roster")],
+        )
     result = run_tournament(
         spec,
         TournamentConfig(
@@ -195,7 +213,10 @@ def screen(
     )
     records = result.records
     if not records:
-        return ScreenResult(passed=False, reasons=["no games were played"])
+        return ScreenResult(
+            passed=False, reasons=["no games were played"], checks=[check_row("games")],
+            roster=players,
+        )
 
     decisive = sum(1 for record in records if record.winner is not None)
     quick = sum(
@@ -215,14 +236,21 @@ def screen(
     # (`docs/reference/plain-words.md` §2): a *computer player*, a *turn* for each player's
     # move, and no budget.
     reasons: list[str] = []
+    checks: list[dict[str, Any]] = []
     if decisive < MIN_DECISIVE:
         reasons.append(
             f"no computer player won any of {len(records)} games: either nobody can win "
             "this game, or winning it takes a stronger player than these two small ones"
         )
+        checks.append(check_row("decisive", decisive, MIN_DECISIVE, "min"))
     if stats["quick_kill_rate"] > MAX_QUICK_KILL:
         reasons.append(
             f"{stats['quick_kill_rate'] * 100:.0f}% of games were over within "
             f"{QUICK_KILL_PLIES} turns, which is a trap in the opening rather than a game"
         )
-    return ScreenResult(passed=not reasons, reasons=reasons, stats=stats)
+        checks.append(
+            check_row("quick_kill_rate", stats["quick_kill_rate"], MAX_QUICK_KILL, "max")
+        )
+    return ScreenResult(
+        passed=not reasons, reasons=reasons, stats=stats, checks=checks, roster=players
+    )

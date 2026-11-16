@@ -95,6 +95,7 @@ from chess_variant_sandbox.viz.wrapped import (
     portal_transit,
     walls_payload,
 )
+from chess_variant_sandbox.web import sitescore
 from chess_variant_sandbox.web.card_rules import preview as _preview
 
 # Where a game built in the browser goes. One directory, shared by everything designed
@@ -454,6 +455,8 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
         "hash": spec_hash(spec),
         "playable": playable,
         "playableReasons": reasons,
+        # R-S17a: a fact of the rules, or how random play went (`sitescore.smoke_refusal`).
+        "playableRefusal": None if playable else sitescore.smoke_refusal(reasons),
         "smokeSeconds": smoke_seconds,
         "openingMoves": len(moves),
         # The count as the game is played: in rounds each player chooses, together (F7).

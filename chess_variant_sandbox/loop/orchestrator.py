@@ -30,12 +30,15 @@ from chess_variant_sandbox.llm.client import JUDGE_MODEL, PROPOSAL_MODEL, Claude
 from chess_variant_sandbox.llm.compare import compare_rulesets
 from chess_variant_sandbox.llm.feedback import describe, describe_failures
 from chess_variant_sandbox.llm.propose import propose_ruleset
+from chess_variant_sandbox.loop import gates as gates_module
+from chess_variant_sandbox.loop import refusals
+from chess_variant_sandbox.loop import screen as screen_module
 from chess_variant_sandbox.loop.archive import Archive, Entry
 from chess_variant_sandbox.loop.gates import smoke_test
 from chess_variant_sandbox.loop.grid import describe_cell, descriptor, label
 from chess_variant_sandbox.loop.operators import mutate
 from chess_variant_sandbox.loop.preference import PreferenceLog
-from chess_variant_sandbox.loop.screen import roster_for, screen
+from chess_variant_sandbox.loop.screen import SCREEN_AGENTS, roster_for, screen
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, load_weights, score_ruleset
 from chess_variant_sandbox.metrics.bootstrap import clears
 from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
@@ -43,6 +46,9 @@ from chess_variant_sandbox.tournament import TournamentConfig, run_tournament
 from chess_variant_sandbox.tournament.analysis import analyse_corpus
 
 DEFAULT_AGENTS = ("random", "greedy", "minimax:nodes=400", "minimax:nodes=1600")
+
+# Who plays the cheap check: both sides at random, whatever the run's roster.
+SMOKE_ROSTER = ("random",)
 
 # Design language for the weakest family, so a revision has a direction. These say what
 # to work on, never how it is scored -- see llm/feedback.py for where that line sits.
@@ -324,7 +330,7 @@ def _seed_archive(
     for path in config.seeds:
         spec = load_spec(path)
         digest = spec_hash(spec)
-        if digest in archive.seen_hashes():
+        if digest in archive.settled_hashes(_retry_rule(archive, config, weights.version)):
             continue
         report(f"\n--- starting point: {spec.get('name', path)} [{digest}] ---")
         evaluate(
@@ -386,7 +392,7 @@ def _run_generation(
 
     candidates = _produce(
         generation, config, archive, rng, proposer, parent_entry, parent_spec,
-        feedback, goal, report,
+        feedback, goal, report, version=weights.version,
     )
     if not candidates:
         report("  nothing to evaluate this generation")
@@ -406,7 +412,9 @@ def _run_generation(
             survivors.append((gated, parent_hash, origin))
         else:
             archive.record(
-                _rejection(spec, generation, parent_hash, gated, config, origin),
+                _rejection(
+                    spec, generation, parent_hash, gated, config, origin, weights.version
+                ),
                 spec=spec,
             )
     gate_seconds = time.perf_counter() - gate_started
@@ -450,6 +458,7 @@ def _produce(
     feedback: str,
     goal: str,
     report: Callable[[str], None],
+    version: str | None = None,
 ) -> list[tuple[dict[str, Any], str | None, dict[str, Any]]]:
     """This generation's children: at most one model call, and free siblings.
 
@@ -467,7 +476,10 @@ def _produce(
     smoke test and a screen to discover what a hash lookup already knew.
     """
     produced: list[tuple[dict[str, Any], str | None, dict[str, Any]]] = []
-    seen = set(archive.seen_hashes())
+    # Every hash met before, less a refusal read off the players whose players, lines or
+    # weights have moved since (R-S17c): that one is measured again rather than skipped.
+    seen = archive.settled_hashes(_retry_rule(archive, config, version or config.weights))
+    met = archive.seen_hashes()
 
     def keep(spec: dict[str, Any], parent: str | None, origin: dict[str, Any]) -> bool:
         digest = spec_hash(spec)
@@ -485,6 +497,11 @@ def _produce(
                 spec=spec,
             )
             return False
+        if digest in met:
+            report(
+                f"  {spec['name']} [{digest}] was refused as these players played it, on "
+                "another basis than this run's: measuring it again"
+            )
         seen.add(digest)
         produced.append((spec, parent, origin))
         return True
@@ -633,7 +650,8 @@ def evaluate(
     gated = run_gates(spec, config, report)
     if not gated.passed:
         return archive.record(
-            _rejection(spec, generation, parent, gated, config, origin), spec=spec
+            _rejection(spec, generation, parent, gated, config, origin, weights.version),
+            spec=spec,
         )
     return measure(
         spec=spec,
@@ -727,6 +745,7 @@ def _rejection(
     gated: Gated,
     config: LoopConfig,
     origin: dict[str, Any] | None,
+    version: str = "",
 ) -> Entry:
     """One archive entry for a candidate the cheap rungs threw out.
 
@@ -743,6 +762,19 @@ def _rejection(
     }
     if gated.screen is not None:
         detail["screen"] = gated.screen.as_dict()
+    # What refused it, on what basis (R-S17c): the rung that said no, its checks with their
+    # margins, its players and its lines, so a later run can tell whether the no still holds.
+    if not gated.smoke.passed:
+        refusal = refusals.cheap_refusal(
+            refusals.SMOKE, gated.smoke.reasons, gated.smoke.checks, SMOKE_ROSTER,
+            gates_module.LINES, version or config.weights, config.seed,
+        )
+    else:
+        assert gated.screen is not None
+        refusal = refusals.cheap_refusal(
+            refusals.SCREEN, gated.screen.reasons, gated.screen.checks, gated.screen.roster,
+            screen_module.LINES, version or config.weights, config.seed,
+        )
     return Entry(
         hash=spec_hash(spec),
         name=spec["name"],
@@ -751,6 +783,7 @@ def _rejection(
         status="rejected",
         notes=f"Rejected before {rung}: " + "; ".join(gated.reasons),
         detail=detail,
+        refusal=refusal,
     )
 
 
@@ -784,10 +817,11 @@ def measure(
     started = time.perf_counter()
     # A game in rounds is played by the round players at sixteen times the budgets (Q932, Q944a,
     # `screen.round_roster`); the screen has already refused a roster that has none.
+    players = roster_for(spec, config.agents)
     tournament = run_tournament(
         spec,
         TournamentConfig(
-            agents=roster_for(spec, config.agents),
+            agents=players,
             games_per_pairing=config.games_per_pairing,
             seed=config.seed,
             workers=config.workers,
@@ -862,6 +896,13 @@ def measure(
             weights_version=result.weights_version,
             cell=label(descriptor(spec)),
             notes=describe(result, spec),
+            # A non-viable child's refusal and the basis it was read on (R-S17c): the full
+            # roster's players and the weights version it was scored under.
+            refusal=(
+                None if result.viable else refusals.full_refusal(
+                    result.violations, players, result.weights_version, config.seed
+                )
+            ),
             detail={
                 "families": result.families,
                 "scores": result.scores,
@@ -997,6 +1038,51 @@ def _require_measurable_ladder(agents: tuple[str, ...]) -> None:
             "'minimax:nodes=400' and 'minimax:nodes=1600'. "
             f"Got: {', '.join(agents)}"
         )
+
+
+def _basis(
+    rung: str, spec: dict[str, Any], config: LoopConfig, version: str
+) -> dict[str, Any]:
+    """What a refusal at ``rung`` would be read on in this run, keyed as the refusal stores
+    it (`refusals.cheap_refusal`, `refusals.full_refusal`): the rung's players and lines, and
+    at the full roster the weights version. The cheap rungs read no weights."""
+    if rung == refusals.SMOKE:
+        return {"roster": list(SMOKE_ROSTER), "lines": dict(gates_module.LINES)}
+    if rung == refusals.SCREEN:
+        try:
+            players = list(roster_for(spec, SCREEN_AGENTS))
+        except ValueError:
+            players = []
+        return {"roster": players, "lines": dict(screen_module.LINES)}
+    try:
+        players = list(roster_for(spec, config.agents))
+    except ValueError:
+        players = []
+    return {"roster": players, "weights_version": version}
+
+
+def _retry_rule(
+    archive: Archive, config: LoopConfig, version: str
+) -> Callable[[Entry], bool]:
+    """Whether a refused entry is measured again in this run rather than skipped (R-S17c).
+
+    Only a refusal read off the players, never one by the rules, and only where this run
+    would read it on another basis: other players at its rung, a line of its rung moved, or,
+    at the full roster, another weights version. The answer reads the archive and the run's
+    configuration and nothing else, so a run stays a pure function of its seed and
+    configuration (and the archive it resumes)."""
+
+    def retry(entry: Entry) -> bool:
+        refusal = entry.refusal
+        if not refusal or refusal.get("kind") != refusals.PLAYERS:
+            return False
+        spec = archive.load_spec(entry.hash)
+        if spec is None:
+            return False
+        basis = _basis(str(refusal.get("rung")), spec, config, version)
+        return refusals.retriable(refusal, basis)
+
+    return retry
 
 
 def _choose_parent(

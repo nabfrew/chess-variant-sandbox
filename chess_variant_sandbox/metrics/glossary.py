@@ -851,8 +851,11 @@ HOW_IT_WORKS: list[dict[str, str]] = [
         "body": "Some conditions disqualify rather than deduct. A game that never "
                 "finishes, or that a thinking player cannot beat a random one at, is "
                 "not a mediocre game -- letting a strong showing elsewhere average that "
-                "away is how a broken ruleset reaches the top of a leaderboard. A gated "
-                "game still carries its number, and the number does not mean anything.",
+                "away is how a broken ruleset reaches the top of a leaderboard. A gate on "
+                "the branching factor is a fact of the rules; every other gate reads games "
+                "this roster played, so its verdict is the roster's and can move with a "
+                "re-measure or a stronger ladder (R-S17a). A gated game still carries its "
+                "number, and the number ranks nothing.",
     },
     {
         "heading": "The outcome gates read the worse half of the ladder",
@@ -928,9 +931,15 @@ SITE_HOW_IT_WORKS: list[dict[str, str]] = [
         "heading": "Some failings rule a game out",
         "body": "A game that never finishes, where a player who thinks is no better than "
                 "one who moves at random, or where one side can always draw by waiting, is "
-                "not a mediocre game, and a strong showing elsewhere must not make up for it. So it is ruled out rather than marked "
-                "down. A game that is ruled out still shows its score, and the score means "
-                "nothing.",
+                "not a mediocre game, and a strong showing elsewhere must not make up for it. "
+                "So it is ruled out rather than marked down, and the page says which test "
+                "it failed and on how many runs. A few of these tests are facts of the "
+                "rules, true whoever plays: no move at the start, or almost no choice of "
+                "move. The rest read how the site's own computer players played the game, "
+                "and they are far from expert, so a game they rule out is ruled out on a "
+                "reading, not a final judgement: it can change when the game is measured "
+                "again or the players get stronger. A game that is ruled out still shows its score, but "
+                "the score does not place it among the others.",
     },
     {
         "heading": "Those tests read the half that does worse",

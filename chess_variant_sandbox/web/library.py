@@ -388,6 +388,9 @@ class Game:
             # False only for *not measured* (plan-teacher §10.16): the vote reached no
             # verdict. `viable` is False beside it, so every reader asks this first.
             "measured": None if score is None else score.get("measured") is not False,
+            # R-S17a: a refusal's tests, run count and kind (`sitescore.refusal`), or
+            # `None`, so a card's *ruled out* never stands without them.
+            "refusal": sitescore.refusal(score),
             "weights": None if score is None else score.get("weights_version"),
             # How many runs the number rests on, and which. A mean of four runs and a
             # single run are not the same claim, so the count travels with every number
@@ -1812,11 +1815,17 @@ TIER_WORDS: dict[str, dict[str, str]] = {
             "note": "clearly higher than chess's score, by more than the uncertainty in both"},
     LEVEL: {"title": "cannot be told from chess",
             "note": "too close to chess's score to say which is higher"},
+    # R-S17a: a reading on these computer players, not a ranking of worth; said in the note
+    # and the sentence, never by changing what the tier is.
     BELOW: {"title": "below chess",
-            "note": "clearly lower than chess's score, by more than the uncertainty in both"},
+            "note": "clearly lower than chess's score, by more than the uncertainty in both,"
+                    " as these computer players play them; a reading that can change with"
+                    " stronger players, not a verdict on the game's worth"},
     REFUSED: {"title": "turned down by the checks",
               "note": "a game the checks refuse is not compared with chess, and is shown"
-                      " as it was measured"},
+                      " as it was measured; each says which test it failed and on how many"
+                      " runs, and most such tests read these computer players, so a"
+                      " re-measure or stronger players can change them"},
     UNPLACED: {"title": "not placed against chess",
                "note": "measured, but without a score that can be compared with chess's"},
     UNREAD_GROUP: {"title": "scores that cannot be read yet",
@@ -1832,6 +1841,9 @@ TIER_SENTENCE = (
     " the game every score is measured against: a game is above or below chess only where"
     " the gap is bigger than the uncertainty in both scores. The scores are not precise"
     " enough to put the games in a finer order, so inside each group they are listed by name."
+    " Every score is a reading of how the site's own computer players, far from expert,"
+    " play a game: it is not a ranking of worth, and it does not settle whether a game"
+    " unlike chess is marked down by the measurement or simply weaker."
 )
 
 
@@ -2450,7 +2462,9 @@ def _playability(spec: dict[str, Any]) -> dict[str, Any]:
         passed, reasons = _smoke_cached(json.dumps(spec, sort_keys=True))
     except Exception:  # noqa: BLE001 - a listing must survive one unloadable spec
         return {"playable": None, "playableReasons": []}
-    return {"playable": passed, "playableReasons": list(reasons)}
+    # R-S17a: whether the refusal is a fact of the rules or how random play went.
+    return {"playable": passed, "playableReasons": list(reasons),
+            "playableRefusal": None if passed else sitescore.smoke_refusal(list(reasons))}
 
 
 @lru_cache(maxsize=256)
@@ -2930,6 +2944,11 @@ STRENGTH_SAID = {
 }
 """The sentence behind each tag, on the game's page and in the card's hover."""
 
+STRENGTH_BY_IDENTITY = (
+    "the computer players of an earlier score, which play this score's games move for move as"
+    " these do")
+"""Whose players a reading that stands by identity (R-S4d) was taken on."""
+
 STRENGTH_TIER_SAID = "this place may change with stronger players"
 """Beside a flagged game's tier against chess (a comparison, so it carries the mark)."""
 
@@ -2958,7 +2977,11 @@ def strength_payload(reading: dict[str, Any], *, unread: bool = False) -> dict[s
     details: list[str] = []
     if reading.get("recorded"):
         day = _day(reading.get("readAt"))
-        whose = ("the computer players that measured this score" if reading.get("belongs")
+        # R-S17a, `strength-check-all-games.md` §18: a reading that stands by identity was
+        # taken on an earlier score's players, which play this score's games move for move.
+        stands_by = reading.get("standsBy")
+        whose = (STRENGTH_BY_IDENTITY if stands_by == "identity"
+                 else "the computer players that measured this score" if reading.get("belongs")
                  else "the computer players that measured an earlier score")
         if word == _measurement.DEPENDS and not reading.get("belongs"):
             said += f" This was found on {day}, on {whose}; it stands until it is checked again."

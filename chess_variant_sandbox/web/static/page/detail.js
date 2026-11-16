@@ -1225,7 +1225,8 @@ function provisionalHtml(game) {
       <div class="u-fs-26 u-fw-600 u-lh-1_1">${
         scored ? fmt(p.index) : '<span class="muted">no score</span>'}</div>
       <div class="muted small">${esc(words.label)}${info('provisional')}${
-        isNotMeasured(p) ? ', and not measured' : p.viable === false ? ', and ruled out' : ''
+        isNotMeasured(p) ? ', and not measured' : p.viable === false
+          ? ', and ruled out as these computer players play it' : ''
       }${runs ? ' &middot; ' + esc(runs) : ''}${
         p.weights ? ' &middot; ' + esc(rulesVersion(p.weights)) + info('weights') : ''}</div>
       <div class="small u-mt-6">${esc(words.why)}</div>
@@ -2416,16 +2417,17 @@ function rungHtml(mine) {
 
 // Said before the game starts rather than discovered three hundred plies into it. The
 // gate's own sentences, verbatim: they name what it measured and what it concluded, and
-// a paraphrase here would be a second opinion nobody asked for.
+// a paraphrase here would be a second opinion nobody asked for. Under them, whether that
+// is a fact of the rules or how random play went (R-S17a, `sitescore.smoke_refusal`).
 function playableWarning(game) {
   if (game.playable !== false) return '';
   return `<div class="error u-mb-10">
     <strong>A quick check says this one cannot be won.</strong>
     <ul class="u-m-6-0-0-18 u-p-0">${
       (game.playableReasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-    <div class="muted small u-mt-6">A few hundred games of random moves
-      found no ending. You can still play it &mdash; this is about the rules, not
-      about you.</div>
+    <div class="muted small u-mt-6">${game.playableRefusal
+      ? esc(game.playableRefusal.note) + ' ' : ''}You can still play it &mdash; this is
+      about the rules, not about you.</div>
   </div>`;
 }
 
@@ -3219,9 +3221,9 @@ function scoreHtml(score, guide, band, trust) {
     ${isNotCurrent(score) ? '' : bandHtml(band)}
     ${trustHtml(trust, score.status)}
 
-    ${(score.violations || []).length ? `<div class="verdict out">
-        <div>It is ruled out${info('gated')}, not marked down.</div>
-        <div class="small u-fw-400 u-mt-5">${
+    ${score.refusal ? refusalHtml(score.refusal, siteSaid(score, 'violations') || score.violations)
+      : (score.violations || []).length ? `<div class="verdict">
+        <div class="small u-fw-400">${
           (siteSaid(score, 'violations') || score.violations).map(esc).join('<br>')}</div></div>` : ''}
 
     ${split.length ? `<div class="verdict">

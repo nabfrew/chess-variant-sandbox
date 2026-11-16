@@ -3682,9 +3682,9 @@ function drawVerdict() {
          <b>It plays, but it does not finish.</b> ${checkedHtml()}
          <ul class="u-m-6-0-0-18 u-p-0">${
            check.playableReasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-         <div class="muted small u-mt-6">You can still save it and play
-           it yourself. This is a hundred and fifty games of random moves finding no
-           winner, which usually means the ending is out of reach.</div>
+         <div class="muted small u-mt-6">${check.playableRefusal
+           ? esc(check.playableRefusal.note) + ' ' : ''}You can still save it and play
+           it yourself.</div>
          <button id="dStuck" class="u-mt-8">open a game that did not finish</button>
        </div>`
     : `<div class="ok">It plays and reaches an ending, with
@@ -3963,8 +3963,10 @@ function rungStates(check, standing, screen) {
   const run = s.measuring && s.measuring.state === 'running' ? s.measuring : null;
   const states = {};
   states.validate = { mark: 'done', says: 'yes' };
+  // R-S17a: a failed rung says whether that is a fact of the rules or how play went.
+  const smokeNote = check.playableRefusal ? ' ' + check.playableRefusal.note : '';
   states.smoke = check.playable === false
-    ? { mark: 'failed', says: (check.playableReasons || []).join('; ') }
+    ? { mark: 'failed', says: (check.playableReasons || []).join('; ') + '.' + smokeNote }
     : check.playable === null
       ? { mark: 'failed', says: (check.playableReasons || []).join('; ') }
       : { mark: 'done', says: `yes (${Number(check.smokeSeconds || 0).toFixed(2)} seconds)` };
@@ -3974,7 +3976,8 @@ function rungStates(check, standing, screen) {
     : screen.visitor ? { mark: 'ahead', says: SCREEN_SIGN_IN }
     : screen.passed
       ? { mark: 'done', says: `yes (${Number(screen.seconds || 0).toFixed(2)} seconds)` }
-      : { mark: 'failed', says: (screen.reasons || []).join('; ') };
+      : { mark: 'failed', says: (screen.reasons || []).join('; ') + '.' + (
+        screen.rung === 'smoke' ? '' : ' ' + SCREEN_REFUSAL_NOTE) };
   states.save = !standing && visitor
     ? { mark: 'ahead', says: 'sign in to save it' }
     : !standing
@@ -3988,10 +3991,12 @@ function rungStates(check, standing, screen) {
     states.canonical = ACCOUNTS
       ? { mark: 'done', says: `scored ${measuredNumberHtml(m, ', the ')} (${
         esc(rulesVersion(m.weights || '?'))})${isNotMeasured(m) ? '; not measured'
+        : m.refusal ? '. ' + esc(refusalText(m.refusal))
         : m.viable === false ? '; ruled out' : ''}`,
       html: true }
       : { mark: 'done', says: `measured, ${measuredNumberHtml(m)},
       under weights ${esc(m.weights || '?')}${isNotMeasured(m) ? ', not measured'
+        : m.refusal ? '. ' + esc(refusalText(m.refusal))
         : m.viable === false ? ', not viable' : ''}`, html: true };
   } else if (m.state === 'stale') {
     states.canonical = { mark: 'ahead', says: ACCOUNTS

@@ -46,6 +46,7 @@ from chess_variant_sandbox.web import (
     opponents,
     piece_library,
     refreshing,
+    sitescore,
     stories,
 )
 from chess_variant_sandbox.web.evolving import Runs
@@ -740,6 +741,8 @@ class App:
                 # For writing a game outside the designer (Q830b): where the rule language
                 # is published, and the two controls `RULES.md` names, one spelling each.
                 "ruleFile": designing.rule_file_kit(),
+                # R-S17a: the words for a refusal measured in the browser (`measure.js`).
+                "refusalWords": sitescore.refusal_words(),
             }
         if len(parts) == 4 and parts[:3] == ["api", "design", "standing"]:
             return self._draft_standing(parts[3], query or {})

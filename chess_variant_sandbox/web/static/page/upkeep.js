@@ -394,12 +394,16 @@ function scoreTag(game) {
   const label = unread ? `${fmt(game.index)} not measured${count}`
     : game.viable === false
       ? `${fmt(game.index)} ruled out${count}` : `${fmt(game.index)}${count}`;
+  // R-S17a: a refused card's hover names the tests, the runs and whether it is the rules
+  // or these players (`game.refusal`, the server's), never *does not work* bare.
+  const refused = game.viable === false && !unread;
   const said = (unread ? notMeasuredSentence(runs).replace(/\.$/, '')
-    : game.viable === false
-      ? 'scored, then ruled out because something about it does not work as a game'
+    : refused && game.refusal ? 'scored'
+    : refused ? 'scored, then ruled out by these computer players\' games'
       : 'the score out of 1, from a few hundred games')
     + (runs ? `, as the ${runsPhrase(game.seeds)}` : '')
-    + (ACCOUNTS ? `, under ${rulesVersion(game.weights)}` : ` (scoring rules ${game.weights})`);
+    + (ACCOUNTS ? `, under ${rulesVersion(game.weights)}` : ` (scoring rules ${game.weights})`)
+    + (refused && game.refusal ? '. ' + refusalText(game.refusal).replace(/\.$/, '') : '');
   const split = splitSentences(game.runVerdict, game.runs).join(' ');
   // C6: a number kept from a sample says so inside the pill, as the run count does,
   // since a phone has no hover; the sentence is the title's.
@@ -463,7 +467,9 @@ function provisionalTag(p) {
 // reason. `rps-hierarchy-chess` fails this gate by name and the library said nothing.
 function playableTag(game) {
   if (game.playable !== false) return '';
-  const why = (game.playableReasons || []).join('; ');
+  // R-S17a: and whether that is a fact of the rules or how random play went.
+  const why = (game.playableReasons || []).join('; ')
+    + (game.playableRefusal ? '. ' + game.playableRefusal.note : '');
   return `<span class="tag gated" title="${esc(why)}">ruled out</span>`;
 }
 

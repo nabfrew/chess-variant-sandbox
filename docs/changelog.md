@@ -14,6 +14,20 @@ any other address keeps its brackets.
 
 ## 2026-11-16
 
+### A refused game says why, and how sure that is
+
+When a game is ruled out, the site now says which test it failed, on how many runs, and whether that is
+a fact of its rules (no opening move, say) or of how the site's computer players played it. The second
+kind can change with another measurement or stronger players. A game placed below chess is described as
+a reading on these players, not a ranking of its worth.
+
+### Fewer games say "not checked yet" about stronger players
+
+After every game was measured again, 94 library games said it had not been checked yet whether stronger
+computer players might change their score. Where the newly played games are move for move the same as
+the ones the check was made on, the check still stands, so now only 5 games say so: the four that play
+differently since recent fixes, and one newer game.
+
 ### Every library game measured again under the new way of scoring
 
 All 132 games in the library were played and scored again, with the newest computer players and the

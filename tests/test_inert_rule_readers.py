@@ -155,6 +155,12 @@ READERS: dict[str, dict[str, str]] = {
     "must_capture": {
         "game.rs::restrict": "the antichess filter; it keeps the captures when there are "
         "some, and with nothing takeable there are never any (Q118 closed en passant's hole)",
+        "agents.rs::null_for": "R-P2b: switches the null move off under forced capture. "
+        "**Player, not rules**: an arm off by default, read once in `Player::new`; it moves no "
+        "legal move or outcome, and under the refused spelling it would only keep an opt-in arm "
+        "off; re-read this site if case 3 is ever re-proven",
+        "agents.rs::lmr_for": "R-P2b: switches late-move reductions off under forced capture. "
+        "**Player, not rules**, as `null_for`",
     },
     # -- case 4.
     "explosion": {
@@ -228,6 +234,10 @@ READERS: dict[str, dict[str, str]] = {
         "derived table's scale, as `Evaluator.for_spec` does; the refusals need no stock, so "
         "none is unlimited (and the table is the derived one without portals)",
         "eval.rs::of": "`Immunity::of` skips unlimited drop types, of which there are none",
+        "agents.rs::null_for": "R-P2b: switches the null move off in a placement phase "
+        "(`drops.placement`). **Player, not rules**: an arm off by default, read once in "
+        "`Player::new`; it moves no legal move or outcome; re-read this site if case 5 or 6 is "
+        "ever re-proven",
         "features.rs::new": "copies `has_drops` for `HAND_MATERIAL`",
         "endgame.rs::refusal": "N1: refuses a capture hand or an endless stock; the refusals "
         "switch off `from_captures` and need no stock, so it refuses nothing there",

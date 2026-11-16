@@ -65,7 +65,7 @@ from typing import TYPE_CHECKING, Any
 
 from chess_variant_sandbox.spec import edits, relate
 from chess_variant_sandbox.spec.likeness import LIKENESS_VERSION, Likeness, likeness_of_forms
-from chess_variant_sandbox.web import families, mapping, relaxing
+from chess_variant_sandbox.web import families, mapping, relaxing, sitescore
 
 if TYPE_CHECKING:  # a Game is the library's; importing it at runtime would be a cycle
     from chess_variant_sandbox.web.library import Game
@@ -1120,6 +1120,8 @@ def _card(group: list[Game]) -> dict[str, Any] | None:
         "runs": [dict(run) for run in (score.get("runs") or [])],
         "totalsUsed": score.get("totals_used"),
         "runVerdict": score.get("verdict") or None,
+        # R-S17a: a refusal's tests, run count and kind (`sitescore.refusal`), or None.
+        "refusal": sitescore.refusal(score),
     }
 
 

@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -2252,13 +2253,89 @@ def strength_file(path: Path = STRENGTH_FILE) -> dict[str, Any]:
     return found if isinstance(found, dict) else {"games": {}, "not_checked": {}}
 
 
-def reading_belongs(row: dict[str, Any], basis: Basis | None) -> bool:
-    """Whether a reading was taken on the players that made this stamped score."""
-    if basis is None:
-        return False
+#
+# R-S4d (`strength-check-all-games.md` §18): **a reading stands while the records it was
+# taken on are byte-identical to the current ones.** The records a reading was taken on are
+# the tournament and waiting records (`games.jsonl`, `waiting.jsonl`) of every run of the
+# score it was read beside (the reading's `score_file`, the measurement whose stamp carries
+# the reading's engine, players code and tables); `duration_ms`, the wall clock, is the one
+# field left out, since no replay can reproduce it. Where a replay re-stamped the score onto
+# another core and those records came out identical, the tracked file carries the proof as
+# the row's `identical` entry: the current measurement's engine and tables and the records'
+# digest (`records_digest`). The reading then belongs to the new stamp as well, and says it
+# stands *by identity*, not as a reading taken on the new core. A game is a pure function of
+# its rules, seed and players, so a later stamp with the same engine and tables plays the same
+# records; one with others is a new replay, and the reading stops belonging until the proof
+# is made again.
+
+RECORD_FILES = ("games.jsonl", "waiting.jsonl")
+"""The files of a run whose bytes a strength reading rests on (R-S4d)."""
+
+_WALL_CLOCK = re.compile(rb',"duration_ms":[^,}]*')
+
+
+def run_directories(canonical: Path, stored: dict[str, Any]) -> list[Path] | None:
+    """A stored measurement's run directories, seed by seed, or ``None`` if one is absent.
+
+    A current measurement's runs sit beside its directory (`runs/<hash>-<seed>/`); one kept
+    under `previous/<n>/` holds its runs inside it."""
+    digest = str(stored.get("hash") or (stored.get("basis") or {}).get("ruleset_hash") or "")
+    seeds = (stored.get("basis") or {}).get("seeds") or stored.get("seeds") or []
+    found: list[Path] = []
+    for seed in seeds:
+        name = f"{digest}-{seed}"
+        for where in (canonical.parent / name, canonical.parent.parent / name):
+            if where.is_dir():
+                found.append(where)
+                break
+        else:
+            return None
+    return found or None
+
+
+def records_digest(runs: list[Path]) -> str | None:
+    """SHA-256 over the runs' records (`RECORD_FILES`), the wall clock aside (R-S4d).
+
+    Each file is read as bytes and only the `duration_ms` field is cut from each line, so two
+    digests are equal exactly when the records are byte-identical outside the wall clock.
+    ``None`` when a run lacks its tournament records."""
+    made = hashlib.sha256()
+    for run in runs:
+        if not (run / RECORD_FILES[0]).is_file():
+            return None
+        for name in RECORD_FILES:
+            path = run / name
+            made.update(f"{run.name.rsplit('-', 1)[-1]}/{name}\n".encode())
+            if path.is_file():
+                made.update(_WALL_CLOCK.sub(b"", path.read_bytes()))
+            else:
+                made.update(b"<absent>\n")
+    return made.hexdigest()
+
+
+def _stamped_with(row: dict[str, Any], basis: Basis) -> bool:
     return (row.get("engine") == f"{basis.engine}+{basis.agents_source}"
-            and row.get("tables") == basis.tables
-            and row.get("player") in basis.agents)
+            and row.get("tables") == basis.tables)
+
+
+def reading_stands_by(row: dict[str, Any], basis: Basis | None) -> str | None:
+    """How a reading belongs to this stamped score: ``"reading"`` (taken on its players),
+    ``"identity"`` (R-S4d: on earlier players whose records this score's equal byte for
+    byte), or ``None`` (it does not belong)."""
+    if basis is None or row.get("player") not in basis.agents:
+        return None
+    if _stamped_with(row, basis):
+        return "reading"
+    same = row.get("identical")
+    if isinstance(same, dict) and same.get("records") and _stamped_with(same, basis):
+        return "identity"
+    return None
+
+
+def reading_belongs(row: dict[str, Any], basis: Basis | None) -> bool:
+    """Whether a reading was taken on the players that made this stamped score, or on
+    earlier ones whose records are byte-identical to this score's (R-S4d)."""
+    return reading_stands_by(row, basis) is not None
 
 
 def strength_reading(
@@ -2270,7 +2347,9 @@ def strength_reading(
     word as read, ``None`` where there is no reading. Every field of the reading travels:
     ``clauses`` (which of A, B, C held), ``c`` and ``f1`` with their errors, ``f4``, the
     day it was read, the release, build and weights it was read on, and ``belongs``
-    (`reading_belongs`). ``why`` says, for ``not_checked``, why there is no reading.
+    (`reading_belongs`). ``standsBy`` says how it belongs (`reading_stands_by`):
+    ``"reading"``, or ``"identity"`` with the proof in ``identical`` (R-S4d), or ``None``.
+    ``why`` says, for ``not_checked``, why there is no reading.
     """
     found = strength_file() if readings is None else readings
     row = (found.get("games") or {}).get(ruleset_hash)
@@ -2279,12 +2358,14 @@ def strength_reading(
         return {"word": NOT_CHECKED, "recorded": None, "belongs": False,
                 "why": str(missing.get("why") or "this game has not been checked yet")}
     recorded = _RECORD_WORDS.get(str(row.get("word")), NOT_CHECKED)
-    belongs = reading_belongs(row, basis)
+    stands_by = reading_stands_by(row, basis)
+    belongs = stands_by is not None
     word = recorded if belongs or recorded == DEPENDS else NOT_CHECKED
     return {
         "word": word,
         "recorded": recorded,
         "belongs": belongs,
+        "standsBy": stands_by,
         "why": None if word != NOT_CHECKED else (
             "checked on the computer players that measured an earlier score; not yet on"
             " the ones that measured this one"),
@@ -2301,6 +2382,7 @@ def strength_reading(
         "build": row.get("build"),
         "weights": found.get("weights"),
         "beside": list(row.get("beside") or []),
+        "identical": row.get("identical") if stands_by == "identity" else None,
     }
 
 
