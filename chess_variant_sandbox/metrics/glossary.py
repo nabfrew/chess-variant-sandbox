@@ -771,6 +771,17 @@ def explain(version: str = DEFAULT_WEIGHTS) -> dict[str, Any]:
             }
             for gate in (*weights.gates, SEAT_GATE, TOP_THREE_SEAT_GATE, WAITING_GATE)
         ],
+        # R-S17i (`v15`): read as a gate is, said beside the score, refusing nothing.
+        "warnings": [
+            {
+                "component": warning.component,
+                "title": title_of(warning.component),
+                "minimum": warning.minimum,
+                "maximum": warning.maximum,
+                "reason": warning.reason,
+            }
+            for warning in weights.warnings
+        ],
         "measurements": {
             name: measurement.as_dict() for name, measurement in MEASUREMENTS.items()
         },

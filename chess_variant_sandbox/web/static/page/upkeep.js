@@ -403,7 +403,9 @@ function scoreTag(game) {
       : 'the score out of 1, from a few hundred games')
     + (runs ? `, as the ${runsPhrase(game.seeds)}` : '')
     + (ACCOUNTS ? `, under ${rulesVersion(game.weights)}` : ` (scoring rules ${game.weights})`)
-    + (refused && game.refusal ? '. ' + refusalText(game.refusal).replace(/\.$/, '') : '');
+    + (refused && game.refusal ? '. ' + refusalText(game.refusal).replace(/\.$/, '') : '')
+    // R-S17i: a warning rides along in the hover, in the server's words.
+    + (game.warning ? '. ' + warningText(game.warning).replace(/\.$/, '') : '');
   const split = splitSentences(game.runVerdict, game.runs).join(' ');
   // C6: a number kept from a sample says so inside the pill, as the run count does,
   // since a phone has no hover; the sentence is the title's.

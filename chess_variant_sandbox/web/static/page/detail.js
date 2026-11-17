@@ -3226,6 +3226,8 @@ function scoreHtml(score, guide, band, trust) {
         <div class="small u-fw-400">${
           (siteSaid(score, 'violations') || score.violations).map(esc).join('<br>')}</div></div>` : ''}
 
+    ${warningHtml(score.warning)}
+
     ${split.length ? `<div class="verdict">
         <div class="small u-fw-400">${split.map(esc).join('<br>')}</div>
       </div>` : ''}
@@ -3321,6 +3323,20 @@ function scoreHtml(score, guide, band, trust) {
         const bound = gate.minimum !== null && gate.minimum !== undefined
           ? `at least ${gate.minimum}${unit}` : `at most ${gate.maximum}${unit}`;
         return `<div class="gate"><b>${esc(said.title)}</b> must be ${esc(bound)}${
+          raw === undefined ? '' : `; this one measures ${trim(raw)}${esc(unit)}`}. ${
+          esc(said.reason)}</div>`;
+      }).join('')}` : ''}
+
+    ${(g.warnings || []).length ? `<h3>${ACCOUNTS ? 'Tests that only warn'
+        : 'What is said beside the score and rules nothing out'}${info('warned')}</h3>
+      ${g.warnings.map(gate => {
+        // R-S17i: read as a test is, said beside the score, deducting nothing.
+        const said = ACCOUNTS && gate.site ? { ...gate, ...gate.site } : gate;
+        const raw = (score.raw || {})[gate.component];
+        const unit = ACCOUNTS && said.units ? ' ' + said.units : '';
+        const bound = gate.minimum !== null && gate.minimum !== undefined
+          ? `at least ${gate.minimum}${unit}` : `at most ${gate.maximum}${unit}`;
+        return `<div class="gate"><b>${esc(said.title)}</b> warns unless ${esc(bound)}${
           raw === undefined ? '' : `; this one measures ${trim(raw)}${esc(unit)}`}. ${
           esc(said.reason)}</div>`;
       }).join('')}` : ''}

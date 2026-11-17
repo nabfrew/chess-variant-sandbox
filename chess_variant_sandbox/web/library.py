@@ -391,6 +391,8 @@ class Game:
             # R-S17a: a refusal's tests, run count and kind (`sitescore.refusal`), or
             # `None`, so a card's *ruled out* never stands without them.
             "refusal": sitescore.refusal(score),
+            # R-S17i: a warning's tests and run counts (`sitescore.warning`), or `None`.
+            "warning": sitescore.warning(score),
             "weights": None if score is None else score.get("weights_version"),
             # How many runs the number rests on, and which. A mean of four runs and a
             # single run are not the same claim, so the count travels with every number

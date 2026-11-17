@@ -55,13 +55,14 @@ class TestTheVersion:
         assert hashlib.sha256((WEIGHTS / "v13.json").read_bytes()).hexdigest() == V13_SHA256
         assert _json("v13")["version"] == "v13"
 
-    def test_v14_loads_and_is_current(self) -> None:
-        # R-S6d (§3.7, §11): every line held, so `v14` is current and `v13` stays a version.
+    def test_v14_loads_and_was_current(self) -> None:
+        # R-S6d (§3.7, §11): every line held, so `v14` was current and `v13` stays a version.
+        # R-S17i made `v15` current (`tests/test_v15_weights.py`); `v14` stays a version.
         from chess_variant_sandbox.metrics.scoring import DEFAULT_WEIGHTS
 
         weights = load_weights("v14")
         assert weights.version == "v14"
-        assert DEFAULT_WEIGHTS == "v14"
+        assert DEFAULT_WEIGHTS == "v15"
         assert load_weights("v13").version == "v13"
 
     def test_everything_section_2_1_does_not_name_is_v13s_to_the_digit(self) -> None:

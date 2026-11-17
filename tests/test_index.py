@@ -76,6 +76,7 @@ class TestScoreComponents:
             "combined": 0.3382,
             "interval": None,
             "measured": True,
+            "warnings": [],
         }
 
     def test_a_measured_optional_component_is_not_reported_unmeasured(self) -> None:
@@ -113,6 +114,7 @@ class TestScoreComponents:
             "combined": None,
             "interval": None,
             "measured": True,
+            "warnings": [],
         }
 
     def test_a_zero_gradient_is_not_inverted(self) -> None:
@@ -157,6 +159,7 @@ class TestUnreadable:
             "combined": None,
             "interval": None,
             "measured": False,
+            "warnings": [],
         }
 
     def test_an_absent_monotonicity_never_prints_a_negative_share(self) -> None:

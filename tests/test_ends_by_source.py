@@ -75,8 +75,8 @@ class TestVersionTwelve:
     def test_it_was_the_default_until_v13(self) -> None:
         # Q1104 (2026-11-08): `v13` re-read the reference ends on the shifted ladder;
         # `tests/test_v13_ends.py` holds the new version. `v12` stays loadable. `v14` (R-S6d,
-        # 2026-11-14) has been the default since.
-        assert DEFAULT_WEIGHTS == "v14"
+        # 2026-11-14) after it, and `v15` (R-S17i, 2026-11-16) since.
+        assert DEFAULT_WEIGHTS == "v15"
         assert load_weights("v12").version == "v12"
 
     def test_only_the_ends_moved_from_v11(self) -> None:

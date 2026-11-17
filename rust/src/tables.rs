@@ -606,6 +606,8 @@ pub fn rare_in_use(t: &Tables) -> bool {
         || t.forbid_immobility
         || t.must_capture
         || t.region_play
+        // ENTRY (R-L5c3)
+        || t.entry_only_lost
 }
 
 /// Whether anything rides in bits 25 to 31: a landing, an end, a fold, the foreign bit.

@@ -12,6 +12,16 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-17
+
+### Two games are no longer ruled out for ending fast
+
+One of the tests that could rule a game out asked whether too many games between the computer players ended within
+a dozen moves. Reading every stored game showed that, on its own, this test turned away two games nobody has shown
+to be bad, jeson mor and queens wake, and no game known to be bad. It is now a warning shown beside the score
+rather than a refusal, and it counts against nothing. Both games are scored now, below chess (0.68 and 0.77). No
+other game's score changed. This does not say either game is good: the warning stays on their pages.
+
 ## 2026-11-16
 
 ### Eight published games unlike chess join the library

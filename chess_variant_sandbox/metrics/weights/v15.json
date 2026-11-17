@@ -1,0 +1,281 @@
+{
+  "version": "v15",
+  "notes": "v14 to the digit but for one line (docs/reference/wrong-no.md §12, R-S17i, registered 2026-11-16 before anything was re-scored under it): quick_kill_rate_worst_half at most 0.5 leaves the gates for `warnings`, the same threshold and reason, a sentence shown beside the score that deducts nothing and refuses nothing. R-S17f's read (wrong-no.md §9.2): over 175 stored games it refused alone two games nobody has shown bad (jeson mor, queens wake) and no proven-bad one. Every family, weight, curve, end, source, the other six gates and llm_weight are v14's.",
+  "llm_weight": 0.0,
+  "components": {
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.0396,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.5
+      },
+      "sources": {
+        "good_at": {
+          "source": "domain",
+          "why": "the two seats score the same between identical players"
+        },
+        "zero_at": {
+          "source": "meaning",
+          "why": "a first seat that scores 75% between identical players is not a contest"
+        }
+      },
+      "evidence": "1.70 (0.1651 / 0.0973); roster rho +0.5203  the least precise in the set, and the narrowest pass on roster rho",
+      "roster_rho": 0.5203
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.0792,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.7
+      },
+      "sources": {
+        "good_at": {
+          "source": "domain",
+          "why": "every game finishes"
+        },
+        "zero_at": {
+          "source": "gate",
+          "gate": "stall_rate_worst_half",
+          "why": "a game that mostly fails to finish is not a game"
+        }
+      },
+      "evidence": "12.48 (0.16 / 0.0128); roster rho +0.8687",
+      "roster_rho": 0.8687
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.07425,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 1.5,
+        "good_at": 8.9219
+      },
+      "sources": {
+        "zero_at": {
+          "source": "gate",
+          "gate": "mean_branching",
+          "why": "with no choices there is no play"
+        },
+        "good_at": {
+          "source": "reference",
+          "why": "second-lowest of 20 the published band games (docs/reference/v13-calibration.md, read once on 2026-11-08 from Q1104's replay on the 400-25,600 ladder and pinned): antichess; v13's pinned good_low kept to the digit, with no upper end (R-S6b)"
+        }
+      },
+      "evidence": "30.41 (14.8105 / 0.487); roster rho +0.9890",
+      "roster_rho": 0.989
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.07425,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 0.0,
+        "good_at": 0.9261
+      },
+      "sources": {
+        "zero_at": {
+          "source": "meaning",
+          "why": "every game runs the same length"
+        },
+        "good_at": {
+          "source": "reference",
+          "why": "second-highest of 20 the published band games (docs/reference/v13-calibration.md, read once on 2026-11-08 from Q1104's replay on the 400-25,600 ladder and pinned): atomic"
+        }
+      },
+      "evidence": "6.49 (0.2898 / 0.0446); roster rho +0.9121",
+      "roster_rho": 0.9121
+    },
+    "position_divergence": {
+      "family": "variety",
+      "weight": 0.099,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 0.0,
+        "good_at": 1.0
+      },
+      "sources": {
+        "zero_at": {
+          "source": "domain",
+          "why": "every game visits the same positions as another"
+        },
+        "good_at": {
+          "source": "domain",
+          "why": "no two games share a position"
+        }
+      },
+      "evidence": "15.97 (0.2187 / 0.0137); roster rho +0.9335  C1's table: 17.49 over 77 and 13.44 on the band",
+      "roster_rho": 0.9335
+    },
+    "blunder_recoverability": {
+      "family": "drama",
+      "weight": 0.1386,
+      "curve": "band",
+      "points": {
+        "zero_low": 0.0,
+        "good_low": 0.25,
+        "good_high": 0.75,
+        "zero_high": 1.0
+      },
+      "sources": {
+        "zero_low": {
+          "source": "domain",
+          "why": "one error is always fatal"
+        },
+        "good_low": {
+          "source": "meaning",
+          "why": "a forced blunder is saved between one time in four and three times in four"
+        },
+        "good_high": {
+          "source": "meaning",
+          "why": "a forced blunder is saved between one time in four and three times in four"
+        },
+        "zero_high": {
+          "source": "domain",
+          "why": "errors never matter"
+        }
+      },
+      "evidence": "2.37 (0.1777 / 0.075); roster rho +0.6011  noisy; read at 24 trials for roster rho, 48 here",
+      "roster_rho": 0.6011
+    },
+    "decision_cost": {
+      "family": "decisions",
+      "weight": 0.099,
+      "curve": "band",
+      "points": {
+        "zero_low": 0.0,
+        "good_low": 0.25,
+        "good_high": 0.75,
+        "zero_high": 1.0
+      },
+      "sources": {
+        "zero_low": {
+          "source": "domain",
+          "why": "no move costs anything"
+        },
+        "good_low": {
+          "source": "meaning",
+          "why": "a move gives up a tenth of a game between one time in four and three times in four"
+        },
+        "good_high": {
+          "source": "meaning",
+          "why": "a move gives up a tenth of a game between one time in four and three times in four"
+        },
+        "zero_high": {
+          "source": "domain",
+          "why": "every move but one loses"
+        }
+      },
+      "evidence": "a new reading (score-dials.md §11, R-S15b's map); not measured for precision or roster stability",
+      "roster_rho": null,
+      "optional": true
+    },
+    "piece_utilisation": {
+      "family": "decisions",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 0.6885,
+        "good_at": 1.0
+      },
+      "sources": {
+        "zero_at": {
+          "source": "reference",
+          "why": "the low quantile less the distance between the quantiles, of 20 the published band games (docs/reference/v13-calibration.md, read once on 2026-11-08 from Q1104's replay on the 400-25,600 ladder and pinned): 0.8418 (shogi) - (0.9951 (chess) - 0.8418)"
+        },
+        "good_at": {
+          "source": "domain",
+          "why": "every held type moves equally"
+        }
+      },
+      "evidence": "22.19 (0.1366 / 0.0062); roster rho +0.9177",
+      "roster_rho": 0.9177
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.2079,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 8.0,
+        "good_at": 190.85
+      },
+      "sources": {
+        "zero_at": {
+          "source": "gate",
+          "gate": "skill_gradient",
+          "why": "doubling the thinking budget must be worth a few Elo"
+        },
+        "good_at": {
+          "source": "meaning",
+          "why": "the player given twice the positions scores three points in four against the other: 400 log10 3 Elo per doubling"
+        }
+      },
+      "evidence": "5.54 (63.6143 / 11.4738); roster rho +0.8429  zero_at placed by the span floor, not the negatives",
+      "roster_rho": 0.8429
+    },
+    "piece_participation": {
+      "family": "decisions",
+      "weight": 0.0495,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 0.0,
+        "good_at": 0.4699
+      },
+      "sources": {
+        "zero_at": {
+          "source": "domain",
+          "why": "no piece ever moves"
+        },
+        "good_at": {
+          "source": "reference",
+          "why": "second-lowest of the 20 published band games on the new reading (v13's rule), re-read once by R-S6b from the library's stored runs re-analysed on 2026-11-13 and pinned: three-check"
+        }
+      },
+      "evidence": "a new reading (empty-board-participation.md option (d)); not measured for precision or roster stability",
+      "roster_rho": null,
+      "optional": true
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate_worst_half",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate_worst_half",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one"
+    },
+    {
+      "component": "mean_plies_worst_half",
+      "minimum": 8.0,
+      "reason": "a game decided before either player has developed anything is not a game; pooled with a shuffle at the other end of the ladder the mean describes no game that was played"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    }
+  ],
+  "warnings": [
+    {
+      "component": "quick_kill_rate_worst_half",
+      "maximum": 0.5,
+      "reason": "a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator"
+    }
+  ]
+}

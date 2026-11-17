@@ -105,6 +105,10 @@ class IndexResult:
     # refuses, so its word is *not measured*; `viable` stays False beside it because it
     # was not admitted, and every reader asks this first. A refusal is always measured.
     measured: bool = True
+    # The weights' warnings this run crossed (`Weights.warnings`, `v15`), each in a gate's
+    # own sentence. Beside the verdict, never in it: no vote reads them and they deduct
+    # nothing. A stored file written before `v15` has none, which is what it had.
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def verdict_word(self) -> str:
@@ -212,6 +216,9 @@ class IndexResult:
         elif not self.viable:
             lines.append("  NOT VIABLE:")
             lines.extend(f"    - {violation}" for violation in self.violations)
+        if self.warnings:
+            lines.append("  WARNING (refuses and deducts nothing):")
+            lines.extend(f"    - {warning}" for warning in self.warnings)
         if self.families:
             lines.append("  by family: " + ", ".join(
                 f"{name} {value:.2f}" for name, value in sorted(self.families.items())
@@ -399,6 +406,8 @@ def _unreadable_result(
             f"{', '.join(unreadable)} would describe the players rather than the game"
         ],
         measured=bool(refusals),
+        # A warning reads no ladder, and refuses nothing, so a blind run says it too.
+        warnings=weights.check_warnings(components.raw),
         scores={k: round(v, 4) for k, v in partial.items()},
         contributions={},
         raw={k: round(v, 4) for k, v in components.raw.items()},
@@ -520,6 +529,7 @@ def score_components(
             total=0.0,
             viable=False,
             violations=violations,
+            warnings=weights.check_warnings(components.raw),
             scores={k: round(v, 4) for k, v in partial.items()},
             contributions={},
             raw={k: round(v, 4) for k, v in components.raw.items()},
@@ -554,6 +564,7 @@ def score_components(
         total=round(total, 4),
         viable=not violations,
         violations=violations,
+        warnings=weights.check_warnings(components.raw),
         scores={k: round(v, 4) for k, v in scores.items()},
         contributions={k: round(v, 4) for k, v in contributions.items()},
         raw={k: round(v, 4) for k, v in components.raw.items()},

@@ -186,7 +186,8 @@ class TestTheBrowseMenuOffersTheDefaultVersionsParts:
         `instance_participation`, and drops `lead_conversion`: ten components. Before `v11`
         (C2, Q391) this read `v10`'s menu, elegance and all."""
         legend = library.metric_legend()
-        assert legend["version"] == scoring.DEFAULT_WEIGHTS == "v14"
+        # `v15` (R-S17i) is `v14`'s menu to the digit; only a gate became a warning.
+        assert legend["version"] == scoring.DEFAULT_WEIGHTS == "v15"
         assert len(legend["families"]) == 6
         assert "elegance" not in legend["families"]
         assert "rule_yield" not in legend["components"]

@@ -137,6 +137,9 @@ class RunReading:
     # `VOTE_BLIND_ABSTAINS` (`IndexResult.measured`). A stored run without the key reads
     # as measured, which is how its vote was counted when it was stored.
     measured: bool = True
+    # The weights' warnings this run crossed (`IndexResult.warnings`, `v15`). Carried to the
+    # game's file and read by no vote: `verdict` never looks at them.
+    warnings: tuple[str, ...] = ()
 
     @classmethod
     def from_result(
@@ -166,6 +169,7 @@ class RunReading:
             origin=origin,
             seat=seat_details(result.diagnostics),
             measured=bool(result.measured),
+            warnings=tuple(result.warnings),
         )
 
     @classmethod
@@ -204,6 +208,7 @@ class RunReading:
             "violations": list(self.violations),
             "unreadable": list(self.unreadable),
             "measured": self.measured,
+            "warnings": list(self.warnings),
             "origin": self.origin,
         }
 
@@ -390,10 +395,36 @@ class Combined:
     # False for the third outcome, *not measured* (`Verdict.measured`); `viable` is False
     # beside it. A pooled seat refusal is always measured: it reads games actually played.
     measured: bool = True
+    # The weights' warnings (`v15`), one entry a line crossed on any run: its component, how
+    # many of the runs crossed it, and each run's sentence by seed (`warned`). Beside the
+    # verdict, never in it.
+    warnings: tuple[dict[str, Any], ...] = ()
 
     @property
     def word(self) -> str:
         return verdict_word(self.viable, self.measured)
+
+
+def warned(runs: Sequence[RunReading]) -> tuple[dict[str, Any], ...]:
+    """The warnings the runs crossed, one entry a line, in the order the runs first said them.
+
+    ``component`` names the line, ``runs`` how many runs crossed it and ``of`` how many there
+    were, and ``sentences`` each crossing run's sentence, prefixed by its seed where there is
+    more than one run. Read by no vote: what a warning changes is only what is said.
+    """
+    ordered = sorted(runs, key=lambda run: run.seed)
+    found: dict[str, dict[str, Any]] = {}
+    for run in ordered:
+        prefix = f"run {run.seed}: " if len(ordered) > 1 else ""
+        for text in run.warnings:
+            component = text.split("=", 1)[0]
+            entry = found.setdefault(
+                component, {"component": component, "runs": 0, "of": len(ordered),
+                            "sentences": []}
+            )
+            entry["runs"] += 1
+            entry["sentences"].append(prefix + text)
+    return tuple(found.values())
 
 
 def combine(
@@ -437,6 +468,7 @@ def combine(
     # (§10.16.4 point 3), so it is a verdict, not *not measured*.
     measured = decided.measured or bool(seat.get("refuses"))
     violations = _violations(ordered, decided, seat, pooled)
+    warnings = warned(ordered)
 
     detail = {
         "ruleset_hash": ruleset_hash,
@@ -449,6 +481,7 @@ def combine(
         "viable": viable,
         "measured": measured,
         "violations": list(violations),
+        "warnings": [text for entry in warnings for text in entry["sentences"]],
         "scores": _means(run.scores for run in reported),
         "contributions": _means(run.contributions for run in reported),
         "raw": _means(run.raw for run in reported),
@@ -480,6 +513,7 @@ def combine(
         runs=[run.as_dict() for run in ordered],
         detail=detail,
         measured=measured,
+        warnings=warnings,
     )
 
 

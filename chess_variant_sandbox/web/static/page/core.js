@@ -528,6 +528,12 @@ const GLOSS = {
     + " of these tests are facts of the rules, true whoever plays. The rest read how the"
     + " computer players played it, on the runs named, and can change when it is measured"
     + " again or the players get stronger."],
+  // R-S17i: a line that used to disqualify and now only says what it saw (`v15`).
+  warned: ['Warning',
+    "A test that once ruled games out and now only warns: on the stored games it turned"
+    + " away games nobody had shown to be bad, and caught nothing bad that another test"
+    + " missed. It is said beside the score, on the runs named, and changes neither the"
+    + " score nor the verdict."],
   stale: ['Out of date',
     "It has been measured, but not by the code in this checkout. The engine, the"
     + " opponents or the scoring changed since then. Where the old measurement has a"
@@ -907,6 +913,11 @@ const SITE_GLOSS = {
     + " away, the score rests on repeated games: it says more about the computer players'"
     + " habits than about the game. Repeats lower a score, so the figure counted once is"
     + " the higher one."],
+  warned: ['Warning',
+    "A test that once ruled games out and now only warns: on the games measured so far it"
+    + " turned away games nobody had shown to be bad, and caught nothing bad that another"
+    + " test missed. It is said beside the score and changes neither the score nor whether"
+    + " the game is in."],
   gated: ['Ruled out',
     "It failed a basic test of a working game, such as games that never finish, or a"
     + " player who thinks being no better than one who moves at random, so it is ruled out"
@@ -1373,6 +1384,23 @@ function refusalHtml(refusal, lines) {
 // The same in one line, for a pill's hover or a rung: the head and the note.
 function refusalText(refusal) {
   return refusal ? `${refusal.head} ${refusal.note}` : '';
+}
+
+// R-S17i (`wrong-no.md` §12): a warning a score carries (`sitescore.warning`), drawn beside
+// it in the refusal's words -- which test, on how many runs, as these players play it -- and
+// saying that it rules nothing out. Nothing here decides anything: the words are the server's.
+function warningHtml(warning) {
+  if (!warning) return '';
+  return `<div class="verdict" data-warning="1">
+      <div>${esc(warning.head)}${info('warned')}</div>
+      <div class="small u-fw-400 u-mt-5">${esc(warning.note)}</div>${
+      (warning.lines || []).length ? `<div class="small u-fw-400 u-mt-5">${
+        warning.lines.map(esc).join('<br>')}</div>` : ''}</div>`;
+}
+
+// The same in one line, for a card's hover.
+function warningText(warning) {
+  return warning ? `${warning.head} ${warning.note}` : '';
 }
 
 // How far a ranked game leans toward one seat, in a sentence, or nothing.

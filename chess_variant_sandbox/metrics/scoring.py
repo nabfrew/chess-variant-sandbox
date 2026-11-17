@@ -133,7 +133,13 @@ WEIGHTS_DIR = Path(__file__).parent / "weights"
 # in place of decision_criticality, and lead_conversion dropped, its weight to its family's
 # survivors. The two new dials are optional. Read once on 2026-11-14 (R-S6b, §10): every line
 # of §3 held, so by §3.7 it is current (R-S6d). v13 is kept, unedited.
-DEFAULT_WEIGHTS = "v14"
+#
+# v15 is v14 to the digit but for one line (docs/reference/wrong-no.md §12, R-S17i, registered
+# before anything was re-scored): `quick_kill_rate_worst_half` at most 0.5 is a *warning*, not a
+# gate. Over 175 stored games it refused alone two games nobody has shown bad and no proven-bad
+# one (§9.2), so it is said beside the score, on how many runs, and refuses and deducts nothing.
+# v14 is kept, unedited.
+DEFAULT_WEIGHTS = "v15"
 
 # Floor applied to a family score before it enters the geometric mean. Without it a
 # single zeroed family collapses the index to zero for every candidate that has one,
@@ -224,6 +230,11 @@ class Weights:
     # Each component's curve ends and the kind of source each one names (`SOURCE_KINDS`),
     # empty for a version whose ends the band placed.
     sources: dict[str, dict[str, str]] = field(default_factory=dict)
+    # Lines read exactly as a gate is and written beside the score as a sentence of their
+    # own, which deduct nothing and refuse nothing (`v15`, R-S17i, `wrong-no.md` §12): what
+    # a gate says when the stored records show it turning away games nobody has shown bad
+    # and catching nothing bad that another gate does not. No vote reads them.
+    warnings: tuple[Gate, ...] = ()
 
     def components(self) -> list[str]:
         return sorted(self.weights)
@@ -328,6 +339,19 @@ class Weights:
                 violations.append(failure)
         return violations
 
+    def check_warnings(self, raw: dict[str, float]) -> list[str]:
+        """Each warning this run's measurements cross, in a gate's own sentence.
+
+        A warning on a component the run did not measure says nothing: unlike a gate, it
+        has no verdict to withhold, so an absence is no sentence at all.
+        """
+        return [
+            failure
+            for warning in self.warnings
+            if warning.component in raw
+            and (failure := warning.check(raw[warning.component])) is not None
+        ]
+
 
 def load_weights(version: str = DEFAULT_WEIGHTS) -> Weights:
     """Load a weights file by version name."""
@@ -379,15 +403,13 @@ def parse_weights(data: dict[str, Any], fallback_version: str = "?") -> Weights:
             f"weights {version} name a source for some curves and not for {unsourced}"
         )
 
-    gates = tuple(
-        Gate(
-            component=g["component"],
-            minimum=g.get("minimum"),
-            maximum=g.get("maximum"),
-            reason=g.get("reason", ""),
+    gates = _lines(data.get("gates", []))
+    warnings = _lines(data.get("warnings", []))
+    both = {g.component for g in gates} & {w.component for w in warnings}
+    if both:
+        raise WeightsError(
+            f"weights {version} both gate and warn on {', '.join(sorted(both))}"
         )
-        for g in data.get("gates", [])
-    )
 
     llm_weight = float(data.get("llm_weight", 0.0))
     if not 0.0 <= llm_weight < 1.0:
@@ -403,6 +425,20 @@ def parse_weights(data: dict[str, Any], fallback_version: str = "?") -> Weights:
         optional=frozenset(optional),
         notes=str(data.get("notes", "")),
         sources=sources,
+        warnings=warnings,
+    )
+
+
+def _lines(raw: Any) -> tuple[Gate, ...]:
+    """A file's `gates` or `warnings`: the same shape, a component and a bound or two."""
+    return tuple(
+        Gate(
+            component=g["component"],
+            minimum=g.get("minimum"),
+            maximum=g.get("maximum"),
+            reason=g.get("reason", ""),
+        )
+        for g in raw
     )
 
 

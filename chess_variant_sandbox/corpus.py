@@ -1423,6 +1423,7 @@ def _read_seed(
         # reading adds them up across the runs, so a run read as it stands has to bring
         # them with it or the pool would be short a run's games.
         seat=seat_details(result.get("diagnostics") or {}),
+        warnings=tuple(str(item) for item in result.get("warnings") or ()),
     )
 
 
@@ -1552,6 +1553,9 @@ def _store(
         # page can print how close a game came without the number deciding anything.
         "seat": dict(combined.seat),
         "violations": list(combined.violations),
+        # The weights' warnings (`v15`, R-S17i): each line a run crossed, on how many of the
+        # runs, in the runs' own sentences. They decide nothing; the page says them.
+        "warnings": [dict(entry) for entry in combined.warnings],
         "weights_version": weights_version,
         "families": dict(combined.families),
         "standings": list(combined.standings),
@@ -1650,6 +1654,10 @@ def _summary(candidate: Candidate, combined: Any, weights_version: str) -> str:
     elif not combined.viable:
         lines.append("  NOT VIABLE:")
         lines.extend(f"    - {violation}" for violation in combined.violations)
+    for entry in combined.warnings:
+        lines.append(f"  WARNING on {entry['runs']} of {entry['of']} runs "
+                     "(refuses and deducts nothing):")
+        lines.extend(f"    - {sentence}" for sentence in entry["sentences"])
     if combined.families:
         lines.append("  by family: " + ", ".join(
             f"{name} {value:.2f}" for name, value in sorted(combined.families.items())

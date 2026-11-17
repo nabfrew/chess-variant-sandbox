@@ -62,6 +62,8 @@ pub(crate) trait Path {
     const ROYALS: bool = Self::ON;
     /// `forbid_check`, `forbid_immobility`, `must_capture`, `region_play`.
     const RESTRICT: bool = Self::ON;
+    /// `entry_only_lost` (SR8a's count of the board before a move, R-L5c3).
+    const ENTRY: bool = Self::ON;
 }
 
 /// Every family off: the copy a game with no rare rule runs.
@@ -76,6 +78,18 @@ pub(crate) struct Full;
 impl Path for Full {
     const ON: bool = true;
     const FOLDS: bool = false;
+}
+
+/// R-L5c3: the full copy of the legality filter for a game with no wild piece, so `WILD`
+/// off and every other family on. The full copy of the filter keeps R-L5d's runtime
+/// dispatch on `has_npcs` (as `FOLDS` keeps its own): a wild game's filter is `Full`'s, every
+/// other full game's this one's, and neither pays for the other's arm. Only the filter's
+/// entries choose it (`leaves_royal_attacked_p`, `gives_check_p`), after reading `has_npcs`.
+pub(crate) struct Tame;
+impl Path for Tame {
+    const ON: bool = true;
+    const FOLDS: bool = false;
+    const WILD: bool = false;
 }
 
 /// The full copy that walks folds (schema 22's `FOLDS` monomorph).

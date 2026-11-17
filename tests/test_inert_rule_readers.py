@@ -188,7 +188,7 @@ READERS: dict[str, dict[str, str]] = {
         "so only from a capture",
         "game.rs::sweep_blast_centres": "SR6c: where a sweep's blasts go, asked only of a "
         "`MOVE_SWEEP`, so only of a capture",
-        "game.rs::play_move_for_filter": "SR6c: the filter's sweep blast, inside the "
+        "game.rs::play_move_for_filter_p": "SR6c: the filter's sweep blast, inside the "
         "`MOVE_SWEEP` arm, so only after a capture",
         "game.rs::sweep_blast_for_filter": "SR6c: the filter's sweep blast, reached only from "
         "a `MOVE_SWEEP`, so only from a capture",
@@ -498,7 +498,7 @@ READERS: dict[str, dict[str, str]] = {
         "stands, behind `StrikeRule::strikes_path`",
         "game.rs::sweep_mover_change": "SR6b: the value a sweeper becomes by a swept contact's "
         "`mover_to`, behind `StrikeRule::strikes_path`",
-        "game.rs::play_move_for_filter": "the same write in the legality filter",
+        "game.rs::play_move_for_filter_p": "the same write in the legality filter",
         "game.rs::restrict_as": "the immobility filter, asking of a dropped piece as it "
         "stands after arrival",
         "game.rs::is_forbidden_drop_mate": "the dropped piece's value",
@@ -522,7 +522,7 @@ READERS: dict[str, dict[str, str]] = {
         "`strike_writes`",
         "game.rs::write_board": "`make`'s board phase (CS8), TC6: a hire or a bribe, the bought piece entering play for its "
         "new owner where it stands (`promote_on_entry` counts both as a way in)",
-        "game.rs::play_move_for_filter": "TC6: the same hire or bribe in the legality filter",
+        "game.rs::play_move_for_filter_p": "TC6: the same hire or bribe in the legality filter",
         "game.rs::restrict_as": "TC6: the immobility filter, asking of a hired or bribed piece "
         "as it stands after the change of side",
     },
@@ -548,10 +548,10 @@ READERS: dict[str, dict[str, str]] = {
     "multi_royal": {
         "tables.rs::rare_in_use": "R-L5c2: whether the rule is present, to choose the copy of the common path; both copies answer alike (tests/test_lean_path.py)",
         "game.rs::royal_values": "which values are royal, for the royal hint",
-        "game.rs::royal_square": "where a side's royal stands",
+        "game.rs::royal_square_p": "where a side's royal stands",
         "game.rs::royal_count": "how many royals a side has standing",
         "game.rs::in_check_at": "whether any standing royal is attacked",
-        "game.rs::compute_in_check": "the same, memoised",
+        "game.rs::compute_in_check_p": "the same, memoised",
         "game.rs::count_check": "`make`'s phase (CS8): `delivered`, over standing royals",
         "game.rs::make_fold": "schema 22: the same `delivered` after a fold's own move",
         "pass.rs::make_pass": "H3: the same `delivered` after a pass",

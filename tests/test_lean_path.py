@@ -37,8 +37,21 @@ STORED = sorted([*(ROOT / "rulesets").glob("*.json"), *(ROOT / "archive").glob("
 # the `Tables` fields behind it. A new spelling fails `test_every_gate_reads_a_field_rare_in_use_reads`
 # until it is listed here.
 GATE_METHODS = {"duck_owed": {"duck"}, "royal_in_hand": {"drops"}}
-GATE_FUNCTIONS = {"enters_play": {"drops", "purse"}}
-GATE_WORDS = {"fan": {"strike"}, "MODE_PUSH": {"push"}}
+# R-L5c3: a gated move's gate tag is written only beside a gating hand.
+GATE_FUNCTIONS = {"enters_play": {"drops", "purse"}, "move_gate": {"drops"}}
+# R-L5c3: a move kind only one family generates, and a sweep source's byte (`source.sweep`).
+GATE_WORDS = {
+    "fan": {"strike"},
+    "MODE_PUSH": {"push"},
+    "MOVE_FOLD": {"portals"},
+    "MOVE_PORTAL": {"portals"},
+    "MOVE_HIRE": {"purse"},
+    "MOVE_ROTATE": {"has_facing"},
+    "MOVE_SWEEP": {"has_sweep"},
+    "MOVE_PUSH": {"push"},
+    "MOVE_DISPLACE": {"hop_runs"},
+    "sweep": {"has_sweep"},
+}
 
 _GATE = re.compile(r"\b(rare!|rare_opt|decode_owned_if)\(")
 

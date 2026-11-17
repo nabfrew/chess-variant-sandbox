@@ -301,6 +301,63 @@ def refusal(score: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+# ------------------------------------------------------------------ what a warning says
+#
+# R-S17i (`docs/reference/wrong-no.md` §12, `v15`). A line that used to refuse and now only
+# warns is said beside the score in R-S17a's words -- which test, on how many runs, *as these
+# computer players play it* -- and with what it does not do: it deducts nothing and rules
+# nothing out. Read only from the `warnings` the measurement stored.
+
+WARNING_NOTE = ("This counts against nothing: the score and the verdict are as they would be "
+                "without it. It is how the project's own computer players played the game, and "
+                "they are far from expert, so it can change when the game is measured again or "
+                "the players get stronger.")
+
+
+def warning(score: dict[str, Any] | None) -> dict[str, Any] | None:
+    """What a scored game's warnings say, in a visitor's words, or None where it has none.
+
+    `head` names the tests and on how many runs each was crossed; `lines` are each run's
+    sentence in a visitor's words; `note` says it decides nothing and why it can change.
+    """
+    if not score:
+        return None
+    entries = [entry for entry in score.get("warnings") or [] if isinstance(entry, dict)]
+    if not entries:
+        return None
+    seeds = [int(seed) for seed in score.get("seeds") or []]
+    checks: list[dict[str, Any]] = []
+    parts: list[str] = []
+    lines: list[str] = []
+    for entry in entries:
+        title = _title(str(entry.get("component", "")))
+        crossed, total = int(entry.get("runs") or 0), int(entry.get("of") or 0)
+        if total <= 1:
+            runs = "on its one run"
+        elif crossed >= total:
+            runs = f"on all {_word(total)} of its runs"
+        else:
+            runs = f"on {_word(crossed)} of its {_word(total)} runs"
+        checks.append({"title": title, "runs": crossed, "of": total})
+        parts.append(f"“{title}” {runs}")
+        # A gate's sentence says what a game *must* do; a warning's bound only warns.
+        lines.extend(violation(text, seeds).replace("it must stay under", "it warns above")
+                     .replace("it must reach", "it warns below")
+                     for text in entry.get("sentences") or [])
+    tests = "test" if len(checks) == 1 else "tests"
+    return {
+        "checks": checks,
+        "head": (f"A warning, as these computer players play it: it crossed the {tests} "
+                 f"{_and(parts)}, which no longer rules a game out."),
+        "lines": lines,
+        "note": WARNING_NOTE,
+    }
+
+
+def _and(parts: list[str]) -> str:
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
 def refusal_words() -> dict[str, Any]:
     """What the designer's page needs to word a refusal it measured itself, in the browser,
     which no server has scored: the tests that are facts of the rules, by the component
@@ -391,7 +448,8 @@ def worded(score: dict[str, Any] | None) -> dict[str, Any] | None:
     Each run gains `site.violations`, the verdict `site.split`, the seat `site.lean`, and
     the score `site.violations`: every sentence the score panel and the card draw, beside
     the one the measurement wrote. A refused score gains `refusal` (R-S17a), and every
-    other score `refusal: None`.
+    other score `refusal: None`; a score with warnings gains `warning` (R-S17i), every
+    other `warning: None`.
     """
     if not score:
         return score
@@ -410,6 +468,8 @@ def worded(score: dict[str, Any] | None) -> dict[str, Any] | None:
     ]}
     # R-S17a: which tests, how many runs, and whether it is the rules or these players.
     found["refusal"] = refusal(found)
+    # R-S17i: a line that warns and refuses nothing, in the same words.
+    found["warning"] = warning(found)
     return found
 
 
@@ -425,9 +485,10 @@ def guide(explained: dict[str, Any] | None) -> dict[str, Any] | None:
     if not explained:
         return explained
     found = dict(explained)
-    found["gates"] = [
-        {**gate, "site": {"title": _title(gate["component"]),
-                          **SITE_GATES.get(gate["component"], {})}}
-        for gate in explained.get("gates") or []
-    ]
+    for key in ("gates", "warnings"):
+        found[key] = [
+            {**gate, "site": {"title": _title(gate["component"]),
+                              **SITE_GATES.get(gate["component"], {})}}
+            for gate in explained.get(key) or []
+        ]
     return found

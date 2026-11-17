@@ -14,7 +14,7 @@
 
 use std::cell::Cell;
 
-use crate::path::{rare, rare_opt, Folded, Full, Lean, Path};
+use crate::path::{rare, rare_opt, Folded, Full, Lean, Path, Tame};
 use crate::tables::*;
 
 // Schema 26 (Q918a): rounds, a child of this module so it walks the same private state.
@@ -1081,8 +1081,14 @@ impl<'t> Game<'t> {
     /// See `royal_hint` for why it is only sound while `multi_royal` is false.
     #[inline]
     pub fn royal_square(&self, player: usize) -> i32 {
+        self.royal_square_p::<Full>(player)
+    }
+
+    /// `royal_square` on the copy `P` (R-L5c3): the legality filter's.
+    #[inline]
+    fn royal_square_p<P: Path>(&self, player: usize) -> i32 {
         let t = self.t;
-        if t.multi_royal {
+        if rare!(P::ROYALS, t.multi_royal) {
             return self.scan_royal_square(player);
         }
         let hint = self.royal_hint.get()[player];
@@ -1159,7 +1165,13 @@ impl<'t> Game<'t> {
     /// in hand. The one reading of a missing royal that `royal_loss_ends_it` pairs with.
     #[inline]
     fn royal_gone(&self, player: usize) -> bool {
-        self.royal_square(player) < 0 && !self.royal_in_hand(player)
+        self.royal_gone_p::<Full>(player)
+    }
+
+    /// `royal_gone` on the copy `P` (R-L5c3).
+    #[inline]
+    fn royal_gone_p<P: Path>(&self, player: usize) -> bool {
+        self.royal_square_p::<P>(player) < 0 && !rare!(P::HAND, self.royal_in_hand(player))
     }
 
     /// Every royal square `player` still holds. Only called when there can be several.
@@ -1227,11 +1239,18 @@ impl<'t> Game<'t> {
     /// piece -- castling's transit squares are the only ones -- calls
     /// `attacks_square_as` with that piece's type instead.
     pub fn attacks_square(&self, player: usize, square: usize) -> bool {
+        self.attacks_square_p::<Full>(player, square)
+    }
+
+    /// `attacks_square` on the copy `P` (R-L5c3, `docs/reference/common-path-plan.md` §5): the
+    /// legality filter's and castling's attack query. The plain name is the full copy, which
+    /// every caller outside the common path keeps. No inline hint, as `attacks_square` had none.
+    fn attacks_square_p<P: Path>(&self, player: usize, square: usize) -> bool {
         // The victim's type is only worth reading when something consults it. This is
         // the hottest query in the engine -- the check filter asks it once per candidate
         // move -- and the division is not free.
-        if !self.t.has_capture_matrix {
-            return self.attacks_square_as(player, square, usize::MAX);
+        if !rare!(P::MATRIX, self.t.has_capture_matrix) {
+            return self.attacks_square_as_p::<P>(player, square, usize::MAX);
         }
         let occupant = self.board[square];
         let victim = if occupant == 0 {
@@ -1239,7 +1258,13 @@ impl<'t> Game<'t> {
         } else {
             self.t.victim_of(occupant)
         };
-        self.attacks_square_as(player, square, victim)
+        self.attacks_square_as_p::<P>(player, square, victim)
+    }
+
+    /// Whether `player` could capture a piece of `victim` type standing on `square`: the
+    /// full copy of `attacks_square_as_p`.
+    pub fn attacks_square_as(&self, player: usize, square: usize, victim: usize) -> bool {
+        self.attacks_square_as_p::<Full>(player, square, victim)
     }
 
     /// Whether `player` could capture a piece of `victim` type standing on `square`.
@@ -1250,7 +1275,7 @@ impl<'t> Game<'t> {
     /// group can stand on is passed on one byte and one mask test, not one compare per
     /// source. The answer is a boolean of pure tests, so the order is not observable; a
     /// checking build asks the table-order walk beside it.
-    pub fn attacks_square_as(&self, player: usize, square: usize, victim: usize) -> bool {
+    fn attacks_square_as_p<P: Path>(&self, player: usize, square: usize, victim: usize) -> bool {
         let t = self.t;
         let (groups, mut at) = t.scan_of(player, square);
         let mut found = false;
@@ -1258,7 +1283,8 @@ impl<'t> Game<'t> {
             let len = group.len as usize;
             let byte = self.board[group.origin as usize];
             if group.mask & (1u64 << (byte & 63)) != 0
-                && t.scan_sources(at, len).any(|source| byte == source.piece_value && self.source_attacks(player, victim, source))
+                && t.scan_sources(at, len)
+                    .any(|source| byte == source.piece_value && self.source_attacks::<P>(player, victim, source))
             {
                 found = true;
                 break;
@@ -1270,7 +1296,7 @@ impl<'t> Game<'t> {
             t.attackers_of(player, square)
                 .iter()
                 .any(|source| self.board[source.origin as usize] == source.piece_value
-                    && self.source_attacks(player, victim, source)),
+                    && self.source_attacks::<P>(player, victim, source)),
             "C6: the grouped scan disagrees with the table's order",
         );
         found
@@ -1279,7 +1305,7 @@ impl<'t> Game<'t> {
     /// One source of `attacks_square_as` whose piece stands on its origin: whether it
     /// attacks the square under the unmoved bit, the capture matrix and its path.
     #[inline(always)]
-    fn source_attacks(&self, player: usize, victim: usize, source: &AttackSource) -> bool {
+    fn source_attacks<P: Path>(&self, player: usize, victim: usize, source: &AttackSource) -> bool {
         let t = self.t;
         {
             if source.requires_unmoved && !self.unmoved.get(source.origin as usize) {
@@ -1288,12 +1314,12 @@ impl<'t> Game<'t> {
             // Schema 3: an attacker that is not allowed to take this victim is not
             // attacking it. The attacker's type is already here, encoded in the value
             // the source matched against.
-            if t.has_capture_matrix && victim != usize::MAX {
+            if rare!(P::MATRIX, t.has_capture_matrix) && victim != usize::MAX {
                 let attacker = t.type_of(source.piece_value);
                 // Q1074b2 (R1): in a push game a source attacks by capture, by push or both
                 // (its `dirs` byte), each under its own list. A push game always crosses the
                 // capture matrix, so this is the branch it takes.
-                let reaches = match t.push.as_deref() {
+                let reaches = match rare_opt(P::PUSH, t.push.as_deref()) {
                     None => t.may_capture(attacker, victim),
                     Some(push) => self.push_game_attacks(push, source.dirs, attacker, victim),
                 };
@@ -1301,10 +1327,10 @@ impl<'t> Game<'t> {
                     return false;
                 }
             }
-            if source.sweep != 0 {
+            if rare!(P::SWEEP, source.sweep != 0) {
                 return self.sweep_attacks(player, source);
             }
-            self.source_path_clear(player, source)
+            self.path_clear_on_p::<P>(&self.board, player, source)
         }
     }
 
@@ -1322,9 +1348,21 @@ impl<'t> Game<'t> {
     /// so the hot path above is this, inlined on `self.board`.
     #[inline(always)]
     pub(super) fn path_clear_on(&self, board: &[u8; MAX_SQUARES], player: usize, source: &AttackSource) -> bool {
+        self.path_clear_on_p::<Full>(board, player, source)
+    }
+
+    /// `path_clear_on` on the copy `P` (R-L5c3). A source carries screens only where the game
+    /// hops (`has_hop_attacks`, the compiler's hop tables), so off `HOPS` the window is empty
+    /// or holds no screen, and the answer is the whole path empty.
+    #[inline(always)]
+    fn path_clear_on_p<P: Path>(&self, board: &[u8; MAX_SQUARES], player: usize, source: &AttackSource) -> bool {
         let t = self.t;
         {
             let path = t.attack_path(source);
+            if !P::HOPS {
+                debug_assert!(source.screens == 0, "a lean copy met a screened source");
+                return path.iter().all(|s| board[*s as usize] == 0);
+            }
             // The prefix must be empty and the window must hold exactly the screens the
             // source expects. A slide is all prefix and no screens; a cannon is all
             // window and one screen; a bounded hop is both, which is the case that used
@@ -1463,36 +1501,45 @@ impl<'t> Game<'t> {
     /// takes one. Asked only where the wild source answers yes, and only beside a shield.
     #[inline(always)]
     fn threatened(&self, by: usize, square: usize) -> bool {
-        self.attacks_any(by, square)
-            || (self.t.has_npcs
-                && ((self.attacks_square(WILD, square)
-                    && (!self.t.npc_shield || !self.shielded_from_wild(square))
-                    && (!self.t.npc_tamed || self.wild_attacks_free(square, usize::MAX)))
+        self.threatened_p::<Full>(by, square)
+    }
+
+    /// `threatened` on the copy `P` (R-L5c3): the legality filter's and the check memo's.
+    #[inline(always)]
+    fn threatened_p<P: Path>(&self, by: usize, square: usize) -> bool {
+        let t = self.t;
+        self.attacks_any_p::<P>(by, square)
+            || (rare!(P::WILD, t.has_npcs)
+                && ((self.attacks_square_p::<P>(WILD, square)
+                    && (!t.npc_shield || !self.shielded_from_wild(square))
+                    && (!t.npc_tamed || self.wild_attacks_free(square, usize::MAX)))
                     // Generation 125 (SR8h, N5): a turning-back piece's threat, the square it
                     // steps to after its turn, read by its own walk (`turning.rs::line_threatens`).
                     // Inside the wild arm (R-L5d), so a game with no wild piece tests
                     // `has_npcs` once here, as before SR8h.
-                    || (self.t.npc_lines.is_some() && self.line_threatens(square, None))))
-            || (self.t.majority.as_deref().is_some_and(|m| m.threatens_royals)
+                    || (t.npc_lines.is_some() && self.line_threatens(square, None))))
+            || (rare_opt(P::HELD, t.majority.as_deref()).is_some_and(|m| m.threatens_royals)
                 && self.held_attacks(by, square, None))
     }
 
     /// `threatened`, for the callers that mean a specific victim -- castling's transit
-    /// squares, which are empty and would otherwise skip the capture matrix.
+    /// squares, which are empty and would otherwise skip the capture matrix. On the copy `P`
+    /// (R-L5c3): castling's, inside the generator's copy, its one caller.
     #[inline]
-    fn threatened_as(&self, by: usize, square: usize, victim: usize) -> bool {
-        (match self.t.portals.as_deref() {
-            None => match self.t.sight.as_deref() {
-                None => self.attacks_square_as(by, square, victim),
+    fn threatened_as_p<P: Path>(&self, by: usize, square: usize, victim: usize) -> bool {
+        let t = self.t;
+        (match rare_opt(P::PORTALS, t.portals.as_deref()) {
+            None => match rare_opt(P::SIGHT, t.sight.as_deref()) {
+                None => self.attacks_square_as_p::<P>(by, square, victim),
                 Some(sight) => self.attacks_in_sight_game(sight, by, square, Some(victim)),
             },
             Some(portals) => self.attacks_in_portal_game(portals, by, square, Some(victim)),
-        }) || (self.t.has_npcs
-            && ((self.attacks_square_as(WILD, square, victim)
-                && !(self.t.npc_shield && self.shielded_from_wild(square))
-                && (!self.t.npc_tamed || self.wild_attacks_free(square, victim)))
-                || (self.t.npc_lines.is_some() && self.line_threatens(square, Some(victim)))))
-            || (self.t.majority.as_deref().is_some_and(|m| m.threatens_royals)
+        }) || (rare!(P::WILD, t.has_npcs)
+            && ((self.attacks_square_as_p::<P>(WILD, square, victim)
+                && !(t.npc_shield && self.shielded_from_wild(square))
+                && (!t.npc_tamed || self.wild_attacks_free(square, victim)))
+                || (t.npc_lines.is_some() && self.line_threatens(square, Some(victim)))))
+            || (rare_opt(P::HELD, t.majority.as_deref()).is_some_and(|m| m.threatens_royals)
                 && self.held_attacks(by, square, Some(victim)))
     }
 
@@ -1505,12 +1552,18 @@ impl<'t> Game<'t> {
     /// so `attacks_square`, the hottest query, is the one it always was.
     #[inline(always)]
     fn attacks_any(&self, player: usize, square: usize) -> bool {
-        match self.t.portals.as_deref() {
+        self.attacks_any_p::<Full>(player, square)
+    }
+
+    /// `attacks_any` on the copy `P` (R-L5c3).
+    #[inline(always)]
+    fn attacks_any_p<P: Path>(&self, player: usize, square: usize) -> bool {
+        match rare_opt(P::PORTALS, self.t.portals.as_deref()) {
             // Schema 30 (Q999a): a game with a sight reads attack under its effects (a frozen
             // or disarmed piece attacks nothing, a shielded one is attacked by nothing), the
             // third arm; beside portals the portal arm reads them (SR5c, V1).
-            None => match self.t.sight.as_deref() {
-                None => self.attacks_square(player, square),
+            None => match rare_opt(P::SIGHT, self.t.sight.as_deref()) {
+                None => self.attacks_square_p::<P>(player, square),
                 Some(sight) => self.attacks_in_sight_game(sight, player, square, None),
             },
             Some(portals) => self.attacks_in_portal_game(portals, player, square, None),
@@ -1787,7 +1840,12 @@ impl<'t> Game<'t> {
         if self.t.royal_types.is_empty() {
             return false;
         }
-        self.remembered_check(player, || self.compute_in_check(player))
+        // R-L5c3: the memo's answer on this game's copy (`crate::path`).
+        if self.t.lean {
+            self.remembered_check(player, || self.compute_in_check_p::<Lean>(player))
+        } else {
+            self.remembered_check(player, || self.compute_in_check_p::<Full>(player))
+        }
     }
 
     /// `in_check`, for the one caller that has already located the royal.
@@ -1796,9 +1854,9 @@ impl<'t> Game<'t> {
     /// all, so asking `in_check` there would locate it a second time. Equivalent only on
     /// the single-royal path, which is the only place it is called from.
     #[inline]
-    fn in_check_at(&self, player: usize, royal: usize) -> bool {
+    fn in_check_at<P: Path>(&self, player: usize, royal: usize) -> bool {
         debug_assert!(!self.t.multi_royal);
-        self.remembered_check(player, || self.threatened(1 - player, royal))
+        self.remembered_check(player, || self.threatened_p::<P>(1 - player, royal))
     }
 
     /// Read the memo, or answer and remember. **The only place the memo is touched**,
@@ -1826,18 +1884,25 @@ impl<'t> Game<'t> {
     /// The definition `in_check` memoises, and what every `debug_assert` above compares
     /// a remembered answer against.
     fn compute_in_check(&self, player: usize) -> bool {
+        self.compute_in_check_p::<Full>(player)
+    }
+
+    /// `compute_in_check` on the copy `P` (R-L5c3): what `in_check` remembers.
+    #[inline(always)]
+    fn compute_in_check_p<P: Path>(&self, player: usize) -> bool {
+        let t = self.t;
         // Generation 39 (N3b, `docs/archive/plan-npc.md` §4.3): the side to move in a pounce game is in
         // check by the pass test.
-        if self.t.pounce.is_some() && player == self.side {
+        if rare!(P::WILD, t.has_npcs) && t.pounce.is_some() && player == self.side {
             return self.in_check_by_pass(player);
         }
-        if self.t.multi_royal {
+        if rare!(P::ROYALS, t.multi_royal) {
             return self.royal_squares(player).iter().any(|&royal| {
-                self.threatened(1 - player, royal)
+                self.threatened_p::<P>(1 - player, royal)
             });
         }
-        let royal = self.royal_square(player);
-        royal >= 0 && self.threatened(1 - player, royal as usize)
+        let royal = self.royal_square_p::<P>(player);
+        royal >= 0 && self.threatened_p::<P>(1 - player, royal as usize)
     }
 }
 
@@ -4737,7 +4802,7 @@ impl<'t> Game<'t> {
         }
 
         if t.castling.is_some() {
-            self.generate_castling(out);
+            self.generate_castling::<P>(out);
         }
         if let Some(rule) = drops {
             // Q1059a: a gating hand enters only on a square a move vacates, never by a drop.
@@ -6053,7 +6118,12 @@ impl<'t> Game<'t> {
     }
 
     /// King-and-rook moves, generated separately because they move two pieces.
-    fn generate_castling(&self, out: &mut Vec<u32>) {
+    /// R-L5c3: on the generator's copy `P`, so its attack queries are that copy's. Out of
+    /// line, each copy, as the one non-generic function was: generic, the profile inlined it
+    /// into both generators (the lean one 710 to 1061 instructions) and every castling game
+    /// read 3-5% slower shipped while the aligned pair did not (`common-path-plan.md`, R-L5c3).
+    #[inline(never)]
+    fn generate_castling<P: Path>(&self, out: &mut Vec<u32>) {
         let t = self.t;
         let (king_type, rook_type, king_steps) =
             t.castling.expect("generate_castling without a rule");
@@ -6083,7 +6153,7 @@ impl<'t> Game<'t> {
 
         let needs_safety = t.needs_check_filter();
         if needs_safety
-            && self.attacks_any(1 - player, king_square)
+            && self.attacks_any_p::<P>(1 - player, king_square)
         {
             return;
         }
@@ -6139,7 +6209,7 @@ impl<'t> Game<'t> {
                         // a transit square is empty by the check above, so
                         // `attacks_square` would skip the capture matrix and call a
                         // square attacked by a piece that could not take a king.
-                        if self.threatened_as(
+                        if self.threatened_as_p::<P>(
                             1 - player, rank * width + file as usize, self.t.owned_victim(king_type),
                         ) {
                             crossed_attack = true;
@@ -6186,7 +6256,7 @@ impl<'t> Game<'t> {
                     let mut file = king_file + step;
                     let mut crossed_attack = false;
                     loop {
-                        if self.threatened_as(
+                        if self.threatened_as_p::<P>(
                             1 - player, rank * width + file as usize, self.t.owned_victim(king_type),
                         ) {
                             crossed_attack = true;
@@ -6252,27 +6322,39 @@ impl<'t> Game<'t> {
     /// turning, so a flag saying *this was an ordinary move* is the difference between an
     /// explosion firing where a capture happened and one firing wherever a piece turns.
     ///
-    /// `NPC` is `t.has_npcs`, read once by the caller (R-L5d), which then asks
-    /// `filter_headings_back` after its restore under the same constant.
-    fn play_for_filter<const NPC: bool>(&mut self, m: u32, saved: &mut Saved) -> Option<u8> {
-        let played = self.play_move_for_filter(m, saved);
+    /// `P::WILD` is `t.has_npcs`, read once by the filter's entry (R-L5d's `NPC`, folded into
+    /// the copy by R-L5c3), which then asks `filter_headings_back` after its restore under the
+    /// same constant.
+    #[inline(always)]
+    fn play_for_filter<P: Path>(&mut self, m: u32, saved: &mut Saved) -> Option<u8> {
+        debug_assert_eq!(P::WILD, self.t.has_npcs);
+        let played = self.play_move_for_filter_p::<P>(m, saved);
         // The phase belongs to the ply, so a filter asking about the position a move
         // leaves behind has to play it too (schema 9). Here rather than in the two
         // callers, which is what makes "legality is asked of the post-phase position"
         // one statement -- `must_capture` asks about the move alone and does not come
         // through this function at all.
-        if NPC {
+        if P::WILD {
             self.npc_phase_for_filter(saved);
         }
         played
     }
 
     /// The move alone, without the phase: the half `play_for_filter` shared before
-    /// schema 9 gave it a second half.
+    /// schema 9 gave it a second half. The full copy, for the region filter.
     fn play_move_for_filter(&mut self, m: u32, saved: &mut Saved) -> Option<u8> {
+        self.play_move_for_filter_p::<Full>(m, saved)
+    }
+
+    /// `play_move_for_filter` on the copy `P` (R-L5c3): its kind chain and its gate behind
+    /// their families. The strike and blast arms are R-L4b's (`common-path-plan.md` §2.3) and
+    /// read as before.
+    fn play_move_for_filter_p<P: Path>(&mut self, m: u32, saved: &mut Saved) -> Option<u8> {
         let t = self.t;
         // SR8a (H3): `make`'s count, on the same board before the move.
-        self.tally_entries();
+        if rare!(P::ENTRY, t.entry_only_lost) {
+            self.tally_entries();
+        }
         let player = self.side;
         let origin = move_from(m);
         let target = move_to(m);
@@ -6280,10 +6362,10 @@ impl<'t> Game<'t> {
 
         // Schema 22: a fold's own move writes no square; its caller moves the fold
         // (`shift_fold_for_filter`).
-        if kind == MOVE_FOLD {
+        if rare!(P::PORTALS, kind == MOVE_FOLD) {
             return None;
         }
-        if enters_play(kind) {
+        if rare!(P::HAND || P::PURSE, enters_play(kind)) {
             saved.push((target, self.board[target]));
             // What arrives, not what was dropped (schema 9): a struck or dropped piece
             // that promotes on arrival can give check, and a filter that did not know
@@ -6292,7 +6374,7 @@ impl<'t> Game<'t> {
             self.board[target] = self.arriving(player, move_promotion(m) as usize, target);
             return None;
         }
-        if kind == MOVE_HIRE {
+        if rare!(P::PURSE, kind == MOVE_HIRE) {
             // TC6: the piece changes sides where it stands, and so what it attacks; nothing
             // moves.
             let bought = self.board[origin];
@@ -6300,7 +6382,7 @@ impl<'t> Game<'t> {
             self.board[origin] = self.rehome(bought, player, origin);
             return None;
         }
-        if kind == MOVE_ROTATE {
+        if rare!(P::FACING, kind == MOVE_ROTATE) {
             // A turn changes what the piece attacks, so it can put a royal in check --
             // and the pin shortcut in `generate_legal` is right to treat it like any
             // other move from that square. What it must not do is nothing, which is
@@ -6327,7 +6409,11 @@ impl<'t> Game<'t> {
             self.board[rook_from] = 0;
             self.board[target] = moving;
             self.board[rook_to] = rook_value;
-            self.gate_for_filter(m, origin, rook_from, saved);
+            // `gate_for_filter` reads its rule itself (the tag, then `drops`), so the full copy keeps its
+            // order and the lean copy, which has no gating hand and writes no tag, compiles it out.
+            if P::HAND {
+                self.gate_for_filter(m, origin, rook_from, saved);
+            }
             return None;
         }
 
@@ -6353,7 +6439,7 @@ impl<'t> Game<'t> {
             captured_square = ep_sq;
             saved.push((ep_sq, captured));
             self.board[ep_sq] = 0;
-        } else if kind == MOVE_SWEEP {
+        } else if rare!(P::SWEEP, kind == MOVE_SWEEP) {
             // Schema 13: the path is cleared as `make` clears it. Three victims fit inline
             // beside the origin and the target; a fourth spills, correctly and rarely.
             // `Tables::sweep_victims` names them.
@@ -6376,9 +6462,9 @@ impl<'t> Game<'t> {
             if t.explosion.is_some() {
                 self.sweep_blast_for_filter(moving, target_before, target, swept_from, victims, saved);
             }
-        } else if kind == MOVE_PORTAL && move_promotion(m) != 0 {
+        } else if rare!(P::PORTALS, kind == MOVE_PORTAL) && move_promotion(m) != 0 {
             self.board[target] = t.promoted_value(player, m, move_promotion(m) as usize - 1);
-        } else if kind == MOVE_PUSH {
+        } else if rare!(P::PUSH, kind == MOVE_PUSH) {
             // Q1074b2: the push as `write_push` plays it, `push_shift_line` the one reading
             // (Q1074b4: the whole line under the longer chains, every square saved).
             if move_promotion(m) != 0 {
@@ -6389,7 +6475,7 @@ impl<'t> Game<'t> {
                     saved.push((square, game.board[square]));
                     game.board[square] = value;
                 });
-        } else if kind == MOVE_DISPLACE {
+        } else if rare!(P::HOPS, kind == MOVE_DISPLACE) {
             // TS4: the line as `write_displace` plays it, every square saved.
             if move_promotion(m) != 0 {
                 self.board[target] = t.entering_value(player, move_promotion(m) as usize - 1);
@@ -6405,7 +6491,11 @@ impl<'t> Game<'t> {
             self.board[back] = 0;
         }
         // Q1059a: a gating move's piece stands on the origin it vacated, and may block a line.
-        self.gate_for_filter(m, origin, origin, saved);
+        // `gate_for_filter` reads its rule itself (the tag, then `drops`), so the full copy keeps its
+        // order and the lean copy, which has no gating hand and writes no tag, compiles it out.
+        if P::HAND {
+            self.gate_for_filter(m, origin, origin, saved);
+        }
 
         // Strike (schema 6): the surviving piece has to be on the board before the
         // attack query, or a victim that a strike turns into a checking piece is
@@ -6435,7 +6525,7 @@ impl<'t> Game<'t> {
         }
         // SR6a (W1): a sweep under `"path"` strikes its swept pieces after the landing, as
         // `make` places them; one turned into a checking piece must be seen.
-        if kind == MOVE_SWEEP
+        if rare!(P::SWEEP, kind == MOVE_SWEEP)
             && t.strike.as_ref().is_some_and(|rule| rule.strikes_path(t.type_of(moving)))
         {
             let mover_square = if stayed { origin } else { target };
@@ -6549,13 +6639,18 @@ impl<'t> Game<'t> {
     /// the general path's `royal_square` misses its hint once the royal has moved. Every
     /// other kind (castling, a promotion, a gate, a strike) keeps the general path. A
     /// checking build asks the general path beside it on every call.
+    ///
+    /// R-L5c3: on the copy `P`, its gate and strike tests behind their families.
     #[inline]
-    fn royal_move_attacked(&mut self, m: u32, royal: usize) -> bool {
+    fn royal_move_attacked<P: Path>(&mut self, m: u32, royal: usize) -> bool {
         let t = self.t;
         let target = move_to(m);
         let taken = self.board[target];
-        if move_kind(m) != MOVE_NORMAL || move_gate(m) != 0 || (taken != 0 && t.strike.is_some()) {
-            return self.leaves_royal_attacked(m);
+        if move_kind(m) != MOVE_NORMAL
+            || rare!(P::HAND, move_gate(m) != 0)
+            || (taken != 0 && rare_opt(P::CAPTURE, t.strike.as_ref()).is_some())
+        {
+            return self.leaves_royal_attacked_p::<P>(m);
         }
         let player = self.side;
         let moving = self.board[royal];
@@ -6564,14 +6659,15 @@ impl<'t> Game<'t> {
         self.board[target] = moving;
         // `leaves_royal_attacked`'s first arm: a capture that leaves the opponent without a
         // royal, where that loses, wins on the spot. Asked only of a capture.
-        let attacked = !(taken != 0 && t.royal_loss_ends_it(1 - player) && self.royal_gone(1 - player))
-            && self.threatened(1 - player, target);
+        let attacked =
+            !(taken != 0 && t.royal_loss_ends_it(1 - player) && self.royal_gone_p::<P>(1 - player))
+                && self.threatened_p::<P>(1 - player, target);
         self.board[target] = taken;
         self.board[royal] = moving;
         self.scratch -= 1;
         debug_assert_eq!(
             attacked,
-            self.leaves_royal_attacked(m),
+            self.leaves_royal_attacked_p::<P>(m),
             "C5: the royal's one attack query disagrees with the filter's play"
         );
         attacked
@@ -6580,30 +6676,38 @@ impl<'t> Game<'t> {
     /// Legality test that skips building a successor state: only the board and the
     /// unmoved mask affect the answer, so the move is played, tested and taken back.
     ///
-    /// R-L5d (2026-11-14): one `has_npcs` test, here, picks the body. A game with no wild
-    /// piece runs `leaves_royal_attacked_as::<false>`, in which every wild-only step (the
-    /// royal count, the phase, SR8h's `filter_headings_back` after the restore) is compiled
-    /// out; a wild game runs the cold `<true>` copy. SR8h's post-restore test had cost every
-    /// checking game about 1.2% (`docs/reference/speed-history.md` §4 C).
+    /// The entry for a caller outside the generator's copy: this game's copy, once.
     fn leaves_royal_attacked(&mut self, m: u32) -> bool {
-        if self.t.has_npcs {
-            self.leaves_royal_attacked_wild(m)
+        if self.t.lean {
+            self.leaves_royal_attacked_p::<Lean>(m)
         } else {
-            self.leaves_royal_attacked_as::<false>(m)
+            self.leaves_royal_attacked_p::<Full>(m)
         }
     }
 
-    /// `leaves_royal_attacked` in a game with wild pieces: the filter's NPC path.
-    #[cold]
-    #[inline(never)]
-    fn leaves_royal_attacked_wild(&mut self, m: u32) -> bool {
-        self.leaves_royal_attacked_as::<true>(m)
+    /// `leaves_royal_attacked` from inside the copy `P` (R-L5c3, `common-path-plan.md` §5).
+    /// A copy with `WILD` off is its own body. The full copy keeps R-L5d's one `has_npcs`
+    /// test (2026-11-14), which picks the body: a game with no wild piece runs `Tame`'s, in
+    /// which every wild-only step (the royal count, the phase, SR8h's `filter_headings_back`
+    /// after the restore) is compiled out; a wild game runs `Full`'s. SR8h's post-restore
+    /// test had cost every checking game about 1.2% (`docs/reference/speed-history.md` §4 C).
+    #[inline(always)]
+    fn leaves_royal_attacked_p<P: Path>(&mut self, m: u32) -> bool {
+        if !P::WILD {
+            self.leaves_royal_attacked_as::<P>(m)
+        } else if rare!(P::WILD, self.t.has_npcs) {
+            self.leaves_royal_attacked_as::<Full>(m)
+        } else {
+            self.leaves_royal_attacked_as::<Tame>(m)
+        }
     }
 
-    /// The one body of `leaves_royal_attacked`; `NPC` is `t.has_npcs`, read once by the caller.
-    #[inline(always)]
-    fn leaves_royal_attacked_as<const NPC: bool>(&mut self, m: u32) -> bool {
-        debug_assert_eq!(NPC, self.t.has_npcs);
+    /// The one body of `leaves_royal_attacked`; `P::WILD` is `t.has_npcs`, read once by the
+    /// entry. Each copy out of line: the lean copy's, `Tame`'s, and the wild game's (`Full`;
+    /// not cold since R-L5c3: a wild game's whole filter is that copy).
+    #[inline(never)]
+    fn leaves_royal_attacked_as<P: Path>(&mut self, m: u32) -> bool {
+        debug_assert_eq!(P::WILD, self.t.has_npcs);
         let t = self.t;
         let player = self.side;
         let origin = move_from(m);
@@ -6618,7 +6722,7 @@ impl<'t> Game<'t> {
         // A royal that has been eaten is not an unattacked royal, and without this the
         // post-phase question ("is it attacked?") answers no because there is nothing
         // there to attack. Zero where nothing is wild, and the count is then never read.
-        let royals_before = if NPC { self.royal_count(player) } else { 0 };
+        let royals_before = if P::WILD { self.royal_count(player) } else { 0 };
         self.scratch += 1;
 
         // Schema 10 (Q18): who is capturing, read before the move is played because
@@ -6632,8 +6736,8 @@ impl<'t> Game<'t> {
         };
 
         // Apply the move to the board, saving every square we touch.
-        let target_before = self.play_for_filter::<NPC>(m, &mut saved);
-        let fold_moved = self.shift_fold_for_filter(m);
+        let target_before = self.play_for_filter::<P>(m, &mut saved);
+        let fold_moved = self.shift_fold_for_filter_p::<P>(m);
 
         // Explosion. Only after an ordinary move, and only where something was taken:
         // the target square of a rotation holds the piece that is turning, and reading
@@ -6676,7 +6780,8 @@ impl<'t> Game<'t> {
         // lookup is worth avoiding: inside a filter `royal_hint` is read but never
         // written, so a miss is a board scan that is paid again on the next move tested.
         let took_something = matches!(target_before, Some(value) if value != 0);
-        let could_empty_a_royal_square = took_something || NPC || kind == MOVE_SWEEP;
+        let could_empty_a_royal_square =
+            took_something || P::WILD || rare!(P::SWEEP, kind == MOVE_SWEEP);
 
         // Where losing the royal is losing, a move that removes the **opponent's** wins on
         // the spot -- `terminal_prefix` says so before anyone moves again -- so whatever it
@@ -6686,22 +6791,22 @@ impl<'t> Game<'t> {
         // the three questions below to get back to the ordinary answer.
         let attacked = if could_empty_a_royal_square
             && t.royal_loss_ends_it(1 - player)
-            && self.royal_gone(1 - player)
+            && self.royal_gone_p::<P>(1 - player)
         {
             false
-        } else if t.royal_facing_forbidden && self.royals_face() {
+        } else if rare!(P::ROYALS, t.royal_facing_forbidden) && self.royals_face() {
             true
-        } else if t.multi_royal {
+        } else if rare!(P::ROYALS, t.multi_royal) {
             let mine = self.royal_squares(player);
             // The mover's own royalty gone, and this side had royalty to lose: the move
             // loses outright, and a move that loses outright is refused rather than played
             // and then lost. `mine.len() < royals_before` is the narrower reading beside
             // it -- losing *one* of several, which only the wild phase can do.
-            (mine.is_empty() && t.royal_loss_ends_it(player) && !self.royal_in_hand(player))
+            (mine.is_empty() && t.royal_loss_ends_it(player) && !rare!(P::HAND, self.royal_in_hand(player)))
                 || mine.len() < royals_before
-                || mine.iter().any(|&r| self.threatened(1 - player, r))
+                || mine.iter().any(|&r| self.threatened_p::<P>(1 - player, r))
         } else {
-            match self.royal_square(player) {
+            match self.royal_square_p::<P>(player) {
                 // Gone, and this side had one to lose. This read `royals_before > 0`,
                 // which is the same answer wherever the question can be reached -- the
                 // filter is only entered with the royal standing -- and `royals_before` is
@@ -6711,13 +6816,13 @@ impl<'t> Game<'t> {
                 //
                 // Schema 18 (Q784): or not yet played. A royal still in hand under
                 // `drops.placement` is not lost, and this move does not lose it.
-                r if r < 0 => t.royal_loss_ends_it(player) && !self.royal_in_hand(player),
-                r => self.threatened(1 - player, r as usize),
+                r if r < 0 => t.royal_loss_ends_it(player) && !rare!(P::HAND, self.royal_in_hand(player)),
+                r => self.threatened_p::<P>(1 - player, r as usize),
             }
         };
 
         saved.restore(&mut self.board);
-        if NPC {
+        if P::WILD {
             self.filter_headings_back();
         }
         if let Some((end, square)) = fold_moved {
@@ -6732,8 +6837,8 @@ impl<'t> Game<'t> {
     /// and say which end and where it stood, for the filter to put back. `None` for every
     /// other move.
     #[inline(always)]
-    fn shift_fold_for_filter(&mut self, m: u32) -> Option<(usize, i16)> {
-        if move_kind(m) != MOVE_FOLD {
+    fn shift_fold_for_filter_p<P: Path>(&mut self, m: u32) -> Option<(usize, i16)> {
+        if !rare!(P::PORTALS, move_kind(m) == MOVE_FOLD) {
             return None;
         }
         let end = move_fold(m);
@@ -7113,14 +7218,14 @@ impl<'t> Game<'t> {
                 let mut write = base;
                 for index in base..out.len() {
                     let m = out[index];
-                    if !self.leaves_royal_attacked(m) {
+                    if !self.leaves_royal_attacked_p::<P>(m) {
                         out[write] = m;
                         write += 1;
                     }
                 }
                 out.truncate(write);
             } else {
-                let royal = self.royal_square(player);
+                let royal = self.royal_square_p::<P>(player);
                 if royal >= 0 {
                     let royal = royal as usize;
 
@@ -7179,14 +7284,14 @@ impl<'t> Game<'t> {
                         || rare!(P::SWEEP, t.has_sweep)
                         || rare_opt(P::PORTALS, t.portals.as_deref()).is_some()
                         || rare_opt(P::HELD, t.majority.as_deref()).is_some_and(|m| m.threatens_royals));
-                    if !shortcut_premise || self.in_check_at(player, royal) {
+                    if !shortcut_premise || self.in_check_at::<P>(player, royal) {
                         let mut write = base;
                         for index in base..out.len() {
                             let m = out[index];
                             let attacked = if shortcut_premise && move_from(m) == royal {
-                                self.royal_move_attacked(m, royal)
+                                self.royal_move_attacked::<P>(m, royal)
                             } else {
-                                self.leaves_royal_attacked(m)
+                                self.leaves_royal_attacked_p::<P>(m)
                             };
                             if !attacked {
                                 out[write] = m;
@@ -7260,9 +7365,9 @@ impl<'t> Game<'t> {
                             );
                             if suspect
                                 && if origin == royal {
-                                    self.royal_move_attacked(m, royal)
+                                    self.royal_move_attacked::<P>(m, royal)
                                 } else {
-                                    self.leaves_royal_attacked(m)
+                                    self.leaves_royal_attacked_p::<P>(m)
                                 }
                             {
                                 continue;
@@ -7282,7 +7387,7 @@ impl<'t> Game<'t> {
                         let m = out[index];
                         let royal_drop = move_kind(m) == MOVE_DROP
                             && t.royal_types.contains(&(move_promotion(m) as usize));
-                        if royal_drop && self.leaves_royal_attacked(m) {
+                        if royal_drop && self.leaves_royal_attacked_p::<P>(m) {
                             continue;
                         }
                         out[write] = m;
@@ -7348,10 +7453,10 @@ impl<'t> Game<'t> {
     }
 
     /// `forbid_check`'s question of one move: whether `player`'s move `m` leaves
-    /// `opponent`'s royal attacked. `NPC` is `t.has_npcs`, read once by `restrict`.
+    /// `opponent`'s royal attacked. `P::WILD` is `t.has_npcs`, read once by `gives_check_p`.
     #[inline(always)]
-    fn gives_check_after<const NPC: bool>(&mut self, m: u32, player: usize, opponent: usize) -> bool {
-        debug_assert_eq!(NPC, self.t.has_npcs);
+    fn gives_check_after<P: Path>(&mut self, m: u32, player: usize, opponent: usize) -> bool {
+        debug_assert_eq!(P::WILD, self.t.has_npcs);
         let t = self.t;
         // Apply move temporarily to check if it gives check. No explosion arm:
         // this filter never had one, and `play_for_filter` is deliberately the
@@ -7359,8 +7464,8 @@ impl<'t> Game<'t> {
         let origin = move_from(m);
         let target = move_to(m);
         let mut saved = Saved::new();
-        self.play_for_filter::<NPC>(m, &mut saved);
-        let fold_moved = self.shift_fold_for_filter(m);
+        self.play_for_filter::<P>(m, &mut saved);
+        let fold_moved = self.shift_fold_for_filter_p::<P>(m);
 
         let saved_unmoved = self.unmoved;
         if fold_moved.is_none() {
@@ -7372,15 +7477,15 @@ impl<'t> Game<'t> {
         // the other royal standing where a boar steps next has left it in check,
         // whoever is threatening it, and this filter is about the position the
         // move leaves behind.
-        let gives_check = if t.multi_royal {
-            self.royal_squares(opponent).iter().any(|&r| self.threatened(player, r))
+        let gives_check = if rare!(P::ROYALS, t.multi_royal) {
+            self.royal_squares(opponent).iter().any(|&r| self.threatened_p::<P>(player, r))
         } else {
-            let r = self.royal_square(opponent);
-            r >= 0 && self.threatened(player, r as usize)
+            let r = self.royal_square_p::<P>(opponent);
+            r >= 0 && self.threatened_p::<P>(player, r as usize)
         };
 
         saved.restore(&mut self.board);
-        if NPC {
+        if P::WILD {
             self.filter_headings_back();
         }
         if let Some((end, square)) = fold_moved {
@@ -7390,11 +7495,24 @@ impl<'t> Game<'t> {
         gives_check
     }
 
+    /// `gives_check_after` from inside the copy `P`: a copy with `WILD` off is its own body;
+    /// the full copy keeps R-L5d's one `has_npcs` test a move, which picks `Tame`'s body or
+    /// the wild game's (`gives_check_after_wild`, out of line, not cold since R-L5c3).
+    #[inline(always)]
+    fn gives_check_p<P: Path>(&mut self, m: u32, player: usize, opponent: usize) -> bool {
+        if !P::WILD {
+            self.gives_check_after::<P>(m, player, opponent)
+        } else if rare!(P::WILD, self.t.has_npcs) {
+            self.gives_check_after_wild(m, player, opponent)
+        } else {
+            self.gives_check_after::<Tame>(m, player, opponent)
+        }
+    }
+
     /// `gives_check_after` in a game with wild pieces.
-    #[cold]
     #[inline(never)]
     fn gives_check_after_wild(&mut self, m: u32, player: usize, opponent: usize) -> bool {
-        self.gives_check_after::<true>(m, player, opponent)
+        self.gives_check_after::<Full>(m, player, opponent)
     }
 
     /// Apply the restriction rules that narrow an already-legal move list, on this game's
@@ -7422,11 +7540,7 @@ impl<'t> Game<'t> {
                 let m = out[index];
                 // R-L5d: one `has_npcs` test a move, as before SR8h (it was
                 // `play_for_filter`'s); the wild copy also puts the headings back.
-                let gives_check = if t.has_npcs {
-                    self.gives_check_after_wild(m, player, opponent)
-                } else {
-                    self.gives_check_after::<false>(m, player, opponent)
-                };
+                let gives_check = self.gives_check_p::<P>(m, player, opponent);
                 if !gives_check {
                     out[write] = m;
                     write += 1;

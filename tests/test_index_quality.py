@@ -843,7 +843,8 @@ class TestADistinctSeatCannotRefuseAForcedLine:
     Since Q953a the seat check counts each different decided game once. Sweeping bishop
     chess's first player mates in one, and its two strongest rungs play that one game in
     every run, so its top two are one distinct game and the seat refuses nothing. It stays
-    out because its length and quick-kill gates refuse it on every run. Read-only, off the
+    out because its length gate refuses it on every run (and, since `v15`, quick kill warns
+    on every run; under `v14` it refused too). Read-only, off the
     main checkout's library runs, and skipped where they are absent.
     """
 
@@ -860,7 +861,7 @@ class TestADistinctSeatCannotRefuseAForcedLine:
 
         spec = load_spec(Path(__file__).resolve().parent.parent / "archive"
                          / "chess-sweeping-bishops.json")
-        details, refusals = [], []
+        details, refusals, warned = [], [], []
         for seed in (0, 1000, 2000, 3000):
             run = RUNS / f"{self.HASH}-{seed}"
             if not (run / "games.jsonl").exists() or not (run / "analysis.json").exists():
@@ -874,14 +875,17 @@ class TestADistinctSeatCannotRefuseAForcedLine:
             refusals.append({
                 text.split("=")[0] for text in gate_violations(components, weights)
             })
+            warned.append({text.split("=")[0] for text in weights.check_warnings(components.raw)})
 
         pooled = pooled_seat_reading(details)
         top = pooled["bands"]["top_rung_seat"]
         assert (top["wins"], top["losses"]) == (64, 0)
         assert (top["distinct_wins"], top["distinct_losses"]) == (1, 0)
         assert pooled["refuses"] is False
-        for found in refusals:
-            assert {"mean_plies_worst_half", "quick_kill_rate_worst_half"} <= found
+        # Since `v15` (R-S17i) quick kill only warns; the length gate alone keeps it out.
+        for found, said in zip(refusals, warned, strict=True):
+            assert "mean_plies_worst_half" in found
+            assert "quick_kill_rate_worst_half" in said
 
 class TestPickingHelpers:
     def test_the_most_numerous_piece_of_chess_is_the_pawn(self) -> None:

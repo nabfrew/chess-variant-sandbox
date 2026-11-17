@@ -695,7 +695,12 @@ class TestTheFingerprintsPointAtSomething:
 # `engine.describe_move` with it. No stored game holds gating beside a sweep ray, so no stored
 # record reads differently; the library replay that follows R-L6e re-scores every game on this
 # core anyway. It was "3a1a391854f94ddf" after R-S6d.
-FROZEN_METRICS = "64754a1eeb0a0a61"
+# **Moved 2026-11-16 by R-S17i** (`v15` made current, `wrong-no.md` §12): `metrics/scoring.py`
+# reads a weights file's `warnings`, `metrics/index.py` writes the run's `warnings` beside its
+# violations, and `metrics/seeds.py` carries them to the game's file
+# (`warned`). No vote reads a warning and no total moves; the
+# library is re-scored under `v15` from its stored records. It was "64754a1eeb0a0a61" after R-L6e.
+FROZEN_METRICS = "7554c69f05dffa12"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:

@@ -461,6 +461,8 @@ class _Scored:
     # across the runs rather than averaging them. Empty here: these tests ask which
     # passes ran, and a stub that measured no seat is the honest shape for that.
     diagnostics: dict[str, Any] = field(default_factory=dict)
+    # `IndexResult.warnings` (`v15`): none, as a stub that measured nothing crosses none.
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def sd(self) -> float:
