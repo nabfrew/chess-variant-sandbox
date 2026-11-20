@@ -238,6 +238,17 @@ def translate(spec: dict[str, Any] | CompiledSpec) -> Variant:
     reasons: list[str] = []
     notes: list[str] = []
     approximates: set[str] = set()
+    reasons.extend(_capture_list_reasons(source))
+    named = compiled.hash
+    lowered = _capture_list_as_old_keys(source)
+    if lowered is not source and compiled.capture is not None and not reasons:
+        # A list re-expressed as the old keys as this game plays it: the tables the
+        # translator reads are the old keys' (the same game but for the list the core is
+        # handed), and the variant keeps the game's own name.
+        from chess_variant_sandbox.engine.compile import compile_spec
+
+        compiled = compile_spec(lowered)
+    source = lowered
     rules = source.get("rules", {})
 
     _check_board(compiled, reasons)
@@ -255,7 +266,7 @@ def translate(spec: dict[str, Any] | CompiledSpec) -> Variant:
     if reasons:
         raise Untranslatable(reasons)
 
-    lines: list[str] = [f"[{variant_name(compiled.hash)}]"]
+    lines: list[str] = [f"[{variant_name(named)}]"]
     lines.append(f"maxRank = {compiled.height}")
     lines.append(f"maxFile = {compiled.width}")
     lines.extend(pieces)
@@ -268,7 +279,7 @@ def translate(spec: dict[str, Any] | CompiledSpec) -> Variant:
         raise Untranslatable(reasons)
 
     return Variant(
-        name=variant_name(compiled.hash),
+        name=variant_name(named),
         config="\n".join(lines) + "\n",
         chars=tuple(chars),
         king=king,
@@ -286,6 +297,51 @@ def translate(spec: dict[str, Any] | CompiledSpec) -> Variant:
 
 
 # ------------------------------------------------------------------ what cannot cross
+
+
+_CAPTURE_LIST_WORDS = {
+    "order": "another order than pay, hand, blast, strike, contacts",
+    "twice": "a kind in two entries",
+    "on": "an entry reading a taking its old rule does not",
+}
+
+
+def _capture_list_as_old_keys(source: dict[str, Any]) -> dict[str, Any]:
+    """R-L4b4: the capture list re-expressed as the old keys where they say it as this game
+    plays it (`capture.as_played_old_keys`: a list that differs from them only in a cause the
+    game never makes), so the rest of the translator reads one spelling; `verify` then holds
+    the two engines' legal moves together as for any translation. Unchanged otherwise."""
+    from chess_variant_sandbox.spec.capture import as_played_old_keys, capture_as_old_keys
+
+    return capture_as_old_keys(source) or as_played_old_keys(source) or source
+
+
+def _capture_list_reasons(source: dict[str, Any]) -> list[str]:
+    """R-L4b4: what of a capture list Fairy-Stockfish has no way to say, by name: a list only
+    ``rules.capture`` says even as this game plays it (its order, a kind twice, a reading),
+    and old keys stating a pair only the list plays (each a `[[lifted]]` row, refused in
+    `fairy/lifted.TREATMENT`). It has one fixed reading of each rule it has and no list."""
+    from chess_variant_sandbox.spec.capture import (
+        as_played_old_keys,
+        capture_as_old_keys,
+        lifted_pairs,
+        list_features,
+    )
+
+    lowered = capture_as_old_keys(source) or as_played_old_keys(source)
+    if lowered is None and isinstance(source.get("rules"), dict) and "capture" in source["rules"]:
+        said = ", ".join(_CAPTURE_LIST_WORDS[name] for name in sorted(list_features(source)))
+        return [
+            f"rules.capture: what a capture does is an ordered list here ({said or 'a list'}), "
+            "and Fairy-Stockfish has one fixed reading of each rule and no list"
+        ]
+    pairs = lifted_pairs(lowered if lowered is not None else source)
+    if pairs:
+        return [
+            f"rules.capture: {', '.join(pairs)}, a pair of capture rules only the ordered list "
+            "plays, and Fairy-Stockfish has no list"
+        ]
+    return []
 
 
 def _check_board(compiled: CompiledSpec, reasons: list[str]) -> None:
@@ -370,6 +426,9 @@ _RULES_TRANSLATED = frozenset(
 _RULES_REFUSED = frozenset(
     {
         "bare_royal",
+        # R-L4b4: a list the old keys say as this game plays it is re-expressed as them
+        # (`_capture_list_as_old_keys`); the rest is refused by name (`_capture_list_reasons`).
+        "capture",
         "npcs",
         "portals",
         "promote_on_entry",

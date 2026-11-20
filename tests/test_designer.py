@@ -565,7 +565,7 @@ class TestARuleIsOfferedInWords:
             _kit_setup() + f"DRAFT = {json.dumps(spec)};",
             "rulesCardsHtml([]) + ruleMenuHtml()",
         )
-        for key in _RULES_KEYS:
+        for key in _RULES_KEYS - {cards.CAPTURE_LIST_KEY}:  # R-L4b stage 3: a file's, until stage 4
             assert _escaped(describe.RULE_WORDS[key][0]) in drawn, key
 
 
@@ -852,8 +852,10 @@ class TestRuleCardsComeFromTheSchema:
     def test_every_rule_key_has_a_field(self) -> None:
         """The next `SCHEMA_VERSION` bump cannot forget the designer."""
         model = cards.card_model()
-        assert {f["key"] for f in model["rules"]} == set(_RULES_KEYS)
-        assert set(model["ruleOrder"]) == set(_RULES_KEYS)
+        # R-L4b4: `rules.capture` has its card (stage 3 had left it to a file).
+        offered = set(_RULES_KEYS)
+        assert {f["key"] for f in model["rules"]} == offered
+        assert set(model["ruleOrder"]) == offered
 
     def test_every_rule_key_is_drawn_as_a_card(self) -> None:
         html = _run_page(
@@ -977,8 +979,12 @@ _PORTAL_SQUARES = "must be a square on the board"
 # Generation 42 (N4c): no template refuses the duck. Its card arrives with a duck of its own
 # (`RULE_COMPANIONS.duck`): an unplaced piece with no moves, mate turned to the royal's capture
 # and an odd length made even, as N4b's refusals here (a placed piece, checkmate) asked.
+# R-L4b4: the capture list's card arrives with one entry of its first kind, a bounty paid, and
+# no template's piece carries a bounty.
+_CAPTURE_CARD = {"capture": "pays nothing"}
 _CANNOT = {
     "skirmish": {
+        **_CAPTURE_CARD,
         "bare_royal": "no piece is marked royal",
         "check_limit": "no piece is marked royal",
         "forbid_check": "no piece is marked royal",
@@ -996,6 +1002,7 @@ _CANNOT = {
         "income": "without rules.purse",
     },
     "kingly": {
+        **_CAPTURE_CARD,
         "en_passant": "the promoting piece it is defined against, has none",
         "promote_on_entry": "nothing enters play except by moving",
         "portals": _PORTAL_SQUARES,
@@ -1005,6 +1012,7 @@ _CANNOT = {
         "income": "without rules.purse",
     },
     "race": {
+        **_CAPTURE_CARD,
         "bare_royal": "no piece is marked royal",
         "check_limit": "no piece is marked royal",
         "forbid_check": "no piece is marked royal",

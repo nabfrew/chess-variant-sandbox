@@ -81,6 +81,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from chess_variant_sandbox.spec.capture import rules_as_old_keys
 from chess_variant_sandbox.spec.schema import strike_changes_anything, wild_type_ids, wrap_stated
 
 # --------------------------------------------------------------------------- axes
@@ -282,7 +283,11 @@ for _axis in AXES:
 
 
 def descriptor(spec: dict[str, Any]) -> tuple[int, ...]:
-    """Which cell this ruleset belongs to. Exact, free, and known before it is played."""
+    """Which cell this ruleset belongs to. Exact, free, and known before it is played.
+
+    Each capture rule read from the one list (`capture.rules_as_old_keys`, R-L4b4): a hand
+    entry is a hand, a strike entry a strike."""
+    spec = rules_as_old_keys(spec)
     return tuple(axis.of(spec) for axis in AXES)
 
 

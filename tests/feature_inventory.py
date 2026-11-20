@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from chess_variant_sandbox.spec.capture import list_features
 from chess_variant_sandbox.spec.reachability import _promotion_entries, stocked_ids
 from chess_variant_sandbox.spec.schema import (
     EXTINCTION_PER_TYPE_OWN,
@@ -81,7 +82,7 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 128
+LAST_BUMP = 129
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -2678,6 +2679,23 @@ def _schema_one_hundred_twenty_eight_uses(spec: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _schema_one_hundred_twenty_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 129 added, by name (R-L4b4,
+    `docs/reference/capture-effects-design.md` §6 stage 4; numbered by order of landing,
+    bumping no version). ``rules.capture``, what a capture does as one ordered list, where it
+    says what the old keys cannot (`capture.list_features`), three names:
+
+    * ``rules.capture.order`` -- the entries' kinds in another order than pay, hand, blast,
+      strike, contacts (a strike ahead of the hand: a struck piece turns before the hand may
+      take it).
+    * ``rules.capture.on`` -- an entry reading a cause of a taking its old rule could not say
+      (a blast reading a blast's victims: a chain of blasts).
+    * ``rules.capture.twice`` -- one kind in two entries, each reading its own causes at its
+      own place in the list.
+    """
+    return {f"rules.capture.{name}" for name in list_features(spec)}
+
+
 _COLLECTORS = {
     9: _schema_nine_uses,
     10: _schema_ten_uses,
@@ -2799,4 +2817,5 @@ _COLLECTORS = {
     126: _schema_one_hundred_twenty_six_uses,
     127: _schema_one_hundred_twenty_seven_uses,
     128: _schema_one_hundred_twenty_eight_uses,
+    129: _schema_one_hundred_twenty_nine_uses,
 }

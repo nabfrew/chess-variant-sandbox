@@ -211,15 +211,6 @@ why = "either player may hold the type, so one of it can meet another and tie: t
 
 # --- what a taken piece becomes ---------------------------------------------------------------
 [[refusal]]
-id = "T1.position"
-plan = "T1"
-family = "taken piece"
-at = 'table:T1|rules.strike.position (not "stay" or "home")'
-pair = ["rules.explode_on_capture.strikes", 'rules.strike.position (not "stay" or "home")']
-reason = "contradictory"
-why = "the blast destroys the capturer, and only stay and home place a struck piece without it (ruled 2026-10-27)"
-
-[[refusal]]
 id = "T1.rifle"
 plan = "T1"
 family = "taken piece"
@@ -229,80 +220,40 @@ reason = "inert"
 why = "such a strike only removes, as the blast already does, so the switch changes nothing"
 
 [[refusal]]
-id = "T1.choose"
-plan = "T1"
-family = "taken piece"
-at = "table:T1|rules.explode_on_capture"
-pair = ['rules.strike.position: "choose"', "rules.explode_on_capture"]
-reason = "not_built"
-held_by = "none"
-why = "an exploding capture would be offered once per chosen square, all one position; refused beside any blast, a narrowed one included"
-
-[[refusal]]
 id = "T1.rounds"
 plan = "T1"
 family = "taken piece"
-at = "table:T1|rules.strike"
-pair = ["rules.simultaneous", "rules.strike beside rules.explode_on_capture"]
+# R-L4b stage 3: the second message is any capture list the core walks, in a round.
+# R-L4b5 narrowed both: a round walks the list over its takings; what stays is a strike or
+# link that stays (written before the list) and, for a walked list, a second (contact) table.
+at = ["table:T1|rules.strike", "table:T1|rules.capture"]
+pair = ["rules.simultaneous", "a shot (rules.strike placed 'stay') beside rules.explode_on_capture"]
 reason = "not_built"
 held_by = "none"
-why = "the order of a round's strikes and blasts is a rule not written"
+why = "a shot is written before anything moves (rounds.md section 4 step 0), ahead of the capture list that orders a round's strikes and blasts"
 
 [[refusal]]
-id = "T2"
-plan = "T2"
-family = "taken piece"
-at = "table:T2"
-pair = ["rules.strike (keeping its victim)", "rules.drops"]
-reason = "contradictory"
-why = "a struck piece cannot both stand on the board and sit in a hand"
-
-[[refusal]]
-id = "T3"
+id = "T3.choose"
 plan = "T3"
 family = "taken piece"
 at = "table:T3"
-pair = ["rules.contacts", "rules.strike"]
-reason = "contradictory"
-why = "two spellings of one rule: a strike is a contact table with no mover column"
-
-[[refusal]]
-id = "T4.switch"
-plan = "T4"
-family = "taken piece"
-at = "table:T4|rules.explode_on_capture.strikes"
-pair = ["rules.contacts", "rules.explode_on_capture.strikes"]
-reason = "contradictory"
-why = "a contact's links are about the capturer too, which the blast destroys (ruled 2026-10-27)"
-
-[[refusal]]
-id = "T4.choose"
-plan = "T4"
-family = "taken piece"
-at = "table:T4|rules.explode_on_capture"
-pair = ['rules.contacts.position: "choose"', "rules.explode_on_capture"]
-reason = "not_built"
-held_by = "none"
-why = "as T1.choose: an exploding capture would be offered once per chosen square"
+pair = ['rules.contacts.position: "choose"', "rules.strike"]
+reason = "too_expensive"
+why = "the contact table is the second table a capture reads, and the move word carries one chosen landing"
+cost = "a second chosen landing in the move word, whose bits 25 to 29 already carry the first: a core format change and a library replay"
+cost_basis = "cited: docs/reference/capture-effects-design.md section 2.4 (the word's width); R-L4b2b (with_capture_list, from_order refuse it)"
 
 [[refusal]]
 id = "T4.rounds"
 plan = "T4"
 family = "taken piece"
+# R-L4b5 narrowed it to a contact that stays: one that advances, swaps or goes home is a
+# taking the round's capture list walks.
 at = "table:T4|rules.contacts"
-pair = ["rules.simultaneous", "rules.contacts beside rules.explode_on_capture"]
+pair = ["rules.simultaneous", "a contact that stays (rules.contacts placed 'stay') beside rules.explode_on_capture"]
 reason = "not_built"
 held_by = "none"
-why = "the order of a round's contacts and blasts is a rule not written"
-
-[[refusal]]
-id = "T5"
-plan = "T5"
-family = "taken piece"
-at = "table:T5"
-pair = ["rules.contacts (a link keeping its target)", "rules.drops"]
-reason = "contradictory"
-why = "a transformed piece cannot both stand on the board and sit in a hand"
+why = "a contact that stays is written at the round's meetings (rounds.md section 4 step 4) and makes no taking, so no blast or list reads it"
 
 [[refusal]]
 id = "T11"
@@ -350,24 +301,6 @@ reason = "contradictory"
 why = "a royal that stops being royal makes check a question about a piece not on the board"
 
 # --- promotion, the hand, extinction -----------------------------------------------------------
-[[refusal]]
-id = "H4"
-plan = "H4"
-family = "hand"
-at = "_check_either_face_coherence: beside a strike whose position is"
-pair = ["rules.drops.either_face", 'rules.strike.position (not "advance")']
-reason = "contradictory"
-why = "the strike already says where a taken piece goes, so what it comes back as has two answers (follows T2)"
-
-[[refusal]]
-id = "H5"
-plan = "H5"
-family = "hand"
-at = "table:H5"
-pair = ["rules.drops.either_face", "rules.strike.switches_sides"]
-reason = "contradictory"
-why = "a capture already changes a piece's side, so what a taken piece becomes has two answers"
-
 [[refusal]]
 id = "H7"
 plan = "H7"
@@ -463,16 +396,6 @@ held_by = "none"
 why = "a sweep's move word names no landing square for the struck piece"
 
 [[refusal]]
-id = "W1.disagree"
-plan = "W1"
-family = "sweeps"
-at = "_check_sweep_effects: sweeps disagree on effects"
-pair = ['pieces[].moves[].effects: "path"', 'pieces[].moves[].effects: "landing" on the same piece']
-reason = "not_built"
-held_by = "none"
-why = "the sweep switch is read per piece, not per move"
-
-[[refusal]]
 id = "W2.choose"
 plan = "W2"
 family = "sweeps"
@@ -481,16 +404,6 @@ pair = ['pieces[].moves[].kind: "sweep"', 'rules.contacts.position: "choose"']
 reason = "not_built"
 held_by = "none"
 why = "a sweep's move word names no landing square for the piece its contact keeps"
-
-[[refusal]]
-id = "W3.both"
-plan = "W3"
-family = "sweeps"
-at = "table:W3"
-pair = ['pieces[].moves[].kind: "sweep"', "rules.explode_on_capture beside rules.strike or rules.contacts"]
-reason = "not_built"
-held_by = "none"
-why = "nobody has ordered a sweep's blasts and its strikes or contacts"
 
 [[refusal]]
 id = "W7.fold"
@@ -1398,33 +1311,6 @@ held_by = "none"
 why = "whether a pushed piece goes through an end, and whether a push transits one, are rules not written"
 
 [[refusal]]
-id = "push.X2.strike"
-family = "push"
-at = "table:push.X2|rules.strike"
-pair = ["pieces[].moves[].push", "rules.strike"]
-reason = "not_built"
-held_by = "none"
-why = "a strike acts on a capture landing, and a push that removes lands nowhere: what it strikes is unwritten"
-
-[[refusal]]
-id = "push.X2.contacts"
-family = "push"
-at = "table:push.X2|rules.contacts"
-pair = ["pieces[].moves[].push", "rules.contacts"]
-reason = "not_built"
-held_by = "none"
-why = "as push.X2.strike"
-
-[[refusal]]
-id = "push.X3"
-family = "push"
-at = "table:push.X3"
-pair = ["pieces[].moves[].push", "rules.explode_on_capture"]
-reason = "not_built"
-held_by = "none"
-why = "a push that removes has no capture square on the board to centre a blast on"
-
-[[refusal]]
 id = "push.S1"
 family = "push"
 at = "table:push.S1"
@@ -1575,24 +1461,6 @@ held_by = "none"
 why = "rows from a player's first row need one row direction for both sides; a hex distance is unwritten"
 
 [[refusal]]
-id = "upkeep.U9"
-family = "upkeep"
-at = "table:upkeep.U9"
-pair = ["rules.purse.upkeep", "rules.contacts"]
-reason = "not_built"
-held_by = "none"
-why = "a contact may change the moving piece, and which type pays for its square is unsettled"
-
-[[refusal]]
-id = "upkeep.U10"
-family = "upkeep"
-at = "table:upkeep.U10"
-pair = ["rules.purse.upkeep", "rules.strike.switches_sides"]
-reason = "not_built"
-held_by = "none"
-why = "a capturer that changes sides ends as the opponent's piece, and whose rows it pays for is unsettled"
-
-[[refusal]]
 id = "upkeep.wild"
 family = "upkeep"
 at = "_check_upkeep_coherence: a piece nobody owns is moved by nobody's purse"
@@ -1701,15 +1569,6 @@ held_by = "none"
 why = "as gating.strike"
 
 [[refusal]]
-id = "gating.blast"
-family = "gating"
-at = "_GATING_EXCLUDES: a blast can clear the square the piece has just entered"
-pair = ["rules.drops.gating", "rules.explode_on_capture"]
-reason = "not_built"
-held_by = "none"
-why = "the order of the blast and the entry is unwritten"
-
-[[refusal]]
 id = "gating.portals"
 family = "gating"
 at = "_GATING_EXCLUDES: a portal or fold writes the move word's tag"
@@ -1736,14 +1595,6 @@ reason = "not_built"
 held_by = "none"
 why = "a commanded move sets the foreign bit beside the gate, and a frozen or shielded piece leaving a gate square is unwritten"
 
-[[refusal]]
-id = "gating.captures"
-family = "gating"
-at = "_check_gating_coherence: beside a hand that fills from captures"
-pair = ["rules.drops.gating", "rules.drops.from_captures"]
-reason = "not_built"
-held_by = "none"
-why = "a gating hand holds its stock alone; a hand that gates what it captures is unwritten"
 
 [[refusal]]
 id = "gating.placement"
@@ -2295,7 +2146,6 @@ narrowed = true
 id = "T2"
 pair = ["rules.strike (removing its victim)", "rules.drops"]
 by = "SR2"
-narrowed = true
 [[lifted]]
 id = "T4"
 pair = ["rules.contacts", "rules.explode_on_capture"]
@@ -2305,7 +2155,6 @@ narrowed = true
 id = "T5"
 pair = ["rules.contacts (links removing their target)", "rules.drops"]
 by = "SR2"
-narrowed = true
 [[lifted]]
 id = "T6"
 pair = ["rules.contacts", "rules.npcs"]
@@ -2360,7 +2209,6 @@ narrowed = true
 id = "W3"
 pair = ['pieces[].moves[].kind: "sweep"', "rules.explode_on_capture"]
 by = "SR6c"
-narrowed = true
 [[lifted]]
 id = "W4"
 pair = ['pieces[].moves[].kind: "sweep"', "rules.drops"]
@@ -2670,6 +2518,96 @@ id = "run.en_passant"
 pair = ["pieces[].moves[].run or displace", "rules.en_passant"]
 by = "U2"
 
+# Lifts by the capture list (R-L4b, `docs/reference/capture-effects-design.md` §3.1 and §3.2): what
+# a capture does is one ordered list (`spec/capture.py`), the old keys its default order, and each
+# pair plays as the list. Each key path is read off `capture.capture_list`, so either spelling.
+[[lifted]]
+id = "T1.position"
+pair = ["rules.capture: a blast that spares the taken piece", 'rules.capture: a strike placed "advance", "swap" or "choose"']
+by = "R-L4b"
+[[lifted]]
+id = "T1.choose"
+pair = ['rules.capture: a strike placed "choose"', "rules.capture: a blast"]
+by = "R-L4b"
+[[lifted]]
+id = "T4.choose"
+pair = ['rules.capture: contacts placed "choose"', "rules.capture: a blast"]
+by = "R-L4b"
+[[lifted]]
+id = "T2.keeping"
+pair = ["rules.capture: a strike that keeps its victim", "rules.capture: a hand"]
+by = "R-L4b"
+[[lifted]]
+id = "T5.keeping"
+pair = ["rules.capture: contacts that keep their target", "rules.capture: a hand"]
+by = "R-L4b"
+[[lifted]]
+id = "T3"
+pair = ["rules.capture: a strike", "rules.capture: contacts"]
+by = "R-L4b"
+narrowed = true
+[[lifted]]
+id = "T4.switch"
+pair = ["rules.capture: contacts", "rules.capture: a blast that spares the taken piece or is read"]
+by = "R-L4b"
+[[lifted]]
+id = "H4"
+pair = ["rules.drops.either_face", 'rules.capture: a strike placed "stay", "swap", "home" or "choose"']
+by = "R-L4b"
+[[lifted]]
+id = "H5"
+pair = ["rules.drops.either_face", "rules.capture: a strike that switches sides"]
+by = "R-L4b"
+[[lifted]]
+id = "W1.disagree"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.capture: an entry reading some sweepers' path (path_by)"]
+by = "R-L4b"
+[[lifted]]
+id = "W3.both"
+pair = ['pieces[].moves[].kind: "sweep"', "rules.capture: a blast beside a strike or contacts"]
+by = "R-L4b"
+[[lifted]]
+id = "push.X2.strike"
+pair = ["pieces[].moves[].push", "rules.capture: a strike"]
+by = "R-L4b"
+[[lifted]]
+id = "push.X2.contacts"
+pair = ["pieces[].moves[].push", "rules.capture: contacts"]
+by = "R-L4b"
+[[lifted]]
+id = "push.X3"
+pair = ["pieces[].moves[].push", "rules.capture: a blast"]
+by = "R-L4b"
+[[lifted]]
+id = "gating.blast"
+pair = ["rules.drops.gating", "rules.capture: a blast"]
+by = "R-L4b"
+[[lifted]]
+id = "gating.captures"
+pair = ["rules.drops.gating", "rules.capture: a hand"]
+by = "R-L4b"
+[[lifted]]
+id = "upkeep.U9"
+pair = ["rules.purse.upkeep", "rules.capture: contacts"]
+by = "R-L4b"
+[[lifted]]
+id = "upkeep.U10"
+pair = ["rules.purse.upkeep", "rules.capture: a strike that switches sides"]
+by = "R-L4b"
+# R-L4b5 (capture-effects-design.md section 3.3): a round walks the capture list over its
+# takings (rounds.md section 4 steps 5 and 6), so a strike or contacts beside a blast plays in
+# rounds; a strike or link placed "stay" stays refused (written before the list), as the
+# [[refusal]] rows T1.rounds and T4.rounds, held under plan rows T1 and T4, whose own
+# [[lifted]] rows (SR5a) already say narrowed. These two rows are each pair as it plays.
+[[lifted]]
+id = "T1.rounds"
+pair = ["rules.simultaneous", "rules.capture: a blast beside a strike that moves its taker"]
+by = "R-L4b"
+[[lifted]]
+id = "T4.rounds"
+pair = ["rules.simultaneous", "rules.capture: a blast beside contacts that move their taker"]
+by = "R-L4b"
+
 # === every other literal of schema.py ============================================================
 [other]
 shape = [
@@ -2783,6 +2721,8 @@ spelling = [
   "_validate_turn: the parts are the turn's length",
   "_validate_turn: only parts have an order to choose",
   "_check_push_coherence: so say it once",
+  # R-L4b (W1.disagree): the per-piece switch cannot say two readings; rules.capture can.
+  "_check_sweep_effects: sweeps disagree on effects",
 ]
 fragment = [
   "BARE_ROYAL_HOLDER (1)", "_NEVER_ON_THE_BOARD (1)", "PLAYED_AS_CAPTURE (1)",
@@ -2795,7 +2735,6 @@ fragment = [
   "_check_simultaneous_coherence: a royal in a placement stock",
   "gating_conflicts: rules.drops.gating beside rules.{}: {}; leave one out",
   "_check_facing_coherence: two players and a wild third owner",
-  "_check_blast_strikes: rules.strike.position (not",
   "_check_blast_strikes: rules.strike (effect",
   "_check_npc_pounce: {} on {} (moves[{}])",
   "_check_duck_coherence: {} has a {}: {}",

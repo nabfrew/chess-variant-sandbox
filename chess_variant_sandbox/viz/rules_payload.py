@@ -122,6 +122,22 @@ def explosion_payload(spec: Any) -> dict[str, Any] | None:
     def selection(types: frozenset[int] | None) -> list[bool] | None:
         return None if types is None else [t in types for t in range(n_types)]
 
+    strikes, sweep_path = ex.strikes, list(ex.sweep_path) if ex.sweep_path else None
+    if spec.capture:
+        # R-L4b4: a list only `rules.capture` says crosses as the list, and the compiler
+        # clears the two switches (`compile._walked`), so the page's two readings come from
+        # the list: whether a struck piece may stand where the capturer died (a blast that
+        # spares the piece taken, or a strike or contacts reading the blast's victims), and
+        # which sweepers' swept squares a blast is centred on (`spread` with a path reading).
+        blasts = [entry for entry in spec.capture if entry.do == "blast"]
+        meets = [entry for entry in spec.capture if entry.do in ("strike", "contacts")]
+        if any(entry.spares_taken for entry in blasts) or any("blast" in e.on for e in meets):
+            strikes = strikes or 1
+        spread = [entry for entry in blasts if entry.spread and "path" in entry.on]
+        if spread:
+            sweep_path = [
+                any(not entry.by or t in entry.by for entry in spread) for t in range(n_types)
+            ]
     return {
         "blast": [list(neighbours) for neighbours in ex.blast],
         "immune": [t in ex.immune_types for t in range(n_types)],
@@ -129,12 +145,14 @@ def explosion_payload(spec: Any) -> dict[str, Any] | None:
         "of": selection(ex.of_types),
         # SR5a (T1): what the blast's strikes reach, 0 for none (the compiled bits); the page
         # reads only whether a struck piece may stand where the capturer died.
-        "strikes": ex.strikes,
+        "strikes": strikes,
         # SR6c (W3, Q1100): per type, whether its sweep blasts each swept square that sets the
         # blast off (`effects: "path"`, `ExplosionRule.sweep_path`, compiled), else ``None``:
         # every sweep makes one blast, on its landing. Two positions cannot tell a path blast
         # from a landing one, so the page reads where they went off from this and `swept`.
-        "sweepPath": list(ex.sweep_path) if ex.sweep_path else None,
+        "sweepPath": sweep_path,
+        # R-L4b4: the capture list's kinds in its order where the game walks one, else None.
+        "order": [entry.do for entry in spec.capture] if spec.capture else None,
     }
 
 

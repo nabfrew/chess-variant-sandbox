@@ -234,6 +234,10 @@ REFUSED = {
     "upkeep.U6": _shared,
     "upkeep.U7": _set("drops", {"from_captures": True}),
     "upkeep.U8": _hex,
+}
+# R-L4b (stage 3) lifted U9 and U10: the cost is the move's own, for the type the move made, on
+# the square the capture list leaves it on; a link's or a switch's change after it is not charged.
+LIFTED = {
     "upkeep.U9": _set("contacts", {"links": [{"mover": "N", "onto": "P", "mover_to": "B"}]}),
     "upkeep.U10": _set("strike", {"effect": "capture", "switches_sides": ["N"]}),
 }
@@ -242,6 +246,17 @@ REFUSED = {
 @pytest.mark.parametrize("rid", sorted(REFUSED))
 def test_each_refusal_by_name(rid: str) -> None:
     assert rid in refused_ids(_refusal(REFUSED[rid]))
+
+
+@pytest.mark.parametrize("rid", sorted(LIFTED))
+def test_each_lifted_pair_is_the_list(rid: str) -> None:
+    from chess_variant_sandbox.spec.capture import lifted_pairs
+
+    spec = _hunger()
+    LIFTED[rid](spec)
+    errors = validate_spec(spec)
+    assert rid not in refused_ids(errors), errors
+    assert rid in lifted_pairs(spec)
 
 
 def test_the_rule_and_its_rates_need_each_other() -> None:

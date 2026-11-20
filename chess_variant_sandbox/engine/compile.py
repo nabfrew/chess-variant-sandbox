@@ -39,6 +39,17 @@ from chess_variant_sandbox.engine.moves import (
 )
 from chess_variant_sandbox.engine.moves import move_push as move_push_direction
 from chess_variant_sandbox.spec.canonical import spec_hash
+from chess_variant_sandbox.spec.capture import (  # noqa: I001 (R-L4b stage 3, the one reader)
+    CAPTURE_CAUSES,
+    CAPTURE_DEFAULT_ON,
+    CAPTURE_KINDS,
+    capture_as_old_keys,
+    capture_base,
+    capture_list,
+    capture_written,
+    compile_entries,
+    lifted_pairs,
+)
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.legs import Legs, stated_legs
 from chess_variant_sandbox.spec.schema import (
@@ -46,6 +57,7 @@ from chess_variant_sandbox.spec.schema import (
     MAX_MOVES_PER_TURN,
     POUNCE_KINDS,
     PURSE_MAX,
+    READING_A_LIST,
     REPETITION_NEVER,
     STOCK_UNLIMITED,
     WRAP_PAIRS,
@@ -2429,6 +2441,31 @@ class PushRule:
         return bool(self.zobrist_bar)
 
 
+#: R-L4b (`docs/reference/capture-effects-design.md` §2.1): ``CAPTURE_CAUSES`` (the causes of
+#: a taking, in the order of their bits in the core, `tables.rs`'s ``ON_*``), ``CAPTURE_KINDS``
+#: (each entry kind's code across the boundary, `CAPTURE_DO_*`) and ``CAPTURE_DEFAULT_ON`` are
+#: the DSL's own, `spec/capture.py`'s since stage 3, imported above.
+
+
+@dataclass(frozen=True)
+class CaptureEntry:
+    """R-L4b stage 2: one entry of the capture list (§2.1): what it does (``do``), which causes
+    of a taking it reads (``on``), and for a blast ``spread`` and ``spares_taken``. ``by`` names
+    the sweepers (types) whose swept pieces a ``"path"`` reading takes; empty is every sweeper."""
+
+    do: str
+    on: frozenset[str]
+    spread: bool = False
+    spares_taken: bool = False
+    by: tuple[int, ...] = ()
+
+    def reads(self, cause: str, taker_type: int) -> bool:
+        """Whether this entry reads a taking of ``cause`` by a piece of ``taker_type``."""
+        if cause not in self.on:
+            return False
+        return cause != "path" or not self.by or taker_type in self.by
+
+
 @dataclass(frozen=True)
 class CompiledSpec:
     """Immutable, position-independent tables derived from one rule spec."""
@@ -2775,6 +2812,15 @@ class CompiledSpec:
     # piece comes to stand that is not its own move's landing asks it in the core
     # (`Tables::may_stand`): a promotion's target, a drop, and `Game::region_filter`'s moves.
     region_stand: tuple[tuple[tuple[bool, ...], ...], ...] = ()
+    # R-L4b stage 2 (`docs/reference/capture-effects-design.md` §2, §6): the capture list in
+    # its own order, or ``None`` -- every compiled spec, since only a test hands one over
+    # (`with_capture_list`) until stage 3 spells ``rules.capture``. ``None`` crosses as an
+    # empty ``capture_order`` and the core derives the default-order list as stage 1 did.
+    capture: tuple[CaptureEntry, ...] | None = None
+    # R-L4b stage 2 (T3): the contact table beside a strike, read by a list's `contacts`
+    # entries (its `strike` entries read ``strike``). ``None`` for every stored game, whose
+    # validator refuses the pair; crossed only with a list (`bridge._capture_fields`).
+    contacts: StrikeRule | None = None
 
     @property
     def rest_max(self) -> int:
@@ -3164,11 +3210,133 @@ def _hexagon_radius(board: Any) -> int:
     return (width - 1) // 2
 
 
-def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
-    """Validate ``spec`` and build its tables. Raises ``SpecError`` if invalid."""
-    compiled, _ = _compile(spec, None)
+def compile_spec(
+    spec: dict[str, Any], capture: Sequence[dict[str, Any]] | None = None
+) -> CompiledSpec:
+    """Validate ``spec`` and build its tables. Raises ``SpecError`` if invalid.
+
+    ``capture`` (R-L4b stage 2, **tests only**) is a capture list handed over past the
+    validator, as `with_capture_list` hands one to a compiled spec; given here, the one
+    compile-time reader of §2.5 asks it too (`_without_self_destroying_captures`: a royal
+    loses its captures only where a blast entry reads a landing).
+
+    R-L4b stage 3: without it, the spec's own list is read (`spec/capture.py`). A list the old
+    keys say compiles as those keys, so every stored game builds the tables it always did;
+    a list only ``rules.capture`` says, or old keys stating a pair only the list plays
+    (`capture.lifted_pairs`), compiles each kind's rule and hands the list to the core."""
+    if capture is not None:
+        compiled, _ = _compile(spec, None, capture)
+        assert compiled is not None  # only a shared frame pass can stop early
+        return with_capture_list(compiled, capture)
+    spec, capture, base = _capture_spelling(spec)
+    token = READING_A_LIST.set(base)
+    try:
+        compiled, _ = _compile(spec, None, capture)
+    finally:
+        READING_A_LIST.reset(token)
     assert compiled is not None  # only a shared frame pass can stop early
-    return compiled
+    if capture is None:
+        return compiled
+    return _walked(with_capture_list(compiled, capture))
+
+
+def _capture_spelling(
+    spec: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]] | None, bool]:
+    """R-L4b stage 3: the spec to build the tables from, the list to hand the core (``None``:
+    the default-order list the core derives from the old tables, stage 1), and whether the
+    spec is a written list's rules without its switches (`capture.capture_base`)."""
+    if not isinstance(spec, dict) or not isinstance(spec.get("rules"), dict):
+        return spec, None, False
+    if capture_written(spec):
+        validate_or_raise(spec)
+        lowered = capture_as_old_keys(spec)
+        if lowered is None:
+            entries = capture_list(spec)
+            assert entries is not None  # the validator read it
+            return capture_base(spec), compile_entries(entries), True
+        spec = lowered
+    if not lifted_pairs(spec):
+        return spec, None, False
+    validate_or_raise(spec)
+    entries = capture_list(spec)
+    assert entries is not None  # the validator refuses old keys no list says
+    return spec, compile_entries(entries), False
+
+
+def _walked(compiled: CompiledSpec) -> CompiledSpec:
+    """A compiled spec whose list the core walks, without the two old switches the list now
+    says (`explode_on_capture.strikes`, `moves[].effects`): the core reads them only to derive
+    the default list, and refuses a switch its tables could not derive one from."""
+    explosion, strike, contacts = compiled.explosion, compiled.strike, compiled.contacts
+    if explosion is not None:
+        explosion = replace(explosion, strikes=0, sweep_path=())
+    if strike is not None:
+        strike = replace(strike, sweep_path=())
+    if contacts is not None:
+        contacts = replace(contacts, sweep_path=())
+    return replace(compiled, explosion=explosion, strike=strike, contacts=contacts)
+
+
+def with_capture_list(
+    compiled: CompiledSpec, entries: Sequence[dict[str, Any]]
+) -> CompiledSpec:
+    """R-L4b stage 2 (`docs/reference/capture-effects-design.md` §6): ``compiled`` with the
+    capture list ``entries`` in their own order, replacing the default-order list the core
+    derives from the old keys. **Tests only**: the validator speaks the old keys until stage
+    3, so this is how a test feeds a list past it, as SR2 fed refused pairs.
+
+    Each entry is §2.1's object: ``do`` (``pay``, ``hand``, ``blast``, ``strike``,
+    ``contacts``), optional ``on`` (a list of causes; §2.1's default per kind), and for a blast
+    ``spread`` and ``spares_taken``; ``by`` (piece ids) narrows a ``"path"`` reading to those
+    sweepers. Each kind needs its compiled rule: a hand the drops, a blast the explosion, a
+    strike or contacts the strike table. Where the spec states both a strike and contacts
+    (T3), a ``contacts`` entry reads the contact table (``CompiledSpec.contacts``) and a
+    ``strike`` entry the strike's; that second table may not be placed ``choose`` (its
+    landings would need a second landing list in the move word), and is dropped from a list
+    with no ``contacts`` entry.
+
+    A royal whose every capture explodes was stripped of its captures by the compile
+    (`_without_self_destroying_captures`) whatever the list says; `compile_spec`'s
+    ``capture`` asks the list there instead."""
+    index_of = {pid: index for index, pid in enumerate(compiled.piece_ids)}
+    second = compiled.contacts
+    if second is not None:
+        if not any(entry.get("do") == "contacts" for entry in entries):
+            compiled = replace(compiled, contacts=None)
+        elif second.position == "choose":
+            raise SpecError(["capture list: a second (contact) table placed choose is not built"])
+    needs = {
+        "hand": compiled.drops is not None,
+        "blast": compiled.explosion is not None,
+        "strike": compiled.strike is not None,
+        "contacts": compiled.strike is not None,
+        "pay": True,
+    }
+    built: list[CaptureEntry] = []
+    for entry in entries:
+        unknown = set(entry) - {"do", "on", "spread", "spares_taken", "by"}
+        if unknown:
+            raise SpecError([f"capture entry: unknown keys {sorted(unknown)}"])
+        do = entry["do"]
+        if do not in CAPTURE_KINDS:
+            raise SpecError([f"capture entry: unknown kind {do!r}"])
+        if not needs[do]:
+            raise SpecError([f"capture entry {do!r}: the spec has no rule for it to walk"])
+        on = frozenset(entry.get("on", CAPTURE_DEFAULT_ON[do]))
+        if not on <= set(CAPTURE_CAUSES):
+            unknown_causes = sorted(on - set(CAPTURE_CAUSES))
+            raise SpecError([f"capture entry {do!r}: unknown causes {unknown_causes}"])
+        if do != "blast" and (entry.get("spread") or entry.get("spares_taken")):
+            raise SpecError([f"capture entry {do!r}: spread and spares_taken are a blast's"])
+        built.append(CaptureEntry(
+            do=do,
+            on=on,
+            spread=bool(entry.get("spread", False)),
+            spares_taken=bool(entry.get("spares_taken", False)),
+            by=tuple(sorted(index_of[pid] for pid in entry.get("by", ()))),
+        ))
+    return replace(compiled, capture=tuple(built))
 
 
 def compile_two_readings(
@@ -3354,10 +3522,12 @@ def _compile_frames(
 
 
 def _compile(
-    spec: dict[str, Any], share: _Frames | None
+    spec: dict[str, Any], share: _Frames | None,
+    capture: Sequence[dict[str, Any]] | None = None,
 ) -> tuple[CompiledSpec | None, _Frames | None]:
     """`compile_spec`, with its frames, and ``share`` as `_compile_frames` reads it:
-    ``(None, None)`` when a shared pass stopped at a frame that differs."""
+    ``(None, None)`` when a shared pass stopped at a frame that differs. ``capture`` is
+    `compile_spec`'s (tests only)."""
     validate_or_raise(spec)
 
     board_spec = spec["board"]
@@ -3415,7 +3585,8 @@ def _compile(
     screen_types = screen_type_lists(pieces, index_of)
     frames = _compile_frames(
         _with_screen_codes(
-            _without_self_destroying_captures(pieces, rules, index_of), screen_types, index_of
+            _without_self_destroying_captures(pieces, rules, index_of, capture),
+            screen_types, index_of,
         ),
         n_facings, n_squares, width, height, orientation, wrap, obstacles,
         blocks_leaps, radius, has_portals, share, push=has_push,
@@ -3531,6 +3702,15 @@ def _compile(
         ),
         wild=wild,
     )
+    # R-L4b stage 2 (T3, `docs/reference/capture-effects-design.md` §3.1): a strike and a
+    # contact table at once, each its own compiled table, for a capture list whose `strike`
+    # and `contacts` entries read their own. The validator refuses the pair (T3) until stage
+    # 3, so only a spec fed past it compiles one; every stored game compiles `None` here.
+    contacts_table = None
+    if strike is not None:
+        contacts_table = _compile_contacts(rules.get("contacts"), index_of, n_types, wild=wild)
+        if contacts_table is not None:
+            contacts_table = _settle_sweep_path(contacts_table, pieces, index_of)
     if strike is None:
         strike = _compile_contacts(rules.get("contacts"), index_of, n_types, landing, wild=wild)
     if strike is not None:
@@ -3698,6 +3878,7 @@ def _compile(
         copies=_compile_copies(shape, radius, wrap),
         grid_copies=_compile_grid_copies(shape, width, height, wrap),
         strike=strike,
+        contacts=contacts_table,
         npcs=npcs,
         duck=duck,
         n_owners=n_owners,
@@ -6426,7 +6607,8 @@ def _compile_repetition_draw(value: Any) -> int:
 
 
 def _without_self_destroying_captures(
-    pieces: list[dict[str, Any]], rules: dict[str, Any], index_of: dict[str, int]
+    pieces: list[dict[str, Any]], rules: dict[str, Any], index_of: dict[str, int],
+    capture: Sequence[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """The pieces as the movement tables read them: a royal that cannot capture loses its
     captures (Q1032).
@@ -6446,6 +6628,15 @@ def _without_self_destroying_captures(
     """
     explosion = rules.get("explode_on_capture")
     if not isinstance(explosion, dict):
+        return pieces
+    # R-L4b stage 2 (§2.5): under a capture list (tests only until stage 3) the captor dies
+    # only where a blast entry reads the move's own capture (``"landing"``); a list whose
+    # blasts read only a path, a push or another blast leaves the royal its captures.
+    if capture is not None and not any(
+        entry.get("do") == "blast"
+        and "landing" in entry.get("on", CAPTURE_DEFAULT_ON["blast"])
+        for entry in capture
+    ):
         return pieces
     by = _explosion_selection(explosion, "by", index_of)
     of = _explosion_selection(explosion, "of", index_of)

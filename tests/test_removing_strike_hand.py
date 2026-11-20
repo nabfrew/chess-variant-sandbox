@@ -30,6 +30,7 @@ import pytest
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import MOVE_DROP, move_type
 from chess_variant_sandbox.engine.state import GameState
+from chess_variant_sandbox.spec.capture import lifted_pairs
 from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import validate_spec
 
@@ -158,19 +159,27 @@ class TestTheValidator:
         {"effect": "capture", "position": "home", "immune": ["K"]},
         {"effect": "capture", "switches_sides": ["B"], "immune": ["K"]},
     ])
-    def test_a_strike_that_keeps_its_victim_is_still_refused(self, strike: dict[str, Any]) -> None:
-        assert "T2" in refused_ids(validate_spec(_spec(strike=strike)))
+    def test_a_strike_that_keeps_its_victim_is_the_list(self, strike: dict[str, Any]) -> None:
+        """R-L4b (stage 3) lifted the rest of T2: the capture list's default order puts the
+        hand ahead of the strike, so the hand files the taken piece first (§2.2 rule 1), and
+        the core is handed that list."""
+        spec = _spec(strike=strike)
+        assert "T2" not in refused_ids(validate_spec(spec))
+        assert "T2" in lifted_pairs(spec)
 
-    def test_a_link_that_keeps_its_target_is_still_refused(self) -> None:
+    def test_a_link_that_keeps_its_target_is_the_list(self) -> None:
         keeps = {"links": [{"mover": "B", "onto": "G", "onto_to": "R"}],
                  "position": "stay", "immune": ["K"]}
-        assert "T5" in refused_ids(validate_spec(_spec(contacts=keeps)))
+        spec = _spec(contacts=keeps)
+        assert "T5" not in refused_ids(validate_spec(spec))
+        assert "T5" in lifted_pairs(spec)
 
-    def test_a_shot_beside_either_face_is_still_refused(self) -> None:
-        """H4 stays: either_face is refused beside a strike whose position is not advance."""
+    def test_a_shot_beside_either_face_is_the_list(self) -> None:
+        """R-L4b lifted H4: the hand files the taken piece before the strike reaches it."""
         spec = _spec(strike=SHOT)
         spec["rules"]["drops"]["either_face"] = True
-        assert any("either_face beside a strike" in e for e in validate_spec(spec))
+        assert not any("either_face beside a strike" in e for e in validate_spec(spec))
+        assert "H4" in lifted_pairs(spec)
 
 
 # --------------------------------------------------------------------------- the hand

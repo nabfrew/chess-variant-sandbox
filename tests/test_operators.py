@@ -129,6 +129,7 @@ _NUMBER_WORDS = {
     126: "one_hundred_twenty_six",
     127: "one_hundred_twenty_seven",
     128: "one_hundred_twenty_eight",
+    129: "one_hundred_twenty_nine",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -2085,7 +2086,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 128
+_FEATURES_ARE_FOR_SCHEMA = 129
 
 
 @dataclass(frozen=True)
@@ -3314,6 +3315,37 @@ def _parent_held_sweeps() -> dict:
     return spec
 
 
+def _parent_capture_order() -> dict:
+    """R-L4b4's order (`capture-effects-design.md` §6 stage 4): hierarchy-fall's demoting strike
+    ahead of a capture hand, so a taken piece turns by its link before the hand may file it,
+    and only a piece with no link reaches the hand (the usual order files every one)."""
+    spec = load_spec(ROOT / "archive" / "hierarchy-fall.json")
+    strike = spec["rules"].pop("strike")
+    spec["rules"]["drops"] = {}
+    spec["rules"]["capture"] = [{"do": "strike", **strike}, {"do": "hand"}]
+    return spec
+
+
+def _parent_capture_on() -> dict:
+    """R-L4b4's reading: atomic's blast reading a blast's victims too, a chain of blasts (a
+    piece a blast removes sets off its own, each square once)."""
+    spec = load_spec(RULESETS / "atomic.json")
+    blast = spec["rules"].pop("explode_on_capture")
+    spec["rules"]["capture"] = [{"do": "blast", **blast, "on": ["landing", "blast"]}]
+    return spec
+
+
+def _parent_capture_twice() -> dict:
+    """R-L4b4's kind twice: atomic's blast on the move's capture, and a second blast entry on
+    a blast's victims (a chain of blasts, written as two entries)."""
+    spec = load_spec(RULESETS / "atomic.json")
+    blast = spec["rules"].pop("explode_on_capture")
+    spec["rules"]["capture"] = [
+        {"do": "blast", **blast, "on": ["landing"]}, {"do": "blast", "on": ["blast"]},
+    ]
+    return spec
+
+
 def _parent_turning_beside_check() -> dict:
     """SR8h's game shape, the turning wolves won by checkmate (N5): a wolf's threat is the
     square it steps to after its turn."""
@@ -4420,15 +4452,29 @@ def _has_purse(spec: dict) -> bool:
 # sweep removes what its holder could capture with it). `sweep-a-slider` enters it on a held
 # slider (two edits from any stored game, `_CANNOT_ENTER`) and leaves it by turning the sweep
 # back into a slide; `gather-a-crowd` leaves it by taking the control away. In no game
-# (`_IN_NO_GAME`).
+# (`_IN_NO_GAME`). Its row retired with generation 129.
+#
+# Generation 129 (R-L4b4, `capture-effects-design.md` §6 stage 4): three names, what
+# `rules.capture` says that the old keys cannot (an order, a reading, a kind twice).
+# `order-the-capture` enters and leaves each: a reading in one edit from atomic (its blast
+# reading a blast's victims); an order and a kind twice two edits from any stored game, since
+# no stored game states two capture rules and none makes two causes one entry reads
+# (`_CANNOT_ENTER`). Every other operator edits a list game through the list's projection
+# (`operators._through_the_list`). In no game, owing none (`_NO_SHOWCASE_ON_PURPOSE`).
 _FEATURES: dict[str, _Feature] = {
-    "SR8k a held sweeper": _Feature(
-        None, frozenset({"pieces.control.held.sweeps"}), True,
-        "held-sweeps", _parent_held_sweeps,
-        likely=lambda spec: any(
-            isinstance(placement, dict) and placement.get("player") == "nobody"
-            for placement in (spec.get("setup") or {}).get("placements") or []
-        ),
+    "R-L4b4 a capture order": _Feature(
+        "capture", frozenset({"rules.capture.order"}), True, "capture-order",
+        _parent_capture_order,
+        likely=lambda spec: bool((spec.get("rules") or {}).get("drops")),
+    ),
+    "R-L4b4 a capture reading": _Feature(
+        "capture", frozenset({"rules.capture.on"}), True, "capture-on", _parent_capture_on,
+        likely=lambda spec: bool((spec.get("rules") or {}).get("explode_on_capture")),
+    ),
+    "R-L4b4 a capture kind twice": _Feature(
+        "capture", frozenset({"rules.capture.twice"}), True, "capture-twice",
+        _parent_capture_twice,
+        likely=lambda spec: bool((spec.get("rules") or {}).get("explode_on_capture")),
     ),
 }
 
@@ -4713,6 +4759,7 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     126: frozenset({"pieces.control.held.holders_frame"}),
     127: frozenset({"pieces.control.held.promotes"}),
     128: frozenset({"pieces.control.held.sweeps"}),
+    129: frozenset({"rules.capture.order", "rules.capture.on", "rules.capture.twice"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -4872,11 +4919,16 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
 # TC9c, Q1069a, the push, Q1077), save 57, SR3a, whose rule *runners* shows. A later
 # generation of the update joins this set when it lands: batch F's SR8a to SR8d are 118 to
 # 121 (built as 110 to 113 off main, renumbered by R-N5 above Tessabi's and Hunger's 111 to
-# 117), and SR8e to SR8k, built on main, are 122 to 128.
+# 117), and SR8e to SR8k, built on main, are 122 to 128. R-L4b's capture list lifts the
+# update's own rows (T2, T5, H5, W3 and the rest, `docs/plan-schema-next.md` §2, each marked
+# *lifted (R-L4b)*), so its generation, 129, joins it.
 _SCHEMA_NEXT_GENERATIONS = (
-    frozenset(range(47, 52)) | frozenset(range(57, 111)) - {58} | frozenset(range(118, 129))
+    frozenset(range(47, 52)) | frozenset(range(57, 111)) - {58} | frozenset(range(118, 130))
 )
 _IN_NO_GAME: dict[str, str] = {
+    "schema 129: rules.capture.order": "R-L4b, the capture list; never a candidate",
+    "schema 129: rules.capture.on": "R-L4b, the capture list; never a candidate",
+    "schema 129: rules.capture.twice": "R-L4b, the capture list; never a candidate",
     "schema 128: pieces.control.held.sweeps": "SRH2, no man's land (its neutral sweeper)",
     "schema 127: pieces.control.held.promotes": "SR8s10, a neutral that promotes",
     "schema 126: pieces.control.held.holders_frame": "SR8s9, a neutral piece in its holder's frame",
@@ -5111,12 +5163,23 @@ def _feature_parents() -> dict[str, dict]:
 # a type a player moves but nobody owns that slides (the crowd's condottieri leap, boulder's
 # boulder leaps), and `gather-a-crowd`'s new type steps as a king by a leap. A held type that
 # slides, then `sweep-a-slider` turns its slide into a sweep
-# (`tests/test_held_sweep.py::TestTheLoopReachesIt` holds the second edit).
+# (`tests/test_held_sweep.py::TestTheLoopReachesIt` holds the second edit). It retired with
+# generation 128's `_FEATURES` row.
+#
+# R-L4b4 adds two: an order and a kind twice are two edits from any stored game. No stored
+# game states two capture rules (`capture-effects-design.md` §4), so there is nothing to put
+# in another order, and none has an entry reading two causes the game makes, so there is
+# nothing to split. A second rule (`set-the-blast`, `hand-the-pieces-back`), or a reading
+# (`order-the-capture` on atomic), then `order-the-capture` again
+# (`tests/test_capture_surfaces.py::TestTheLoopReachesIt` holds the second edit).
 _CANNOT_ENTER: dict[str, str] = {
-    "SR8k a held sweeper": (
-        "two edits from any stored game: no stored game has a held or shared type that "
-        "slides, and gather-a-crowd's new type leaps; sweep-a-slider then turns a held "
-        "slider's slide into a sweep (tests/test_held_sweep.py::TestTheLoopReachesIt)"
+    "R-L4b4 a capture order": (
+        "two edits from any stored game: none states two capture rules; a second rule, then "
+        "order-the-capture moves one (tests/test_capture_surfaces.py::TestTheLoopReachesIt)"
+    ),
+    "R-L4b4 a capture kind twice": (
+        "two edits from any stored game: no entry reads two causes the game makes; a reading, "
+        "then order-the-capture splits it (tests/test_capture_surfaces.py::TestTheLoopReachesIt)"
     ),
 }
 _CANNOT_LEAVE: dict[str, str] = {}
@@ -6259,6 +6322,8 @@ _PINNED_SCALES: dict[str, float] = {
     "passes": 1.0,
     # H2: income, its rate and its ground.
     "has_income": 1.0, "income_per_piece": 1.0, "income_region": 1.0,
+    # R-L4b4: a capture list only `rules.capture` says, a flag and its order as one number.
+    "capture_list": 1.0, "capture_list_shape": 1.0,
 }
 
 
@@ -6341,14 +6406,15 @@ class TestDistanceIsPinnedToTheNumber:
         `turn_order_any`: 0.0081; 152 since TS4's `hop_run_share` and `hop_displace_share`:
         0.0080; 155 since H1's `has_upkeep`, `upkeep_mean` and `upkeep_new`: 0.0079; 156 since
         H3's `passes`: 0.0078; 159 since H2's `has_income`, `income_per_piece` and
-        `income_region`: 0.0077."""
+        `income_region`: 0.0077; 161 since R-L4b4's `capture_list` and `capture_list_shape`:
+        0.0076."""
         chess = _chess()
         chess["rules"].pop("insufficient_material")
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0077
+        assert distance(chess, twin) == 0.0076
 
 
 def _one_leap_beside_a_stone() -> dict:

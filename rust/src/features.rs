@@ -10,7 +10,7 @@
 //! worth -- and a heuristic's weights change what is being *maximised*, never what a
 //! piece is.
 
-use crate::eval::{Evaluator, PieceValues};
+use crate::eval::{declares_capture_matrix, Evaluator, PieceValues};
 use crate::game::Game;
 use crate::net::NetEvaluator;
 use crate::tables::{Tables, GOAL_UNREACHABLE, MAX_PIECE_TYPES, WILD};
@@ -63,6 +63,9 @@ pub struct FeatureContext {
     extinction_own: [Vec<(usize, usize)>; 2],
     has_drops: bool,
     promotable: Vec<usize>,
+    /// Q1221: the spec restricts a capture (`eval::declares_capture_matrix`, the oracle's
+    /// `ctx.has_capture_matrix`); never the bridge's push-widened `Tables` flag.
+    declares_capture_matrix: bool,
 }
 
 impl FeatureContext {
@@ -174,6 +177,7 @@ impl FeatureContext {
             extinction_own,
             has_drops: t.drops.is_some(),
             promotable: t.promo_piece_types.clone(),
+            declares_capture_matrix: declares_capture_matrix(t),
         }
     }
 }
@@ -286,7 +290,7 @@ impl FeatureEvaluator {
 
     fn prey_weight(&self, game: &Game<'_>, player: usize) -> f64 {
         let t = game.t;
-        if !t.has_capture_matrix {
+        if !self.context.declares_capture_matrix {
             return 0.0;
         }
         let n_types = t.n_types;

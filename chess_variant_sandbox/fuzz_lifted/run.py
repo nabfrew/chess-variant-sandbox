@@ -32,7 +32,7 @@ from chess_variant_sandbox.fuzz_lifted.checks import (
     checked_pairs,
 )
 from chess_variant_sandbox.fuzz_lifted.generate import buildable, case
-from chess_variant_sandbox.fuzz_lifted.keys import BATCH_ORDER, lifted
+from chess_variant_sandbox.fuzz_lifted.keys import BATCH_ORDER, Lifted, lifted
 from chess_variant_sandbox.fuzz_lifted.record import PLIES, Record, play
 from chess_variant_sandbox.spec.schema import SpecError
 
@@ -150,10 +150,14 @@ def _fuzz_oracles(record: Record) -> None:
                 raise CheckFailure(f"step {step.index}: {failure}") from failure
 
 
-def check_case(seed: int, coverage: Coverage, plies: int = PLIES) -> None:
-    """Build, play and check one seed, adding what happened to ``coverage``."""
+def check_case(
+    seed: int, coverage: Coverage, plies: int = PLIES, rows: tuple[Lifted, ...] | None = None
+) -> None:
+    """Build, play and check one seed, adding what happened to ``coverage``. ``rows`` is the
+    row list the seed draws from (`generate.case`), every `[[lifted]]` row by default; a seed
+    recorded against an earlier list replays against that list."""
     coverage.cases += 1
-    built = case(seed)
+    built = case(seed, rows)
     coverage.refused += built.refused
     if built.spec is None:
         coverage.unbuilt[built.row] += 1

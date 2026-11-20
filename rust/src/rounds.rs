@@ -92,6 +92,19 @@ struct Taking {
     /// `WILD` for a held piece (majority control), which stays nobody's whatever it meets:
     /// a change of type is written into nobody's block, and it never changes sides.
     block: usize,
+    /// R-L4b5 (`capture-effects-design.md` §2.1): the taking's cause, an `ON_*` bit:
+    /// `ON_LANDING` for an arrival's or a shot's capture of a standing piece, `ON_COLLISION`
+    /// for a collision's (or a colliding swap's) loser, `ON_BLAST` for a piece a blast cleared.
+    cause: u8,
+    /// R-L4b5: the victim's index in `walk_round`'s limbo flags (rule 1). A piece several
+    /// captors' blasts reached is one victim with one record per captor (each pays).
+    id: usize,
+    /// R-L4b5: where this taking's blast centres: the captor's landing (`square`) for a
+    /// meeting's capture; for a blast's victim, the blast's own centre (`spread` aside).
+    centre: usize,
+    /// SR7e: a shot whose strike kept its victim, already written where it stood at step 0,
+    /// so it is placed and out of limbo before the list (§2.2 rule 1).
+    placed: bool,
 }
 
 /// `Game::round_log` events, for the page to draw a round (§6.1, *The boundary*).
@@ -172,6 +185,22 @@ struct Roles {
     /// two contacts that stay) met by `beats` and the tie, and this one lost (or neither
     /// won): it stands and changes nothing (`EVENT_VOID`), never a void for the run.
     missed: [bool; 2],
+}
+
+/// R-L4b5: whether `entry` reads `taken` in a round: its `on` against the taking's cause; but
+/// a list derived from the old keys reads a collision's loser with its strike or contacts
+/// entry exactly where schema 26 did (`Taking::strikes`, `SimTables::collision_strikes`: the
+/// strike's rule, never a contact table's), so no stored round game changes.
+#[inline]
+fn round_reads(program: &CaptureProgram, entry: &CaptureEntry, taken: &Taking) -> bool {
+    if taken.cause == ON_COLLISION
+        && !program.general
+        && matches!(entry.kind, CaptureKind::Strike | CaptureKind::Contacts)
+    {
+        taken.strikes
+    } else {
+        entry.on & taken.cause != 0
+    }
 }
 
 impl<'t> Game<'t> {
@@ -311,12 +340,23 @@ impl<'t> Game<'t> {
         let Some(strike) = self.t.strike.as_ref() else {
             return (-1, -1, false);
         };
+        self.meeting_in(strike, mover_type, victim, mover_owner)
+    }
+
+    /// `meeting` read off `rule`: the strike's table, or (R-L4b5, T3) the contact table a
+    /// list's `contacts` entries read.
+    fn meeting_in(&self, rule: &StrikeRule, mover_type: usize, victim: u8, mover_owner: usize) -> (i32, i32, bool) {
         let owner = self.t.owner_of(victim);
-        let cell = mover_type * strike.n_types + self.t.type_of(victim);
+        let cell = mover_type * rule.n_types + self.t.type_of(victim);
         if owner == mover_owner {
-            (strike.own_to[cell], strike.own_mover_to[cell], false)
+            // A blast's victim may be the captor's own piece (R-L4b5): no own link, no change.
+            (
+                rule.own_to.get(cell).copied().unwrap_or(-1),
+                rule.own_mover_to.get(cell).copied().unwrap_or(-1),
+                false,
+            )
         } else {
-            (strike.to[cell], strike.mover_to[cell], owner != WILD && strike.flips(cell))
+            (rule.to[cell], rule.mover_to[cell], owner != WILD && rule.flips(cell))
         }
     }
 
@@ -687,8 +727,13 @@ impl<'t> Game<'t> {
         if plans[0].partner.is_some() || plans[1].partner.is_some() {
             self.castle_partners(plans, roles, facts);
         }
-        self.what_captures_cause(&takings, facts);
-        self.blasts(&takings, facts);
+        // R-L4b5: §4 steps 5 and 6 are the capture list's walk over the round's takings. No
+        // list (`Tables::capture` is `None`) is plain capture: nothing to walk.
+        if let Some(program) = self.t.capture.as_deref() {
+            if !takings.is_empty() {
+                self.walk_round(program, takings, facts);
+            }
+        }
         self.claims(plans, active, roles, facts);
         let standing = [roles.standing[0] && !roles.missed[0], roles.standing[1] && !roles.missed[1]];
         Step { arriving: roles.arriving, standing, void: roles.void, struck: roles.struck }
@@ -982,6 +1027,7 @@ impl<'t> Game<'t> {
                 self.write(square, arrival[w]);
                 let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
                 taken.strikes = sim.collision_strikes;
+                taken.cause = ON_COLLISION;
                 takings.push(taken);
             }
             None => {
@@ -990,6 +1036,7 @@ impl<'t> Game<'t> {
                     for w in 0..2 {
                         let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
                         taken.strikes = sim.collision_strikes;
+                        taken.cause = ON_COLLISION;
                         taken.captor_gone = true;
                         takings.push(taken);
                     }
@@ -1038,6 +1085,7 @@ impl<'t> Game<'t> {
                 self.write(square, arrival[w]);
                 let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
                 taken.strikes = sim.collision_strikes;
+                taken.cause = ON_COLLISION;
                 takings.push(taken);
             }
             None if beats[0] && beats[1] => {
@@ -1045,6 +1093,7 @@ impl<'t> Game<'t> {
                     let square = plans[w].target;
                     let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
                     taken.strikes = sim.collision_strikes;
+                    taken.cause = ON_COLLISION;
                     taken.captor_gone = true;
                     takings.push(taken);
                 }
@@ -1134,50 +1183,133 @@ impl<'t> Game<'t> {
         }
     }
 
-    /// §4 step 5: what the captures cause -- the hand, the bounties, the strike rule's
-    /// rebirth, swap, chain and side switch.
-    #[inline(always)]
-    fn what_captures_cause(&mut self, takings: &[Taking], facts: &mut StepFacts) {
-        let t = self.t;
-        for taken in takings {
-            if let Some(rule) = t.drops.as_ref() {
-                if rule.from_captures && t.owner_of(taken.victim) != taken.captor {
-                    let slot = t.demotions[t.type_of(taken.victim)];
-                    if !rule.is_unlimited(slot) {
-                        self.hands[taken.captor][slot] += 1;
+    /// R-L4b5 (`docs/reference/capture-effects-design.md` §2.2, §6 stage 5; `rounds.md` §4
+    /// steps 5 and 6): the capture list walked over the round's takings, in the order step 0
+    /// and step 4 decided them (the shots, then the meetings in seat order). Each entry from
+    /// the top over one round of takings; a blast's victims are the next round's, walked from
+    /// the top again, until a round makes none. Rule 1: a victim leaves limbo once (the hand
+    /// files it, a strike or link places it, a blast without `spares_taken` destroys it).
+    /// Rule 2: a placement needs an empty square. Rule 3: a placed piece is settled (no blast
+    /// clears it), and a blast fires once on a centre. Every taken piece already left the
+    /// board in step 0 or step 4, so whatever stays in limbo is simply gone.
+    ///
+    /// A round's own readings, kept from schema 26: a mover half is read per taking (a captor
+    /// may take twice, a nobody's piece and a collision's loser); a blast clears the centres
+    /// and every reached square together, and each piece it clears is one record per captor
+    /// whose blast reached it, so each pays (SR4l); a collision's loser is read by a strike or
+    /// contacts entry of a derived list where `SimTables::collision_strikes` says so (the
+    /// strike's, never a contact table's), and of a list in its own order where its `on`
+    /// names `"collision"`. The default order (`pay`, `hand`, `blast`, `strike` or `contacts`)
+    /// is the round every stored game played, whose pairs never set a strike beside a blast.
+    #[cold]
+    #[inline(never)]
+    fn walk_round(&mut self, program: &CaptureProgram, mut round: Vec<Taking>, facts: &mut StepFacts) {
+        let mut limbo: Vec<bool> = Vec::with_capacity(round.len() + 8);
+        for (id, taken) in round.iter_mut().enumerate() {
+            taken.id = id;
+            limbo.push(!taken.placed);
+        }
+        let mut settled = SquareSet::EMPTY;
+        let mut fired = SquareSet::EMPTY;
+        while !round.is_empty() {
+            let mut next: Vec<Taking> = Vec::new();
+            for entry in &program.entries {
+                match entry.kind {
+                    CaptureKind::Pay => {
+                        for taken in &round {
+                            if round_reads(program, entry, taken) {
+                                self.pay_round(taken.victim, taken.square, taken.captor);
+                            }
+                        }
+                    }
+                    CaptureKind::Hand => self.round_hand(program, entry, &round, &mut limbo),
+                    CaptureKind::Blast => {
+                        self.round_blast(program, entry, &round, &mut next, &mut limbo, &settled, &mut fired, facts);
+                    }
+                    CaptureKind::Strike | CaptureKind::Contacts => {
+                        let strike = self.t.strike.as_ref().expect("a strike entry without a strike rule");
+                        let rule = program.table(entry, strike);
+                        for taken in &round {
+                            if !round_reads(program, entry, taken) {
+                                continue;
+                            }
+                            if taken.shot {
+                                // SR7e: the shot's victim half was written at step 0.
+                                self.shooter_after(taken, &mut facts.touched);
+                            } else if let Some(square) =
+                                self.strike_after(rule, taken, limbo[taken.id], &mut facts.touched)
+                            {
+                                limbo[taken.id] = false;
+                                settled.set(square);
+                            }
+                        }
                     }
                 }
             }
-            // TC4 (`docs/plan-turncoat.md` §5.1): a wild piece's route bounty and a type's,
-            // for any piece but the captor's own; SR7g (R19): to `bounty_payee`, into the
-            // points and under a purse the purse, as `make` pays.
-            if t.pays {
-                self.pay_round(taken.victim, taken.square, taken.captor);
+            round = next;
+        }
+    }
+
+    /// The `hand` entry in a round: each taking it reads whose victim is still in limbo and
+    /// is not the captor's own goes to the captor's hand, demoted (an unlimited slot
+    /// untouched).
+    fn round_hand(&mut self, program: &CaptureProgram, entry: &CaptureEntry, round: &[Taking], limbo: &mut [bool]) {
+        let t = self.t;
+        let Some(rule) = t.drops.as_ref() else {
+            return;
+        };
+        for taken in round {
+            if !limbo[taken.id] || !round_reads(program, entry, taken) || t.owner_of(taken.victim) == taken.captor {
+                continue;
             }
-            if taken.shot {
-                self.shooter_after(taken, &mut facts.touched);
-            } else if taken.strikes {
-                self.strike_after(taken, &mut facts.touched);
+            limbo[taken.id] = false;
+            let slot = t.demotions[t.type_of(taken.victim)];
+            if !rule.is_unlimited(slot) {
+                self.hands[taken.captor][slot] += 1;
             }
         }
     }
 
-    /// §4 step 6: every blast at once, from every capture of step 4 that qualifies.
-    #[inline(always)]
-    fn blasts(&mut self, takings: &[Taking], facts: &mut StepFacts) {
+    /// The `blast` entry in a round: every taking it reads that sets it off (`by`, `of`)
+    /// fixes a centre (its captor's landing; a blast's victim's own square under `spread`,
+    /// else its blast's centre, which has fired). Shields are read once on the board the
+    /// takings left; the centres and every reached square the blast clears go together, never
+    /// a square placed this round; each piece cleared off a centre's neighbourhood is one
+    /// record per captor whose blast reached it, cause `"blast"`. The pieces that set it off
+    /// are destroyed unless `spares_taken`.
+    #[allow(clippy::too_many_arguments)]
+    fn round_blast(
+        &mut self, program: &CaptureProgram, entry: &CaptureEntry, round: &[Taking], next: &mut Vec<Taking>,
+        limbo: &mut Vec<bool>, settled: &SquareSet, fired: &mut SquareSet, facts: &mut StepFacts,
+    ) {
         let t = self.t;
-        let Some(explosion) = t.explosion.as_ref() else {
-            return;
-        };
+        let explosion = t.explosion.as_ref().expect("a blast entry without an explosion rule");
+        let mut sources: Vec<(usize, usize)> = Vec::new();
         let mut centres = SquareSet::EMPTY;
         let mut blast = SquareSet::EMPTY;
-        for taken in takings {
-            if explosion.fires(taken.captor_type, t.type_of(taken.victim)) {
-                centres.set(taken.square);
-                for &square in explosion.reach(taken.square) {
-                    blast.set(square);
-                }
+        for (index, taken) in round.iter().enumerate() {
+            if !round_reads(program, entry, taken) || !explosion.fires(taken.captor_type, t.type_of(taken.victim)) {
+                continue;
             }
+            if !entry.spares_taken {
+                limbo[taken.id] = false;
+            }
+            let centre = if taken.cause == ON_BLAST && entry.spreads(taken.captor_type) {
+                taken.square
+            } else {
+                taken.centre
+            };
+            if fired.get(centre) {
+                continue;
+            }
+            sources.push((index, centre));
+            centres.set(centre);
+            for &square in explosion.reach(centre) {
+                blast.set(square);
+            }
+        }
+        if sources.is_empty() {
+            return;
         }
         // SR5b (V2): a shielded piece survives every blast of the round, read once on the
         // board the captures left, before any of them clears.
@@ -1188,29 +1320,37 @@ impl<'t> Game<'t> {
         };
         for square in 0..t.n_squares {
             let value = self.board[square];
-            if value == 0 {
+            if value == 0 || settled.get(square) {
                 continue;
             }
-            let hit = centres.get(square)
-                || (blast.get(square) && explosion.clears(t, value) && !shields.get(square));
-            if hit && t.pays && !centres.get(square) {
-                // SR4f (T8), SR4l (O22): a blast pays for every piece it destroys as taking it
-                // would (a wild piece its route's bounty, an enemy its type's, the captor's own
-                // nothing): here to each captor whose blast reached it, into the points and,
-                // under a purse (SR7g), the purse.
-                for taken in takings {
-                    if explosion.fires(taken.captor_type, t.type_of(taken.victim))
-                        && explosion.reach(taken.square).contains(&square)
-                    {
-                        self.pay_round(value, square, taken.captor);
+            let centre = centres.get(square);
+            let reached = blast.get(square) && explosion.clears(t, value) && !shields.get(square);
+            if !(centre || reached) {
+                continue;
+            }
+            if !centre {
+                let id = limbo.len();
+                limbo.push(true);
+                for &(index, at) in &sources {
+                    if explosion.reach(at).contains(&square) {
+                        let mut taken = round[index];
+                        taken.victim = value;
+                        taken.square = square;
+                        taken.cause = ON_BLAST;
+                        taken.id = id;
+                        taken.centre = at;
+                        taken.shot = false;
+                        taken.placed = false;
+                        next.push(taken);
                     }
                 }
             }
-            if hit {
-                self.write(square, 0);
-                facts.touched.set(square);
-                facts.material_changed = true;
-            }
+            self.write(square, 0);
+            facts.touched.set(square);
+            facts.material_changed = true;
+        }
+        for &(_, at) in &sources {
+            fired.set(at);
         }
     }
 
@@ -1316,6 +1456,10 @@ impl<'t> Game<'t> {
             shot: false,
             m: plan.m,
             block: self.block_of(captor, plan),
+            cause: ON_LANDING,
+            id: 0,
+            centre: square,
+            placed: false,
         }
     }
 
@@ -1389,6 +1533,7 @@ impl<'t> Game<'t> {
             writes[i] = (plan.target, survivor);
             let mut taken = self.taking(i, &plan, victim, plan.target, false);
             taken.shot = true;
+            taken.placed = survivor != 0;
             taken.captor_gone = roles.shot[1 - i] && plan.origin == Some(plans[1 - i].target);
             takings.push(taken);
         }
@@ -1468,18 +1613,24 @@ impl<'t> Game<'t> {
         worth(attacker) != worth(mover) || worth(survivor) != worth(victim)
     }
 
-    /// §4 step 5 for one capture under the strike rule or an enemy contact link: the
-    /// captor may change or switch sides where it stands, and a surviving victim goes home
-    /// (`home`) or to the captor's origin (`swap`) if that square is empty after the
-    /// meetings, else it is removed (circe's rule, §4).
-    fn strike_after(&mut self, taken: &Taking, touched: &mut SquareSet) {
+    /// §4 step 5 for one capture under a strike or contacts entry reading `rule` (the
+    /// strike's table, or T3's contact table): the mover half, for a meeting's capture (never
+    /// a blast's victim), while the captor stands -- it may change or switch sides where it
+    /// stands; then the victim half, only while the victim is in limbo (`in_limbo`, rule 1):
+    /// a surviving victim goes home (`home`) or to the captor's origin (`swap`), a blast's
+    /// victim where it stood (or home; nowhere under `choose`), if that square is empty then
+    /// (rule 2, circe's rule, §4), else it is removed. Returns the square a victim was placed
+    /// on.
+    fn strike_after(
+        &mut self, rule: &StrikeRule, taken: &Taking, in_limbo: bool, touched: &mut SquareSet,
+    ) -> Option<usize> {
         let t = self.t;
-        let strike = t.strike.as_ref().expect("a strike without a strike rule");
-        let (becomes, mover_becomes, flips) = self.meeting(taken.captor_type, taken.victim, taken.captor);
+        let (becomes, mover_becomes, flips) = self.meeting_in(rule, taken.captor_type, taken.victim, taken.captor);
         // SR7n (R20): a held captor stays nobody's (`Taking::block`).
         let flips = flips && taken.block != WILD;
         let standing = self.board[taken.square];
-        if !taken.captor_gone
+        if taken.cause != ON_BLAST
+            && !taken.captor_gone
             && standing != 0
             && t.owner_of(standing) == taken.block
             && (mover_becomes >= 0 || flips)
@@ -1495,29 +1646,29 @@ impl<'t> Game<'t> {
             };
             self.write(taken.square, value);
         }
-        if becomes < 0 {
-            return;
+        if becomes < 0 || !in_limbo {
+            return None;
         }
         let owner = t.owner_of(taken.victim);
-        let place = match strike.position {
+        let place = match rule.position {
             StrikePosition::Home => {
-                let home = strike.rebirth_square(owner, becomes as usize, taken.square);
+                let home = rule.rebirth_square(owner, becomes as usize, taken.square);
                 (home >= 0).then_some(home as usize)
             }
+            StrikePosition::Choose => None,
+            _ if taken.cause == ON_BLAST => Some(taken.square),
             StrikePosition::Swap => taken.origin,
             _ => None,
         };
-        if let Some(square) = place {
-            if self.board[square] == 0 {
-                self.write(square, self.arriving(owner, becomes as usize, square));
-                touched.set(square);
-                if strike.position == StrikePosition::Home {
-                    self.unmoved.set(square);
-                } else {
-                    self.unmoved.clear(square);
-                }
-            }
+        let square = place.filter(|&square| self.board[square] == 0)?;
+        self.write(square, self.arriving(owner, becomes as usize, square));
+        touched.set(square);
+        if rule.position == StrikePosition::Home {
+            self.unmoved.set(square);
+        } else {
+            self.unmoved.clear(square);
         }
+        Some(square)
     }
 
     /// The endings a simultaneous position declares, before the clocks (§2.6): the

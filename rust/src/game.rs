@@ -250,6 +250,63 @@ struct StrikeOutcome {
     stayed: bool,
 }
 
+/// R-L4b stage 1: what a legality filter's play of a move leaves for the capture list to read
+/// (`walk_capture_for_filter`): the mover as it set out, the landing's taking, and where a
+/// sweep's victims sit on `Saved`.
+#[derive(Clone, Copy)]
+struct Taken {
+    moving: u8,
+    captured: u8,
+    captured_square: usize,
+    target_before: u8,
+    swept_from: usize,
+    swept_count: usize,
+}
+
+/// R-L4b stage 2 (`docs/reference/capture-effects-design.md` §2.3): one taking's record, the
+/// victim's half: its square and byte as it stood, its cause (an `ON_*` bit), and whether it is
+/// still in limbo (rule 1: the first entry that wants it has it). The taker's half, shared by
+/// every taking of the move, is `WalkCtx`.
+#[derive(Clone, Copy, Debug)]
+struct Taking {
+    square: usize,
+    victim: u8,
+    cause: u8,
+    limbo: bool,
+}
+
+/// R-L4b stage 2: the taker's half of a move's taking records: its type and byte as it set
+/// out, the mover, the move's two squares and chosen landing, and where the taker stands now
+/// (`None` once a blast has taken it).
+struct WalkCtx {
+    taker_type: usize,
+    moving: u8,
+    player: usize,
+    origin: usize,
+    target: usize,
+    landing_index: usize,
+    taker_at: Option<usize>,
+}
+
+/// R-L4b stage 2: what a `general` capture list wrote off the board in one `make`, for
+/// `unmake`: the points before it and each hand slot it filled. (The purse has its own log.)
+#[derive(Clone, Debug)]
+struct CaptureLedger {
+    points: [f64; 2],
+    hands: Vec<(u8, u8)>,
+}
+
+/// Whether `entry` reads a taking of `cause` made by a piece of `taker_type`: its `on`, and for
+/// a sweep's path its `by`.
+#[inline]
+fn entry_reads(entry: &CaptureEntry, cause: u8, taker_type: usize) -> bool {
+    if cause == ON_PATH {
+        entry.reads_path(taker_type)
+    } else {
+        entry.on & cause != 0
+    }
+}
+
 impl StrikeOutcome {
     #[inline]
     fn writes(&self) -> &[(usize, u8)] {
@@ -589,6 +646,10 @@ pub struct Game<'t> {
     /// none), for `unmake` to walk a row's middle back (`push_unshift`). Empty and never
     /// touched otherwise, so `Undo` does not grow.
     push_log: Vec<u8>,
+    /// R-L4b stage 2: one ledger record per move a `general` capture list walked, still on the
+    /// undo stack (`walk_general`): the points before it and each hand it filed into. Empty and
+    /// never touched otherwise, so `Undo` does not grow.
+    capture_ledger: Vec<CaptureLedger>,
     /// Schema 26: one `RoundUndo` per round still on the stack.
     round_undo: Vec<rounds::RoundUndo>,
     /// Schema 26: what the last round did, `(event, square, player)` (`rounds::EVENT_*`),
@@ -733,6 +794,7 @@ impl<'t> Game<'t> {
             resting: NO_REST,
             rest_log: Vec::new(),
             push_log: Vec::new(),
+            capture_ledger: Vec::new(),
             round_undo: Vec::new(),
             round_log: Vec::new(),
             spy_deals: Vec::new(),
@@ -850,6 +912,7 @@ impl<'t> Game<'t> {
             resting: snapshot.resting,
             rest_log: Vec::new(),
             push_log: Vec::new(),
+            capture_ledger: Vec::new(),
             round_undo: Vec::new(),
             round_log: Vec::new(),
             spy_deals: Vec::new(),
@@ -934,6 +997,7 @@ impl<'t> Game<'t> {
         self.resting = snapshot.resting;
         self.rest_log.clear();
         self.push_log.clear();
+        self.capture_ledger.clear();
         self.respawn.clone_from(&snapshot.respawn);
         self.respawn_log.clear();
         self.heading_back = snapshot.heading_back;
@@ -2117,9 +2181,58 @@ impl<'t> Game<'t> {
         if rule.position != StrikePosition::Choose || victim == 0 {
             return false;
         }
+        if let Some(program) = t.capture.as_deref().filter(|program| program.general) {
+            return self.general_fans(program, mover_type, player, victim);
+        }
         let cell = mover_type * rule.n_types + t.type_of(victim);
         let becomes = if t.owner_of(victim) == player { rule.own_to[cell] } else { rule.to[cell] };
         becomes >= 0
+    }
+
+    /// R-L4b stage 2 (§2.5, T1.choose, T4.choose): whether a capture of `victim` by
+    /// `mover_type`, moved by `player`, fans out over its landings under a `general` list: its
+    /// landing taking reaches a `choose` table's entry still in limbo. Walked down the list as
+    /// `walk_list` would walk the landing's taking: a hand that files it or a blast that
+    /// destroys it (no `spares_taken`) first offers no chosen square; the first strike or
+    /// contacts entry whose link places it decides, by its table's position. Only `Tables::strike`
+    /// can be placed `choose` (T3's second table never is, `CaptureProgram::from_order`).
+    #[cold]
+    #[inline(never)]
+    fn general_fans(
+        &self, program: &CaptureProgram, mover_type: usize, player: usize, victim: u8,
+    ) -> bool {
+        let t = self.t;
+        let Some(strike) = t.strike.as_ref() else {
+            return false;
+        };
+        let own = t.owner_of(victim) == player;
+        for entry in &program.entries {
+            if entry.on & ON_LANDING == 0 {
+                continue;
+            }
+            match entry.kind {
+                CaptureKind::Pay => {}
+                CaptureKind::Hand => {
+                    if t.drops.is_some() && !own {
+                        return false;
+                    }
+                }
+                CaptureKind::Blast => {
+                    if !entry.spares_taken && self.blast_sets_off(mover_type, victim, player) {
+                        return false;
+                    }
+                }
+                CaptureKind::Strike | CaptureKind::Contacts => {
+                    let rule = program.table(entry, strike);
+                    let cell = mover_type * rule.n_types + t.type_of(victim);
+                    let table = if own { &rule.own_to } else { &rule.to };
+                    if table.get(cell).copied().unwrap_or(-1) >= 0 {
+                        return rule.position == StrikePosition::Choose;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// SR4m: `fans_out` for a word already generated, read off the board it was generated
@@ -2143,9 +2256,18 @@ impl<'t> Game<'t> {
         let t = self.t;
         let rule = t.strike.as_ref().expect("a landing fan-out without a strike rule");
         let victim = self.board[captured_square];
-        let cell = mover_type * rule.n_types + t.type_of(victim);
-        let becomes = if t.owner_of(victim) == player { rule.own_to[cell] } else { rule.to[cell] };
-        if becomes < 0 {
+        // R-L4b stage 2 (§2.5): under a `general` list, only where the list still finds the
+        // victim in limbo for a `choose` entry (`general_fans`).
+        let fans = match t.capture.as_deref().filter(|program| program.general) {
+            Some(program) => self.general_fans(program, mover_type, player, victim),
+            None => {
+                let cell = mover_type * rule.n_types + t.type_of(victim);
+                let becomes =
+                    if t.owner_of(victim) == player { rule.own_to[cell] } else { rule.to[cell] };
+                becomes >= 0
+            }
+        };
+        if !fans {
             out.push(m);
             return;
         }
@@ -2736,7 +2858,7 @@ impl<'t> Game<'t> {
         self.working_key = self.key ^ t.zobrist_side;
 
         // H1 (`docs/plan-hunger.md` §2.3): the move's cost, read off the board before it moves
-        // (`move_cost`, the filter's own question), spent in `write_payments` before the bounty.
+        // (`move_cost`, the filter's own question), spent in `write_spend` before the bounty.
         let upkeep = match t.purse.as_deref() {
             Some(purse) if !purse.upkeep.is_empty() => self.move_cost(purse, m),
             _ => 0,
@@ -2744,10 +2866,20 @@ impl<'t> Game<'t> {
         let mut cleared: Vec<(usize, u8)> = Vec::new();
         let mut played = self.write_board(m, player, &mut cleared);
         played.spent += upkeep;
+        self.write_spend(&played);
+        // R-L4b stage 2 (§2.2, §3.2): the gate is part one, the move's own write, so the gated
+        // piece stands before the list runs (a blast may take it; a stay finds its origin full).
         self.write_gate(m, &mut played);
+        // R-L4b stage 1 (`docs/reference/capture-effects-design.md` §5): what the move's takings
+        // do, one test and a cold walk over the list. Only a move that took something walks it:
+        // a capture (`captured`, the landing's, en passant's or a push's) or a sweep.
+        if let Some(program) = t.capture.as_deref() {
+            if played.captured != 0 || played.kind == MOVE_SWEEP {
+                self.walk_capture(program, m, &mut played, &mut cleared);
+            }
+        }
         self.write_unmoved(&played, &cleared);
         self.write_ep_window(m, &played);
-        self.write_payments(&played, &cleared);
         // TS1: the bank, after every write of the player's own move and before the phase.
         let banked_any = t.reach_removes && self.write_bank();
 
@@ -2783,7 +2915,6 @@ impl<'t> Game<'t> {
             key ^= t.zobrist_ep_file(self.ep_target);
         }
 
-        self.deposit_capture(&mut played, &cleared);
         self.count_check(player);
         let coloured = self.write_territory(&played, &mut key);
         let (irreversible, progress) = progress_of(
@@ -2904,28 +3035,541 @@ impl<'t> Game<'t> {
         } else if kind == MOVE_CASTLE {
             self.write_castle(m, &mut played);
         } else if !enters_play(kind) {
+            // The step and what its kind adds (part one, §2.2); what its takings do is the
+            // capture list's (`walk_capture`, R-L4b stage 1).
             self.write_step(m, &mut played, cleared);
-            // SR5a (T1, T4): a capture that explodes is the blast's alone. It makes no contact
-            // and strikes nothing but what `explode_on_capture.strikes` hands the strike after
-            // the blast has cleared (`write_blast`); every other capture is the strike's.
-            // SR6c (W3): a sweep's blasts are the sweep switch's (`write_sweep_blast`); a
-            // sweep beside a blast has no strike or contacts (the validator).
-            if t.explosion.is_some() && kind == MOVE_SWEEP {
-                self.write_sweep_blast(&mut played, cleared);
-            } else if self.blast_sets_off(played.piece_type, played.captured, player) {
-                self.write_blast(&mut played, cleared);
+        }
+        played
+    }
+
+    /// R-L4b stage 1 (`docs/reference/capture-effects-design.md` §2.2, §5): the capture list
+    /// walked over the move's takings. Stage 1 plays the default order the stored games are in,
+    /// with today's functions: the board entries in list order (a blast; a strike or contacts),
+    /// then the ledger entries in list order (the pay, the hand), which commute with every board
+    /// entry (§2.3: they never both take one piece in any game the validator admits).
+    ///
+    /// SR5a (T1, T4): a capture that explodes is the blast's alone. It makes no contact and
+    /// strikes nothing but what the list hands the strike after the blast has cleared
+    /// (`write_blast`: `spares_taken`, and `"blast"` in the strike's `on`); every other capture
+    /// is the strike's. SR6c (W3): a sweep's blasts are the blast entry's (`write_sweep_blast`,
+    /// its `spread`); a sweep beside a blast has no strike or contacts (the validator).
+    #[cold]
+    #[inline(never)]
+    fn walk_capture(
+        &mut self, program: &CaptureProgram, m: u32, played: &mut Played,
+        cleared: &mut Vec<(usize, u8)>,
+    ) {
+        if program.general {
+            self.walk_general(program, m, played, cleared);
+            return;
+        }
+        let mut blasted = false;
+        for entry in &program.entries {
+            match entry.kind {
+                CaptureKind::Blast => {
+                    if played.kind == MOVE_SWEEP {
+                        self.write_sweep_blast(entry, played, cleared);
+                        blasted = true;
+                    } else if self.blast_sets_off(played.piece_type, played.captured, played.player) {
+                        self.write_blast(program, played, cleared);
+                        blasted = true;
+                    }
+                }
+                CaptureKind::Strike | CaptureKind::Contacts => {
+                    if !blasted {
+                        self.write_strike(m, played);
+                        // SR6a (W1): under `"path"` in the entry's `on` the swept pieces are struck
+                        // too, after the landing's capture (`sweep_strikes`).
+                        if played.kind == MOVE_SWEEP && entry.reads_path(played.piece_type) {
+                            self.write_sweep_strikes(played, cleared);
+                        }
+                    }
+                }
+                CaptureKind::Pay | CaptureKind::Hand => {}
+            }
+        }
+        for entry in &program.entries {
+            match entry.kind {
+                CaptureKind::Pay => self.write_pay(entry, played, cleared),
+                CaptureKind::Hand => self.write_hand(entry, played, cleared),
+                _ => {}
+            }
+        }
+    }
+
+    /// R-L4b stage 1: the capture list's read-backs in `unmake`, the reverse of `walk_capture`:
+    /// a placed survivor cleared (before the generic restore, which it precedes), then the hand
+    /// and the pay taken back. `mover` is the side that made the move.
+    #[cold]
+    #[inline(never)]
+    fn unwalk_capture(&mut self, program: &CaptureProgram, undo: &Undo) {
+        if program.general {
+            // R-L4b stage 2: the board comes back off `Undo.cleared`, which logs every write
+            // of the walk; the ledger off `capture_ledger`.
+            let ledger =
+                self.capture_ledger.pop().expect("capture ledger shorter than the undo stack");
+            self.points = ledger.points;
+            for &(player, slot) in ledger.hands.iter().rev() {
+                self.hands[player as usize][slot as usize] -= 1;
+            }
+            return;
+        }
+        let mover = if self.turns_taken != undo.turns_taken { 1 - self.side } else { self.side };
+        for entry in program.entries.iter().rev() {
+            match entry.kind {
+                CaptureKind::Strike | CaptureKind::Contacts => {
+                    if undo.placed != 0 {
+                        self.unplace_survivor(undo);
+                    }
+                }
+                CaptureKind::Hand => {
+                    // SR4b (W4): the swept pieces' deposit, read back off the log `make` wrote
+                    // it from. The landing's own entry is `Undo.hand`, restored with any drop's.
+                    if undo.kind == MOVE_SWEEP && entry.reads_path(self.t.type_of(undo.moving)) {
+                        self.sweep_to_hand(mover, &undo.cleared, undo.target, -1);
+                    }
+                }
+                CaptureKind::Pay => {
+                    // The bounty, taken back (schema 9): what the move was paid is the same
+                    // question `make` asked of the same two fields. SR4c (W5): the swept
+                    // pieces' bounties first, the reverse of `make`'s order; SR4f (T8) and SR4l
+                    // (O22) a blast's victims, off the same log. The purse comes back off its
+                    // own log.
+                    if !undo.cleared.is_empty() {
+                        self.refund_swept(mover, &undo.cleared);
+                    }
+                    if undo.captured != 0 {
+                        let paid = self.t.bounty_paid(undo.captured, undo.captured_square, mover);
+                        if paid != 0.0 {
+                            // TC9c: the same payee `make` paid.
+                            let payee = self.t.bounty_payee(undo.captured, mover);
+                            if payee < 2 {
+                                self.points[payee] -= paid;
+                            }
+                        }
+                    }
+                }
+                CaptureKind::Blast => {}
+            }
+        }
+    }
+
+    /// A survivor placed under `choose` or `home` stands on a square the generic restore does
+    /// not know. Cleared first, so one placed on the origin is overwritten by the mover coming
+    /// back, and (SR6a) one reborn on a swept square before the swept piece there is put back.
+    fn unplace_survivor(&mut self, undo: &Undo) {
+        let t = self.t;
+        let rule = t.strike.as_ref().expect("a placed survivor without a strike rule");
+        let placed_on = if rule.position == StrikePosition::Home {
+            // The square `strike_writes` read, asked again of the same keys: the
+            // victim as it stood, and what the strike table turned it into.
+            let cell = t.type_of(undo.moving) * rule.n_types + t.type_of(undo.captured);
+            let becomes = rule.to[cell] as usize;
+            rule.rebirth_square(t.owner_of(undo.captured), becomes, undo.captured_square) as usize
+        } else {
+            // SR4k: a held piece's landings are its holder's, the side that moved
+            // (`self.side` is put back later, so read through the turn count).
+            let owner = t.owner_of(undo.moving);
+            let player = if owner != WILD {
+                owner
+            } else if self.turns_taken != undo.turns_taken {
+                1 - self.side
             } else {
-                self.write_strike(m, &mut played);
-                // SR6a (W1): under `effects: "path"` the swept pieces are struck too, after
-                // the landing's capture (`sweep_strikes`).
-                if kind == MOVE_SWEEP
-                    && t.strike.as_ref().is_some_and(|rule| rule.strikes_path(played.piece_type))
-                {
-                    self.write_sweep_strikes(&mut played, cleared);
+                self.side
+            };
+            rule.landing(player, undo.captured_square)[undo.placed as usize - 1] as usize
+        };
+        self.put(placed_on, 0);
+    }
+
+    /// R-L4b stage 2 (§2.2): a move's part-one takings in taking order: the landing's (en
+    /// passant's and a portal exit's among them; a push's piece thrown off is cause `"push"`),
+    /// then a sweep's path in path order.
+    fn part_one_takings(
+        kind: u32, captured: u8, captured_square: usize, swept: &[(usize, u8)],
+    ) -> Vec<Taking> {
+        let mut takings = Vec::new();
+        if captured != 0 {
+            let cause = if kind == MOVE_PUSH { ON_PUSH } else { ON_LANDING };
+            takings.push(Taking { square: captured_square, victim: captured, cause, limbo: true });
+        }
+        if kind == MOVE_SWEEP {
+            for &(square, victim) in swept {
+                if victim != 0 {
+                    takings.push(Taking { square, victim, cause: ON_PATH, limbo: true });
                 }
             }
         }
-        played
+        takings
+    }
+
+    /// R-L4b stage 2: a `general` list walked in `make`. Every board write is logged on
+    /// `cleared` with what stood there, so `unmake`'s reverse restore takes the walk back
+    /// before part one's; the points and the hands go on `capture_ledger`. The `unmoved` bits:
+    /// a struck piece placed loses its bit, one reborn on its home gets it (Q540), as stage
+    /// 1's placements do.
+    #[cold]
+    #[inline(never)]
+    fn walk_general(
+        &mut self, program: &CaptureProgram, m: u32, played: &mut Played,
+        cleared: &mut Vec<(usize, u8)>,
+    ) {
+        let takings =
+            Self::part_one_takings(played.kind, played.captured, played.captured_square, cleared);
+        let mut ctx = WalkCtx {
+            taker_type: played.piece_type,
+            moving: played.moving,
+            player: played.player,
+            origin: played.origin,
+            target: played.target,
+            landing_index: move_landing(m),
+            taker_at: Some(played.target),
+        };
+        self.capture_ledger.push(CaptureLedger { points: self.points, hands: Vec::new() });
+        let mut placed: Vec<(usize, bool)> = Vec::new();
+        self.walk_list(program, &mut ctx, takings, true, &mut placed, &mut |game: &mut Self, square, value| {
+            cleared.push((square, game.board[square]));
+            game.write(square, value);
+        });
+        played.stayed = played.origin != played.target && ctx.taker_at == Some(played.origin);
+        for (square, home) in placed {
+            if home {
+                self.unmoved.set(square);
+                // `write_unmoved` clears the origin and the target after this; a piece reborn
+                // on one of them keeps its bit through `played.struck` (its `Home` arm).
+                if square == played.origin || square == played.target {
+                    played.struck = Some((square, self.board[square]));
+                    played.placed = 1;
+                }
+            } else {
+                self.unmoved.clear(square);
+            }
+        }
+    }
+
+    /// R-L4b stage 2: a `general` list's board entries on the raw board for a legality filter,
+    /// each write saved for the restore. The ledger entries change no square, but a hand still
+    /// takes its piece out of limbo (rule 1), so the walk runs them for that alone.
+    #[cold]
+    #[inline(never)]
+    fn walk_general_for_filter(
+        &mut self, program: &CaptureProgram, m: u32, taken: Taken, saved: &mut Saved,
+    ) {
+        let mut swept = saved.entries_from(taken.swept_from);
+        swept.truncate(taken.swept_count);
+        let takings =
+            Self::part_one_takings(move_kind(m), taken.captured, taken.captured_square, &swept);
+        if takings.is_empty() {
+            return;
+        }
+        let mut ctx = WalkCtx {
+            taker_type: self.t.type_of(taken.moving),
+            moving: taken.moving,
+            player: self.side,
+            origin: move_from(m),
+            target: move_to(m),
+            landing_index: move_landing(m),
+            taker_at: Some(move_to(m)),
+        };
+        let mut placed: Vec<(usize, bool)> = Vec::new();
+        self.walk_list(program, &mut ctx, takings, false, &mut placed, &mut |game: &mut Self, square, value| {
+            saved.push((square, game.board[square]));
+            game.board[square] = value;
+        });
+    }
+
+    /// R-L4b stage 2 (§2.2): the list, entry by entry from the top, over one round of takings
+    /// in taking order; a blast's victims are the next round's, walked from the top again,
+    /// until a round makes none. Rule 1: a taking leaves limbo once (`Taking::limbo`); rule 2:
+    /// a placement needs an empty square it may stand on; rule 3: a placed piece is settled,
+    /// and a blast fires once on a square. Whatever is still in limbo at the end is gone (it
+    /// left the board in part one or in its blast). `ledger` is false in a legality filter,
+    /// which changes no points and no hand.
+    fn walk_list<W: FnMut(&mut Self, usize, u8)>(
+        &mut self, program: &CaptureProgram, ctx: &mut WalkCtx, mut round: Vec<Taking>,
+        ledger: bool, placed: &mut Vec<(usize, bool)>, write: &mut W,
+    ) {
+        let mut settled = SquareSet::EMPTY;
+        let mut fired = SquareSet::EMPTY;
+        let mut mover_done = vec![false; program.entries.len()];
+        while !round.is_empty() {
+            let mut next: Vec<Taking> = Vec::new();
+            for (index, entry) in program.entries.iter().enumerate() {
+                match entry.kind {
+                    CaptureKind::Pay => {
+                        if ledger {
+                            self.walk_pay(entry, ctx, &round);
+                        }
+                    }
+                    CaptureKind::Hand => self.walk_hand(entry, ctx, &mut round, ledger),
+                    CaptureKind::Blast => {
+                        self.walk_blast(entry, ctx, &mut round, &mut next, &settled, &mut fired, write);
+                    }
+                    CaptureKind::Strike | CaptureKind::Contacts => {
+                        let strike = self.t.strike.as_ref().expect("a strike entry without a strike rule");
+                        let rule = program.table(entry, strike);
+                        self.walk_strike(
+                            entry, rule, ctx, &mut round, &mut mover_done[index], &mut settled, placed,
+                            write,
+                        );
+                    }
+                }
+            }
+            round = next;
+        }
+    }
+
+    /// The `pay` entry (§2.3): each taking it reads pays as `bounty_paid` says, to
+    /// `bounty_payee`, into the points and under a purse the purse (capped). It reads the
+    /// record, not the piece, so it pays wherever the victim went.
+    fn walk_pay(&mut self, entry: &CaptureEntry, ctx: &WalkCtx, round: &[Taking]) {
+        let t = self.t;
+        for taking in round {
+            if !entry_reads(entry, taking.cause, ctx.taker_type) {
+                continue;
+            }
+            let paid = t.bounty_paid(taking.victim, taking.square, ctx.player);
+            if paid == 0.0 {
+                continue;
+            }
+            let payee = t.bounty_payee(taking.victim, ctx.player);
+            if payee >= 2 {
+                continue;
+            }
+            self.points[payee] += paid;
+            if let Some(purse) = t.purse.as_deref() {
+                if paid > 0.0 {
+                    self.fill_purse(purse, payee, paid);
+                }
+            }
+        }
+    }
+
+    /// The `hand` entry (§2.3): each taking it reads whose victim is still in limbo and not the
+    /// mover's own goes to the mover's hand, demoted (an unlimited slot untouched).
+    fn walk_hand(&mut self, entry: &CaptureEntry, ctx: &WalkCtx, round: &mut [Taking], ledger: bool) {
+        let t = self.t;
+        let Some(rule) = t.drops.as_ref() else {
+            return;
+        };
+        for taking in round.iter_mut() {
+            if !taking.limbo
+                || !entry_reads(entry, taking.cause, ctx.taker_type)
+                || t.owner_of(taking.victim) == ctx.player
+            {
+                continue;
+            }
+            taking.limbo = false;
+            if ledger {
+                let demoted = t.demotions[t.type_of(taking.victim)];
+                if !rule.is_unlimited(demoted) {
+                    self.hands[ctx.player][demoted] += 1;
+                    self.capture_ledger
+                        .last_mut()
+                        .expect("a hand entry walked outside make")
+                        .hands
+                        .push((ctx.player as u8, demoted as u8));
+                }
+            }
+        }
+    }
+
+    /// The `blast` entry (§2.1, §2.3): the takings it reads that set it off (`by` and `of`
+    /// against the record, `blast_sets_off`) fix its centres: the taker where it stands (the
+    /// landing when it is gone), and under `spread` each such path, push or blast taking's own
+    /// square instead. Shields are read before anything goes; the taker goes; the centres'
+    /// neighbourhoods clear together, each piece a new taking with cause `"blast"`, never one
+    /// placed this move. The pieces that set it off are destroyed unless `spares_taken`.
+    #[allow(clippy::too_many_arguments)]
+    fn walk_blast<W: FnMut(&mut Self, usize, u8)>(
+        &mut self, entry: &CaptureEntry, ctx: &mut WalkCtx, round: &mut [Taking],
+        next: &mut Vec<Taking>, settled: &SquareSet, fired: &mut SquareSet, write: &mut W,
+    ) {
+        let t = self.t;
+        let explosion = t.explosion.as_ref().expect("a blast entry without an explosion rule");
+        let spread = entry.spreads(ctx.taker_type);
+        let mut centres: Vec<usize> = Vec::new();
+        let mut at_taker = false;
+        let mut set_off = false;
+        for taking in round.iter_mut() {
+            if !entry_reads(entry, taking.cause, ctx.taker_type)
+                || !self.blast_sets_off(ctx.taker_type, taking.victim, ctx.player)
+            {
+                continue;
+            }
+            set_off = true;
+            if spread && taking.cause & (ON_PATH | ON_PUSH | ON_BLAST) != 0 {
+                centres.push(taking.square);
+            } else {
+                at_taker = true;
+            }
+            if !entry.spares_taken {
+                taking.limbo = false;
+            }
+        }
+        if !set_off {
+            return;
+        }
+        if at_taker {
+            centres.push(ctx.taker_at.unwrap_or(ctx.target));
+        }
+        let mut fresh: Vec<usize> = Vec::new();
+        for centre in centres {
+            if !fired.get(centre) && !fresh.contains(&centre) {
+                fresh.push(centre);
+            }
+        }
+        if fresh.is_empty() {
+            return;
+        }
+        let shields: Vec<SquareSet> =
+            fresh.iter().map(|&centre| self.blast_shields(explosion, centre)).collect();
+        if let Some(at) = ctx.taker_at.take() {
+            write(self, at, 0);
+        }
+        for (&centre, shields) in fresh.iter().zip(&shields) {
+            fired.set(centre);
+            for &square in explosion.reach(centre) {
+                let value = self.board[square];
+                if explosion.clears(t, value) && !shields.get(square) && !settled.get(square) {
+                    write(self, square, 0);
+                    next.push(Taking { square, victim: value, cause: ON_BLAST, limbo: true });
+                }
+            }
+        }
+    }
+
+    /// The `strike` and `contacts` entries (§2.3). The mover half, once per entry per move
+    /// while the taker stands: the landing's link if it names a change (a type, a side, or
+    /// `stay`, which returns the taker to its origin if that is empty), else the last path
+    /// taking's that names a type. Then the victim half, each taking it reads still in limbo:
+    /// the link's new type placed by `position` (the landing: where it stood, the origin, the
+    /// chosen square, its home; any other cause: its home under `home`, nothing under
+    /// `choose`, else where it stood), by rule 2. SR4h: a commanded piece taking its own side
+    /// strikes nothing; SR4k: a held taker reads its holder's landings and never switches.
+    #[allow(clippy::too_many_arguments)]
+    fn walk_strike<W: FnMut(&mut Self, usize, u8)>(
+        &mut self, entry: &CaptureEntry, rule: &StrikeRule, ctx: &mut WalkCtx,
+        round: &mut [Taking], mover_done: &mut bool, settled: &mut SquareSet,
+        placed: &mut Vec<(usize, bool)>, write: &mut W,
+    ) {
+        let t = self.t;
+        let n = rule.n_types;
+        let mover_owner = t.owner_of(ctx.moving);
+        let held = mover_owner == WILD;
+        let holder = if held { ctx.player } else { mover_owner };
+        let (taker_type, player) = (ctx.taker_type, ctx.player);
+        // `(becomes, mover becomes, switches)` for a meeting with `victim`, or `None` where it
+        // is an ordinary removal (SR4h).
+        let link = |victim: u8| -> Option<(i32, i32, bool)> {
+            let owner = t.owner_of(victim);
+            if owner == mover_owner && mover_owner != player {
+                return None;
+            }
+            let cell = taker_type * n + t.type_of(victim);
+            if owner == mover_owner {
+                Some((
+                    rule.own_to.get(cell).copied().unwrap_or(-1),
+                    rule.own_mover_to.get(cell).copied().unwrap_or(-1),
+                    false,
+                ))
+            } else {
+                Some((rule.to[cell], rule.mover_to[cell], !held && rule.flips(cell)))
+            }
+        };
+        if !*mover_done && ctx.taker_at.is_some() {
+            let mut change: Option<(i32, bool, bool)> = None;
+            if entry_reads(entry, ON_LANDING, taker_type) {
+                for taking in round.iter().filter(|taking| taking.cause == ON_LANDING) {
+                    if let Some((to, mover_to, flips)) = link(taking.victim) {
+                        let stay = (to != -1 || mover_to >= 0) && rule.position == StrikePosition::Stay;
+                        if mover_to >= 0 || flips || stay {
+                            change = Some((mover_to, flips, stay));
+                        }
+                    }
+                }
+            }
+            if change.is_none() && entry_reads(entry, ON_PATH, taker_type) {
+                change = round
+                    .iter()
+                    .rev()
+                    .filter(|taking| taking.cause == ON_PATH)
+                    .filter_map(|taking| link(taking.victim))
+                    .find(|&(_, mover_to, _)| mover_to >= 0)
+                    .map(|(_, mover_to, _)| (mover_to, false, false));
+            }
+            if let Some((mover_to, flips, stay)) = change {
+                *mover_done = true;
+                let at = ctx.taker_at.expect("checked above");
+                let square = if stay && at != ctx.origin && self.board[ctx.origin] == 0 {
+                    ctx.origin
+                } else {
+                    at
+                };
+                let byte = self.board[at];
+                let owner = t.owner_of(byte);
+                let now = if flips {
+                    let base = if mover_to >= 0 { t.entering_value(owner, mover_to as usize) } else { byte };
+                    self.rehome(base, 1 - owner, square)
+                } else if mover_to >= 0 {
+                    self.arriving(owner, mover_to as usize, square)
+                } else {
+                    byte
+                };
+                if square != at {
+                    write(self, at, 0);
+                    write(self, square, now);
+                    ctx.taker_at = Some(square);
+                } else if now != byte {
+                    write(self, at, now);
+                }
+            }
+        }
+        let home = rule.position == StrikePosition::Home;
+        for taking in round.iter_mut() {
+            if !taking.limbo || !entry_reads(entry, taking.cause, taker_type) {
+                continue;
+            }
+            let Some((to, _, _)) = link(taking.victim) else {
+                continue;
+            };
+            if to < 0 {
+                continue;
+            }
+            let (owner, becomes) = (t.owner_of(taking.victim), to as usize);
+            let at = if home {
+                let at = rule.rebirth_square(owner, becomes, taking.square);
+                (at >= 0).then_some(at as usize)
+            } else if taking.cause == ON_LANDING {
+                match rule.position {
+                    StrikePosition::Stay => Some(taking.square),
+                    StrikePosition::Swap => Some(ctx.origin),
+                    StrikePosition::Choose => rule
+                        .landing(holder, taking.square)
+                        .get(ctx.landing_index)
+                        .map(|&square| square as usize),
+                    StrikePosition::Home | StrikePosition::Advance => None,
+                }
+            } else if rule.position == StrikePosition::Choose {
+                None
+            } else {
+                Some(taking.square)
+            };
+            let Some(at) = at else {
+                continue;
+            };
+            if self.board[at] != 0 {
+                continue;
+            }
+            let value = self.arriving(owner, becomes, at);
+            if !t.value_may_stand(value, at) {
+                continue;
+            }
+            write(self, at, value);
+            settled.set(at);
+            taking.limbo = false;
+            placed.push((at, home));
+        }
     }
 
     /// A drop's or a buy's square, and the hand slot a drop spends: what stands on the
@@ -3155,8 +3799,11 @@ impl<'t> Game<'t> {
     /// pieces are placed (`blast_strikes`), each write logged on `cleared` with what stood
     /// there before it, so `unmake`'s reverse walk takes the placements back before it
     /// puts the cleared pieces back. `played.blast_struck` is where the placements begin.
+    /// R-L4b stage 1: the strikes it hands on are the list's (`CaptureProgram::blast_strikes`).
     #[inline(always)]
-    fn write_blast(&mut self, played: &mut Played, cleared: &mut Vec<(usize, u8)>) {
+    fn write_blast(
+        &mut self, program: &CaptureProgram, played: &mut Played, cleared: &mut Vec<(usize, u8)>,
+    ) {
         let t = self.t;
         let target = played.target;
         let explosion = t.explosion.as_ref().expect("a blast without an explosion rule");
@@ -3174,8 +3821,9 @@ impl<'t> Game<'t> {
                 self.write(sq, 0);
             }
         }
-        if explosion.strikes != 0 {
-            self.write_blast_strikes(played, cleared, first);
+        let strikes = program.blast_strikes();
+        if strikes != 0 {
+            self.write_blast_strikes(strikes, played, cleared, first);
         }
     }
 
@@ -3184,10 +3832,10 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn write_blast_strikes(
-        &mut self, played: &mut Played, cleared: &mut Vec<(usize, u8)>, first: usize,
+        &mut self, strikes: u8, played: &mut Played, cleared: &mut Vec<(usize, u8)>, first: usize,
     ) {
         let placements = self.blast_strikes(
-            played.piece_type, played.moving, played.captured, played.captured_square,
+            strikes, played.piece_type, played.moving, played.captured, played.captured_square,
             &cleared[first + 1..],
         );
         played.blast_struck = cleared.len() as u16;
@@ -3205,11 +3853,15 @@ impl<'t> Game<'t> {
     /// them reach is cleared once.
     #[cold]
     #[inline(never)]
-    fn write_sweep_blast(&mut self, played: &mut Played, cleared: &mut Vec<(usize, u8)>) {
+    fn write_sweep_blast(
+        &mut self, entry: &CaptureEntry, played: &mut Played, cleared: &mut Vec<(usize, u8)>,
+    ) {
         let t = self.t;
         let explosion = t.explosion.as_ref().expect("a sweep blast without an explosion rule");
         let target = played.target;
-        let centres = self.sweep_blast_centres(played.piece_type, played.captured, target, cleared);
+        let spread = entry.spreads(played.piece_type);
+        let centres =
+            self.sweep_blast_centres(spread, played.piece_type, played.captured, target, cleared);
         if centres.is_empty() {
             return;
         }
@@ -3235,17 +3887,19 @@ impl<'t> Game<'t> {
     /// `by` and `of`), whoever owns it, since the sweep removes it whoever owns it.
     ///
     /// `"landing"` (the default): one blast, on the landing, when any removed piece sets one
-    /// off. `"path"` (`blasts_path`): one on each swept square whose piece does, in path
-    /// order, then one on the landing when its capture does. Empty: no blast.
+    /// off. `"path"` (`spread`, the blast entry's, R-L4b stage 1): one on each swept square
+    /// whose piece does, in path order, then one on the landing when its capture does. Empty:
+    /// no blast.
     fn sweep_blast_centres(
-        &self, sweeper_type: usize, captured: u8, target: usize, swept: &[(usize, u8)],
+        &self, spread: bool, sweeper_type: usize, captured: u8, target: usize,
+        swept: &[(usize, u8)],
     ) -> Vec<usize> {
         let t = self.t;
         let Some(explosion) = t.explosion.as_ref() else {
             return Vec::new();
         };
         let fires = |value: u8| value != 0 && explosion.fires(sweeper_type, t.type_of(value));
-        if explosion.blasts_path(sweeper_type) {
+        if spread {
             let mut centres: Vec<usize> =
                 swept.iter().filter(|&&(_, value)| fires(value)).map(|&(sq, _)| sq).collect();
             if fires(captured) {
@@ -3416,13 +4070,16 @@ impl<'t> Game<'t> {
     /// A piece of either side is struck: the blast reaches both. Nothing placed here
     /// explodes or is struck again, and `switches_sides` never fires (the capturer is gone).
     /// A commanded own-side capture (SR4h's ordinary removal) strikes nothing.
+    ///
+    /// R-L4b stage 1: `strikes` is the list's reading of the two (`CaptureProgram::blast_strikes`:
+    /// the blast's `spares_taken`, `"blast"` in the strike's `on`).
     fn blast_strikes(
-        &self, capturer_type: usize, moving: u8, captured: u8, captured_square: usize,
+        &self, strikes: u8, capturer_type: usize, moving: u8, captured: u8, captured_square: usize,
         victims: &[(usize, u8)],
     ) -> Vec<(usize, u8)> {
         let t = self.t;
         let mut placed: Vec<(usize, u8)> = Vec::new();
-        let (Some(explosion), Some(strike)) = (t.explosion.as_ref(), t.strike.as_ref()) else {
+        let (Some(_), Some(strike)) = (t.explosion.as_ref(), t.strike.as_ref()) else {
             return placed;
         };
         if t.owner_of(captured) == t.owner_of(moving) {
@@ -3455,10 +4112,10 @@ impl<'t> Game<'t> {
             }
             placed.push((at, value));
         };
-        if explosion.strikes & BLAST_STRIKES_TARGET != 0 {
+        if strikes & BLAST_STRIKES_TARGET != 0 {
             place(captured, captured_square, &mut placed);
         }
-        if explosion.strikes & BLAST_STRIKES_VICTIMS != 0 {
+        if strikes & BLAST_STRIKES_VICTIMS != 0 {
             for &(square, value) in victims {
                 place(value, square, &mut placed);
             }
@@ -3612,22 +4269,16 @@ impl<'t> Game<'t> {
     ///
     /// SR4c (W5): a sweep's swept pieces pay too, each as its capture would
     /// (`pay_swept`, read back by `refund_swept` off the same `cleared` log).
+    ///
+    /// R-L4b stage 1: the capture half is the list's `pay` entry (`write_pay`); this is the
+    /// spending half, the purse's log and what the move itself costs (a buy's price, a hire's
+    /// or a bribe's cost, the upkeep), before the list runs, so a bounty is still paid after
+    /// the spend (the cap reads the order).
     #[inline(always)]
-    fn write_payments(&mut self, played: &Played, cleared: &[(usize, u8)]) {
+    fn write_spend(&mut self, played: &Played) {
         let t = self.t;
-        let player = played.player;
-        let paid = if t.pays && played.captured != 0 {
-            t.bounty_paid(played.captured, played.captured_square, player)
-        } else {
-            0.0
-        };
-        // TC9c (§5.10): the payee is the taker, or under `bounty_to: "loser"` the taken
-        // piece's owner (`WILD`: nobody's piece, no one is paid). Asked only for a payment.
-        let payee = if paid != 0.0 { t.bounty_payee(played.captured, player) } else { player };
-        if paid != 0.0 && payee < 2 {
-            self.points[payee] += paid;
-        }
         if let Some(purse) = t.purse.as_deref() {
+            let player = played.player;
             self.purse_log.push(self.purse);
             let before = self.purse[player];
             let mut after = before;
@@ -3642,17 +4293,40 @@ impl<'t> Game<'t> {
                 self.working_key ^= purse.key(player, before) ^ purse.key(player, after);
                 self.purse[player] = after;
             }
-            if paid > 0.0 && payee < 2 {
-                self.fill_purse(purse, payee, paid);
+        }
+    }
+
+    /// R-L4b stage 1: the list's `pay` entry. The tally (schema 9): a player whose move takes a
+    /// wild piece is paid the bounty of the route it walked, and (TC4) one whose move takes any
+    /// piece but their own its type's bounty (`Tables::bounty_paid`), into the points and,
+    /// under a purse, the purse (capped, under the log `write_spend` pushed).
+    fn write_pay(&mut self, entry: &CaptureEntry, played: &Played, cleared: &[(usize, u8)]) {
+        let t = self.t;
+        let player = played.player;
+        let cause = if played.kind == MOVE_PUSH { ON_PUSH } else { ON_LANDING };
+        let paid = if played.captured != 0 && entry.on & cause != 0 {
+            t.bounty_paid(played.captured, played.captured_square, player)
+        } else {
+            0.0
+        };
+        // TC9c (§5.10): the payee is the taker, or under `bounty_to: "loser"` the taken
+        // piece's owner (`WILD`: nobody's piece, no one is paid). Asked only for a payment.
+        let payee = if paid != 0.0 { t.bounty_payee(played.captured, player) } else { player };
+        if paid != 0.0 && payee < 2 {
+            self.points[payee] += paid;
+            if let Some(purse) = t.purse.as_deref() {
+                if paid > 0.0 {
+                    self.fill_purse(purse, payee, paid);
+                }
             }
         }
         // SR4c (W5): a sweep takes every piece on its path, and each pays as a capture of it
-        // would, after the landing's (under the purse's log pushed above). SR4f (T8), SR4l
-        // (O22): a blast pays for every piece it destroys alike, to the mover (or `bounty_to`'s
-        // payee), into the points and the purse: a wild piece its route's bounty, an enemy its
-        // type's, the mover's own nothing (the capturer, first on the log, among them).
-        // `cleared` is the one or the other, or (SR6c, W3) a sweep's path and then its blasts.
-        if t.pays && !cleared.is_empty() {
+        // would, after the landing's. SR4f (T8), SR4l (O22): a blast pays for every piece it
+        // destroys alike, to the mover (or `bounty_to`'s payee), into the points and the purse:
+        // a wild piece its route's bounty, an enemy its type's, the mover's own nothing (the
+        // capturer, first on the log, among them). `cleared` is the one or the other, or
+        // (SR6c, W3) a sweep's path and then its blasts: the entry's `"path"` and `"blast"`.
+        if !cleared.is_empty() && entry.on & (ON_PATH | ON_BLAST) == (ON_PATH | ON_BLAST) {
             self.pay_swept(player, cleared);
         }
     }
@@ -3725,15 +4399,12 @@ impl<'t> Game<'t> {
         }
     }
 
-    /// Drops: captured pieces go to captor's hand.
-    #[inline(always)]
-    fn deposit_capture(&mut self, played: &mut Played, cleared: &[(usize, u8)]) {
+    /// Drops: captured pieces go to captor's hand. R-L4b stage 1: the list's `hand` entry.
+    fn write_hand(&mut self, entry: &CaptureEntry, played: &mut Played, cleared: &[(usize, u8)]) {
         let t = self.t;
         if let Some(ref drops_rule) = t.drops {
-            if played.kind == MOVE_DROP {
-                // Already handled above (hand decremented)
-            } else if played.captured != 0
-                && drops_rule.from_captures
+            if played.captured != 0
+                && entry.on & (ON_LANDING | ON_PUSH) != 0
                 // Q1074b3 (C2): a piece the mover pushed off its own side reaches no hand,
                 // as a swept friendly piece does not. Every other capture takes an enemy.
                 && !(played.kind == MOVE_PUSH && t.owner_of(played.captured) == played.player)
@@ -3749,7 +4420,7 @@ impl<'t> Game<'t> {
                     played.hand = Some((played.player as u8, demoted as u8, 1));
                 }
             }
-            if played.kind == MOVE_SWEEP && drops_rule.from_captures {
+            if played.kind == MOVE_SWEEP && entry.reads_path(played.piece_type) {
                 self.sweep_to_hand(played.player, cleared, played.target, 1);
             }
         }
@@ -3759,7 +4430,7 @@ impl<'t> Game<'t> {
     /// goes (demoted, an unlimited slot untouched), every one the mover does not own; a swept
     /// friendly piece reaches no hand. `delta` is +1 from `make` and -1 from `unmake`, which
     /// reads the same `cleared` log back, so the variable-length deposit is undone as the
-    /// clear is and `Undo` does not grow. The landing's own capture is `deposit_capture`'s
+    /// clear is and `Undo` does not grow. The landing's own capture is `write_hand`'s
     /// ordinary entry (`Undo.hand`).
     ///
     /// SR6c (W3): beside a blast the log holds the path, then the blasts' victims, which
@@ -4117,34 +4788,13 @@ impl<'t> Game<'t> {
             self.unmake_bank();
         }
 
-        // A survivor placed under `choose` or `home` stands on a square the generic restore
-        // does not know. Cleared first, so one placed on the origin is overwritten by the
-        // mover coming back, and (SR6a) one reborn on a swept square before the swept piece
-        // there is put back. A castling places nothing.
-        if undo.placed != 0 {
-            let t = self.t;
-            let rule = t.strike.as_ref().expect("a placed survivor without a strike rule");
-            let placed_on = if rule.position == StrikePosition::Home {
-                // The square `strike_writes` read, asked again of the same keys: the
-                // victim as it stood, and what the strike table turned it into.
-                let cell = t.type_of(undo.moving) * rule.n_types + t.type_of(undo.captured);
-                let becomes = rule.to[cell] as usize;
-                rule.rebirth_square(t.owner_of(undo.captured), becomes, undo.captured_square)
-                    as usize
-            } else {
-                // SR4k: a held piece's landings are its holder's, the side that moved
-                // (`self.side` is put back below, so read through the turn count).
-                let owner = t.owner_of(undo.moving);
-                let player = if owner != WILD {
-                    owner
-                } else if self.turns_taken != undo.turns_taken {
-                    1 - self.side
-                } else {
-                    self.side
-                };
-                rule.landing(player, undo.captured_square)[undo.placed as usize - 1] as usize
-            };
-            self.put(placed_on, 0);
+        // R-L4b stage 1: the capture list's read-backs, one test and a cold walk
+        // (`unwalk_capture`): a survivor placed under `choose` or `home` cleared before the
+        // generic restore below, and the hand and the pay taken back. A castling places nothing.
+        if let Some(program) = self.t.capture.as_deref() {
+            if undo.captured != 0 || !undo.cleared.is_empty() {
+                self.unwalk_capture(program, &undo);
+            }
         }
 
         // Restore explosion-cleared squares first (in reverse)
@@ -4215,31 +4865,6 @@ impl<'t> Game<'t> {
         }
         self.remaining = undo.remaining;
         self.turns_taken = undo.turns_taken;
-        // SR4b (W4): the swept pieces' deposit, read back off the log `make` wrote it from;
-        // `self.side` is the mover again (above).
-        if undo.kind == MOVE_SWEEP && self.t.drops.as_ref().is_some_and(|rule| rule.from_captures) {
-            self.sweep_to_hand(self.side, &undo.cleared, undo.target, -1);
-        }
-        // The bounty, taken back (schema 9). `self.side` is the side that made this move
-        // again by here -- the flip above is undone from `turns_taken`, which is the only
-        // reliable witness -- and what the move was paid is the same question `make`
-        // asked of the same two fields.
-        // SR4c (W5): the swept pieces' bounties first, the reverse of `make`'s order.
-        if self.t.pays && !undo.cleared.is_empty() {
-            // SR4c (W5) a sweep's, SR4f (T8) and SR4l (O22) a blast's victims, read back off
-            // the same log; the purse comes back off its own log.
-            self.refund_swept(self.side, &undo.cleared);
-        }
-        if self.t.pays && undo.captured != 0 {
-            let paid = self.t.bounty_paid(undo.captured, undo.captured_square, self.side);
-            if paid != 0.0 {
-                // TC9c: the same payee `make` paid.
-                let payee = self.t.bounty_payee(undo.captured, self.side);
-                if payee < 2 {
-                    self.points[payee] -= paid;
-                }
-            }
-        }
         // TC4: the purse, from its log (the key came back with `undo.key`).
         if self.t.purse.is_some() {
             self.purse = self.purse_log.pop().expect("purse log shorter than the undo stack");
@@ -6429,8 +7054,6 @@ impl<'t> Game<'t> {
         // SR6a (W1): where the sweep's victims sit on `saved`, for its `"path"` strikes.
         let mut swept_from = 0;
         let mut swept_count = 0;
-        // SR6b (W2): whether the landing's meeting kept the mover on its origin.
-        let mut stayed = false;
         if kind == MOVE_PROMOTION {
             self.board[target] = t.promoted_value(player, m, move_promotion(m) as usize);
         } else if kind == MOVE_EN_PASSANT {
@@ -6457,11 +7080,6 @@ impl<'t> Game<'t> {
             }
             debug_assert_eq!(saved.spill.is_empty(), victims + 2 <= Saved::INLINE);
             swept_count = victims;
-            // SR6c (W3): the sweep's blasts, as `make` plays them (before a gated piece
-            // enters, and before the wild phase).
-            if t.explosion.is_some() {
-                self.sweep_blast_for_filter(moving, target_before, target, swept_from, victims, saved);
-            }
         } else if rare!(P::PORTALS, kind == MOVE_PORTAL) && move_promotion(m) != 0 {
             self.board[target] = t.promoted_value(player, m, move_promotion(m) as usize - 1);
         } else if rare!(P::PUSH, kind == MOVE_PUSH) {
@@ -6497,18 +7115,60 @@ impl<'t> Game<'t> {
             self.gate_for_filter(m, origin, origin, saved);
         }
 
-        // Strike (schema 6): the surviving piece has to be on the board before the
-        // attack query, or a victim that a strike turns into a checking piece is
-        // invisible to the filter and a king can be captured. `strike_writes` is the
-        // same statement `make` plays, rather than a copy of it, and it is handed the
-        // piece `make` hands it -- en passant's victim stands off the target.
-        //
-        // SR5a (T1, T4): a capture that explodes is the blast's, which strikes only after it
-        // has cleared (`leaves_royal_attacked`'s blast arm), so the strike is not asked here.
-        if t.strike.is_none() || self.blast_sets_off(t.type_of(moving), captured, player) {
+        // R-L4b stage 1 (`docs/reference/capture-effects-design.md` §2.3, §5): the capture
+        // list's board entries, one test behind the family and a cold walk
+        // (`walk_capture_for_filter`). The blast on a capture is `leaves_royal_attacked`'s arm,
+        // after the phase, as before.
+        if let Some(program) = rare_opt(P::CAPTURE, t.capture.as_deref()) {
+            if program.board {
+                let taken = Taken { moving, captured, captured_square, target_before, swept_from, swept_count };
+                self.walk_capture_for_filter(program, m, taken, saved);
+            }
+        }
+
+        Some(target_before)
+    }
+
+    /// R-L4b stage 1: the capture list's board entries on the raw board for a legality filter,
+    /// each square saved for the restore; the ledger entries it skips (§2.3).
+    ///
+    /// SR6c (W3): a sweep's blasts, as `make` plays them (before the wild phase). Strike
+    /// (schema 6): the surviving piece has to be on the board before the attack query, or a
+    /// victim that a strike turns into a checking piece is invisible to the filter and a king
+    /// can be captured. `strike_writes` is the same statement `make` plays, rather than a copy
+    /// of it, and it is handed the piece `make` hands it -- en passant's victim stands off the
+    /// target. SR5a (T1, T4): a capture that explodes is the blast's, which strikes only after
+    /// it has cleared (`leaves_royal_attacked`'s blast arm), so the strike is not asked here.
+    /// SR6a (W1): a sweep under `"path"` strikes its swept pieces after the landing, as `make`
+    /// places them; one turned into a checking piece must be seen.
+    #[cold]
+    #[inline(never)]
+    fn walk_capture_for_filter(
+        &mut self, program: &CaptureProgram, m: u32, taken: Taken, saved: &mut Saved,
+    ) {
+        if program.general {
+            self.walk_general_for_filter(program, m, taken, saved);
+            return;
+        }
+        let t = self.t;
+        let player = self.side;
+        let (origin, target, kind) = (move_from(m), move_to(m), move_kind(m));
+        let Taken { moving, captured, captured_square, swept_from, swept_count, .. } = taken;
+        let mover_type = t.type_of(moving);
+        let blast = program.blast_entry();
+        if let Some(blast) = blast {
+            if kind == MOVE_SWEEP {
+                self.sweep_blast_for_filter(blast.spreads(mover_type), taken, target, saved);
+            }
+        }
+        let Some(strike) = program.strike_entry() else {
+            return;
+        };
+        let mut stayed = false;
+        if blast.is_some() && self.blast_sets_off(mover_type, captured, player) {
             // nothing struck before a blast
         } else if let Some(outcome) = self.strike_writes(
-            t.type_of(moving), captured, origin, target, captured_square, move_landing(m),
+            mover_type, captured, origin, target, captured_square, move_landing(m),
         ) {
             for &(square, value) in outcome.writes() {
                 saved.push((square, self.board[square]));
@@ -6523,49 +7183,68 @@ impl<'t> Game<'t> {
                 "a strike spilled out of Saved's inline slots"
             );
         }
-        // SR6a (W1): a sweep under `"path"` strikes its swept pieces after the landing, as
-        // `make` places them; one turned into a checking piece must be seen.
-        if rare!(P::SWEEP, kind == MOVE_SWEEP)
-            && t.strike.as_ref().is_some_and(|rule| rule.strikes_path(t.type_of(moving)))
-        {
+        if kind == MOVE_SWEEP && strike.reads_path(mover_type) {
             let mover_square = if stayed { origin } else { target };
             self.sweep_strikes_for_filter(
                 moving, captured, mover_square, swept_from, swept_count, saved,
             );
         }
-
-        Some(target_before)
     }
 
-    /// SR5a (T1): `blast_strikes`' placements on the raw board for a legality filter, each
-    /// square saved for the restore. `saved` from `first` holds the blast's victims.
+    /// R-L4b stage 1: an exploding capture's blast on the raw board for a legality filter
+    /// (`leaves_royal_attacked`'s arm), each square saved for the restore. The captor blows up
+    /// where it now stands; its square is already saved holding `target_before`, which is what
+    /// the restore has to put back.
     #[cold]
     #[inline(never)]
-    fn blast_strikes_for_filter(
-        &mut self, capturer: usize, moving: u8, captured: u8, target: usize, first: usize,
+    fn blast_for_filter(
+        &mut self, program: &CaptureProgram, capturer: usize, target: usize, target_before: u8,
         saved: &mut Saved,
     ) {
-        let victims = saved.entries_from(first);
-        for (square, value) in self.blast_strikes(capturer, moving, captured, target, &victims) {
-            saved.push((square, self.board[square]));
-            self.board[square] = value;
+        let t = self.t;
+        let explosion = t.explosion.as_ref().expect("a blast entry without an explosion rule");
+        let moving = self.board[target];
+        // SR5b (V2): `make`'s reading, on the board the capture leaves.
+        let shields = self.blast_shields(explosion, target);
+        self.board[target] = 0;
+        let first = saved.len();
+        for &sq in explosion.reach(target) {
+            let value = self.board[sq];
+            if explosion.clears(t, value) && !shields.get(sq) {
+                saved.push((sq, value));
+                self.board[sq] = 0;
+            }
+        }
+        // SR5a (T1): the struck pieces stand after the blast, as `make` places them (`saved`
+        // from `first` holds the blast's victims); one turned into a checking piece must be seen.
+        let strikes = program.blast_strikes();
+        if strikes != 0 {
+            let victims = saved.entries_from(first);
+            for (square, value) in
+                self.blast_strikes(strikes, capturer, moving, target_before, target, &victims)
+            {
+                saved.push((square, self.board[square]));
+                self.board[square] = value;
+            }
         }
     }
 
     /// SR6c (W3): `write_sweep_blast` on the raw board for a legality filter, each square
-    /// saved for the restore. `saved` from `first` holds the sweep's `count` victims; the
-    /// sweeper's square is saved already, holding what stood there before it landed.
+    /// saved for the restore. `saved` from `taken.swept_from` holds the sweep's
+    /// `taken.swept_count` victims; the sweeper's square is saved already, holding what stood
+    /// there before it landed (`taken.target_before`, the landing's taking).
     #[cold]
     #[inline(never)]
     fn sweep_blast_for_filter(
-        &mut self, moving: u8, captured: u8, target: usize, first: usize, count: usize,
-        saved: &mut Saved,
+        &mut self, spread: bool, taken: Taken, target: usize, saved: &mut Saved,
     ) {
         let t = self.t;
         let explosion = t.explosion.as_ref().expect("a sweep blast without an explosion rule");
-        let mut victims = saved.entries_from(first);
-        victims.truncate(count);
-        let centres = self.sweep_blast_centres(t.type_of(moving), captured, target, &victims);
+        let (moving, captured) = (taken.moving, taken.target_before);
+        let mut victims = saved.entries_from(taken.swept_from);
+        victims.truncate(taken.swept_count);
+        let centres =
+            self.sweep_blast_centres(spread, t.type_of(moving), captured, target, &victims);
         if centres.is_empty() {
             return;
         }
@@ -6729,7 +7408,9 @@ impl<'t> Game<'t> {
         // `play_for_filter` empties the origin. Behind `explosion.is_some()` so a ruleset
         // without the rule pays nothing, and `make`'s reading exactly -- the mover's type
         // as it stood before the move.
-        let capturer = if t.explosion.is_some() && !enters_play(kind) {
+        // R-L4b stage 1: the capture list, behind the family (none on the lean copy).
+        let program = rare_opt(P::CAPTURE, t.capture.as_deref());
+        let capturer = if program.is_some_and(|program| program.blast) && !enters_play(kind) {
             t.type_of(self.board[origin])
         } else {
             0
@@ -6743,27 +7424,12 @@ impl<'t> Game<'t> {
         // the target square of a rotation holds the piece that is turning, and reading
         // it as a victim would detonate every turn.
         // SR6c (W3): a sweep's blasts are `play_move_for_filter`'s (`sweep_blast_for_filter`).
-        if let (Some(target_before), Some(explosion)) = (target_before, t.explosion.as_ref()) {
-            if kind != MOVE_SWEEP && self.blast_sets_off(capturer, target_before, player) {
-                // The captor blows up where it now stands. Its square is already saved
-                // holding `target_before`, which is what the restore has to put back.
-                let moving = self.board[target];
-                // SR5b (V2): `make`'s reading, on the board the capture leaves.
-                let shields = self.blast_shields(explosion, target);
-                self.board[target] = 0;
-                let first = saved.len();
-                for &sq in explosion.reach(target) {
-                    let value = self.board[sq];
-                    if explosion.clears(t, value) && !shields.get(sq) {
-                        saved.push((sq, value));
-                        self.board[sq] = 0;
-                    }
-                }
-                // SR5a (T1): the struck pieces stand after the blast, as `make` places them;
-                // one turned into a checking piece must be seen.
-                if explosion.strikes != 0 {
-                    self.blast_strikes_for_filter(capturer, moving, target_before, target, first, &mut saved);
-                }
+        if let (Some(target_before), Some(program)) = (target_before, program) {
+            if program.blast
+                && kind != MOVE_SWEEP
+                && self.blast_sets_off(capturer, target_before, player)
+            {
+                self.blast_for_filter(program, capturer, target, target_before, &mut saved);
             }
         }
 
@@ -8673,6 +9339,16 @@ impl ReachWalk {
 mod tests {
     use super::dedup_segment;
     use crate::tables::{encode_move, MOVE_EN_PASSANT, MOVE_NORMAL, MOVE_PROMOTION};
+
+    /// R-L4b (`docs/reference/capture-effects-design.md` §5, §6): the capture list's walk
+    /// does not grow `Undo`, which `make` writes at every node of every search. Its board
+    /// writes go on `cleared`, its ledger changes on side logs pushed only under a program.
+    /// Pinned at stage 1, where it was this size before the walk; a stage that moves it says
+    /// why and what it cost.
+    #[test]
+    fn undo_is_the_size_it_was_before_the_capture_list() {
+        assert_eq!(std::mem::size_of::<super::Undo>(), 192);
+    }
 
     /// The pass `dedup_segment` replaced, kept as the oracle: a second list of the moves
     /// kept so far, consulted before every push. First occurrence wins, in order.

@@ -65,8 +65,15 @@ from chess_variant_sandbox.engine.moves import (
     move_to,
     move_type,
 )
+from chess_variant_sandbox.engine.moves import move_gate as _move_gate
 from chess_variant_sandbox.fuzz_lifted.keys import holds
 from chess_variant_sandbox.fuzz_lifted.record import Record, Step
+from chess_variant_sandbox.spec.capture import (
+    CAPTURE_CAUSES,
+    capture_as_old_keys,
+    capture_list,
+    needs_the_walk,
+)
 
 NO_SQUARE = 255
 NO_WINDOW = -1  # `GameState.ep_target` with no window open
@@ -91,7 +98,9 @@ class View:
 
     def __init__(self, record: Record) -> None:
         self.record = record
-        self.spec = record.spec
+        # R-L4b stage 3: a capture list the old keys say is read as them (the normal form's
+        # write-back), so every check written against the old keys reads either spelling.
+        self.spec = capture_as_old_keys(record.spec) or record.spec
         self.engine = record.engine
         self.c = record.engine.spec
         c = self.c
@@ -100,6 +109,11 @@ class View:
         self.duck = c.duck.piece_type if c.duck is not None else -1
         self.wild_types = {t for _, t in c.npcs.starts} if c.npcs is not None else set()
         self.ids = {name: index for index, name in enumerate(c.piece_ids)}
+        # R-L4b stage 3: the capture list (either spelling), and whether the core walks it (a
+        # list the old keys cannot say, or a pair only the list plays): the checks written for
+        # the old keys' order judge only where it does not.
+        self.entries = capture_list(self.spec) or []
+        self.walked = needs_the_walk(self.spec)
         # How many events of its rule the check judged: a check that ran on a record and
         # met nothing to judge (no castle played, no buy made) proved nothing there.
         self.judged = 0
@@ -831,6 +845,9 @@ def a_capture_pays_the_bounty_of_what_it_removed(v: View) -> None:
     rules = v.rules()
     if v.c.strike is not None or (rules.get("purse") or {}).get("bounty_to") == "loser":
         return
+    if any(e.get("do") == "pay" and (e.get("to") == "loser" or set(e["on"]) != set(CAPTURE_CAUSES))
+           for e in v.entries):
+        return  # a pay entry that reads only some causes pays only for those
     for entry in rules.get("npcs", []) or []:
         if entry.get("respawn") or entry.get("pounce") or entry.get("split"):
             return
@@ -930,8 +947,16 @@ def a_castle_moves_both_its_pieces(v: View) -> None:
 
 
 def _strike_spelling(v: View) -> dict[str, Any]:
-    strike = v.rules().get("strike")
-    return strike if isinstance(strike, dict) else {}
+    """The strike as its old key's object, read off the capture list (either spelling)."""
+    return _rule_of(v, "strike")
+
+
+def _rule_of(v: View, kind: str) -> dict[str, Any]:
+    """A kind's rule (its first entry's keys) in the capture list, ``{}`` if none."""
+    for entry in v.entries:
+        if entry.get("do") == kind:
+            return {k: val for k, val in entry.items() if k not in ("do", "on", "path_by")}
+    return {}
 
 
 def _strike_reaches(v: View, mover_type: int, victim: int) -> bool:
@@ -1017,6 +1042,8 @@ def a_struck_piece_becomes_its_link(v: View) -> None:
     strike = _strike_spelling(v)
     if strike.get("position") != "stay" or strike.get("effect", "capture") == "capture":
         return
+    if v.walked:
+        return  # the list's order decides first who has the piece: `a_taken_piece_is_in_one_place`
     chain = {v.ids[str(link["from"])]: v.ids[str(link["to"])]
              for link in strike.get("chain", []) or [] if str(link.get("from")) in v.ids}
     for step in _alternating(v.record):
@@ -1125,6 +1152,8 @@ def a_sweep_clears_only_what_it_may(v: View) -> None:
     swept square keeps only its owner's piece, W1, W2); a commanded sweep (V8) removes none of
     the commander's pieces and no royal; and under a capture hand every swept piece not the
     mover's goes to the mover's hand (W4)."""
+    if v.walked:
+        return  # under the walk: `a_sweep_follows_the_list`
     rules = v.rules()
     drops = v.c.drops
     blast = v.c.explosion is not None
@@ -1175,7 +1204,10 @@ def a_sweep_clears_only_what_it_may(v: View) -> None:
             if sq in step.phase_targets:
                 continue
             if struck and path_effects:
-                if after[sq] and v.owner(after[sq]) != v.owner(board[sq]):
+                # R-L4b3's soak (seed 105284): placed "home", a struck piece is reborn on its home,
+                # which may be another swept square, so a swept square may then hold another's.
+                if after[sq] and v.owner(after[sq]) != v.owner(board[sq]) and (
+                        _strike_spelling(v).get("position") != "home"):
                     _fail(step, f"a swept square {sq} holds a piece of another owner")
             elif after[sq] and reborn and v.owner(after[sq]) == v.owner(reborn):
                 reborn = 0
@@ -1202,6 +1234,8 @@ def a_capture_that_explodes_takes_the_capturer(v: View) -> None:
     blast = v.c.explosion
     if blast is None:
         return
+    if v.walked and not _reads(v, "blast", "landing"):
+        return  # a list's blast that reads no landing capture sets none off
     shields = v.c.sight is not None and v.c.sight.has_shield
     drops = v.c.drops
     for step in _alternating(v.record):
@@ -1219,9 +1253,13 @@ def a_capture_that_explodes_takes_the_capturer(v: View) -> None:
             continue
         v.judged += 1
         after = step.after.board
-        if after[origin] == capturer or (after[target] and v.owner(after[target]) == v.owner(capturer)
-                                         and after[target] == capturer):
+        # R-L4b (gating.blast): a gated piece of the capturer's own type may stand on its origin.
+        gated = bool(v.c.drops is not None and v.c.drops.gates is not None and _move_gate(move))
+        if (after[origin] == capturer and not gated) or (
+                after[target] and v.owner(after[target]) == v.owner(capturer) and after[target] == capturer):
             _fail(step, f"the capturer from square {origin} survived its own blast at {target}")
+        if v.walked:
+            continue  # what the list places after the blast: `a_spared_piece_stands_after_its_blast`
         if not shields and not blast.strikes:
             for sq in blast.blast[target]:
                 value = board[sq]
@@ -1245,8 +1283,8 @@ def a_meeting_follows_its_link(v: View) -> None:
     piece (T9); a commanded capture of the owner's own piece reads no link (V6). At a portal's
     exit (P4) the exit is the capture square; on a sweep (W2) the landing's meeting."""
     contacts = v.rules().get("contacts")
-    if not isinstance(contacts, dict):
-        return
+    if not isinstance(contacts, dict) or v.walked:
+        return  # under the walk: `two_tables_each_read_their_own_meetings`
     position = contacts.get("position", "advance")
     if position not in ("advance", "stay"):
         return
@@ -1706,6 +1744,10 @@ def only_a_player_s_unmoved_piece_gates(v: View) -> None:
                 _fail(step, f"a sweep {move:#x} left a piece on its origin")
             continue
         if gate and move_type(move) != MOVE_CASTLE:
+            target = step.before.board[move_to(move)]
+            if target and v.c.explosion is not None and _explodes(
+                    v, v.type(step.before.board[move_from(move)]), v.type(target)):
+                continue  # R-L4b (gating.blast): `a_gated_piece_enters_before_the_blast`
             left = step.after.board[move_from(move)]
             if not left or v.owner(left) != mover or v.type(left) != gate - 1:
                 _fail(step, f"the gated {v.c.piece_ids[gate - 1]!r} is not on the square left")
@@ -2012,6 +2054,333 @@ def the_lean_copy_offers_what_the_full_copy_offers(v: View) -> None:
 
 # ---------------------------------------------------------------------------- the list
 
+# ------------------------------------------------- R-L4b stage 3: the capture list
+
+def _index(v: View, kind: str) -> int:
+    """Where the first entry of ``kind`` stands in the capture list, -1 if none."""
+    return next((i for i, e in enumerate(v.entries) if e.get("do") == kind), -1)
+
+
+def _reads(v: View, kind: str, cause: str, taker: int | None = None) -> bool:
+    """Whether some entry of ``kind`` reads takings of ``cause`` (by ``taker``, for a path)."""
+    for entry in v.entries:
+        if entry.get("do") != kind or cause not in entry["on"]:
+            continue
+        if (cause == "path" and taker is not None and "path_by" in entry
+                and v.c.piece_ids[taker] not in entry["path_by"]):
+            continue
+        return True
+    return False
+
+
+def _plain_capture(v: View, step: Step) -> tuple[int, int, int, int] | None:
+    """A move's own capture of the other side's piece on its target (a step, a promotion, a
+    transit's exit), with no wild step or bank on its squares: (origin, target, taker, victim)."""
+    move = step.moves[0]
+    if move_type(move) not in (MOVE_NORMAL, MOVE_PROMOTION, MOVE_PORTAL):
+        return None
+    board = step.before.board
+    origin, target = move_from(move), move_to(move)
+    taker, victim = board[origin], board[target]
+    if not taker or not victim or v.owner(victim) == v.owner(taker):
+        return None
+    if step.phase or step.after.banked != step.before.banked:
+        return None
+    return origin, target, taker, victim
+
+
+def _material(state: Any) -> int:
+    """Every piece on the board and in the two hands."""
+    return sum(1 for value in state.board if value) + sum(map(sum, state.hands))
+
+
+_ENTERS = (MOVE_DROP, MOVE_BUY, MOVE_HIRE, MOVE_DUCK, MOVE_PASS, MOVE_KEEP)
+
+
+def a_taken_piece_is_in_one_place(v: View) -> None:
+    """Under a list the core walks, a taken piece is in one place (§2.2 rule 1): no move but an
+    entry into play adds a piece to the board and the hands together, so a piece a hand files
+    is not also left standing, struck or linked (T2, T5, H4, H5, gating.captures). Where the
+    hand reads the landing ahead of every strike and contact table, and no blast stands in the
+    list, a move's own capture files exactly one piece (the gate's spend counted back)."""
+    if not v.walked or _index(v, "hand") < 0:
+        return
+    hand_first = _reads(v, "hand", "landing") and _index(v, "blast") < 0 and all(
+        _index(v, kind) < 0 or _index(v, "hand") < _index(v, kind) for kind in ("strike", "contacts")
+    )
+    drops = v.c.drops
+    unlimited = drops is not None and bool(drops.unlimited) and any(drops.unlimited)
+    for step in _alternating(v.record):
+        move = step.moves[0]
+        if move_type(move) in _ENTERS or step.phase or step.after.banked != step.before.banked:
+            continue
+        v.judged += 1
+        # A gate spends from the hand, but an unlimited slot is never spent (soak seed 33806):
+        # the gated piece then enters play as a drop does.
+        entered = 1 if (_move_gate(move) and unlimited) else 0
+        if _material(step.after) > _material(step.before) + entered:
+            _fail(step, f"the move left {_material(step.after) - _material(step.before)} more "
+                        "pieces on the board and in the hands than stood there")
+        capture = _plain_capture(v, step)
+        if not hand_first or capture is None or unlimited:
+            continue
+        victim = capture[3]
+        if v.type(victim) in v.c.royal_types or v.owner(victim) not in (0, 1):
+            continue
+        side = step.mover
+        spent = 1 if _move_gate(move) else 0
+        gained = sum(step.after.hands[side]) - sum(step.before.hands[side]) + spent
+        if gained != 1:
+            _fail(step, f"a capture the hand reads first filed {gained} pieces in the mover's hand")
+
+
+def a_spared_piece_stands_after_its_blast(v: View) -> None:
+    """Under a list the core walks, a capture whose blast reads it takes its capturer (T1.position,
+    T4.switch: a link's mover half finds nothing to change); a choosing strike or contact behind
+    a blast that destroys the taken piece first offers one word for the capture, not one per
+    square (T1.choose, T4.choose); a blast that spares the taken piece ahead of a strike placed
+    "stay" that reaches it leaves it standing, struck, where it was taken (T1.position)."""
+    blast = v.c.explosion
+    if not v.walked or blast is None or not _reads(v, "blast", "landing"):
+        return
+    shields = v.c.sight is not None and v.c.sight.has_shield
+    spares = any(e.get("do") == "blast" and e.get("spares_taken") for e in v.entries)
+    strike = _strike_spelling(v)
+    choosing = [k for k in ("strike", "contacts")
+                if _rule_of(v, k).get("position") == "choose" and _index(v, "blast") < _index(v, k)]
+    for step in _alternating(v.record):
+        capture = _plain_capture(v, step)
+        if capture is None or step.moves[0] & MOVE_FOREIGN:
+            continue
+        origin, target, taker, victim = capture
+        if not _explodes(v, v.type(taker), v.type(victim)):
+            continue
+        v.judged += 1
+        after = step.after.board
+        gated = bool(v.c.drops is not None and v.c.drops.gates is not None and _move_gate(step.moves[0]))
+        if (after[origin] == taker and not gated) or after[target] == taker:
+            _fail(step, f"the capturer from square {origin} survived the blast its capture set off")
+        if choosing and not spares and step.offered:
+            words = [m for m in step.offered if move_from(m) == origin and move_to(m) == target
+                     and move_type(m) == move_type(step.moves[0])]
+            if len(words) > 1:
+                _fail(step, f"a capture the blast takes first offered {len(words)} landings for "
+                            "the piece it destroys")
+        placed = {"stay": target, "swap": origin}.get(strike.get("position", "advance"))
+        if (spares and not shields and placed is not None and _index(v, "blast") < _index(v, "strike")
+                and strike.get("effect", "capture") != "capture"
+                and _reads(v, "strike", "landing") and _strike_reaches(v, v.type(taker), victim)
+                and _index(v, "hand") < 0 and not _move_gate(step.moves[0])):
+            linked = {link.get("from") for link in strike.get("chain", []) or []}
+            if v.c.piece_ids[v.type(victim)] in linked and (
+                    not after[placed] or v.owner(after[placed]) != v.owner(victim)):
+                _fail(step, f"the spared piece placed on square {placed} does not stand after its blast")
+
+
+def two_tables_each_read_their_own_meetings(v: View) -> None:
+    """A strike and a contact table in one list (T3): a capture whose pair a link names with a
+    ``mover_to`` leaves the capturer as that type on the square it took, whichever entry comes
+    first, while the strike sends the struck piece elsewhere (placed home, swap or choose)."""
+    contacts, strike = _rule_of(v, "contacts"), _strike_spelling(v)
+    if not v.walked or not contacts or not strike:
+        return
+    if contacts.get("position", "advance") != "advance" or strike.get("position") not in ("home", "swap", "choose"):
+        return
+    if strike.get("switches_sides") or not _reads(v, "contacts", "landing"):
+        return
+    if _index(v, "blast") >= 0:
+        return
+    links = {(v.ids.get(str(link.get("mover"))), v.ids.get(str(link.get("onto")))): v.ids.get(str(link["mover_to"]))
+             for link in contacts.get("links", []) or [] if link.get("mover_to") and not link.get("own")}
+    immune = v.ids_of(contacts.get("immune", []) or []) | set(v.c.royal_types) | v.wild_types
+    for step in _alternating(v.record):
+        capture = _plain_capture(v, step)
+        if capture is None or step.moves[0] & MOVE_FOREIGN or move_type(step.moves[0]) != MOVE_NORMAL:
+            continue
+        origin, target, taker, victim = capture
+        becomes = links.get((v.type(taker), v.type(victim)))
+        if becomes is None or v.type(victim) in immune:
+            continue
+        v.judged += 1
+        stands = step.after.board[target]
+        if not stands or v.owner(stands) != v.owner(taker) or v.type(stands) != becomes:
+            _fail(step, f"the capturer on square {target} is not the "
+                        f"{v.c.piece_ids[becomes]!r} its contact link names")
+
+
+def a_sweep_follows_the_list(v: View) -> None:
+    """Under a list the core walks: a sweep whose swept pieces no board entry reads (no blast;
+    no strike or contact entry reading its sweeper's path, `path_by`) leaves every swept square
+    empty (W1.disagree); a sweep that takes a piece setting off a blast reading its path or
+    landing takes the sweeper with it (W3.both)."""
+    if not v.walked:
+        return
+    shields = v.c.sight is not None and v.c.sight.has_shield
+    for step in _alternating(v.record):
+        move = step.moves[0]
+        if move_type(move) != MOVE_SWEEP or move & MOVE_FOREIGN or step.phase:
+            continue
+        board = step.before.board
+        origin, target = move_from(move), move_to(move)
+        sweeper = board[origin]
+        if not sweeper or v.owner(sweeper) != step.mover:
+            continue
+        kind = v.type(sweeper)
+        path = [sq for sq in v.c.sweep_path(board, move, step.mover) if sq != target and board[sq]]
+        if not path:
+            continue
+        reads_path = any(_reads(v, k, "path", kind) for k in ("strike", "contacts"))
+        after = step.after.board
+        if _index(v, "blast") < 0 and not reads_path:
+            v.judged += 1
+            for sq in path:
+                if after[sq]:
+                    _fail(step, f"the swept piece on square {sq} still stands, and no entry reads "
+                                "its sweeper's path")
+        elif _index(v, "blast") >= 0 and not shields and _reads(v, "blast", "path", kind):
+            taken = [board[sq] for sq in path if v.owner(board[sq]) != step.mover]
+            if board[target] and v.owner(board[target]) != step.mover:
+                taken.append(board[target])
+            if any(_explodes(v, kind, v.type(victim)) for victim in taken):
+                v.judged += 1
+                if after[target] == sweeper or after[origin] == sweeper:
+                    _fail(step, f"the sweeper from square {origin} survived the blast its sweep set off")
+
+
+def a_pushed_off_piece_is_taken_as_the_list_says(v: View) -> None:
+    """Under a list the core walks, a pushed-off piece is a taking from the square it left: where
+    no board entry reads ``"push"`` (none does by default: push.X2, push.X3), a push removes at
+    most the one piece it throws off and the pusher stands on its target; where a blast reads it
+    and the piece thrown off sets it off, the pusher goes."""
+    if not v.walked or v.c.push is None:
+        return
+    readers = [k for k in ("blast", "strike", "contacts") if _reads(v, k, "push")]
+    for step in _alternating(v.record):
+        move = step.moves[0]
+        if move_type(move) != MOVE_PUSH or step.phase or step.after.banked != step.before.banked:
+            continue
+        board = step.before.board
+        origin, target = move_from(move), move_to(move)
+        pusher = board[origin]
+        before = sum(1 for value in board if value)
+        after_count = sum(1 for value in step.after.board if value)
+        if not readers:
+            v.judged += 1
+            if after_count < before - 1:
+                _fail(step, f"a push no entry reads removed {before - after_count} pieces")
+            if step.after.board[target] != pusher and move_promotion(move) == 0:
+                _fail(step, f"the pusher did not stand on square {target} after a push no entry reads")
+        elif readers == ["blast"]:
+            thrown = v.c.push_taken(board, move)
+            if thrown and _explodes(v, v.type(pusher), v.type(thrown)) and not (
+                    v.c.sight is not None and v.c.sight.has_shield):
+                v.judged += 1
+                if step.after.board[target] == pusher or step.after.board[origin] == pusher:
+                    _fail(step, f"the pusher from square {origin} survived the blast its push set off")
+
+
+def a_gated_piece_enters_before_the_blast(v: View) -> None:
+    """A gating capture that sets off a blast enters its gated piece first (§3.2, gating.blast):
+    the piece stands on the square the capturer left unless the blast reaches that square and
+    does not spare its type."""
+    blast = v.c.explosion
+    if blast is None or v.c.drops is None or v.c.drops.gates is None:
+        return
+    if v.walked and not _reads(v, "blast", "landing"):
+        return
+    if v.c.sight is not None and v.c.sight.has_shield:
+        return
+    for step in _alternating(v.record):
+        capture = _plain_capture(v, step)
+        gate = _move_gate(step.moves[0])
+        if capture is None or not gate:
+            continue
+        origin, target, taker, victim = capture
+        if not _explodes(v, v.type(taker), v.type(victim)):
+            continue
+        v.judged += 1
+        gated = gate - 1
+        stands = step.after.board[origin]
+        reached = origin in blast.blast[target] and gated not in blast.immune_types
+        if reached and stands:
+            _fail(step, f"the piece gated onto square {origin} survived a blast that reaches it")
+        if not reached and (not stands or v.type(stands) != gated or v.owner(stands) != step.mover):
+            _fail(step, f"the piece gated onto square {origin} is not there after the blast")
+
+
+def a_move_pays_for_what_it_made_itself(v: View) -> None:
+    """Under a move's cost, a capture pays for the type the move made, on the square it took,
+    from the mover's purse (U9, U10): a link that changes the capturer, or a switch that turns it,
+    after the move is not charged. Judged where nothing else fills a purse on the move (no
+    bounty, no income) and the capturer advances."""
+    purse = v.c.purse
+    if purse is None or not purse.upkeep or v.c.income is not None:
+        return
+    if v.c.bounty and any(v.c.bounty):
+        return
+    if v.c.npcs is not None and any(v.c.npcs.bounty):
+        return
+    for kind in ("strike", "contacts"):
+        if _rule_of(v, kind).get("position", "advance") == "stay":
+            return
+    n_types, n_squares = v.c.n_types, v.c.n_squares
+    for step in _alternating(v.record):
+        capture = _plain_capture(v, step)
+        if capture is None or move_type(step.moves[0]) != MOVE_NORMAL:
+            continue
+        origin, target, taker, victim = capture
+        if _explodes(v, v.type(taker), v.type(victim)):
+            continue
+        side = step.mover
+        cost = purse.upkeep[(side * n_types + v.type(taker)) * n_squares + target]
+        paid = step.before.purse[side] - step.after.purse[side]
+        v.judged += 1
+        if paid != cost:
+            _fail(step, f"a capture onto square {target} cost the mover {paid}, not the {cost} its "
+                        "own type's arrival there costs")
+
+
+def a_round_follows_the_list(v: View) -> None:
+    """R-L4b5 (T1.rounds, T4.rounds): a round walks the capture list over its takings. No round
+    leaves more pieces on the board and in the hands than stood there, a piece entering play
+    (a buy, a drop) aside (rule 1: a taken piece is in one place); and an arrival that takes a standing enemy piece
+    (no collision on its square, its victim not moving) whose capture sets off the blast leaves
+    no piece of the capturer's side on that square, whatever stands ahead of the blast in the
+    list (a blast takes its taker where it stands)."""
+    if v.c.simultaneous is None or v.c.explosion is None:
+        return
+    shields = v.c.sight is not None and v.c.sight.has_shield
+    for step in v.record.steps:
+        if not step.round or step.phase:
+            continue
+        before, after = step.before, step.after
+        # A buy enters play, and so does a drop from an unlimited slot (its count never moves:
+        # R-L4b5's soak, seeds 16758 and 88595); a counted drop moves one piece hand to board.
+        entered = sum(1 for m in step.moves if move_type(m) in (MOVE_BUY, MOVE_DROP))
+        v.judged += 1
+        if _material(after) > _material(before) + entered:
+            _fail(step, f"the round left {_material(after) - _material(before)} more pieces on the "
+                        "board and in the hands than stood there")
+        if shields:
+            continue
+        for i in (0, 1):
+            move, other = step.moves[i], step.moves[1 - i]
+            if move_type(move) not in (MOVE_NORMAL, MOVE_PROMOTION) or move & MOVE_FOREIGN:
+                continue
+            origin, target = move_from(move), move_to(move)
+            taker, victim = before.board[origin], before.board[target]
+            if not taker or not victim or origin == target or v.owner(taker) != i or v.owner(victim) != 1 - i:
+                continue
+            if move_type(other) in _ENTERS or move_from(other) == target or move_to(other) == target:
+                continue
+            if not _explodes(v, v.type(taker), v.type(victim)):
+                continue
+            stands = after.board[target]
+            if stands and v.owner(stands) == i:
+                _fail(step, f"player {i}'s capture onto square {target} set off its blast and a "
+                            "piece of that player still stands there")
+
+
 CHECKS: tuple[Check, ...] = (
     Check("duck_stands_alone_and_moves_last", ("rules.duck",),
           ("L7", "K2", "K3", "O2", "W9", "V11"), duck_stands_alone_and_moves_last),
@@ -2055,6 +2424,8 @@ CHECKS: tuple[Check, ...] = (
           any_keys=("rules.purse", "rules.npcs")),
     Check("a_castle_moves_both_its_pieces", ("rules.castling",), ("R6", "Z2"),
           a_castle_moves_both_its_pieces),
+    Check("a_round_follows_the_list", ("rules.simultaneous", "rules.explode_on_capture"),
+          ("T1.rounds", "T4.rounds"), a_round_follows_the_list),
     Check("a_shot_leaves_its_shooter_where_it_stood", ('rules.strike.position: "stay"',),
           ("R11", "T2", "T7", "P3", "O3", "V5", "Y4", "T10"), a_shot_leaves_its_shooter_where_it_stood),
     Check("a_struck_piece_becomes_its_link", ("rules.strike.chain",), ("O3", "Y4", "P3", "T7"),
@@ -2115,6 +2486,23 @@ CHECKS: tuple[Check, ...] = (
           ("push.sight",), a_push_moves_no_shielded_or_bound_piece),
     Check("a_pushed_piece_standing_on_its_goal_decides", ("pieces[].moves[].push", "rules.reach"),
           ("push.G1",), a_pushed_piece_standing_on_its_goal_decides),
+    # R-L4b stage 3: the capture list (`capture-effects-design.md` §6 stage 3's seven checks).
+    Check("a_taken_piece_is_in_one_place", ("rules.capture: a hand",),
+          ("T2.keeping", "T5.keeping", "H4", "H5", "gating.captures"), a_taken_piece_is_in_one_place),
+    Check("a_spared_piece_stands_after_its_blast", ("rules.capture: a blast",),
+          ("T1.position", "T1.choose", "T4.switch", "T4.choose"), a_spared_piece_stands_after_its_blast),
+    Check("two_tables_each_read_their_own_meetings", ("rules.capture: a strike", "rules.capture: contacts"),
+          ("T3",), two_tables_each_read_their_own_meetings),
+    Check("a_sweep_follows_the_list", ('pieces[].moves[].kind: "sweep"',),
+          ("W1.disagree", "W3.both"), a_sweep_follows_the_list),
+    Check("a_pushed_off_piece_is_taken_as_the_list_says", ("pieces[].moves[].push",),
+          ("push.X2.strike", "push.X2.contacts", "push.X3"), a_pushed_off_piece_is_taken_as_the_list_says,
+          any_keys=("rules.capture: a blast", "rules.capture: a strike", "rules.capture: contacts")),
+    Check("a_gated_piece_enters_before_the_blast", ("rules.drops.gating", "rules.capture: a blast"),
+          ("gating.blast",), a_gated_piece_enters_before_the_blast),
+    Check("a_move_pays_for_what_it_made_itself", ("rules.purse.upkeep",),
+          ("upkeep.U9", "upkeep.U10"), a_move_pays_for_what_it_made_itself,
+          any_keys=("rules.capture: contacts", "rules.capture: a strike that switches sides")),
     # R-L5c2: on every case; judges only one the core plays on its lean copy.
     Check("the_lean_copy_offers_what_the_full_copy_offers", (), (),
           the_lean_copy_offers_what_the_full_copy_offers),

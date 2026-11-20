@@ -206,7 +206,6 @@ class TestTheRule:
     @pytest.mark.parametrize(
         ("edit", "words"),
         [
-            (lambda d: d.pop("from_captures"), "fills from captures"),
             (lambda d: d.pop("stock"), "nothing in rules.drops.stock"),
             (lambda d: d.update(placement=True), "rules.drops.placement"),
             (lambda d: d.update(no_mate=["P"]), "rules.drops.no_mate"),
@@ -222,13 +221,21 @@ class TestTheRule:
         errors = validate_spec(spec)
         assert any(words in error for error in errors), errors
 
-    def test_what_it_refuses_beside_it(self) -> None:
+    def test_a_blast_and_a_capture_hand_beside_it_are_the_list(self) -> None:
+        """R-L4b (gating.blast, gating.captures): the gated piece enters with the move, before
+        the capture list; a blast may then take it, and a capture fills the hand after the gate
+        spent from it (`capture-effects-design.md` §3.2)."""
+        from chess_variant_sandbox.spec.capture import lifted_pairs
+
         spec = _spec()
         spec["rules"]["explode_on_capture"] = {"radius": 1}
-        assert any(
-            "rules.drops.gating beside rules.explode_on_capture" in error
-            for error in validate_spec(spec)
-        )
+        errors = validate_spec(spec)
+        assert not any("rules.drops.gating beside rules.explode_on_capture" in e for e in errors)
+        assert "gating.blast" in lifted_pairs(spec)
+        spec = _spec()
+        spec["rules"]["drops"].pop("from_captures")
+        assert not any("fills from captures" in e for e in validate_spec(spec))
+        assert "gating.captures" in lifted_pairs(spec)
 
     def test_the_spec_is_valid(self) -> None:
         assert validate_spec(_spec()) == []

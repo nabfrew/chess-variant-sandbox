@@ -13,6 +13,7 @@ dropping it would produce a game nobody asked for.
 
 from __future__ import annotations
 
+import contextvars
 import json
 from collections.abc import Callable, Collection, Iterable, Sequence
 from collections.abc import Set as AbstractSet
@@ -867,6 +868,8 @@ SUMMARY_MAX_LINE = 200
 _SETUP_KEYS = {"mirror", "placements", "orientation"}
 _PLACEMENT_KEYS = {"piece", "player", "squares", "facing"}
 _RULES_KEYS = {
+    # R-L4b stage 3 (`spec/capture.py`): what a capture does, as one ordered list.
+    "capture",
     "win",
     "stalemate",
     "promotion",
@@ -1048,6 +1051,26 @@ PIECE_POSITIONS: dict[str, Any] = {
             emptied=GOES_HOLDER,
         ),
     }),
+    # R-L4b stage 3 (`spec/capture.py`): an entry names pieces as its old rule does; an entry
+    # whose `by` or `of` named only the removed piece goes, as the rule would, and so does a
+    # link or a chain link naming it; `path_by` loses it.
+    "capture": Each(Fields({
+        "immune": _PRUNED,
+        "chain": Each(
+            Fields({"from": _ONE_GOES_WITH_IT, "to": _ONE_GOES_WITH_IT}), emptied=GOES_HOLDER
+        ),
+        "switches_sides": _PRUNED,
+        "by": Names(PIECE_IDS, GOES_HOLDER, only_named=True),
+        "of": Names(PIECE_IDS, GOES_HOLDER, only_named=True),
+        "path_by": _PRUNED,
+        "links": Each(
+            Fields({
+                "mover": _ONE_GOES_WITH_IT, "onto": _ONE_GOES_WITH_IT,
+                "mover_to": _ONE_GOES_WITH_IT, "onto_to": _ONE_GOES_WITH_IT,
+            }),
+            emptied=GOES_HOLDER,
+        ),
+    })),
 }
 
 # The same, for the fields on a piece that name another piece. `region` is squares and
@@ -1215,6 +1238,11 @@ def validate_spec(spec: Any) -> list[str]:
 
     if not isinstance(spec, dict):
         return ["spec must be a JSON object"]
+    if isinstance(spec.get("rules"), dict) and "capture" in spec["rules"]:
+        # R-L4b stage 3: the list's own shape, then the rules its entries state.
+        from chess_variant_sandbox.spec.capture import capture_list_errors
+
+        return capture_list_errors(spec)
 
     _check_keys(spec, _SPEC_KEYS, "spec", errors, required={"name", "board", "pieces", "setup"})
 
@@ -1248,6 +1276,10 @@ def validate_spec(spec: Any) -> list[str]:
     _validate_appearance(spec.get("appearance"), piece_ids, errors)
     _validate_provenance(spec.get("provenance"), errors)
     _validate_coherence(spec, errors)
+    # R-L4b stage 3: a pair only the capture list plays, said by the old keys.
+    from chess_variant_sandbox.spec.capture import capture_walk_errors
+
+    errors.extend(capture_walk_errors(spec, errors))
     if not errors:
         # U1: the ten combinations the engine refuses, named here (`spec/engine_holds.py`).
         from chess_variant_sandbox.spec.engine_holds import engine_hold_refusals
@@ -1256,6 +1288,13 @@ def validate_spec(spec: Any) -> list[str]:
 
     return errors
 
+
+# R-L4b stage 3 (`spec/capture.py`): set while the old keys a written capture list walks are
+# validated (`capture.capture_base`), so a check that reads the two switches' order as the old
+# keys' (a strike a blast leaves nothing to act on) leaves it to the list.
+READING_A_LIST: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "reading_a_capture_list", default=False
+)
 
 # Schema 29 (Q983a, `docs/plan-rest.md` §3.1): the longest rest a type may declare. At 4 a
 # piece moves at most one turn in five; it bounds each player's resting list (one piece
@@ -3162,8 +3201,8 @@ _GATING_EXCLUDES: tuple[tuple[str, str], ...] = (
     ("strike", "a strike writes the move word's tag the gate rides in, and what a struck "
      "piece leaves on a gate square would be a second rule"),
     ("contacts", "as a strike: the tag, and what a contact leaves on a gate square"),
-    ("explode_on_capture", "a blast can clear the square the piece has just entered, and "
-     "the order of the two would be a second rule"),
+    # R-L4b (gating.blast): the gated piece enters with the move, before the capture list,
+    # so a blast may then take it (`capture-effects-design.md` §3.2).
     ("portals", "a portal or fold writes the move word's tag the gate rides in"),
     ("simultaneous", "a round reads two moves at once, and two gates on one square "
      "would be a second rule"),
@@ -3220,12 +3259,8 @@ def _check_gating_coherence(
     drops = rules.get("drops")
     if not isinstance(drops, dict) or not isinstance(drops.get("gating"), dict):
         return
-    if drops.get("from_captures", True) is not False:
-        errors.append(
-            "rules.drops.gating beside a hand that fills from captures (from_captures is "
-            "true, its default): a gating hand holds its stock alone; write "
-            '"from_captures": false'
-        )
+    # R-L4b (gating.captures): the gate spends from the hand with the move, and a capture
+    # fills it after, in the capture list.
     if not stocked_ids(drops):
         errors.append(
             "rules.drops.gating with nothing in rules.drops.stock: no piece could ever "
@@ -3300,15 +3335,9 @@ def _check_either_face_coherence(
         return
     strike = rules.get("strike")
     if isinstance(strike, dict):
-        position = strike.get("position", "advance")
-        if position != "advance":
-            errors.append(
-                f"rules.drops.either_face beside a strike whose position is {position!r}: "
-                "the strike already says where a taken piece goes, so what it comes back "
-                "as has two answers; drop one of the two"
-            )
-        if strike.get("switches_sides"):
-            errors.append(refusal("H5"))
+        # R-L4b (H4, H5): the capture list's hand files the taken piece before any strike
+        # reaches it, and a side switch reads the capturer, not the piece the hand holds.
+        pass
     pairs = drop_face_pairs(pieces)
     if not pairs:
         errors.append(
@@ -3707,8 +3736,9 @@ def sweep_conflicts(rules: Any) -> list[str]:
         "contacts": isinstance(rules.get("contacts"), dict)
         and bool(rules["contacts"].get("links"))
         and rules["contacts"].get("position") == "choose",
-        # SR6c (W3, the sweep switch): only a blast beside a live strike or contacts.
-        "explode_on_capture": sweep_blast_beside_strike(rules),
+        # SR6c (W3, the sweep switch) lifted a blast beside a sweep, and R-L4b (W3.both) beside
+        # a live strike or contacts too: the capture list orders a sweep's blasts and strikes.
+        "explode_on_capture": False,
     }
     return [key for key, _ in _SWEEP_EXCLUDES if active[key]]
 
@@ -3791,7 +3821,8 @@ def _check_sweep_effects(
         if len(values) > 1:
             errors.append(
                 f"pieces[{pid!r}]'s sweeps disagree on effects: a piece's sweeps share one "
-                "switch, so write effects 'path' on every sweep of it or on none"
+                "switch, so write effects 'path' on every sweep of it or on none, or say "
+                "which entries read whose path in rules.capture (on 'path', path_by)"
             )
             continue
         live = strike_is_live(rules.get("strike")) or bool(rules.get("explode_on_capture")) or (
@@ -4744,8 +4775,10 @@ def _check_blast_strikes(
     if strikes not in BLAST_STRIKE_VALUES:
         return  # `_validate_explosion`'s
     if strikes != "none":
-        if has_contacts:
-            errors.append(refusal("T4", "rules.explode_on_capture.strikes"))
+        # R-L4b (T1.position, T4.switch): the switch is the capture list's default order with
+        # the taken piece spared or the struck reading the blast (`spec/capture.py`); after a
+        # blast every position still names a square, and a link's mover half does nothing to
+        # a capturer the blast took.
         if not live_strike:
             if not has_contacts:
                 errors.append(
@@ -4755,27 +4788,24 @@ def _check_blast_strikes(
         else:
             assert isinstance(strike, dict)
             position = strike.get("position", "advance")
-            if position not in ("stay", "home"):
-                errors.append(refusal(
-                    "T1", 'rules.strike.position (not "stay" or "home")'
-                ))
-            elif position == "stay" and strike.get("effect", "capture") == "capture":
+            if position == "stay" and strike.get("effect", "capture") == "capture":
                 errors.append(refusal(
                     "T1", 'rules.strike (effect "capture", position "stay")'
                 ))
-    if live_strike:
-        assert isinstance(strike, dict)
-        if strike.get("position") == "choose":
-            errors.append(refusal("T1", "rules.explode_on_capture"))
-        if rules.get("simultaneous") is not None:
+    # R-L4b (T1.choose, T4.choose): a choosing strike or contact beside a blast plays as the
+    # list (`Game::fans_out` asks it): no square is offered where the blast destroys the
+    # taken piece. R-L4b5: a round walks the list too (`rounds.rs::walk_round`), but a strike
+    # or a link placed "stay" is written before it (a shot at step 0, a contact in place at
+    # step 4), so only those stay refused beside a blast in a round (T1.rounds, T4.rounds).
+    if rules.get("simultaneous") is not None:
+        if live_strike and isinstance(strike, dict) and strike.get("position") == "stay":
             errors.append(refusal("T1", "rules.strike"))
-    if has_contacts:
-        assert isinstance(contacts, dict)
-        if contacts.get("position") == "choose":
-            errors.append(refusal("T4", "rules.explode_on_capture"))
-        if rules.get("simultaneous") is not None:
+        if has_contacts and isinstance(contacts, dict) and contacts.get("position") == "stay":
             errors.append(refusal("T4", "rules.contacts"))
-    if strikes == "none" and _blast_fires_on_every_capture(pieces, explosion):
+    if (
+        strikes == "none" and _blast_fires_on_every_capture(pieces, explosion)
+        and not READING_A_LIST.get()
+    ):
         if live_strike:
             errors.append(
                 "rules.strike beside a blast that fires on every capture "
@@ -5279,8 +5309,8 @@ def _check_strike_coherence(
     # §2.4 T2) lifted the strike that only removes (``strike_only_removes``: a shot): its
     # victim leaves the board and goes to the hand as any capture's does.
     # SR5a (T1) lifted the strike beside a blast: `_check_blast_strikes` reads the pair.
-    if rules.get("drops") and not strike_only_removes(strike):
-        errors.append(refusal("T2"))
+    # R-L4b (T2): a strike that keeps its victim beside a hand plays as the capture list's
+    # default order: the hand files the taken piece first, so nothing is left to strike.
 
     _check_strike_by(pieces, strike, errors, wild_type_ids(rules))
 
@@ -5425,14 +5455,16 @@ def _check_contact_coherence(
     if not isinstance(contacts["links"], list):
         return
 
-    if rules.get("strike"):
+    # R-L4b (T3): a strike and a contact table are two entries of the capture list, each
+    # reading its own table; the contact table may not be placed choose (one landing list per
+    # move word: `compile.with_capture_list`).
+    if strike_is_live(rules.get("strike")) and contacts.get("position") == "choose":
         errors.append(refusal("T3"))
     # SR4e lifted T6 (`npcs`): a contact never reaches a wild piece (`_check_npc_coherence`).
     # SR5a (T4) lifted contacts beside a blast: `_check_blast_strikes` reads the pair.
     # SR2 (`docs/plan-schema-next.md` §2.4 T5): a link with no ``onto_to`` removes its target,
     # which goes to the hand as any capture's does; a link that keeps it stays refused.
-    if rules.get("drops") and not contacts_only_remove(contacts):
-        errors.append(refusal("T5"))
+    # R-L4b (T5): as T2, the hand files the taken piece first.
 
     immune = contacts.get("immune")
     immune_ids = _str_set(immune) if isinstance(immune, list) else set()
@@ -11953,11 +11985,8 @@ def _check_upkeep_coherence(
         ("U6", bool(player_moved_nobodys_ids(spec))),
         ("U7", rules.get("drops") not in (None, False)),
         ("U8", isinstance(board, dict) and board.get("lattice") == "hex"),
-        ("U9", rules.get("contacts") not in (None, False)),
-        (
-            "U10",
-            isinstance(rules.get("strike"), dict) and bool(rules["strike"].get("switches_sides")),
-        ),
+        # R-L4b (U9, U10): the cost is the move's own, for the type it made, on the square
+        # the capture list leaves it on; a link's or a switch's change after it is not charged.
     )
     for rid, present in beside:
         if present:
@@ -12553,12 +12582,9 @@ def _check_push_coherence(
             )
     if portal_groups(rules):
         errors.append(refusal("push.W4"))
-    if strike_is_live(rules.get("strike")):
-        errors.append(refusal("push.X2", "rules.strike"))
-    if isinstance(rules.get("contacts"), dict) and rules["contacts"].get("links"):
-        errors.append(refusal("push.X2", "rules.contacts"))
-    if rules.get("explode_on_capture"):
-        errors.append(refusal("push.X3"))
+    # R-L4b (push.X2, push.X3): a pushed-off piece is a taking with cause "push" from the
+    # square it left; a strike and contacts do not read "push" by default, and a blast does
+    # not either, so the pair combines unchanged unless a list says otherwise.
     if is_simultaneous(rules):
         errors.append(refusal("push.S1"))
     if any(

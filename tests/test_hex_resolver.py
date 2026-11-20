@@ -337,6 +337,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "legs_share",  # SR1a
     "explodes_shaped",  # SR1b
     "explodes_striking_target", "explodes_striking_blast",  # SR5a
+    "capture_list", "capture_list_shape",  # R-L4b4
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",

@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.spec.canonical import canonical_json, hash_text, spelling_hash
+from chess_variant_sandbox.spec.capture import capture_as_old_keys, capture_written, normal_entries
 from chess_variant_sandbox.spec.legacy_names import LEGACY_NAMES
 from chess_variant_sandbox.spec.schema import (
     CONTACT_LINK_OFF_VALUES,
@@ -164,6 +165,7 @@ def _normal_hash_of(mechanics: str) -> str:
 def _normalise(normal: dict[str, Any]) -> dict[str, Any]:
     """`normal_form`'s rewrites, made in place on a fresh copy of the mechanics."""
     normal.pop("schema_version", None)
+    _capture_as_old_keys(normal)
     _portal_moves_as_pieces(normal)
     board = normal.get("board")
     if isinstance(board, dict):
@@ -196,6 +198,23 @@ def _normalise(normal: dict[str, Any]) -> dict[str, Any]:
     ):
         del rules["insufficient_material"]
     return normal
+
+
+def _capture_as_old_keys(spec: dict[str, Any]) -> None:
+    """R-L4b stage 3 (`spec/capture.py`): ``rules.capture`` written, in place, as the old keys
+    where they say the same list (`capture.capture_as_old_keys`), so a list and its old
+    spelling are one game under one name; else the list in its own hashing shape
+    (`capture.normal_entries`), its entries in written order, since the order is the meaning."""
+    if not capture_written(spec):
+        return
+    lowered = capture_as_old_keys(spec)
+    if lowered is not None:
+        spec.clear()
+        spec.update(lowered)
+        return
+    entries = normal_entries(spec)
+    if entries is not None:
+        spec["rules"]["capture"] = entries
 
 
 def _portal_moves_as_pieces(spec: dict[str, Any]) -> None:

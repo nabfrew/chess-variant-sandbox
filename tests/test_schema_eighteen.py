@@ -1063,17 +1063,26 @@ class TestDropEitherFace:
             # (`tests/test_lost_and_held.py`).
         ],
     )
-    def test_a_rule_that_already_says_what_a_taken_piece_becomes_is_refused(
+    def test_a_rule_that_already_says_what_a_taken_piece_becomes_is_the_list(
         self, games: dict[str, dict[str, Any]], rule: dict[str, Any], says: str
     ) -> None:
+        """R-L4b (stage 3) lifted H4: the capture list's hand files the taken piece before
+        a strike reaches it, so either face is the hand's one answer."""
+        from chess_variant_sandbox.spec.capture import lifted_pairs
+
         spec = copy.deepcopy(games["kyoto"])
         spec["rules"].update(copy.deepcopy(rule))
-        assert any(says in e for e in _refusals(spec)), validate_spec(spec)
+        assert not any(says in e for e in _refusals(spec)), validate_spec(spec)
+        assert "H4" in lifted_pairs(spec)
 
-    def test_a_side_switch_is_refused(self, games: dict[str, dict[str, Any]]) -> None:
+    def test_a_side_switch_is_the_list(self, games: dict[str, dict[str, Any]]) -> None:
+        """R-L4b lifted H5: the hand reads the victim and the switch the capturer."""
+        from chess_variant_sandbox.spec.capture import lifted_pairs
+
         spec = copy.deepcopy(games["kyoto"])
         spec["rules"]["strike"] = {"switches_sides": ["S"]}
-        assert "H5" in refused_ids(validate_spec(spec)), validate_spec(spec)
+        assert "H5" not in refused_ids(validate_spec(spec)), validate_spec(spec)
+        assert "H5" in lifted_pairs(spec)
 
     def test_a_flag_with_no_pair_is_refused(self) -> None:
         crazyhouse = load_spec(ROOT / "rulesets" / "crazyhouse.json")

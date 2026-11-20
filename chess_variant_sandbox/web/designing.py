@@ -1724,8 +1724,13 @@ def onto_hex(spec: Any) -> dict[str, Any]:
     if isinstance(reach, dict) and reach.get("mirror", True) not in ("rotate", False):
         reach["mirror"] = "rotate"
         said.append("the goal turns with the armies")
-    for key in ("strike", "contacts"):
-        landing = rules[key].get("landing") if isinstance(rules.get(key), dict) else None
+    # R-L4b4: a strike's or contacts' landing in the capture list's entries too.
+    holders: list[tuple[str, Any]] = [(key, rules.get(key)) for key in ("strike", "contacts")] + [
+        (str(entry.get("do")), entry) for entry in rules.get("capture") or []
+        if isinstance(entry, dict) and entry.get("do") in ("strike", "contacts")
+    ]
+    for key, holder in holders:
+        landing = holder.get("landing") if isinstance(holder, dict) else None
         if isinstance(landing, dict) and rewrite(landing):
             said.append(f"the landing of '{_rule_title(key)}' goes the hexagons' six ways")
     if _rank_zones_named(draft):

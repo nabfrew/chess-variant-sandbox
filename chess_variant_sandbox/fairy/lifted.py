@@ -187,6 +187,22 @@ TREATMENT: dict[str, tuple[str, str]] = {
     "shared.price": ("refused", "pieces.control: a piece nobody owns"),
     "run.territory": ("refused", "a hop over a whole run of pieces | rules.territory:"),
     "run.en_passant": ("refused", "a hop over a whole run of pieces"),
+    # R-L4b stage 3 (probed 2026-11-18, pyffish 0.0.90): the capture list's pairs. A pair only
+    # the list plays, as old keys or as a list only `rules.capture` says, is refused by name
+    # (`variant._capture_list_reasons`, R-L4b4); a strike or contacts is refused on its own
+    # besides.
+    **{
+        row: ("refused", "rules.capture:")
+        for row in (
+            "T1.position", "T1.choose", "T4.choose", "T2.keeping", "T5.keeping", "T3", "T4.switch",
+            "H4", "H5", "W3.both", "push.X2.strike", "push.X2.contacts", "push.X3", "gating.blast",
+            "gating.captures", "upkeep.U9", "upkeep.U10",
+        )
+    },
+    "W1.disagree": ("refused", "rules.capture: | rules.strike:"),
+    # R-L4b5: a round walks the capture list; Fairy-Stockfish refuses a round on its own.
+    "T1.rounds": ("refused", "rules.simultaneous:"),
+    "T4.rounds": ("refused", "rules.simultaneous:"),
 }
 
 

@@ -1114,6 +1114,30 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
 }
 
 
+def _capture_entry_bounds() -> dict[str, dict[str, int]]:
+    """R-L4b stage 3: an entry of ``rules.capture`` takes its kind's old rule's keys with their
+    bounds (`jsonschema._capture_list`), a key two rules share taken from the first of strike,
+    contacts, explode_on_capture (never the blast's `strikes`, which the list replaces)."""
+    owner: dict[str, str] = {}
+    for rule in ("strike", "contacts", "explode_on_capture"):
+        for path in FROZEN_BOUNDS:
+            prefix = f"{_RULES}/{rule}{_P}/"
+            if path.startswith(prefix):
+                owner.setdefault(path[len(prefix):].split("/")[0], rule)
+    bounds = {}
+    for path, bound in FROZEN_BOUNDS.items():
+        for rule in ("strike", "contacts", "explode_on_capture"):
+            prefix = f"{_RULES}/{rule}{_P}/"
+            if path.startswith(prefix):
+                name = path[len(prefix):].split("/")[0]
+                if name != "strikes" and owner[name] == rule:
+                    bounds[f"{_RULES}/capture/items{_P}/{path[len(prefix):]}"] = bound
+    return bounds
+
+
+FROZEN_BOUNDS.update(_capture_entry_bounds())
+
+
 def _schema_errors(instance: object, schema: dict, path: str = "$") -> list[str]:
     """Where `instance` breaks `schema`: the vocabulary the generated schema uses, bounds
     included (`tests/test_loop.py::_violations` stops at types, enums and keys)."""

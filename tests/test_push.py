@@ -304,9 +304,6 @@ def _pushing(spec: dict[str, Any]) -> dict[str, Any]:
 
 PAIRS = [
     ("push.W4", "archive/wormhole.json", None),
-    ("push.X2", "archive/circe.json", None),
-    ("push.X2", "archive/einstein.json", None),
-    ("push.X3", "rulesets/atomic.json", None),
     ("push.S1", "tests/_simultaneous_gardner.json", None),
     ("push.E2", "rulesets/chess.json", None),
     ("push.N4", "archive/chess-with-preaching-bishops.json", None),
@@ -320,6 +317,11 @@ LIFTED = [
     ("push.G1", "rulesets/kingofthehill.json"),
     ("push.G2", "rulesets/rps-v2.json"),
     ("push.M1", "tests/_purse_market.json"),
+    # R-L4b (stage 3): a pushed-off piece is a taking from the square it left, which every
+    # entry of the capture list is defined on; the core walks the list.
+    ("push.X2.strike", "archive/circe.json"),
+    ("push.X2.contacts", "archive/einstein.json"),
+    ("push.X3", "rulesets/atomic.json"),
 ]
 
 

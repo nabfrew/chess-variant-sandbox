@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
 
+from chess_variant_sandbox.spec.capture import list_shape, rules_as_old_keys
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.legs import stated_legs
 from chess_variant_sandbox.spec.normal import normal_push
@@ -108,6 +109,8 @@ RULE_KINDS: dict[str, str] = {
     "en_passant": "capture",
     "must_capture": "capture",
     "explode_on_capture": "capture",
+    # R-L4b stage 3: what a capture does, as one ordered list.
+    "capture": "capture",
     "strike": "capture",
     "contacts": "capture",
     # Q1074b2 (`docs/plan-push.md`): a push is a third answer to an occupied landing.
@@ -158,6 +161,7 @@ RULE_WORDS: dict[str, str] = {
     "en_passant": "taking a piece in passing",
     "must_capture": "whether a capture has to be taken",
     "explode_on_capture": "a capture taking its neighbours with it",
+    "capture": "what a capture does, in order",
     "strike": "taking a piece without moving onto it",
     "contacts": "what a piece becomes when it takes one",
     "push": "how a pushed piece moves and what the edge does to it",
@@ -352,6 +356,13 @@ def _build(spec: dict[str, Any]) -> NormalForm:
     # Read in the one current spelling (Q1008b): a promotion written as one object or as a
     # list, a lone numbered rank or `ranks`, are one rule and must not read as a difference.
     spec = current_spelling(spec)
+    # R-L4b4: a list only `rules.capture` says reads as each kind's rule under its old key (so
+    # a strike is the same strike in either spelling), and the list's order and readings as
+    # the one rule `capture` (`capture.list_shape`): what differs is said as the list.
+    shape = list_shape(spec)
+    if shape:
+        spec = rules_as_old_keys(spec)
+        spec.setdefault("rules", {})["capture"] = shape
     # A portal group's moves read as the stand-in piece every portal game had before
     # spelling 31 (`schema.portal_stand_in_shape`), so no relation moves with the re-spelling.
     spec = portal_stand_in_shape(spec)

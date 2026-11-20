@@ -700,7 +700,13 @@ class TestTheFingerprintsPointAtSomething:
 # violations, and `metrics/seeds.py` carries them to the game's file
 # (`warned`). No vote reads a warning and no total moves; the
 # library is re-scored under `v15` from its stored records. It was "64754a1eeb0a0a61" after R-L6e.
-FROZEN_METRICS = "7554c69f05dffa12"
+# **Moved 2026-11-19 by R-L4b4** (`capture-effects-design.md` §6 stage 4): `spec/complexity.py`,
+# `spec/reachability.py` and `tournament/analysis.py` read a written `rules.capture` (each kind
+# charged what its old key cost; a hand entry fills the hand; a spy's strike route off the
+# list). No stored game writes the list, so no stored count, walk or record reads differently
+# (`tests/test_capture_surfaces.py`); the library, already stale on the core, re-scores at its
+# planned recertify with nothing moved by this. It was "7554c69f05dffa12" after R-S17i.
+FROZEN_METRICS = "de2bfc42a84efcd1"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -1152,7 +1158,10 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-11-15 by R-L6e** (F7): `engine/moves.py::move_gate`, as `FROZEN_METRICS` says;
 # no stored record reads differently, and the replay after R-L6e re-analyses the library. It
 # was "19a8b132d92af04f" after R-S6d.
-FROZEN_ANALYSIS = "d5c24499b62444e1"
+# **Moved 2026-11-19 by R-L4b4**: `analysis.spy_gain` reads a strike or contact table
+# written in `rules.capture`, as `FROZEN_METRICS` says; no stored game writes the list, so no
+# stored record re-analyses differently. It was "d5c24499b62444e1" after R-L6e.
+FROZEN_ANALYSIS = "a5ed247f0feb1cfe"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

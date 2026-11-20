@@ -12,6 +12,34 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-20
+
+### Dohyo and rock paper shove are measured again
+
+After the fix to how the computer players weigh a piece pushed off the board, dohyo was played again from scratch and
+its score is now 0.82, from 0.81. Rock paper shove also turned out to play differently and was measured again; its
+score is 0.79, as before to two places. Brink did not change. Every other game in the library was checked against
+the current engine and keeps its score.
+
+## 2026-11-19
+
+### The computer players misjudged pushing games
+
+In games where pieces are shoved off the board rather than captured (dohyo, brink, rock-paper-shove), the computer
+players counted a piece that had been pushed out a second time when weighing a position, and treated every piece as
+if it could not be taken. A check against a slower reference player found it. It is fixed, so the computer plays
+dohyo differently from now on. Dohyo's score rested on games played with the fault and is being measured again; the
+other two showed no changed games in a sample and are being checked.
+
+### A game can say, in order, what a capture does
+
+Until now a game could give a capture one extra effect, and many pairs of effects were turned away: a capture could
+blast its neighbours or hand the taken piece to the taker, but not both with a strike beside them. A game's rules can
+now list what a capture does, step by step, in the order it happens. Eighteen pairings that used to be refused now
+play, among them a strike beside pieces kept in hand, a blast beside a push, and pieces entering from reserve beside
+a blast. No existing game changed: every stored game plays move for move as before. The design page's cards do not
+offer the list yet; a pasted ruleset can use it.
+
 ## 2026-11-17
 
 ### Two games are no longer ruled out for ending fast

@@ -49,6 +49,13 @@ both over the library and its re-spellings):
    ``piece`` (`_portal_moves_on_groups`). The normal form writes them back as that stand-in
    (`normal._portal_moves_as_pieces`), so the converted file keeps its game's name and tables.
 
+5. R-L4b stage 3 (`docs/reference/capture-effects-design.md` §4, `spec/capture.py`): a
+   ``rules.capture`` list the old keys say (each kind once, the default order, ``on``,
+   ``spread`` and ``spares_taken`` at what the two switches say) is written as those keys.
+   The normal form makes the same rewrite, so it moves no name, and no older file needs it,
+   so ``SCHEMA_VERSION`` stays 31. The old keys stay the spelling of every list they say
+   until the surfaces read the list (stage 4); a list only the new key says stays as written.
+
 **One translation.** A retired ``rules.simultaneous.rest`` is written as ``pieces[].rest``
 (`_rest_on_pieces`), the rewrite the store's ``0039`` made. It is not a spelling, so the
 converted game is named by its new spelling; no game in the library or the store carries it.
@@ -69,6 +76,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from chess_variant_sandbox.spec.capture import capture_as_old_keys
 from chess_variant_sandbox.spec.normal import (
     _ABSENT_WHEN_EMPTY,
     _EMPTY,
@@ -95,6 +103,11 @@ def current_spelling(spec: dict[str, Any]) -> dict[str, Any]:
     if "schema_version" not in out:
         out = {"schema_version": SCHEMA_VERSION, **out}
     out["schema_version"] = SCHEMA_VERSION
+    # R-L4b stage 3: a capture list the old keys say is written as them (one spelling for
+    # one statement); `normal._capture_as_old_keys` makes the same rewrite.
+    lowered = capture_as_old_keys(out)
+    if lowered is not None:
+        out = lowered
     _rest_on_pieces(out)
     _portal_moves_on_groups(out)
     rules = out.get("rules")
@@ -196,7 +209,16 @@ def _rules(rules: dict[str, Any], height: Any, shape: Any) -> dict[str, Any]:
     In `normal._normal_rules`'s order, so the two agree on what an odd input becomes.
     """
     out: dict[str, Any] = {}
+    # R-L4b4: beside a written list a hand entry is what fills the hand, so `drops: {}` is the
+    # hand it files into, not a hand stated off (left out, the list would be refused).
+    listed = rules.get("capture")
+    hand = isinstance(listed, list) and any(
+        isinstance(entry, dict) and entry.get("do") == "hand" for entry in listed
+    )
     for key, value in rules.items():
+        if key == "drops" and hand and value == {}:
+            out[key] = value
+            continue
         if key == "promotion" and isinstance(value, (dict, list)):
             entries = [value] if isinstance(value, dict) else value
             entries = [_promotion(entry, height) if isinstance(entry, dict) else entry

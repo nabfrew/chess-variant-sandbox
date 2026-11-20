@@ -172,24 +172,27 @@ READERS: dict[str, dict[str, str]] = {
         "no move reaches when nothing can be taken",
         "game.rs::blast_strikes": "SR5a: a blast's struck pieces, reached only from a blast, so "
         "only from a capture",
-        "game.rs::leaves_royal_attacked_as": "the blast in the legality filter, behind an "
-        "occupied target, and who is capturing; neither exists without a capture",
+        "game.rs::blast_for_filter": "R-L4b1: the blast in the legality filter, called from "
+        "`leaves_royal_attacked_as` behind an occupied target and `blast_sets_off`; neither "
+        "exists without a capture",
+        "tables.rs::derive": "R-L4b1: `CaptureProgram::derive` reads the rule into the capture "
+        "list at load; the list's blast entry is walked only behind `captured != 0` or a "
+        "`MOVE_SWEEP`, which no move reaches when nothing can be taken",
+        "tables.rs::from_order": "R-L4b2: a list crossed by a test (`capture_order`) needs the "
+        "rule for a blast entry; no compiled spec crosses one",
+        "game.rs::walk_blast": "R-L4b2: a `general` list's blast entry, walked as `derive`'s is, "
+        "behind a taking, which no move makes when nothing can be taken",
         "game.rs::generate_checked": "refuses the pin shortcut; the same verdict by the slower "
         "route, so it moves no answer",
         "eval.rs::of": "`Immunity::of` declines the immunity term under an explosion. "
         "**Evaluator, not rules**: with no capture the term's premise is gone anyway; "
         "re-read this site if case 4 is ever re-proven",
-        "rounds.rs::blasts": "schema 26's blast (§4 step 6), over the round's captures, of "
-        "which there are none when nothing can be taken",
-        "game.rs::write_board": "SR6c: sends a `MOVE_SWEEP` to the sweep's blasts; a sweep is "
-        "`MOVE_SWEEP` only where its path held a piece the sweeper may capture (one it may not "
-        "blocks), so no such move exists when nothing can be taken",
+        "rounds.rs::round_blast": "R-L4b5: a round's blast entry (§4 steps 5 and 6, the list), "
+        "over the round's takings, of which there are none when nothing can be taken",
         "game.rs::write_sweep_blast": "SR6c: a sweep's blasts, reached only from a `MOVE_SWEEP`, "
         "so only from a capture",
         "game.rs::sweep_blast_centres": "SR6c: where a sweep's blasts go, asked only of a "
         "`MOVE_SWEEP`, so only of a capture",
-        "game.rs::play_move_for_filter_p": "SR6c: the filter's sweep blast, inside the "
-        "`MOVE_SWEEP` arm, so only after a capture",
         "game.rs::sweep_blast_for_filter": "SR6c: the filter's sweep blast, reached only from "
         "a `MOVE_SWEEP`, so only from a capture",
         "upkeep.rs::strike_stays": "H1: whether a capture explodes rather than a strike keeping "
@@ -201,13 +204,25 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::initial": "the opening hands: empty, since the refusals need no stock",
         "game.rs::write_entry": "`make`'s drop branch (CS8): spends a hand slot, which is "
         "empty for the life of the game, so no drop is ever generated to reach it",
-        "game.rs::deposit_capture": "`make`'s fill (CS8), behind `captured != 0` and "
-        "`from_captures`, which the two refusals switch off between them",
+        "game.rs::write_hand": "R-L4b1: the capture list's hand entry (`make`'s fill), walked "
+        "behind `captured != 0` and present only under `from_captures`, which the two refusals "
+        "switch off between them",
+        "tables.rs::derive": "R-L4b1: `CaptureProgram::derive` reads `from_captures` into the "
+        "list's hand entry at load; no entry under case 6, and under case 5 the walk is behind "
+        "`captured != 0` or a `MOVE_SWEEP`, which no move reaches",
+        "tables.rs::from_order": "R-L4b2: a list crossed by a test needs the drops for a hand "
+        "entry; no compiled spec crosses one",
+        "game.rs::walk_hand": "R-L4b2: a `general` list's hand entry, behind a taking as "
+        "`write_hand` is",
+        "game.rs::general_fans": "R-L4b2b: whether a `general` list's hand entry takes a "
+        "landing's victim before a choosing strike, asked only of a capture, which no move "
+        "makes when nothing can be taken (case 5); under case 6 no hand entry is crossed",
+        "upkeep.rs::general_stays": "R-L4b2b: whether a gate fills the origin, read under "
+        "`drops.gating` alone (neither case gates), for a `general` list no compiled spec "
+        "crosses",
         "game.rs::sweep_to_hand": "SR4b's swept deposit, reached only behind `from_captures` "
         "(case 6 switches it off), over a sweep's cleared path, which holds only pieces the "
         "sweeper may capture (one it may not blocks), so none under case 5",
-        "game.rs::unmake": "SR4b: takes the swept deposit back, behind `from_captures` and "
-        "`MOVE_SWEEP`, over the same log `sweep_to_hand` read, empty under both cases",
         "game.rs::write_gate": "`make`'s gate (Q1059a, CS8): asks whether the hand gates; the "
         "refusals state no `gating`, so `gates` is `None` and it writes nothing",
         "game.rs::generate_pseudo_legal_as": "calls `generate_drops`, which returns at once on "
@@ -223,8 +238,8 @@ READERS: dict[str, dict[str, str]] = {
         "the own moves do), which fires only on a non-empty hand",
         "rounds.rs::departures": "schema 26's drop branch, as `make`'s (§4 step 2): a drop "
         "leaves the hand, which is empty for the life of the game",
-        "rounds.rs::what_captures_cause": "schema 26's fill, as `make`'s (§4 step 5): behind "
-        "a capture and `from_captures`",
+        "rounds.rs::round_hand": "R-L4b5: a round's hand entry (§4 steps 5 and 6, the list), "
+        "behind a taking and present only under `from_captures`",
         "game.rs::restrict_as": "the drop-mate filter; it filters drops, and there are none",
         "eval.rs::new": "`mean_non_royal` skips unlimited types; the refusals need no "
         "stock, so no type is unlimited and the mean is the undeclared one; also copies "
@@ -492,6 +507,8 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::write_gate": "`make`'s phase (CS8): a gated piece's value, reached only "
         "under `drops.gating`",
         "game.rs::strike_writes": "the value a struck piece becomes where it lands",
+        "game.rs::walk_strike": "R-L4b2: the value a struck piece, or a changed taker, becomes "
+        "where it stands, as `strike_writes`",
         "game.rs::blast_strikes": "SR5a: the value a piece a blast struck becomes where it "
         "stands",
         "game.rs::sweep_strikes": "SR6a: the value a piece a sweep struck becomes where it "
@@ -516,6 +533,8 @@ READERS: dict[str, dict[str, str]] = {
     "rehome()": {
         "game.rs::strike_writes": "TC1: Andernach's switch and a contact flip, the value a "
         "struck piece becomes where it lands",
+        "game.rs::walk_strike": "R-L4b2: Andernach's switch in a `general` list's mover half, "
+        "as `strike_writes`",
         "rounds.rs::contact_in_place": "TC1, schema 26: a contact flip, as `strike_writes`",
         "rounds.rs::strike_after": "TC1, schema 26: a captor that switches, as `strike_writes`",
         "rounds.rs::shooter_after": "TC1, SR7e: a shooter that switches where it stands, as "

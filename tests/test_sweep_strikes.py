@@ -34,6 +34,7 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_SWEEP, decode_move, move_from, move_to
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import spec_hash
+from chess_variant_sandbox.spec.capture import lifted_pairs
 from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import validate_spec
 
@@ -359,12 +360,12 @@ class TestTheRefusals:
         spec["pieces"][1]["moves"][0]["effects"] = "everything"
         assert any("effects must be one of" in e for e in validate_spec(spec))
 
-    def test_a_blast_beside_the_strike_is_refused(self) -> None:
-        """W3's narrower row (SR6c lifted the rest: `tests/test_sweep_blast.py`): a blast
-        beside a sweep and a strike, whose order nobody has written."""
+    def test_a_blast_beside_the_strike_is_the_list(self) -> None:
+        """W3's narrower row, lifted by R-L4b (W3.both; SR6c lifted the rest): a blast
+        beside a sweep and a strike, ordered by the capture list."""
         spec = _spec()
         spec["rules"]["explode_on_capture"] = {"radius": 1, "immune": ["K"]}
-        assert "W3" in refused_ids(validate_spec(spec))
+        assert "W3" not in refused_ids(validate_spec(spec)) and "W3.both" in lifted_pairs(spec)
 
     def test_the_compiled_rule_carries_the_switch(self) -> None:
         compiled = compile_spec(_spec())

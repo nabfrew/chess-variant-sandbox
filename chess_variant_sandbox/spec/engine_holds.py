@@ -140,8 +140,12 @@ def _joined(rules: dict[str, Any]) -> bool:
 def _landing_bound(rules: dict[str, Any]) -> int:
     """At least as many squares as one chosen landing can offer (C4)."""
     most = 0
-    for key in ("strike", "contacts"):
-        rule = rules.get(key)
+    # R-L4b4: a landing in the capture list's strike or contacts entries too.
+    listed = [
+        entry for entry in rules.get("capture") or []
+        if isinstance(entry, dict) and entry.get("do") in ("strike", "contacts")
+    ]
+    for rule in [rules.get("strike"), rules.get("contacts"), *listed]:
         landing = rule.get("landing") if isinstance(rule, dict) else None
         if isinstance(landing, dict):
             most = max(most, len(push_directions_of(landing)))

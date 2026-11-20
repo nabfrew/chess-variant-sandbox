@@ -42,6 +42,12 @@ from chess_variant_sandbox.spec.schema import validate_spec
 
 A_TO_F = ("A", "B", "C", "D", "E", "F")
 
+# The row list a seed recorded before R-L4b (the capture list's 18 rows) drew from: a seed names
+# a row by its place in the list, so the seeds pinned below replay against that list.
+_BEFORE_THE_LIST = tuple(row for row in keys.lifted() if row.by != "R-L4b")
+# R-L4b5 appended two rows; seeds pinned before it name their row among the rows before them.
+_BEFORE_THE_ROUND_ROWS = tuple(row for row in keys.lifted() if row.id not in ("T1.rounds", "T4.rounds"))
+
 
 # --------------------------------------------------------------------- the lifted list
 
@@ -1224,6 +1230,224 @@ def test_every_built_case_is_one_the_core_plays() -> None:
     assert held == []
 
 
+# ------------------------------------------------- R-L4b stage 3: the capture list's checks
+
+_DEMOTE = {"effect": "demote", "immune": ["K"],
+           "chain": [{"from": "R", "to": "B"}, {"from": "B", "to": "N"}, {"from": "N", "to": "P"}]}
+
+
+def _a_capture(record: Record) -> int:
+    """The first step whose move takes the other side's piece on its target."""
+    c = record.engine.spec
+    return _first(record, lambda s: move_type(s.moves[0]) in (MOVE_NORMAL, MOVE_PROMOTION)
+                  and s.before.board[move_to(s.moves[0])]
+                  and c.owner_of(s.before.board[move_to(s.moves[0])]) == 1 - s.mover and not s.phase)
+
+
+def test_the_one_place_check_fires_on_a_taken_piece_both_filed_and_standing() -> None:
+    # T2: the hand files the taken piece ahead of the strike, so it is struck nowhere.
+    spec = _six(capture=[{"do": "hand"}, {"do": "strike", "position": "stay", **_DEMOTE}], drops={})
+    record = _judged_record("a_taken_piece_is_in_one_place", spec, want=lambda r: _try(_a_capture, r) is not None)
+    index = _a_capture(record)
+    step = record.steps[index]
+    target = move_to(step.moves[0])
+    planted = _edit_after(record, index, {target: step.before.board[target]})
+    assert "more pieces" in _fires("a_taken_piece_is_in_one_place", planted)
+    hands = [list(h) for h in step.before.hands]
+    planted = _edit_after(record, index, hands=tuple(tuple(h) for h in hands))
+    assert "filed 0 pieces" in _fires("a_taken_piece_is_in_one_place", planted)
+
+
+def test_the_spared_piece_check_fires_on_a_capturer_that_outlived_its_blast() -> None:
+    # T1.position: a blast that spares the taken piece ahead of a strike placed "swap", which
+    # puts the struck piece on the square the capturer left.
+    spec = _six(capture=[{"do": "blast", "radius": 1, "immune": ["K"], "spares_taken": True},
+                         {"do": "strike", "position": "swap", **_DEMOTE}])
+
+    def linked_victim(r: Record) -> bool:
+        index = _try(_a_capture, r)
+        if index is None:
+            return False
+        step, c = r.steps[index], r.engine.spec
+        return c.piece_ids[c.type_of(step.before.board[move_to(step.moves[0])])] in ("R", "B", "N")
+    record = _judged_record("a_spared_piece_stands_after_its_blast", spec, seeds=300, want=linked_victim)
+    index = _a_capture(record)
+    step = record.steps[index]
+    origin, target = move_from(step.moves[0]), move_to(step.moves[0])
+    planted = _edit_after(record, index, {target: step.before.board[origin]})
+    assert "survived the blast" in _fires("a_spared_piece_stands_after_its_blast", planted)
+    planted = _edit_after(record, index, {origin: 0})
+    assert "does not stand" in _fires("a_spared_piece_stands_after_its_blast", planted)
+
+
+def test_the_two_tables_check_fires_on_a_link_the_capturer_ignored() -> None:
+    # T3: a strike placed "swap" and a contact table whose links change every capturer.
+    links = [{"mover": a, "onto": b, "mover_to": "P"} for a in ("R", "B", "N") for b in ("R", "B", "N", "P")]
+    spec = _six(capture=[{"do": "strike", "position": "swap", **_DEMOTE},
+                         {"do": "contacts", "links": links, "immune": ["K"]}])
+    record = _judged_record("two_tables_each_read_their_own_meetings", spec, seeds=300)
+    c = record.engine.spec
+    index = _first(record, lambda s: move_type(s.moves[0]) == MOVE_NORMAL
+                   and s.before.board[move_to(s.moves[0])]
+                   and c.owner_of(s.before.board[move_to(s.moves[0])]) == 1 - s.mover
+                   and c.piece_ids[c.type_of(s.before.board[move_from(s.moves[0])])] in ("R", "B", "N"))
+    step = record.steps[index]
+    planted = _edit_after(record, index, {move_to(step.moves[0]): step.before.board[move_from(step.moves[0])]})
+    assert "its contact link names" in _fires("two_tables_each_read_their_own_meetings", planted)
+
+
+def test_the_list_sweep_check_fires_on_a_swept_piece_no_entry_reads() -> None:
+    # W1.disagree: a strike reads the bishop's path only; the rook's swept pieces simply go.
+    spec = _sweep_spec()
+    _piece(spec, "B")["moves"] = [{"kind": "sweep", "vectors": [[1, 1]], "symmetry": "rotate4"}]
+    spec["rules"]["capture"] = [{"do": "strike", "position": "stay", **_DEMOTE,
+                                 "on": ["landing", "path", "collision"], "path_by": ["B"]},
+                                {"do": "hand"}]
+    spec["rules"]["drops"] = {}
+    c = Engine(spec).spec
+
+    def rook_swept(r: Record) -> bool:
+        return any(move_type(s.moves[0]) == MOVE_SWEEP and c.type_of(s.before.board[move_from(s.moves[0])])
+                   == c.piece_ids.index("R") and any(s.before.board[q] for q in c.sweep_path(
+                       s.before.board, s.moves[0], s.mover) if q != move_to(s.moves[0])) for s in r.steps)
+    record = _judged_record("a_sweep_follows_the_list", spec, seeds=400, want=rook_swept)
+    index = _first(record, lambda s: move_type(s.moves[0]) == MOVE_SWEEP and c.type_of(
+        s.before.board[move_from(s.moves[0])]) == c.piece_ids.index("R") and any(
+        s.before.board[q] for q in c.sweep_path(s.before.board, s.moves[0], s.mover) if q != move_to(s.moves[0])))
+    step = record.steps[index]
+    swept = next(q for q in c.sweep_path(step.before.board, step.moves[0], step.mover)
+                 if q != move_to(step.moves[0]) and step.before.board[q])
+    planted = _edit_after(record, index, {swept: step.before.board[swept]})
+    assert "still stands" in _fires("a_sweep_follows_the_list", planted)
+
+
+def test_the_list_push_check_fires_on_a_pusher_gone_with_no_entry_reading_it() -> None:
+    # push.X2.strike: a strike beside a push, reading only the landing.
+    spec = _six(capture=[{"do": "strike", "position": "stay", **_DEMOTE}, {"do": "hand"}], drops={})
+    for piece in spec["pieces"]:
+        if not piece.get("royal"):
+            piece["moves"] = [dict(move, push=True) if move.get("mode", "both") != "move" else move
+                              for move in piece["moves"]]
+    assert validate_spec(spec) == [], validate_spec(spec)
+    record = _judged_record("a_pushed_off_piece_is_taken_as_the_list_says", spec, seeds=300)
+    index = _first(record, lambda s: move_type(s.moves[0]) == checks.MOVE_PUSH and not s.phase)
+    step = record.steps[index]
+    planted = _edit_after(record, index, {move_to(step.moves[0]): 0})
+    assert "did not stand" in _fires("a_pushed_off_piece_is_taken_as_the_list_says", planted)
+
+
+def test_the_gate_check_fires_on_a_gated_piece_missing_after_the_blast() -> None:
+    # gating.blast: the gated piece enters with the move, before the blast.
+    spec = copy.deepcopy(generate.SIX)
+    spec["rules"]["drops"] = {"from_captures": False, "stock": {"N": 1}, "gating": {"ranks": [0]}}
+    spec["rules"]["explode_on_capture"] = {"radius": 1, "immune": ["K"]}
+    _piece(spec, "R")["moves"] = [{"kind": "slide", "vectors": [[0, 1]], "symmetry": "rotate4"}]
+    assert validate_spec(spec) == [], validate_spec(spec)
+    engine = Engine(spec)
+    state = engine.make_state({"a1": ("R", 0), "d1": ("K", 0), "a5": ("P", 1), "f6": ("K", 1)},
+                              hands=((0, 0, 0, 1, 0), (0, 0, 0, 0, 0)))
+    gates = [m for m in engine.legal_moves(state) if checks._move_gate(m) and state.board[move_to(m)]]
+    assert gates, [engine.describe_move(state, m) for m in engine.legal_moves(state)]
+    after = engine.apply(state, gates[0])
+    step = Step(0, state, (gates[0],), after, (), False, tuple(engine.legal_moves(state)))
+    record = Record(spec=spec, engine=engine, steps=[step])
+    assert _check("a_gated_piece_enters_before_the_blast")(record) == 1
+    planted = _edit_after(record, 0, {move_from(gates[0]): 0})
+    assert "is not there after the blast" in _fires("a_gated_piece_enters_before_the_blast", planted)
+
+
+def test_the_cost_check_fires_on_a_capture_charged_for_its_link() -> None:
+    # upkeep.U9: a link that changes the capturer after the move is not charged.
+    links = [{"mover": a, "onto": b, "mover_to": "R"} for a in ("B", "N", "P") for b in ("R", "B", "N", "P")]
+    spec = _six(contacts={"links": links, "immune": ["K"]}, purse={"start": 40, "upkeep": True})
+    for piece in spec["pieces"]:
+        piece["upkeep"] = 1
+    assert validate_spec(spec) == [], validate_spec(spec)
+    record = _judged_record("a_move_pays_for_what_it_made_itself", spec, seeds=300)
+    index = _a_capture(record)
+    step = record.steps[index]
+    purses = list(step.after.purse)
+    purses[step.mover] -= 1
+    planted = _edit_after(record, index, purse=tuple(purses))
+    assert "its own type's arrival" in _fires("a_move_pays_for_what_it_made_itself", planted)
+
+
+@pytest.mark.parametrize("seed", [29216, 11288, 34367, 33806, 43264, 105284])
+def test_the_capture_lists_first_soak_seeds_replay_clean(seed: int) -> None:
+    """R-L4b3's first soak: a wild piece's bounty went unpaid where the core walked a list built
+    without a pay entry (29216, 11288, 34367: `capture.bounty_declared` read only a written
+    bounty, where a wild piece pays its type's value unwritten; fixed), a gate from an
+    unlimited slot read as a piece from nowhere (33806) and a gated piece a blast took read as
+    never gated (43264), two check gaps; and the final soak's one, a piece reborn on its home
+    that a sweep under `"path"` had just emptied, placed `"home"` (105284), a third."""
+    coverage = Coverage()
+    check_case(seed, coverage, rows=_BEFORE_THE_ROUND_ROWS)
+    assert coverage.played == 1 and coverage.failures == [], (seed, coverage.failures)
+
+
+def _round_list_spec(**rules: Any) -> dict[str, Any]:
+    """R-L4b5: the six-square army in rounds, a blast beside a strike that sends the struck
+    piece home (T1.rounds' pair)."""
+    spec = _six(simultaneous={}, explode_on_capture={"radius": 1, "immune": ["K"], "of": ["R", "N", "P"]},
+                strike={"effect": "demote", "position": "home", "immune": ["K"],
+                        "chain": [{"from": "R", "to": "B"}, {"from": "B", "to": "N"}, {"from": "N", "to": "P"}]})
+    spec["rules"].update(rules)
+    return spec
+
+
+def _blast_capture(record: Record) -> tuple[int, int, int] | None:
+    """The first round in which a player's arrival took a standing enemy piece with neither a
+    collision nor the victim moving: (step index, player, target)."""
+    for index, step in enumerate(record.steps):
+        if not step.round or step.phase:
+            continue
+        for i in (0, 1):
+            move, other = step.moves[i], step.moves[1 - i]
+            origin, target = checks.move_from(move), checks.move_to(move)
+            taker, victim = step.before.board[origin], step.before.board[target]
+            c = record.engine.spec
+            if (checks.move_type(move) == checks.MOVE_NORMAL and taker and victim and origin != target
+                    and c.owner_of(taker) == i and c.owner_of(victim) == 1 - i
+                    and c.explosion is not None and c.type_of(victim) in (c.explosion.of_types or ())
+                    and checks.move_from(other) != target and checks.move_to(other) != target):
+                return index, i, target
+    return None
+
+
+def test_the_round_list_check_fires_on_a_capturer_that_survived_its_blast() -> None:
+    """R-L4b5 (T1.rounds): a planted capturer left on the square its blast cleared."""
+    record = _judged_record("a_round_follows_the_list", _round_list_spec(), seeds=300,
+                            want=lambda r: _blast_capture(r) is not None)
+    found = _blast_capture(record)
+    assert found is not None
+    index, player, target = found
+    step = record.steps[index]
+    planted = _edit_after(record, index, {target: step.before.board[checks.move_from(step.moves[player])]})
+    assert "still stands there" in _fires("a_round_follows_the_list", planted)
+
+
+def test_the_round_list_check_fires_on_a_piece_from_nowhere() -> None:
+    """R-L4b5 (T4.rounds' check too): a planted piece in a hand after a round (rule 1)."""
+    spec = _round_list_spec()
+    spec["rules"].pop("strike")
+    spec["rules"]["contacts"] = {"links": [{"mover": "N", "onto": "B", "mover_to": "B"}], "immune": ["K"]}
+    record = _judged_record("a_round_follows_the_list", spec, seeds=60)
+    index = _first(record, lambda s: s.round)
+    hands = record.steps[index].after.hands
+    planted = _edit_after(record, index, hands=(tuple(h + 1 for h in hands[0]) or (1,), hands[1]))
+    assert "more pieces" in _fires("a_round_follows_the_list", planted)
+
+
+@pytest.mark.parametrize("seed", [16758, 88595])
+def test_the_round_list_soak_s_seeds_replay_clean(seed: int) -> None:
+    """R-L4b5's soak: a drop from an unlimited slot enters play with its count unmoved, which
+    `a_round_follows_the_list` first read as a piece from nowhere (16758, row T4.rounds; 88595,
+    R19): a check gap, not an engine fault."""
+    coverage = Coverage()
+    check_case(seed, coverage)
+    assert coverage.played == 1 and coverage.failures == [], (seed, coverage.failures)
+
+
 def test_every_check_has_a_planted_fault_test() -> None:
     """The rule of this file, held: a new check without a test above fails here."""
     import inspect
@@ -1422,7 +1646,7 @@ def test_the_soak_s_check_gaps_replay_clean() -> None:
     an `enemy` screen over a nobody's piece (3186030). Each replays clean."""
     for seed in (160964, 200348, 173245, 1102803, 1109416, 1198608, 2130750, 3178451, 3186030):
         coverage = Coverage()
-        check_case(seed, coverage)
+        check_case(seed, coverage, rows=_BEFORE_THE_LIST)
         assert coverage.played == 1 and coverage.failures == [], (seed, coverage.failures)
 
 
@@ -1432,7 +1656,7 @@ def test_a_victim_reborn_on_a_swept_home_replays_clean(seed: int) -> None:
     clears its path, then the landing's victim is reborn on its home, which the sweep had just
     emptied (`Rd1xd4 (sweeps d2) (reborn d2)`): a check gap, not an engine fault."""
     coverage = Coverage()
-    check_case(seed, coverage)
+    check_case(seed, coverage, rows=_BEFORE_THE_LIST)
     assert coverage.played == 1 and coverage.failures == [], (seed, coverage.failures)
 
 
@@ -1442,7 +1666,7 @@ def test_a_victim_reborn_on_a_swept_home_replays_clean(seed: int) -> None:
                    "promote); an oracle gap in chess_variant_sandbox/fuzz.py, not an engine fault")
 def test_a_piece_displaced_into_its_zone_replays_clean() -> None:
     coverage = Coverage()
-    check_case(8113368, coverage)
+    check_case(8113368, coverage, rows=_BEFORE_THE_LIST)
     assert coverage.played == 1 and coverage.failures == [], coverage.failures
 
 
@@ -1456,6 +1680,6 @@ def test_the_soak_s_fault_seeds_play_clean(seed: int) -> None:
     """R-L6e: the seeds of R-L6b's F7 to F10, fixed: each builds a case the core plays, no check
     fails, none files a fault as known (`checks.KNOWN_FAULTS` is empty again) and none is held."""
     coverage = Coverage()
-    check_case(seed, coverage)
+    check_case(seed, coverage, rows=_BEFORE_THE_LIST)
     assert coverage.played == 1 and coverage.failures == [], (seed, coverage.failures)
     assert not coverage.known and not coverage.held, (seed, coverage.known, coverage.held)

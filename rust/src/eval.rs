@@ -567,6 +567,8 @@ pub struct Evaluator {
     /// Q986b: what a rested or caught royal costs its side in a round, in material units:
     /// `RESTED_ROYAL_PIECES` times the mean non-royal piece, as `spy_weight` is.
     rested_royal: f64,
+    /// Whether the spec restricts a capture (`declares_capture_matrix`), which gates the
+    /// relational material; never `Tables::has_capture_matrix` (Q1221).
     has_capture_matrix: bool,
     /// How many pieces each side started with, of the types an `extinction` rule counts.
     /// The denominator of the shortfall term, and constant for the whole game.
@@ -639,6 +641,21 @@ struct Immunity {
     n_types: usize,
 }
 
+/// Q1221: whether the spec itself restricts a capture, some `(attacker, victim)` pair its
+/// matrix refuses -- `CompiledSpec.has_capture_matrix`, which every evaluator reading of a
+/// capture matrix asks in `agents/evaluation.py` and `agents/features.py`.
+///
+/// **Not `Tables::has_capture_matrix`.** The bridge sets that one in every push game too
+/// (Q1074b2), so the attack tests read the victim's type for a push source; the matrix it
+/// switches on there is all true. Read by the evaluator it turned on the relational
+/// material and the immunity term in a push game whose spec declares no matrix, which the
+/// oracle leaves off: on dohyo, every piece reads immune (nothing captures; a shove is no
+/// capture), so a thrown-out piece was priced a second time and the two searches parted.
+/// Read at construction only, never per node.
+pub(crate) fn declares_capture_matrix(t: &Tables) -> bool {
+    t.capture_allowed.iter().any(|allowed| !allowed)
+}
+
 impl Immunity {
     /// `None` where immunity is not a fact about the capture relation alone, so the term
     /// reads zero rather than something wrong:
@@ -649,7 +666,7 @@ impl Immunity {
     /// - an explosion, a strike or wild pieces: a piece can leave the board, or change
     ///   type, by a route that is not an enemy piece capturing it.
     fn of(t: &Tables) -> Option<Self> {
-        if !t.has_capture_matrix || t.explosion.is_some() || t.strike.is_some() || t.has_npcs {
+        if !declares_capture_matrix(t) || t.explosion.is_some() || t.strike.is_some() || t.has_npcs {
             return None;
         }
         let n_types = t.n_types;
@@ -800,7 +817,7 @@ impl Evaluator {
             spy_mask: t.spy.as_ref().map_or([0, 0], |spy| spy.mask),
             spy_weight,
             rested_royal,
-            has_capture_matrix: t.has_capture_matrix,
+            has_capture_matrix: declares_capture_matrix(t),
             initial_counts,
             has_drops: t.drops.is_some(),
             immune_weight: 0.0,

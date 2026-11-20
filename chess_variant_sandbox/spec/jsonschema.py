@@ -23,10 +23,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from chess_variant_sandbox.spec.capture import CAPTURE_CAUSES, CAPTURE_KINDS
 from chess_variant_sandbox.spec.schema import (
     BARE_ROYAL_HOLDER,
     BLAST_STRIKE_VALUES,
     BOUNTY_MAX,
+    BOUNTY_PAYEES,
     CONTACT_POSITIONS,
     ENDING_RESULTS,
     FACING_AXES,
@@ -2677,6 +2679,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
         required=["win"],
         strict=strict,
     )
+    rules["properties"]["capture"] = _capture_list(rules["properties"], strict)
 
     return _object(
         {
@@ -2806,6 +2809,62 @@ _NO_STRAIGHT_BACK: dict[str, Any] = {
         "with a move back; a bar no move can meet is refused. Default false."
     ),
 }
+
+
+def _capture_list(rules: dict[str, Any], strict: bool) -> dict[str, Any]:
+    """R-L4b stage 3 (`spec/capture.py`): ``rules.capture``, an ordered list of entries. Each
+    entry's keys are its kind's old rule's (``strike``, ``contacts``, ``explode_on_capture``
+    without ``strikes``), read off those rules' own properties here, and the list's own."""
+    entry: dict[str, Any] = {
+        "do": {
+            "type": "string",
+            "enum": list(CAPTURE_KINDS),
+            "description": (
+                "What this entry does to each taking it reads: pay its bounty, file the taken "
+                "piece in the mover's hand, set off a blast, strike it (rules.strike's keys) "
+                "or meet it by a contact table (rules.contacts's keys)."
+            ),
+        },
+        "on": {
+            "type": "array",
+            "items": {"type": "string", "enum": list(CAPTURE_CAUSES)},
+            "description": (
+                "Which takings the entry reads: the move's own capture (landing), a sweep's "
+                "path, a blast's victims, a push's, a round's collision. Each kind has a "
+                "default: pay all, hand all but blast, blast landing/path/collision, strike "
+                "landing/collision, contacts landing."
+            ),
+        },
+        "path_by": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "The sweepers whose swept pieces a 'path' reading takes; absent, every sweeper.",
+        },
+        "spread": {
+            "type": "boolean",
+            "description": "A blast's: also centre one on each swept or pushed-off piece it reads.",
+        },
+        "spares_taken": {
+            "type": "boolean",
+            "description": "A blast's: leave the piece whose capture set it off for later entries.",
+        },
+        "to": {"type": "string", "enum": list(BOUNTY_PAYEES), "description": "A pay entry's payee."},
+    }
+    for key in ("strike", "contacts", "explode_on_capture"):
+        for name, prop in rules[key]["properties"].items():
+            if name != "strikes":
+                entry.setdefault(name, prop)
+    return {
+        "type": "array",
+        "items": _object(entry, required=["do"], strict=strict),
+        "description": (
+            "What a capture does, as one ordered list, top to bottom: each entry acts on each "
+            "taking it reads, and the first entry that takes a piece has it (a hand files it, "
+            "a strike places it, a blast destroys it). Write it only for an order or reading "
+            "rules.strike, rules.contacts, rules.explode_on_capture and drops.from_captures "
+            "cannot say, and then instead of them."
+        ),
+    }
 
 
 def _object(

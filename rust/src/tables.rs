@@ -580,6 +580,7 @@ pub fn rare_in_use(t: &Tables) -> bool {
     t.drops.is_some()
         || t.strike.is_some()
         || t.explosion.is_some()
+        || t.capture.is_some()
         || t.has_capture_matrix
         // SWEEP, PUSH (a landing's `MODE_PUSH` is compiled only under it), HOPS
         || t.has_sweep
@@ -1134,11 +1135,271 @@ impl ExplosionRule {
     pub fn clears(&self, t: &Tables, value: u8) -> bool {
         value != 0 && !self.immune_types[t.type_of(value)]
     }
+}
 
-    /// SR6c (W3): whether a sweep by `mover_type` blasts each swept square it may.
+/// R-L4b stage 1 (`docs/reference/capture-effects-design.md` §2.1): the causes of a taking an
+/// entry reads (its `on`), as bits.
+pub const ON_LANDING: u8 = 1;
+/// A sweep's swept pieces (`"path"`).
+pub const ON_PATH: u8 = 2;
+/// A piece a blast cleared (`"blast"`).
+pub const ON_BLAST: u8 = 4;
+/// A piece a push threw off or crushed (`"push"`).
+pub const ON_PUSH: u8 = 8;
+/// A round's collision (`"collision"`; read by `rounds.rs`, which stage 1 leaves as built).
+pub const ON_COLLISION: u8 = 16;
+
+/// One thing a capture does (§2.1's `do`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CaptureKind {
+    /// A bounty into the points and the purse (`pieces[].bounty`, `npcs[].bounty`,
+    /// `purse.bounty_to`).
+    Pay,
+    /// The taken piece into the mover's hand, demoted (`drops.from_captures`).
+    Hand,
+    /// `explode_on_capture`.
+    Blast,
+    /// `strike`, or (`contacts`) the same compiled rule keyed by the pair.
+    Strike,
+    Contacts,
+}
+
+/// One entry of the list, with the three keys that replace the two switches that ordered a
+/// pair (§2.1): `on`, `spread` and `spares_taken`. Each is read off today's tables at load.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct CaptureEntry {
+    pub kind: CaptureKind,
+    /// The causes this entry reads (`ON_*` bits); §2.1's defaults, plus `ON_PATH` where a
+    /// sweeper's `effects: "path"` said so, and `ON_BLAST` on a strike where
+    /// `explode_on_capture.strikes` named the blast's victims.
+    pub on: u8,
+    /// `by` for `"path"`: `[mover type]`, the sweepers whose swept pieces this entry reads
+    /// (`moves[].effects: "path"`, read per piece). Empty: none.
+    pub path_by: Vec<bool>,
+    /// A blast's `spread`, per sweeper type: a blast on each swept square that sets one off,
+    /// not only on the landing (`ExplosionRule::sweep_path`). Empty: never.
+    pub spread: Vec<bool>,
+    /// A blast's `spares_taken`: the piece whose capture set it off stays for a later entry
+    /// (`explode_on_capture.strikes` `"target"`).
+    pub spares_taken: bool,
+}
+
+impl CaptureEntry {
+    fn new(kind: CaptureKind, on: u8) -> Self {
+        Self { kind, on, path_by: Vec::new(), spread: Vec::new(), spares_taken: false }
+    }
+
+    /// Whether this entry reads a sweep by `mover_type`'s swept pieces.
     #[inline]
-    pub fn blasts_path(&self, mover_type: usize) -> bool {
-        !self.sweep_path.is_empty() && self.sweep_path[mover_type]
+    pub fn reads_path(&self, mover_type: usize) -> bool {
+        self.on & ON_PATH != 0 && self.path_by.get(mover_type).copied().unwrap_or(false)
+    }
+
+    /// Whether a sweep by `mover_type` spreads this blast over its swept squares.
+    #[inline]
+    pub fn spreads(&self, mover_type: usize) -> bool {
+        self.spread.get(mover_type).copied().unwrap_or(false)
+    }
+}
+
+/// R-L4b stage 1: the capture list in the default order (§4: `pay`, `hand`, `blast`, `strike`
+/// or `contacts`), the only order a stored game can be in. `None` (no `Tables::capture`) is
+/// plain capture. The entries call today's functions; what they read is in §2.3.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct CaptureProgram {
+    pub entries: Vec<CaptureEntry>,
+    /// Whether any entry writes the board (a blast, a strike, contacts): what the legality
+    /// filter plays. The ledger entries (`pay`, `hand`) it skips, as before (§2.3).
+    pub board: bool,
+    /// Whether a blast entry is in the list: the filter's blast arm asks it. False for a
+    /// `general` list, whose blasts the filter plays inside the walk.
+    pub blast: bool,
+    /// R-L4b stage 2 (§2.2): a list crossed in its own order (`capture_order`), walked by
+    /// `Game::walk_general` over the taking records, rules 1 to 3. False for every list
+    /// `derive` reads, which stage 1's walk plays as built.
+    pub general: bool,
+    /// R-L4b stage 2 (T3, §3.1): the contact table a `general` list's `contacts` entries
+    /// read where the spec states one beside its strike (`capture_contacts`); `None` reads
+    /// `Tables::strike` for both kinds. Never placed `choose` (one landing list per word).
+    pub contacts: Option<Box<StrikeRule>>,
+}
+
+/// R-L4b stage 2: the `do` codes of `capture_order` (`engine/bridge.py::_capture_fields`).
+pub const CAPTURE_DO_PAY: i32 = 0;
+pub const CAPTURE_DO_HAND: i32 = 1;
+pub const CAPTURE_DO_BLAST: i32 = 2;
+pub const CAPTURE_DO_STRIKE: i32 = 3;
+pub const CAPTURE_DO_CONTACTS: i32 = 4;
+
+impl CaptureProgram {
+    /// The list a game's tables say, or `None` where every capture only removes. Read once, by
+    /// `Tables::from_py`, after the rules it reads are loaded. A free reading of fields that
+    /// crossed, as `rare_in_use` is: it decides no rule, only where each is walked.
+    pub fn derive(t: &Tables) -> Option<Box<Self>> {
+        let mut entries = Vec::new();
+        if t.pays {
+            entries.push(CaptureEntry::new(CaptureKind::Pay, ON_LANDING | ON_PATH | ON_BLAST | ON_PUSH | ON_COLLISION));
+        }
+        if t.drops.as_ref().is_some_and(|rule| rule.from_captures) {
+            // H6: a blast's victims reach no hand.
+            let mut hand = CaptureEntry::new(CaptureKind::Hand, ON_LANDING | ON_PUSH | ON_COLLISION);
+            hand.on |= ON_PATH;
+            hand.path_by = vec![true; t.n_types];
+            entries.push(hand);
+        }
+        if let Some(explosion) = t.explosion.as_ref() {
+            let mut blast = CaptureEntry::new(CaptureKind::Blast, ON_LANDING | ON_PATH | ON_COLLISION);
+            // A sweep beside a blast always sets one off on its landing when anything it took
+            // fires (`sweep_blast_centres`): every sweeper reads its path.
+            blast.path_by = vec![true; t.n_types];
+            blast.spread = explosion.sweep_path.clone();
+            blast.spares_taken = explosion.strikes & BLAST_STRIKES_TARGET != 0;
+            entries.push(blast);
+        }
+        if let Some(strike) = t.strike.as_ref() {
+            // `contacts` and `strike` compile into one rule; the pair tables (a mover's change,
+            // an own link) are what only a contacts table writes.
+            let contacts = strike.mover_to.iter().any(|&to| to >= 0) || !strike.own_link.is_empty();
+            let kind = if contacts { CaptureKind::Contacts } else { CaptureKind::Strike };
+            let mut entry = CaptureEntry::new(kind, ON_LANDING | ON_COLLISION);
+            if !strike.sweep_path.is_empty() && strike.sweep_path.iter().any(|&on| on) {
+                entry.on |= ON_PATH;
+                entry.path_by = strike.sweep_path.clone();
+            }
+            if t.explosion.as_ref().is_some_and(|explosion| explosion.strikes & BLAST_STRIKES_VICTIMS != 0) {
+                entry.on |= ON_BLAST;
+            }
+            entries.push(entry);
+        }
+        if entries.is_empty() {
+            return None;
+        }
+        let board = entries.iter().any(|entry| {
+            matches!(entry.kind, CaptureKind::Blast | CaptureKind::Strike | CaptureKind::Contacts)
+        });
+        let blast = entries.iter().any(|entry| entry.kind == CaptureKind::Blast);
+        Some(Box::new(Self { entries, board, blast, general: false, contacts: None }))
+    }
+
+    /// R-L4b stage 2: a list in its own order, read off `capture_order` (flat: the number of
+    /// entries, so `[0]` is an empty list, plain capture, where `[]` is no list crossed;
+    /// then per entry its `do` code, its `on` bits, `spread`, `spares_taken`, the count of
+    /// its `by` types, then those types; no `by` is every sweeper). Each entry needs the rule
+    /// it walks: a hand the drops, a blast the explosion, a strike or contacts the strike
+    /// tables. Crossed only by tests (the validator speaks the old keys until stage 3), so a
+    /// malformed list is an error, never a guess. `contacts` is T3's contact table, read by the
+    /// `contacts` entries where the spec states one beside its strike.
+    pub fn from_order(
+        t: &Tables, order: &[i32], contacts: Option<StrikeRule>,
+    ) -> Result<Box<Self>, String> {
+        if contacts.as_ref().is_some_and(|rule| rule.position == StrikePosition::Choose) {
+            return Err("capture_order: a second (contact) table placed choose is not built".into());
+        }
+        let mut entries = Vec::new();
+        let count = order.first().copied().unwrap_or(0);
+        let mut at = 1;
+        while at < order.len() {
+            if at + 5 > order.len() {
+                return Err("capture_order: a truncated entry".into());
+            }
+            let (code, on, spread, spares, n_by) =
+                (order[at], order[at + 1], order[at + 2], order[at + 3], order[at + 4]);
+            if !(0..32).contains(&on) || n_by < 0 || at + 5 + n_by as usize > order.len() {
+                return Err(format!("capture_order: a malformed entry at {at}"));
+            }
+            let kind = match code {
+                CAPTURE_DO_PAY => CaptureKind::Pay,
+                CAPTURE_DO_HAND if t.drops.is_some() => CaptureKind::Hand,
+                CAPTURE_DO_BLAST if t.explosion.is_some() => CaptureKind::Blast,
+                CAPTURE_DO_STRIKE if t.strike.is_some() => CaptureKind::Strike,
+                CAPTURE_DO_CONTACTS if t.strike.is_some() => CaptureKind::Contacts,
+                _ => return Err(format!("capture_order: entry {code} has no rule to walk")),
+            };
+            let mut entry = CaptureEntry::new(kind, on as u8);
+            let by = &order[at + 5..at + 5 + n_by as usize];
+            entry.path_by = if by.is_empty() {
+                vec![true; t.n_types]
+            } else {
+                let mut flags = vec![false; t.n_types];
+                for &ty in by {
+                    let ty = usize::try_from(ty)
+                        .ok()
+                        .filter(|&ty| ty < t.n_types)
+                        .ok_or("capture_order: a `by` type out of range")?;
+                    flags[ty] = true;
+                }
+                flags
+            };
+            entry.spread = vec![spread != 0; t.n_types];
+            entry.spares_taken = spares != 0;
+            entries.push(entry);
+            at += 5 + n_by as usize;
+        }
+        if entries.len() != count as usize {
+            return Err("capture_order: the entry count disagrees with the entries".into());
+        }
+        let board = entries.iter().any(|entry| {
+            matches!(entry.kind, CaptureKind::Blast | CaptureKind::Strike | CaptureKind::Contacts)
+        });
+        Ok(Box::new(Self {
+            entries,
+            board,
+            blast: false,
+            general: true,
+            contacts: contacts.map(Box::new),
+        }))
+    }
+
+    /// The strike table `entry` reads: T3's contact table for a `contacts` entry where the
+    /// list carries one, else `strike` (the game's one strike table).
+    #[inline]
+    pub fn table<'a>(&'a self, entry: &CaptureEntry, strike: &'a StrikeRule) -> &'a StrikeRule {
+        match (&self.contacts, entry.kind) {
+            (Some(contacts), CaptureKind::Contacts) => contacts,
+            _ => strike,
+        }
+    }
+
+    /// §2.3 and §2.5 (the own-link landings): a meeting with the mover's own piece is read
+    /// only by the `contacts` entry that offered it, so a `general` list offers the own links
+    /// of the first `contacts` entry that reads the landing, and none without one. Written
+    /// over `StrikeRule::own_link` at load, the one field movegen (`may_land`) and the blast
+    /// (`blast_sets_off`, a meeting sets off nothing) read for it.
+    pub fn offered_own_links(&self, strike: &StrikeRule) -> Vec<bool> {
+        self.entries
+            .iter()
+            .find(|entry| entry.kind == CaptureKind::Contacts && entry.on & ON_LANDING != 0)
+            .map(|entry| self.table(entry, strike).own_link.clone())
+            .unwrap_or_default()
+    }
+
+    /// The blast entry, if the list has one.
+    #[inline]
+    pub fn blast_entry(&self) -> Option<&CaptureEntry> {
+        self.entries.iter().find(|entry| entry.kind == CaptureKind::Blast)
+    }
+
+    /// The strike or contacts entry, if the list has one.
+    #[inline]
+    pub fn strike_entry(&self) -> Option<&CaptureEntry> {
+        self.entries
+            .iter()
+            .find(|entry| matches!(entry.kind, CaptureKind::Strike | CaptureKind::Contacts))
+    }
+
+    /// What `blast_strikes` places after a blast: `BLAST_STRIKES_TARGET` where the blast spares
+    /// the taken piece, `BLAST_STRIKES_VICTIMS` where the strike reads the blast's victims.
+    /// The two bits `explode_on_capture.strikes` crossed as, read back off the list.
+    #[inline]
+    pub fn blast_strikes(&self) -> u8 {
+        let mut bits = 0;
+        if self.blast_entry().is_some_and(|blast| blast.spares_taken) && self.strike_entry().is_some() {
+            bits |= BLAST_STRIKES_TARGET;
+        }
+        if self.strike_entry().is_some_and(|strike| strike.on & ON_BLAST != 0) {
+            bits |= BLAST_STRIKES_VICTIMS;
+        }
+        bits
     }
 }
 
@@ -1175,6 +1436,7 @@ impl SweepVictims<'_> {
 /// pair; the loader widens the first into the second, so everything below this line asks
 /// one question. That is what lets `strike` keep sending the bytes it always sent while
 /// the core carries only the general rule.
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct StrikeRule {
     /// `to[mover * n_types + victim]` -> the type the struck piece becomes, or -1 for it
     /// leaving the board. A link the table never mentions and an immune type both arrive
@@ -1235,12 +1497,6 @@ impl StrikeRule {
     #[inline]
     pub fn flips(&self, cell: usize) -> bool {
         !self.mover_flips.is_empty() && self.mover_flips[cell]
-    }
-
-    /// SR6a (W1): whether a sweep by `mover_type` strikes the pieces it sweeps.
-    #[inline]
-    pub fn strikes_path(&self, mover_type: usize) -> bool {
-        !self.sweep_path.is_empty() && self.sweep_path[mover_type]
     }
 
     /// The squares a piece struck on `square` by `player` may be placed on, ascending.
@@ -2396,6 +2652,11 @@ pub struct Tables {
     /// before this one and every strike ruleset whose chain keeps nothing alive.
     pub strike: Option<StrikeRule>,
     pub drops: Option<DropRule>,
+    /// R-L4b stage 1 (`docs/reference/capture-effects-design.md` §2, §5): what a capture does,
+    /// as one ordered list of entries, derived at load from the tables that cross today
+    /// (`CaptureProgram::derive`; nothing new crosses). `None` for a game whose captures only
+    /// remove, which is chess: `make`, `unmake` and the filter test it once and call a cold walk.
+    pub capture: Option<Box<CaptureProgram>>,
     pub reach: Option<ReachRule>,
     /// `reach.leaves`, hoisted: the one flag `make` asks on every move, so a ruleset
     /// without the rule pays one load for it rather than an `Option` and a field.
@@ -3705,6 +3966,7 @@ impl Tables {
             explosion,
             strike,
             drops,
+            capture: None,
             reach_leaves: reach.as_ref().is_some_and(|rule| rule.leaves),
             reach_held: majority.is_some() && reach.as_ref().is_some_and(|rule| !rule.leaves),
             goal_event: reach.is_some() && (majority.is_some() || reach.as_ref().is_some_and(|rule| rule.leaves)),
@@ -3893,6 +4155,45 @@ impl Tables {
         tables.build_scan_groups();
         // R-L5c2: the copy of the common path this game runs, chosen once, last, from the
         // fields every gate reads (`rare_in_use`); the test-only switch forces the full one.
+        // R-L4b stage 1: the capture list, read off the rules loaded above.
+        tables.capture = CaptureProgram::derive(&tables);
+        // R-L4b stage 2: a list crossed in its own order replaces the derived one (tests only,
+        // until stage 3 spells it; empty for every stored game, `_INERT_DEFAULTS`).
+        let capture_order: Vec<i32> = field(source, keys::CAPTURE_ORDER)?;
+        if !capture_order.is_empty() {
+            // T3: the contact table beside a strike, its own strike fields (`{}` without one).
+            let contacts_source: Bound<'_, PyDict> = field(source, keys::CAPTURE_CONTACTS)?;
+            let contacts = if contacts_source.is_empty() {
+                None
+            } else {
+                Self::strike_rule(&contacts_source, tables.n_types, tables.n_squares)?
+            };
+            let program = CaptureProgram::from_order(&tables, &capture_order, contacts)
+                .map_err(pyo3::exceptions::PyValueError::new_err)?;
+            // §2.5: the own-link landings the list offers (`offered_own_links`).
+            if let Some(strike) = tables.strike.as_mut() {
+                strike.own_link = program.offered_own_links(strike);
+            }
+            tables.capture = Some(program);
+        }
+        // R-L4b5 (`capture-effects-design.md` §3.3): a round walks the list over its takings
+        // (`rounds.rs::walk_round`), but a strike or a link that stays is written before any
+        // list (a shot at step 0, a contact in place at step 4), and a round's own merges and
+        // shots read one strike table: so a strike or link placed `stay` beside a blast or a
+        // list in its own order, and a second (contact) table, are not built in a round.
+        if tables.simultaneous.is_some() {
+            if let Some(program) = tables.capture.as_deref() {
+                let stays = tables.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Stay);
+                // `program.blast`: a derived list's blast entry (a `general` list is refused
+                // beside a stay whatever it holds).
+                if program.contacts.is_some() || (stays && (program.general || program.blast)) {
+                    return Err(pyo3::exceptions::PyValueError::new_err(
+                        "capture list in a round: a strike or link placed stay beside a blast or a \
+                         list in its own order, or a second (contact) table, is not built",
+                    ));
+                }
+            }
+        }
         tables.lean = !rare_in_use(&tables) && !crate::path::forced_full();
         Ok(tables)
     }
@@ -6250,6 +6551,8 @@ pub mod keys {
         BARE_ROYAL => "bare_royal",
         CAPTURE_ALLOWED => "capture_allowed",
         CAPTURE_OWNED => "capture_owned",
+        CAPTURE_CONTACTS => "capture_contacts",
+        CAPTURE_ORDER => "capture_order",
         CASTLE_KING => "castle_king",
         CASTLE_KING_FILES => "castle_king_files",
         CASTLE_ROOK => "castle_rook",

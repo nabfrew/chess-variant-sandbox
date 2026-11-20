@@ -151,74 +151,53 @@ REFUSALS: tuple[Refusal, ...] = (
     # SR5a (T1, ruled 2026-10-27: a switch, `explode_on_capture.strikes`) lifted the pair;
     # what stays refused is the switch where it cannot be read, and the pair where its
     # order is a rule not written.
-    Refusal(
-        "T1", "rules.explode_on_capture.strikes", 'rules.strike.position (not "stay" or "home")',
-        "rules.explode_on_capture.strikes other than 'none' needs rules.strike.position "
-        "'stay' or 'home': the blast destroys the capturer, and only those two place a "
-        "struck piece without it",
-    ),
+    # R-L4b lifted T1.position, T1.choose, T2, T3 (but a contact table placed choose beside a
+    # strike), T4.switch, T4.choose, T5 and H5: what a capture does is one ordered list
+    # (`spec/capture.py`, `docs/reference/capture-effects-design.md` §3.1), and each pair plays
+    # as the list's default order.
     Refusal(
         "T1", "rules.explode_on_capture.strikes", 'rules.strike (effect "capture", position "stay")',
         "rules.explode_on_capture.strikes other than 'none' beside a strike of effect "
         "'capture' placed 'stay' (rifle): such a strike only removes, as the blast already "
         "does, so the switch changes nothing; leave it out",
     ),
-    Refusal(
-        "T1", 'rules.strike.position: "choose"', "rules.explode_on_capture",
-        "rules.strike.position 'choose' beside rules.explode_on_capture: a capture that "
-        "explodes strikes nothing a chosen square could hold, so the chosen square would "
-        "be a second move to the same position",
-    ),
+    # R-L4b5 narrowed T1.rounds: a round walks the capture list over its takings (`rounds.md`
+    # §4 steps 5 and 6), so a strike beside a blast plays; a shot is written before the moves.
     _rounds(
-        "T1", "rules.strike", "rules.strike beside rules.explode_on_capture",
-        "the order of a round's strikes and blasts is a rule not written",
+        "T1", "rules.strike", "a shot (rules.strike placed 'stay') beside rules.explode_on_capture",
+        "a shot is written before anything moves (rounds.md §4 step 0), ahead of the capture "
+        "list that orders a round's strikes and blasts; place the strike 'swap', 'home' or "
+        "'advance'",
+    ),
+    # R-L4b stage 3 refused any list the core walks in a round; R-L4b5 walks it there, but for
+    # a strike or link that stays (written before the list) and a second, contact, table.
+    _rounds(
+        "T1", "rules.capture", "a capture list the core walks (rules.capture in an order the "
+        "old keys cannot say, or a pair only the list plays) with a strike or contacts placed "
+        "'stay', or with both a strike and contacts",
+        "a strike or link that stays is written before the list (a shot before anything "
+        "moves, a contact in place at the meetings), and a round's own merges and shots read "
+        "one table; place it 'swap', 'home' or 'advance', and keep one of the two",
     ),
     Refusal(
-        "T2", "rules.strike (keeping its victim)", "rules.drops",
-        "rules.strike and rules.drops both say what happens to a taken piece; a struck "
-        "piece cannot both stand on the board and sit in a hand (beside a hand only a "
-        "strike that removes its victim is allowed: one that captures and stays put, "
-        "turning no capturer to the other side)",
-    ),
-    Refusal(
-        "T3", "rules.contacts", "rules.strike",
-        "rules.contacts and rules.strike are two spellings of one rule; a strike is "
-        "a contact table with no mover column, so write one or the other",
+        "T3", 'rules.contacts.position: "choose"', "rules.strike",
+        "rules.contacts placed 'choose' beside rules.strike: the contact table is the second "
+        "table a capture reads, and the move word carries one chosen landing only; place it "
+        "'stay', 'swap' or 'home'",
     ),
     # SR5a (T4, ruled 2026-10-27 as T1's default): a capture that explodes makes no contact;
-    # the switch beside contacts, a choosing contact and rounds stay refused.
-    Refusal(
-        "T4", "rules.contacts", "rules.explode_on_capture.strikes",
-        "rules.explode_on_capture.strikes other than 'none' beside rules.contacts: a capture "
-        "that explodes makes no contact, so the switch would strike with a table whose "
-        "links are about the capturer too; leave it 'none'",
-    ),
-    Refusal(
-        "T4", 'rules.contacts.position: "choose"', "rules.explode_on_capture",
-        "rules.contacts.position 'choose' beside rules.explode_on_capture: a capture that "
-        "explodes makes no contact a chosen square could hold, so the chosen square would "
-        "be a second move to the same position",
-    ),
+    # the switch beside contacts, a choosing contact and rounds stay refused. R-L4b5 narrowed
+    # T4.rounds to a contact that stays, written at the meetings, which makes no taking.
     _rounds(
-        "T4", "rules.contacts", "rules.contacts beside rules.explode_on_capture",
-        "the order of a round's contacts and blasts is a rule not written",
-    ),
-    Refusal(
-        "T5", "rules.contacts (a link keeping its target)", "rules.drops",
-        "rules.contacts and rules.drops both say what happens to a taken piece; a "
-        "transformed piece cannot both stand on the board and sit in a hand (beside a "
-        "hand only links that remove their target, naming nothing it becomes, are "
-        "allowed)",
+        "T4", "rules.contacts",
+        "a contact that stays (rules.contacts placed 'stay') beside rules.explode_on_capture",
+        "a contact that stays is written at the round's meetings (rounds.md §4 step 4) and "
+        "makes no taking, so neither the blast nor the capture list reads it; place the "
+        "contacts 'advance', 'swap' or 'home'",
     ),
     # §2.5 Promotion, the hand and extinction. H4 (its message names the position) stays inline.
     # H3 (`only_lost` beside `promote_on_entry`) was lifted by SR8a: an entering piece takes
     # the first target still offered, none if none (`Game::arriving`).
-    Refusal(
-        "H5", "rules.drops.either_face", "rules.strike.switches_sides",
-        "rules.drops.either_face beside rules.strike.switches_sides: a capture "
-        "already changes a piece's side, so what a taken piece becomes has two "
-        "answers; drop one of the two",
-    ),
     # §2.6 Sweeps, in `_check_sweep_coherence`'s order. W7 (it names the piece) stays inline,
     # lifted by SR8b but beside folds: a promoting sweeper promotes by its landing square, and
     # its word's promotion field is a fold step in a fold game (`moves.move_through`).
@@ -236,14 +215,8 @@ REFUSALS: tuple[Refusal, ...] = (
         "move names no landing square for the piece its contact keeps, so the choice would "
         "be a second rule; place it 'stay' or 'swap'",
     ),
-    # W3 lifted by SR6c (the sweep switch beside a blast) but beside a strike or contacts.
-    Refusal(
-        "W3", _SWEEP, "rules.explode_on_capture beside rules.strike or rules.contacts",
-        "rules.explode_on_capture beside rules.strike or rules.contacts is refused beside a "
-        "piece that sweeps: explode_on_capture.strikes orders a capture's blast and strike, "
-        "not a sweep's, so the order of a sweep's blasts and its strikes or contacts would "
-        "be a second rule; leave one of them out",
-    ),
+    # W3 lifted by SR6c (the sweep switch beside a blast), and beside a strike or contacts by
+    # R-L4b: a sweep's blasts and strikes are entries of the capture list, which orders them.
     # W6 (a sweep beside wrap) lifted by SR6d: where two rays of a piece reach one target, the
     # move word names its ray (`moves.move_ray`), and the text tells them apart by what each sweeps.
     # W8 (a sweep beside portals) lifted by SR6e: a fold propagates a sweep (its landing on an
@@ -341,18 +314,8 @@ PUSH_REFUSALS: tuple[Refusal, ...] = (
         "whether a pushed piece goes through a portal end, and whether a push transits one, "
         "are rules not written",
     ),
-    _push(
-        "X2", "rules.strike",
-        "a strike acts on a capture landing, and a push that removes lands nowhere",
-    ),
-    _push(
-        "X2", "rules.contacts",
-        "a contact acts on a capture landing, and a push that removes lands nowhere",
-    ),
-    _push(
-        "X3", "rules.explode_on_capture",
-        "a push that removes has no capture square on the board to centre a blast on",
-    ),
+    # X2 (a strike, contacts) and X3 (a blast) lifted by R-L4b: a pushed-off piece is a taking
+    # from the square it left, which every entry of the capture list is defined on.
     _push(
         "S1", "rules.simultaneous",
         "two pushes in one round can move each other's pushers, and a round has no order "
@@ -418,15 +381,8 @@ UPKEEP_REFUSALS: tuple[Refusal, ...] = (
         "rows from a player's first row need one row direction for both sides, which a hex "
         "board does not have",
     ),
-    _upkeep(
-        "U9", "rules.contacts",
-        "a contact may change the moving piece, and which type pays for its square is unsettled",
-    ),
-    _upkeep(
-        "U10", "rules.strike.switches_sides",
-        "a capturer that changes sides ends as the opponent's piece, and whose rows it pays "
-        "for is unsettled",
-    ),
+    # U9 (contacts) and U10 (a side switch) lifted by R-L4b: the cost is the move's own, for
+    # the type the move made, on the square the capture list leaves it on.
 )
 
 # H3 (`docs/plan-hunger.md` §4): what the pass is refused beside in its first build, each

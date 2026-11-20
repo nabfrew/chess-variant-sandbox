@@ -1706,7 +1706,12 @@ class TestTheContactTable:
         assert len(pair["contact_onto_to"]) == n * n
         assert len(pair["contact_mover_to"]) == n * n
 
-    def test_the_two_spellings_are_refused_together(self, chess: dict[str, Any]) -> None:
+    def test_the_two_tables_are_two_entries_of_the_list(self, chess: dict[str, Any]) -> None:
+        """R-L4b (stage 3) lifted T3: a strike and a contact table are two entries of the
+        capture list, each reading its own table; only a contact table placed choose beside a
+        strike stays refused (one chosen landing in the move word)."""
+        from chess_variant_sandbox.spec.capture import lifted_pairs
+
         spec = _contacts(chess, [{"mover": "P", "onto": "R", "mover_to": "N"}])
         spec["rules"]["strike"] = {
             "effect": "demote",
@@ -1715,7 +1720,8 @@ class TestTheContactTable:
             "immune": ["K"],
         }
         errors = validate_spec(spec)
-        assert "T3" in refused_ids(errors), errors
+        assert "T3" not in refused_ids(errors), errors
+        assert "T3" in lifted_pairs(spec)
 
     @pytest.mark.parametrize(
         "other, value, rid",
@@ -1724,14 +1730,13 @@ class TestTheContactTable:
             ("drops", {"from_captures": True}, "T5"),
         ],
     )
-    def test_it_is_refused_beside_the_other_rules_about_a_taken_piece(
+    def test_beside_the_other_rules_about_a_taken_piece_it_is_the_list(
         self, chess: dict[str, Any], other: str, value: Any, rid: str
     ) -> None:
-        """`_check_strike_coherence`'s refusals, restated over this spelling.
+        """A link that keeps its target beside a hand was T5's refusal; R-L4b (stage 3) lifted
+        it: the capture list's hand files the taken piece first, and the core walks the list."""
+        from chess_variant_sandbox.spec.capture import lifted_pairs
 
-        Restated rather than shared, because an error naming `rules.strike` for a file
-        that says `rules.contacts` points a reader at a rule that is not there.
-        """
         # Beside a hand only a link that keeps its target is refused since SR2 (T5).
         link = {"mover": "P", "onto": "R", "mover_to": "N"}
         if other == "drops":
@@ -1739,7 +1744,8 @@ class TestTheContactTable:
         spec = _contacts(chess, [link])
         spec["rules"][other] = value
         errors = validate_spec(spec)
-        assert rid in refused_ids(errors), errors
+        assert rid not in refused_ids(errors), errors
+        assert rid in lifted_pairs(spec)
 
     def test_it_is_allowed_beside_wild_pieces(self, chess: dict[str, Any]) -> None:
         """SR4e lifted T6: no contact reaches a wild type, so only a link naming one is

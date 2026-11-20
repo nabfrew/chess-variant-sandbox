@@ -877,9 +877,71 @@ def _portal_movement(rules: Any) -> list[dict[str, Any]]:
     return found
 
 
+# R-L4b4: ``rules.capture``, read off the spelling here (this file is in
+# `measurement.METRICS_SOURCES` and `spec/capture.py` is not, as `_portal_movement` reads the
+# portals). Each entry kind is charged what its old key cost (`_RULE_COSTS`: a strike 2.0,
+# contacts 2.5, a blast 1.5, the hand within ``drops``, a bounty on the pieces), from the
+# first entry of its kind, so a list and the old keys it lowers to count the same and no
+# stored game's counts move. A list the old keys cannot say (another order, a kind twice, a
+# reading the two switches cannot say) is one more sentence, `_CAPTURE_LIST_SENTENCE`.
+# `tests/test_capture_surfaces.py` holds these tables to `spec/capture.py`'s.
+_CAPTURE_OLD_KEY = {"blast": "explode_on_capture", "strike": "strike", "contacts": "contacts"}
+_CAPTURE_LIST_KEYS = frozenset({"do", "on", "path_by", "spread", "spares_taken"})
+_CAPTURE_ORDER = ("pay", "hand", "blast", "strike", "contacts")
+_CAPTURE_DEFAULT_ON = {
+    "pay": frozenset({"landing", "path", "blast", "push", "collision"}),
+    "hand": frozenset({"landing", "path", "push", "collision"}),
+    "blast": frozenset({"landing", "path", "collision"}),
+    "strike": frozenset({"landing", "collision"}),
+    "contacts": frozenset({"landing"}),
+}
+_CAPTURE_LIST_SENTENCE = 0.5
+
+
+def _capture_list_says_more(entries: list[Any]) -> bool:
+    """Whether a written list says what the old keys cannot, read off the spelling."""
+    kinds = [entry.get("do") for entry in entries if isinstance(entry, dict)]
+    firsts = list(dict.fromkeys(kinds))
+    if len(firsts) != len(kinds) or firsts != sorted(
+        firsts, key=lambda kind: _CAPTURE_ORDER.index(kind) if kind in _CAPTURE_ORDER else 9
+    ):
+        return True
+    for entry in entries:
+        kind = entry.get("do") if isinstance(entry, dict) else None
+        if kind not in _CAPTURE_DEFAULT_ON or not isinstance(entry.get("on"), list):
+            continue
+        extra = set(entry["on"]) ^ _CAPTURE_DEFAULT_ON[kind]
+        if extra - ({"path", "blast"} if kind in ("strike", "contacts") else set()) or (
+            extra & _CAPTURE_DEFAULT_ON[kind]
+        ):
+            return True
+    return False
+
+
+def _capture_rules(rules: Any) -> tuple[Any, float]:
+    """``rules`` with a written ``rules.capture`` read as each kind's rule under its old key,
+    and the list's own charge; ``rules`` unchanged in the old spelling."""
+    if not isinstance(rules, dict) or not isinstance(rules.get("capture"), list):
+        return rules, 0.0
+    entries = rules["capture"]
+    read = {key: value for key, value in rules.items() if key != "capture"}
+    # A hand entry fills `drops` (written `{}` beside a list, where the old keys wrote
+    # `from_captures: true`), so the hand is charged as the old keys' was.
+    if isinstance(read.get("drops"), dict) and any(
+        isinstance(entry, dict) and entry.get("do") == "hand" for entry in entries
+    ):
+        read["drops"] = {"from_captures": True, **read["drops"]}
+    for entry in entries:
+        kind = entry.get("do") if isinstance(entry, dict) else None
+        key = _CAPTURE_OLD_KEY.get(kind) if isinstance(kind, str) else None
+        if key is not None and key not in read:
+            read[key] = {k: v for k, v in entry.items() if k not in _CAPTURE_LIST_KEYS}
+    return read, _CAPTURE_LIST_SENTENCE if _capture_list_says_more(entries) else 0.0
+
+
 def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
     """Count the structural features of a validated spec."""
-    rules = spec.get("rules", {})
+    rules, capture_sentence = _capture_rules(spec.get("rules", {}))
     pieces = [*spec.get("pieces", []), *_portal_movement(rules)]
 
     move_descriptors = 0
@@ -928,7 +990,7 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
         + _rest_extras(pieces) + _sight_extras(pieces) + _path_extras(pieces)
         + _legs_extras(spec, pieces) + _hop_run_extras(pieces)
         + _neutral_extras(spec, pieces) + _bounty_extras(pieces) + _hire_extras(spec, pieces)
-        + _push_extras(rules, pieces) + _upkeep_extras(rules)
+        + _push_extras(rules, pieces) + _upkeep_extras(rules) + capture_sentence
     )
     # Q1074b5: whom a pusher may push is a line of the rules table, as `captures` is.
     capture_restrictions += _push_lists(rules, pieces)

@@ -149,8 +149,8 @@ class TestTheValidator:
             ("strike", lambda spec: set_strike(spec, effect="demote", position="choose"), "W1"),
             # SR6b lifted W2 but for a chosen square (`tests/test_sweep_contacts.py`).
             ("contacts", _choosing_contacts, "W2"),
-            # SR6c lifted W3 but beside a strike or contacts (`tests/test_sweep_blast.py`).
-            ("explode_on_capture", _blast_beside_a_strike, "W3"),
+            # SR6c lifted W3 but beside a strike or contacts, and R-L4b (W3.both) the rest:
+            # the capture list orders a sweep's blasts and strikes (`tests/test_sweep_blast.py`).
             # SR6d lifted W6 (`wrap`): the word names its ray (`tests/test_sweep_wrap.py`).
         ],
     )

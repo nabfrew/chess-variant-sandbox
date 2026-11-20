@@ -38,6 +38,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from chess_variant_sandbox.spec.capture import CAPTURE_ENTRY_KEYS, CAPTURE_KINDS
 from chess_variant_sandbox.spec.describe import RULE_ALSO_CALLED
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.spec.plain import KIND_WORDS, OPTION_WORDS, REST_WORDS, field_words
@@ -51,6 +52,10 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 # Paths are dotted from the spec's top, with `[]` for "every item of".
+# R-L4b4: the capture list's card. Its entries are in order (the page moves one up), and an
+# entry shows only the fields its kind reads (`by_kind`, from `spec/capture.py`'s tables).
+CAPTURE_LIST_KEY = "capture"
+
 PIECE_PATHS = frozenset({
     "pieces[].promoted_from",
     "pieces[].captures",
@@ -102,6 +107,19 @@ PIECE_PATHS = frozenset({
     "rules.explode_on_capture.immune",
     "rules.explode_on_capture.by",
     "rules.explode_on_capture.of",
+    # R-L4b4: an entry of the capture list carries its kind's rule's keys, and the sweepers a
+    # path reading takes.
+    "rules.capture[].path_by",
+    "rules.capture[].immune",
+    "rules.capture[].by",
+    "rules.capture[].of",
+    "rules.capture[].switches_sides",
+    "rules.capture[].chain[].from",
+    "rules.capture[].chain[].to",
+    "rules.capture[].links[].mover",
+    "rules.capture[].links[].onto",
+    "rules.capture[].links[].mover_to",
+    "rules.capture[].links[].onto_to",
 })
 
 TEXT_PATHS = frozenset({
@@ -182,6 +200,7 @@ def card_model(corpus: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
     counts = rule_counts(corpus)
     order = sorted(rules["properties"], key=lambda key: (-counts.get(key, 0), key))
     rule_fields = fields(rules, "rules", owned=frozenset(), required_all=True)
+    _capture_list_card(rule_fields)
     _hand_drawn_group_moves(rule_fields)
     _word_the_sides(rule_fields)
     return {
@@ -304,6 +323,28 @@ def corpus_specs(*dirs: Path) -> list[dict[str, Any]]:
     return found
 
 
+def capture_entry_keys() -> dict[str, list[str]]:
+    """Each capture-list kind's fields, the list's own first (`spec/capture.py`'s tables): what
+    an entry's card shows once its kind is chosen."""
+    own = ["do", "on", "path_by"]
+    return {
+        kind: own + sorted(CAPTURE_ENTRY_KEYS[kind] - set(own))
+        for kind in CAPTURE_KINDS
+    }
+
+
+def _capture_list_card(rule_fields: list[dict[str, Any]]) -> None:
+    """R-L4b4: the capture list's card is a list in order (``ordered``: the page offers to move
+    an entry up) whose entry shows only what its kind reads (``byKind``: ``do``'s value picks the
+    fields). A list the old keys say is written back as them when the draft is settled
+    (`designing.settled`), so this card holds only a list they cannot say."""
+    for field in rule_fields:
+        if field["key"] != CAPTURE_LIST_KEY or field.get("control") != "list":
+            continue
+        field["ordered"] = True
+        field["item"]["byKind"] = {"field": "do", "keys": capture_entry_keys()}
+
+
 def _hand_drawn_group_moves(rule_fields: list[dict[str, Any]]) -> None:
     """A portal group's ``moves`` (spelling 31, Q1007b) are the move rows of its card, drawn
     by hand as a piece's are (`portals.js`'s `groupMovesHtml`, `design.js`'s `moveEditor`),
@@ -395,6 +436,12 @@ def field_for(node: dict[str, Any], path: str, key: str, required: bool) -> dict
                     "item": field_for(items, path + "[]", key, True)}
         if items.get("type") == "integer":
             return {**base, "control": "ints", **_bounds(items)}
+        if items.get("type") == "string" and "enum" in items:
+            # A list of words from a closed set (R-L4b4: a capture entry's causes): one menu
+            # per item, said once on the list rather than again under each menu.
+            item = field_for(items, path + "[]", key, True)
+            item.pop("says", None)
+            return {**base, "control": "list", "item": item}
         if items.get("type") == "string":
             if node.get("description", "").endswith(_SQUARES_SUFFIX):
                 return {**base, "control": "squares"}

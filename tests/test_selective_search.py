@@ -210,9 +210,11 @@ def test_native_and_oracle_alike(arm: str) -> None:
         ("rulesets/gardner.json", 40),
         ("rulesets/chess.json", 16),
         ("rulesets/hunger.json", 16),  # the pass is legal: the null move is a real move
-        # No check (royal capture), with drops. Not dohyo: there the default player itself already
-        # parts from its oracle at ply 8 under `threats=` (seed 3), with every arm off, on main too.
+        # No check (royal capture), with drops.
         ("rulesets/dobutsu.json", 16),
+        # A push. Left out until Q1221 found why the default player parted from its oracle
+        # here (the core's evaluator read the push-widened capture-matrix flag).
+        ("rulesets/dohyo.json", 16),
     ],
 )
 def test_native_and_oracle_alike_deeper(arm: str, game: str, plies: int) -> None:

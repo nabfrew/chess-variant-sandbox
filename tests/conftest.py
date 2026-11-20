@@ -111,7 +111,10 @@ class CompileMemo:
             cells += len(per_type) + sum(map(len, per_type))
         return cells
 
-    def __call__(self, spec: dict[str, Any]) -> CompiledSpec:
+    def __call__(self, spec: dict[str, Any], capture: Any = None) -> CompiledSpec:
+        # R-L4b stage 2: a capture list handed to the compile (tests only) is never kept.
+        if capture is not None:
+            return self.real(spec, capture)
         if self.bypass:
             return self.real(spec)
         try:

@@ -168,16 +168,19 @@ class TestTheValidator:
     def test_one_rule_says_what_a_capture_leaves(
         self, games: dict[str, dict[str, Any]], name: str, other: str
     ) -> None:
-        """Rifle beside a hand is the exception since SR2 (T2): a shot removes its victim,
-        which goes to the hand (`tests/test_removing_strike_hand.py`). Beside a blast the
-        three are SR5a's (`tests/test_blast_strikes.py`)."""
+        """Rifle beside a hand was the exception since SR2 (T2): a shot removes its victim,
+        which goes to the hand (`tests/test_removing_strike_hand.py`). Since R-L4b (stage 3)
+        none is refused: circe and Andernach beside a hand are the capture list's default
+        order, the hand first, and the core is handed the list. Beside a blast the three are
+        SR5a's (`tests/test_blast_strikes.py`)."""
+        from chess_variant_sandbox.spec.capture import lifted_pairs
+
         spec = copy.deepcopy(games[name])
         spec["rules"][other] = (
             {"from_captures": True} if other == "drops" else {"radius": 1}
         )
-        rid = {"drops": "T2", "explode_on_capture": "T1"}[other]
-        refused = rid in refused_ids(validate_spec(spec))
-        assert refused == (not (name == "rifle" and other == "drops"))
+        assert "T2" not in refused_ids(validate_spec(spec))
+        assert ("T2" in lifted_pairs(spec)) == (name != "rifle")
 
 
 class TestTheCompiledTables:

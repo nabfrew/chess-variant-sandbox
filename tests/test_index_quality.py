@@ -223,7 +223,11 @@ class TestRuleCostTable:
     """
 
     def test_every_schema_rule_has_a_declared_cost(self) -> None:
-        uncosted = sorted(_RULES_KEYS - set(_RULE_COSTS))
+        # R-L4b stage 3: `rules.capture`'s entries are charged as their old keys, which every
+        # stored game writes (a list the old keys say is settled to them); charging each entry
+        # kind what its old key cost is stage 4's (`capture-effects-design.md` §6), which moves
+        # `complexity.py`, a fingerprinted metrics source, with the library's re-score.
+        uncosted = sorted(_RULES_KEYS - set(_RULE_COSTS) - {"capture"})
         assert not uncosted, (
             f"rules accepted by the schema but invisible to rule mass: {uncosted}. "
             "Add a row to _RULE_COSTS -- zero is a legitimate cost for bookkeeping, "

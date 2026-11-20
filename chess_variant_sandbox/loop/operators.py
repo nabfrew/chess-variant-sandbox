@@ -41,6 +41,17 @@ from chess_variant_sandbox.engine.compile import _lame_path
 from chess_variant_sandbox.loop.grid import descriptor
 from chess_variant_sandbox.spec import validate_spec
 from chess_variant_sandbox.spec.canonical import spec_hash
+from chess_variant_sandbox.spec.capture import (
+    CAPTURE_DEFAULT_ON,
+    capture_list,
+    carry_list,
+    default_order,
+    list_features,
+    possible_causes,
+    rules_as_old_keys,
+    says_more_than_old_keys,
+    with_list,
+)
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.relate import identity_key
 from chess_variant_sandbox.spec.schema import (
@@ -209,8 +220,16 @@ class Operator:
 
     name: str
     edit: Callable[[dict[str, Any], random.Random], str | None]
+    # R-L4b4: an operator that edits ``rules.capture`` itself (`order-the-capture`). Every
+    # other operator edits a capture rule through the list's projection (`_through_the_list`).
+    reads_list: bool = False
 
     def apply(self, spec: dict[str, Any], rng: random.Random) -> str | None:
+        if not self.reads_list and says_more_than_old_keys(spec):
+            return _through_the_list(self, spec, rng)
+        return self._apply(spec, rng)
+
+    def _apply(self, spec: dict[str, Any], rng: random.Random) -> str | None:
         summary = _income_guarded(_pass_guarded(_upkeep_guarded(self.edit)))(spec, rng)
         if summary is None:
             return None
@@ -220,6 +239,28 @@ class Operator:
         words = [_gone_words(key) for key in gone]
         listed = words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
         return f"{summary}, and {listed} had nothing left to act on, so {'it' if len(words) == 1 else 'they'} went too"
+
+
+def _through_the_list(operator: Operator, spec: dict[str, Any], rng: random.Random) -> str | None:
+    """R-L4b4: an operator on a game whose capture list only ``rules.capture`` says. The edit
+    is made to the list's projection (each kind's rule under its old key,
+    `capture.rules_as_old_keys`), which every operator already reads and writes, and its
+    result is written back as the list (`capture.carry_list`): the order and each entry's
+    readings kept, a kind the edit took away gone, one it added at its default place. Where
+    the list so carried is refused, the edit is offered with the list in its default order
+    (`capture.default_order`); where that is refused too, the operator declines, so no
+    operator hands back a child the validator refuses for a list it never touched."""
+    parent = copy.deepcopy(spec)
+    view = copy.deepcopy(rules_as_old_keys(spec))
+    summary = operator._apply(view, rng)
+    if summary is None:
+        return None
+    for child in (carry_list(parent, view), default_order(carry_list(parent, view))):
+        if not validate_spec(child):
+            spec.clear()
+            spec.update(child)
+            return summary
+    return None
 
 
 # How `Operator.apply` names a rule `settle_inert_rules` took away, in a player's words.
@@ -6140,7 +6181,99 @@ def _leap_a_row(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+_CAPTURE_STEP_WORDS = {
+    "pay": "the bounty", "hand": "the hand", "blast": "the blast", "strike": "the strike",
+    "contacts": "the contact table",
+}
+
+
+def _capture_list_children(
+    spec: dict[str, Any], entries: list[dict[str, Any]], possible: frozenset[str]
+) -> dict[str, list[tuple[str, list[dict[str, Any]]]]]:
+    """Every edit `order-the-capture` may make to ``entries``, by family, each with its
+    sentence: move an entry, read one more or one fewer cause the game makes, split an entry's
+    readings into two entries of its kind, or put the list back in its usual order (merging a
+    kind's entries)."""
+    words = _CAPTURE_STEP_WORDS
+    families: dict[str, list[tuple[str, list[dict[str, Any]]]]] = {}
+    out = families.setdefault("move", [])
+    for i, entry in enumerate(entries):
+        for j in range(len(entries)):
+            if i == j:
+                continue
+            moved = [dict(e) for k, e in enumerate(entries) if k != i]
+            moved.insert(j, dict(entry))
+            out.append((f"moved {words[entry['do']]} to step {j + 1} of what a capture does", moved))
+    for i, entry in enumerate(entries):
+        out = families.setdefault("read", [])
+        for cause in sorted(possible):
+            on = set(entry["on"]) ^ {cause}
+            if not on & possible:
+                continue
+            changed = [dict(e) for e in entries]
+            # A cause the game cannot make stays at the kind's default (a path only where a
+            # piece sweeps, which the validator asks of a written path), so the edit is one cause.
+            changed[i]["on"] = sorted(
+                (on & possible) | (CAPTURE_DEFAULT_ON[entry["do"]] - possible - {"path"})
+            )
+            if "path" not in on:
+                changed[i].pop("path_by", None)
+                if "push" not in on:
+                    changed[i].pop("spread", None)
+            verb = "now reads" if cause in on else "no longer reads"
+            out.append((f"{words[entry['do']]} {verb} a taking by {cause}", changed))
+        read = [cause for cause in entry["on"] if cause in possible]
+        if len(read) >= 2:
+            out = families.setdefault("split", [])
+            for cause in read:
+                split = [dict(e) for e in entries]
+                split[i]["on"] = [c for c in entry["on"] if c != cause and (c in possible or c != "path")]
+                split.append({"do": entry["do"], "on": [cause]})
+                out.append((
+                    f"{words[entry['do']]} acts on a taking by {cause} last, after every other step",
+                    split,
+                ))
+    kinds = [entry["do"] for entry in entries]
+    if len(set(kinds)) != len(kinds) or list_features(spec):
+        restored = capture_list(default_order(spec)) or []
+        families["restore"] = [("put what a capture does back in its usual order", restored)]
+    return {family: children for family, children in families.items() if children}
+
+
+def _order_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """R-L4b4: edit the capture list itself (``rules.capture``): move an entry, change which
+    takings an entry reads, read a cause by a second entry of its kind, or put the list back
+    in its usual order. The one operator that adds and removes what only the list can say (an
+    order, a reading the old keys cannot say, a kind twice), so each is an axis a design run
+    can cross both ways (`TestEveryFeatureOfThisSchemaIsReachable`). Declines where every such
+    child is refused (the validator's own answer), or the game says no capture rule."""
+    entries = capture_list(spec)
+    if not entries:
+        return None
+    possible = possible_causes(spec)
+    families = _capture_list_children(spec, entries, possible)
+    # A family first, then its children in a random order, so a rare family (putting the
+    # list back) is drawn as often as a common one (moving an entry).
+    order = sorted(families)
+    rng.shuffle(order)
+    children = []
+    for family in order:
+        members = families[family]
+        rng.shuffle(members)
+        children.extend(members)
+    before = spec_hash(spec)
+    for summary, listed in children[:12]:
+        child = with_list(spec, listed)
+        if validate_spec(child) or spec_hash(child) == before:
+            continue
+        spec.clear()
+        spec.update(child)
+        return summary
+    return None
+
+
 OPERATORS: tuple[Operator, ...] = (
+    Operator("order-the-capture", _order_the_capture, reads_list=True),
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _spy_gain_guarded(_soften_the_capture)),
     Operator("become-what-you-take", _spy_gain_guarded(_become_what_you_take)),

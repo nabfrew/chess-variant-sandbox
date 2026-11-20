@@ -160,6 +160,7 @@ NOTES: dict[str, str] = {
     "rules.reach.result": "The result for the player whose piece reaches the squares.",
     "rules.contacts.landing.vectors": "The landing steps, each `[dx, dy]`.",
     "rules.strike.landing.vectors": "The landing steps, each `[dx, dy]`.",
+    "rules.capture[].landing.vectors": "The landing steps, each `[dx, dy]`.",
     "rules.portals[].moved_by": (
         "Who may spend a turn moving each end of the pair, with the pair's `moves`. Leave "
         "it out and the portals never move."
@@ -391,7 +392,7 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "kinds it names, or those no heavier than itself, or a row no heavier in all than "
         "its strength.",
         ("pieces[].captures", "rules.strike", "rules.contacts", "rules.explode_on_capture",
-         "rules.drops", "pieces[].promoted_from", "rules.promote_on_entry",
+         "rules.capture", "rules.drops", "pieces[].promoted_from", "rules.promote_on_entry",
          "rules.must_capture", "pieces[].bounty", "rules.push", "pieces[].pushes",
          "pieces[].weight", "pieces[].strength"),
     ),

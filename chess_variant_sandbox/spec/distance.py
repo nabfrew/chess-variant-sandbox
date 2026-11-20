@@ -28,6 +28,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from chess_variant_sandbox.spec.capture import (
+    CAPTURE_CAUSES,
+    CAPTURE_DEFAULT_ON,
+    CAPTURE_KINDS,
+    list_shape,
+    rules_as_old_keys,
+)
 from chess_variant_sandbox.spec.complexity import expand_symmetry, measure_complexity
 from chess_variant_sandbox.spec.schema import (
     INCOME_PER_PIECE_MAX,
@@ -500,6 +507,11 @@ _SCALES: dict[str, float] = {
     # share that displace, so a game and its leapfrogging twin are not at distance zero.
     "hop_run_share": 1.0,
     "hop_displace_share": 1.0,
+    # R-L4b4: a capture list only `rules.capture` says, a flag and its order and readings as
+    # one number (`_capture_list_features`), so a game and its reordered twin are not at
+    # distance zero.
+    "capture_list": 1.0,
+    "capture_list_shape": 1.0,
 }
 
 
@@ -509,13 +521,16 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
     A portal game is read with its group moves as the stand-in piece it declared before
     spelling 31 (`schema.portal_stand_in_shape`), so no feature moves with the re-spelling.
     """
-    spec = portal_stand_in_shape(spec)
+    # R-L4b4: each capture rule read from the one list (`capture.rules_as_old_keys`), and what
+    # a list only `rules.capture` says beyond them as `_capture_list_features`.
+    listed = _capture_list_features(spec)
+    complexity = measure_complexity(portal_stand_in_shape(spec))
+    spec = portal_stand_in_shape(rules_as_old_keys(spec))
     board = spec.get("board", {})
     width = float(board.get("width", 8))
     height = float(board.get("height", 8))
     pieces = spec.get("pieces", []) or []
     rules = spec.get("rules", {}) or {}
-    complexity = measure_complexity(spec)
 
     kinds: dict[str, int] = {"slide": 0, "leap": 0, "hop": 0, "sweep": 0}
     vectors = 0
@@ -681,7 +696,25 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         **_purse_features(spec),
         **_push_features(spec, total_moves),
         **_hop_run_features(spec, total_moves),
+        **listed,
     }
+
+
+def _capture_list_features(spec: dict[str, Any]) -> dict[str, float]:
+    """R-L4b4: a list only ``rules.capture`` says, as a flag and as one number that reads its
+    entries in order (each entry's kind and the causes it reads, the first weighing most), so
+    two such lists apart in order or reading are not at distance zero; 0 for every other spec."""
+    shape = list_shape(spec)
+    if not shape:
+        return {"capture_list": 0.0, "capture_list_shape": 0.0}
+    codes = len(CAPTURE_KINDS) * 2 ** len(CAPTURE_CAUSES)
+    value, weight = 0.0, 1.0
+    for entry in shape:
+        on = entry.get("on", sorted(CAPTURE_DEFAULT_ON[entry["do"]]))
+        mask = sum(2 ** CAPTURE_CAUSES.index(cause) for cause in on)
+        weight /= codes
+        value += (CAPTURE_KINDS.index(entry["do"]) * 2 ** len(CAPTURE_CAUSES) + mask + 1) * weight
+    return {"capture_list": 1.0, "capture_list_shape": value}
 
 
 # Q1074b5: each push knob's values, in the order a feature reads them from 0 to 1.

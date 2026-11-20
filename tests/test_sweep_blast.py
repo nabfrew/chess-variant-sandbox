@@ -31,6 +31,7 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_SWEEP, decode_move, move_from, move_to
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import spec_hash
+from chess_variant_sandbox.spec.capture import lifted_pairs
 from chess_variant_sandbox.spec.refusals import refused_ids
 from chess_variant_sandbox.spec.schema import validate_spec
 
@@ -280,20 +281,21 @@ class TestTheRefusals:
         for effects in (None, "path"):
             assert validate_spec(_spec(effects=effects)) == []
 
-    def test_a_blast_beside_a_strike_is_refused(self) -> None:
+    def test_a_blast_beside_a_strike_is_the_list(self) -> None:
+        """R-L4b (W3.both): the capture list orders a sweep's blasts and strikes."""
         spec = _spec(effects=None)
         spec["rules"]["strike"] = {
             "effect": "demote", "position": "stay", "immune": ["K", "S"],
             "chain": [{"from": "G", "to": "R"}],
         }
-        assert "W3" in refused_ids(validate_spec(spec))
+        assert "W3" not in refused_ids(validate_spec(spec)) and "W3.both" in lifted_pairs(spec)
 
-    def test_a_blast_beside_contacts_is_refused(self) -> None:
+    def test_a_blast_beside_contacts_is_the_list(self) -> None:
         spec = _spec(effects=None)
         spec["rules"]["contacts"] = {
             "position": "stay", "links": [{"mover": "G", "onto": "R", "onto_to": "G"}],
         }
-        assert "W3" in refused_ids(validate_spec(spec))
+        assert "W3" not in refused_ids(validate_spec(spec)) and "W3.both" in lifted_pairs(spec)
 
     def test_path_without_a_blast_is_refused(self) -> None:
         spec = _spec()

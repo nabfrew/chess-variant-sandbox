@@ -1738,7 +1738,15 @@ def spy_gain(engine: Engine, step: SpyStep, player: int) -> str:
             return "buy"
     # Which rule wrote it, read off the spec as written (the compiler folds a strike and a
     # contact table into one rule): the routes `schema.spy_gain_routes` names.
+    # A written ``rules.capture`` (R-L4b4) says each kind's rule in its first entry, read off
+    # the spelling as `complexity` reads it (this file is fingerprinted; `spec/capture.py` is not).
     rules = json.loads(engine.spec.source).get("rules") or {}
+    if isinstance(rules.get("capture"), list):
+        firsts: dict[str, Any] = {}
+        for entry in rules["capture"]:
+            if isinstance(entry, dict) and entry.get("do") in ("strike", "contacts"):
+                firsts.setdefault(entry["do"], entry)
+        rules = firsts
     strike: dict[str, Any] = rules["strike"] if isinstance(rules.get("strike"), dict) else {}
     assert engine.spec.spy is not None
     spies = {engine.spec.piece_ids[kind] for types in engine.spec.spy.types for kind in types}

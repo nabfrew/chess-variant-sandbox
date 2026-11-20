@@ -106,6 +106,14 @@ def promotion_spelling(spec: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def capture_list_spelling(spec: dict[str, Any]) -> dict[str, Any]:
+    """R-L4b stage 3: the old capture keys written as ``rules.capture`` (`capture.as_list_spelling`),
+    which the normal form writes back as the old keys."""
+    from chess_variant_sandbox.spec.capture import as_list_spelling
+
+    return as_list_spelling(spec) or copy.deepcopy(spec)
+
+
 RESPELLINGS: dict[str, Respelling] = {
     "newest_version": newest_version,
     "board_defaults": board_defaults,
@@ -113,6 +121,7 @@ RESPELLINGS: dict[str, Respelling] = {
     "rule_defaults": rule_defaults,
     "empty_rules": empty_rules,
     "promotion_spelling": promotion_spelling,
+    "capture_list_spelling": capture_list_spelling,
 }
 
 

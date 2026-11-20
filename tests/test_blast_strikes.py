@@ -42,6 +42,7 @@ from chess_variant_sandbox.engine.moves import move_from, move_to
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec import spec_hash
+from chess_variant_sandbox.spec.capture import lifted_pairs
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.refusals import refusal, refused_ids
 from chess_variant_sandbox.spec.schema import validate_spec
@@ -297,40 +298,54 @@ class TestTheRefusals:
             for strikes in ("target", "blast", "both"):
                 assert validate_spec(_spec(position, effect, strikes=strikes)) == []
 
+    # R-L4b (stage 3) lifted T1.position, T1.choose, T4.switch and T4.choose: each is the capture
+    # list's default order (`spec/capture.py`), handed to the core as the list.
+
     @pytest.mark.parametrize("position", ["advance", "swap"])
-    def test_another_position_is_refused(self, position: str) -> None:
+    def test_another_position_is_the_list(self, position: str) -> None:
         spec = _spec(position, strikes="target")
         if position == "advance":
             spec["rules"]["strike"]["switches_sides"] = ["G"]
-        errors = validate_spec(spec)
-        assert refusal("T1", 'rules.strike.position (not "stay" or "home")') in errors, errors
+        assert "T1" not in refused_ids(validate_spec(spec))
+        assert "T1.position" in lifted_pairs(spec)
 
-    def test_choose_is_refused_beside_any_blast(self) -> None:
-        errors = validate_spec(_spec("choose", strikes=None, of=["G"]))
-        assert refusal("T1", "rules.explode_on_capture") in errors, errors
+    def test_choose_beside_a_blast_is_the_list(self) -> None:
+        spec = _spec("choose", strikes=None, of=["G"])
+        assert "T1" not in refused_ids(validate_spec(spec))
+        assert "T1.choose" in lifted_pairs(spec)
 
     def test_a_shot_is_refused_as_inert(self) -> None:
         errors = validate_spec(_spec("stay", "capture", strikes="blast"))
         assert refusal("T1", 'rules.strike (effect "capture", position "stay")') in errors, errors
 
-    def test_beside_contacts_only_none_stands(self) -> None:
+    def test_beside_contacts_the_switch_is_the_list(self) -> None:
         spec = TestContacts._spec()
         assert validate_spec(spec) == []
         spec["rules"]["explode_on_capture"]["strikes"] = "target"
-        errors = validate_spec(spec)
-        assert refusal("T4", "rules.explode_on_capture.strikes") in errors, errors
+        assert validate_spec(spec) == []
+        assert "T4.switch" in lifted_pairs(spec)
+        assert compile_spec(spec).capture is not None
 
-    def test_a_choosing_contact_is_refused(self) -> None:
+    def test_a_choosing_contact_is_the_list(self) -> None:
         spec = TestContacts._spec()
         spec["rules"]["contacts"]["position"] = "choose"
-        assert "T4" in refused_ids(validate_spec(spec))
+        assert "T4" not in refused_ids(validate_spec(spec))
+        assert "T4.choose" in lifted_pairs(spec)
 
-    def test_rounds_are_refused(self) -> None:
+    def test_rounds_refuse_only_what_stays(self) -> None:
+        """R-L4b5 narrowed T1.rounds and T4.rounds: a round walks the capture list, so a
+        strike or contacts beside a blast plays there, but a strike or link placed "stay" is
+        written before the list and stays refused."""
         spec = _spec("home", "capture", strikes=None, of=["G"])
         spec["rules"]["simultaneous"] = {}
+        assert refusal("T1", "rules.strike") not in validate_spec(spec)
+        spec["rules"]["strike"]["position"] = "stay"
         assert refusal("T1", "rules.strike") in validate_spec(spec)
         spec = TestContacts._spec()
         spec["rules"]["simultaneous"] = {}
+        spec["rules"]["contacts"]["position"] = "swap"
+        assert refusal("T4", "rules.contacts") not in validate_spec(spec)
+        spec["rules"]["contacts"]["position"] = "stay"
         assert refusal("T4", "rules.contacts") in validate_spec(spec)
 
     def test_a_switch_with_no_strike_is_refused(self) -> None:

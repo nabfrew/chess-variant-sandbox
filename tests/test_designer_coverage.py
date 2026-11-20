@@ -36,7 +36,7 @@ from page_text import DESIGN
 from test_designer import _ADD_RULES, _kit_setup, _run_page
 
 from chess_variant_sandbox.site import routes
-from chess_variant_sandbox.spec import describe, plain, schema, spec_hash, validate_spec
+from chess_variant_sandbox.spec import capture, describe, plain, schema, spec_hash, validate_spec
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.web import cards, designing
 
@@ -167,6 +167,9 @@ RULE_KEY_SETS: dict[tuple[str, ...], set[str]] = {
     ("extinction",): schema._EXTINCTION_KEYS,
     ("drops",): schema._DROPS_KEYS,
     ("explode_on_capture",): schema._EXPLODE_KEYS,
+    # R-L4b4: an entry of the capture list, every kind's keys and the list's own (the card
+    # shows an entry only its kind's, `cards._capture_list_card`).
+    ("capture",): capture.CAPTURE_LIST_KEYS.union(*capture.CAPTURE_ENTRY_KEYS.values()),
 }
 
 
@@ -519,7 +522,7 @@ def _true_only_paths() -> set[str]:
     found: set[str] = set()
 
     def walk(node: Any, path: str) -> None:
-        if not isinstance(node, dict):
+        if not isinstance(node, dict) or path in NOT_IN_DESIGNER:
             return
         if node.get("const") is True:
             found.add(path)
@@ -600,6 +603,11 @@ class TestNoMenuOffersARefusedDefault:
         spec = _in_rounds()
         spec["rules"]["contacts"] = {"position": "stay", "immune": ["K"],
                                      "links": [{"mover": "N", "onto": "P", "onto_to": "B"}]}
+        if path.startswith("rules.capture"):
+            # R-L4b4: the same table as an entry of the capture list, out of rounds (this list
+            # lowers to the old keys, so the round is not what is asked here).
+            spec["rules"].pop("simultaneous", None)
+            spec["rules"]["capture"] = [{"do": "contacts", **spec["rules"].pop("contacts")}]
         # Schema 30 (Q999a): a line of sight for `through` to sit on.
         spec["pieces"][0]["sight"] = [{"vectors": [[1, 0]], "symmetry": "rotate4", "range": 2,
                                        "effect": "freeze", "whose": "enemy"}]
@@ -615,7 +623,7 @@ class TestNoMenuOffersARefusedDefault:
         paths = _true_only_paths()
         assert paths == {
             "pieces[].spy", "rules.contacts.links[].own", "pieces[].sight[].through",
-            "pieces[].sight[].captures_own",
+            "pieces[].sight[].captures_own", "rules.capture[].links[].own",
         }, paths
         model = cards.card_model()
         trees = {"rules": model["rules"], "pieces[]": model["piece"]}

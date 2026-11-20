@@ -21,6 +21,7 @@ from typing import Any
 
 import tomllib
 
+from chess_variant_sandbox.spec.capture import capture_list
 from chess_variant_sandbox.spec.refusals import REASONS_FILE
 from chess_variant_sandbox.spec.schema import (
     contacts_only_remove,
@@ -116,13 +117,28 @@ def _promotions(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _entries(spec: dict[str, Any], kind: str) -> list[dict[str, Any]]:
+    """R-L4b stage 3: the capture list's entries of ``kind``, read off either spelling
+    (`spec.capture.capture_list`, the one reader)."""
+    entries = capture_list(spec) or []
+    return [entry for entry in entries if entry.get("do") == kind]
+
+
+def _rule_of(spec: dict[str, Any], kind: str) -> dict[str, Any] | None:
+    """A kind's rule as its old key's object (its first entry's keys), or ``None``."""
+    found = _entries(spec, kind)
+    if not found:
+        return None
+    return {k: v for k, v in found[0].items() if k not in ("do", "on", "path_by")}
+
+
 def _strike(spec: dict[str, Any]) -> dict[str, Any] | None:
-    strike = _rules(spec).get("strike")
+    strike = _rule_of(spec, "strike")
     return strike if strike_is_live(strike) else None
 
 
 def _contacts(spec: dict[str, Any]) -> dict[str, Any] | None:
-    contacts = _rules(spec).get("contacts")
+    contacts = _rule_of(spec, "contacts")
     return contacts if isinstance(contacts, dict) and contacts.get("links") else None
 
 
@@ -132,8 +148,19 @@ def _drops(spec: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _from_captures(spec: dict[str, Any]) -> bool:
-    drops = _drops(spec)
-    return drops is not None and drops.get("from_captures", True) is not False
+    return bool(_entries(spec, "hand"))
+
+
+def _blast_spares_or_is_read(spec: dict[str, Any]) -> bool:
+    blasts = _entries(spec, "blast")
+    meets = _entries(spec, "strike") + _entries(spec, "contacts")
+    return bool(blasts) and (
+        any(b.get("spares_taken") for b in blasts) or any("blast" in m["on"] for m in meets)
+    )
+
+
+def _path_by(spec: dict[str, Any]) -> bool:
+    return any("path_by" in entry for entry in capture_list(spec) or [])
 
 
 def _stocked(spec: dict[str, Any]) -> bool:
@@ -181,10 +208,7 @@ def _turn_long(spec: dict[str, Any]) -> bool:
 
 
 def _explode(spec: dict[str, Any]) -> bool:
-    blast = _rules(spec).get("explode_on_capture")
-    if not isinstance(blast, dict):
-        return False
-    return all(blast.get(key, ["x"]) != [] for key in ("by", "of"))
+    return bool(_entries(spec, "blast"))
 
 
 def _portals(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -360,6 +384,35 @@ DETECTORS: dict[str, Callable[[dict[str, Any]], bool]] = {
     ),
     "pieces[].moves[].run or displace": lambda s: bool(run_hop_ids(s)),
     'pieces[].moves[].displace: "back"': lambda s: any(m.get("displace") == "back" for m in _moves(s)),
+    # R-L4b stage 3: the capture list's entries, read off `capture_list` (either spelling).
+    "rules.capture: a blast": _explode,
+    "rules.capture: a hand": _from_captures,
+    "rules.capture: a strike": lambda s: _strike(s) is not None,
+    "rules.capture: contacts": lambda s: _contacts(s) is not None,
+    "rules.capture: a blast that spares the taken piece": lambda s: any(
+        b.get("spares_taken") for b in _entries(s, "blast")
+    ),
+    "rules.capture: a blast that spares the taken piece or is read": _blast_spares_or_is_read,
+    'rules.capture: a strike placed "advance", "swap" or "choose"': lambda s: _strike(s) is not None
+    and (_strike(s) or {}).get("position", "advance") in ("advance", "swap", "choose"),
+    'rules.capture: a strike placed "choose"': lambda s: (_strike(s) or {}).get("position") == "choose",
+    'rules.capture: contacts placed "choose"': lambda s: (_contacts(s) or {}).get("position") == "choose",
+    'rules.capture: a strike placed "stay", "swap", "home" or "choose"': lambda s: _strike(s) is not None
+    and (_strike(s) or {}).get("position", "advance") != "advance",
+    "rules.capture: a strike that keeps its victim": lambda s: _strike(s) is not None
+    and not strike_only_removes(_strike(s)),
+    "rules.capture: contacts that keep their target": lambda s: _contacts(s) is not None
+    and not contacts_only_remove(_contacts(s)),
+    "rules.capture: a strike that switches sides": lambda s: bool((_strike(s) or {}).get("switches_sides")),
+    "rules.capture: an entry reading some sweepers' path (path_by)": _path_by,
+    "rules.capture: a blast beside a strike or contacts": lambda s: _explode(s)
+    and (_strike(s) is not None or _contacts(s) is not None),
+    "rules.purse.upkeep": lambda s: bool((_rules(s).get("purse") or {}).get("upkeep")),
+    # R-L4b5: a blast beside a strike or contacts that does not stay (T1.rounds, T4.rounds).
+    "rules.capture: a blast beside a strike that moves its taker": lambda s: _explode(s)
+    and _strike(s) is not None and (_strike(s) or {}).get("position", "advance") != "stay",
+    "rules.capture: a blast beside contacts that move their taker": lambda s: _explode(s)
+    and _contacts(s) is not None and (_contacts(s) or {}).get("position", "advance") != "stay",
 }
 
 

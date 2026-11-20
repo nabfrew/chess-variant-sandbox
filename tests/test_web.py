@@ -11380,8 +11380,10 @@ class TestBuildingAGameByHand:
         # first time, which restates the corpus and owes this test nothing; the set growing
         # is a rule key the corpus cannot vouch for, which the hand-built test below must
         # take first (`docs/reference/corpus-pins.md`).
+        # `capture` (R-L4b stage 3) joined it: every library game's list is one the old keys
+        # say, so the files keep them (`spec/capture.py`).
         assert _RULES_KEYS - seen <= {
-            "checkmate",
+            "checkmate", "capture",
         }, "a rule key no library spec uses: build it by hand in the test below, then name it here"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(
@@ -11419,6 +11421,9 @@ class TestBuildingAGameByHand:
             "duck": {"piece": "U"},
             # TC5: a purse selling the template's pawn, priced below.
             "purse": {"start": 1, "market": ["P"]},
+            # R-L4b stage 3: the capture list, a hand given below; a list the old keys say,
+            # which the editor's settling writes back as them.
+            "capture": [{"do": "hand"}],
         }
         for key, value in cases.items():
             draft = json.loads(json.dumps(base))
@@ -11426,6 +11431,8 @@ class TestBuildingAGameByHand:
             if key == "promote_on_entry":
                 # It promotes a piece that *enters play*, so there has to be a way in.
                 draft["rules"]["drops"] = {"from_captures": True}
+            if key == "capture":
+                draft["rules"]["drops"] = {}
             if key == "portals":
                 draft["pieces"].append({"id": "O", "name": "portal", "value": 0, "moves": []})
             if key == "duck":

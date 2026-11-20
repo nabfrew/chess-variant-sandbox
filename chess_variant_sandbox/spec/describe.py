@@ -27,6 +27,11 @@ from dataclasses import dataclass, field
 from math import gcd
 from typing import TYPE_CHECKING, Any
 
+from chess_variant_sandbox.spec.capture import (
+    capture_list,
+    rules_as_old_keys,
+    says_more_than_old_keys,
+)
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.schema import (
     BARE_ROYAL_HOLDER,
@@ -216,6 +221,7 @@ def describe_pieces(spec: dict[str, Any]) -> list[PieceProse]:
     31 (`schema.portal_stand_in_shape`): ``O - portal``, after the declared pieces, so the
     rules text of a portal game reads as it did.
     """
+    spec = rules_as_old_keys(spec)  # a kind's rule, read from the one list
     hexy = (spec.get("board") or {}).get("lattice") == "hex"
     listed = portal_stand_in_shape(spec)["pieces"]
     fates = _moveless_fates(spec, listed)
@@ -261,7 +267,14 @@ def describe_setup(spec: dict[str, Any]) -> list[str]:
 
 
 def describe_rules(spec: dict[str, Any]) -> list[str]:
-    """Every rule beyond how the pieces move, each stated as a player would be told it."""
+    """Every rule beyond how the pieces move, each stated as a player would be told it.
+
+    Each capture rule is read from the one list (`capture.rules_as_old_keys`); a list only
+    ``rules.capture`` says is stated in its order after the strike and contacts sentences
+    (`_describe_capture_list`), in place of the sweep sentences the two switches gave."""
+    written = spec
+    walked = says_more_than_old_keys(spec)
+    spec = rules_as_old_keys(spec)
     rules = spec.get("rules", {})
     lines = [_describe_win(rules.get("win", "checkmate"))]
     # Schema 26 (Q918a): first of all, because it changes what a turn is more than a long
@@ -298,6 +311,7 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_obstacles(rules, _jumps_past_a_square(spec)))
     lines.extend(_describe_strike(spec, rules))
     lines.extend(_describe_contacts(spec, rules))
+    lines.extend(_describe_capture_list(written) if walked else [])
     lines.extend(_describe_npcs(spec, rules))
     # Schema 19: a portal changes where a line goes, so it is read with the walls and
     # the wild pieces, before any sentence about what a capture or a promotion does.
@@ -368,9 +382,10 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     )
     lines.extend(_describe_swept_hand(spec, rules))
     lines.extend(_describe_swept_bounty(spec, rules))
-    lines.extend(_describe_swept_strike(spec, rules))
-    lines.extend(_describe_swept_contacts(spec, rules))
-    lines.extend(_describe_swept_blast(spec, rules))
+    if not walked:  # the list's own sentence says which entry reads a sweep's path
+        lines.extend(_describe_swept_strike(spec, rules))
+        lines.extend(_describe_swept_contacts(spec, rules))
+        lines.extend(_describe_swept_blast(spec, rules))
     lines.extend(_describe_swept_round(spec, rules))
     lines.extend(_describe_swept_portals(spec, rules))
     lines.extend(_describe_swept_promotion(spec, rules))
@@ -383,6 +398,64 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_insufficient_material(spec, rules))
     lines.extend(_describe_ending_order(rules))
     return lines
+
+
+_CAPTURE_STEPS = {
+    "pay": "its bounty is paid",
+    "hand": "the taken piece goes to the taker's hand",
+    "blast": "the blast",
+    "strike": "the strike",
+    "contacts": "the contact table",
+}
+_CAPTURE_CAUSE_WORDS = {
+    "landing": "a capture on the landing square",
+    "path": "a piece a sweep removes on its path",
+    "blast": "a piece a blast removes",
+    "push": "a piece pushed off the board or crushed",
+    "collision": "a piece lost in a round's collision",
+}
+
+
+def _describe_capture_list(spec: dict[str, Any]) -> list[str]:
+    """R-L4b4: ``rules.capture`` where the old keys cannot say it, stated in its order: each
+    entry, what it reads, and the rules that make every order a game
+    (`capture-effects-design.md` §2.2)."""
+    entries = capture_list(spec) or []
+    names = {
+        p["id"]: p.get("name", p["id"]) for p in spec.get("pieces", []) if isinstance(p, dict)
+    }
+    rules = spec.get("rules") or {}
+    moves = [
+        m for p in spec.get("pieces", []) if isinstance(p, dict)
+        for m in p.get("moves") or [] if isinstance(m, dict)
+    ]
+    # Only the causes this game can make are said: a sweep's path, a push, a round, a blast.
+    possible = {"landing"}
+    possible |= {"path"} if uses_sweep(spec) else set()
+    possible |= {"push"} if any(move_push(m) is not None for m in moves) else set()
+    possible |= {"collision"} if is_simultaneous(rules) else set()
+    possible |= {"blast"} if any(e["do"] == "blast" for e in entries) else set()
+    steps = []
+    for entry in entries:
+        causes = []
+        for cause in [c for c in entry["on"] if c in possible] or entry["on"]:
+            word = _CAPTURE_CAUSE_WORDS[cause]
+            if cause == "path" and "path_by" in entry:
+                word += f" (swept by the {', '.join(names.get(i, i) for i in entry['path_by'])})"
+            causes.append(word)
+        step = f"{_CAPTURE_STEPS[entry['do']]}, on {_or_list(causes)}"
+        if entry.get("spread"):
+            step += ", centred on each swept or pushed-off piece too"
+        if entry.get("spares_taken"):
+            step += ", sparing the piece whose capture set it off"
+        steps.append(step)
+    numbered = "; ".join(f"({index}) {step}" for index, step in enumerate(steps, 1))
+    return [
+        f"What a capture does, in this order: {numbered}.",
+        "Each step acts on a taken piece only if no earlier step has placed, filed or "
+        "destroyed it, and places a piece only on a square empty by then; the pieces a blast "
+        "removes are taken in their turn, from the top of the list.",
+    ]
 
 
 def _describe_pass(rules: dict[str, Any]) -> str:
@@ -1886,6 +1959,13 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "taking a piece in passing",
         "A piece that steps two squares past an enemy that could have taken it on the way "
         "may be captured as if it had stepped one.",
+    ),
+    # R-L4b stage 3 (`spec/capture.py`): the list a capture walks, top to bottom.
+    "capture": (
+        "what a capture does, in order",
+        "Each thing a capture does, a bounty paid, a piece filed in the hand, a blast, a strike "
+        "or a contact, is one entry of a list read top to bottom, and the first that takes the "
+        "piece has it.",
     ),
     "explode_on_capture": (
         "captures that explode",

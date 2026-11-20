@@ -250,6 +250,32 @@ def test_a_held_lease_naming_it_keeps_it(tmp_path):
     assert v.working, "a kept campaign still lists what it holds"
 
 
+@pytest.mark.parametrize("name", ["R-S17", "R-P3", "R-S2a-pilot"])
+def test_a_lease_tag_sharing_only_a_prefix_letter_does_not_keep_it(tmp_path, name):
+    """SL1: a lease tagged `R-L4b4 soak` kept `R-S*` and `R-P3`, the tag split at `-` to `R`."""
+    runs = tmp_path / "runs"
+    finished(runs, name)
+    v = verdict(runs, name, facts(runs, name, lease_tags=["R-L4b4 soak"]))
+    assert v.keep is None, v.keep
+
+
+@pytest.mark.parametrize(
+    ("name", "tag"),
+    [
+        ("R-L4b4", "R-L4b4 soak"),
+        ("R-L4b4-soak", "R-L4b4"),  # the campaign's task
+        ("Q1170", "Q1170-harvest pilot"),  # the tag word's task
+        ("q1170-pilot", "Q1170: second slice"),
+        ("SL1", "SL1 measure -n 2"),
+    ],
+)
+def test_a_lease_tag_naming_the_campaign_or_its_task_keeps_it(tmp_path, name, tag):
+    runs = tmp_path / "runs"
+    finished(runs, name)
+    v = verdict(runs, name, facts(runs, name, lease_tags=[tag]))
+    assert v.keep == f"a held lease's tag names it (`{tag}`)"
+
+
 def test_a_live_campaign_inside_or_pointing_at_it_keeps_it(tmp_path):
     runs = tmp_path / "runs"
     finished(runs, "Q105")

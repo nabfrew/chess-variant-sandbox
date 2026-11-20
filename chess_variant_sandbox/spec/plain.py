@@ -990,6 +990,48 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     ),
 }
 
+# R-L4b4: an entry of the capture list. Its own fields here; every other field is its kind's
+# rule's, said in that rule's words (a strike's first, then a contact table's, then a blast's).
+FIELD_WORDS.update({
+    "rules.capture": (
+        "what a capture does, in order",
+        "Each thing a capture does, one step a row, read from the top: a bounty paid, the "
+        "piece put in the taker's hand, a blast, a strike or a contact. The first step that "
+        "takes the piece has it. Use it only for an order or a reading the separate rules "
+        "cannot give, and then in their place.",
+    ),
+    "rules.capture.do": (
+        "this step",
+        "What this step does to each piece it reads as taken: pay its bounty, put it in the "
+        "taker's hand, set off a blast, strike it, or meet it by a contact table.",
+    ),
+    "rules.capture.on": (
+        "reads",
+        "Which taken pieces this step acts on: the move's own capture (landing), a piece a "
+        "sweep removes on its path, a piece a blast removes, a piece pushed off or crushed, a "
+        "piece lost in a round's collision. Left empty, the step's usual ones.",
+    ),
+    "rules.capture.path_by": (
+        "only the sweeps of",
+        "Which sweeping pieces' swept pieces a 'path' reading takes; empty, every sweeper's.",
+    ),
+    "rules.capture.spread": (
+        "a blast on each swept piece",
+        "Also set a blast off on each swept or pushed-off piece this step reads, not only "
+        "where the capturer lands.",
+    ),
+    "rules.capture.spares_taken": (
+        "spares the piece taken",
+        "The piece whose capture set the blast off is left for the steps below it, not "
+        "destroyed with the capturer.",
+    ),
+    "rules.capture.to": ("paid to", "Who the bounty goes to: the taker, or the player who lost the piece."),
+})
+for _old in ("strike", "contacts", "explode_on_capture"):
+    for _path, _said in list(FIELD_WORDS.items()):
+        if _path.startswith(f"rules.{_old}."):
+            FIELD_WORDS.setdefault("rules.capture." + _path[len(f"rules.{_old}."):], _said)
+
 # The rule cards themselves, by the titles their cards already carry.
 for _key, (_title, _) in RULE_WORDS.items():
     FIELD_WORDS.setdefault(f"rules.{_key}", (_title, None))

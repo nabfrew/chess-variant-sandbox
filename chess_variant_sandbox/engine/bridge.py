@@ -15,9 +15,12 @@ core does no rearranging at construction time.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from typing import Any
 
 from chess_variant_sandbox.engine.compile import (
+    CAPTURE_CAUSES,
+    CAPTURE_KINDS,
     CONTROL_MAJORITY,
     HOP_DISPLACE,
     MODE_MOVE,
@@ -722,6 +725,38 @@ def _explosion_fields(spec: CompiledSpec) -> dict[str, Any]:
             [int(flag) for flag in explosion.sweep_path] if explosion is not None else []
         ),
     }
+
+
+_CAPTURE_INERT: dict[str, Any] = {
+    # R-L4b stage 2: no list crossed; the core derives the default-order list from the old
+    # keys (stage 1), so every stored game's tables and fingerprint stay as they were.
+    "capture_order": [],
+    # T3: the contact table beside a strike, its own strike fields; empty without one.
+    "capture_contacts": {},
+}
+
+
+def _capture_fields(spec: CompiledSpec) -> dict[str, Any]:
+    """R-L4b stage 2 (`docs/reference/capture-effects-design.md` §6): the capture list in its
+    own order, flat: the number of entries (so ``[0]`` is an empty list, plain capture), then
+    per entry its kind's code (``CAPTURE_KINDS``), its ``on`` as bits (``CAPTURE_CAUSES``, the
+    first the lowest), ``spread``, ``spares_taken``, the count of its ``by`` types and those
+    types. Empty unless a test handed the compiler a list (`compile.with_capture_list`)."""
+    if spec.capture is None:
+        return {"capture_order": [], "capture_contacts": {}}
+    order = [len(spec.capture)]
+    for entry in spec.capture:
+        on = sum(1 << CAPTURE_CAUSES.index(cause) for cause in entry.on)
+        order.extend([
+            CAPTURE_KINDS.index(entry.do), on, int(entry.spread), int(entry.spares_taken),
+            len(entry.by), *entry.by,
+        ])
+    # T3: a list's `contacts` entries read the contact table where the spec states one
+    # beside its strike (`CompiledSpec.contacts`), crossed as its own strike fields.
+    contacts = (
+        _strike_fields(replace(spec, strike=spec.contacts)) if spec.contacts is not None else {}
+    )
+    return {"capture_order": order, "capture_contacts": contacts}
 
 
 _DROPS_INERT: dict[str, Any] = {
@@ -1754,6 +1789,7 @@ _FLATTENERS: tuple[tuple[Callable[[CompiledSpec], dict[str, Any]], dict[str, Any
     (_promotion_fields, _PROMOTION_INERT),
     (_castling_fields, _CASTLING_INERT),
     (_explosion_fields, _EXPLOSION_INERT),
+    (_capture_fields, _CAPTURE_INERT),
     (_drops_fields, _DROPS_INERT),
     (_reach_fields, _REACH_INERT),
     (_turn_fields, _TURN_INERT),
@@ -1899,11 +1935,14 @@ def _push_holds(spec: CompiledSpec) -> list[str]:
     push = spec.push
     assert push is not None
     held: list[str] = []
+    # R-L4b stage 2 (`capture-effects-design.md` §3.1): under a capture list a pushed-off piece
+    # is a taking with cause "push", which every entry is defined on (tests only until stage 3).
+    listed = spec.capture is not None
     beside = (
         # §3.14, refused for now or until round 2.
         (spec.portals is not None, "rules.portals (push.W4)"),
-        (spec.strike is not None, "rules.strike or rules.contacts (push.X2)"),
-        (spec.explosion is not None, "rules.explode_on_capture (push.X3)"),
+        (spec.strike is not None and not listed, "rules.strike or rules.contacts (push.X2)"),
+        (spec.explosion is not None and not listed, "rules.explode_on_capture (push.X3)"),
         (spec.simultaneous is not None, "rules.simultaneous (push.S1)"),
         # Q1074b8 lifted the rest of round 1's rows (sights, rest, reach, territory, the
         # purse, en passant where the pushing entry keeps its capture); a turncoat command
@@ -1948,7 +1987,10 @@ def _upkeep_holds(spec: CompiledSpec) -> str | None:
         (spec.drops is not None, "rules.drops"),
         (spec.sight is not None and spec.sight.has_command, "a command"),
         (spec.neutrals is not None and spec.neutrals.has_majority, "a held or shared type"),
-        (strike is not None and (
+        # R-L4b stage 2 (§3.2, U9, U10): under a capture list the cost is the move's own (the
+        # type it made, the square the list leaves it on: `Game::general_stays`), so a link's
+        # or a switch's change after it is not charged (tests only until stage 3).
+        (strike is not None and spec.capture is None and (
             any(to >= 0 for to in strike.mover_to) or any(to >= 0 for to in strike.own_mover_to)
             or any(strike.mover_flips)
         ), "a meeting that changes or turns the mover"),

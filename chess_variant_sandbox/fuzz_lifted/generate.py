@@ -46,6 +46,11 @@ CORPUS = ROOT / "rulesets"
 ATTEMPTS = 24
 # How many further random operators may land once the pair is in, drawn per case.
 EXTRAS = (0, 0, 1, 2)
+# The operators those draws come from: every one but an operator that edits the capture list
+# itself (R-L4b4's `order-the-capture`). The makers already write each row's list in a random
+# order, and leaving it out keeps every pinned seed's case the one it was (a draw over a longer
+# tuple maps every seed to another case).
+_EXTRA_OPERATORS = tuple(op for op in OPERATORS if not op.reads_list)
 
 _KING = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}
 
@@ -1006,6 +1011,212 @@ def _removing_link(spec: dict[str, Any], rng: random.Random) -> bool:
     return True
 
 
+# ------------------------------------------------------- R-L4b stage 3: the capture list
+
+#: A ``choose`` table's landings: the four orthogonal neighbours of the struck piece.
+_LANDINGS = [[0, 1], [0, -1], [1, 0], [-1, 0]]
+
+
+def _ladder(spec: dict[str, Any]) -> list[str]:
+    """The non-royal movers, most valuable first: a demotion chain walks down it."""
+    wild = {str(e.get("piece")) for e in _rules(spec).get("npcs", []) or [] if isinstance(e, dict)}
+    movers = [t for t in _movers(spec) if t not in wild and t not in _ids(spec, royal=True)]
+    return sorted(movers, key=lambda t: -float(_piece(spec, t).get("value", 1) or 0))
+
+
+def _demote(position: str) -> Fragment:
+    """A strike that demotes down the value ladder, placed ``position`` (it keeps its victim)."""
+    def add(spec: dict[str, Any], rng: random.Random) -> bool:
+        ladder = _ladder(spec)
+        if len(ladder) < 2:
+            return False
+        strike: dict[str, Any] = {
+            "effect": "demote", "position": position,
+            "chain": [{"from": a, "to": b} for a, b in zip(ladder, ladder[1:], strict=False)],
+        }
+        if position == "choose":
+            strike["landing"] = {"vectors": _LANDINGS}
+        royals = _ids(spec, royal=True)
+        if royals:
+            strike["immune"] = sorted(royals)
+        _rules(spec)["strike"] = strike
+        return True
+    add.__name__ = f"demote_{position}"
+    return add
+
+
+def _keeping_link(position: str = "advance") -> Fragment:
+    """A contact table whose link keeps its target (``onto_to``), placed ``position``."""
+    def add(spec: dict[str, Any], rng: random.Random) -> bool:
+        ladder = _ladder(spec)
+        if len(ladder) < 2:
+            return False
+        mover, onto = rng.choice(ladder), rng.choice(ladder)
+        contacts: dict[str, Any] = {
+            "links": [{"mover": mover, "onto": onto, "onto_to": rng.choice(ladder)}],
+            "position": position,
+        }
+        if position == "choose":
+            contacts["landing"] = {"vectors": _LANDINGS}
+        royals = _ids(spec, royal=True)
+        if royals:
+            contacts["immune"] = sorted(royals)
+        _rules(spec)["contacts"] = contacts
+        return True
+    add.__name__ = f"keeping_link_{position}"
+    return add
+
+
+def _capture_hand(spec: dict[str, Any], rng: random.Random) -> bool:
+    """A hand that fills from captures: the game's own hand switched on, or a new one."""
+    drops = _rules(spec).get("drops")
+    if isinstance(drops, dict) and drops:
+        drops["from_captures"] = True
+        return True
+    return _operator("hand-the-pieces-back")(spec, rng)
+
+
+def _as_list(spec: dict[str, Any], rng: random.Random, shuffle: bool = True) -> bool:
+    """The game's capture rules written as ``rules.capture``, in an order drawn at random."""
+    from chess_variant_sandbox.spec.capture import as_list_spelling
+
+    listed = as_list_spelling(spec)
+    if listed is None:
+        return False
+    if shuffle:
+        rng.shuffle(listed["rules"]["capture"])
+    spec.clear()
+    spec.update(listed)
+    return True
+
+
+def _listed(fragment: Fragment) -> Fragment:
+    """``fragment``, then the capture rules written as a list in a random order: the list the
+    old keys cannot say, beside the same rules."""
+    def add(spec: dict[str, Any], rng: random.Random) -> bool:
+        from chess_variant_sandbox.spec.capture import capture_written
+
+        if capture_written(spec):
+            return False  # a fragment writes the old keys; a list already written stays
+        return fragment(spec, rng) and _as_list(spec, rng)
+    add.__name__ = f"listed_{getattr(fragment, '__name__', 'maker').lstrip('_')}"
+    return add
+
+
+def _entry_of(spec: dict[str, Any], kind: str) -> dict[str, Any] | None:
+    for entry in _rules(spec).get("capture") or []:
+        if isinstance(entry, dict) and entry.get("do") == kind:
+            return entry
+    return None
+
+
+def _spared_blast(spec: dict[str, Any], rng: random.Random) -> bool:
+    """A blast that spares the piece whose capture set it off, ahead of a strike that then
+    reaches it (one placed ``swap`` put in where the game has no strike or contacts), written
+    as a list."""
+    rules = _rules(spec)
+    if "capture" not in rules:
+        if not rules.get("explode_on_capture") and not _operator("set-the-blast")(spec, rng):
+            return False
+        if (not rules.get("strike") and not rules.get("contacts")
+                and not _demote(rng.choice(("swap", "stay", "home")))(spec, rng)):
+            return False
+        if not _as_list(spec, rng, shuffle=False):
+            return False
+    blast = _entry_of(spec, "blast")
+    if blast is None:
+        return False
+    blast["spares_taken"] = True
+    if rng.random() < 0.5:
+        rng.shuffle(_rules(spec)["capture"])
+    return True
+
+
+def _blast_read(spec: dict[str, Any], rng: random.Random) -> bool:
+    """A strike or contact entry that reads a blast's victims, written as a list."""
+    if "capture" not in _rules(spec) and not _as_list(spec, rng):
+        return False
+    meets = [e for e in (_entry_of(spec, "strike"), _entry_of(spec, "contacts")) if e is not None]
+    if not meets or _entry_of(spec, "blast") is None:
+        return False
+    entry = rng.choice(meets)
+    from chess_variant_sandbox.spec.capture import CAPTURE_DEFAULT_ON
+
+    entry["on"] = sorted(set(entry.get("on", CAPTURE_DEFAULT_ON[entry["do"]])) | {"blast"})
+    return True
+
+
+def _path_by(spec: dict[str, Any], rng: random.Random) -> bool:
+    """A strike entry reading the path of one sweeper of two, written as a list."""
+    from chess_variant_sandbox.spec.capture import CAPTURE_DEFAULT_ON, sweeper_ids
+
+    sliders = [
+        p for p in spec["pieces"] if not p.get("royal") and p["id"] not in sweeper_ids(spec)
+        and any(m.get("kind") == "slide" and m.get("mode", "both") == "both" for m in p.get("moves", []))
+    ]
+    rng.shuffle(sliders)
+    for piece in sliders[: max(0, 2 - len(sweeper_ids(spec)))]:
+        for move in piece["moves"]:
+            if move.get("kind") == "slide" and move.get("mode", "both") == "both":
+                move["kind"] = "sweep"
+                move.pop("path", None)
+    sweepers = sweeper_ids(spec)
+    if len(sweepers) < 2:
+        return False
+    if "capture" not in _rules(spec):
+        if not _rules(spec).get("strike") and not _demote(rng.choice(("stay", "home")))(spec, rng):
+            return False
+        if not _as_list(spec, rng):
+            return False
+    entry = _entry_of(spec, "strike") or _entry_of(spec, "contacts")
+    if entry is None:
+        return False
+    entry["on"] = sorted(set(entry.get("on", CAPTURE_DEFAULT_ON[entry["do"]])) | {"path"})
+    entry["path_by"] = [rng.choice(sweepers)]
+    return True
+
+
+def _blast_into_list(spec: dict[str, Any], rng: random.Random) -> bool:
+    """A blast of radius 1 sparing the royals, put at a random place in a written list."""
+    listed = _rules(spec).get("capture")
+    if not isinstance(listed, list) or _entry_of(spec, "blast") is not None:
+        return False
+    blast: dict[str, Any] = {"do": "blast", "radius": 1}
+    royals = _ids(spec, royal=True)
+    if royals:
+        blast["immune"] = sorted(royals)
+    listed.insert(rng.randrange(len(listed) + 1), blast)
+    return True
+
+
+def _blast_beside_a_strike(spec: dict[str, Any], rng: random.Random) -> bool:
+    """A blast and a strike, each put in where the game has none."""
+    if not _rules(spec).get("explode_on_capture") and not _operator("set-the-blast")(spec, rng):
+        return False
+    if not _rules(spec).get("strike") and not _rules(spec).get("contacts"):
+        return _demote(rng.choice(("stay", "home")))(spec, rng)
+    return True
+
+
+def _blast_beside_a_mover(kind: str) -> Fragment:
+    """R-L4b5 (T1.rounds, T4.rounds): a blast and a strike (``kind`` "strike") or a contact
+    table that moves its taker (placed "advance", "swap" or "home", never "stay"), each put in
+    where the game has none: the pair a round walks as its capture list."""
+    def add(spec: dict[str, Any], rng: random.Random) -> bool:
+        rules = _rules(spec)
+        if not rules.get("explode_on_capture") and not _operator("set-the-blast")(spec, rng):
+            return False
+        if kind == "strike":
+            if rules.get("strike"):
+                return rules["strike"].get("position", "advance") != "stay"
+            return _demote(rng.choice(("swap", "home")))(spec, rng)
+        if rules.get("contacts"):
+            return rules["contacts"].get("position", "advance") != "stay"
+        return _keeping_link(rng.choice(("advance", "swap", "home")))(spec, rng)
+    add.__name__ = f"blast_beside_a_moving_{kind}"
+    return add
+
+
 @functools.cache
 def _operators() -> dict[str, Any]:
     return {op.name: op for op in OPERATORS}
@@ -1128,6 +1339,41 @@ MAKERS: dict[str, list[Fragment]] = {
     "pieces[].price (on a shared type)": [_shared_for_hire],
     "pieces[].moves[].run or displace": _ops("leap-a-row"),
     'pieces[].moves[].displace: "back"': [_displace, *_ops("leap-a-row")],
+    # R-L4b stage 3: the capture list's entries, each written as the old keys (the list's
+    # default order) or, by `_listed`, as rules.capture in a random order.
+    "rules.capture: a blast": [*_ops("set-the-blast", "shape-the-blast"), _listed(_operator("set-the-blast")),
+                               _blast_into_list],
+    "rules.capture: a hand": [_capture_hand, _listed(_capture_hand)],
+    "rules.capture: a strike": [_STAY, _HOME, _SWITCH, _demote("advance"), _listed(_HOME),
+                                _listed(_demote("swap"))],
+    "rules.capture: contacts": [_removing_link, _keeping_link(), *_ops("become-what-you-take"),
+                                _listed(_keeping_link())],
+    "rules.capture: a blast that spares the taken piece": [_spared_blast],
+    "rules.capture: a blast that spares the taken piece or is read": [_spared_blast, _blast_read],
+    'rules.capture: a strike placed "advance", "swap" or "choose"': [
+        _demote("advance"), _demote("swap"), _demote("choose"), _listed(_demote("swap")),
+    ],
+    'rules.capture: a strike placed "choose"': [_demote("choose"), _listed(_demote("choose"))],
+    'rules.capture: contacts placed "choose"': [_keeping_link("choose"), _listed(_keeping_link("choose"))],
+    'rules.capture: a strike placed "stay", "swap", "home" or "choose"': [
+        _STAY, _HOME, _demote("stay"), _demote("swap"), _listed(_HOME),
+    ],
+    "rules.capture: a strike that keeps its victim": [_HOME, _SWITCH, _demote("stay"), _demote("advance"),
+                                                      _listed(_demote("home"))],
+    "rules.capture: contacts that keep their target": [_keeping_link(), _keeping_link("stay"),
+                                                       _listed(_keeping_link())],
+    "rules.capture: a strike that switches sides": [_SWITCH, _listed(_SWITCH)],
+    "rules.capture: an entry reading some sweepers' path (path_by)": [_path_by],
+    "rules.capture: a blast beside a strike or contacts": [_blast_beside_a_strike,
+                                                          _listed(_blast_beside_a_strike)],
+    "rules.purse.upkeep": _ops("charge-for-moves"),
+    # R-L4b5: the two round rows, as the old keys (the default order) or as a list.
+    "rules.capture: a blast beside a strike that moves its taker": [
+        _blast_beside_a_mover("strike"), _listed(_blast_beside_a_mover("strike")),
+    ],
+    "rules.capture: a blast beside contacts that move their taker": [
+        _blast_beside_a_mover("contacts"), _listed(_blast_beside_a_mover("contacts")),
+    ],
 }
 
 
@@ -1214,7 +1460,7 @@ def case(seed: int, rows: tuple[Lifted, ...] | None = None) -> LiftedCase:
         kept.append(key)
     extras: list[str] = []
     for _ in range(rng.choice(EXTRAS)):
-        op = rng.choice(OPERATORS)
+        op = rng.choice(_EXTRA_OPERATORS)
         child = copy.deepcopy(spec)
         try:
             if op.apply(child, rng) is None:

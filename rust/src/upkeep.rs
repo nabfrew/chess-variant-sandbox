@@ -65,7 +65,11 @@ impl<'t> Game<'t> {
             MOVE_CASTLE => at(t.type_of(self.board[origin]), target),
             _ => {
                 let mover = t.type_of(self.board[origin]);
-                let square = if self.strike_stays(kind, mover, target) { origin } else { target };
+                let stays = match t.capture.as_deref().filter(|program| program.general) {
+                    Some(program) => self.general_stays(program, m, mover),
+                    None => self.strike_stays(kind, mover, target),
+                };
+                let square = if stays { origin } else { target };
                 let promoted = match kind {
                     MOVE_PROMOTION => Some(move_promotion(m) as usize),
                     MOVE_DISPLACE | MOVE_PUSH | MOVE_PORTAL => (move_promotion(m) as usize).checked_sub(1),
@@ -107,6 +111,84 @@ impl<'t> Game<'t> {
         let cell = mover * strike.n_types + t.type_of(captured);
         let table = if t.owner_of(captured) == self.side { &strike.own_to } else { &strike.to };
         table.get(cell).copied().unwrap_or(-1) != -1
+    }
+
+    /// R-L4b stage 2 (§3.2, `upkeep.U9`, `upkeep.U10`): whether the moving piece of `mover`
+    /// stands on its origin when a `general` capture list has run, read off the board before
+    /// the move as the walk would play it (`walk_list`). The cost is the move's own: for the
+    /// type the move made it (the caller's promotion), on the square it stands on after the
+    /// list, so a link's change of type or a side switch after it is not charged (and the
+    /// mover pays). Only a strike or contacts entry's mover half moves the taker (`stay`,
+    /// back to an empty origin), and only while it stands: a blast that fires first takes it,
+    /// and a piece the list takes away pays for the square it last stood on, its target. The
+    /// first entry whose landing link names a change decides (`walk_strike`'s mover half,
+    /// once per entry; a change without `stay` leaves it on the target).
+    #[cold]
+    #[inline(never)]
+    fn general_stays(&self, program: &CaptureProgram, m: u32, mover: usize) -> bool {
+        let t = self.t;
+        let (kind, origin, target, player) = (move_kind(m), move_from(m), move_to(m), self.side);
+        let moving = self.board[origin];
+        let captured = match kind {
+            MOVE_EN_PASSANT => self.board[self.ep_victim as usize],
+            MOVE_NORMAL | MOVE_PROMOTION | MOVE_PORTAL | MOVE_SWEEP => self.board[target],
+            _ => 0,
+        };
+        let mut swept: Vec<u8> = Vec::new();
+        if kind == MOVE_SWEEP {
+            let mut victims = t.sweep_victims(m, moving, player);
+            while let Some((_, value)) = victims.next_on(&self.board) {
+                swept.push(value);
+            }
+        }
+        // A gate fills the origin in part one (§3.2), so a `stay` finds it full.
+        let gated = m & MOVE_TAG_MASK != 0
+            && t.drops.as_ref().is_some_and(|rule| rule.gates.is_some())
+            && move_gate(m) != 0
+            && !move_gate_rook(m);
+        let mover_owner = t.owner_of(moving);
+        for entry in &program.entries {
+            match entry.kind {
+                CaptureKind::Pay | CaptureKind::Hand => {}
+                CaptureKind::Blast => {
+                    let landing = entry.on & ON_LANDING != 0
+                        && self.blast_sets_off(mover, captured, player);
+                    let path = entry.reads_path(mover)
+                        && swept.iter().any(|&value| self.blast_sets_off(mover, value, player));
+                    if landing || path {
+                        return false;
+                    }
+                }
+                CaptureKind::Strike | CaptureKind::Contacts => {
+                    if entry.on & ON_LANDING == 0 || captured == 0 {
+                        continue;
+                    }
+                    let Some(strike) = t.strike.as_ref() else {
+                        continue;
+                    };
+                    let rule = program.table(entry, strike);
+                    let owner = t.owner_of(captured);
+                    if owner == mover_owner && mover_owner != player {
+                        continue;
+                    }
+                    let cell = mover * rule.n_types + t.type_of(captured);
+                    let (to, mover_to, flips) = if owner == mover_owner {
+                        (
+                            rule.own_to.get(cell).copied().unwrap_or(-1),
+                            rule.own_mover_to.get(cell).copied().unwrap_or(-1),
+                            false,
+                        )
+                    } else {
+                        (rule.to[cell], rule.mover_to[cell], rule.flips(cell))
+                    };
+                    let stay = (to != -1 || mover_to >= 0) && rule.position == StrikePosition::Stay;
+                    if mover_to >= 0 || flips || stay {
+                        return stay && !gated;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// What the purse filter charges `m`: `move_cost`, and a buy's price as well. The one

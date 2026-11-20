@@ -46,6 +46,7 @@ only beside no wild piece and no sight).
 from __future__ import annotations
 
 from functools import cache
+from types import SimpleNamespace
 from typing import Any
 
 from chess_variant_sandbox.engine import Engine
@@ -56,6 +57,7 @@ from chess_variant_sandbox.engine.compile import (
     PURSE_MAX,
     WILD,
     CompiledSpec,
+    StrikeRule,
 )
 from chess_variant_sandbox.engine.engine import _pack
 from chess_variant_sandbox.engine.moves import (
@@ -73,6 +75,7 @@ from chess_variant_sandbox.engine.moves import (
     move_portal,
 )
 from chess_variant_sandbox.engine.state import GameState
+from tests.capture_oracle import RoundTaking, walk_round
 from tests.rest_oracle import after_turn, as_rest, legal, lists_of
 
 NO_PAIR = (-1, -1)
@@ -183,13 +186,24 @@ def _rehome(
 
 
 def _meeting(spec: CompiledSpec, mover_type: int, victim: int, mover_owner: int) -> tuple[int, int, bool]:
-    strike = spec.strike
-    if strike is None:
+    if spec.strike is None:
         return -1, -1, False
+    return _meeting_in(spec, spec.strike, mover_type, victim, mover_owner)
+
+
+def _meeting_in(
+    spec: CompiledSpec, strike: StrikeRule, mover_type: int, victim: int, mover_owner: int
+) -> tuple[int, int, bool]:
+    """`_meeting` read off ``strike``: the strike's table, or (R-L4b5, T3) a contact table."""
     owner = spec.owner_of(victim)
     cell = mover_type * strike.n_types + spec.type_of(victim)
     if owner == mover_owner:
-        return strike.own_onto_to[cell], strike.own_mover_to[cell], False
+        # A blast's victim may be the captor's own piece (R-L4b5): no own link, no change.
+        return (
+            strike.own_onto_to[cell] if strike.own_onto_to else -1,
+            strike.own_mover_to[cell] if strike.own_mover_to else -1,
+            False,
+        )
     flips = owner != WILD and bool(strike.mover_flips) and strike.mover_flips[cell]
     return strike.onto_to[cell], strike.mover_to[cell], flips
 
@@ -525,6 +539,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 "square": plan["target"], "origin": plan["origin"], "strikes": False,
                 "gone": shot[1 - i] and plan["origin"] == plans[1 - i]["target"],
                 "shot": True, "m": plan["m"], "block": plan["block"],
+                "cause": "landing", "placed": survivor != 0,
             })
         for square, value in shot_writes:
             board[square] = value
@@ -595,6 +610,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 "square": square, "origin": plans[captor]["origin"],
                 "strikes": strikes and spec.strike is not None, "gone": False,
                 "shot": False, "m": plans[captor]["m"], "block": plans[captor]["block"],
+                "cause": "landing", "placed": False,
             }
 
         def meet() -> tuple[int | None, list[bool]]:
@@ -628,11 +644,13 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 board[square] = arrival[winner]
                 loser = taking(winner, arrival[1 - winner], square, False)
                 loser["strikes"] = sim.collision_strikes
+                loser["cause"] = "collision"
                 takings.append(loser)
             elif beats[0] and beats[1]:
                 for w in (0, 1):
                     each = taking(w, arrival[1 - w], plans[w]["target"], False)
                     each["strikes"] = sim.collision_strikes
+                    each["cause"] = "collision"
                     each["gone"] = True
                     takings.append(each)
         elif collided:
@@ -647,6 +665,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 board[square] = arrival[winner]
                 loser = taking(winner, arrival[1 - winner], square, False)
                 loser["strikes"] = sim.collision_strikes
+                loser["cause"] = "collision"
                 takings.append(loser)
             else:
                 board[square] = 0
@@ -654,6 +673,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                     for w in (0, 1):
                         each = taking(w, arrival[1 - w], square, False)
                         each["strikes"] = sim.collision_strikes
+                        each["cause"] = "collision"
                         each["gone"] = True
                         takings.append(each)
         else:
@@ -696,27 +716,55 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                 touched.update((frm, to))
             unmoved &= ~(1 << frm) & ~(1 << to)
 
-        # Step 5: what the captures cause.
-        for taken in takings:
-            victim, captor = taken["victim"], taken["captor"]
+        # Steps 5 and 6 (R-L4b5): the capture list walked over the round's takings
+        # (`tests/capture_oracle.py::walk_round`); the round's board writes are these hooks.
+        explosion = spec.explosion
+
+        def hook_pay(taken: RoundTaking) -> None:
+            pay(taken.victim, taken.square, taken.captor)
+
+        def hook_file(taken: RoundTaking) -> None:
             drops = spec.drops
-            if drops is not None and drops.from_captures and spec.owner_of(victim) != captor:
-                slot = spec.demotions[spec.type_of(victim)]
-                if not (drops.unlimited and drops.unlimited[slot]):
-                    hands[captor][slot] += 1
-            pay(victim, taken["square"], captor)
-            if taken["shot"]:
-                shooter_after(taken)
-                continue
-            if not taken["strikes"]:
-                continue
-            strike = spec.strike
-            assert strike is not None
-            becomes, mover_becomes, flips = _meeting(spec, taken["captor_type"], victim, captor)
-            flips = flips and taken["block"] != WILD
-            square = taken["square"]
+            assert drops is not None
+            slot = spec.demotions[spec.type_of(taken.victim)]
+            if not (drops.unlimited and drops.unlimited[slot]):
+                hands[taken.captor][slot] += 1
+
+        def hook_fires(taken: RoundTaking) -> bool:
+            assert explosion is not None
+            return (explosion.by_types is None or taken.captor_type in explosion.by_types) and (
+                explosion.of_types is None or spec.type_of(taken.victim) in explosion.of_types
+            )
+
+        def hook_reach(centre: int) -> tuple[int, ...]:
+            assert explosion is not None
+            return tuple(explosion.blast[centre])
+
+        def hook_clear(centres: set[int], reach: set[int], settled: set[int]) -> list[tuple[int, int]]:
+            assert explosion is not None
+            cleared = []
+            for square in range(spec.n_squares):
+                value = board[square]
+                if value == 0 or square in settled:
+                    continue
+                if square not in centres and not (
+                    square in reach and spec.type_of(value) not in explosion.immune_types
+                ):
+                    continue
+                if square not in centres:
+                    cleared.append((square, value))
+                board[square] = 0
+                touched.add(square)
+                flags["material"] = True
+            return cleared
+
+        def hook_strike(rule: StrikeRule, taken: RoundTaking, in_limbo: bool) -> int | None:
+            nonlocal unmoved
+            becomes, mover_becomes, flips = _meeting_in(spec, rule, taken.captor_type, taken.victim, taken.captor)
+            flips = flips and taken.block != WILD
+            square, captor = taken.square, taken.captor
             there = board[square]
-            if not taken["gone"] and there != 0 and spec.owner_of(there) == taken["block"] and (
+            if taken.cause != "blast" and not taken.gone and there != 0 and spec.owner_of(there) == taken.block and (
                 mover_becomes >= 0 or flips
             ):
                 as_type = mover_becomes if mover_becomes >= 0 else spec.type_of(there)
@@ -724,53 +772,49 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
                     now = _entering(spec, captor, as_type) if mover_becomes >= 0 else there
                     board[square] = _rehome(spec, tally, now, 1 - captor, square)
                 else:
-                    board[square] = _in_block(spec, tally, taken["block"], as_type, square)
-            if becomes < 0:
-                continue
-            owner = spec.owner_of(victim)
+                    board[square] = _in_block(spec, tally, taken.block, as_type, square)
+            if becomes < 0 or not in_limbo:
+                return None
+            owner = spec.owner_of(taken.victim)
             place = None
-            if strike.position == "home":
-                home = strike.rebirth[(owner * n_types + becomes) * spec.n_squares + square]
+            if rule.position == "home":
+                home = rule.rebirth[(owner * n_types + becomes) * spec.n_squares + square]
                 place = home if home >= 0 else None
-            elif strike.position == "swap":
-                place = taken["origin"]
-            if place is not None and board[place] == 0:
-                board[place] = _arriving(spec, tally, owner, becomes, place)
-                touched.add(place)
-                if strike.position == "home":
-                    unmoved |= 1 << place
-                else:
-                    unmoved &= ~(1 << place)
+            elif rule.position == "choose":
+                place = None
+            elif taken.cause == "blast":
+                place = square
+            elif rule.position == "swap":
+                place = taken.origin
+            if place is None or board[place] != 0:
+                return None
+            board[place] = _arriving(spec, tally, owner, becomes, place)
+            touched.add(place)
+            if rule.position == "home":
+                unmoved |= 1 << place
+            else:
+                unmoved &= ~(1 << place)
+            return place
 
-        # Step 6: explosions, all at once.
-        explosion = spec.explosion
-        if explosion is not None:
-            centres: set[int] = set()
-            blast: set[int] = set()
-            for taken in takings:
-                capturer, victim_type = taken["captor_type"], spec.type_of(taken["victim"])
-                if (explosion.by_types is None or capturer in explosion.by_types) and (
-                    explosion.of_types is None or victim_type in explosion.of_types
-                ):
-                    centres.add(taken["square"])
-                    blast.update(explosion.blast[taken["square"]])
-            for square in range(spec.n_squares):
-                value = board[square]
-                if value == 0:
-                    continue
-                if square in centres or (
-                    square in blast and spec.type_of(value) not in explosion.immune_types
-                ):
-                    if square not in centres:
-                        for taken in takings:
-                            capturer, victim_type = taken["captor_type"], spec.type_of(taken["victim"])
-                            if (explosion.by_types is None or capturer in explosion.by_types) and (
-                                explosion.of_types is None or victim_type in explosion.of_types
-                            ) and square in explosion.blast[taken["square"]]:
-                                pay(value, square, taken["captor"])
-                    board[square] = 0
-                    touched.add(square)
-                    flags["material"] = True
+        def hook_shooter(taken: RoundTaking) -> None:
+            shooter_after({
+                "origin": taken.origin, "captor": taken.captor, "gone": taken.gone,
+                "block": taken.block, "m": taken.m, "captor_type": taken.captor_type,
+                "victim": taken.victim,
+            })
+
+        if takings:
+            hooks = SimpleNamespace(
+                pay=hook_pay, file=hook_file, fires=hook_fires, reach=hook_reach, clear=hook_clear,
+                strike=hook_strike, shooter=hook_shooter,
+            )
+            walk_round(spec, [
+                RoundTaking(
+                    t["captor"], t["captor_type"], t["victim"], t["square"], t["origin"], t["cause"],
+                    t["strikes"], t["gone"], t["shot"], t["m"], t["block"], t["square"], t["placed"],
+                )
+                for t in takings
+            ], hooks)  # type: ignore[arg-type]
 
         # Step 7: claims.
         territory = spec.territory

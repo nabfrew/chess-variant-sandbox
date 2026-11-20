@@ -42,7 +42,7 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import move_from, move_to
 from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.spec.canonical import spec_hash
-from chess_variant_sandbox.spec.refusals import refused_ids
+from chess_variant_sandbox.spec.capture import capture_list, lifted_pairs
 from chess_variant_sandbox.spec.schema import (
     PLAYED_AS_CAPTURE,
     SpecError,
@@ -1058,21 +1058,19 @@ def test_a_promotion_chain_may_cycle_where_a_demotion_chain_may_not() -> None:
     assert any("cycles at" in error for error in errors), errors
 
 
-@pytest.mark.parametrize("other", ["drops"])
-def test_two_rules_may_not_both_say_what_happens_to_a_taken_piece(other: str) -> None:
-    """A strike under drops would put the same piece in a hand *and* leave it standing.
-
-    A refusal rather than an ordering, because neither ordering is the obvious one and
-    picking one silently is how a plausible wrong game gets played. The strike beside a
-    blast was the other case until SR5a ruled its order (`tests/test_blast_strikes.py`).
-    """
-    extra = {"radius": 1} if other == "explode_on_capture" else {"from_captures": True}
+def test_two_rules_that_say_what_happens_to_a_taken_piece_are_one_list() -> None:
+    """A strike under drops was refused until R-L4b: it would put the same piece in a hand
+    *and* leave it standing, and neither order was written. The capture list writes it
+    (`spec/capture.py`): the old keys are its default order, the hand ahead of the strike, so
+    the hand files the taken piece and nothing is left to strike (§2.2 rule 1), and the core
+    is handed that list. The strike beside a blast was ordered earlier, by SR5a."""
     spec = with_rules(
         strike={"effect": "demote", "position": "stay", "chain": FALL, "immune": ["K"]},
-        **{other: extra},
+        drops={"from_captures": True},
     )
-    errors = validate_spec(spec)
-    assert {"explode_on_capture": "T1", "drops": "T2"}[other] in refused_ids(errors), errors
+    assert validate_spec(spec) == []
+    assert [entry["do"] for entry in capture_list(spec) or []] == ["hand", "strike"]
+    assert "T2" in lifted_pairs(spec)
 
 
 # ------------------------------------------------------------- the other surfaces

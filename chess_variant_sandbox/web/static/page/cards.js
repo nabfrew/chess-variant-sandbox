@@ -613,9 +613,16 @@ function fieldHtml(field, value, path, root, out, head) {
       const itemPath = path.concat([i]);
       const card = fieldHtml(Object.assign({}, field.item, { required: true }), item, itemPath,
         root, out, `<span>${esc(field.label)} ${i + 1}</span>`);
-      return card.replace('<div class="cardHead">', `<div class="cardHead"><button class="cardDrop"
-        data-cdel="${esc(JSON.stringify(itemPath))}" data-croot-del="${esc(root)}"
-        title="remove this one">&times;</button>`);
+      const drop = `<button class="cardDrop" data-cdel="${esc(JSON.stringify(itemPath))}"
+        data-croot-del="${esc(root)}" title="remove this one">&times;</button>`;
+      // An ordered list (R-L4b4: the capture list, read top to bottom) moves an item up.
+      const up = field.ordered && i > 0 ? `<button class="cardDrop" data-cup="${
+        esc(JSON.stringify(itemPath))}" data-croot-up="${esc(root)}"
+        title="move this one up">&uarr;</button>` : '';
+      // An item with no card head of its own (a menu in a list of words) carries its buttons beside it.
+      return card.includes('<div class="cardHead">')
+        ? card.replace('<div class="cardHead">', `<div class="cardHead">${drop}${up}`)
+        : `<div class="listItem">${card}${drop}${up}</div>`;
     }).join('');
     return `<div class="field">${label}${saysHtml(field.says)}
       <i hidden ${cattrs(root, path, 'list', true)}></i>
@@ -656,7 +663,19 @@ function fieldHtml(field, value, path, root, out, head) {
 function cardBodyHtml(field, value, path, root, out) {
   const dotted = dottedPath(root, path);
   const hidden = otherShapesKeys(dotted, value);
-  const shown = field.fields.filter(f => !hidden.has(f.key));
+  let shown = field.fields.filter(f => !hidden.has(f.key));
+  // R-L4b4: an entry of the capture list shows only the fields its kind reads, and choosing
+  // the kind redraws the card (`cards.py::_capture_list_card`).
+  const byKind = field.byKind;
+  if (byKind) {
+    const kind = value && value[byKind.field];
+    const keys = new Set(byKind.keys[kind] || [byKind.field]);
+    shown = shown.filter(f => keys.has(f.key));
+    return shown.map(f => {
+      const html = fieldHtml(f, value[f.key], path.concat([f.key]), root, out);
+      return f.key === byKind.field ? html.replace('<select ', '<select data-credraw="1" ') : html;
+    }).join('');
+  }
   const groups = choiceGroups(dotted);
   if (!groups.length) {
     return shown.map(f => fieldHtml(f, value[f.key], path.concat([f.key]), root, out))
@@ -1285,6 +1304,20 @@ function wireCards(form) {
       if (PICKING && PICKING.root === root) PICKING = null;
       structural(root, target => dropIn(target, path));
     };
+  });
+  form.querySelectorAll('[data-cup]').forEach(node => {
+    node.onclick = event => {
+      event.stopPropagation();
+      const root = node.dataset.crootUp, path = JSON.parse(node.dataset.cup);
+      structural(root, target => {
+        const list = getIn(target, path.slice(0, -1));
+        const at = path[path.length - 1];
+        if (Array.isArray(list) && at > 0) list.splice(at - 1, 2, list[at], list[at - 1]);
+      });
+    };
+  });
+  form.querySelectorAll('[data-credraw]').forEach(node => {
+    node.addEventListener('change', () => drawDesigner());
   });
   form.querySelectorAll('[data-cpush]').forEach(node => {
     node.onclick = event => {

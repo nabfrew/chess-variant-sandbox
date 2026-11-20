@@ -170,6 +170,13 @@ def _pieces_that_can_stand(
         reachable = grown
 
 
+def _first_entry(entries: list[Any], kind: str) -> dict[str, Any] | None:
+    """The first entry of ``kind`` in a written ``rules.capture``, or ``None``."""
+    return next(
+        (entry for entry in entries if isinstance(entry, dict) and entry.get("do") == kind), None
+    )
+
+
 def _type_changes(
     pieces: list[Any], rules: dict[str, Any], declared: set[str]
 ) -> tuple[
@@ -181,7 +188,12 @@ def _type_changes(
     and what each piece reverts to in a hand.
     """
     entries = [entry for entry in _promotion_entries(rules) if isinstance(entry, dict)]
-    strike = rules.get("strike")
+    written = rules.get("capture")
+    listed = written if isinstance(written, list) else None
+    # R-L4b4: a written ``rules.capture`` says each kind's rule in its first entry, and a
+    # hand fills only under a hand entry. Read off the spelling, as `complexity` reads it
+    # (this file is in `measurement.METRICS_SOURCES`; `spec/capture.py` is not).
+    strike = rules.get("strike") if listed is None else _first_entry(listed, "strike")
     links: list[dict[str, Any]] = []
     if isinstance(strike, dict) and strike.get("effect", "capture") != "capture":
         immune = strike.get("immune")
@@ -195,7 +207,7 @@ def _type_changes(
     # The seventh route (schema 10, Q19a): a contact puts a piece on the board on both
     # of its columns, and a link fires only when *both* of its pieces can be standing
     # there to meet -- which is the one place the walks are keyed by a pair.
-    contacts = rules.get("contacts")
+    contacts = rules.get("contacts") if listed is None else _first_entry(listed, "contacts")
     contact_links: list[dict[str, Any]] = []
     if isinstance(contacts, dict):
         immune = contacts.get("immune")
@@ -206,7 +218,11 @@ def _type_changes(
             if isinstance(link, dict) and not _in(link.get("onto"), immune_ids)
         ]
     drops = rules.get("drops")
-    hands_fill = isinstance(drops, dict) and bool(drops) and drops.get("from_captures", True)
+    hands_fill = isinstance(drops, dict) and (
+        bool(drops) and drops.get("from_captures", True) if listed is None
+        # A hand entry fills the hand, whose `drops` beside a list may be written `{}`.
+        else _first_entry(listed, "hand") is not None
+    )
     # A captured piece enters the captor's hand as its `promoted_from` where it declares
     # one, so a hand is a route back for the *base* piece and not for a new one.
     demoted = {
