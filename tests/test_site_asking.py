@@ -31,6 +31,7 @@ from typing import Any
 
 import pytest
 import site_words
+from test_site import _DOM, _in_node, _script_of
 from test_site_admin import (
     PASSWORD,
     SITE_URL,
@@ -96,10 +97,15 @@ def _rows(site: Site) -> list[tuple[Any, ...]]:
     return [tuple(row) for row in found]
 
 
-def _pending(boss: Browser) -> list[dict[str, Any]]:
+def _kept(boss: Browser) -> list[dict[str, Any]]:
+    """Every request `/admin` lists, pending and answered (AD2)."""
     answer = boss.get("/api/admin")
     assert answer.status == 200, answer.text
     return list(answer.payload["asks"])
+
+
+def _pending(boss: Browser) -> list[dict[str, Any]]:
+    return [row for row in _kept(boss) if row["answered"] is None]
 
 
 def _confirmed(answer: Answer) -> None:
@@ -248,7 +254,7 @@ class TestTheAdminAnswers:
         ]
         assert _pending(boss) == []
         assert boss.get("/api/admin").payload["asksAnswered"] == {
-            "granted": 1, "declined": 0, "days": quota.ASK_KEPT.days
+            "pending": 0, "granted": 1, "declined": 0, "days": quota.ASK_KEPT.days
         }
         assert _rows(site) == [("eve@example.com", "Saw it on a forum.", True, True)]
         # And it makes an account like any other.
@@ -316,6 +322,93 @@ class TestTheAdminAnswers:
             answer = boss.post("/api/admin", {"act": "grant-ask", "ask": wrong})
             assert answer.status == 400, wrong
         assert boss.post("/api/admin", {"act": "decline-ask", "ask": 999}).status == 400
+
+
+# ------------------------------------------------------- every kept request is listed
+
+
+class TestThePanelListsEveryKeptRequest:
+    """AD2 (the owner, 2026-11-20): the count line said one declined, and the table had no
+    lines, because it listed only the pending requests. The table now lists every request
+    the store holds, pending first, and the count line is counted off the same rows."""
+
+    def _three(self, site: Site, boss: Browser) -> None:
+        """One request in each state: granted, declined, pending (asked in that order)."""
+        for name in ("gina", "dora", "pia"):
+            _confirmed(_ask(site, f"{name}@example.com", f"note from {name}"))
+        granted, declined, _ = _pending(boss)
+        assert boss.post("/api/admin", {"act": "grant-ask", "ask": granted["id"]}).status == 200
+        assert boss.post("/api/admin", {"act": "decline-ask", "ask": declined["id"]}).status == 200
+
+    def test_pending_first_then_answered_each_with_its_answer_and_its_deletion(
+        self, site: Site
+    ) -> None:
+        from datetime import datetime
+
+        boss = site.signed_in("boss", admin.ADMIN)
+        self._three(site, boss)
+        payload = boss.get("/api/admin").payload
+        rows = payload["asks"]
+        # Pending first; then the answered ones, the newest answer first.
+        assert [row["email"] for row in rows] == [
+            "pia@example.com", "dora@example.com", "gina@example.com"
+        ]
+        assert [row["granted"] for row in rows] == [None, False, True]
+        assert [row["note"] for row in rows] == [
+            "note from pia", "note from dora", "note from gina"
+        ]
+        assert rows[0]["answered"] is None and rows[0]["deletes"] is None
+        for row in rows[1:]:
+            answered = datetime.fromisoformat(row["answered"])
+            assert datetime.fromisoformat(row["deletes"]) == answered + quota.ASK_KEPT
+            assert row["created"]
+        # The count line's numbers are the same rows counted.
+        assert payload["asksAnswered"] == {
+            "pending": 1, "granted": 1, "declined": 1, "days": quota.ASK_KEPT.days
+        }
+
+    def test_the_drawn_table_and_its_count_line_agree(self) -> None:
+        """Drawn in node over the stubbed DOM: an answered row has no button, and the
+        count line counts the rows the table draws."""
+        rows = [
+            {"id": 3, "email": "pia@example.com", "note": "n3", "created": "2026-11-19T10:00",
+             "invited": None, "answered": None, "granted": None, "deletes": None},
+            {"id": 2, "email": "dora@example.com", "note": None, "created": "2026-11-18T10:00",
+             "invited": None, "answered": "2026-11-20T09:00", "granted": False,
+             "deletes": "2026-12-20T09:00"},
+            {"id": 1, "email": "gina@example.com", "note": "n1", "created": "2026-11-17T10:00",
+             "invited": "2026-11-20T08:00", "answered": "2026-11-20T08:00", "granted": True,
+             "deletes": "2026-12-20T08:00"},
+        ]
+        kept = {"pending": 1, "granted": 1, "declined": 1, "days": quota.ASK_KEPT.days}
+        said = _in_node(
+            _DOM + _script_of(site_pages.admin("boss")),
+            f"asks({json.dumps(rows)}, {json.dumps(kept)});"
+            "const body = document.getElementById('asks');"
+            "console.log(JSON.stringify({"
+            " cells: body.children.map(row => row.children.map(td => td.textContent)),"
+            " buttons: body.children.map(row => row.children[row.children.length - 1]"
+            "   .children.map(b => b.textContent)),"
+            " line: document.getElementById('asks-empty').textContent}));",
+        )
+        assert said["cells"] == [
+            ["pia@example.com", "2026-11-19", "n3", "—", "waiting", "—",
+             "send an invitationdecline"],
+            ["dora@example.com", "2026-11-18", "—", "—", "declined 2026-11-20",
+             "2026-12-20", ""],
+            ["gina@example.com", "2026-11-17", "n1", "2026-11-20", "granted 2026-11-20",
+             "2026-12-20", ""],
+        ]
+        assert said["buttons"] == [["send an invitation", "decline"], [], []]
+        assert said["line"] == (
+            f"1 waiting for an answer. Answered in the last {quota.ASK_KEPT.days} days: "
+            "1 granted, 1 declined."
+        )
+
+    def test_the_tables_heading_names_the_new_columns(self) -> None:
+        page = site_pages.admin("boss")
+        table = page[page.index('<h2 id="requests">'):page.index('<tbody id="asks">')]
+        assert "<th>answer</th><th>deleted on</th><th></th></tr>" in table
 
 
 # --------------------------------------------------------------- one answer for all

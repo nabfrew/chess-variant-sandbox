@@ -1560,10 +1560,13 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "the invitation, if you send one. A request from an address that already has an "
         "account, or that already asked, is not kept, and the person is not told so. An "
         f"answered request is deleted after {quota.ASK_KEPT.days} days, and the same "
-        "address cannot ask again before then.</p>\n"
+        "address cannot ask again before then. The table lists every request kept: the "
+        "ones waiting first, then the answered ones, each with its answer and the day it "
+        "will be deleted.</p>\n"
         '<p class="note" id="asks-note"></p>\n'
         '<div class="scroller"><table><thead><tr><th>address</th><th>asked</th>'
-        "<th>note</th><th>invited before</th><th></th></tr></thead>\n"
+        "<th>note</th><th>invited before</th><th>answer</th><th>deleted on</th>"
+        "<th></th></tr></thead>\n"
         '<tbody id="asks"></tbody></table></div>\n'
         '<p class="under" id="asks-empty"></p>\n'
         "<h2>Games</h2>\n"

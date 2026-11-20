@@ -2075,16 +2075,17 @@ class SiteApp(App):
         but its author's.
         """
         with self._connection() as connection:
+            asks = asking.kept(connection)
             return {
                 # Q813. The box's disk and every queue's depth and oldest age, each against
                 # its threshold: the numbers `deploy/status.sh` prints (`site/depths.sql`).
                 "status": depths.view(connection, self.runs_dir),
                 "users": [person.as_dict() for person in admin.people(connection)],
                 "invites": [one.as_dict() for one in admin.invitations(connection)],
-                # Q831. Requests for an invitation nobody has answered yet, oldest
-                # first, and how many were granted and declined in the kept window.
-                "asks": [one.as_dict() for one in asking.pending(connection)],
-                "asksAnswered": asking.answered(connection),
+                # Q831, AD2. Every request for an invitation the store still holds,
+                # pending first, and the counts read off the same rows.
+                "asks": [one.as_dict() for one in asks],
+                "asksAnswered": asking.answered(asks),
                 "games": [game.as_dict() for game in admin.games(connection)],
                 "suggestions": [
                     one.as_dict() for one in suggestions.every(connection)

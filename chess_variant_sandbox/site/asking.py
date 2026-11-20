@@ -100,10 +100,12 @@ class AskGone(ValueError):
 
 @dataclass(frozen=True)
 class Ask:
-    """One pending request, as `/admin` lists it.
+    """One kept request, pending or answered, as `/admin` lists it.
 
     `invited` is when the address was last sent an invitation, if ever: an address can ask
     while an earlier invitation sits in its junk folder, and granting it sends a fresh one.
+    `answered` and `granted` are both `None` while the request is pending; once answered,
+    `deletes` is when the sweep will take the row (`quota.ASK_KEPT` after the answer).
     """
 
     id: int
@@ -111,14 +113,24 @@ class Ask:
     note: str | None
     created: datetime
     invited: datetime | None = None
+    answered: datetime | None = None
+    granted: bool | None = None
+
+    @property
+    def deletes(self) -> datetime | None:
+        return None if self.answered is None else self.answered + quota.ASK_KEPT
 
     def as_dict(self) -> dict[str, Any]:
+        deletes = self.deletes
         return {
             "id": self.id,
             "email": self.email,
             "note": self.note,
             "created": self.created.isoformat(),
             "invited": None if self.invited is None else self.invited.isoformat(),
+            "answered": None if self.answered is None else self.answered.isoformat(),
+            "granted": self.granted,
+            "deletes": None if deletes is None else deletes.isoformat(),
         }
 
 
@@ -188,31 +200,38 @@ def sweep(connection: Any) -> None:
         )
 
 
-def pending(connection: Any) -> list[Ask]:
-    """Every request nobody has answered yet, oldest first: the order they were made in."""
+def kept(connection: Any) -> list[Ask]:
+    """Every request the store still holds, for `/admin` (AD2, the owner, 2026-11-20).
+
+    The pending ones first, oldest first: the order they were made in. Then the answered
+    ones, most recently answered first, each kept until `quota.ASK_KEPT` after its answer.
+    The panel's table and its count line both read this one list (`answered`), so they
+    cannot disagree.
+    """
     sweep(connection)
     with connection.cursor() as cursor:
         cursor.execute(
             "select a.id, a.email, a.note, a.created,"
-            " (select max(i.created) from invites i where lower(i.email) = a.email)"
-            " from invite_asks a where a.answered is null order by a.created, a.id"
+            " (select max(i.created) from invites i where lower(i.email) = a.email),"
+            " a.answered, a.granted"
+            " from invite_asks a"
+            " order by a.answered is not null, a.answered desc, a.created, a.id"
         )
         return [
-            Ask(id=int(row[0]), email=str(row[1]), note=row[2], created=row[3], invited=row[4])
+            Ask(id=int(row[0]), email=str(row[1]), note=row[2], created=row[3], invited=row[4],
+                answered=row[5], granted=None if row[6] is None else bool(row[6]))
             for row in cursor.fetchall()
         ]
 
 
-def answered(connection: Any) -> dict[str, int]:
-    """How many requests were granted and declined in the kept window, for `/admin`."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "select count(*) filter (where granted), count(*) filter (where not granted)"
-            " from invite_asks where answered is not null"
-        )
-        granted, declined = cursor.fetchone() or (0, 0)
-    return {"granted": int(granted or 0), "declined": int(declined or 0),
-            "days": quota.ASK_KEPT.days}
+def answered(rows: list[Ask]) -> dict[str, int]:
+    """How many of `kept`'s rows wait, and were granted and declined, for `/admin`."""
+    return {
+        "pending": sum(1 for one in rows if one.answered is None),
+        "granted": sum(1 for one in rows if one.granted is True),
+        "declined": sum(1 for one in rows if one.granted is False),
+        "days": quota.ASK_KEPT.days,
+    }
 
 
 def grant(

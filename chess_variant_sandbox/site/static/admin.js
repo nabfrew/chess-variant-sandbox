@@ -101,10 +101,13 @@ function invites(rows) {
   }
 }
 
-// Q831. Requests for an invitation nobody has answered, oldest first. Every cell is a text
-// node, the visitor's note included. A button is off once pressed, so a double press
-// sends one invitation; the redraw after the answer brings the table back.
-function asks(rows, answered) {
+// Q831, AD2. Every request for an invitation the store still holds: the pending ones first,
+// oldest first, with their two buttons; then the answered ones, newest answer first, each
+// saying how and when it was answered and when it will be deleted, with no button. The
+// count line is counted off these same rows, so it and the table cannot disagree. Every
+// cell is a text node, the visitor's note included. A button is off once pressed, so a
+// double press sends one invitation; the redraw after the answer brings the table back.
+function asks(rows, kept) {
   const body = document.getElementById('asks');
   body.replaceChildren();
   const once = (asked) => async (event) => {
@@ -119,15 +122,29 @@ function asks(rows, answered) {
     cell(row, day(one.created));
     cell(row, one.note || '\u2014', 'ask-note');
     cell(row, one.invited ? day(one.invited) : '\u2014');
-    const acts = cell(row, '');
-    acts.appendChild(button('send an invitation', false, once({act: 'grant-ask', ask: one.id})));
-    acts.appendChild(button('decline', true, once({act: 'decline-ask', ask: one.id})));
+    if (one.answered) {
+      cell(row, (one.granted ? 'granted ' : 'declined ') + day(one.answered),
+        'state ' + (one.granted ? 'granted' : 'declined'));
+      cell(row, day(one.deletes));
+      cell(row, '');  // an answered request has nothing left to press
+    } else {
+      cell(row, 'waiting', 'state waiting');
+      cell(row, '\u2014');
+      const acts = cell(row, '');
+      acts.appendChild(button('send an invitation', false,
+        once({act: 'grant-ask', ask: one.id})));
+      acts.appendChild(button('decline', true, once({act: 'decline-ask', ask: one.id})));
+    }
     body.appendChild(row);
   }
-  const done = answered || {granted: 0, declined: 0, days: 30};
-  document.getElementById('asks-empty').textContent = (rows.length ? '' : 'Nobody is waiting '
-    + 'for an answer. ') + 'Answered in the last ' + done.days + ' days: ' + done.granted
-    + ' granted, ' + done.declined + ' declined.';
+  const waiting = rows.filter((one) => !one.answered).length;
+  const granted = rows.filter((one) => one.answered && one.granted).length;
+  const declined = rows.filter((one) => one.answered && !one.granted).length;
+  const days = (kept && kept.days) || 30;
+  document.getElementById('asks-empty').textContent = (waiting
+    ? waiting + ' waiting for an answer. ' : 'Nobody is waiting for an answer. ')
+    + 'Answered in the last ' + days + ' days: ' + granted + ' granted, ' + declined
+    + ' declined.';
 }
 
 function inviteSay(text, done) {
