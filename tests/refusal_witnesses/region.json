@@ -1,0 +1,9 @@
+{
+  "family": "region",
+  "witnesses": {
+    "region.placement": {"from": "rulesets/gardner.json",
+           "edits": [["set", "pieces[1].region", ["a3", "b3", "c3", "d3", "e3"]]],
+           "wanted": null, "meets": ["region.placement"]}
+  },
+  "none": {}
+}

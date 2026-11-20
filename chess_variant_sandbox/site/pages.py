@@ -358,6 +358,11 @@ _OWN = """
   details.lateMore > summary { cursor: pointer; font-size: 14px; color: var(--muted); }
   details.lateMore[open] > summary { display: none; }
 
+  /* AD1: the admin page's long tables, folded shut with their count on the summary. */
+  details.adminFold { margin: 8px 0 4px; }
+  details.adminFold > summary { cursor: pointer; font-size: 15px; font-weight: 600;
+                                padding: 4px 0; }
+
   details.settings { margin-top: 34px; }
   details.settings > summary { cursor: pointer; font-family: var(--f-head); font-size: 20px;
                                font-weight: 600; }
@@ -1571,9 +1576,14 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "deleted its rules for good, from the game's own page. There is no way back and "
         "no button here, and the matches, ratings and votes on it stay where they are "
         "and name it a deleted game.</p>\n"
+        # AD1 (the owner, 2026-11-20). One row a game, every game the site holds: open, it
+        # put the rest of the page hundreds of rows down. Folded shut, the summary carries
+        # the count (`admin.js` `folded`), so the fold says what is in it unopened.
+        '<details class="adminFold" id="games-fold"><summary id="games-summary">All games'
+        "</summary>\n"
         '<div class="scroller"><table><thead><tr><th>game</th><th>origin</th>'
         "<th>matches</th><th>state</th><th></th></tr></thead>\n"
-        '<tbody id="games"></tbody></table></div>\n'
+        '<tbody id="games"></tbody></table></div></details>\n'
         # Q649. The scores a new measurement replaced, from each game's `history.jsonl`:
         # the maintainer's *was* lines, with the basis and the reason. Visitors see none.
         "<h2>Earlier scores</h2>\n"
@@ -1583,10 +1593,13 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "under <code>runs/&lt;hash&gt;/previous/</code> and are never shown as a score. "
         "Visitors do not see them. The whole library's history, drawn, is "
         '<a href="/score-history">how the scores have moved</a>, which visitors do see.</p>\n'
+        # AD1: a row a replaced score grows with every re-measurement, so it folds too.
+        '<details class="adminFold" id="score-history-fold"><summary '
+        'id="score-history-summary">Replaced scores</summary>\n'
         '<div class="scroller"><table><thead><tr><th>game</th><th>was</th>'
         "<th>measured</th><th>replaced</th><th>measured with</th><th>why</th>"
         "<th>convergence</th></tr></thead>\n"
-        '<tbody id="score-history"></tbody></table></div>\n'
+        '<tbody id="score-history"></tbody></table></div></details>\n'
         '<p class="under" id="score-history-empty"></p>\n'
         # EV6 (Q690). How much each stored score has moved between its revisions at one
         # weights version, beside its interval (`history.volatility`). Visitors see none.
@@ -1596,10 +1609,13 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "of the score it has now. No line is drawn between steady and unsteady: compare "
         "the two numbers. This changes no score and no trust level. Visitors do not see "
         "it.</p>\n"
+        # AD1: a row a scored game, as long as the library, so folded like the games.
+        '<details class="adminFold" id="score-volatility-fold"><summary '
+        'id="score-volatility-summary">Scored games</summary>\n'
         '<div class="scroller"><table><thead><tr><th>game</th><th>scores compared</th>'
         "<th>moved</th><th>largest change</th><th>interval</th><th>in words</th>"
         "</tr></thead>\n"
-        '<tbody id="score-volatility"></tbody></table></div>\n'
+        '<tbody id="score-volatility"></tbody></table></div></details>\n'
         '<p class="under" id="score-volatility-empty"></p>\n'
         # H8 and H9 of `docs/reference/human-data.md` (§3.3): games whose strongest computer
         # player people beat, against the bar fixed before any game was read, and the
@@ -1736,8 +1752,11 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "<h2>What the site limits</h2>\n"
         '<p class="under">These are all the limits the site sets. They are read from '
         "<code>site/quota.py</code>, the only place they are written down.</p>\n"
+        # AD1: fixed numbers, looked up rather than read, and some forty rows tall.
+        '<details class="adminFold" id="limits-fold"><summary id="limits-summary">Every '
+        "limit</summary>\n"
         '<div class="scroller"><table><thead><tr><th>limit</th><th>value</th></tr></thead>\n'
-        '<tbody id="limits"></tbody></table></div>\n'
+        '<tbody id="limits"></tbody></table></div></details>\n'
         "<h2>Use</h2>\n"
         '<p class="under">Counted by the hour from the site\'s own tables. A visitor is '
         "counted as requests and never as a person. People-hours count a person once per "

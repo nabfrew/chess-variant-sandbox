@@ -1,0 +1,12 @@
+{
+  "family": "takes_royal",
+  "witnesses": {
+    "takes_royal.sight": {"from": "archive/the-crowd.json",
+           "edits": [["set", "pieces[1].sight", [{"vectors": [[1, 0]], "symmetry": "rotate4", "range": 1, "effect": "freeze", "whose": "enemy"}]]],
+           "wanted": "pieces[1].sight", "meets": ["takes_royal.sight"]},
+    "takes_royal.portals": {"from": "archive/the-crowd.json",
+           "edits": [["set", "rules.portals", [{"orange": "a4", "blue": "h5"}]]],
+           "wanted": "rules.portals", "meets": ["takes_royal.portals"]}
+  },
+  "none": {}
+}

@@ -155,7 +155,14 @@ document.getElementById('invite-form').addEventListener('submit', async (event) 
   }
 });
 
+// AD1. A long table sits folded shut; its summary says how many rows are inside, so the
+// fold is read without opening it. Redrawing leaves the fold as the reader left it.
+function folded(id, label, count) {
+  document.getElementById(id).textContent = label + ' (' + count + ')';
+}
+
 function games(rows) {
+  folded('games-summary', 'All games', rows.length);
   const body = document.getElementById('games');
   body.replaceChildren();
   for (const game of rows) {
@@ -199,6 +206,8 @@ function scoreHistory(rows) {
   body.replaceChildren();
   const empty = document.getElementById('score-history-empty');
   empty.textContent = rows.length ? '' : 'No score has been replaced yet.';
+  folded('score-history-summary', 'Replaced scores',
+    rows.reduce((sum, game) => sum + (game.entries || []).length, 0));
   for (const game of rows) {
     for (const was of game.entries || []) {
       const row = document.createElement('tr');
@@ -229,6 +238,7 @@ function scoreVolatility(rows) {
   body.replaceChildren();
   document.getElementById('score-volatility-empty').textContent =
     rows.length ? '' : 'No game has a stored score here.';
+  folded('score-volatility-summary', 'Scored games', rows.length);
   const figure = value => value === null || value === undefined
     ? '\u2014' : Number(value).toFixed(3);
   for (const game of rows) {
@@ -557,6 +567,7 @@ async function roundAct(body) {
 }
 
 function limits(rows) {
+  folded('limits-summary', 'Every limit', rows.length);
   const body = document.getElementById('limits');
   body.replaceChildren();
   for (const limit of rows) {

@@ -1,0 +1,9 @@
+{
+  "family": "reach",
+  "witnesses": {
+    "I1": {"from": "rulesets/dobutsu.json",
+           "edits": [["set", "rules.reach.on", "leave"]],
+           "wanted": null, "meets": ["I1"]}
+  },
+  "none": {}
+}

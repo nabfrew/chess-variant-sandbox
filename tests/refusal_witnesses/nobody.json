@@ -1,0 +1,19 @@
+{
+  "family": "nobody",
+  "witnesses": {
+    "O7": {"from": "tests/_sight_wild_small.json",
+           "edits": [["add", "setup.placements", {"piece": "W", "player": "nobody", "squares": ["c5"]}]],
+           "wanted": null, "meets": ["O7"]},
+    "O8": {"from": "rulesets/gardner.json",
+           "edits": [["set", "pieces[1].rest", 1],
+                     ["add", "setup.placements", {"piece": "N", "player": "nobody", "squares": ["c3"]}]],
+           "wanted": null, "meets": ["O8"]},
+    "O20": {"from": "rulesets/gardner.json",
+           "edits": [["set", "pieces[5].control", "majority"]],
+           "wanted": null, "meets": ["O20"]},
+    "O21": {"from": "tests/_sight_wild_small.json",
+           "edits": [["set", "pieces[4].control", "majority"]],
+           "wanted": null, "meets": ["O21"]}
+  },
+  "none": {}
+}

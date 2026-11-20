@@ -1,0 +1,18 @@
+{
+  "family": "paths",
+  "witnesses": {
+    "PA1": {"from": "rulesets/chess.json",
+           "edits": [["add", "pieces[0].moves", {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 3, "path": "circle", "mode": "move"}]],
+           "wanted": null, "meets": ["PA1"]},
+    "PA3.leap": {"from": "rulesets/chess.json",
+           "edits": [["set", "pieces[1].moves[0].path", "circle"]],
+           "wanted": null, "meets": ["PA3.leap"]},
+    "PA3.hop": {"from": "rulesets/xiangqi.json",
+           "edits": [["set", "pieces[5].moves[1].path", "circle"]],
+           "wanted": null, "meets": ["PA3.hop"]},
+    "PA3.sweep": {"from": "rulesets/chess.json",
+           "edits": [["add", "pieces[3].moves", {"kind": "sweep", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 3, "path": "circle", "mode": "capture"}]],
+           "wanted": null, "meets": ["PA3.sweep"]}
+  },
+  "none": {}
+}

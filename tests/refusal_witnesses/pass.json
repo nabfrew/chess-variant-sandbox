@@ -1,0 +1,23 @@
+{
+  "family": "pass",
+  "witnesses": {
+    "pass.P1": {"from": "tests/_retired_gardner_in_rounds.json",
+           "edits": [["set", "rules.pass", true]],
+           "wanted": "rules.pass", "meets": ["pass.P1"]},
+    "pass.P2": {"from": "rulesets/duck-chess.json",
+           "edits": [["drop", "rules.stalemate"], ["set", "rules.pass", true]],
+           "wanted": "rules.pass", "meets": ["pass.P2"]},
+    "pass.P3": {"from": "rulesets/gardner.json",
+           "edits": [["set", "rules.turn", {"moves": 2}], ["set", "rules.pass", true]],
+           "wanted": "rules.pass", "meets": ["pass.P3"]},
+    "pass.P5": {"from": "archive/placement-chess.json",
+           "edits": [["set", "rules.pass", true]],
+           "wanted": "rules.pass", "meets": ["pass.P5"]},
+    "pass.P6": {"from": "rulesets/gardner.json",
+           "edits": [["add", "pieces", {"id": "W", "name": "wolf", "value": 3, "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}]}],
+                     ["set", "rules.npcs", [{"piece": "W", "route": ["c3"]}]],
+                     ["set", "rules.pass", true]],
+           "wanted": "rules.pass", "meets": ["pass.P6"]}
+  },
+  "none": {}
+}

@@ -1,0 +1,22 @@
+{
+  "family": "sweeps",
+  "witnesses": {
+    "W1.choose": {"from": "archive/hierarchy-rise-throw.json",
+           "edits": [["add", "pieces[3].moves", {"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4", "range": 2, "mode": "capture"}]],
+           "wanted": null, "meets": ["W1.choose"]},
+    "W2.choose": {"from": "archive/pawn-knockdown.json",
+           "edits": [["add", "pieces[3].moves", {"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4", "range": 2, "mode": "capture"}]],
+           "wanted": null, "meets": ["W2.choose"]},
+    "W9.duck": {"from": "rulesets/duck-chess.json",
+           "edits": [["set", "rules.duck.goes", "by_moves"],
+                     ["set", "pieces[6].moves", [{"kind": "sweep", "vectors": [[1, 0]], "symmetry": "rotate4", "range": 2, "mode": "move"}]]],
+           "wanted": null, "meets": ["W9.duck"]},
+    "hold.C2": {"from": "rulesets/torus.json",
+           "edits": [["add", "pieces[3].moves", {"kind": "sweep", "vectors": [[1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [2, 3]], "symmetry": "dihedral8", "range": 2, "mode": "capture"}]],
+           "wanted": null, "meets": ["hold.C2"]},
+    "hold.C3": {"from": "archive/crease.json",
+           "edits": [["add", "pieces[3].moves", {"kind": "sweep", "vectors": [[1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [2, 3]], "symmetry": "dihedral8", "range": 2, "mode": "capture"}]],
+           "wanted": null, "meets": ["hold.C3"]}
+  },
+  "none": {}
+}

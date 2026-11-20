@@ -1,0 +1,30 @@
+{
+  "family": "taken piece",
+  "witnesses": {
+    "T1.rounds": {"from": "tests/_simultaneous_rifle.json",
+           "edits": [["set", "rules.explode_on_capture", {"radius": 1, "by": ["N"], "immune": ["P"]}]],
+           "wanted": "rules.explode_on_capture", "meets": ["T1.rounds"]},
+    "T4.rounds": {"from": "tests/_simultaneous_atomic.json",
+           "edits": [["set", "rules.explode_on_capture.by", ["B"]], ["set", "rules.contacts", {"position": "stay", "links": [{"mover": "N", "onto": "P", "onto_to": "B"}], "immune": ["K"]}]],
+           "wanted": "rules.contacts", "meets": ["T4.rounds"]},
+    "T11": {"from": "archive/andernach.json",
+           "edits": [["set", "rules.strike.switches_sides", ["P", "N", "B", "R", "Q", "K"]]],
+           "wanted": null, "meets": ["T11"]},
+    "T12": {"from": "archive/hierarchy-extended.json",
+           "edits": [["add", "rules.strike.chain", {"from": "K", "to": "Q"}], ["drop", "rules.strike.immune"]],
+           "wanted": null, "meets": ["T12"]},
+    "T13": {"from": "archive/circe.json",
+           "edits": [["drop", "rules.strike.immune"]],
+           "wanted": null, "meets": ["T13"]},
+    "T14": {"from": "archive/pawn-knockdown.json",
+           "edits": [["drop", "rules.contacts.immune"]],
+           "wanted": null, "meets": ["T14"]},
+    "T15": {"from": "archive/pawn-knockdown.json",
+           "edits": [["add", "rules.contacts.links", {"mover": "K", "onto": "P", "mover_to": "Q"}]],
+           "wanted": null, "meets": ["T15"]},
+    "hold.C4": {"from": "archive/pawn-knockdown.json",
+           "edits": [["set", "rules.contacts.landing", {"vectors": [[1, 0], [2, 0], [3, 0], [1, 1], [2, 1], [2, 2], [3, 1], [3, 2], [3, 3]], "symmetry": "dihedral8"}]],
+           "wanted": null, "meets": ["hold.C4"]}
+  },
+  "none": {}
+}

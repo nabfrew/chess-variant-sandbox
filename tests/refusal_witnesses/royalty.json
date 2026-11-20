@@ -1,0 +1,28 @@
+{
+  "family": "royalty",
+  "witnesses": {
+    "Z1": {"from": "rulesets/chess.json",
+           "edits": [["set", "pieces[5].moves[0].symmetry", "lateral"], ["set", "pieces[5].facing", {"axes": 4}]],
+           "wanted": null, "meets": ["Z1"]},
+    "Z4": {"from": "rulesets/chess.json",
+           "edits": [["add", "pieces", {"id": "T0", "name": "extra t0", "value": 1, "facing": {"axes": 4}, "moves": [{"kind": "leap", "vectors": [[0, 1]], "symmetry": "none"}]}],
+                     ["add", "pieces", {"id": "T1", "name": "extra t1", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "T2", "name": "extra t2", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "T3", "name": "extra t3", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "U0", "name": "extra u0", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "U1", "name": "extra u1", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "U2", "name": "extra u2", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "U3", "name": "extra u3", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "V0", "name": "extra v0", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "V1", "name": "extra v1", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "V2", "name": "extra v2", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "V3", "name": "extra v3", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "W0", "name": "extra w0", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "W1", "name": "extra w1", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "W2", "name": "extra w2", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "pieces", {"id": "W3", "name": "extra w3", "value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}]}],
+                     ["add", "setup.placements", {"piece": "T1", "player": "nobody", "squares": ["d4"]}]],
+           "wanted": null, "meets": ["Z4"]}
+  },
+  "none": {}
+}

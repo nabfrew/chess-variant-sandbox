@@ -1,0 +1,28 @@
+{
+  "family": "gating",
+  "witnesses": {
+    "gating.strike": {"from": "tests/_gating_seirawan.json",
+           "edits": [["set", "rules.strike", {"effect": "capture", "position": "stay", "immune": ["K"]}]],
+           "wanted": "rules.strike", "meets": ["gating.strike"]},
+    "gating.contacts": {"from": "tests/_gating_seirawan.json",
+           "edits": [["set", "rules.contacts", {"position": "stay", "links": [{"mover": "P", "onto": "N", "onto_to": "P"}], "immune": ["K"]}]],
+           "wanted": "rules.contacts", "meets": ["gating.contacts"]},
+    "gating.portals": {"from": "tests/_gating_seirawan.json",
+           "edits": [["set", "rules.portals", [{"orange": "a4", "blue": "h5"}]]],
+           "wanted": "rules.portals", "meets": ["gating.portals"]},
+    "gating.rounds": {"from": "tests/_gating_seirawan.json",
+           "edits": [["set", "rules.win", "royal_capture"], ["drop", "rules.en_passant"],
+                     ["set", "rules.simultaneous", {"tie": "initiative"}]],
+           "wanted": "rules.simultaneous", "meets": ["gating.rounds"]},
+    "gating.sight": {"from": "tests/_gating_seirawan.json",
+           "edits": [["set", "pieces[1].sight", [{"vectors": [[1, 0]], "symmetry": "rotate4", "range": 1, "effect": "freeze", "whose": "enemy"}]]],
+           "wanted": "pieces[1].sight", "meets": ["gating.sight"]},
+    "gating.placement": {"from": "tests/_gating_seirawan.json",
+           "edits": [["set", "rules.drops.placement", true]],
+           "wanted": "rules.drops.placement", "meets": ["gating.placement"]},
+    "gating.either_face": {"from": "tests/_gating_seirawan.json",
+           "edits": [["set", "pieces[2].promoted_from", "H"], ["set", "rules.drops.either_face", true]],
+           "wanted": "rules.drops.either_face", "meets": ["gating.either_face"]}
+  },
+  "none": {}
+}

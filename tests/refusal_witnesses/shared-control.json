@@ -1,0 +1,14 @@
+{
+  "family": "shared control",
+  "witnesses": {
+    "takes_royal.shared": {"from": "archive/the-crowd.json",
+           "edits": [["set", "pieces[6].control", "shared"]],
+           "wanted": null, "meets": ["takes_royal.shared"]},
+    "shared.rounds": {"from": "rulesets/boulder.json",
+           "edits": [["set", "rules.simultaneous", {}]],
+           "wanted": "rules.simultaneous", "meets": ["shared.rounds"]}
+  },
+  "none": {
+    "shared.portal_end": "no spec can reach it: the portal ends move as a stand-in type (`schema.portal_movement_types`) whose id is the first of O, V, W ... that no declared piece has, so a declared piece's control \"shared\" never falls on a portal end; and the spelling before 31, where a group named a declared stand-in, is refused as such (B5b, 2026-11-20)"
+  }
+}

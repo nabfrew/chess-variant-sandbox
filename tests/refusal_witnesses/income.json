@@ -1,0 +1,10 @@
+{
+  "family": "income",
+  "witnesses": {
+    "income.I2": {"from": "tests/_retired_gardner_in_rounds.json",
+           "edits": [["set", "rules.purse", {"start": 0, "market": ["N"]}], ["set", "pieces[1].price", 3],
+                     ["set", "rules.income", true]],
+           "wanted": "rules.income", "meets": ["income.I2"]}
+  },
+  "none": {}
+}

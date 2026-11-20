@@ -1,0 +1,30 @@
+{
+  "family": "hand",
+  "witnesses": {
+    "H7": {"from": "archive/kyoto.json",
+           "edits": [["set", "pieces[3].promoted_from", "P"]],
+           "wanted": null, "meets": ["H7"]},
+    "H8": {"from": "archive/kyoto.json",
+           "edits": [["set", "pieces[1].promoted_from", "B"]],
+           "wanted": null, "meets": ["H8"]},
+    "H9": {"from": "archive/kyoto.json",
+           "edits": [["drop", "pieces[4].promoted_from"], ["set", "pieces[6].promoted_from", "N"]],
+           "wanted": null, "meets": ["H9"]},
+    "H10": {"from": "archive/kyoto.json",
+           "edits": [["set", "rules.drops.stock", {"R": 1}]],
+           "wanted": null, "meets": ["H10"]},
+    "H13": {"from": "rulesets/chess.json",
+           "edits": [["set", "rules.promotion", [{"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]}, {"piece": "N", "rank": "last", "to": ["Q"]}]]],
+           "wanted": null, "meets": ["H13"]},
+    "H14": {"from": "archive/placement-chess.json",
+           "edits": [["drop", "rules.drops.placement"]],
+           "wanted": null, "meets": [null, "H14"]},
+    "H15": {"from": "archive/placement-chess.json",
+           "edits": [["set", "rules.drops.stock.K", 2]],
+           "wanted": null, "meets": [null, "H15"]},
+    "H16": {"from": "archive/placement-chess.json",
+           "edits": [["add", "setup.placements", {"piece": "K", "squares": ["e1"]}]],
+           "wanted": null, "meets": ["H16"]}
+  },
+  "none": {}
+}

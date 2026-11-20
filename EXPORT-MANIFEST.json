@@ -1,5 +1,5 @@
 {
- "source_commit": "a59027d50d32ab665dddcf043cb2f4782beaf800",
+ "source_commit": "710e3914b7a370009120fc279c05c2b76ce24f00",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -2708,8 +2708,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/pages.py",
-   "bytes": 117432,
-   "sha256": "161218bb4cfdfeb1053ac52fe83e1c27f92cff38e88f4b86a1ccd28fbefe4ec7"
+   "bytes": 118769,
+   "sha256": "c6be9a275a906f0361dc1fb02c6a0a56e2f5adc33cb20c6ad023c215b314b5bd"
   },
   {
    "path": "chess_variant_sandbox/site/people.py",
@@ -2808,8 +2808,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/static/admin.js",
-   "bytes": 28408,
-   "sha256": "deb273d05e6280f432e5ad3a11e74bd08871ce1ffdac6798c006af1e96716363"
+   "bytes": 28993,
+   "sha256": "a234ed4ac2b439c03c29d6a99b8acfd7267371fd2d10b74e99b981c8940f78c4"
   },
   {
    "path": "chess_variant_sandbox/site/static/ask.js",
@@ -6887,6 +6887,141 @@
    "sha256": "d1269effe10f1ea1b133cfcb7c1e44c15d134bbde7e64751b90c667435b9837e"
   },
   {
+   "path": "tests/refusal_witness.py",
+   "bytes": 11250,
+   "sha256": "2770f4e15191d34c03835516b9fdced4acb73cd7b041e0e63c118654cd03bfcb"
+  },
+  {
+   "path": "tests/refusal_witnesses/duck.json",
+   "bytes": 3383,
+   "sha256": "78120e327f32a2b9f351dfe46cf789b55cb1eeb1246a1316d17269f1fd683ba3"
+  },
+  {
+   "path": "tests/refusal_witnesses/gating.json",
+   "bytes": 1815,
+   "sha256": "35b425b791eac580606f04a12654a8f6f8d54641aaf92737ea30c6f283d8887d"
+  },
+  {
+   "path": "tests/refusal_witnesses/hand.json",
+   "bytes": 1444,
+   "sha256": "7b6d9f6ffc187143bc34ae4f6f676e346d65737d2073d0e5cc2f245ff230a284"
+  },
+  {
+   "path": "tests/refusal_witnesses/hop-runs.json",
+   "bytes": 3800,
+   "sha256": "081d3c2edac4a2f3dae63d484b61c704b11fdea51b3b6417ed6b51970068767b"
+  },
+  {
+   "path": "tests/refusal_witnesses/income.json",
+   "bytes": 349,
+   "sha256": "580e2835aee622dfa9c2e66a036eb37292a0984bfb7b073c2d841bb1d197b9c2"
+  },
+  {
+   "path": "tests/refusal_witnesses/lattice.json",
+   "bytes": 2543,
+   "sha256": "3c55ce3678039592621ef024a7861c869c431fc2b0c4657a099ee97896e9fd72"
+  },
+  {
+   "path": "tests/refusal_witnesses/nobody.json",
+   "bytes": 825,
+   "sha256": "8135bd330e578a368ba10ed98c784442ae7d89144bd1b2b21f0976aabdc80f91"
+  },
+  {
+   "path": "tests/refusal_witnesses/pass.json",
+   "bytes": 1181,
+   "sha256": "e53da945168de938c17807c3df83eb187e98c75cff1ff8f5eb897318d3dc7382"
+  },
+  {
+   "path": "tests/refusal_witnesses/paths.json",
+   "bytes": 920,
+   "sha256": "fce84f1f5b678f072999f2251139c0b78a088ea343ad6f36d49f16c800b325f4"
+  },
+  {
+   "path": "tests/refusal_witnesses/portals.json",
+   "bytes": 2284,
+   "sha256": "96ee1e983cb8f3d80b176308a1c8074b35383ab418a6e164cd5ae7093b609aaa"
+  },
+  {
+   "path": "tests/refusal_witnesses/purse.json",
+   "bytes": 2943,
+   "sha256": "d68b458ad63fc6343569a8ef0056fece8ba875f27113d12806085b40d5abba46"
+  },
+  {
+   "path": "tests/refusal_witnesses/push.json",
+   "bytes": 4259,
+   "sha256": "cdf6271fab1efe82ff9dac90c25b3c08143a84a19c0681f301492389829e1b98"
+  },
+  {
+   "path": "tests/refusal_witnesses/reach.json",
+   "bytes": 206,
+   "sha256": "918d90f31b215f64216774dc0a8d63941e6b8a10b1ec3d1c2cc387e243665835"
+  },
+  {
+   "path": "tests/refusal_witnesses/region.json",
+   "bytes": 260,
+   "sha256": "7ea39e8137431bda68f7e287b5f5a15a706d4570b31a0809067999fc50036a2f"
+  },
+  {
+   "path": "tests/refusal_witnesses/rounds.json",
+   "bytes": 3641,
+   "sha256": "a5fd62844c9e985d4baad08d9ed5bdc6973f7b89cb89c647b422e0f1ee3dc19b"
+  },
+  {
+   "path": "tests/refusal_witnesses/royalty.json",
+   "bytes": 3021,
+   "sha256": "ed9b98a39b14ed5bd5d02c05de835ff6dba32d52c1cf9993b83b2e3d81500503"
+  },
+  {
+   "path": "tests/refusal_witnesses/scoring-goals.json",
+   "bytes": 2472,
+   "sha256": "c2d9adce123d2afbdd6d1d1834fba78b10c2a6c00b188c3ac14a3dcdef39904e"
+  },
+  {
+   "path": "tests/refusal_witnesses/shared-control.json",
+   "bytes": 802,
+   "sha256": "df1a66fb9d390b44426704091c3c7b75132cb7dfbe7626c1413cbf12fc064889"
+  },
+  {
+   "path": "tests/refusal_witnesses/sight.json",
+   "bytes": 1268,
+   "sha256": "85a29ce37477d2e1c37f573335e1c33c238d4ea0f761c583d41ec962aacc87dd"
+  },
+  {
+   "path": "tests/refusal_witnesses/spy.json",
+   "bytes": 6448,
+   "sha256": "34a9f035f68dfb008fb17758643170ac7cd43583e47cc39ee8eac368a1521ea2"
+  },
+  {
+   "path": "tests/refusal_witnesses/sweeps.json",
+   "bytes": 1444,
+   "sha256": "5474f4458bdd20cd4bd65b3f413e095fb46260173ccc040c5b85c9a770814e55"
+  },
+  {
+   "path": "tests/refusal_witnesses/taken-piece.json",
+   "bytes": 1787,
+   "sha256": "d583d73a511b42d42050f857c53a030fdf52de1fbc32b9d9c92cb8ca408611a9"
+  },
+  {
+   "path": "tests/refusal_witnesses/takes-royal.json",
+   "bytes": 563,
+   "sha256": "09a3659ed94b133e8a7c93301bf37544691cfbd35ceb49433bb75de6c41293a2"
+  },
+  {
+   "path": "tests/refusal_witnesses/turn-parts.json",
+   "bytes": 2095,
+   "sha256": "b0e014182712832f7f091e2b3b3258bee1215c3d9ed9bb604db921873c087476"
+  },
+  {
+   "path": "tests/refusal_witnesses/upkeep.json",
+   "bytes": 3112,
+   "sha256": "d0bd0643bfbf9d99cc4d5446dc8cce89ce33799d15a14df9c68ada99611234cb"
+  },
+  {
+   "path": "tests/refusal_witnesses/wild.json",
+   "bytes": 2701,
+   "sha256": "fa51dc11bf6f67f7a87de347a83ddc3d22380ef70d446581aec9baea97c18893"
+  },
+  {
    "path": "tests/region_oracle.py",
    "bytes": 5283,
    "sha256": "f8783f8f33a9833058659e505a8120a41d2804afc3c8ce498b3c45ac8ce7e782"
@@ -8537,6 +8672,11 @@
    "sha256": "3c1553bd348629eaea110f05e494bb5a2bcda4bb42a933fad12085ca2ffe7c3b"
   },
   {
+   "path": "tests/test_refusal_witnesses.py",
+   "bytes": 4635,
+   "sha256": "252a830a6714c8018c0de009a3813ca656f19258036155560af5c8c6103bf9a3"
+  },
+  {
    "path": "tests/test_refusal_words.py",
    "bytes": 10403,
    "sha256": "0405cca30957927091c63d6631cbe2fb5dd60aad7a4f4fa5abefa6a33cf7e20b"
@@ -9115,6 +9255,11 @@
    "path": "tests/test_site_admin.py",
    "bytes": 153233,
    "sha256": "61e926d43872724eb5b5391e8eca625fbcf34646264292837ec8ed877c215751"
+  },
+  {
+   "path": "tests/test_site_admin_folds.py",
+   "bytes": 4725,
+   "sha256": "e43a69bb5e6a4fe091c24ce4adad9296527f6e2c85bb65506db184f70bf06eeb"
   },
   {
    "path": "tests/test_site_asking.py",

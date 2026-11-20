@@ -1,0 +1,21 @@
+{
+  "family": "sight",
+  "witnesses": {
+    "V11.command": {"from": "rulesets/duck-chess.json",
+           "edits": [["set", "pieces[2].sight", [{"vectors": [[1, 1]], "symmetry": "rotate4", "effect": "command", "whose": "any", "affects": ["D", "P"]}]]],
+           "wanted": null, "meets": ["V11.command"]},
+    "V11.whose": {"from": "rulesets/duck-chess.json",
+           "edits": [["set", "pieces[2].sight", [{"vectors": [[1, 1]], "symmetry": "rotate4", "effect": "freeze", "whose": "enemy", "affects": ["D", "P"]}]]],
+           "wanted": null, "meets": ["V11.whose"]},
+    "V12": {"from": "rulesets/duck-chess.json",
+           "edits": [["set", "pieces[6].sight", [{"vectors": [[1, 1]], "symmetry": "rotate4", "effect": "freeze", "whose": "enemy"}]]],
+           "wanted": null, "meets": ["V12"]},
+    "V13": {"from": "rulesets/duck-chess.json",
+           "edits": [["set", "pieces[6].sight", [{"vectors": [[1, 1]], "symmetry": "rotate4", "effect": "command", "whose": "any"}]]],
+           "wanted": null, "meets": ["V13"]},
+    "V14": {"from": "tests/_sight_wild_small.json",
+           "edits": [["set", "pieces[4].sight[0].vectors", [[0, 1]]], ["set", "pieces[4].sight[0].symmetry", "none"]],
+           "wanted": null, "meets": ["V14"]}
+  },
+  "none": {}
+}
