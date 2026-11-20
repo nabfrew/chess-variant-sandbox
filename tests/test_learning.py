@@ -263,10 +263,12 @@ class TestTheFirstGameOnThePage:
         assert "<b>greedy</b>" in line
 
     def test_a_first_game_opens_on_the_rules(self) -> None:
-        from page_text import BOARD, DETAIL
+        # R-W2b2 widened K3: every board a person sits at opens on the rules until the first
+        # move (`opensOnRules`), a first game among them.
+        from page_text import BOARD
 
-        assert "if (firstSeat(game) && seats.includes('human')) OPEN_TAB = 'rules';" in DETAIL
-        assert "TAB = OPEN_TAB || 'moves';" in BOARD
+        assert "TAB = opensOnRules(snapshot, how) ? 'rules' : 'moves';" in BOARD
+        assert "return !(snapshot.history || []).length;" in BOARD
 
 
 class TestATappedPiecesSentence:

@@ -193,9 +193,8 @@ async function showGame(hash) {
     start.onclick = () => {
       const seats = [first.value, second.value];
       const body = { hash, seats };
-      // A first game here opens with the rules beside the board (K3); either way this
-      // browser now has played here.
-      if (firstSeat(game) && seats.includes('human')) OPEN_TAB = 'rules';
+      // This browser now has played here. The board opens on the rules until the first
+      // move whatever came before (R-W2b2, `board.js` `opensOnRules`; K3 did it for a first game).
       notePlayed(hash);
       if (rated) {
         body.mode = modeOf();
@@ -401,7 +400,7 @@ function fullRulesHtml(game) {
   return `<details class="sect fullRules" data-sect="rules">
     <summary><h3>Full rules</h3></summary><div class="panel">
       ${longer}
-      <ul class="rules">${(game.ruleLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+      ${ruleListsHtml(game, false)}
       <details class="u-mt-10">
         <summary class="muted small">where the pieces start</summary>
         <ul class="rules muted small u-mt-6">${

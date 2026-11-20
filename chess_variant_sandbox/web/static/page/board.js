@@ -84,9 +84,10 @@ async function showBoard(snapshot, how) {
   HIGHLIGHT = null;
   PHASE = null;
   NOTE = '';
-  // A first game opens on the rules (K3); `OPEN_TAB` is taken once.
-  TAB = OPEN_TAB || 'moves';
-  OPEN_TAB = null;
+  // R-W2b2: a board a person sits at opens on the rules until the first move (K3 opened a
+  // first game there), then `turnToMoves` turns the panel to the moves.
+  TAB = opensOnRules(snapshot, how) ? 'rules' : 'moves';
+  TAB_CHOSEN = false;
   const rules = snapshot.ruleset;
   // G3: the tab says which game is on the board. An inline board leaves its page's title.
   if (!inline && !proven && rules && rules.name) setTitle(`Playing ${rules.name} ${FREE_SAID}`);
@@ -141,6 +142,8 @@ async function showBoard(snapshot, how) {
       aria-live="polite">${esc(puzzleSaid(snapshot))}</div>` : ''}
     <div class="split${inline || proven ? ' alone' : ''} u-mt-10">
       <div class="play-frame">
+        ${inline || proven || snapshot.puzzle ? '' : `<div class="frame-different small"
+          id="different" data-frame="different" hidden></div>`}
         ${inline ? `<div class="row small u-mb-8">
           <div>${seatHtml(0)}</div><span class="muted">vs</span><div>${seatHtml(1)}</div>
         </div>` : ''}
@@ -286,11 +289,7 @@ async function showBoard(snapshot, how) {
   // Scoped to whatever this board was drawn into, because an inline one has no tabs of
   // its own and the view around it may.
   root.querySelectorAll('[data-tab]').forEach(node => {
-    node.onclick = () => {
-      TAB = node.dataset.tab;
-      root.querySelectorAll('[data-tab]').forEach(n => n.classList.toggle('on', n === node));
-      drawPane();
-    };
+    node.onclick = () => showTab(node.dataset.tab, true);
   });
 
   // A game you have not seen before starts running and starts unreviewed. Coming back
@@ -593,6 +592,9 @@ function fitBoard() {
     }
     if (status && status.style) status.style.maxWidth = own;
     if (send && send.style) send.style.maxWidth = own;
+    // R-W2b2: the line above the strip, what is different, is the board's own too.
+    const different = document.getElementById('different');
+    if (different && different.style) different.style.maxWidth = own;
     // The strip's height is fixed, so the board never moves when the status changes
     // (Q725), and sized here, once a size: a strip narrower than `STRIP_NARROW` keeps a
     // third line, which is what its longest states take on a phone.
@@ -796,6 +798,7 @@ function applySnapshot(snapshot, animate = true) {
   // Reviewing means the board is showing a position the game has already left, and a
   // new ply must not drag it forward. Everything that grew still grows: the move list,
   // and the review row's count of how far there now is to go.
+  if (moved) turnToMoves();
   if (AT) { drawPane(); drawReview(); }
   else { drawBoard(animate && moved ? previous : null); drawPane(); }
   maybeAgent();
@@ -2852,6 +2855,7 @@ function animatePhase(svg, phase, board, beat, cell, W, H, view) {
 // ---------------------------------------------------------------- the side panel
 
 function drawPane() {
+  drawDifferent();
   const pane = document.getElementById('pane');
   if (!pane || !SESSION) return;
   const game = DETAIL[SESSION.ruleset.hash];
@@ -2884,8 +2888,7 @@ function drawPane() {
   if (!game) { pane.innerHTML = '<div class="muted small">loading...</div>'; return; }
 
   if (TAB === 'rules') {
-    pane.innerHTML = `<ul class="rules">${
-      (game.ruleLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+    pane.innerHTML = `${differentHtml(game)}${ruleListsHtml(game)}
       <details class="u-mt-10">
         <summary class="muted small">where the pieces start</summary>
         <ul class="rules muted small u-mt-6">${
@@ -3357,8 +3360,92 @@ function checkSquares() {
   return found.length === 1 ? found : [];
 }
 
-// The tab a board opens on, where something other than the moves asked (K3).
-let OPEN_TAB = null;
+// ------------------------------------------------- what is different, first (R-W2b2)
+//
+// `docs/plan-website.md` *What the play page lists first*. Every word is the server's
+// (`library.rules_first`): `differentLines` (the game's `summary`, or lines derived from
+// its rules and `relate`), `differentFrom` (the reference game's own name), and
+// `ruleLines` with the game's own `ruleLinesOwn` lines first. The page orders nothing.
+
+// Whether the reader picked the side panel's tab; a tab picked is never turned for them.
+let TAB_CHOSEN = false;
+
+// A board a person sits at, from its opening position, opens on the rules (K3 did so for a
+// first game). A watch, a proven position's try, a designer's inline board and a game
+// already under way open on the moves.
+function opensOnRules(snapshot, how) {
+  if (how && how.mount) return false;
+  if (snapshot.puzzle || !(snapshot.seats || []).includes('human')) return false;
+  return !(snapshot.history || []).length;
+}
+
+function showTab(tab, chosen) {
+  TAB = tab;
+  if (chosen) TAB_CHOSEN = true;
+  document.querySelectorAll('.boardSide [data-tab]').forEach(n =>
+    n.classList.toggle('on', n.dataset.tab === tab));
+  drawPane();
+}
+
+// The first move turns the panel from the rules to the moves, unless the reader chose it.
+function turnToMoves() {
+  if (TAB !== 'rules' || TAB_CHOSEN || !SESSION || !(SESSION.history || []).length) return;
+  TAB = 'moves';
+  document.querySelectorAll('.boardSide [data-tab]').forEach(n =>
+    n.classList.toggle('on', n.dataset.tab === 'moves'));
+}
+
+// The rules tab's lead: *What is different from <reference>* over `differentLines`. Absent
+// for the reference game itself, which differs from nothing.
+function differentHtml(game) {
+  const lines = game.differentLines || [];
+  if (!lines.length || !game.differentFrom) return '';
+  return `<h4 class="rulesHead u-mt-0">What is different from ${esc(game.differentFrom)}</h4>
+    <ul class="gameLead">${lines.map(line => `<li>${esc(line)}</li>`).join('')}</ul>`;
+}
+
+// Every rule line, the game's own first; the rest under *as in <reference>*. Where the lead
+// above it is `differentHtml` (`led`), a line it already said (a derived `differentLines`)
+// is not said twice.
+function ruleListsHtml(game, led = true) {
+  const lines = game.ruleLines || [];
+  const lead = Math.min(game.ruleLinesOwn || 0, lines.length);
+  const item = r => `<li>${esc(r)}</li>`;
+  if (!lead && !game.differentFrom) return `<ul class="rules">${lines.map(item).join('')}</ul>`;
+  const said = new Set(led ? game.differentLines || [] : []);
+  const own = lines.slice(0, lead).filter(line => !said.has(line));
+  const rest = lines.slice(lead);
+  return `${own.length ? `<ul class="rules">${own.map(item).join('')}</ul>` : ''}${
+    rest.length ? `<h4 class="rulesHead">As in ${esc(game.differentFrom || 'the reference game')}</h4>
+    <ul class="rules">${rest.map(item).join('')}</ul>` : ''}`;
+}
+
+// The line above the board while no move has been played: the first of `differentLines`
+// and *all rules*, which opens the rules tab and brings it into view.
+function drawDifferent() {
+  const line = document.getElementById('different');
+  if (!line || !SESSION) return;
+  const game = DETAIL[SESSION.ruleset.hash];
+  const first = game && game.differentFrom ? (game.differentLines || [])[0] : '';
+  const shown = !!first && !(SESSION.history || []).length && !AT && !SESSION.outcome;
+  if (line.hidden === !shown && line.dataset.said === (first || '')) return;
+  const was = line.hidden;
+  line.hidden = !shown;
+  line.dataset.said = first || '';
+  // The board is fitted under it (`fitBoard` measures from where the board sits), so it
+  // is fitted again when the line comes or goes: once at the opening, once at the first move.
+  if (shown) {
+    line.innerHTML = `<span class="different-says">${esc(first)}</span>
+      <button class="quiet different-all" data-all-rules
+        title="every rule of this game, in the rules tab">all rules</button>`;
+    line.querySelector('[data-all-rules]').onclick = () => {
+      showTab('rules', true);
+      const side = document.querySelector('.boardSide');
+      if (side && side.scrollIntoView) side.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    };
+  }
+  if (was !== line.hidden) fitBoard();
+}
 
 // K3 (`docs/archive/plan-understanding.md` §4.2 step 4): a tapped piece's move sentences in one
 // line under the board, the *pieces* tab's own words (`pieces[type].moves`, already sent

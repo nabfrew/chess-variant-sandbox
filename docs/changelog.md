@@ -14,6 +14,10 @@ any other address keeps its brackets.
 
 ## 2026-11-20
 
+### A game says what makes it different before you move
+
+A game's play page now shows one line above the board, until your first move, on what makes this game different, with a button beside it for all the rules. The rules panel leads with what is different from chess, then the game's own rules, then what is the same as in chess.
+
 ### The first minute on a phone
 
 The button on the front page now reads "Play a game now", and pressing it clears the page at once to "Starting the game" where the board will be, so the picture board further down is no longer mistaken for the game. Pieces held in hand are named, with a line on how to place one. A piece description that is cut short ends in a "more" you can tap. Your own move appears almost at once. The invitation mail now names the site's address in words beside its link.

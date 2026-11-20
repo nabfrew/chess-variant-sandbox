@@ -693,6 +693,17 @@ RULES = """
                           -webkit-line-clamp: var(--strip-lines); overflow: hidden; min-width: 0; }
   .frame-status.ended { padding: 6px 12px; border-radius: var(--r-panel); border-color: var(--ink); }
   .frame-status .frame-note { font-weight: 400; margin-left: 10px; }
+  /* R-W2b2: the line above the board while no move has been played, the first of what is
+     different about the game and *all rules*. Two lines at most, so it never pushes the
+     board off a phone's first screen; `fitBoard` fits the board under it. */
+  .frame-different { display: flex; align-items: center; gap: 10px; margin: 0 0 4px;
+                     color: var(--ink); line-height: 20px; }
+  .frame-different[hidden] { display: none; }
+  .frame-different .different-says { flex: 1 1 auto; min-width: 0; display: -webkit-box;
+                                     -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+                                     overflow: hidden; }
+  .frame-different .different-all { flex: 0 0 auto; min-height: var(--ctl-h-sm);
+                                    padding: 3px 10px; font-size: 13px; line-height: 18px; }
   /* Q733: the slot under the board of a game between two people, what to do next in the
      frame's largest words. Its height is fixed like the strip's, so the board never moves
      as it changes; a move picked and not sent dashes its border in ink, as the move is
@@ -1185,6 +1196,11 @@ RULES = """
   /* --- rules --- */
   ul.rules { margin: 0; padding-left: 18px; }
   ul.rules li { margin-bottom: 5px; }
+  /* R-W2b2: the rules' two headings, *What is different from ...* over the game's own
+     lines and *As in ...* over the rest, in the panel's small-heading weight. */
+  .rulesHead { margin: 12px 0 6px; font-size: 14px; line-height: 20px; font-weight: 700;
+               color: var(--ink); }
+  .tabpane .gameLead { margin: 0 0 8px; padding-left: 18px; }
 
   /* --- the score panel --- */
   .comp { border-top: 1px solid var(--line); padding: 7px 0; }

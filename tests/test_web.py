@@ -6781,7 +6781,9 @@ class TestWhatReachesThePage:
         # 178 since PF1: the save's box redrawn when the standing moves (`refreshSaved`,
         # `savedHtml` again, every name and sentence through `esc`), and *Its family*
         # redrawn as the name field changes (`familyHtml` again, names through `esc`).
-        assert len(sites) == 178
+        # 179 since R-W2b2: the line above the board (`drawDifferent`), the first of
+        # `differentLines` through `esc` and a constant button.
+        assert len(sites) == 179
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -14128,9 +14130,9 @@ class TestOneBoardInTwoPlaces:
     def test_the_page_board_keeps_its_crumb_and_the_panel_beside_it(self) -> None:
         body = self._show()
         assert '<button class="crumb" id="back">' in body
-        # The tab it opens on is `TAB` (K3: a first game opens on the rules), moves first.
+        # The tab it opens on is `TAB` (R-W2b2: the rules until the first move), moves first.
         assert "${['moves', 'rules', 'pieces'].map(tab => `<button data-tab=" in body
-        assert "TAB = OPEN_TAB || 'moves';" in body
+        assert "TAB = opensOnRules(snapshot, how) ? 'rules' : 'moves';" in body
 
     def test_an_inline_board_carries_neither(self) -> None:
         body = self._show()

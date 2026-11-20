@@ -1196,7 +1196,10 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
         "summaryLines": summary_lines(game.spec),
         "provenanceNote": provenance_note(game.spec),
         "setupLines": describe_setup(game.spec),
-        "ruleLines": describe_rules(game.spec),
+        # R-W2b2 (`docs/plan-website.md` *What the play page lists first*): `ruleLines`
+        # with the game's own lines first (`ruleLinesOwn` of them), and `differentLines`,
+        # what is different from the reference game (`differentFrom`, its name).
+        **rules_first(game.spec, reference_spec(others)),
         "spec": game.spec,
         "provenance": provenance(game),
         # The score as stored, with its refusals, its split and its lean also said in a
@@ -2239,6 +2242,110 @@ def reference_of(others: Iterable[Game] | None) -> Game | None:
         if game.path.name == REFERENCE_FILE and game.source == "committed":
             return game
     return None
+
+
+def reference_spec(others: Iterable[Game] | None) -> dict[str, Any] | None:
+    """The reference game's spec: the library's committed one where `others` holds it, else
+    this checkout's file (a draft's detail is asked with no library beside it), else None."""
+    found = reference_of(others)
+    if found is not None:
+        return found.spec
+    return _checkout_reference()
+
+
+@lru_cache(maxsize=1)
+def _checkout_reference() -> dict[str, Any] | None:
+    where = Path(__file__).resolve().parents[2] / "rulesets" / REFERENCE_FILE
+    try:
+        spec = load_spec(where)
+    except Exception:  # noqa: BLE001 - a page must survive a checkout without the file
+        return None
+    return spec if isinstance(spec, dict) else None
+
+
+def _with_clocks_of(spec: dict[str, Any], reference: dict[str, Any]) -> dict[str, Any]:
+    """``spec`` with the reference's clocks put back (`relate._CLOCK_KEYS`: the ply limit,
+    repetition, the no-progress draw, dead material), so a line only a clock gave falls out."""
+    from chess_variant_sandbox.spec import relate
+
+    theirs = reference.get("rules") or {}
+    rules = dict(spec.get("rules") or {})
+    for key in relate._CLOCK_KEYS:
+        if key in theirs:
+            rules[key] = theirs[key]
+        else:
+            rules.pop(key, None)
+    return {**spec, "rules": rules}
+
+
+def own_rule_lines(spec: dict[str, Any], reference: dict[str, Any] | None) -> list[str]:
+    """The game's own rule lines (R-W2b2, `docs/plan-website.md` *What the play page lists
+    first*): those of `describe_rules` the reference's `describe_rules` does not give and that
+    survive putting the reference's clocks back, in the order the game's lines run. Plain
+    difference of the two games' sentences, so nothing here names a rule or a piece; none for
+    the reference itself or where there is no reference to read."""
+    if reference is None:
+        return []
+    lines = describe_rules(spec)
+    theirs = set(describe_rules(reference))
+    try:
+        kept = set(describe_rules(_with_clocks_of(spec, reference)))
+    except Exception:  # noqa: BLE001 - a page must survive one unreadable twin
+        kept = set(lines)
+    return [line for line in lines if line not in theirs and line in kept]
+
+
+DIFFERENT_UNITS = ("board.", "piece.", "setup.")
+"""The `relate` units a derived *what is different* line may come from: those that name a
+board, a piece or the setup. A rule's own difference is already one of its own rule lines."""
+
+
+def different_lines(
+    spec: dict[str, Any], reference: dict[str, Any] | None, own: list[str] | None = None
+) -> list[str]:
+    """What is different from the reference game, a line at a time (R-W2b2): the game's own
+    `summary` where it has one, else its own rule lines then `relate(reference, game)`'s
+    sentences that name a board, a piece or the setup, each as a sentence. Empty for the
+    reference itself; the summary alone where there is no reference to compare with."""
+    summary = summary_lines(spec)
+    if summary:
+        return list(summary)
+    if reference is None:
+        return []
+    from chess_variant_sandbox.spec import relate
+
+    lines = list(own if own is not None else own_rule_lines(spec, reference))
+    try:
+        differences = relate.relate(reference, spec).differences
+    except Exception:  # noqa: BLE001 - a page must survive one unloadable spec
+        differences = ()
+    for difference in differences:
+        if difference.unit.startswith(DIFFERENT_UNITS):
+            said = difference.sentence.strip()
+            line = said[:1].upper() + said[1:] + ("" if said.endswith(".") else ".")
+            if line not in lines:
+                lines.append(line)
+    return lines
+
+
+def rules_first(spec: dict[str, Any], reference: dict[str, Any] | None) -> dict[str, Any]:
+    """The rules tab's fields (R-W2b2): `ruleLines` with the game's own first and the rest
+    after them as the game gives them, `ruleLinesOwn` how many lead, `differentLines`, and
+    `differentFrom`, the reference's own `name` (None without one, or for the reference)."""
+    own = own_rule_lines(spec, reference)
+    rest = [line for line in describe_rules(spec) if line not in own]
+    different = different_lines(spec, reference, own)
+    try:
+        same = reference is not None and spec_hash(spec) == spec_hash(reference)
+    except Exception:  # noqa: BLE001 - a page must survive one unhashable draft
+        same = False
+    name = None if reference is None or same else str(reference.get("name") or "") or None
+    return {
+        "ruleLines": own + rest,
+        "ruleLinesOwn": len(own),
+        "differentLines": [] if same else different,
+        "differentFrom": name,
+    }
 
 
 def rules_beyond(spec: dict[str, Any], reference: dict[str, Any]) -> frozenset[str]:
