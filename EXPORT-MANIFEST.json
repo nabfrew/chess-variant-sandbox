@@ -1,5 +1,5 @@
 {
- "source_commit": "e9443624c575b992056c40280beb590606dca22e",
+ "source_commit": "e11b2de32ee8501d78174a95aea964bdd8f59737",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -2458,8 +2458,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/mail.py",
-   "bytes": 19088,
-   "sha256": "923b82ff9d846f1693671067526a4dea6d8a86fe0a6408f265c0dfa45aa248fa"
+   "bytes": 19695,
+   "sha256": "07de0bc6b3560e3ccb97ea1c3f7d2416a084843ccd7006b811c7db53010c6af6"
   },
   {
    "path": "chess_variant_sandbox/site/matches.py",
@@ -9388,8 +9388,8 @@
   },
   {
    "path": "tests/test_site_mail.py",
-   "bytes": 4918,
-   "sha256": "bb7033984d594be210dfdfa6b1aef681e51379487e700506a4cbe558ff6ab486"
+   "bytes": 5711,
+   "sha256": "b4a23fd17a45bcb0c2f8b093022ae5e3660c60ccb9c4f96e2347036b696a853d"
   },
   {
    "path": "tests/test_site_maker.py",
@@ -9415,6 +9415,11 @@
    "path": "tests/test_site_move_email.py",
    "bytes": 28486,
    "sha256": "4184bc7f0b54fb32c508f572f51b118163c81000cb19c6bbc439a2fe9a4a4e01"
+  },
+  {
+   "path": "tests/test_site_no_email_shown.py",
+   "bytes": 11106,
+   "sha256": "52716797365c1ee666bea10de2ec8a93ed5613a82e628f9f734461a64a042ca5"
   },
   {
    "path": "tests/test_site_one_spelling.py",

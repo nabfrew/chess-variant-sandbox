@@ -184,6 +184,13 @@ own phone, and a person who marks it *not junk* teaches their mail program the s
 move email they switch on later arrives. `docs/plan-launch.md` §5.3 prints it for the user."""
 
 
+NAMED = "{inviter} is the name they go by on the site."
+"""The invitation's word on its sender's name (DN1, the owner, 2026-11-20: *"The users should
+get to chose a display-name, the email should not be shown."*). A member is known on the site
+by the handle they chose when they joined, never by their address, so the name in the mail is
+the one the reader will find them under. Said only when an inviter is named."""
+
+
 def _lasts(days: int) -> str:
     """How long an invitation's link works, in words."""
     if days == 14:
@@ -215,10 +222,12 @@ def invitation(to: str, link: str, inviter: str | None = None, days: int = 14) -
     a trial paragraph stood until then); what they are asked to do; that it costs nothing
     and nothing counts down; and the one promise test 3 needs, that no other email comes
     unless they switch on the move email themselves (Q572). `inviter` is the issuer's
-    handle, absent for an invitation nobody signed (`site invite` with no `--issuer`).
+    handle, absent for an invitation nobody signed (`site invite` with no `--issuer`); when
+    it is there, one sentence says it is the name they go by on the site (`NAMED`, DN1).
     """
     who = inviter or "Somebody"
     tell = inviter or "us"
+    named = f"{NAMED.format(inviter=inviter)}\n\n" if inviter else ""
     host = link_host(link)
     goes = f"Open this link to choose a handle and a password on {host}" if host else (
         "Open this link to choose a handle and a password")
@@ -231,6 +240,7 @@ def invitation(to: str, link: str, inviter: str | None = None, days: int = 14) -
         ),
         body=(
             f"{who} has invited you to Chess variant sandbox: {PURPOSE}\n\n"
+            f"{named}"
             f"{MAKERS}\n\n"
             f"{goes}, the site's own address:\n\n    {link}\n\n"
             "What we'd love: play a few games against the computer, try one you've never "

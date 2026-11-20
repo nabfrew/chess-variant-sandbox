@@ -111,3 +111,17 @@ def test_the_invitation_names_where_its_link_goes_in_words() -> None:
     assert mail.link_host("l") == ""
     bare = " ".join(mail.invitation("bo@example.invalid", "l").body.split())
     assert "Open this link to choose a handle and a password, the site's own address:" in bare
+
+
+def test_the_invitation_says_its_sender_goes_by_that_name_on_the_site() -> None:
+    """DN1 (the owner, 2026-11-20): a member is known by the name they chose, never by their
+    address. The invitation names its sender by that handle and says in one plain sentence
+    that it is the name they go by on the site; an unsigned invitation says nothing of it."""
+    body = mail.invitation("bo@example.invalid", LINK, "ada").body
+    assert "ada is the name they go by on the site.\n" in body
+    assert body.index("ada has invited you") < body.index("ada is the name") < body.index(
+        mail.MAKERS)
+    assert site_words.hits(mail.NAMED) == []
+    assert len(mail.NAMED.split()) < 15
+    bare = mail.invitation("bo@example.invalid", LINK).body
+    assert "the name they go by" not in bare
