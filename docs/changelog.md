@@ -14,6 +14,12 @@ any other address keeps its brackets.
 
 ## 2026-11-20
 
+### Publishing a game: the daily limit is shown before the work
+
+A designer may publish one game a day. Until now the page said so only after a game had been changed and measured, at the moment of pressing Publish. It now says it beside the Publish button from the start, with the time the next publish opens, and says that the draft can still be measured and saved meanwhile.
+
+Smaller repairs on the same path: pressing Enter works when joining with an invitation; the confirmation after publishing appears on screen, with a link to the new game's page; status lines no longer keep an old message; and on a phone one tap in the bar at the foot of the designer reaches measuring and publishing.
+
 ### The designer says why a rule is refused, and what to do instead
 
 When a rule cannot be added to the game you are designing, the designer now says which kind of refusal it is: that the

@@ -39,6 +39,8 @@ async function showGame(hash) {
     }
   }
 
+  // PF1 (PW1-F9): a member's game names its designer beside its title, as its shelf card
+  // does (*by <handle>*); *Where it came from* still says it, closed by default.
   // The name sits above the two columns rather than at the top of the left one. Stacked
   // on a phone the play column comes first, so a name inside the left column read after
   // the whole play panel and the crumb above it was all the page said this game was.
@@ -52,6 +54,7 @@ async function showGame(hash) {
     <h2 class="u-m-10-0-0">${esc(game.name)}${
       retired ? ' <span class="tag">retired</span>' : ''}${
       game.preview ? ' <span class="tag level preview">Preview</span>' : ''}</h2>
+    ${designerByHtml(game)}
     ${previewHtml(game.preview)}
     <div class="row u-mt-6">
       <button id="fork" title="open a copy of these rules in the designer, under a new name; this game stays as it is"
@@ -363,6 +366,13 @@ function sectionHtml(key, title, body, openOnPhone) {
   const open = openOnPhone || !narrow;
   return `<details class="sect" data-sect="${key}"${open ? ' open' : ''}>
     <summary><h3>${title}</h3></summary>${body}</details>`;
+}
+
+// The designer's handle under a member's game's name (PF1, PW1-F9), where the site sends
+// one (`designer.by`); nothing for any other game, or on the local application.
+function designerByHtml(game) {
+  const by = game && game.source === 'designed' && game.designer && game.designer.by;
+  return by ? `<div class="muted u-mt-4" id="gameBy">by ${personHtml(by)}</div>` : '';
 }
 
 // ------------------------------------------------- what the game is, then its rules

@@ -6778,7 +6778,10 @@ class TestWhatReachesThePage:
         # (`drawInstead`) and under a refused draft's problems (`askDraftInstead`), both
         # `insteadSaidHtml`/`draftInsteadHtml`: every sentence and change through `esc`,
         # every index a number, the rest constant words.
-        assert len(sites) == 176
+        # 178 since PF1: the save's box redrawn when the standing moves (`refreshSaved`,
+        # `savedHtml` again, every name and sentence through `esc`), and *Its family*
+        # redrawn as the name field changes (`familyHtml` again, names through `esc`).
+        assert len(sites) == 178
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -13220,7 +13223,9 @@ class TestWhatASaveSaysWhereTheClickWas:
         assert "checked" not in drawn
         assert terms.DEDICATION.replace("'", "&#39;") in drawn and 'href="/terms"' in drawn
         assert 'id="dPublishGo" class="primary" disabled' in drawn
-        assert 'data-open="yes"' in drawn and "tick the box to agree to the terms first" in drawn
+        # PF1 (PW1-F7): the reason is a visible line under the button, not a hover title.
+        assert 'data-open="yes"' in drawn and "Tick the box above to agree to the terms first" in drawn
+        assert 'id="dPublishWhy"' in drawn and 'aria-describedby="dPublishWhy"' in drawn
         # No box without the button.
         panel["publishable"] = False
         drawn = _said(_in_page(_kit(), "publishHtml(" + json.dumps({"publish": panel}) + ")"))

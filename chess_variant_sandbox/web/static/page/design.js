@@ -2719,7 +2719,13 @@ function wireDesigner() {
     checkDraft();
   };
 
-  form.querySelector('#dName').oninput = e => { DRAFT.name = e.target.value; checkDraft(); };
+  form.querySelector('#dName').oninput = e => {
+    DRAFT.name = e.target.value;
+    // PF1 (PW1-F5): *Its family* names the game on screen by this field.
+    const family = document.getElementById('dFamily');
+    if (family) family.innerHTML = familyHtml();
+    checkDraft();
+  };
   form.querySelector('#dDesc').oninput = e => {
     DRAFT.description = e.target.value; checkDraft();
   };
@@ -3733,7 +3739,7 @@ function drawVerdict() {
 
   const gate = check.playable === false
     ? `<div class="error">
-         <b>It plays, but it does not finish.</b> ${checkedHtml()}
+         <b>It plays, but it does not finish.</b> ${checkedHtml()}${jumpPublishHtml(check)}
          <ul class="u-m-6-0-0-18 u-p-0">${
            check.playableReasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
          <div class="muted small u-mt-6">${check.playableRefusal
@@ -3742,7 +3748,7 @@ function drawVerdict() {
          <button id="dStuck" class="u-mt-8">open a game that did not finish</button>
        </div>`
     : `<div class="ok">It plays and reaches an ending, with
-         ${esc(check.openingWords || check.openingMoves + ' opening moves')}. ${checkedHtml()}</div>`;
+         ${esc(check.openingWords || check.openingMoves + ' opening moves')}. ${checkedHtml()}${jumpPublishHtml(check)}</div>`;
 
   side.innerHTML = `
     <div class="panel">
@@ -3798,6 +3804,8 @@ function drawVerdict() {
     </div>`;
 
   document.getElementById('dSave').onclick = () => saveDraft();
+  const jump = document.getElementById('dJumpPublish');
+  if (jump) jump.onclick = () => jumpToPublish();
   wireNameAsk(document.getElementById('dSaved'));
   document.getElementById('dPlay').onclick = () => playDraft(['human', PLAY_AGENT]);
   document.getElementById('dWatch').onclick = () =>
@@ -3863,6 +3871,32 @@ function reserveFootbar() {
   grid.style.paddingBottom = footbarFixed() ? (bar.offsetHeight + 14) + 'px' : '';
 }
 
+// PF1 (PW1-F4): on a phone the score-and-publish step is the end of the verdict column,
+// some twelve screens under the form, and the bar at the foot offered save, play and
+// watch but not that. One tap in the bar now goes there, from the end of the verdict's
+// line, so the bar keeps its height. The stylesheet shows it only
+// where the bar is fixed at the foot (`.jumpPublish`); in two columns the step is beside
+// the board already. Drawn wherever the panel has a measuring or a publishing step.
+function jumpPublishHtml(check) {
+  if (!check || !check.valid) return '';
+  return `<button class="quiet jumpPublish" id="dJumpPublish"
+    >${ACCOUNTS ? 'measure and publish it' : 'measure it'} &darr;</button>`;
+}
+
+// Where the tap lands: a publish limit already reached first, since it says the press
+// will wait; otherwise the measuring control, wherever it is drawn (inside *Publish* once
+// the draft is saved, under the steps before); else the panel.
+function jumpToPublish() {
+  const limit = document.getElementById('dPublishLimit');
+  const here = document.getElementById('dHere');
+  const target = limit ? document.getElementById('dPublish')
+    : here && here.innerHTML.trim() ? here
+    : document.getElementById('dPublish') || document.getElementById('dLadder');
+  if (target && target.scrollIntoView) {
+    target.scrollIntoView({ block: target === here ? 'center' : 'start' });
+  }
+}
+
 // What the save said, brought to where the press was. The button is in the bar and the
 // answer lands in the panel behind it, which on a phone is several screens away.
 function showSaved(box) {
@@ -3903,6 +3937,7 @@ function loadStanding(hash) {
     const was = !!(before && before.measuring && before.measuring.state === 'running');
     DRAFT_STANDING = standing;
     redrawLadder();
+    refreshSaved(hash);
     // A score measured on this computer and held until the game was saved goes now (Q1004).
     hereStood(standing);
     const run = standing.measuring;
@@ -4057,7 +4092,13 @@ function rungStates(check, standing, screen) {
       ? 'measured, but out of date: no score is shown until it is measured again'
       : `measured, but out of date; needs a ${m.needs}` };
   } else {
-    states.canonical = { mark: 'ahead', says: saved ? 'not yet' : 'save it first' };
+    // PF1 (PW1-F8): on the site this rung is the official score, and the Publish line
+    // says the game's computer players are being rated: both true, of two things. One
+    // clause names the difference, so a reader can tell whether the players are rated.
+    states.canonical = { mark: 'ahead', says: (saved ? 'not yet' : 'save it first') + (
+      ACCOUNTS ? `. This is the site's own official score. It is not the rating of the
+        computer players you can play against: those are rated on the site as soon as the
+        game is published.` : '') };
   }
   states.nominate = s.stage === 'committed'
     ? { mark: 'done', says: ACCOUNTS ? 'already one of them' : 'already part of the yardstick' }
@@ -4185,12 +4226,20 @@ function publishHtml(s, check) {
         <input type="checkbox" id="dTermsAgree" data-version="${esc(String(terms.version))}" class="u-mt-3 u-flex-none">
         <span>${esc(terms.says)} <a href="${esc(terms.href)}" target="_blank" rel="noopener"
           >the terms</a></span></label>` : '';
+  // PF1 (PW1-F1): a publish cap already reached is said here, before the measuring control,
+  // so nobody spends minutes measuring towards a press that will be refused. The sentence
+  // is the server's (`quota.publish_limit`); the hour it opens is put in this reader's clock.
+  const limit = (!p || p.publishable) && !waits ? s.publishLimit : null;
+  const limitLine = limit ? `<div class="verdict small u-m-6-0" id="dPublishLimit">${
+    esc(limit.says)}${limit.opens ? ` ${esc(publishOpensWords(limit.opens))}` : ''}</div>` : '';
+  // PF1 (PW1-F7): why the button is off is a visible line under it, not a hover title a
+  // phone never shows, and the button's spoken name is its own word.
+  const why = p ? publishWhy(p, limit) : '';
   const button = p && p.publishable && !waits
     ? `${agree}<div class="row"><button id="dPublishGo" class="primary" disabled
-        data-open="${p.open ? 'yes' : 'no'}"
-        title="${esc(p.open ? 'tick the box to agree to the terms first'
-          : p.waiting || 'both ticks are needed first')}"
-        >publish</button></div>` : '';
+        data-open="${p.open ? 'yes' : 'no'}" aria-describedby="dPublishWhy"
+        >publish</button></div>
+        <div class="muted small u-mt-4" id="dPublishWhy">${esc(why)}</div>` : '';
   const says = p ? p.says : s.levelSays;
   const waiting = !p || !p.waiting ? ''
     : waits ? `<div class="verdict u-m-8-0" id="dPublishWaiting">
@@ -4205,6 +4254,7 @@ function publishHtml(s, check) {
       <h3 class="u-mt-0">Where this game stands: ${esc(level)}</h3>
       ${trackHtml(s.track)}
       ${says ? `<div class="small">${esc(says)}</div>` : ''}
+      ${limitLine}
       ${ticks ? `<ul class="small marks u-m-6-0">${ticks}</ul>` : ''}
       ${p && p.stopped ? `<div class="error small u-m-6-0" id="dPublishStopped">${
         esc(p.stopped)}</div>` : ''}
@@ -4212,8 +4262,34 @@ function publishHtml(s, check) {
       ${here}
       ${button}
       ${s.shortlist && s.shortlist.mine ? shortlistHtml(s.shortlist) : ''}
-      <div id="dPublishSays"></div>
+      <div id="dPublishSays">${PUBLISH_SAID && PUBLISH_SAID.hash === s.hash
+        ? PUBLISH_SAID.html : ''}</div>
     </div>`;
+}
+
+// The last *publish* press's answer, kept so a redraw of the panel (a poll, a standing
+// asked again) keeps the confirmation and its link where the designer is reading.
+let PUBLISH_SAID = null;
+
+// When the rolling day lets the next publish through, in this reader's own clock: the
+// server sends the moment, and the page only writes it the way this browser writes times.
+function publishOpensWords(opens) {
+  const at = new Date(opens);
+  if (Number.isNaN(at.getTime())) return '';
+  const time = at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const today = new Date();
+  const sameDay = at.toDateString() === today.toDateString();
+  const day = sameDay ? 'today' : at.toLocaleDateString([], {
+    weekday: 'long', month: 'short', day: 'numeric' });
+  return `The next one can be published from ${time} ${day}.`;
+}
+
+// Why *publish* is off, while it is, in a line under it (PF1, PW1-F7). Ticked and open, it
+// is empty: the button says what it does.
+function publishWhy(p, limit, agreed) {
+  if (limit) return 'Off until the limit above opens.';
+  if (!p.open) return p.waiting || 'Both ticks above are needed first.';
+  return agreed ? '' : 'Tick the box above to agree to the terms first.';
 }
 
 // What promotion needs, in the page's words (`candidacy.promotion`): how many runs are
@@ -4231,6 +4307,12 @@ function promotionHtml(s) {
         ? `<details class="u-mt-4"><summary>for whoever keeps this copy</summary>
             From a terminal in the project, this measures it for promotion:
             <code>${esc(p.command)}</code></details>` : ''}</div>`;
+}
+
+// What a press of *publish* said, with the way to the game's page beside it (PF1, PW1-F3).
+function publishedHtml(answer, hash) {
+  return `<div class="ok" id="dPublished">${esc(answer.said)} <a href="/game/${esc(hash)}"
+    >open its page</a></div>`;
 }
 
 function wireLadder() {
@@ -4256,8 +4338,10 @@ function wireLadder() {
   if (publish && agree) agree.onchange = () => {
     const open = publish.dataset.open === 'yes';
     publish.disabled = !(open && agree.checked);
-    if (open) publish.title = agree.checked ? 'put it on trial'
-      : 'tick the box to agree to the terms first';
+    const why = document.getElementById('dPublishWhy');
+    const p = (DRAFT_STANDING && DRAFT_STANDING.publish) || { open };
+    if (why) why.textContent = publishWhy(p, DRAFT_STANDING && DRAFT_STANDING.publishLimit,
+      agree.checked);
   };
   if (publish) publish.onclick = () => {
     publish.disabled = true;
@@ -4265,15 +4349,24 @@ function wireLadder() {
     const body = { hash };
     if (agree && agree.checked) body.terms = Number(agree.dataset.version);
     api('/api/design/publish', body).then(answer => {
-      if (box) box.innerHTML = `<div class="ok">${esc(answer.said)}</div>`;
+      if (box) box.innerHTML = publishedHtml(answer, hash);
       // Q742: a press the site takes while it checks the score comes back `waiting`, and
       // the panel redrawn from the standing says so in its own box, in the same words.
       loadStanding(hash).then(() => {
+        if (!answer.waiting) PUBLISH_SAID = { hash, html: publishedHtml(answer, hash) };
         const again = document.getElementById('dPublishSays');
-        if (again && !answer.waiting) again.innerHTML = `<div class="ok">${esc(answer.said)}</div>`;
+        if (again && !answer.waiting) again.innerHTML = PUBLISH_SAID.html;
+        // PF1 (PW1-F3): the panel redraws taller above the press, and the confirmation
+        // landed out of sight; it is brought to the middle of the screen, link and all.
+        const shown = (again && !answer.waiting) ? again
+          : document.getElementById('dPublishWaiting') || again;
+        if (shown && shown.scrollIntoView) shown.scrollIntoView({ block: 'center' });
       });
     }).catch(error => {
-      if (box) box.innerHTML = `<div class="error">${esc(errorWords(error))}</div>`;
+      if (box) {
+        box.innerHTML = `<div class="error">${esc(errorWords(error))}</div>`;
+        if (box.scrollIntoView) box.scrollIntoView({ block: 'center' });
+      }
     });
   };
   // Q518. The track's *nominate it*: the game page's route, then the standing asked again,
@@ -4337,10 +4430,15 @@ function familyHtml() {
 // The hash beside each game is the maintainer's (Q576, F6): a visitor reads the name.
 function lineageHtml(node) {
   if (!node) return '';
+  // PF1 (PW1-F5): the game on screen goes by the name in its name field now. The family is
+  // asked once per hash, and a rename is not a new hash, so the name it was asked with goes
+  // stale the moment the field changes.
+  const name = node.hash === DRAFT_HASH && String(DRAFT.name || '').trim()
+    ? String(DRAFT.name).trim() : node.name;
   const label = node.draft
-    ? `<i>${esc(node.name || 'this draft')}</i>`
+    ? `<i>${esc(name || 'this draft')}</i>`
     : node.known
-      ? `<a href="/game/${esc(node.hash)}">${esc(node.name || (ACCOUNTS ? 'a game with no name' : node.hash))}</a>`
+      ? `<a href="/game/${esc(node.hash)}">${esc(name || (ACCOUNTS ? 'a game with no name' : node.hash))}</a>`
       : `<span class="muted">a game this library cannot find</span>`;
   const shown = `${node.here ? '<b>' : ''}${label}${node.here ? '</b>' : ''}`;
   return `<ul class="lineage small u-m-4-0-0 u-pl-16">
@@ -4375,6 +4473,9 @@ function lineageStateHtml(node) {
     return `<span class="muted">measured, but out of date${ACCOUNTS
       ? '' : '; needs a ' + esc(m.needs)}</span>${nominated}`;
   }
+  // PF1 (PW1-F5): no official measurement, but a score from its designer's computer the
+  // site has checked, drawn as the game's own page draws it.
+  if (node.provisional) return `${provisionalTag(node.provisional)}${nominated}`;
   return `<span class="muted">not measured</span>${nominated}`;
 }
 
@@ -4590,8 +4691,33 @@ function savedHtml(kept) {
     <a href="/game/${esc(kept.hash)}">open its page</a> ${copyLinkHtml(kept.hash)}
     ${rung ? `<div class="u-mt-6 ${kept.rungPassed
       ? 'u-c-ink' : 'u-c-bad'}">${rung}</div>` : ''}
-    ${kept.said ? `<div class="u-mt-6 u-c-ink">${esc(kept.said)}</div>` : ''}
+    ${savedSaid(kept) ? `<div class="u-mt-6 u-c-ink" data-said="1">${esc(savedSaid(kept))}</div>` : ''}
   </div>`;
+}
+
+// PF1 (PW1-F5): who can see the game, as the save said it -- until the standing has moved
+// on. Once the designer's own game is past Draft (published, say), the save's *only people
+// with its link* is stale, and the standing's own sentence stands in its place.
+function savedSaid(kept) {
+  const s = DRAFT_STANDING && DRAFT_STANDING.hash === kept.hash ? DRAFT_STANDING : null;
+  const p = s && s.publish;
+  if (p && p.mine && !p.publishable && p.says) return p.says;
+  return kept.said || '';
+}
+
+// The last save's answer, kept to redraw its sentence when the standing moves (PF1). `html`
+// is what was drawn, so a box since given to something else (a refusal, the name question,
+// another draft) is left alone.
+let DRAFT_KEPT = null;
+
+function refreshSaved(hash) {
+  if (!DRAFT_KEPT || DRAFT_KEPT.hash !== hash || !DRAFT_SAVED.startsWith(DRAFT_KEPT.html)) return;
+  const html = savedHtml(DRAFT_KEPT.kept);
+  if (html === DRAFT_KEPT.html) return;
+  DRAFT_SAVED = html + DRAFT_SAVED.slice(DRAFT_KEPT.html.length);
+  DRAFT_KEPT.html = html;
+  const box = document.getElementById('dSaved');
+  if (box) box.innerHTML = DRAFT_SAVED;
 }
 
 // A hint about the saved description, optional and never waited for (Q396). Asked only
@@ -4728,6 +4854,7 @@ function saveDraft() {
       // Saved under it, the name is this game's own from now on.
       NAME_KEPT = String(DRAFT.name || '').trim().toLowerCase();
       DRAFT_SAVED = savedHtml(kept);
+      DRAFT_KEPT = { hash: kept.hash, kept, html: DRAFT_SAVED };
       box.innerHTML = DRAFT_SAVED;
       showSaved(box);
       askHint(kept.hash);

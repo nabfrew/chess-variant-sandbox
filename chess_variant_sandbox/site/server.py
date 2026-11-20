@@ -40,7 +40,7 @@ import re
 import sys
 import threading
 import traceback
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -201,6 +201,30 @@ def visitors_provenance(provenance: Mapping[str, Any]) -> dict[str, Any]:
     if _IN_THE_TREE.search(str(kept.get("source") or "")):
         kept.pop("source")
     return kept
+
+
+def _with_provisional(
+    lineage: Any, shown: Callable[[list[str]], dict[str, dict[str, Any]]]
+) -> None:
+    """Put on each saved game of a family tree the browser-measured score its reader may
+    see (`provisional.shown`, asked once for the tree), under `provisional`. An unsaved
+    draft has no row and no score; a tree that is not there is left alone."""
+    root = lineage.get("root") if isinstance(lineage, dict) else None
+    if not isinstance(root, dict):
+        return
+    nodes: list[dict[str, Any]] = []
+    waiting = [root]
+    while waiting:
+        node = waiting.pop()
+        nodes.append(node)
+        waiting.extend(kid for kid in node.get("children") or () if isinstance(kid, dict))
+    digests = sorted({str(node["hash"]) for node in nodes
+                      if node.get("hash") and not node.get("draft")})
+    scores = shown(digests) if digests else {}
+    for node in nodes:
+        found = scores.get(str(node.get("hash")))
+        if found is not None and not node.get("draft"):
+            node["provisional"] = found
 
 
 def _without_records(found: dict[str, Any]) -> dict[str, Any]:
@@ -485,6 +509,24 @@ class SiteApp(App):
                 )
                 row = stages.read(connection, [parts[3]]).get(parts[3])
                 says = None if row is None else stages.said(connection, row, self.viewer)
+                # PF1 (PW1-F1): a publish cap the viewer has already reached, said for rules
+                # this viewer could publish -- unsaved, or their own draft -- so the designer
+                # says it before the minutes of measuring, not at the press.
+                # PF1 (PW1-F5): *Its family* read every game's official measurement only,
+                # so a published game carrying a spot-checked score from its designer's
+                # computer read *not measured*. Each saved game in the tree carries the
+                # score this viewer may see of it, as its own page shows it.
+                _with_provisional(
+                    found.get("lineage"),
+                    lambda digests: provisional.shown(
+                        connection, digests, self.viewer, self._current
+                    ),
+                )
+                could = row is None or bool((found["publish"] or {}).get("publishable"))
+                found["publishLimit"] = (
+                    quota.publish_limit(connection, self.viewer)
+                    if self.viewer is not None and could else None
+                )
             # *Where this game stands* (Q503b): the level and its track, for any game the
             # store holds. Rules nobody has saved have no row, and are a Draft.
             found.update(stages.shown(stages.DRAFT if row is None else row["level"], says))

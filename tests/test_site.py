@@ -3048,7 +3048,8 @@ class TestThePages:
           global.document = { getElementById: id => ({
             get value() { return __fields[id]; },
             set textContent(v) { __fields[id] = v; },
-            addEventListener: (kind, handler) => { __click = handler; },
+            // PF1 (PW1-F2): the fields answer Enter too; the button's click is the one pressed.
+            addEventListener: (kind, handler) => { if (kind === 'click') __click = handler; },
           }) };
           global.fetch = (path, options) => { __sent.push(path); return new Promise(() => {}); };
         """

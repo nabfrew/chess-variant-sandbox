@@ -1477,6 +1477,11 @@ RULES = """
   /* *on its own page*, said once before the two buttons that open it, only in the bar at
      the foot of a phone; in the panel each button says it whole (Q801). */
   .designer .footbar .awayLead { display: none; }
+  /* PF1 (PW1-F4): the bar's way down to the score-and-publish step, only in the bar at
+     the foot of a phone; in two columns that step is beside the board. It closes the
+     verdict's line, after *checked at*, so the bar grows no taller (its look row: at most
+     120 px). */
+  .designer .footbar .jumpPublish { display: none; }
   @media (max-width: 900px) {
     .designer .footbar {
       position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; max-height: 40vh;
@@ -1496,6 +1501,9 @@ RULES = """
                                        line-height: 1.35; }
     .designer .footbar .awayLead { display: inline; align-self: center; }
     .designer .footbar .awayTail { display: none; }
+    .designer .footbar .jumpPublish { display: inline; min-height: 0; min-width: 0;
+                                      padding: 0 0 0 8px; font-size: inherit;
+                                      line-height: inherit; vertical-align: baseline; }
     /* The first thing to fix, at most two lines in the bar; the whole list is the tap. */
     .designer .footbar .notGameFirst { display: -webkit-box; -webkit-line-clamp: 2;
                                         -webkit-box-orient: vertical; overflow: hidden; }

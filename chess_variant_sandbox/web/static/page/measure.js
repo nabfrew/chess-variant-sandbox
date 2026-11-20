@@ -433,6 +433,23 @@ function hereOfferHtml(run) {
     </div>`;
 }
 
+// PF1 (PW1-F10): the two long steps share one bar, each its half, so the bar and the
+// percentage under it only ever grow during one measurement; each step's own count is
+// named with the step (*step 2 of 2*), so a count that starts again reads as a new step.
+// The gathers between them hold the bar where the last step left it.
+const HERE_PHASES = ['tournament', 'reading'];
+
+function hereShare(run) {
+  const phase = HERE_PHASES.indexOf(run.step);
+  const each = 100 / HERE_PHASES.length;
+  let share;
+  if (phase >= 0) share = each * (phase + (run.total ? run.done / run.total : 0));
+  else if (run.step === 'gathering') share = run.shareSoFar || 0;
+  else share = 0;
+  run.shareSoFar = Math.max(run.shareSoFar || 0, share);
+  return Math.round(run.shareSoFar);
+}
+
 function hereRunHtml(run) {
   if (run.state === 'done') return hereResultHtml(run);
   const spent = hereSeconds((performance.now() - run.started) / 1000);
@@ -443,11 +460,13 @@ function hereRunHtml(run) {
     return `<div class="muted small">Stopped after ${esc(hereSeconds(run.seconds))}.
       Nothing was kept.</div>`;
   }
-  const share = run.total ? Math.round(100 * run.done / run.total) : 0;
-  return `<div class="small"><b>${esc(HERE_STEPS[run.step] || run.step)}</b>${
+  const share = hereShare(run);
+  const phase = HERE_PHASES.indexOf(run.step);
+  return `<div class="small">${phase >= 0 ? `step ${phase + 1} of ${HERE_PHASES.length}, ` : ''}<b>${
+      esc(HERE_STEPS[run.step] || run.step)}</b>${
       run.total && run.step !== 'gathering' ? ` &mdash; ${run.done} of ${run.total}` : ''}</div>
     <div class="bar u-m-6-0"><div class="${styleClass(`width:${share}%`)}"></div></div>
-    <div class="muted small">${esc(spent)} so far, on ${esc(hereWorkers(run.workers))}${
+    <div class="muted small">${share}% of the way, ${esc(spent)} so far, on ${esc(hereWorkers(run.workers))}${
       run.games ? ` &middot; ${run.games} games played` : ''}. You can keep editing; this
       measures ${esc(run.name)} as it stood when you pressed the button.</div>
     <div class="row u-mt-8"><button id="dHereStop">stop</button></div>`;
@@ -465,9 +484,9 @@ function hereResultHtml(run) {
     ${moved ? `<div class="muted small u-mt-6">This is ${esc(r.name)} as it
       stood when you pressed the button${ACCOUNTS ? '' : ` (<code>${esc(r.hash)}</code>)`}; the rules have changed
       since, so it is not a number for the draft on screen.</div>` : ''}
-    ${(r.violations || []).length ? (hereRefusal(r) ? refusalHtml(hereRefusal(r), r.violations)
+    ${(r.violations || []).length ? (hereRefusal(r) ? hereRefusalHtml(hereRefusal(r), r.violations)
       : `<div class="verdict"><div class="small u-fw-400">${
-          r.violations.map(esc).join('<br>')}</div></div>`) : ''}
+          r.violations.map(hereViolationHtml).join('<br>')}</div></div>`) : ''}
     ${components.length ? `<div class="muted small u-mt-8">What it is made of${
       kept ? ', as your browser scored it' : ''}, each out of 1, the ones that count most
       first:</div>
@@ -505,6 +524,34 @@ function hereRefusal(r) {
     note: kind === 'rules' ? words.rulesNote
       : kind === 'players' ? words.playersNote : words.bothNote,
   };
+}
+
+// PF1 (PW1-F6): a test this browser's run failed, said plainly first. The scoring files a
+// failed test as `name=value below minimum bound (why)` or `... bound: what happened`, and
+// that line was drawn as it came, so a designer read the test's code name before its
+// meaning. Here the plain part leads, the two numbers follow in words, and the code name
+// goes behind the (i). A line in any other shape is drawn as it came.
+const HERE_GATE = /^(\w+)=(\S+) (below minimum|above maximum) (\S+?)(?:: ([\s\S]*)| \(([\s\S]*)\))?$/;
+
+function hereViolationHtml(line) {
+  const text = String(line || '').trim();
+  const found = HERE_GATE.exec(text);
+  if (!found) return esc(text);
+  const [, name, value, side, bound, happened, why] = found;
+  const plain = String(happened || why || '').trim().replace(/[.\s]+$/, '');
+  const numbers = `it measured ${value}, where ${side === 'below minimum'
+    ? 'at least' : 'at most'} ${bound} is needed`;
+  const said = plain
+    ? `${plain.charAt(0).toUpperCase()}${plain.slice(1)} (${numbers}).`
+    : `${numbers.charAt(0).toUpperCase()}${numbers.slice(1)}.`;
+  return esc(said) + info('gated', `This test is called ${name} in the project's code.`);
+}
+
+// `refusalHtml`, with the measurement's lines in plain words rather than as filed.
+function hereRefusalHtml(refusal, lines) {
+  return refusalHtml(refusal, []).replace(/<\/div>$/, `${(lines || []).length
+    ? `<div class="small u-fw-400 u-mt-5">${lines.map(hereViolationHtml).join('<br>')}</div>`
+    : ''}</div>`);
 }
 
 // The browser's own number, under the label that says where it was made and that nothing

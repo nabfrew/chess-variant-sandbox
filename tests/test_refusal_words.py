@@ -173,7 +173,8 @@ class TestThePageDrawsIt:
         # The game's page, the browser's measurement, the designer's rung, the card's
         # hover and the map's panel.
         assert PAGE.count("refusalHtml(score.refusal") == 1
-        assert PAGE.count("refusalHtml(hereRefusal(r)") == 1
+        # PF1 (PW1-F6): through `hereRefusalHtml`, which words the measurement's lines.
+        assert PAGE.count("hereRefusalHtml(hereRefusal(r)") == 1
         assert PAGE.count("refusalText(m.refusal)") == 2
         assert "refusalText(game.refusal)" in PAGE
         assert "refusalText(score.refusal)" in PAGE

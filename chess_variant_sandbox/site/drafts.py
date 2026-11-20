@@ -355,9 +355,12 @@ def why(kept: Kept, screened: Mapping[str, Any]) -> str:
         return "On trial: listed with the other games, where anybody can open it and play it."
     if kept.screen_passed:
         return (
-            "Saved as a draft: only people with its link can open it. It passes the "
-            "playability check, so it can be published once you have measured its score on "
-            "your computer."
+            # PF1 (PW1-F5): said whether or not a score is already in hand, because a save
+            # cannot know whether this computer is about to send one; *Where this game
+            # stands* says what publishing still needs.
+            "Saved as a draft: only people with its link can open it until you publish it. "
+            "It passes the playability check; Where this game stands says what publishing "
+            "it still needs."
         )
     reasons = "; ".join(str(reason) for reason in screened.get("reasons") or ())
     said = f" ({reasons})" if reasons else ""
@@ -828,6 +831,9 @@ def standing(
     copied = twin(connection, digest, spec or {}) if shown else None
     checking = shown and reading is None and provisional.checking(connection, digest)
     waits = shown and asked is not None
+    # PF1 (PW1-F1): a cap already reached keeps the button off from the start; the page
+    # draws the cap's sentence from the route's `publishLimit`, before any measuring.
+    capped = shown and user is not None and quota.publish_limit(connection, user) is not None
     if blocked:
         waiting = provisional.FLAGGED
     elif copied is not None:
@@ -862,6 +868,7 @@ def standing(
         and not blocked
         and copied is None
         and not waits
+        and not capped
         and all(bool(tick["met"]) for tick in ticks),
         "says": says,
         "waiting": waiting,

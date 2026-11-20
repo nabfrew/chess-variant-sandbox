@@ -1161,6 +1161,48 @@ def published_today(connection: Any, user: int) -> int:
         return int(cursor.fetchone()[0])
 
 
+def publish_limit(connection: Any, user: int) -> dict[str, Any] | None:
+    """The publish cap this person has reached, said before any work is spent, or `None`.
+
+    PF1 (PW1-F1, `docs/reference/publish-walk.md`): `check_publish` says a cap only at the
+    press, after minutes of measuring. This reads the same two counts without the lock, so
+    the designer can draw the sentence beside *Publish* when a draft opens. `opens` is when
+    the rolling day lets the next publish through (ISO, for the page to put in the reader's
+    own clock), or `None` for the on-trial cap, which opens only when a game leaves. The
+    caps themselves are `check_publish`'s, which still decides at the press.
+    """
+    held = on_trial(connection, user)
+    if held >= PUBLISHED_AT_ONCE:
+        return {
+            "says": (
+                f"You have {held} games on trial, which is the limit of {PUBLISHED_AT_ONCE}, "
+                "so this one cannot be published until one of them leaves the listing. You "
+                "can still measure it and save it."
+            ),
+            "opens": None,
+        }
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select published from games where owner = %s and published > now() - %s"
+            " order by published",
+            (user, timedelta(days=1)),
+        )
+        stamps = [row[0] for row in cursor.fetchall()]
+    if len(stamps) < PUBLISHES_A_DAY:
+        return None
+    today = len(stamps)
+    # The count rolls: the next publish opens when enough of the day's fall out of it.
+    opens = stamps[today - PUBLISHES_A_DAY] + timedelta(days=1)
+    return {
+        "says": (
+            f"You have published {today} game{'' if today == 1 else 's'} in the last day, "
+            f"which is the limit of {PUBLISHES_A_DAY}, so this one cannot be published yet. "
+            "You can still measure it and save it."
+        ),
+        "opens": opens.isoformat(),
+    }
+
+
 def check_publish(connection: Any, user: int) -> None:
     """Whether this person may publish another game now. Silence, or the reason not.
 

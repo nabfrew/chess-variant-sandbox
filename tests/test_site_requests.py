@@ -196,6 +196,44 @@ class TestThePages:
         assert got["challenge"] == ["Sign in first."]
 
 
+def _pressed(page: str, field: str, key: str) -> list[str]:
+    """Run `post.js` and a page's script, type into its fields and press `key` in `field`:
+    what the page asked the server."""
+    source = _STUB + """
+      const __HEARD = {};
+      for (const id of ['go', 'handle', 'password', 'code']) {
+        const node = document.getElementById(id);
+        node.value = id === 'code' ? 'abc' : 'someone';
+        node.addEventListener = (name, listen) => { __HEARD[id + ' ' + name] = listen; };
+      }
+    """ + _script("post.js") + "ASK_RETRY_PAUSE = 0;\n" + _script(page) + f"""
+      const __listen = __HEARD['{field} keydown'];
+      if (__listen) __listen({{ key: '{key}', preventDefault() {{}} }});
+      setTimeout(() => console.log(JSON.stringify(__ASKED)), 30);
+    """
+    done = node_session.run(source)
+    assert done.returncode == 0, done.stderr
+    asked: list[str] = json.loads(done.stdout)
+    return asked
+
+
+class TestEnterSendsTheForm:
+    """PF1 (PW1-F2, `docs/reference/publish-walk.md`): Enter in a field of `/join` creates the
+    account, as Enter signs in on `/signin`; any other key sends nothing."""
+
+    def test_enter_in_the_password_field_of_join_posts_the_join(self) -> None:
+        assert _pressed("join.js", "password", "Enter") == ["POST /api/join"]
+
+    def test_enter_in_the_handle_field_of_join_posts_it_too(self) -> None:
+        assert _pressed("join.js", "handle", "Enter") == ["POST /api/join"]
+
+    def test_another_key_sends_nothing(self) -> None:
+        assert _pressed("join.js", "password", "a") == []
+
+    def test_sign_in_still_answers_enter(self) -> None:
+        assert _pressed("signin.js", "password", "Enter") == ["POST /api/signin"]
+
+
 class TestOneHelper:
     def test_only_the_helper_asks_or_reads_a_body(self) -> None:
         """Every request a site page makes is `askOnce`'s, in `post.js`."""

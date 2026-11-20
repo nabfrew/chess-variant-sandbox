@@ -1407,7 +1407,10 @@ class TestADraftSavedOnTheSite:
         assert kept.payload["listed"] is False
         assert kept.payload["visibility"] == "unlisted"
         assert kept.payload["screenPassed"] is True
-        assert "measured its score on your computer" in kept.payload["said"]
+        # PF1 (PW1-F5): the save cannot know whether a score is about to be sent, so it
+        # names where the rest is said rather than asking for a measurement already made.
+        assert "Where this game stands says what publishing" in kept.payload["said"]
+        assert "once you have measured" not in kept.payload["said"]
         with drafting.store.cursor() as cursor:
             cursor.execute(
                 "select g.origin, g.visibility, g.parent, g.revoked, g.screen_passed,"
@@ -1927,6 +1930,63 @@ class TestPublishing:
 
         panel = ada.get(f"/api/design/standing/{first}").payload["publish"]
         assert (panel["level"], panel["ticks"], panel["waiting"]) == ("On trial", [], "")
+
+    def test_the_days_limit_is_said_before_any_work_on_the_next_draft(
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """PF1 (PW1-F1, `docs/reference/publish-walk.md`): the walk's designer measured for
+        five minutes, saved and ticked before the one-a-day limit was said, at the press.
+        After a first publish, the standing of the next draft -- saved, and rules nobody
+        has saved yet -- carries the limit's sentence and when the next publish opens,
+        and keeps the button off; nothing has to be pressed to read it."""
+        _screened(monkeypatch, passed=True)
+        ada = drafting.signed_in("ada")
+        first = _saved(ada, _template(0)).payload["hash"]
+        second = _saved(ada, _template(1, "another")).payload["hash"]
+        owner = _user_id(drafting, "ada")
+
+        before = ada.get(f"/api/design/standing/{second}").payload
+        assert before["publishLimit"] is None
+
+        drafts.publish(drafting.store, first, owner, site_store.STAND_IN_READING,
+                       site_terms.VERSION)
+        drafting.store.commit()
+        with drafting.store.cursor() as cursor:
+            cursor.execute("select published from games where hash = %s", (first,))
+            published = cursor.fetchone()[0]
+
+        unsaved = spec_hash(designing.settled(_template(2, "not saved yet")))
+        for digest in (second, unsaved):
+            found = ada.get(f"/api/design/standing/{digest}").payload
+            limit = found["publishLimit"]
+            assert limit is not None, digest
+            assert f"limit of {quota.PUBLISHES_A_DAY}" in limit["says"]
+            assert "You can still measure it and save it." in limit["says"]
+            assert datetime.fromisoformat(limit["opens"]) == published + timedelta(days=1)
+        panel = ada.get(f"/api/design/standing/{second}").payload["publish"]
+        assert panel["publishable"] is True and panel["open"] is False
+
+        # The published game is not offered the sentence: it has nothing to publish.
+        assert ada.get(f"/api/design/standing/{first}").payload["publishLimit"] is None
+        # Nor is anybody else, about ada's day.
+        bob = drafting.signed_in("bob")
+        assert bob.get(f"/api/design/standing/{unsaved}").payload["publishLimit"] is None
+
+    def test_the_on_trial_limit_is_said_before_too_and_names_no_hour(
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ada, digest = self._passed_draft(drafting, monkeypatch)
+        _designed_rows(
+            drafting, _user_id(drafting, "ada"), quota.PUBLISHED_AT_ONCE,
+            visibility="public", screen_passed=True,
+            published=datetime.now(timezone.utc) - timedelta(days=30),
+        )
+
+        limit = ada.get(f"/api/design/standing/{digest}").payload["publishLimit"]
+
+        assert limit is not None and limit["opens"] is None
+        assert f"limit of {quota.PUBLISHED_AT_ONCE}" in limit["says"]
+        assert "leaves the listing" in limit["says"]
 
 
 def _respelled(
