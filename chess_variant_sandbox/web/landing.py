@@ -984,7 +984,16 @@ def headline(story: dict[str, Any] | None) -> str:
 # (`?seat=<side>`, honoured by `detail.js`). In the hero the story's door stands beside
 # *Play today's game*, and at 375 in its place, so a visitor who wants to move first meets the
 # story's own game rather than leaving for another.
-PLAY_STORY = "Play {name}"
+#
+# PF2 (`docs/reference/first-visit-study.md` §6.5 item 2): the hero's door read *Play three
+# stones* under the green *Start building a game*, and every cold reader stopped on the pair: a
+# name it did not know against a button that sounded like work. So the door says what a press
+# does, *Play a game now*, and the game it starts is named in its title (the hover and the
+# screen reader's label), not on its face. *Start building a game* stays the one primary: the
+# site's key idea is making games (`docs/archive/plan-landing.md`), and with the door's words
+# plain the two say different things, which is all the choice needs.
+PLAY_STORY = "Play a game now"
+PLAY_STORY_SAID = "Start a game of {name} against the computer, now"
 PLAY_THIS = "Play this game"
 
 
@@ -1008,9 +1017,11 @@ def play_link(digest: str, side: str, agent: str | None = None) -> str:
     return f"{seat_link(digest, side)}&play={quote(agent or PLAY_DEFAULT, safe='')}"
 
 
-def play_door(story: dict[str, Any] | None, words: str, classes: str = "button") -> str:
+def play_door(story: dict[str, Any] | None, words: str, classes: str = "button",
+              said: str | None = None) -> str:
     """A door that starts a practice game of the story's fixed game in the story's seat, or
-    nothing for no story or a constructed one (its game is no library game)."""
+    nothing for no story or a constructed one (its game is no library game). `said`, where
+    given, is its title and label, naming the game its words leave out."""
     if story is None or story.get("example"):
         return ""
     fixed = story["fixed"]
@@ -1021,13 +1032,15 @@ def play_door(story: dict[str, Any] | None, words: str, classes: str = "button")
     against = story.get("opponent")
     agent = f' data-agent="{_e(against["agent"])}"' if against else ""
     href = play_link(digest, seat["side"], against["agent"] if against else None)
+    label = said.format(name=fixed["name"]) if said else ""
+    named = f' title="{_e(label)}" aria-label="{_e(label)}"' if label else ""
     return (f'<a class="{classes}" href="{_e(href)}" '
-            f'data-play="{_e(digest)}" data-seat="{int(seat["index"])}"{agent}>'
+            f'data-play="{_e(digest)}" data-seat="{int(seat["index"])}"{agent}{named}>'
             f'{_e(words.format(name=fixed["name"]))}</a>')
 
 
 def _ways(story: dict[str, Any] | None = None) -> str:
-    door = play_door(story, PLAY_STORY, "button storyWay")
+    door = play_door(story, PLAY_STORY, "button storyWay", PLAY_STORY_SAID)
     today = "button todayWay" if door else "button"
     return (f'<a class="button primary" href="#/design">{_e(START)}</a>' + door
             + f'<a class="{today}" href="/game" data-today>{_e(PLAY_TODAY)}</a>')

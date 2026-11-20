@@ -94,3 +94,20 @@ def test_the_invitation_carries_one_link() -> None:
     as phishing."""
     body = mail.invitation("bo@example.invalid", LINK, "ada").body
     assert re.findall(r"https?://\S+", body) == [LINK]
+
+
+def test_the_invitation_names_where_its_link_goes_in_words() -> None:
+    """PF2 (`docs/reference/first-visit-study.md` §6.5 item 7): a cold reader could not place
+    the site and read *choose a handle and a password* as phishing. The mail names the site's
+    address in plain words beside the link, as text and never as a second link, and says the
+    site has no other way to reach the reader."""
+    body = " ".join(mail.invitation("bo@example.invalid", LINK, "ada").body.split())
+    assert mail.link_host(LINK) == "chess-variant-sandbox.example"
+    assert ("Open this link to choose a handle and a password on "
+            "chess-variant-sandbox.example, the site's own address:") in body
+    assert re.findall(r"https?://\S+", body) == [LINK]
+    assert "it has no other way to reach you: it never asks for a phone number" in body
+    assert mail.link_host("https://www.x.example/join") == "x.example"
+    assert mail.link_host("l") == ""
+    bare = " ".join(mail.invitation("bo@example.invalid", "l").body.split())
+    assert "Open this link to choose a handle and a password, the site's own address:" in bare

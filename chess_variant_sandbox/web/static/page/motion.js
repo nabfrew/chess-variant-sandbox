@@ -27,6 +27,11 @@ const PACE = {
   travelMin: 225,        // a move of no distance at all
   travelPerUnit: 21,     // ... and this much more per viewBox unit crossed
   travelMax: 630,        // ... but never longer than this, however wide the board
+  // The move the reader has just made by tapping (PF2, `first-visit-study.md` §6.5 item 5):
+  // they know where it went, so it lands at once rather than at a reading pace. Every reader's
+  // first look after a move found the move list saying *1. Pe2-e4* with the pawn still short
+  // of e4, and one took the move for refused. The computer's reply keeps the reading pace.
+  own: 120,
   impact: 0.8,           // the share of the travel after which the victim is struck
   strike: 390,           // a captured piece being knocked off the board
   burst: 330,            // the ring that marks where it was taken
@@ -222,10 +227,12 @@ function claimPaint(paint, x, y, cell, at = 0, most = Infinity) {
 // plays out in front of it.
 //
 // `most`, where given, caps the travel: a game played at a story's pace (the landing's)
-// moves each piece within its turn.
+// moves each piece within its turn. `TRAVEL_CAP` caps every travel while it is set: the play
+// board sets it to `PACE.own` while it draws the move the reader has just tapped (PF2).
+let TRAVEL_CAP = Infinity;
 function travel(node, dx, dy, arc, delay = 0, most = Infinity) {
   const distance = Math.hypot(dx, dy);
-  const duration = Math.min(most, PACE.travelMax,
+  const duration = Math.min(most, TRAVEL_CAP, PACE.travelMax,
                             PACE.travelMin + distance * PACE.travelPerUnit);
   const frames = [{ transform: `translate(${dx}px, ${dy}px)` }];
   if (arc) {

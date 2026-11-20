@@ -40,6 +40,7 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 API_URL = "https://api.resend.com/emails"
 
@@ -181,6 +182,18 @@ def _lasts(days: int) -> str:
     return "a day" if days == 1 else f"{days} days"
 
 
+def link_host(link: str) -> str:
+    """The site's address a link goes to, as a reader would say it: the host alone, no
+    scheme and no path (`chess-variant-sandbox.example`), or "" for a link with none.
+
+    PF2 (`docs/reference/first-visit-study.md` §6.5 item 7): the cold reader of the
+    invitation could not place the site, and *choose a handle and a password* from a mail
+    that does not say where the link goes reads as phishing. So the mail names the address
+    in words beside the link, without a scheme, so it stays text and is never a second link."""
+    host = urlsplit(link).hostname or ""
+    return host.removeprefix("www.")
+
+
 def invitation(to: str, link: str, inviter: str | None = None, days: int = 14) -> Message:
     """The message that brings a person in, one of the two the site sends.
 
@@ -194,6 +207,9 @@ def invitation(to: str, link: str, inviter: str | None = None, days: int = 14) -
     """
     who = inviter or "Somebody"
     tell = inviter or "us"
+    host = link_host(link)
+    goes = f"Open this link to choose a handle and a password on {host}" if host else (
+        "Open this link to choose a handle and a password")
     return Message(
         to=to,
         subject=(
@@ -205,12 +221,13 @@ def invitation(to: str, link: str, inviter: str | None = None, days: int = 14) -
             f"{who} has invited you to Chess variant sandbox: {PURPOSE}\n\n"
             "This is a trial: a few people are invited before anybody else, and some "
             "things will be rough. Hearing where is the reason for it.\n\n"
-            f"Open this link to choose a handle and a password:\n\n    {link}\n\n"
+            f"{goes}, the site's own address:\n\n    {link}\n\n"
             "What we'd love: play a few games against the computer, try one you've never "
             f"seen, and tell {tell} what confused you. You can make a game of your own too. "
             "It costs nothing and takes as long as you like; nothing on the site counts "
             "down.\n\n"
-            "The site sends you no other email unless you ask it to: you can switch on one "
+            "The site sends you no other email unless you ask it to, and it has no other "
+            "way to reach you: it never asks for a phone number. You can switch on one "
             "email for when it's your move in a game against another person, and switch it "
             f"off in one click. The link works once and expires in {_lasts(days)}; if you "
             "weren't expecting it, ignore it and nothing happens.\n\n"

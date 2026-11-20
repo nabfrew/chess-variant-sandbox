@@ -14,6 +14,10 @@ any other address keeps its brackets.
 
 ## 2026-11-20
 
+### The first minute on a phone
+
+The button on the front page now reads "Play a game now", and pressing it clears the page at once to "Starting the game" where the board will be, so the picture board further down is no longer mistaken for the game. Pieces held in hand are named, with a line on how to place one. A piece description that is cut short ends in a "more" you can tap. Your own move appears almost at once. The invitation mail now names the site's address in words beside its link.
+
 ### Publishing a game: the daily limit is shown before the work
 
 A designer may publish one game a day. Until now the page said so only after a game had been changed and measured, at the moment of pressing Publish. It now says it beside the Publish button from the start, with the time the next publish opens, and says that the draft can still be measured and saved meanwhile.

@@ -629,7 +629,21 @@ RULES = """
   .piece-says { margin: 6px 0 0; display: -webkit-box; -webkit-box-orient: vertical;
                 -webkit-line-clamp: 1; overflow: hidden; }
   .piece-says.more { cursor: pointer; }
+  /* PF2 (`first-visit-study.md` §6.5 item 4): a cut line said nothing of the tap that opens
+     it, and a reader took *exactly two squares…* for doubt. A cut line now shows its way on:
+     *more*, over the line's end, in the line's own room; on a phone it holds two lines. */
+  .piece-says.more:not(.open) { position: relative; padding-right: 3.6em; }
+  .piece-says.more:not(.open)::after { content: "more"; position: absolute; right: 0; bottom: 0;
+    color: var(--ink); text-decoration: underline; }
   .piece-says.open { display: block; -webkit-line-clamp: none; }
+  @media (max-width: 600px) { html:not(.board-full) .piece-says:not(.open) { -webkit-line-clamp: 2; } }
+  /* PF2 (§6.5 item 3): what is in hand, and how to place it, in words under the hand's buttons. */
+  .handHow { flex-basis: 100%; margin: 0; }
+  /* PF2 (§6.5 item 1): the game's page as it is about to be, at the top, the moment a door
+     on the front page is pressed: an empty board's place under the status line. */
+  .startingGame { margin: 8px 0 0; }
+  .startingBoard { width: min(100%, 560px); aspect-ratio: 1; border-radius: 6px;
+    background: var(--sunk); border: 1px solid var(--line); }
   .piece-says[hidden] { display: none; }
   .firstGame { margin: 0 0 10px; }
   .seatCard .gentlest { color: var(--act); font-weight: 600; }

@@ -26,6 +26,10 @@ async function showLanding() {
   // The hero's boards and today's game wait for the listing; the words and the doors do not.
   const listing = api('/api/library').catch(() => null);
   wirePlayDoors(view, listing);
+  // PF2 (`first-visit-study.md` §6.5 item 6): the story's own board is drawn from the story's
+  // frames (`/api/stories`, a fraction of a second), not after the whole listing, which on a
+  // cold server took forty seconds; its place is held from the first paint (`.heroBoard:empty`).
+  view.querySelectorAll('#heroShow .heroState[data-at][data-story]').forEach(heroFrame);
   startJourney();
   // LP6: a reload or a step back to a named story (`?story=`) comes back where the reader was
   // in it (kept by the head's `story.js`; the router has just put the view at its top).
@@ -79,13 +83,12 @@ function wirePlayDoors(root, listing) {
   today.addEventListener('click', async event => {
     if (!plain(event)) return;
     event.preventDefault();
-    pending('Starting the game…');
+    showStarting();
     const data = await listing;
     const step = data && data.firstStep;
     // The server named the page's own default (`chosen`); without it, the page is asked.
     const gentle = step && step.opponents && step.opponents.gentle;
     if (step && step.hash) return playNow(today, step.hash, 0, gentle && gentle.agent);
-    clearPending();
     goPath(GAMES_PATH);
   });
 }
@@ -102,8 +105,9 @@ function wireHeroBoard(root) {
   board.classList.add('heroPlays');
   board.setAttribute('role', 'button');
   board.setAttribute('tabindex', '0');
-  board.setAttribute('aria-label', door.textContent);
-  board.title = door.textContent;
+  // PF2: the door's title names the game its words leave out.
+  board.setAttribute('aria-label', door.title || door.textContent);
+  board.title = door.title || door.textContent;
   board.addEventListener('click', () => door.click());
   board.addEventListener('keydown', event => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -165,16 +169,47 @@ async function gentlestAgent(hash) {
 async function playNow(door, hash, seat, agent) {
   if (door.getAttribute('aria-busy') === 'true') return;
   door.setAttribute('aria-busy', 'true');
-  pending('Starting the game…');
+  const address = door.getAttribute('href');
+  showStarting();
   try {
     const against = agent || await gentlestAgent(hash);
-    if (!against) { clearPending(); location.href = door.getAttribute('href'); return; }
+    if (!against) { clearPending(); location.href = address; return; }
     await startPractice(hash, against, seat);
   } catch (error) {
-    fail(error, door);
+    leaveStarting(error);
   } finally {
     door.removeAttribute('aria-busy');
   }
+}
+
+// PF2 (`docs/reference/first-visit-study.md` §6.5 item 1): a press on a door that starts a game
+// left the front page standing for the moment the server took, with a small line at its top
+// and the story's own board at the foot of a phone's screen; three readers in four took that
+// board for the game and scrolled to it, just as the game's page replaced the front page with
+// its board at the top, so the scroll moved the real board away. So the press changes the
+// screen at once: the front page goes, the view is put at its top, and what stands there is
+// the game's page as it is about to be, the status line *Starting the game…* over an empty
+// board's place where the board will be drawn. Nothing is decided here: the board's place is
+// a shape, the position and the opponent are still the server's (rule 3).
+function showStarting() {
+  Object.values(STORY.players).forEach(player => player.stop());
+  view.textContent = '';
+  const place = document.createElement('div');
+  place.className = 'startingGame';
+  place.setAttribute('aria-hidden', 'true');
+  const board = document.createElement('div');
+  board.className = 'startingBoard';
+  place.append(board);
+  view.append(place);
+  window.scrollTo(0, 0);
+  pending('Starting the game…');
+}
+
+// A start that failed puts the front page back and says why (the door it was pressed on went
+// with the page, so the reason is a toast rather than a box beside it).
+function leaveStarting(error) {
+  if (view.querySelector('.startingGame')) showLanding();
+  fail(error);
 }
 
 // The template holds every story in the pool, each as one part (its hero and its journey,
@@ -501,8 +536,10 @@ function startHero(data) {
     if (game && link) link.href = gamePath(game.hash);
     // A story's own game at the turn its hero names (`data-at`) is drawn from the story's
     // frames, as its steps draw it; a constructed story's game has no listing to draw from.
-    if (state.dataset.at && state.dataset.story) heroFrame(state);
-    else if (game) state.querySelector('[data-board]').innerHTML = heroStill(game);
+    // (Drawn already as the landing opened, unless that answer has not come yet.)
+    if (state.dataset.at && state.dataset.story) {
+      if (!state.querySelector('[data-board] svg')) heroFrame(state);
+    } else if (game) state.querySelector('[data-board]').innerHTML = heroStill(game);
   });
   let at = 0, timer = null, held = false;
   const turn = i => {

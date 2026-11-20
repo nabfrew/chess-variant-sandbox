@@ -8831,9 +8831,10 @@ class TestTheBoardAnimation:
         assert "whenSettled(() => { answered(); if (mine()) applySnapshot(s); })" in (
             PAGE[agent:agent + 2400]), \
             "the agent's reply is the draw that waits"
-        # A person's own move is not one of them: it is the reason they clicked.
+        # A person's own move is not one of them: it is the reason they clicked. PF2: it is
+        # drawn at once, and quickly (`ownMove`, `PACE.own`), never through `whenSettled`.
         send = PAGE.index("function send(move)")
-        assert "then(s => applySnapshot(s))" in PAGE[send:send + 400]
+        assert "then(s => ownMove(() => applySnapshot(s)))" in PAGE[send:send + 400]
 
     def test_nothing_animated_means_nothing_to_wait_for(self) -> None:
         """Every early return in `animateChange` has to report a duration, or the board

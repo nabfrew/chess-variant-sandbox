@@ -2123,9 +2123,18 @@ function animateChange(svg, previous, cell, W, H, view, beats, last) {
   const swallowed = new Set(phase ? phase.map(step => step.to) : []);
   // Schema 26: a round is both players' moves at once, drawn from the core's account of it
   // (`animateRound`, `simultaneous.js`).
-  const beat = last && last.reveal
-    ? animateRound(svg, before, after, last.reveal, cell, W, H, view)
-    : animateMove(svg, before, after, swallowed, cell, W, H, view, last);
+  // PF2: the reader's own tapped move travels at `PACE.own` when it is a plain step; a move
+  // where the rule acts (a push, a sweep, a portal, a fold, a blast) keeps the time its motion
+  // needs to be read, and the phase after it and every reply keep the reading pace.
+  let beat;
+  TRAVEL_CAP = OWN_MOVE && plainStep(last, before) ? PACE.own : Infinity;
+  try {
+    beat = last && last.reveal
+      ? animateRound(svg, before, after, last.reveal, cell, W, H, view)
+      : animateMove(svg, before, after, swallowed, cell, W, H, view, last);
+  } finally {
+    TRAVEL_CAP = Infinity;
+  }
   if (!phase) return beat.busy;
   return Math.max(beat.busy, animatePhase(svg, phase, after, beat, cell, W, H, view));
 }
@@ -3597,19 +3606,27 @@ function drawHand() {
   // the same count. `dropFaces` is the compiled pair per slot (-1 for none), and `DROP`
   // is the face chosen, which is what each drop move names.
   const faces = SESSION.ruleset.dropFaces || null;
+  // PF2 (`docs/reference/first-visit-study.md` §6.5 item 3): the button read *X x3*, a letter
+  // nobody had been told, and a reader wondered whether one had to be placed before moving. So
+  // each button names its piece (the *pieces* tab's name, else its letter), and a line under
+  // the hand says how to put one on the board, from the engine's list: only while a drop is
+  // on offer, and once one is picked, what to tap next.
   const ids = SESSION.ruleset.pieceIds;
+  const names = SESSION.ruleset.pieceNames || [];
+  const called = face => names[face] || ids[face];
   const buttons = [];
   held.forEach(([type, count]) => {
     const shown = faces && faces[type] >= 0 ? [type, faces[type]] : [type];
     shown.forEach(face => {
       const other = face !== type;
       buttons.push(`<button data-drop="${face}" class="${DROP === face ? 'on' : ''}"
-        ${other ? `title="${esc(ids[type])} in hand, played as its other face"` : ''}
-        ${!AT && droppable.has(face) ? '' : 'disabled'}>${esc(ids[face])}${other ? ` (${esc(ids[type])})` : ''} x${count}</button>`);
+        ${other ? `title="${esc(called(type))} in hand, played as its other face"` : ''}
+        ${!AT && droppable.has(face) ? '' : 'disabled'}>${esc(called(face))}${other ? ` (${esc(called(type))})` : ''} x${count}</button>`);
     });
   });
+  const how = handHowWords(held.length && !AT && droppable.size > 0);
   hand.innerHTML = purses + (held.length ? '<span class="muted u-as-center">in hand:</span>' +
-    buttons.join('') : '') + market + hire;
+    buttons.join('') + how : '') + market + hire;
   hand.querySelectorAll('[data-drop]').forEach(node => {
     node.onclick = () => {
       DROP = DROP === Number(node.dataset.drop) ? null : Number(node.dataset.drop);
@@ -3619,6 +3636,16 @@ function drawHand() {
     };
   });
   wireMarket(hand);
+}
+
+// The line under the hand (PF2): how a held piece goes onto the board, while one may. Placing
+// one is a whole move, the turn's, which is what the reader who asked *must I place one
+// first?* needed to know.
+const HAND_HOW = 'Placing one is your move: tap it here, then a square on the board.';
+const HAND_PICKED = 'Now tap a square on the board to place it, or tap it again to keep it.';
+function handHowWords(offered) {
+  if (!offered) return '';
+  return `<p class="muted small handHow">${esc(DROP !== null ? HAND_PICKED : HAND_HOW)}</p>`;
 }
 
 // ----- the purse, the market, hiring and bribing (TC7, `docs/plan-turncoat.md` §5.8)
@@ -4714,6 +4741,26 @@ function chooseRotation(candidates) {
 // landed, and is never sent again (`api`). The page asks where the game is instead: a
 // game that moved on is drawn as it is now, and one that did not is drawn as it was, with
 // the selection cleared so the move can simply be made again.
+// Whether the board is drawing the move the reader has just made (PF2, `PACE.own`): set only
+// for the one synchronous draw of the server's answer to `send`.
+let OWN_MOVE = false;
+function ownMove(draw) {
+  OWN_MOVE = true;
+  try { return draw(); } finally { OWN_MOVE = false; }
+}
+
+// Whether a move is a plain step, read off the engine's account of it (the move's own fields,
+// never a diff): nothing pushed or swept, no portal or fold crossed, no round, and no blast.
+function plainStep(last, before) {
+  if (!last || last.reveal) return false;
+  if ((Array.isArray(last.pushed) && last.pushed.length)
+      || (Array.isArray(last.swept) && last.swept.length)) return false;
+  if (last.portal !== undefined || last.foldIn !== undefined) return false;
+  const ex = SESSION && SESSION.ruleset && SESSION.ruleset.explosion;
+  return !(ex && last.from !== undefined && last.from !== null
+           && blastFires(ex, before, pieceOf, last.from, last.to));
+}
+
 function send(move) {
   SELECTED = null;
   DROP = null;
@@ -4722,7 +4769,7 @@ function send(move) {
   if (SESSION.correspondence || SESSION.round) { (SESSION.round ? roundHold : corrHold)(move); return; }
   const id = SESSION.id, before = SESSION.history.length;
   const here = () => !!SESSION && SESSION.id === id;
-  api('/api/session/' + id + '/move', { move }).then(s => applySnapshot(s))
+  api('/api/session/' + id + '/move', { move }).then(s => ownMove(() => applySnapshot(s)))
     .catch(error => {
       // A refusal is a toast, never a box in the status strip, whose height is fixed (Q725).
       if (!error.unavailable) { fail(error); return; }
