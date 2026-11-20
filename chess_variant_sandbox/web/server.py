@@ -1005,6 +1005,10 @@ class App:
             # Which absent rules this draft could not take, tried by the validator. The
             # candidate cards are the browser's; nothing here decides what one holds.
             return designing.refusals(body.get("spec"), body.get("candidates") or {})
+        if parts == ["api", "design", "instead"]:
+            # A refused draft, or a rule the menu refuses beside one: why, and the nearest
+            # games the validator allows, found by search (R-L3 B3, `refusal-offers.md` §6).
+            return designing.instead(body.get("draft"), body.get("rule"), body.get("value"))
         if parts == ["api", "design", "turns"]:
             # The draft played another way (one after the other, in rounds, several moves
             # a turn), with every change that way needs, asked of the validator (Q995b).

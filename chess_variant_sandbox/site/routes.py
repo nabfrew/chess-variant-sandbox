@@ -169,6 +169,14 @@ ALLOWED: tuple[Route, ...] = (
     ),
     Route(
         "POST",
+        "/api/design/instead",
+        "a refused draft, or a rule the menu refuses beside one: the reasons it is refused "
+        "for and the nearest games the validator allows, each with its changes "
+        "(`refusal-offers.md` §6); in memory, writes nothing, a search of a median 27 ms "
+        "and at worst about three seconds",
+    ),
+    Route(
+        "POST",
         "/api/design/turns",
         "the draft played another way -- one after the other, in rounds, or several moves "
         "a turn -- with every change that way needs and a sentence for each (Q995b); in "

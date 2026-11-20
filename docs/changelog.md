@@ -14,6 +14,33 @@ any other address keeps its brackets.
 
 ## 2026-11-20
 
+### The designer says why a rule is refused, and what to do instead
+
+When a rule cannot be added to the game you are designing, the designer now says which kind of refusal it is: that the
+two rules can never be in one game, that the pair is too expensive to play, or that it has not been built yet. Opening
+the rule's row offers the nearest game that does take the rule, with a button that makes the change in one step you can
+undo. A draft that is refused as it stands is offered the nearest allowed game in the same way.
+
+Choosing to play in rounds, or several moves a turn, uses the same search, and now works for nine library games that
+refused it before, janggi and duck chess among them. The page lists what else changed to make room for the choice.
+
+### A refused rule combination now says why
+
+*For maintainers.*
+
+When a game's rules include a combination the rule language refuses, checking the game now prints the reason under
+the refusal: that the two rules can never be in one game, that the pair is too expensive to play, or that it has not
+been built yet and who holds it. The reason is read from the one list of refusals, so it cannot drift from it.
+
+It can also be asked what to do instead: for a refused game it prints up to three nearest allowed games, each as the
+few changes that get there. For most refusals the answer comes in a few hundredths of a second.
+
+### Nine more games have a leaderboard
+
+Breakthrough, cannon shogi, clobber, Glinski's hexagonal chess with mirrored armies, gorogoro plus, janggi, minishogi,
+minixiangqi and rear guard torus chess with even promotion now have rated computer opponents, so each can be played
+for a place on its leaderboard. Every game in the library now has one.
+
 ### Dohyo and rock paper shove are measured again
 
 After the fix to how the computer players weigh a piece pushed off the board, dohyo was played again from scratch and

@@ -1,0 +1,66 @@
+{
+  "game": "labelled/omega-chess-with-two-keeps.json",
+  "spec_hash": "181d7432c0b4",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.0732,
+  "quarter": "Q2",
+  "likeness_commit": "9bac41801",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2d1 worker (Claude Opus 5.5)",
+  "date": "2026-11-20",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken. I saw no score, band or tier of it or of its parent while building and labelling it; the parent's published verdicts in labelled-set.md \u00a79 I did not open in this task.",
+  "kind": "no-win",
+  "stratum": "hidden",
+  "side": null,
+  "claim": "Neither side can win: each has a recipe under which it never loses.",
+  "parent": "archive/omega.json",
+  "change": "one: every piece barred from the other side's keep (g2 and g3 closed to Black, their mirror images to White).",
+  "make": "sanctuary",
+  "army_share": 1.0,
+  "aim": "Nothing in ordinary play leads a king onto its keep and holds it there: players castle, walk the king when the board empties, and lose it in the open, so play should be the parent's, decisive from both seats and of ordinary length. The draw is there only for a side that knows to sit.",
+  "proof": {
+    "form": "argument",
+    "text": "Every piece type carries `region` (the only squares it may ever occupy, written for White and mirrored for Black), so a piece may not move, take, promote or drop onto a square closed to it, and therefore never attacks such a square: a king standing on a square closed to every enemy piece is never in check. So a white king on g2 or g3 is never in check, hence never checkmated, and the parent has no other way for White to lose. White's recipe: push the g-pawn from g3 at once (to g4 or g5); never castle; after that never move any white piece but the king onto g2 or g3; move the king only between g2 and g3. Under it the king never leaves g2 and g3. It must move only when White has no other legal move, and then the other keep square holds no white piece (the recipe keeps them off it) and no black piece (none may stand there), and no black piece attacks it, so the step is legal: White is never left without a move either. The pawn leaves on White's first move, so the king never has to move before the shuttle is open. Black's recipe is the mirror image: the g-pawn from g10 at once; never castle; then no black piece but the king onto g11 or g10; the king only between g11 and g10. Wins are reachable: in each line of `checks` a king leaves its keep and is mated.",
+    "checks": [
+      {
+        "type": "line",
+        "moves": [
+          "Cb2-b4",
+          "Pf10-f9",
+          "Pe3-e6",
+          "Kg11-f10",
+          "Pe6-e7",
+          "Kf10-e9",
+          "Qf2-b6",
+          "Ke9-d9",
+          "Qb6-d8"
+        ],
+        "winner": 0
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Pf3-f4",
+          "Pe10-e7",
+          "Kg2-f3",
+          "Pe7-e6",
+          "Kf3-e4",
+          "Qf11-b7",
+          "Ke4-d4",
+          "Qb7-d5"
+        ],
+        "winner": 1
+      }
+    ]
+  },
+  "addition": "labelled-set-passing-bad.md R-S2d1: a proven-bad game aimed to pass the gates; in no registered reading but that record's (\u00a75)",
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-20",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context, reader 3 of R-S2d1",
+    "given": "the spec file, describe_spec's text, the claim and the proof (with its checks or certificate); told not to read docs/, runs/, labels, the build log, the seal or any score, and to run no player",
+    "notes": "The engine's check test honours `region`: a black knight on h5 or f4 eyeing g3 or g2 gives no check, and the shuttle stays legal; 60 adversarial playouts with a side on its recipe found no loss and no stuck position. Small inaccuracy: from g3 the pawn may also reach g6."
+  }
+}

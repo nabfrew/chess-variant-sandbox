@@ -1,0 +1,788 @@
+{
+  "schema_version": 31,
+  "name": "chess with a white keep on d1 and e1",
+  "description": "Chess, with two changes. No black piece may move, promote or take onto d1 or e1 (and, the pawn being one kind for both sides, no white pawn onto d8 or e8). Black does not castle: Black's other pieces are kinds of their own, moving as White's do, and the castling rule names White's king and rooks. Everything else is chess.",
+  "summary": [
+    "Chess.",
+    "No black piece may enter d1 or e1; Black does not castle."
+  ],
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "a3",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "a4",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "b5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "b6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "c7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "n",
+      "name": "black knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "a3",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "a4",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "b5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "b6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "c7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "b",
+      "name": "black bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "a3",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "a4",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "b5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "b6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "c7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "r",
+      "name": "black rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "a3",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "a4",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "b5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "b6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "c7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "q",
+      "name": "black queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "a3",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "a4",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "b5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "b6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "c7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "k",
+      "name": "black king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "a3",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "a4",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "b5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "b6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "c7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "a7",
+          "b7",
+          "c7",
+          "d7",
+          "e7",
+          "f7",
+          "g7",
+          "h7"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 0,
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "r",
+        "player": 1,
+        "squares": [
+          "a8",
+          "h8"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 0,
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "n",
+        "player": 1,
+        "squares": [
+          "b8",
+          "g8"
+        ]
+      },
+      {
+        "piece": "B",
+        "player": 0,
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "b",
+        "player": 1,
+        "squares": [
+          "c8",
+          "f8"
+        ]
+      },
+      {
+        "piece": "Q",
+        "player": 0,
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "q",
+        "player": 1,
+        "squares": [
+          "d8"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 0,
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "k",
+        "player": 1,
+        "squares": [
+          "e8"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to_by_player": {
+        "0": [
+          "Q",
+          "R",
+          "B",
+          "N"
+        ],
+        "1": [
+          "q",
+          "r",
+          "b",
+          "n"
+        ]
+      }
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "insufficient_material": true
+  },
+  "provenance": {
+    "added": "2026-11-19",
+    "origin": "llm",
+    "author": "R-S2d1 worker (Claude Opus 5.5)",
+    "note": "A proven-bad addition to the labelled set (docs/reference/labelled-set-passing-bad.md, R-S2d1); not a library game."
+  }
+}

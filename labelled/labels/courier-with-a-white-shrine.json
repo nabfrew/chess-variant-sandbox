@@ -1,0 +1,53 @@
+{
+  "game": "labelled/courier-with-a-white-shrine.json",
+  "spec_hash": "f1b6c38f97ef",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.0629,
+  "quarter": "Q2",
+  "likeness_commit": "9bac41801",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2d1 worker (Claude Opus 5.5)",
+  "date": "2026-11-20",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken. I saw no score, band or tier of it or of its parent while building and labelling it; the parent's published verdicts in labelled-set.md \u00a79 I did not open in this task.",
+  "kind": "cannot-lose",
+  "stratum": "hidden",
+  "side": 0,
+  "claim": "White never loses: it has a recipe under which it never loses; the other side's result is not claimed.",
+  "parent": "rulesets/courier.json",
+  "change": "two: White gets a shrine on g2 (a new piece that never moves), and a king and its shrine standing side by side shield each other.",
+  "make": "shield",
+  "army_share": 1.021,
+  "aim": "Nothing in ordinary play leads a king onto its keep and holds it there: players castle, walk the king when the board empties, and lose it in the open, so play should be the parent's, decisive from both seats and of ordinary length. The draw is there only for a side that knows to sit.",
+  "proof": {
+    "form": "argument",
+    "text": "The shrine (type `T`, no moves) shields its own king, and the king (its `sight`) shields its own shrine, each over range 1 in all eight directions (effect `shield`, `whose` own): while the two stand next to each other neither can be taken and that king is never in check (`pieces[].sight`). The recipe (White): never move any white piece but the king onto g1, nor onto f1 once the king has left it; move the king only between f1 and g1. Under it the king stands on f1 or g1, both next to a shrine, so it is never in check and never checkmated, and the parent has no other way for White to lose. It must move only when White has no other legal move; then the other square holds none of White's pieces (the recipe keeps them off it), and if an enemy piece stands there the king may take it, since a king next to its shrine is never in check after the move: so the step is always legal and White is never without a move. Both squares are next to the shrine on g2, so the king and the shrine guard each other throughout; g1 is empty at the start. Courier's stalemate is a loss, but the step is always legal, so White is never stalemated. Black has no shrine. Wins are reachable: in each line of `checks` a king leaves its shrine and is mated.",
+    "checks": [
+      {
+        "type": "line",
+        "moves": [
+          "Pe2-e3",
+          "Pd7-d6",
+          "Kf1-e2",
+          "Me8-d7",
+          "Ke2-d3",
+          "Md7-c6",
+          "Kd3-c4",
+          "Mc6-d5",
+          "Kc4-b5",
+          "Md5-c5"
+        ],
+        "winner": 1
+      }
+    ]
+  },
+  "addition": "labelled-set-passing-bad.md R-S2d1: a proven-bad game aimed to pass the gates; in no registered reading but that record's (\u00a75)",
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-20",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context, reader 2 of R-S2d1",
+    "given": "the spec file, describe_spec's text, the claim and the proof (with its checks or certificate); told not to read docs/, runs/, labels, the build log, the seal or any score, and to run no player",
+    "notes": "Engine-checked: a king beside the shrine is never in check (knights attacking its square give no check), may step onto an attacked square or take a defended piece on the other square, and both squares stay free of White's own pieces, so the shuttle is always legal; 200 random games with White on the recipe and Black aiming at the king never lost. The recipe is one sentence and needs no search."
+  }
+}

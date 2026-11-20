@@ -175,7 +175,7 @@ why = "the duck is moved by the mover, and in a round nobody is the mover"
 id = "R16"
 plan = "R16"
 family = "rounds"
-at = "_check_npc_pounce: in a game in rounds (rules.simultaneous)"
+at = "_check_npc_pounce: in a game in rounds (rules.simultaneous): both players have just"
 pair = ["rules.simultaneous", "rules.npcs[].pounce"]
 reason = "contradictory"
 why = "a pounce takes the pieces of the player who just moved; both just moved, and no order between them is colour-blind"
@@ -865,7 +865,7 @@ why = "SR3c's screen by type was not given to a portal's own hop"
 id = "O5"
 plan = "O5"
 family = "nobody"
-at = "_check_neutral_coherence: {}: a royal always belongs to a player"
+at = "_check_neutral_coherence: a royal always belongs to a player"
 pair = ['setup.placements[].player: "nobody"', "pieces[].royal"]
 reason = "contradictory"
 why = "a royal always belongs to a player"
@@ -901,7 +901,7 @@ why = "a royal always belongs to a player"
 id = "O21"
 plan = "O21"
 family = "nobody"
-at = "_check_neutral_coherence: a wild piece walks its route"
+at = "_check_neutral_coherence: ): a wild piece walks its route"
 pair = ["pieces[].control", "rules.npcs[].piece"]
 reason = "contradictory"
 why = "a wild piece walks its route; nobody holds it"
@@ -1028,7 +1028,7 @@ why = "a spy counts for the player whose spy type it is; a count for whoever hol
 id = "Y4.foreign"
 plan = "Y4"
 family = "spy"
-at = "_foreign_spy_gains.foreign: so make each player's piece into its own spy"
+at = "_foreign_spy_gains: rules.strike.chain gives player"
 pair = ["rules.strike.chain (into a spy type)", "pieces[].spy the new owner does not start with"]
 reason = "not_built"
 held_by = "none"
@@ -1038,7 +1038,7 @@ why = "as Y3.foreign"
 id = "Y5.foreign"
 plan = "Y5"
 family = "spy"
-at = "_foreign_spy_gains.foreign: so make each player's piece into its own spy"
+at = "_foreign_spy_gains: rules.strike.switches_sides gives player"
 pair = ["rules.strike.switches_sides (a spy type)", "pieces[].spy the new owner does not start with"]
 reason = "not_built"
 held_by = "none"
@@ -1048,7 +1048,7 @@ why = "as Y3.foreign"
 id = "Y6.foreign"
 plan = "Y6"
 family = "spy"
-at = "_foreign_spy_gains.foreign: so make each player's piece into its own spy"
+at = ["_foreign_spy_gains: a rules.contacts link's mover_to gives player", "_foreign_spy_gains: a rules.contacts link's onto_to gives player"]
 pair = ["rules.contacts.links (into a spy type)", "pieces[].spy the new owner does not start with"]
 reason = "not_built"
 held_by = "none"
@@ -1216,7 +1216,7 @@ why = "a blast that wide can meet itself round the seams"
 id = "X11.radius"
 plan = "X11"
 family = "lattice"
-at = "_check_hexagon_coherence: rules.explode_on_capture.radius {} reaches across"
+at = "_check_hexagon_coherence: reaches across more than"
 pair = ["rules.explode_on_capture.radius wider than R + 1", "rules.wrap on a hexagon (a side joined)"]
 reason = "contradictory"
 why = "a blast that wide can meet itself round the seams"
@@ -1374,7 +1374,7 @@ why = "turned a quarter, a straight line has no such component"
 [[refusal]]
 id = "push.N2"
 family = "push"
-at = "_check_push_coherence: pushes and is nobody's"
+at = "_check_push_coherence: pushes and is nobody's (a wild piece or the duck): a wild piece walks its route"
 pair = ["pieces[].moves[].push", "on a wild type or the duck"]
 reason = "contradictory"
 why = "a wild piece walks its route and the duck is placed; neither pushes (plan-push: for good)"
@@ -1599,7 +1599,7 @@ why = "a commanded move sets the foreign bit beside the gate, and a frozen or sh
 [[refusal]]
 id = "gating.placement"
 family = "gating"
-at = "_check_gating_coherence: a gating hand enters only on a vacated square, never by a drop"
+at = "_check_gating_coherence: rules.drops.gating beside rules.drops.placement:"
 pair = ["rules.drops.gating", "rules.drops.placement"]
 reason = "contradictory"
 why = "a placement phase is drops, and a gating hand never drops"
@@ -1607,7 +1607,7 @@ why = "a placement phase is drops, and a gating hand never drops"
 [[refusal]]
 id = "gating.either_face"
 family = "gating"
-at = "_check_gating_coherence: a gating hand enters only on a vacated square, never by a drop"
+at = "_check_gating_coherence: rules.drops.gating beside rules.drops.either_face:"
 pair = ["rules.drops.gating", "rules.drops.either_face"]
 reason = "not_built"
 held_by = "none"
@@ -1626,7 +1626,7 @@ why = "what a shield or a freeze does to a held neutral's attack on a royal is u
 [[refusal]]
 id = "takes_royal.portals"
 family = "takes_royal"
-at = "_check_takes_royal: beside rules.portals"
+at = "_check_takes_royal: beside rules.portals: a held neutral's attack on a royal through a"
 pair = ["pieces[].takes_royal", "rules.portals"]
 reason = "not_built"
 held_by = "none"
@@ -1678,7 +1678,7 @@ why = "a held arrival is one flag read off the move, which neither banks nor cou
 [[refusal]]
 id = "goals.checkmate"
 family = "scoring goals"
-at = "_check_reach_scoring: the legality filter plays a move without"
+at = "_check_reach_scoring: rules.reach.removes beside \"win\": \"checkmate\""
 pair = ["rules.reach.removes", 'rules.win: "checkmate"']
 reason = "not_built"
 held_by = "none"
@@ -1687,7 +1687,7 @@ why = "the legality filter plays a move without its bank"
 [[refusal]]
 id = "goals.forbid_check"
 family = "scoring goals"
-at = "_check_reach_scoring: the legality filter plays a move without"
+at = "_check_reach_scoring: rules.reach.removes beside \"forbid_check\": true"
 pair = ["rules.reach.removes", "rules.forbid_check"]
 reason = "not_built"
 held_by = "none"
@@ -1696,7 +1696,7 @@ why = "as goals.checkmate"
 [[refusal]]
 id = "goals.forbid_immobility"
 family = "scoring goals"
-at = "_check_reach_scoring: the legality filter plays a move without"
+at = "_check_reach_scoring: rules.reach.removes beside \"forbid_immobility\": true"
 pair = ["rules.reach.removes", "rules.forbid_immobility"]
 reason = "not_built"
 held_by = "none"
@@ -2728,7 +2728,7 @@ fragment = [
   "BARE_ROYAL_HOLDER (1)", "_NEVER_ON_THE_BOARD (1)", "PLAYED_AS_CAPTURE (1)",
   "path_refusals: turns a slide only",
   "sight_can_bind (6)", "insufficient_material_roles (10)", "_never_in_a_hand (2)",
-  "_check_simultaneous_coherence.refuse (1)", "_foreign_spy_gains (2)",
+  "_check_simultaneous_coherence.refuse (1)", "_foreign_spy_gains.foreign (1)", "_NO_BANK_IN_THE_FILTER (1)",
   "_check_sight_coherence: a wild piece (rules.npcs)",
   "_check_sight_coherence: a piece nobody owns (placed for nobody)",
   "_check_chase_switches: and has its speed",

@@ -71,6 +71,9 @@ from chess_variant_sandbox.spec.describe import (
 from chess_variant_sandbox.spec.describe import _describe_duck as _duck_lines
 from chess_variant_sandbox.spec.plain import REST_WORDS, field_words, the_rules
 from chess_variant_sandbox.spec.plain import plain_problem as _spec_plain_problem
+from chess_variant_sandbox.spec.refusals import PLANNED, REASON_SAYS
+from chess_variant_sandbox.spec.refusals import Entry as RefusalEntry
+from chess_variant_sandbox.spec.refusals import entry_of as refusal_entry_of
 from chess_variant_sandbox.spec.schema import (
     HEX_SYMMETRIES,
     MAX_PIECE_TYPES,
@@ -407,6 +410,10 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
         preview = board_preview(spec)
         sides = (preview or {}).get("sides")
         return {"valid": False, "errors": plain_problems(problems, spec, sides),
+                # R-L3 B3 (`refusal-offers.md` §6.3): why each refused combination is
+                # refused, looked up; where there is one, the page asks for the nearest
+                # game that is allowed (`POST /api/design/instead`).
+                "reasons": reasons_of(problems),
                 "offBoard": off_board(spec),
                 "preview": preview,
                 "moveLines": move_lines(spec),
@@ -1802,25 +1809,124 @@ def refusals(spec: Any, candidates: dict[str, Any]) -> dict[str, Any]:
     validator's first sentence, raw: from chess, rounds said only checkmate, and castling
     and taking in passing were each found by fixing the one before (Q995a F2). Each entry
     is now the whole list, through `plain_problems`.
-    """
-    import copy
 
+    **And why, by kind** (R-L3 B3, `refusal-offers.md` §6.2): ``reasons`` holds, per refused
+    rule, the reasons its problems are refused for (`reasons_of`, a lookup, no search). The
+    nearest game that takes the rule is asked per row, when the row is opened (`instead`).
+    """
     if not isinstance(spec, dict) or not isinstance(candidates, dict):
         raise DesignError("a draft and the rules to try on it")
     base = settled(spec)
     if _worth_saying(validate_spec(base)):
-        return {"refused": {}, "asked": False}
+        return {"refused": {}, "reasons": {}, "asked": False}
     refused = {}
+    reasons = {}
     for key, value in candidates.items():
-        trial = copy.deepcopy(base)
-        trial.setdefault("rules", {})[str(key)] = value
-        if key == "duck":
-            _duck_companion(trial)
-        problems = _worth_saying(validate_spec(settled(trial)))
+        trial = _with_rule(base, str(key), value)
+        problems = _worth_saying(validate_spec(trial))
         if problems:
             # Every reason once: several validator lines can read as one sentence.
             refused[str(key)] = list(dict.fromkeys(plain_problems(problems, trial)))
-    return {"refused": refused, "asked": True}
+            reasons[str(key)] = reasons_of(problems)
+    return {"refused": refused, "reasons": reasons, "asked": True}
+
+
+def _with_rule(base: dict[str, Any], key: str, value: Any) -> dict[str, Any]:
+    """The settled draft with one rule added as its card arrives (the duck with what comes
+    beside it), settled: the trial the menu judges and the search starts from."""
+    import copy
+
+    trial = copy.deepcopy(base)
+    trial.setdefault("rules", {})[key] = value
+    if key == "duck":
+        _duck_companion(trial)
+    return settled(trial)
+
+
+# ------------------------------------------------------------------ why, and what instead
+#
+# R-L3 B3 (`docs/reference/refusal-offers.md` §5, §6.2, §6.3). A refused combination said
+# only *no*. Beside the validator's sentence the designer now says which of three reasons it
+# has, in one sentence per reason (`refusals.REASON_SAYS`, the same constant `validate` and
+# `RULES.md` say it in), and offers the nearest game the validator allows
+# (`spec/instead.nearest`), found by search and proved by the validator in the same call.
+
+
+def reason_says(entry: RefusalEntry) -> str | None:
+    """The sentence a refusal's reason is said in on the page: `REASON_SAYS`' sentence, and
+    *It is planned.* for an unbuilt pair a task holds; None for an inert entry."""
+    said = REASON_SAYS.get(entry.reason)
+    if said is None:
+        return None
+    if entry.reason == "not_built" and entry.held_by and entry.held_by != "none":
+        said += f" {PLANNED}"
+    return said
+
+
+def reasons_of(problems: Iterable[str]) -> list[dict[str, str]]:
+    """The reasons the validator's ``problems`` are refused for, each once, in the problems'
+    order: ``{"reason", "says"}``. A problem no `refusals.toml` entry names (a malformed
+    draft, a dependency, an inert rule) adds nothing, so a draft refused only for those has
+    none, and the page offers nothing for it (§6.3)."""
+    out: list[dict[str, str]] = []
+    for problem in problems:
+        entry = refusal_entry_of(problem)
+        said = reason_says(entry) if entry is not None else None
+        if said is not None and not any(row["says"] == said for row in out):
+            out.append({"reason": entry.reason, "says": said})  # type: ignore[union-attr]
+    return out
+
+
+# A search is a pure function of its draft (`instead.search`), measured at a median of 27 ms
+# and at worst about three seconds (`refusal-offers.md` §4.5), so a row opened twice, or a
+# check asked again over the same draft, is answered from here.
+INSTEAD_KEPT = 64
+
+
+def instead(spec: Any, rule: Any = None, value: Any = None) -> dict[str, Any]:
+    """The nearest games the validator allows to a refused draft (`refusal-offers.md` §6.2
+    and §6.3), for ``POST /api/design/instead``.
+
+    With ``rule``, the draft is a game and the menu's rule ``rule`` (its card ``value``) is
+    refused beside it: the offers still state the rule and are not the draft itself
+    (`instead.nearest`'s ``wanted`` and ``base``). Without, the draft is refused as it
+    stands. The answer is ``{"reasons", "offers", "searched"}``: the reasons as `reasons_of`
+    says them, and each offer's ``draft``, ``changes`` (`describe_changes`' sentences, as
+    every other change on the page reads), ``edits`` (as `validate --instead` prints them)
+    and ``units``. Nothing is searched where no problem has a reason (``searched`` false), and
+    an empty ``offers`` after a search means no small change makes it allowed (§4.3)."""
+    if not isinstance(spec, dict) or (rule is not None and not isinstance(rule, str)):
+        raise DesignError("a draft, and the rule tried on it if there is one")
+    import copy
+
+    return copy.deepcopy(_instead_kept(json.dumps([spec, rule, value], sort_keys=True)))
+
+
+@lru_cache(maxsize=INSTEAD_KEPT)
+def _instead_kept(asked: str) -> dict[str, Any]:
+    from chess_variant_sandbox.spec.instead import edit_text, nearest
+
+    spec, rule, value = json.loads(asked)
+    base = settled(spec)
+    nothing: dict[str, Any] = {"reasons": [], "offers": [], "searched": False}
+    if rule is None:
+        trial, wanted, unlike = base, None, None
+    else:
+        if _worth_saying(validate_spec(base)):
+            return nothing
+        trial, wanted, unlike = _with_rule(base, rule, value), f"rules.{rule}", base
+    problems = _worth_saying(validate_spec(trial))
+    reasons = reasons_of(problems)
+    if not problems or not reasons:
+        return nothing
+    offers = nearest(trial, wanted=wanted, base=unlike)
+    return {
+        "reasons": reasons,
+        "offers": [{"draft": offer.draft, "changes": list(offer.changes),
+                    "edits": [edit_text(edit) for edit in offer.edits], "units": offer.units}
+                   for offer in offers],
+        "searched": True,
+    }
 
 
 def _duck_companion(trial: dict[str, Any]) -> None:
@@ -1851,88 +1957,52 @@ def _duck_companion(trial: dict[str, Any]) -> None:
 TURN_WAYS = ("alternate", "rounds", "several")
 
 
-def _royal_names(trial: dict[str, Any]) -> str:
-    names = [piece["name"] for piece in trial.get("pieces") or []
-             if isinstance(piece, dict) and piece.get("royal") is True
-             and isinstance(piece.get("name"), str) and piece["name"].strip()]
-    return " or ".join(dict.fromkeys(names)) or "royal piece"
+# The rule each way states (`refusal-offers.md` §6.4): what a search for the nearest allowed
+# draft must keep. One after the other states none.
+TURN_RULES = {"rounds": "rules.simultaneous", "several": "rules.turn"}
+
+# What a piece states that only a game in rounds reads: the order of a round's two moves,
+# the spy that decides when rounds are played, and who wins a collision. The validator
+# refuses each outside rounds (held by `tests/test_turn_offers.py`), so leaving rounds
+# clears them. This is the cleanup §6.4 keeps, and it reads the spec's keys, never a
+# sentence of the validator's.
+_ROUND_PIECE_KEYS = ("speed", "spy", "beats")
+
+# A search is a pure function of its draft and the rule it keeps (`instead.search`), so a
+# turn choice asked again, or switched back and forth, is answered from here.
+TURN_OFFERS_KEPT = 32
 
 
-def _drop_rule(trial: dict[str, Any], key: str) -> bool:
-    rules = trial.get("rules")
-    return isinstance(rules, dict) and rules.pop(key, None) is not None
+def _round_cleanups(trial: dict[str, Any]) -> list[str]:
+    """Clear what only rounds read from every piece of ``trial`` (in place), and say each."""
+    said = []
+    for key in _ROUND_PIECE_KEYS:
+        names = []
+        for piece in trial.get("pieces") or []:
+            if isinstance(piece, dict) and key in piece:
+                del piece[key]
+                names.append(str(piece.get("name") or piece.get("id")))
+        if not names:
+            continue
+        if key == "speed":
+            said.append(f"The speed is cleared from the {_list_words(names)}: a speed only "
+                        "orders the two moves of a round.")
+        elif key == "spy":
+            said.append(f"The {_list_words(names)} {'is' if len(names) == 1 else 'are'} no "
+                        "longer a spy: a spy only works in rounds.")
+        else:
+            said.extend(f"Who the {name} beats in a collision is cleared: it only matters "
+                        "when both players move at once." for name in names)
+    return said
 
 
-def _drop_in_rule(trial: dict[str, Any], key: str, inner: str) -> bool:
-    rule = (trial.get("rules") or {}).get(key)
-    return isinstance(rule, dict) and rule.pop(inner, None) is not None
+@lru_cache(maxsize=TURN_OFFERS_KEPT)
+def _turn_offer_kept(asked: str) -> tuple[dict[str, Any], tuple[str, ...]] | None:
+    from chess_variant_sandbox.spec.instead import nearest
 
-
-def _drop_on_pieces(trial: dict[str, Any], key: str, only: int | None = None) -> list[str]:
-    """The names of the pieces a field was taken off."""
-    out = []
-    for index, piece in enumerate(trial.get("pieces") or []):
-        if isinstance(piece, dict) and key in piece and (only is None or only == index):
-            del piece[key]
-            out.append(str(piece.get("name") or piece.get("id")))
-    return out
-
-
-def _why(found: re.Match[str], spec: Any) -> str:
-    said = _spec_plain_problem(found["why"], spec).rstrip(".")
-    return said[:1].lower() + said[1:]
-
-
-def _remedy(problem: str, trial: dict[str, Any]) -> str | None:
-    """Make the one change that answers this problem, and say it; None where no change
-    is ours to make.
-
-    A change a turn-taking choice brings with it, and only those: a rule that cannot be
-    played in rounds is taken out, a piece field that only means something in rounds is
-    cleared. Which ones is the validator's to say -- this reads its sentences and never
-    decides that a rule conflicts. A conflict with no change here (a sweep, a portal a
-    player moves) stays a problem, and the choice is refused with it in plain words.
-    """
-    rounds = re.match(r"^rules\.simultaneous beside (?P<what>.+?): (?P<why>.+)$", problem)
-    if rounds:
-        what = rounds["what"]
-        if re.fullmatch(r"rules\.win 'checkmate'( \(the default\))?", what):
-            trial.setdefault("rules", {})["win"] = "royal_capture"
-            return (f"Taking the {_royal_names(trial)} now wins, in place of checkmate: "
-                    "there is no check when both players move at once.")
-        dropped = re.fullmatch(
-            r"rules\.(checkmate|forbid_check|check_limit|castling|en_passant)"
-            r"|rules\.(royal_facing) 'forbidden'", what)
-        if dropped:
-            key = dropped[1] or dropped[2]
-            if _drop_rule(trial, key):
-                return f"The rule '{_rule_title(key)}' is taken out: {_why(rounds, trial)}."
-            return None
-        # Where a strike or a meeting puts its piece is not taken out: a chain needs the
-        # piece to stay, so the change would trade one refusal for another, and the
-        # person reads the first one, which is the reason.
-        if what == "rules.drops.no_mate" and _drop_in_rule(trial, "drops", "no_mate"):
-            words = field_words("rules.drops.no_mate")
-            label = words[0] if words else "no mate"
-            return (f"'{label}' is taken out of the rule '{_rule_title('drops')}': "
-                    f"{_why(rounds, trial)}.")
-        return None
-    if problem.startswith("pieces[].speed orders the two moves of a round"):
-        names = _drop_on_pieces(trial, "speed")
-        return (f"The speed is cleared from the {_list_words(names)}: a speed only orders "
-                "the two moves of a round.") if names else None
-    if problem.startswith("pieces[].spy: a spy decides when a game plays in rounds"):
-        names = _drop_on_pieces(trial, "spy")
-        return (f"The {_list_words(names)} {'is' if len(names) == 1 else 'are'} no longer "
-                "a spy: a spy only works in rounds.") if names else None
-    beats = re.match(r"^pieces\[(\d+)\]\.beats says who wins a collision", problem)
-    if beats:
-        names = _drop_on_pieces(trial, "beats", int(beats[1]))
-        return (f"Who the {names[0]} beats in a collision is cleared: it only matters when "
-                "both players move at once.") if names else None
-    # A turn of several moves keeps taking in passing (SR7a, L1), wild pieces (SR7b, L3) and
-    # rest (SR7d, L2), so choosing it takes nothing out.
-    return None
+    trial, wanted = json.loads(asked)
+    offers = nearest(trial, wanted=wanted)
+    return (offers[0].draft, offers[0].changes) if offers else None
 
 
 def take_turns(spec: Any, way: str, card: Any = None) -> dict[str, Any]:
@@ -1942,16 +2012,21 @@ def take_turns(spec: Any, way: str, card: Any = None) -> dict[str, Any]:
     F2): one after the other, in rounds, or more than one move a turn. From a copy of
     chess, rounds used to be three round trips: the rule was refused for checkmate, and
     then for castling, and then for taking in passing, each found alone. Here the choice
-    is made, the validator is asked, and each problem it raises that a turn-taking choice
-    answers is answered (`_remedy`), until none is left; what was changed comes back in
-    sentences, so the page can say it and undo can take the whole step back.
+    is made, and where the validator refuses the draft that makes, the changes are the
+    nearest draft it allows that still states the way's rule (`instead.nearest`, R-L3's
+    B4, `refusal-offers.md` §6.4): found by search over the spec and proved by the
+    validator, never read out of a sentence. Leaving rounds clears what only rounds read
+    (`_round_cleanups`). What was changed comes back in sentences (`describe_changes`'), so
+    the page can say it and undo can take the whole step back.
 
     ``card`` is what the rule's card would arrive holding (the page's `fieldDefault`, as
     `refusals` takes it), used where the draft does not state the rule already.
 
     The answer is ``{"draft", "changes", "errors"}``. A choice that would leave a problem
-    the draft did not have before is not made: ``draft`` is None and ``errors`` says every
-    reason, in plain words. The draft is never changed in place.
+    the draft did not have before, with no allowed draft near it, is not made: ``draft`` is
+    None and ``errors`` says every reason, in plain words. A draft already refused before
+    the choice is not searched (a search would mend what the designer is still writing):
+    the choice is made only where it adds no problem. The draft is never changed in place.
     """
     import copy
 
@@ -1962,8 +2037,9 @@ def take_turns(spec: Any, way: str, card: Any = None) -> dict[str, Any]:
     rules = trial.setdefault("rules", {})
     if not isinstance(rules, dict):
         raise DesignError("a draft whose rules can be read")
-    if way != "rounds":
-        rules.pop("simultaneous", None)
+    changes: list[str] = []
+    if way != "rounds" and rules.pop("simultaneous", None) is not None:
+        changes.extend(_round_cleanups(trial))
     if way != "several":
         rules.pop("turn", None)
     if way == "rounds" and not isinstance(rules.get("simultaneous"), dict):
@@ -1971,24 +2047,17 @@ def take_turns(spec: Any, way: str, card: Any = None) -> dict[str, Any]:
     if way == "several" and not isinstance(rules.get("turn"), dict):
         rules["turn"] = card if isinstance(card, dict) else {"moves": 2}
 
-    changes: list[str] = []
-    for _ in range(12):
-        problems = _worth_saying(validate_spec(settled(trial)))
-        said = None
-        for problem in problems:
-            if problem in before:
-                continue
-            said = _remedy(problem, trial)
-            if said:
-                changes.append(said)
-                break
-        if said is None:
-            break
-    left = [problem for problem in _worth_saying(validate_spec(settled(trial)))
+    tidied = settled(trial)
+    left = [problem for problem in _worth_saying(validate_spec(tidied))
             if problem not in before]
-    if left:
-        return {"draft": None, "changes": [], "errors": plain_problems(left, trial)}
-    return {"draft": trial, "changes": changes, "errors": []}
+    if not left:
+        return {"draft": trial, "changes": changes, "errors": []}
+    if not before:
+        found = _turn_offer_kept(json.dumps([tidied, TURN_RULES.get(way)], sort_keys=True))
+        if found is not None:
+            draft, said = found
+            return {"draft": copy.deepcopy(draft), "changes": [*changes, *said], "errors": []}
+    return {"draft": None, "changes": [], "errors": plain_problems(left, trial)}
 
 
 def rest_every_piece(spec: Any, rest: Any) -> dict[str, Any]:

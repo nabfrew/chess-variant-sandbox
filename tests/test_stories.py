@@ -24,6 +24,7 @@ from typing import Any
 
 import pytest
 
+from chess_variant_sandbox import history
 from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_PORTAL, decode_move
 from chess_variant_sandbox.measurement import main_runs_dir
 from chess_variant_sandbox.spec.canonical import MECHANIC_KEYS, load_spec, spec_hash
@@ -512,13 +513,17 @@ def _recorded_rows(played: stories.Played) -> list[dict[str, Any]]:
         if runs is None:
             continue
         paths = [runs / run / "games.jsonl"]
-        paths += sorted((runs / played.hash / "previous").glob(f"*/{run}/games.jsonl"))
+        # D1: a kept run's records may be packed in its generation's `packed.zip`.
+        paths += sorted(generation / run / "games.jsonl"
+                        for generation in (runs / played.hash / "previous").glob("*")
+                        if (generation / run).is_dir())
         for path in paths:
-            if path.exists():
-                with path.open(encoding="utf-8") as lines:
-                    found = next((r for i, r in enumerate(lines) if i == played.line), None)
-                if found is not None:
-                    rows.append(json.loads(found))
+            body = history.kept_bytes(path)
+            if body is not None:
+                lines = body.split(b"\n")
+                if played.line is not None and played.line < len(lines) \
+                        and lines[played.line].strip():
+                    rows.append(json.loads(lines[played.line]))
     return rows
 
 

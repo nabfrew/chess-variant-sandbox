@@ -40,23 +40,48 @@ visitor's copy of it.
 **A campaign that measures in another tree** and delivers by copying would replace the file
 with no history; `deliver` is the delivery that keeps it (`python -m
 chess_variant_sandbox.history deliver <from-runs> <to-runs>`).
+
+**Packed generations** (D1, the user, 2026-11-19: *"compress and archive"*, lose nothing):
+an old generation's bulky run files (`PACKED_NAMES`: game records, analysis, waiting
+records) can be packed into one `previous/<n>/packed.zip`, its small score files left
+plain where they are. `pack_generation` verifies the archive, re-opened from disk, member
+by member against the originals before it removes them by name; `unpack_generation`
+restores them byte for byte. A reader of a kept run's bulky file goes through
+`kept_bytes` or `readable_run`, which answer from the archive when the file is packed.
+`python -m chess_variant_sandbox.history pack <runs>` packs every game's generations but
+its newest; `docs/reference/previous-archives.md` is the record.
 """
 
 from __future__ import annotations
 
+import contextlib
 import datetime
+import hashlib
 import json
+import os
 import re
 import shutil
 import sys
-from collections.abc import Callable, Iterable, Mapping
+import tempfile
+import zipfile
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+# `previous/<n>/` and a packed generation's archive are named in `kept_files` (D1), whose
+# readers `measurement` uses without importing this module.
+from chess_variant_sandbox.kept_files import (
+    PACK_FILE,
+    PREVIOUS_DIR,
+)
+from chess_variant_sandbox.kept_files import generation_of as _generation_of
+from chess_variant_sandbox.kept_files import kept_bytes as kept_bytes
+from chess_variant_sandbox.kept_files import kept_exists as kept_exists
+from chess_variant_sandbox.kept_files import member as _member
+
 HISTORY_FILE = "history.jsonl"
-PREVIOUS_DIR = "previous"
 
 # §5 Q1, *may a game's page show its previous score?*, answered A by the user on 2026-10-03:
 # yes, under *more*, dated and labelled with the players that made it. A visitor reads
@@ -825,11 +850,251 @@ def deliver(
     return delivered
 
 
+# ------------------------------------------------------------------ packed generations
+
+_PACK_PARTIAL = PACK_FILE + ".partial"
+# A kept run's bulky files: what the archive holds. Everything else in a generation
+# (`canonical.json`, `index-*.json`, `tournament.json`, `waiting.json`, `convergence.json`)
+# stays a plain file where it is, because readers open those by path.
+PACKED_NAMES = ("games.jsonl", "analysis.json", "waiting.jsonl")
+_CHUNK = 1 << 20
+_HASH_DIR = re.compile(r"[0-9a-f]{12}")
+
+
+class PackError(RuntimeError):
+    """A generation the packer will not touch until a person looks: an archive and a loose
+    file that disagree, or a loose bulky file the archive does not hold."""
+
+
+@contextlib.contextmanager
+def readable_run(run: Path) -> Iterator[Path]:
+    """A run directory every file of which can be opened by path.
+
+    A run that is not packed is yielded as it is. A packed one is copied, its plain files and
+    its archive members, into a temporary directory of the same name, removed afterwards: a
+    reader of the kept run writes nothing under `previous/`."""
+    run = Path(run)
+    generation = _generation_of(run / "x")
+    if generation is None or not (generation / PACK_FILE).is_file():
+        yield run
+        return
+    pack = generation / PACK_FILE
+    prefix = _member(generation, run) + "/"
+    with zipfile.ZipFile(pack) as archive:
+        members = [name for name in archive.namelist() if name.startswith(prefix)]
+        if not members:
+            yield run
+            return
+        with tempfile.TemporaryDirectory(prefix="kept-run-") as scratch:
+            copy = Path(scratch) / run.name
+            copy.mkdir()
+            if run.is_dir():
+                for item in run.iterdir():
+                    if item.is_file():
+                        shutil.copy2(item, copy / item.name)
+            for name in members:
+                (copy / name[len(prefix):]).write_bytes(archive.read(name))
+            yield copy
+
+
+def _digest_file(path: Path) -> str:
+    made = hashlib.sha256()
+    with path.open("rb") as handle:
+        while block := handle.read(_CHUNK):
+            made.update(block)
+    return made.hexdigest()
+
+
+def _digest_member(archive: zipfile.ZipFile, name: str) -> str:
+    made = hashlib.sha256()
+    with archive.open(name) as handle:  # reading checks the member's CRC too
+        while block := handle.read(_CHUNK):
+            made.update(block)
+    return made.hexdigest()
+
+
+def bulky_files(generation: Path) -> list[Path]:
+    """A generation's loose bulky files (`PACKED_NAMES` in its run directories), sorted."""
+    return sorted(path for name in PACKED_NAMES
+                  for path in Path(generation).glob(f"*/{name}") if path.is_file())
+
+
+@dataclass(frozen=True)
+class Packed:
+    """What packing one generation did: ``action`` is ``packed``, ``finished`` (an archive
+    already verified, loose originals left by an interrupted run removed), or ``nothing``."""
+
+    generation: Path
+    action: str
+    files: int
+    before: int  # bytes of the originals removed
+    after: int  # bytes of the archive written (0 unless ``packed``)
+
+
+def pack_generation(generation: Path, level: int = 6) -> Packed:
+    """Pack one `previous/<n>/`'s bulky files into `packed.zip`, verified, then remove them.
+
+    The archive is written under a partial name, closed, re-opened from disk and every
+    member's SHA-256 compared with its original's; only then is it renamed into place and
+    the originals removed, each by name. An interruption leaves the originals with at most
+    a partial archive (discarded on the next run) or a verified archive with some originals
+    still loose (each compared with its member again, then removed). A loose bulky file the
+    archive does not hold, or one that differs from its member, is a `PackError`."""
+    generation = Path(generation)
+    pack, partial = generation / PACK_FILE, generation / _PACK_PARTIAL
+    loose = bulky_files(generation)
+    if partial.exists():
+        partial.unlink()
+    if pack.is_file():
+        before = 0
+        with zipfile.ZipFile(pack) as archive:
+            held = set(archive.namelist())
+            for path in loose:
+                name = _member(generation, path)
+                if name not in held:
+                    raise PackError(f"{path} is loose and not in {pack}")
+                if _digest_member(archive, name) != _digest_file(path):
+                    raise PackError(f"{path} differs from its member of {pack}")
+        for path in loose:
+            before += path.stat().st_size
+            path.unlink()
+        return Packed(generation, "finished" if loose else "nothing", len(loose), before, 0)
+    if not loose:
+        return Packed(generation, "nothing", 0, 0, 0)
+    wanted = {_member(generation, path): _digest_file(path) for path in loose}
+    with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED, compresslevel=level) as archive:
+        for path in loose:
+            archive.write(path, _member(generation, path))
+    with partial.open("rb+") as handle:
+        os.fsync(handle.fileno())
+    wrong = ""
+    try:
+        with zipfile.ZipFile(partial) as archive:
+            if {info.filename for info in archive.infolist()} != set(wanted):
+                wrong = "does not hold exactly the generation's bulky files"
+            for name, digest in wanted.items():
+                if not wrong and _digest_member(archive, name) != digest:
+                    wrong = f"{name} does not read back as written"
+    except (zipfile.BadZipFile, OSError) as error:
+        wrong = f"does not re-open: {error}"
+    if wrong:
+        partial.unlink()  # the originals are untouched
+        raise PackError(f"{partial}: {wrong}")
+    os.replace(partial, pack)
+    before = 0
+    for path in loose:
+        before += path.stat().st_size
+        path.unlink()
+    return Packed(generation, "packed", len(loose), before, pack.stat().st_size)
+
+
+def unpack_generation(generation: Path) -> int:
+    """Restore a packed generation's files byte for byte, then remove its archive.
+
+    Each member is written under a partial name, compared with the member, and renamed into
+    place with the member's date; a file already there must equal its member. Returns the
+    number of files restored."""
+    generation = Path(generation)
+    pack = generation / PACK_FILE
+    if (generation / _PACK_PARTIAL).exists():
+        (generation / _PACK_PARTIAL).unlink()
+    if not pack.is_file():
+        return 0
+    restored = 0
+    with zipfile.ZipFile(pack) as archive:
+        for info in archive.infolist():
+            target = generation / info.filename
+            digest = _digest_member(archive, info.filename)
+            if target.is_file():
+                if _digest_file(target) != digest:
+                    raise PackError(f"{target} differs from its member of {pack}")
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            partial = target.with_name(target.name + ".partial")
+            with archive.open(info) as source, partial.open("wb") as sink:
+                shutil.copyfileobj(source, sink, _CHUNK)
+            if _digest_file(partial) != digest:
+                partial.unlink()
+                raise PackError(f"{target} did not unpack as packed")
+            stamp = datetime.datetime(*info.date_time).timestamp()
+            os.utime(partial, (stamp, stamp))
+            os.replace(partial, target)
+            restored += 1
+    pack.unlink()
+    return restored
+
+
+def generations(runs_dir: Path, digests: Iterable[str] | None = None,
+                newest: bool = False) -> list[Path]:
+    """Every library game's `previous/<n>/` under ``runs_dir``, by game then number.
+
+    Only `runs/<hash>/previous/` (a twelve-digit hash directory); a campaign's directories
+    are never walked. Each game's newest generation is left out unless ``newest``: it is the
+    one a convergence read or a delivery still in progress may be reading."""
+    runs_dir = Path(runs_dir)
+    if digests is None:
+        digests = sorted(path.parent.name for path in runs_dir.glob(f"*/{PREVIOUS_DIR}")
+                         if path.is_dir() and _HASH_DIR.fullmatch(path.parent.name))
+    found: list[Path] = []
+    for digest in digests:
+        root = previous_root(digest, runs_dir)
+        numbers = _numbers(root)
+        if numbers and not newest:
+            numbers = numbers[:-1]
+        found.extend(root / str(number) for number in numbers)
+    return found
+
+
+def _pack_main(args: list[str]) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="history pack")
+    parser.add_argument("runs", type=Path)
+    parser.add_argument("hashes", nargs="*")
+    parser.add_argument("--newest", action="store_true",
+                        help="pack each game's newest generation too")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--limit", type=int, default=0, help="stop after this many games")
+    opts = parser.parse_args(args)
+    digests = opts.hashes or None
+    chosen = generations(opts.runs, digests, opts.newest)
+    if opts.limit:
+        games = sorted({path.parent.parent.name for path in chosen})[:opts.limit]
+        chosen = [path for path in chosen if path.parent.parent.name in games]
+    total_before = total_after = packed = 0
+    for generation in chosen:
+        if opts.dry_run:
+            size = sum(path.stat().st_size for path in bulky_files(generation))
+            total_before += size
+            print(f"would pack {generation} ({size / 1e6:.1f} MB)")
+            continue
+        done = pack_generation(generation)
+        total_before += done.before
+        total_after += done.after
+        packed += done.action != "nothing"
+        if done.action != "nothing":
+            print(f"{done.action} {generation}: {done.files} files, "
+                  f"{done.before / 1e6:.1f} MB -> {done.after / 1e6:.1f} MB", flush=True)
+    print(f"{len(chosen)} generations, {packed} packed or finished: "
+          f"{total_before / 1e9:.2f} GB of originals, {total_after / 1e9:.2f} GB of archives")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["pack"]:
+        return _pack_main(args[1:])
+    if args[:1] == ["unpack"] and len(args) >= 2:
+        for generation in args[1:]:
+            print(f"{generation}: {unpack_generation(Path(generation))} files restored")
+        return 0
     if len(args) < 3 or args[0] != "deliver":
         print("usage: python -m chess_variant_sandbox.history deliver <from-runs> <to-runs> "
-              "[hash ...]", file=sys.stderr)
+              "[hash ...]\n"
+              "       python -m chess_variant_sandbox.history pack <runs> [hash ...] "
+              "[--newest] [--dry-run] [--limit N]\n"
+              "       python -m chess_variant_sandbox.history unpack <runs>/<hash>/previous/<n> "
+              "...", file=sys.stderr)
         return 2
     from chess_variant_sandbox.corpus import judge_convergence
 

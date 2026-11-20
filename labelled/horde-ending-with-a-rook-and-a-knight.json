@@ -1,0 +1,248 @@
+{
+  "schema_version": 31,
+  "name": "horde ending with a rook and a knight",
+  "description": "Horde's rules from an ending: four white pawns (a4, c3, f4, h3) against Black's king, rook and knight on their home squares. White moves first. White wins by checkmate, Black by taking every white piece; a white pawn reaching the last rank promotes.",
+  "summary": [
+    "Horde's rules from an ending.",
+    "Four white pawns against king, rook and knight."
+  ],
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 0
+          }
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "value": 9,
+      "royal": false,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a4",
+          "c3",
+          "f4",
+          "h3"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 1,
+        "squares": [
+          "e8"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 1,
+        "squares": [
+          "h8"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 1,
+        "squares": [
+          "b8"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "extinction": {
+      "pieces": "any",
+      "min_count": 1,
+      "result": "loss"
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "P": "pawn",
+      "N": "knight",
+      "B": "bishop",
+      "R": "rook",
+      "Q": "queen",
+      "K": "king"
+    }
+  },
+  "provenance": {
+    "added": "2026-11-19",
+    "origin": "llm",
+    "author": "R-S2d1 worker (Claude Opus 5.5)",
+    "note": "A proven-bad addition to the labelled set (docs/reference/labelled-set-passing-bad.md, R-S2d1); not a library game."
+  }
+}

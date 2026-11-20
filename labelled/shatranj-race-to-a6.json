@@ -1,0 +1,576 @@
+{
+  "schema_version": 31,
+  "name": "shatranj with a road to a6",
+  "description": "Shatranj, with two changes. Each king has a road of its own: the squares d1, c2, b3, b4, a5, a6 are closed to every black piece, and their mirror images to every white piece. A king that reaches the end of its road (a6 for White, its mirror for Black) wins at once; otherwise the game is the parent's.",
+  "summary": [
+    "shatranj with a road to a6: a private road for each king.",
+    "Reaching a6 (or its mirror) wins."
+  ],
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "baidaq",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "N",
+      "name": "faras",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "E",
+      "name": "alfil",
+      "value": 1.5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              2,
+              2
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rukh",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "F",
+      "name": "firzan",
+      "value": 1.5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    },
+    {
+      "id": "K",
+      "name": "shah",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "region": [
+        "a1",
+        "b1",
+        "c1",
+        "d1",
+        "e1",
+        "f1",
+        "g1",
+        "h1",
+        "a2",
+        "b2",
+        "c2",
+        "d2",
+        "e2",
+        "f2",
+        "g2",
+        "h2",
+        "b3",
+        "c3",
+        "d3",
+        "e3",
+        "f3",
+        "g3",
+        "h3",
+        "b4",
+        "c4",
+        "d4",
+        "e4",
+        "f4",
+        "g4",
+        "h4",
+        "a5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "g5",
+        "h5",
+        "a6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "a7",
+        "b7",
+        "d7",
+        "e7",
+        "f7",
+        "g7",
+        "h7",
+        "a8",
+        "b8",
+        "c8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "E",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "F",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "F"
+      ]
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 140,
+    "reach": {
+      "piece": "K",
+      "squares": [
+        "a6"
+      ]
+    }
+  },
+  "provenance": {
+    "added": "2026-11-19",
+    "origin": "llm",
+    "author": "R-S2d1 worker (Claude Opus 5.5)",
+    "note": "A proven-bad addition to the labelled set (docs/reference/labelled-set-passing-bad.md, R-S2d1); not a library game."
+  }
+}

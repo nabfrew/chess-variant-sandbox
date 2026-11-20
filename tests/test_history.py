@@ -19,6 +19,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -633,6 +634,184 @@ class TestDelivery:
 
         assert history.read(world["hash"], main) == []
         assert not history.previous_root(world["hash"], main).exists()
+
+
+def _generation(runs: Path, digest: str = "abcdefabcdef", number: int = 1) -> Path:
+    """A scratch `previous/<n>/` shaped like the library's: score files at the top, two
+    runs each with every kind of file a generation holds."""
+    generation = runs / digest / "previous" / str(number)
+    generation.mkdir(parents=True)
+    (generation / "canonical.json").write_text('{"index": 0.5}', encoding="utf-8")
+    (generation / "index-v15.json").write_text("{}", encoding="utf-8")
+    for seed in (0, 1000):
+        run = generation / f"{digest}-{seed}"
+        run.mkdir()
+        (run / "games.jsonl").write_bytes(
+            b"".join(b'{"g": %d, "duration_ms":%d}\n' % (i, seed + i) for i in range(500)))
+        (run / "analysis.json").write_bytes(json.dumps({"seed": seed, "x": "y" * 4000}).encode())
+        (run / "waiting.jsonl").write_bytes(b'{"w": 1}\n')
+        (run / "tournament.json").write_text('{"games": 4}', encoding="utf-8")
+        (run / "index-v15.json").write_text("{}", encoding="utf-8")
+        (run / "waiting.json").write_text("{}", encoding="utf-8")
+    return generation
+
+
+class TestPackedGenerations:
+    """D1 (`docs/reference/previous-archives.md`): an old generation's bulky files packed
+    into `packed.zip`, verified before removal, restorable byte for byte, readable."""
+
+    def test_pack_keeps_score_files_plain_and_unpack_restores_every_byte(
+        self, tmp_path: Path
+    ) -> None:
+        generation = _generation(tmp_path)
+        before = _contents(generation)
+
+        done = history.pack_generation(generation)
+
+        assert done.action == "packed" and done.files == 6 and 0 < done.after < done.before
+        assert (generation / history.PACK_FILE).is_file()
+        assert history.bulky_files(generation) == []
+        for name, body in before.items():
+            if name.rsplit("/", 1)[-1] not in history.PACKED_NAMES:
+                assert (generation / name).exists(), name  # score files stay where they were
+                if body is not None:
+                    assert (generation / name).read_bytes() == body
+
+        assert history.unpack_generation(generation) == 6
+        assert _contents(generation) == before
+
+    def test_a_packed_file_reads_as_the_original(self, tmp_path: Path) -> None:
+        generation = _generation(tmp_path)
+        run = generation / "abcdefabcdef-1000"
+        games, analysis = (run / "games.jsonl").read_bytes(), (run / "analysis.json").read_bytes()
+        history.pack_generation(generation)
+
+        assert history.kept_bytes(run / "games.jsonl") == games
+        assert history.kept_exists(run / "analysis.json")
+        assert history.kept_bytes(run / "absent.jsonl") is None
+        assert not history.kept_exists(run / "absent.jsonl")
+        with history.readable_run(run) as readable:
+            assert readable != run and (readable / "analysis.json").read_bytes() == analysis
+            assert (readable / "tournament.json").read_text(encoding="utf-8") == '{"games": 4}'
+        assert not readable.exists()  # the copy is gone, nothing written under previous/
+        assert history.bulky_files(generation) == []
+
+    def test_the_records_digest_reads_a_packed_run(self, tmp_path: Path) -> None:
+        generation = _generation(tmp_path)
+        runs = [generation / "abcdefabcdef-0", generation / "abcdefabcdef-1000"]
+        plain = measurement.records_digest(runs)
+        history.pack_generation(generation)
+        assert plain is not None and measurement.records_digest(runs) == plain
+
+    def test_an_archive_that_does_not_verify_removes_nothing(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        generation = _generation(tmp_path)
+        before = _contents(generation)
+        monkeypatch.setattr(history, "_digest_member", lambda archive, name: "not it")
+        with pytest.raises(history.PackError):
+            history.pack_generation(generation)
+        assert _contents(generation) == before  # no archive, every original in place
+
+    def test_an_interrupted_pack_leaves_the_originals_and_a_rerun_finishes(
+        self, tmp_path: Path
+    ) -> None:
+        generation = _generation(tmp_path)
+        before = _contents(generation)
+        (generation / (history.PACK_FILE + ".partial")).write_bytes(b"half an archive")
+
+        assert history.pack_generation(generation).action == "packed"
+        assert not (generation / (history.PACK_FILE + ".partial")).exists()
+        history.unpack_generation(generation)
+        assert _contents(generation) == before
+
+    def test_an_archive_with_originals_still_loose_is_finished_by_comparison(
+        self, tmp_path: Path
+    ) -> None:
+        generation = _generation(tmp_path)
+        before = _contents(generation)
+        history.pack_generation(generation)
+        # As if the run was cut off after the archive was in place, before every removal.
+        history.unpack_generation(generation)
+        history.pack_generation(generation)
+        loose = generation / "abcdefabcdef-0" / "games.jsonl"
+        loose.write_bytes(before["abcdefabcdef-0/games.jsonl"] or b"")
+
+        done = history.pack_generation(generation)
+        assert done.action == "finished" and done.files == 1 and not loose.exists()
+        assert history.pack_generation(generation).action == "nothing"
+
+    def test_a_loose_file_that_differs_from_the_archive_is_refused(self, tmp_path: Path) -> None:
+        generation = _generation(tmp_path)
+        history.pack_generation(generation)
+        loose = generation / "abcdefabcdef-0" / "games.jsonl"
+        loose.write_bytes(b"something else\n")
+        with pytest.raises(history.PackError):
+            history.pack_generation(generation)
+        assert loose.read_bytes() == b"something else\n"
+        loose.unlink()
+        (generation / "abcdefabcdef-3000").mkdir()
+        (generation / "abcdefabcdef-3000" / "games.jsonl").write_bytes(b"new\n")
+        with pytest.raises(history.PackError):
+            history.pack_generation(generation)
+        assert (generation / "abcdefabcdef-3000" / "games.jsonl").read_bytes() == b"new\n"
+
+    def test_the_newest_generation_and_campaign_directories_are_left(
+        self, tmp_path: Path
+    ) -> None:
+        for number in (1, 2, 3):
+            _generation(tmp_path, number=number)
+        _generation(tmp_path / "Q1170", digest="abcdefabcdef")  # a campaign's copy
+        chosen = history.generations(tmp_path)
+        assert [path.name for path in chosen] == ["1", "2"]
+        assert [path.name for path in history.generations(tmp_path, newest=True)] \
+            == ["1", "2", "3"]
+        assert history.main(["pack", str(tmp_path)]) == 0
+        assert (tmp_path / "abcdefabcdef" / "previous" / "2" / history.PACK_FILE).is_file()
+        assert not (tmp_path / "abcdefabcdef" / "previous" / "3" / history.PACK_FILE).exists()
+        assert history.bulky_files(tmp_path / "Q1170" / "abcdefabcdef" / "previous" / "1")
+
+    def test_a_delivery_adds_a_generation_beside_packed_ones(
+        self, world, tmp_path  # noqa: F811
+    ) -> None:
+        main = world["runs"]
+        _stored(world, index=0.8, **NET)
+        history.deliver(_stored_elsewhere(world, tmp_path / "one", 0.7, {}), main)
+        first = history.previous_root(world["hash"], main) / "1"
+        old_games = (first / f"{world['hash']}-0" / "games.jsonl").read_bytes()
+        assert history.pack_generation(first).action == "packed"
+
+        history.deliver(_stored_elsewhere(world, tmp_path / "two", 0.6, NET), main)
+
+        second = history.previous_root(world["hash"], main) / "2"
+        assert (second / "canonical.json").is_file()
+        assert (second / f"{world['hash']}-0" / "games.jsonl").is_file()
+        assert [line.n for line in history.read(world["hash"], main)] == [1, 2]
+        assert history.kept_bytes(first / f"{world['hash']}-0" / "games.jsonl") == old_games
+        history.unpack_generation(first)
+        assert (first / f"{world['hash']}-0" / "games.jsonl").read_bytes() == old_games
+
+    def test_a_re_score_reads_a_packed_generation_and_writes_nothing_there(
+        self, world, tmp_path  # noqa: F811
+    ) -> None:
+        _stored(world, index=0.8)
+        main = world["runs"]
+        kept = history.previous_root(world["hash"], main) / "1"
+        kept.mkdir(parents=True)
+        for seed in corpus.LIBRARY_SEEDS:
+            run = corpus.run_dir(world["hash"], seed, main)
+            shutil.copytree(run, kept / run.name)
+        plain = corpus.rescore_kept(_find(world), kept, corpus.LIBRARY_SEEDS)
+        history.pack_generation(kept)
+        after = _contents(kept)
+
+        assert corpus.rescore_kept(_find(world), kept, corpus.LIBRARY_SEEDS) == plain
+        assert _contents(kept) == after
+
+
+def _stored_elsewhere(world, runs: Path, index: float, moved: dict[str, Any]) -> Path:  # noqa: F811
+    _stored({"runs": runs, "hash": world["hash"]}, index=index, **moved)
+    return runs
 
 
 class TestItMovesNothing:

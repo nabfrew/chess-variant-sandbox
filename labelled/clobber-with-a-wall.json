@@ -1,0 +1,97 @@
+{
+  "schema_version": 31,
+  "name": "clobber with a wall",
+  "description": "Clobber on its published five by six board, with one change: the middle file (c) is a wall that no stone stands on, so the board is two strips two squares wide. Stones still alternate like the colours of a checkerboard, a move still clobbers an orthogonally adjacent enemy stone, and the player who cannot move loses.",
+  "summary": [
+    "clobber with a wall.",
+    "A wall of squares down the middle splits the board in two.",
+    "The player who cannot move loses."
+  ],
+  "board": {
+    "width": 5,
+    "height": 6
+  },
+  "pieces": [
+    {
+      "id": "X",
+      "name": "stone",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "capture"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "X",
+        "player": 0,
+        "squares": [
+          "a2",
+          "a4",
+          "a6",
+          "b1",
+          "b3",
+          "b5",
+          "d1",
+          "d3",
+          "d5",
+          "e2",
+          "e4",
+          "e6"
+        ]
+      },
+      {
+        "piece": "X",
+        "player": 1,
+        "squares": [
+          "a1",
+          "a3",
+          "a5",
+          "b2",
+          "b4",
+          "b6",
+          "d2",
+          "d4",
+          "d6",
+          "e1",
+          "e3",
+          "e5"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "max_plies": 60,
+    "obstacles": {
+      "squares": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "blocks_leaps": true
+    }
+  },
+  "provenance": {
+    "added": "2026-11-19",
+    "origin": "llm",
+    "author": "R-S2d1 worker (Claude Opus 5.5)",
+    "note": "A proven-bad addition to the labelled set (docs/reference/labelled-set-passing-bad.md, R-S2d1); not a library game."
+  }
+}

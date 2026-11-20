@@ -114,6 +114,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     validate = sub.add_parser("validate", help="check a ruleset against the schema and compile it")
     validate.add_argument("ruleset", type=Path)
+    validate.add_argument(
+        "--instead", action="store_true",
+        help="for a refused ruleset, also search for the nearest rulesets the validator allows "
+        "and print each as its edits (spec/instead.py)",
+    )
     validate.set_defaults(handler=_cmd_validate)
 
     reference = sub.add_parser(
@@ -821,13 +826,42 @@ def _build_parser() -> argparse.ArgumentParser:
 # --------------------------------------------------------------------- commands
 
 
+def _print_problems(errors: list[str]) -> None:
+    """Each problem, and under one that is a refused combination its reason, read from
+    `spec/refusals.toml` (`refusals.entry_of`; `refusal-offers.md` §6.1)."""
+    from chess_variant_sandbox.spec.refusals import entry_of, reason_line
+
+    for error in errors:
+        print(f"  - {error}")
+        entry = entry_of(error)
+        line = reason_line(entry) if entry is not None else None
+        if line is not None:
+            print(f"      {line}")
+
+
+def _print_offers(spec: dict[str, Any]) -> None:
+    """The nearest allowed rulesets (`spec/instead.py`; `refusal-offers.md` §6.1), each as its
+    edits and how many rules it differs in; or that no small change makes it allowed."""
+    from chess_variant_sandbox.spec.instead import edit_text, nearest
+
+    offers = nearest(spec)
+    if not offers:
+        print("instead: no small change makes it allowed")
+        return
+    print("instead, the nearest allowed:")
+    for offer in offers:
+        rules = "rule" if offer.units == 1 else "rules"
+        print(f"  - {offer.units} {rules} away: {'; '.join(edit_text(e) for e in offer.edits) or 'as tidied'}")
+
+
 def _cmd_validate(args: argparse.Namespace) -> int:
     spec = load_spec(args.ruleset)
     errors = validate_spec(spec)
     if errors:
         print(f"{args.ruleset}: {len(errors)} problem(s)")
-        for error in errors:
-            print(f"  - {error}")
+        _print_problems(errors)
+        if getattr(args, "instead", False):
+            _print_offers(spec)
         return 1
 
     # The validator names every refusal it knows of (U1 brought the engine's ten in); the
@@ -839,8 +873,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         engine = Engine(spec)
     except SpecError as error:
         print(f"{args.ruleset}: {len(error.errors)} problem(s) found when compiling")
-        for message in error.errors:
-            print(f"  - {message}")
+        _print_problems(list(error.errors))
         return 1
     except NotImplementedError as error:
         print(f"{args.ruleset}: the engine cannot play these rules yet")

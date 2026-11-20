@@ -27,7 +27,7 @@ from typing import Any
 
 from chess_variant_sandbox.spec.describe import RULE_WORDS
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
-from chess_variant_sandbox.spec.refusals import reason_counts
+from chess_variant_sandbox.spec.refusals import REASON_SAYS, reason_counts
 from chess_variant_sandbox.spec.schema import (
     _APPEARANCE_KEYS,
     _PROVENANCE_KEYS,
@@ -904,21 +904,33 @@ def _count(low: int | None, high: int | None, unit: str) -> str:
 
 def _render_combinations() -> str:
     """How many pairs of rules the language refuses together, by reason (R-L1b). The counts
-    are `refusals.reason_counts`, read from the classification beside the refusal tables."""
+    are `refusals.reason_counts`, read from the classification beside the refusal tables, and
+    the sentence said beside each refusal is `refusals.REASON_SAYS`, the one constant
+    `validate` and the designer say it in (R-L3 B3), so `/rules` cannot say another."""
     counts = reason_counts()
     total = sum(counts.values())
+
+    def said(reason: str) -> str:
+        return f"  Beside each such refusal, `validate` and the designer say: *{REASON_SAYS[reason]}*"
+
     return "\n".join([
         f"Today {total} pairs of rules are refused in one game, each for one of three reasons:",
         "",
         f"- **Contradictory ({counts['contradictory']}).** The two rules cannot mean anything",
         "  together, whatever is built: check in a game where both players move at once, or a",
         "  side and a forward direction for a piece that nobody owns.",
+        said("contradictory"),
         f"- **Too expensive ({counts['too_expensive']}).** A reading exists, but playing it would",
         "  need a wider change to how the engine stores a position, a move or a table than the",
         "  pair is yet worth.",
+        said("too_expensive"),
         f"- **Not built yet ({counts['not_built']}).** The pair could mean something and nobody",
         "  has built it yet. This is the language's unfinished work, and the aim is that this",
         "  number reaches zero.",
+        said("not_built"),
+        "",
+        "Where a small change makes a refused draft allowed, `validate --instead` and the",
+        "designer offer the nearest such game, found by trying changes and asking the validator.",
     ])
 
 

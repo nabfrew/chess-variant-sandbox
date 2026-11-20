@@ -2584,12 +2584,13 @@ def _foreign_spy_gains(
     nobody. Each route is read per player who can hold the piece it acts on (``holdings``)."""
     found: list[str] = []
 
-    def foreign(player: int, spy: str, how: str) -> None:
+    # Each route says its own words (Y4 the chain, Y5 the switch, Y6 a link), so that
+    # `refusals.entry_of` tells the three refusals apart (B1); the rest is shared.
+    def foreign(player: int, spy: str, gives: str) -> None:
         if spy in spies and spy not in started[player]:
             found.append(
-                f"{how} gives player {player} the spy {spy!r}, which player {player} does "
-                "not start with: a spy counts for the player whose spy type it is, so make "
-                "each player's piece into its own spy"
+                f"{gives}, which player {player} does not start with: a spy counts for the "
+                "player whose spy type it is, so make each player's piece into its own spy"
             )
 
     strike: dict[str, Any] = rules["strike"] if isinstance(rules.get("strike"), dict) else {}
@@ -2603,16 +2604,28 @@ def _foreign_spy_gains(
                 isinstance(link, dict) and link.get("from") in holdings[player]
                 and isinstance(link.get("to"), str)
             ):
-                foreign(player, link["to"], "rules.strike.chain")
+                to = link["to"]
+                foreign(player, to, f"rules.strike.chain gives player {player} the spy {to!r}")
         for spy in sorted(switching & spies & holdings[1 - player]):
-            foreign(player, spy, "rules.strike.switches_sides")
+            foreign(
+                player, spy,
+                f"rules.strike.switches_sides gives player {player} the spy {spy!r}",
+            )
         for link in _listed(contacts.get("links")):
             if not isinstance(link, dict):
                 continue
             if link.get("mover") in holdings[player] and isinstance(link.get("mover_to"), str):
-                foreign(player, link["mover_to"], "a rules.contacts link's mover_to")
+                to = link["mover_to"]
+                foreign(
+                    player, to,
+                    f"a rules.contacts link's mover_to gives player {player} the spy {to!r}",
+                )
             if link.get("onto") in holdings[player] and isinstance(link.get("onto_to"), str):
-                foreign(player, link["onto_to"], "a rules.contacts link's onto_to")
+                to = link["onto_to"]
+                foreign(
+                    player, to,
+                    f"a rules.contacts link's onto_to gives player {player} the spy {to!r}",
+                )
     return sorted(set(found), key=found.index)
 
 
@@ -3266,12 +3279,16 @@ def _check_gating_coherence(
             "rules.drops.gating with nothing in rules.drops.stock: no piece could ever "
             "enter; stock the hand or drop the rule"
         )
-    for key in ("placement", "either_face"):
+    # One literal per refusal (gating.placement, gating.either_face), so that
+    # `refusals.entry_of` tells the two apart by their words (B1).
+    for key, message in (
+        ("placement", "rules.drops.gating beside rules.drops.placement: a gating hand enters "
+                      "only on a vacated square, never by a drop; leave one out"),
+        ("either_face", "rules.drops.gating beside rules.drops.either_face: a gating hand "
+                        "enters only on a vacated square, never by a drop; leave one out"),
+    ):
         if drops.get(key) is True:
-            errors.append(
-                f"rules.drops.gating beside rules.drops.{key}: a gating hand enters only on "
-                "a vacated square, never by a drop; leave one out"
-            )
+            errors.append(message)
     for key in ("region", "no_doubled", "no_mate"):
         if drops.get(key):
             errors.append(
@@ -8553,6 +8570,12 @@ def reach_supply_grows(rules: dict[str, Any]) -> bool:
     ) or bool(rules.get("promote_on_entry"))
 
 
+_NO_BANK_IN_THE_FILTER = (
+    ": the legality filter plays a move without its bank (first build); a scoring goal is "
+    "for a game without check"
+)
+
+
 def _check_reach_scoring(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
@@ -8638,18 +8661,16 @@ def _check_reach_scoring(
         )
     if removes:
         win = rules.get("win", "checkmate")
-        checks = [
-            name for name, on in (
-                ('"win": "checkmate"', win == "checkmate" and royal),
-                ('"forbid_check": true', rules.get("forbid_check") is True),
-                ('"forbid_immobility": true', rules.get("forbid_immobility") is True),
-            ) if on
-        ]
-        for name in checks:
-            errors.append(
-                f"rules.reach.removes beside {name}: the legality filter plays a move without "
-                "its bank (first build); a scoring goal is for a game without check"
-            )
+        # One literal per refusal (goals.checkmate, goals.forbid_check,
+        # goals.forbid_immobility), so that `refusals.entry_of` tells them apart (B1).
+        for beside, on in (
+            ('rules.reach.removes beside "win": "checkmate"', win == "checkmate" and royal),
+            ('rules.reach.removes beside "forbid_check": true', rules.get("forbid_check") is True),
+            ('rules.reach.removes beside "forbid_immobility": true',
+             rules.get("forbid_immobility") is True),
+        ):
+            if on:
+                errors.append(beside + _NO_BANK_IN_THE_FILTER)
     if count > 1 and not reach_supply_grows(rules):
         counts = opening_counts(spec)
         named = set(reach_pieces(reach))

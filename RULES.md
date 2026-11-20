@@ -647,12 +647,18 @@ Today 219 pairs of rules are refused in one game, each for one of three reasons:
 - **Contradictory (125).** The two rules cannot mean anything
   together, whatever is built: check in a game where both players move at once, or a
   side and a forward direction for a piece that nobody owns.
+  Beside each such refusal, `validate` and the designer say: *These two can never be in one game.*
 - **Too expensive (8).** A reading exists, but playing it would
   need a wider change to how the engine stores a position, a move or a table than the
   pair is yet worth.
+  Beside each such refusal, `validate` and the designer say: *This could be built, and costs more than it is worth yet.*
 - **Not built yet (86).** The pair could mean something and nobody
   has built it yet. This is the language's unfinished work, and the aim is that this
   number reaches zero.
+  Beside each such refusal, `validate` and the designer say: *Not built yet. Nothing is wrong with the idea: the engine cannot play these two together yet.*
+
+Where a small change makes a refused draft allowed, `validate --instead` and the
+designer offer the nearest such game, found by trying changes and asking the validator.
 
 Each line below is what `validate` prints for one mistake made to the first worked
 example.

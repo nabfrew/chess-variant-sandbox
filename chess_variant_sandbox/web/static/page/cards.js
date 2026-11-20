@@ -21,6 +21,8 @@
 let PICKING = null,      // { root, path, label }: which square list a board click writes
     RULE_REFUSED = {},   // rule key -> why this draft cannot take it, from the validator
     RULE_TRIED = '',     // the draft the line above was asked about
+    RULE_REASONS = {},   // rule key -> [{reason, says}]: which kind of refusal it is (B3)
+    RULE_CARDS = {},     // rule key -> the card it was tried as, for the nearest-game ask
     CHOSEN_SPELLING = {};  // which alternative a group is showing while it holds nothing
 
 const LIST_CONTROLS = new Set(['squares', 'pieces', 'ints', 'vectors']);
@@ -861,6 +863,7 @@ function ruleMenuHtml() {
     <div class="muted small" id="dRuleFound" aria-live="polite">${ruleFoundHtml()}</div>
     <div class="small" id="dAddRuleSays"></div>
     <button id="dAddRuleGo" class="u-mt-6" disabled>add it</button>
+    ${insteadTakenHtml()}
     ${refusedRulesHtml(shut, byKey)}`;
 }
 
@@ -995,8 +998,156 @@ function refusedReasonsHtml(key) {
     ? `<div class="small">Choose '${esc(TURN_RULES[key])}' under <i>how the players take
         turns</i>, at the top, to make the changes this needs in one step, or to see why it
         can't.</div>` : '';
-  return `<ul class="refusedReasons muted small">${
-    reasons.map(line => `<li>${esc(line)}</li>`).join('')}</ul>${turn}`;
+  return `${reasonsSaidHtml(RULE_REASONS[key])}<ul class="refusedReasons muted small">${
+    reasons.map(line => `<li>${esc(line)}</li>`).join('')}</ul>${insteadRowHtml(key)}${turn}`;
+}
+
+// ------------------------------------------------- why, and the nearest game instead
+//
+// R-L3 B3 (`docs/reference/refusal-offers.md` §6.2, §6.3). A refusal said only *no*. Each
+// now says which of three kinds it is, in the server's one sentence per kind
+// (`designing.reasons_of`, from `refusals.REASON_SAYS`; the page holds no copy), and opening
+// the row asks `POST /api/design/instead` for the nearest games the validator allows that
+// still take the rule. The search is the server's and is proved by the validator; the page
+// shows its answer and, pressed, puts its draft in place of this one as one step undo takes
+// back whole. A search is usually tens of milliseconds and can be seconds, so the row says it
+// is looking, and everything else on the page goes on meanwhile.
+
+const INSTEAD = new Map();   // what was asked -> { asking } | { answer } | { error }
+const INSTEAD_OPEN = new Set();   // the refused rows somebody opened, by what was asked
+let INSTEAD_SAID = null;     // { key, title, changes } after an offer was taken
+
+function reasonsSaidHtml(reasons) {
+  return (reasons || []).map(row => `<div class="small"><b>${esc(row.says)}</b></div>`).join('');
+}
+
+// What is asked about a refused rule: the draft as the menu was asked about it, and the rule.
+function insteadAsked(key) {
+  return RULE_TRIED + '|' + key;
+}
+
+function insteadRowHtml(key) {
+  // A refusal with no reason on record (a malformed draft, a rule that needs another) is
+  // offered nothing: the search is for refused combinations (§6.3).
+  if (!(RULE_REASONS[key] || []).length) return '';
+  const asked = insteadAsked(key);
+  return `<details class="insteadRow u-mt-6" data-instead="${esc(key)}"${
+      INSTEAD_OPEN.has(asked) ? ' open' : ''}>
+      <summary class="small">the nearest game it goes in</summary>
+      <div class="small" data-insteadsaid="${esc(key)}" aria-live="polite">${
+        insteadSaidHtml(INSTEAD.get(asked), 'rule')}</div>
+    </details>`;
+}
+
+// The search's answer, for a rule from the menu (`how` 'rule') or the draft as it stands
+// ('draft'). Until then: the reason, and that no small change makes it allowed.
+function insteadSaidHtml(state, how) {
+  if (!state || state.asking) {
+    return `<div class="muted">Looking for the nearest game that is allowed...</div>`;
+  }
+  if (state.error) {
+    return `<div class="muted">The nearest game could not be asked for just now
+      (${esc(state.error)}).</div>`;
+  }
+  const answer = state.answer || {};
+  const offers = answer.offers || [];
+  if (!offers.length) {
+    return `<div class="muted">No small change to this game makes it allowed.</div>`;
+  }
+  const unbuilt = (answer.reasons || []).length
+    && answer.reasons.every(row => row.reason === 'not_built');
+  // Not built yet: the offer is what the designer is shown until the pair is built (§5).
+  const what = how === 'rule'
+    ? (offers.length === 1 ? 'nearest game that takes it' : 'nearest games that take it')
+    : 'nearest game that is allowed';
+  const shown = how === 'rule' ? offers : offers.slice(0, 1);
+  return `<div class="u-mt-6">${unbuilt ? 'Until then, the' : 'The'} ${esc(what)}:</div>
+    ${shown.map((offer, index) => `<div class="u-mt-6">
+      <ul class="refusedReasons">${(offer.changes || []).map(line =>
+        `<li>${esc(line)}</li>`).join('')}</ul>
+      <button class="u-mt-6" data-insteadtake="${index}">${
+        how === 'rule' ? 'add it this way' : 'change it to this game'}</button>
+    </div>`).join('')}`;
+}
+
+// Opening a row asks; an answer already in hand for this draft is drawn at once.
+function wireInstead(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('details[data-instead]').forEach(row => {
+    const key = row.dataset.instead;
+    row.addEventListener('click', event => event.stopPropagation());
+    row.ontoggle = () => {
+      const asked = insteadAsked(key);
+      if (!row.open) { INSTEAD_OPEN.delete(asked); return; }
+      INSTEAD_OPEN.add(asked);
+      askInstead(key);
+    };
+    wireInsteadTakes(row, key);
+  });
+}
+
+function askInstead(key) {
+  const asked = insteadAsked(key);
+  const known = INSTEAD.get(asked);
+  if (known && !known.error) { drawInstead(key); return; }
+  INSTEAD.set(asked, { asking: true });
+  drawInstead(key);
+  api('/api/design/instead', { draft: DRAFT, rule: key, value: RULE_CARDS[key] })
+    .then(answer => { INSTEAD.set(asked, { answer }); })
+    .catch(error => { INSTEAD.set(asked, { error: errorWords(error) }); })
+    .then(() => { if (insteadAsked(key) === asked) drawInstead(key); });
+}
+
+function drawInstead(key) {
+  const box = document.querySelector(`[data-insteadsaid="${CSS.escape(key)}"]`);
+  if (!box) return;
+  box.innerHTML = insteadSaidHtml(INSTEAD.get(insteadAsked(key)), 'rule');
+  wireInsteadTakes(box, key);
+}
+
+function wireInsteadTakes(root, key) {
+  root.querySelectorAll('[data-insteadtake]').forEach(button => {
+    button.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const state = INSTEAD.get(insteadAsked(key)) || {};
+      const offer = ((state.answer || {}).offers || [])[Number(button.dataset.insteadtake)];
+      const model = cardModel();
+      const field = model && model.rules.find(f => f.key === key);
+      if (offer) takeInstead(offer, ruleTitle(key, field ? field.label : key));
+    };
+  });
+}
+
+// One press: the offer's draft in place of this one, recorded at once so that undo is the
+// step before it, as a turn-taking choice is (`chooseTurnWay`).
+function takeInstead(offer, title) {
+  snapshotDraft();
+  DRAFT = offer.draft;
+  snapshotDraft();
+  INSTEAD_SAID = { key: JSON.stringify(DRAFT), title, changes: offer.changes || [] };
+  drawDesigner();
+  checkDraft();
+  loadMoveMap();
+}
+
+// What the last offer taken changed, until the draft moves on.
+function insteadTakenHtml() {
+  const said = INSTEAD_SAID;
+  if (!said || said.key !== JSON.stringify(DRAFT)) return '';
+  return `<div class="ok small u-mt-10" id="dInsteadSaid">${said.title
+      ? `'${esc(said.title)}' is in the game.` : 'The draft is now the nearest allowed game.'}
+    ${said.changes.length ? `${said.changes.length === 1 ? 'This' : `These ${said.changes.length}`}
+      changed:<ul class="refusedReasons">${said.changes.map(line =>
+        `<li>${esc(line)}</li>`).join('')}</ul>` : ''}
+    <button class="quiet" data-insteadundo>undo this</button></div>`;
+}
+
+function wireInsteadUndo(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('[data-insteadundo]').forEach(button => {
+    button.onclick = event => { event.preventDefault(); stepDraft(false); };
+  });
 }
 
 function refusedRulesHtml(shut, byKey) {
@@ -1052,11 +1203,14 @@ function loadRefusals() {
   api('/api/design/rules', { spec: DRAFT, candidates }).then(answer => {
     if (RULE_TRIED !== asking) return;
     RULE_REFUSED = answer.refused || {};
+    RULE_REASONS = answer.reasons || {};
+    RULE_CARDS = candidates;
     redrawRuleMenu();
   }).catch(() => {
     // A menu that offers everything is the behaviour before this existed, and a
     // refusal nobody could fetch must not stop a rule being tried.
     RULE_REFUSED = {};
+    RULE_REASONS = {};
   });
 }
 
@@ -1259,6 +1413,9 @@ function fieldAt(root, path) {
 }
 
 function wireCards(form) {
+  // The refused rules' rows: opening one asks for the nearest game that takes it (B3).
+  wireInstead(form);
+  wireInsteadUndo(form);
   // A click on a piece's card selects the piece and redraws the form, which would close
   // a menu inside its extras as it opens.
   form.querySelectorAll('details.extras').forEach(node => {

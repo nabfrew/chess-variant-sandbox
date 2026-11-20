@@ -674,7 +674,7 @@ class TestARuleThatDoesNotGoInThisGame:
         broken = json.loads(json.dumps(spec))
         broken["setup"]["placements"] = []
         answer = designing.refusals(broken, {"wrap": {"files": "both"}})
-        assert answer == {"refused": {}, "asked": False}
+        assert answer == {"refused": {}, "reasons": {}, "asked": False}
 
     def test_a_refused_rule_leaves_the_menu_and_takes_its_reason_with_it(self) -> None:
         spec = next(t for t in designing.templates() if t["key"] == "skirmish")["spec"]

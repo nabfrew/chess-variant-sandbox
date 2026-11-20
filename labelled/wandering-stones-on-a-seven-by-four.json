@@ -1,0 +1,106 @@
+{
+  "schema_version": 31,
+  "name": "wandering stones on a seven by four",
+  "description": "A seven by four board whose middle file (d) is a wall, so the play is on two three by four fields. Every other square starts with a stone, the two players' alternating like the colours of a checkerboard. A move takes an enemy stone on an orthogonally adjacent square, moving onto it, or steps a stone into an empty orthogonally adjacent square. The player who cannot move loses; a game still going at sixty plies is drawn.",
+  "summary": [
+    "Two three by four fields of stones.",
+    "A stone takes or steps orthogonally.",
+    "The player who cannot move loses."
+  ],
+  "board": {
+    "width": 7,
+    "height": 4
+  },
+  "pieces": [
+    {
+      "id": "X",
+      "name": "stone",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "capture"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "X",
+        "player": 0,
+        "squares": [
+          "a2",
+          "a4",
+          "b1",
+          "b3",
+          "c2",
+          "c4",
+          "e2",
+          "e4",
+          "f1",
+          "f3",
+          "g2",
+          "g4"
+        ]
+      },
+      {
+        "piece": "X",
+        "player": 1,
+        "squares": [
+          "a1",
+          "a3",
+          "b2",
+          "b4",
+          "c1",
+          "c3",
+          "e1",
+          "e3",
+          "f2",
+          "f4",
+          "g1",
+          "g3"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "none",
+    "stalemate": "loss",
+    "max_plies": 60,
+    "obstacles": {
+      "squares": [
+        "d1",
+        "d2",
+        "d3",
+        "d4"
+      ],
+      "blocks_leaps": true
+    }
+  },
+  "provenance": {
+    "added": "2026-11-19",
+    "origin": "llm",
+    "author": "R-S2d1 worker (Claude Opus 5.5)",
+    "note": "A proven-bad addition to the labelled set (docs/reference/labelled-set-passing-bad.md, R-S2d1); not a library game."
+  }
+}

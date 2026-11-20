@@ -3003,6 +3003,9 @@ function checkDraft() {
       drawPortalSays();
       // The duck's rule in words and its refusals (generation 42, N4c).
       drawDuckSays();
+      // A draft refused as it stands for a refused combination: why, and the nearest game
+      // that is allowed (R-L3 B3, `refusal-offers.md` §6.3), asked once the verdict is drawn.
+      if (current && !answer.valid && (answer.reasons || []).length) askDraftInstead(asked);
       // Which rules cannot go in this game, asked once the draft is one. A card reads
       // the opening position for the piece it needs, so this waits for the check.
       if (answer.valid) loadRefusals();
@@ -3031,8 +3034,9 @@ function snapshotDraft() {
   // What a design step changed is true of the draft that press made and of no other, so
   // an edit or an undo takes the sentence with it.
   if (TRY_SAID && TRY_SAID.key !== now) TRY_SAID = null;
-  // So is what a turn-taking choice changed (Q995b).
+  // So is what a turn-taking choice changed (Q995b), and what a nearest game taken did (B3).
   if (TURN_SAID && TURN_SAID.key !== now) TURN_SAID = null;
+  if (INSTEAD_SAID && INSTEAD_SAID.key !== now) INSTEAD_SAID = null;
   // And so is a game in hand: it was played under the rules as they stood when it
   // started, and these are not those rules any more.
   if (BENCH_PLAY && BENCH_PLAY.key !== now) {
@@ -3627,6 +3631,52 @@ function takeStep(operator, seed) {
 
 // ------------------------------------------------------------- what the draft is
 
+// R-L3 B3 (`refusal-offers.md` §6.3). A draft refused as it stands, where at least one
+// problem is a refused combination with a reason on record: the reasons, in the server's
+// sentences, and the nearest game the validator allows, with one button. Asked of the same
+// route the rule menu asks (`POST /api/design/instead`, no rule), once per draft.
+function draftInsteadAsked(asked) {
+  return 'draft|' + asked;
+}
+
+function draftInsteadHtml(check) {
+  if (!check || !(check.reasons || []).length) return '';
+  return `${reasonsSaidHtml(check.reasons)}${
+    insteadSaidHtml(INSTEAD.get(draftInsteadAsked(DRAFT_CHECK_FOR)), 'draft')}`;
+}
+
+function askDraftInstead(asked) {
+  const key = draftInsteadAsked(asked);
+  const known = INSTEAD.get(key);
+  if (known && !known.error) return;
+  INSTEAD.set(key, { asking: true });
+  api('/api/design/instead', { draft: JSON.parse(asked) })
+    .then(answer => { INSTEAD.set(key, { answer }); })
+    .catch(error => { INSTEAD.set(key, { error: errorWords(error) }); })
+    .then(() => {
+      // Drawn only while the verdict is still this draft's; a later edit asks again.
+      if (DRAFT_CHECK_FOR !== asked) return;
+      const box = document.getElementById('dInsteadCheck');
+      if (!box) return;
+      box.innerHTML = draftInsteadHtml(DRAFT_CHECK);
+      wireDraftInstead(box);
+      footbarMoved();
+    });
+}
+
+function wireDraftInstead(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('[data-insteadtake]').forEach(button => {
+    if (!button.closest('#dInsteadCheck')) return;
+    button.onclick = event => {
+      event.preventDefault();
+      const state = INSTEAD.get(draftInsteadAsked(DRAFT_CHECK_FOR)) || {};
+      const offer = ((state.answer || {}).offers || [])[Number(button.dataset.insteadtake)];
+      if (offer) takeInstead(offer, '');
+    };
+  });
+}
+
 function drawVerdict() {
   drawBoardSide();
   const side = document.getElementById('verdictSide');
@@ -3657,16 +3707,20 @@ function drawVerdict() {
           <div class="notGameFirst small">${esc(errors[0] || '')}</div>
           <details class="notGameAll" id="dNotGame">
             <summary class="muted small">${errors.length > 1
-              ? `all ${errors.length} things to fix` : 'more about this'}</summary>
+              ? `all ${errors.length} things to fix` : 'more about this'}${
+              (check.reasons || []).length ? ', and the nearest game that is allowed' : ''
+              }</summary>
             <div class="muted small">The rules have to make sense before anything can play
               them, and these do not yet. ${own ? 'The board is this draft&rsquo;s own'
                 : 'The board is the one these rules last made'}, and putting a piece down on
               it still works.</div>
             <ul class="rules">${errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul>
+            <div class="small" id="dInsteadCheck" aria-live="polite">${draftInsteadHtml(check)}</div>
           </details>
         </div>
       </div>
     </div>`;
+    wireDraftInstead(side);
     const all = document.getElementById('dNotGame');
     if (all) {
       all.open = NOT_GAME_OPEN === null ? !footbarFixed() : NOT_GAME_OPEN;

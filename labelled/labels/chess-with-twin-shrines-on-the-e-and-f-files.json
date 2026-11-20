@@ -1,0 +1,66 @@
+{
+  "game": "labelled/chess-with-twin-shrines-on-the-e-and-f-files.json",
+  "spec_hash": "a8f777191953",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.6288,
+  "quarter": "Q4",
+  "likeness_commit": "9bac41801",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2d1 worker (Claude Opus 5.5)",
+  "date": "2026-11-20",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken. I saw no score, band or tier of it or of its parent while building and labelling it; the parent's published verdicts in labelled-set.md \u00a79 I did not open in this task.",
+  "kind": "no-win",
+  "stratum": "hidden",
+  "side": null,
+  "claim": "Neither side can win: each has a recipe under which it never loses.",
+  "parent": "rulesets/chess.json",
+  "change": "one: each side's e- and f-pawns are replaced by two shrines (a new piece that never moves and shields its side's king and shrines next to it).",
+  "make": "shield",
+  "army_share": 1.0,
+  "aim": "Nothing in ordinary play leads a king onto its keep and holds it there: players castle, walk the king when the board empties, and lose it in the open, so play should be the parent's, decisive from both seats and of ordinary length. The draw is there only for a side that knows to sit.",
+  "proof": {
+    "form": "argument",
+    "text": "Each shrine (type `T`, no moves) carries a line of sight with effect `shield`, `whose` own, `affects` the king and the shrine, range 1 in all eight directions, `through`: a shielded piece cannot be taken and a shielded king is never in check (`pieces[].sight`). The two shrines stand side by side and never move, so each shields the other for the whole game, and a king standing next to either is never in check. The recipe (White): play g2-g3 and then Bf1-g2 (or Bf1-h3); never castle; once the bishop has left, never move any white piece but the king onto e1 or f1; move the king only between e1 and f1. Under it the king stands on e1 or f1, both next to a shrine, so it is never in check and never checkmated, and the parent has no other way for White to lose. It must move only when White has no other legal move; then the other square holds none of White's pieces (the recipe keeps them off it), and if an enemy piece stands there the king may take it, since a king next to its shrine is never in check after the move: so the step is always legal and White is never without a move. Until the bishop has left f1 White has other legal moves, so the king never has to move. The other side's recipe is the mirror image: g7-g6 and Bf8-g7 (or Bf8-h6); never castle; once the bishop has left, no black piece but the king onto e8 or f8; the king only between e8 and f8. Wins are reachable: in each line of `checks` a king leaves its shrine and is mated.",
+    "checks": [
+      {
+        "type": "line",
+        "moves": [
+          "Nb1-a3",
+          "Pd7-d6",
+          "Pc2-c4",
+          "Ke8-d7",
+          "Pd2-d4",
+          "Kd7-c6",
+          "Qd1-a4",
+          "Kc6-b6",
+          "Qa4-b5"
+        ],
+        "winner": 0
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Pd2-d3",
+          "Pc7-c5",
+          "Ke1-d2",
+          "Pd7-d5",
+          "Kd2-c3",
+          "Qd8-a5",
+          "Kc3-b3",
+          "Qa5-b4"
+        ],
+        "winner": 1
+      }
+    ]
+  },
+  "addition": "labelled-set-passing-bad.md R-S2d1: a proven-bad game aimed to pass the gates; in no registered reading but that record's (\u00a75)",
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-20",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context, reader 7 of R-S2d1",
+    "given": "the spec file, describe_spec's text, the claim and the proof (with its checks or certificate); told not to read docs/, runs/, labels, the build log, the seal or any score, and to run no player",
+    "notes": "Each side's recipe is always playable (Black's ...g6 and ...Bg7 cannot be stopped); 625 random games with White, Black or both on their recipes: no loss, and all 125 with both on them drawn."
+  }
+}

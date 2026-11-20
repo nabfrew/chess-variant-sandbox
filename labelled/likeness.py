@@ -7,6 +7,12 @@ and `archive/`) and its `spec.likeness` (`k1`) similarity to chess is read off t
 IDF over the library plus the one game. The library must be as it stood at `74eaa6ca2`, the
 commit R-S2b branched from; `--check` asserts that `rulesets/` and `archive/` have not changed
 since. Reads specs only: no run, no engine, no score.
+
+    uv run python labelled/likeness.py --current labelled/<name>.json [...]
+
+`--current` reads the library as it stands at HEAD instead, for additions whose record places
+them "against the library at the commit the build branches from"
+(`docs/reference/labelled-set-passing-bad.md` §2.1); the label records that commit.
 """
 
 # compute-lease: light
@@ -52,7 +58,9 @@ def likeness_to_chess(spec: dict) -> float:
 def main(argv: list[str]) -> int:
     from chess_variant_sandbox.spec import load_spec
 
-    if not library_unchanged():
+    current = "--current" in argv
+    argv = [a for a in argv if a != "--current"]
+    if not current and not library_unchanged():
         print(f"the library has changed since {BASE}: §2.1 reads it as it stood there")
         return 1
     for name in argv:

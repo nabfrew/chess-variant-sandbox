@@ -28,6 +28,7 @@ LABELS = LABELLED / "labels"
 CERTIFICATES = LABELLED / "certificates"
 SEAL = LABELLED / "SEAL.json"
 READING = LABELLED / "reading.json"
+READING_PASSING = LABELLED / "reading-passing.json"
 VERIFIED = LABELLED / "verified.json"
 EDGES = (0.0525, 0.1575, 0.4075)  # §2.1, fixed as numbers
 FIELDS = {
@@ -64,7 +65,8 @@ def _set_specs() -> list[Path]:
 
 def _spec_files() -> list[Path]:
     """The set's own spec files: every JSON at the top of `labelled/` but the two records."""
-    return [p for p in _set_specs() if p.name not in (SEAL.name, READING.name, VERIFIED.name)]
+    records = (SEAL.name, READING.name, READING_PASSING.name, VERIFIED.name)
+    return [p for p in _set_specs() if p.name not in records]
 
 
 def _digest(path: Path) -> str:
@@ -460,3 +462,39 @@ def test_the_reading_comes_after_the_seal() -> None:
     for name, row in reading["members"].items():
         if not _labels()[name]["measured_before_label"]:
             assert row["measured"] >= sealed_at, f"{name} was measured before the seal"
+
+
+def _is_ancestor(older: str, newer: str) -> bool:
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", older, newer], cwd=ROOT, check=False
+    ).returncode == 0
+
+
+def test_the_second_reading_comes_after_its_additions() -> None:
+    """`labelled-set-passing-bad.md` §3's guard. `reading-passing.json`, if it exists, was
+    committed after every addition it lists; it lists every sealed member and every addition
+    of the set as of its date; and each bad addition was measured after its entry's commit."""
+    if not READING_PASSING.exists():
+        return
+    commits = _commits(READING_PASSING)
+    assert commits, "reading-passing.json is not committed"
+    read = commits[-1]
+    seal = json.loads(SEAL.read_text(encoding="utf-8"))
+    reading = json.loads(READING_PASSING.read_text(encoding="utf-8"))
+    listed = set(reading["members"])
+    as_of = reading["date"]
+    owed = set(seal["members"]) | {a["label"] for a in seal["additions"] if a["date"] <= as_of}
+    assert listed == owed, f"listed and owed differ: {sorted(listed ^ owed)}"
+    labels = _labels()
+    for entry in seal["additions"]:
+        name = entry["label"]
+        if name not in listed:
+            continue
+        added = _commits(LABELS / f"{name}.json")
+        assert added, f"{name}'s label is not committed"
+        assert _is_ancestor(added[-1], read), f"the reading does not descend from {name}'s addition"
+        if labels[name]["label"] == "bad":
+            added_at = _git("show", "-s", "--format=%cs", added[-1])
+            measured = reading["members"][name]["measured"]
+            assert measured is not None and measured >= added_at, (
+                f"{name} was measured before its addition")

@@ -1,0 +1,66 @@
+{
+  "game": "labelled/wandering-stones-on-a-seven-by-four.json",
+  "spec_hash": "9599c2e73a6c",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.0005,
+  "quarter": "Q1",
+  "likeness_commit": "9bac41801",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2d1 worker (Claude Opus 5.5)",
+  "date": "2026-11-20",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken. I saw no score, band or tier of it or of its parent while building and labelling it; the parent's published verdicts in labelled-set.md \u00a79 I did not open in this task.",
+  "kind": "cannot-lose",
+  "stratum": "hidden",
+  "side": 1,
+  "claim": "Black, moving second, never loses: it has a recipe under which it never loses; it is not shown to win.",
+  "parent": null,
+  "change": "built from nothing: clobber's stone, which may also step onto an empty orthogonal neighbour, on a seven by four board whose middle file is a wall.",
+  "make": "mirror",
+  "army_share": null,
+  "aim": "The recipe is a pairing, not a property of any position, so no evaluator or short search sees it; a player who departs from it plays a real fight in two small fields, which either side can win, so games should be decisive and won from both seats.",
+  "proof": {
+    "form": "argument",
+    "text": "The obstacles split the board into two fields, files a-c and e-g, and nothing a stone does reaches across (`rules.obstacles`). Turn the board half round: file x goes to file 6 - x and rank r to rank 5 - r. This maps each field onto the other, every move onto a move of the same shape, and every white stone of the opening onto a black one and back (a square and its image differ in colour, since x + r and (6 - x) + (5 - r) differ by an odd number). The recipe: Black answers each white move with its image, the same move with every square turned. After each answer the position is its own image with the colours swapped, so the image of White's next move is a legal black move: it starts from a black stone, lands where the turned position says, and White's move touched only its own field. So Black always has a move and is never the player who cannot move. A step may be answered by a step, so the game need not end; a game still going at 60 plies is drawn (`max_plies`), and Black never loses. Leaving the recipe can lose: the line in `checks` is a game Black loses.The argument is the proof here: the positions the recipe reaches are too many for a walk of every one.",
+    "checks": [
+      {
+        "type": "line",
+        "moves": [
+          "Xa2xa1",
+          "Xa3-a2",
+          "Xa4xb4",
+          "Xa2-a3",
+          "Xb1xb2",
+          "Xa3-a2",
+          "Xa1xa2",
+          "Xc1-b1",
+          "Xb3xc3",
+          "Xb1-a1",
+          "Xe2xe1",
+          "Xa1-b1",
+          "Xb2xb1",
+          "Xe3-e2",
+          "Xe4xf4",
+          "Xe2-e3",
+          "Xf1xf2",
+          "Xe3-e2",
+          "Xe1xe2",
+          "Xg1-f1",
+          "Xf3xg3",
+          "Xf1-e1",
+          "Xe2xe1"
+        ],
+        "winner": 0
+      }
+    ]
+  },
+  "addition": "labelled-set-passing-bad.md R-S2d1: a proven-bad game aimed to pass the gates; in no registered reading but that record's (\u00a75)",
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-20",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context, reader 10 of R-S2d1",
+    "given": "the spec file, describe_spec's text, the claim and the proof (with its checks or certificate); told not to read docs/, runs/, labels, the build log, the seal or any score, and to run no player",
+    "notes": "An independent rule model confirms the image is legal in all 459,891 boards the recipe reaches; 4,000 engine playouts against the mirror ended only in draws. The checks line is legal and ends with Black having no move at ply 23."
+  }
+}

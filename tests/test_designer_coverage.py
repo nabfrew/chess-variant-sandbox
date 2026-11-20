@@ -314,10 +314,15 @@ class TestRoundsIsOneStepFromChess:
         # SR8d (R6, generation 121): castling stays; in a round it is the king's move.
         assert made["rules"]["castling"] == CHESS["rules"]["castling"]
         assert "en_passant" not in made["rules"]
+        # B4 (`refusal-offers.md` §6.4): the changes are the nearest allowed draft's, said as
+        # every other change on the page is (`describe_changes`): the win changed, en passant
+        # dropped, and the insufficient-material draw, which the normal form drops as inert
+        # once rounds are on. Re-pinned from the two sentences `_remedy` wrote.
+        trial = designing.settled({**CHESS, "rules": {**CHESS["rules"], "simultaneous": {}}})
+        assert answer["changes"] == describe.describe_changes(trial, made)
         said = " ".join(answer["changes"])
-        assert len(answer["changes"]) == 2, answer["changes"]
-        for words in ("checkmate", "passing"):
-            assert words in said, words
+        assert len(answer["changes"]) == 3, answer["changes"]
+        assert said.startswith("Rule changed:") and "capturing" in said, said
         assert not _RAW_PATH.search(said), said
         assert CHESS["rules"].get("en_passant"), "the draft asked about is not changed in place"
 

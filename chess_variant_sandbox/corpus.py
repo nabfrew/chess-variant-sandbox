@@ -909,14 +909,18 @@ def rescore_kept(
     order = sorted(int(seed) for seed in seeds)
     corpora: dict[int, list[Any]] = {}
     analyses: dict[int, CorpusAnalysis] = {}
+    schedules: dict[int, Any] = {}
     for seed in order:
-        out = Path(kept) / f"{candidate.hash}-{seed}"
-        records = list(read_records(out / "games.jsonl"))
-        if not records:
-            raise CorpusError(f"{out} has no games to re-score")
-        corpora[seed] = records
-        if not reanalyse and (out / "analysis.json").exists():
-            analyses[seed] = CorpusAnalysis.load(out / "analysis.json")
+        # D1: a kept generation may be packed (`history.pack_generation`); its run is read
+        # through a temporary copy, so nothing is written under `previous/`.
+        with history.readable_run(Path(kept) / f"{candidate.hash}-{seed}") as out:
+            records = list(read_records(out / "games.jsonl"))
+            if not records:
+                raise CorpusError(f"{Path(kept) / out.name} has no games to re-score")
+            corpora[seed] = records
+            if not reanalyse and (out / "analysis.json").exists():
+                analyses[seed] = CorpusAnalysis.load(out / "analysis.json")
+            schedules[seed] = waiting.load(out)
     # Q1144 (C9's follow-up): every seed that needs the pass gets it in one pool.
     owed = [seed for seed in order if seed not in analyses]
     if owed:
@@ -940,7 +944,7 @@ def rescore_kept(
         try:
             result = score_ruleset(
                 candidate.spec, records, rate(records), weights=weighting, analysis=analysis,
-                waiting=waiting.load(Path(kept) / f"{candidate.hash}-{seed}"),
+                waiting=schedules[seed],
             )
         except WeightsError:
             totals.append(None)

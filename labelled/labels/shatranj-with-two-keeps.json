@@ -1,0 +1,70 @@
+{
+  "game": "labelled/shatranj-with-two-keeps.json",
+  "spec_hash": "947373b0f3c7",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.067,
+  "quarter": "Q2",
+  "likeness_commit": "9bac41801",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2d1 worker (Claude Opus 5.5)",
+  "date": "2026-11-20",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken. I saw no score, band or tier of it or of its parent while building and labelling it; the parent's published verdicts in labelled-set.md \u00a79 I did not open in this task.",
+  "kind": "no-win",
+  "stratum": "hidden",
+  "side": null,
+  "claim": "Neither side can win: each has a recipe under which it never loses.",
+  "parent": "rulesets/shatranj.json",
+  "change": "one: every piece barred from the other side's keep (d1 and c1 closed to Black, their mirror images to White).",
+  "make": "sanctuary",
+  "army_share": 1.0,
+  "aim": "Nothing in ordinary play leads a king onto its keep and holds it there: players castle, walk the king when the board empties, and lose it in the open, so play should be the parent's, decisive from both seats and of ordinary length. The draw is there only for a side that knows to sit.",
+  "proof": {
+    "form": "argument",
+    "text": "Every piece type carries `region` (the only squares it may ever occupy, written for White and mirrored for Black), so a piece may not move, take, promote or drop onto a square closed to it, and therefore never attacks such a square: a king standing on a square closed to every enemy piece is never in check. So a white king on d1 or c1 is never in check, hence never checkmated, and the parent has no other way for White to lose. White's recipe: move the elephant from c1 at once (it leaps to a3 or e3, both empty); after that never move any white piece but the king onto c1 or d1; move the king only between d1 and c1. Under it the king never leaves d1 and c1. It must move only when White has no other legal move, and then the other keep square holds no white piece (the recipe keeps them off it) and no black piece (none may stand there), and no black piece attacks it, so the step is legal: White is never left without a move either. The elephant leaves on White's first move, so the king never has to move before the shuttle is open. Shatranj's stalemate is a loss, but the shuttle is always a legal move, so neither side is ever stalemated. Black's recipe is the mirror image: the elephant from c8 at once (to a6 or e6); then no black piece but the king onto c8 or d8; the king only between d8 and c8. Wins are reachable: in each line of `checks` a king leaves its keep and is mated.",
+    "checks": [
+      {
+        "type": "line",
+        "moves": [
+          "Ec1-e3",
+          "Pc7-c6",
+          "Ng1-f3",
+          "Kd8-c7",
+          "Nf3-d4",
+          "Kc7-b6",
+          "Nd4-b3",
+          "Kb6-b5",
+          "Pa2-a3",
+          "Kb5-a4",
+          "Nb1-c3"
+        ],
+        "winner": 0
+      },
+      {
+        "type": "line",
+        "moves": [
+          "Pc2-c3",
+          "Ng8-f6",
+          "Kd1-c2",
+          "Nf6-d5",
+          "Kc2-b3",
+          "Nd5-b6",
+          "Kb3-b4",
+          "Pa7-a6",
+          "Kb4-a5",
+          "Nb8-c6"
+        ],
+        "winner": 1
+      }
+    ]
+  },
+  "addition": "labelled-set-passing-bad.md R-S2d1: a proven-bad game aimed to pass the gates; in no registered reading but that record's (\u00a75)",
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-20",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context, reader 3 of R-S2d1",
+    "given": "the spec file, describe_spec's text, the claim and the proof (with its checks or certificate); told not to read docs/, runs/, labels, the build log, the seal or any score, and to run no player",
+    "notes": "The engine treats c1 and d1 as unattackable by Black (knights on c3 and e2 give no check); the shuttle square is always open, so the stalemate-loss rule never applies; 200 adversarial playouts, 100 a side, no loss, check or stuck position."
+  }
+}

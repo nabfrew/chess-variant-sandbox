@@ -29,7 +29,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from respell import RESPELLINGS, every_respelling
+from respell import RESPELLINGS
 from retired_specs import REBUILT, RETIRED_HASHES, RETIRED_PREVIEWS, retired_preview
 from test_new_spec_refusals import RETIRED, RETIRED_HASH
 from test_schema_nine import FROZEN
@@ -47,6 +47,13 @@ STAMP = 30  # the version the migration writes: `SCHEMA_VERSION` when it was wri
 # The rows `0039` re-spelt in place under their old keys, so named apart from their key ever
 # since (`schema-reboot-assessment.md` §7, `deploy/names.py`).
 NAMED_APART = {"1d798bedbf66", "4da669bb3d50", "632c199e4589"}
+# The spellings a stored row could be in when `0041` ran (spelling 30). `rules.capture` came
+# later (R-L4b3, 2026-11-18): no row held one then, and every save since enters through
+# `designing.settled`, whose converter already writes a list the old keys say as those keys,
+# so the store never receives that spelling and `0041` was never asked it. That the converter
+# answers it is `tests/test_spelling.py`'s, over `RESPELLINGS` whole (MG1).
+_LATER = {"capture_list_spelling"}
+_HELD_THEN = {name: respell for name, respell in RESPELLINGS.items() if name not in _LATER}
 
 
 def _designed() -> list[dict[str, Any]]:
@@ -78,12 +85,16 @@ def _designed() -> list[dict[str, Any]]:
 def _rows() -> dict[str, dict[str, Any]]:
     """Every row stored after `0040`, by key: the key is the name each was stored under."""
     rows: dict[str, dict[str, Any]] = {}
+    held = list(_HELD_THEN.values())
     for index, (path, (digest, _)) in enumerate(sorted(FROZEN.items())):
         spec = load_spec(ROOT / path)
-        respell = list(RESPELLINGS.values())[index % len(RESPELLINGS)]
+        respell = held[index % len(held)]
         # A portal game with the stand-in the store held then (spelling 30), as the file
         # declared it (a re-spelling writes the army's keys out, never the stand-in's).
-        rows[digest] = portal_stand_in_shape(every_respelling(spec) if index % 2 else respell(spec))
+        every = spec
+        for each in held:
+            every = each(every)
+        rows[digest] = portal_stand_in_shape(every if index % 2 else respell(spec))
     for name, build in REBUILT.items():
         rows[RETIRED_HASHES[name]] = portal_stand_in_shape(build())
     for name, digest in RETIRED_PREVIEWS.items():

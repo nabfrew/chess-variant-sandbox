@@ -1,0 +1,51 @@
+{
+  "game": "labelled/knight-stones-on-a-seven-by-four.json",
+  "spec_hash": "2a5f2b1ebbf6",
+  "label": "bad",
+  "source": "proof",
+  "likeness": 0.0005,
+  "quarter": "Q1",
+  "likeness_commit": "9bac41801",
+  "likeness_version": "k1",
+  "labelled_by": "R-S2d1 worker (Claude Opus 5.5)",
+  "date": "2026-11-20",
+  "measured_before_label": false,
+  "seen": "No measurement of this game exists; none was taken. I saw no score, band or tier of it or of its parent while building and labelling it; the parent's published verdicts in labelled-set.md \u00a79 I did not open in this task.",
+  "kind": "forced-win",
+  "stratum": "hidden",
+  "side": 1,
+  "claim": "Black, moving second, wins by force, in no fewer than six of its own moves.",
+  "parent": null,
+  "change": "built from nothing: clobber's ending with a stone that takes by a knight's jump, on a seven by four board whose middle file is a wall no jump crosses.",
+  "make": "mirror",
+  "army_share": null,
+  "aim": "The recipe is a pairing, not a property of any position, so no evaluator or short search sees it; a player who departs from it plays a real fight in two small fields, which either side can win, so games should be decisive and won from both seats.",
+  "proof": {
+    "form": "argument",
+    "text": "The obstacles split the board into two fields, files a-c and e-g, and nothing a stone does reaches across (`rules.obstacles`, with `blocks_leaps`). Turn the board half round: file x goes to file 6 - x and rank r to rank 5 - r. This maps each field onto the other, every move onto a move of the same shape, and every white stone of the opening onto a black one and back (a square and its image differ in colour, since x + r and (6 - x) + (5 - r) differ by an odd number). The recipe: Black answers each white move with its image, the same move with every square turned. After each answer the position is its own image with the colours swapped, so the image of White's next move is a legal black move: it starts from a black stone, lands where the turned position says, and White's move touched only its own field. So Black always has a move and is never the player who cannot move. Every move takes a stone, so the game ends within 23 moves, inside the 60-ply limit, with White to move and no move: Black wins. Nothing sooner: Black has no forced win in fewer than six of its moves (`shortest`), and White never wins.`checks` visits every position the recipe reaches.",
+    "checks": [
+      {
+        "type": "mirror",
+        "side": 1,
+        "board": [
+          7,
+          4
+        ],
+        "decisive": true
+      },
+      {
+        "type": "shortest",
+        "winner": 1,
+        "moves": 6
+      }
+    ]
+  },
+  "addition": "labelled-set-passing-bad.md R-S2d1: a proven-bad game aimed to pass the gates; in no registered reading but that record's (\u00a75)",
+  "review": {
+    "verdict": "holds",
+    "date": "2026-11-20",
+    "reader": "a fresh agent (Claude Opus 5.5) with no other context, reader 6 of R-S2d1",
+    "given": "the spec file, describe_spec's text, the claim and the proof (with its checks or certificate); told not to read docs/, runs/, labels, the build log, the seal or any score, and to run no player",
+    "notes": "Checked that blocks_leaps stops every jump across the wall (c2 offers only c2xa1, c2xa3, c2xb4); the mirror reply was legal across 20,910 positions, every game ending as Black's win by ply 20; no forced Black win within six Black moves."
+  }
+}

@@ -28,7 +28,7 @@ from __future__ import annotations
 import functools
 from collections.abc import Iterable
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import tomllib
 
@@ -598,12 +598,123 @@ REASONS_FILE = Path(__file__).with_name("refusals.toml")
 
 
 @functools.cache
+def _classification() -> list[dict[str, Any]]:
+    with REASONS_FILE.open("rb") as handle:
+        entries: list[dict[str, Any]] = tomllib.load(handle).get("refusal", [])
+    return entries
+
+
 def reason_counts() -> dict[str, int]:
     """How many refused combinations carry each reason, in `REASONS`' order."""
-    with REASONS_FILE.open("rb") as handle:
-        entries = tomllib.load(handle).get("refusal", [])
     counts = {reason: 0 for reason in REASONS}
-    for entry in entries:
+    for entry in _classification():
         if entry.get("reason") in counts:
             counts[entry["reason"]] += 1
     return counts
+
+
+# ------------------------------------------------------------------------- which entry
+
+class Entry(NamedTuple):
+    """One `[[refusal]]` entry of `refusals.toml`: why a refused combination is refused."""
+
+    id: str
+    reason: str  # one of `REASONS`, or "inert"
+    why: str
+    pair: tuple[str, str]
+    held_by: str | None = None  # not_built only: the task that will lift it, or "none"
+    cost: str | None = None  # too_expensive only
+    cost_basis: str | None = None
+    # `refusal-offers.md` §4.4: edits the entry declares for what the search cannot reach, each
+    # ``("drop", path)`` or ``("set", path, value)``, ``[]`` in a path for every one that
+    # states it. Data the search tries like any other edit (`spec/instead.py`); none written yet.
+    instead: tuple[tuple[Any, ...], ...] = ()
+
+
+def _declared(raw: dict[str, Any]) -> tuple[tuple[Any, ...], ...]:
+    """An entry's ``instead`` rows as edits: ``{drop = path}`` or ``{set = path, value = v}``."""
+    edits: list[tuple[Any, ...]] = []
+    for row in raw.get("instead", ()):
+        if "drop" in row:
+            edits.append(("drop", str(row["drop"])))
+        elif "set" in row and "value" in row:
+            edits.append(("set", str(row["set"]), row["value"]))
+    return tuple(edits)
+
+
+def _sites(entry: dict[str, Any]) -> list[str]:
+    at = entry.get("at")
+    return [at] if isinstance(at, str) else list(at or [])
+
+
+@functools.cache
+def _entry_index() -> tuple[dict[str, Entry], tuple[tuple[str, Entry], ...]]:
+    """The entries by table row (``"<id>"`` or ``"<id>|<second>"``), and every entry's words
+    of a validator literal, longest first (ties in the file's order)."""
+    by_row: dict[str, Entry] = {}
+    words: list[tuple[str, Entry]] = []
+    for raw in _classification():
+        pair = tuple(raw.get("pair", ("", "")))
+        entry = Entry(
+            id=str(raw["id"]), reason=str(raw["reason"]), why=str(raw.get("why", "")),
+            pair=(str(pair[0]), str(pair[1])), held_by=raw.get("held_by"),
+            cost=raw.get("cost"), cost_basis=raw.get("cost_basis"), instead=_declared(raw),
+        )
+        for site in _sites(raw):
+            if site.startswith("table:"):
+                by_row[site.removeprefix("table:")] = entry
+            else:
+                words.append((site.partition(": ")[2], entry))
+    words.sort(key=lambda item: -len(item[0].removeprefix("=")))
+    return by_row, tuple(words)
+
+
+def entry_of(message: str) -> Entry | None:
+    """The `refusals.toml` entry of one of the validator's messages, or None (R-L3, B1;
+    `docs/reference/refusal-offers.md` §3).
+
+    A row of the tables above is found by its exact message. Any other refusal is found by its
+    entry's words (``at``'s ``"<function>: <words>"``): the entry whose words the message holds
+    (``"=<words>"``: is exactly), and where several entries' words occur in it, the longest. A
+    message no entry names (a malformed spec, a dependency, an inert rule: `[other]` in the
+    file) is None. Nothing is inferred from the sentence: the words are data, and
+    `docs/reference/refusal-debt.py --check` holds that each literal of `schema.py` resolves
+    to the entry that classifies it."""
+    by_row, words = _entry_index()
+    row = _BY_MESSAGE.get(message)
+    if row is not None:
+        return by_row.get(f"{row.id}|{row.second}") or by_row.get(row.id)
+    for says, entry in words:
+        if (message == says[1:]) if says.startswith("=") else (says in message):
+            return entry
+    return None
+
+
+# What a refusal says beside the validator's own sentence: one sentence per reason, never per
+# refusal (`refusal-offers.md` §5). Inert says nothing.
+REASON_SAYS: dict[str, str] = {
+    "contradictory": "These two can never be in one game.",
+    "too_expensive": "This could be built, and costs more than it is worth yet.",
+    "not_built": (
+        "Not built yet. Nothing is wrong with the idea: the engine cannot play these two "
+        "together yet."
+    ),
+}
+PLANNED = "It is planned."
+
+
+def reason_line(entry: Entry) -> str | None:
+    """The line a refusal's reason is said in: the reason, its sentence, and ``cost`` or
+    ``held_by``; None for an inert entry, which adds nothing."""
+    said = REASON_SAYS.get(entry.reason)
+    if said is None:
+        return None
+    line = f"{entry.reason.replace('_', ' ')}: {said}"
+    if entry.reason == "too_expensive" and entry.cost:
+        line += f" Cost: {entry.cost}."
+    if entry.reason == "not_built" and entry.held_by:
+        line += (
+            f" {PLANNED} Held by {entry.held_by}." if entry.held_by != "none"
+            else " Held by no task yet."
+        )
+    return line

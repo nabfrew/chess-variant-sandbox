@@ -551,6 +551,146 @@
       "spec_hash": "f9242927e9f4",
       "date": "2026-11-13",
       "by": "R-S10b1 (docs/reference/unlike-search.md section 1.2); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "clobber-with-a-wall",
+      "sha256": "51edac2fbe38a2b4d3f913875a87651cc543d43a19b96bb1bca90c740908b8e3",
+      "spec_hash": "8ed11d703b11",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "stones-on-a-seven-by-four",
+      "sha256": "a26b7030a615169e3015deaa5b8c84268544d9fd7329f493b6139fd91d23bc50",
+      "spec_hash": "f6af3cde04b5",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "knight-stones-on-a-seven-by-four",
+      "sha256": "820adceebd49d250acd64a7c0bbf1a860cbd901476f4ffedc6c4ff9a1cd5bf46",
+      "spec_hash": "2a5f2b1ebbf6",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "wandering-clobber-with-a-wall",
+      "sha256": "77703975ac5f1bef44f6e14b43824ccce0f795b9c2718606a24c35dec7d07723",
+      "spec_hash": "05105957404a",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "wandering-stones-on-a-seven-by-four",
+      "sha256": "7fc8db6a8c68c556fb80d773ede4652fb840c4670f1f99c6b65433f8090997f6",
+      "spec_hash": "9599c2e73a6c",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "crazyhouse-with-keeps-on-d-and-e",
+      "sha256": "0fd0901d0da38db411efbc269c3fbc38339d772aaa617a4bfa2a1e7c7bad3e1c",
+      "spec_hash": "c332dbad361f",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "shatranj-race-to-h6",
+      "sha256": "771b181a70fe7ddcfc06e88830b1b69b1ab7b3b1afbb016ddb43068e54a2fa08",
+      "spec_hash": "7826699288ed",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "shatranj-race-to-a6",
+      "sha256": "28da5ef16f01ea61c538e3cba917260e0a48fa4f88f0f22f5f802909e18898f1",
+      "spec_hash": "2419742131bd",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "shatranj-with-two-keeps",
+      "sha256": "2c7a0064c5578094b7e1a614d41fdd1a08f2a37dae708bf56f1ddcf0c8ffb9ec",
+      "spec_hash": "947373b0f3c7",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "omega-chess-with-two-keeps",
+      "sha256": "7a1d13a6da52340ab2e95745ca16ea89ab71ae9027eb9e6367fec3e67f0fab14",
+      "spec_hash": "181d7432c0b4",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "courier-with-a-white-shrine",
+      "sha256": "5e036a509a7018ba74ddac1b8470340a22160e062301bb2770cd8c0060274d2f",
+      "spec_hash": "f1b6c38f97ef",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "chess-race-to-a6",
+      "sha256": "ddac86ee1c4739dcd2d744f0a1494449952fe2a9abec43944999b60fd901f7b5",
+      "spec_hash": "3f5618637518",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "horde-ending-with-a-rook-and-a-knight",
+      "sha256": "b5d3d832ec204458beba45e6b43cf07bdbec8683ba0d3a1bb36ceef8fba41e93",
+      "spec_hash": "5d9d0c284447",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "chess-with-keeps-on-d-and-e",
+      "sha256": "a864c4a66e5d49e426d0697a802235faf3bbf05d68254d7921bb5c6b45ee3545",
+      "spec_hash": "ae7bfff4c93b",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "chess-with-a-white-keep-on-d1-and-e1",
+      "sha256": "d91729f1b7997764931445be6219a28dbe404f33487e28b94e9852f3816df167",
+      "spec_hash": "108473c4c031",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "capablanca-with-white-twin-shrines-on-f2-and-g2",
+      "sha256": "963892cfea8156a1febf5df74abf80c06d4dc21030cde56d688ac723a7dd2d7d",
+      "spec_hash": "2402b88d5a45",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "horde-with-a-black-shrine-on-d7",
+      "sha256": "34e6711607a39267e62f81598d4de3333c91d7a78f033910573d629dafa76ec5",
+      "spec_hash": "db4bd9088499",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "chess-with-white-twin-shrines-on-e2-and-f2",
+      "sha256": "66f73d739af531479bb0092c9a629afa833023aba7b6579f8160c79c299cd375",
+      "spec_hash": "ebe66167f369",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "chess-with-twin-shrines-on-the-e-and-f-files",
+      "sha256": "39af9faa89eed6508d64381f25afcc13041128cf1aa0c8a6d225f9fd470d4630",
+      "spec_hash": "a8f777191953",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
+    },
+    {
+      "label": "omega-chess-race-to-b6",
+      "sha256": "4541ab3a1dda334c148ebafda4f056151deea647eb805cac4b6ff58439c8b571",
+      "spec_hash": "0a7a8d708be6",
+      "date": "2026-11-20",
+      "by": "R-S2d1 (docs/reference/labelled-set-passing-bad.md section 6): a proven-bad game aimed to pass the gates, read blind (holds); unmeasured: neither this worktree's runs/ nor the main checkout's held a run directory for it"
     }
   ],
   "rebased": [

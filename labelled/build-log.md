@@ -214,3 +214,114 @@ each game's identity is pinned by its label's `spec_hash`.
 writes a hop's Betza term without its `range` (`fairy/variant.py`, the `hop` branch passes
 `distance=0`), so cannon shogi's flying cannons translate as `pB` where the game is `pB2`. The
 walk above used PyChess's definition, not the translation, so the spec is unaffected.
+
+## R-S2d1, 2026-11-20: twenty proven-bad games built to show no symptom in play
+
+Branched from main at `9bac41801`. These are additions under `labelled-set.md` §3.3, built for
+`docs/reference/labelled-set-passing-bad.md` (§1 to §3, §6): every one is `bad`, `hidden`, carries
+`aim`, `make` and `army_share`, and is in no registered reading but that record's §5. Nothing here
+was measured or played by any of the project's players: no tournament, `measure`, `test`, `smoke`,
+`premise`, `play`, duel or designer measurement on any game here or on any parent with its change,
+and no run directory exists for any of them in this worktree's or the main checkout's `runs/`
+(checked before the labels were committed). I opened no score, band or tier of any game here or of
+any parent; §9 of `labelled-set.md` (the sealed reading, with the parents' verdicts) I did not open.
+
+**How the proofs were made.** By reading the rule language's reference (`RULES.md`) and by searches
+over the engine's legal moves only: `labelled/prove.py` (forced wins, `shortest`), `labelled/check.py`
+(`line`, `shortest`, and a new kind, `mirror`, which visits every position reachable while the second
+player answers each move with its half-turn image), and cooperative searches for the win lines in
+`checks` (both sides helping the winner, so they show a win is reachable and nothing more). The quarter
+is each game's own likeness, appended alone to the library at `9bac41801`
+(`labelled/likeness.py --current`, new here, since the library has moved since `74eaa6ca2`).
+
+**The blind reads.** Eleven fresh agents, each given only the packet (the spec's path,
+`describe_spec`'s text, the claim and the proof with its checks or certificate), told not to read
+`docs/`, `runs/`, labels, this log, the seal or any score, and to run no player. Most wrote their own
+searches, exhaustive where the game allowed (every Black defence of the races; every position of the
+mirror games; an independent rule model for the wandering ones) and adversarial playouts and built jam
+positions where it did not. 27 games were read: 20 `holds`, 7 `refuted` (below). Each label's
+`review.notes` holds its reader's summary.
+
+### What was built: 20 games
+
+| quarter | forced-win | no-win | cannot-lose |
+|---|---|---|---|
+| Q1 | clobber-with-a-wall (mirror), stones-on-a-seven-by-four (mirror), knight-stones-on-a-seven-by-four (mirror) | crazyhouse-with-keeps-on-d-and-e (sanctuary) | wandering-clobber-with-a-wall (mirror), wandering-stones-on-a-seven-by-four (mirror) |
+| Q2 | shatranj-race-to-h6, shatranj-race-to-a6, omega-chess-race-to-b6 (count) | shatranj-with-two-keeps, omega-chess-with-two-keeps (sanctuary) | courier-with-a-white-shrine (shield) |
+| Q3 | chess-race-to-a6 (count), horde-ending-with-a-rook-and-a-knight (ending) | chess-with-keeps-on-d-and-e (sanctuary) | chess-with-a-white-keep-on-d1-and-e1 (sanctuary), capablanca-with-white-twin-shrines-on-f2-and-g2, horde-with-a-black-shrine-on-d7 (shield) |
+| Q4 | **none** | chess-with-twin-shrines-on-the-e-and-f-files (shield) | chess-with-white-twin-shrines-on-e2-and-f2 (shield) |
+
+**Two makes of my own**, as §2.2 allows: `shield` (a shrine, a new piece that never moves, whose line
+of sight shields its own king; with two shrines side by side they shield each other, otherwise king
+and shrine guard each other) and `ending` (a thinned ending whose forced win, found by `prove.py`'s
+search, is six of the winner's own moves; §2.2's `deep-line` asks eight or more, so this one is not
+called that). `untouchable` (only a pawn may take a king, and pawns promote before they can reach a
+king's home ranks) was a third: its one game was refuted and none is kept. `pairing` and `deep-line`
+yielded none: I found no pairing game in a goal or line game that kept a parent's quarter, and a
+searchable forced win of eight or more moves would have been another thinned ending (`ending` already
+gives the batch one; the search took 177 s at depth six and grows by roughly ten a move).
+
+### Tried and not kept
+
+- **Refuted by their blind readers, dropped, rebuilt as different games (five).**
+  `chess-with-two-keeps`, `chess-with-a-white-keep` (reader 2) and `chess-with-white-twin-shrines`,
+  `chess-with-twin-shrines-each`, `capablanca-with-white-twin-shrines` (reader 4). Each recipe kept the
+  side's own pieces off only one of the king's two squares, so after the king stepped across a rook,
+  queen or knight could be parked on its first square and the side jammed until its only legal moves
+  left the keep: the readers built legal lines of 42 to 58 plies ending with the king's step off the
+  keep as the only legal move. The claims may hold with the recipe repaired, but a refuted game is not
+  re-labelled (`labelled-set.md` §1.2): each was rebuilt as a different game whose recipe bars every
+  own piece from both squares (keeps on d1 and e1 for the first two; shrines on e2 and f2, and on f2
+  and g2, for the others). The dropped specs were removed in this branch, before their labels or any
+  seal entry existed. The same hole was closed in the unread recipes of the other keep and shrine
+  games before their reads.
+- **Refuted, dropped, not rebuilt (one), and refuted, rebuilt (one).** `makruk-where-only-pawns-take-kings`
+  (reader 3): no piece may take a king, so the enemy king itself could stand on the shuttle square,
+  leaving White legal king moves but none the recipe allowed; a recipe over the whole of ranks 1 and 2
+  would need its own stuck cases argued, and the batch did not need the game. `horde-with-a-black-shrine`
+  (reader 5): White's opening 1.g5-g6 makes the recipe's first move ...g7-g6 illegal and can shut the
+  f8 bishop in for good; rebuilt as `horde-with-a-black-shrine-on-d7`, whose opening (...e6, ...Qe7) no
+  White move can stop.
+- **`shogi-with-two-keeps`: dropped by the builder before its read.** No search found a legal game
+  ending in Black's win within ten to fourteen plies (cooperative searches of 150 to 600 s), so its
+  no-win claim lacked the line showing wins are reachable. Replaced by `crazyhouse-with-keeps-on-d-and-e`.
+- **The two wandering games' `mirror` check** was started and stopped: steps make the recipe's reach,
+  times the ply clock, too large for `check.py`'s walk. Their proofs stand on the argument, which their
+  reader confirmed with a model of its own (459,891 boards each, no ply cap); the forced-win mirror games
+  keep the check, which finishes in seconds.
+- **`knight-clobber-with-a-wall`** (clobber with knight captures and a wall on file c): dropped by the
+  builder before its read. Its `shortest` check found a forced win for Black in fewer than six of its
+  moves, so it was not hidden. Rebuilt as `knight-stones-on-a-seven-by-four` (parent null).
+- **Left in the candidate pile, never labelled**, because their own likeness put them in a quarter
+  whose parent rule (§2.3 there: a good member of that quarter, or chess) or cap they broke; none was
+  proved, read or measured: corridor races on Capablanca, Janus, three-check, king of the hill, makruk
+  and courier (Q1 or Q2 from Q3/Q4 parents); keeps on grand chess, atomic, three-check, courier, horde
+  and makruk (the makruk keep fell to the make cap); shrines on atomic, three-check, shako, makruk,
+  courier (both), and a second chess race (`chess-race-to-h6`, parent cap); the untouchable royal on
+  Capablanca, Janus, shako, Seirawan, duck chess and chess (Q2, or chess's Q3 cap); capture-only chess
+  on two fields (a fourth Q1 forced win).
+
+### What the counts of §2.1 and §2.2 come to
+
+- **Total 20 of 24**, at §2.1's minimum of 20. By quarter: Q1 6, Q2 6, Q3 6, Q4 **2** (minimums 4, 4,
+  4 and 2: met).
+- **By kind:** forced-win 8, no-win 5, cannot-lose 7 (each between 4 and 12). Per quarter at most three
+  of a kind: met. **At least one of each kind in every quarter: not met in Q4**, which has no forced win.
+- **Q4 could hold only chess's twin-shrine games.** Every construction that fences squares (a region
+  on every piece kind) or changes whom pieces may take gives each piece a new identity, and the game's
+  likeness falls a quarter or two: chess's races and keeps land in Q3, atomic's and three-check's in Q3
+  or Q2. Twin shrines leave every piece of chess as it was and stay at 0.6288, but the same shrines on
+  atomic (0.3648) and three-check (0.3888) fall to Q3, where their Q4 parents may not stand. So Q4 has
+  one parent where §2.1 asks three, and its forced-win cell is empty, as it was in the first build.
+- **Parents** (§2.1: in a quarter at least three, none more than three): Q1 clobber 2, none 3,
+  crazyhouse 1; Q2 shatranj 3, omega 2, courier 1; Q3 chess 3, horde 2, Capablanca 1; Q4 chess 2. Met
+  but in Q4.
+- **Makes** (§2.2: at most five each; no locked wall and held runner): mirror 5, sanctuary 5, shield 5,
+  count 4, ending 1. Met.
+- **A full army:** 16 of the 20 have a parent and `army_share` at or above 0.75 (at least 10 asked).
+- **Likeness** of each game, appended alone to the library at `9bac41801`, is in its label; the
+  candidates left in the pile were placed the same way and opened no score.
+
+### Not done here
+
+Nothing measured; that is R-S2d2's. No guard test was added: §3 gives it to the measuring task.

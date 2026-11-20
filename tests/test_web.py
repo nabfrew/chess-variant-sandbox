@@ -6774,7 +6774,11 @@ class TestWhatReachesThePage:
         # 174 since Q1163: a game's own chart redrawn at its fold's width (`wireEarlier`):
         # `gameHistorySvg`'s markup, every attribute value and word through `esc`, every
         # number through `toFixed` or `historyFigure`.
-        assert len(sites) == 174
+        # 176 since R-L3 B3: the nearest allowed game, drawn into a refused rule's row
+        # (`drawInstead`) and under a refused draft's problems (`askDraftInstead`), both
+        # `insteadSaidHtml`/`draftInsteadHtml`: every sentence and change through `esc`,
+        # every index a number, the rest constant words.
+        assert len(sites) == 176
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")

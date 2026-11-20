@@ -22,6 +22,10 @@ The kinds of check:
 - `same_moves`: the game and `parent` have the same legal moves, spelled alike, in every
   position of every line to `depth` plies (perft and move lists compared).
 - `shortest`: `winner` has no forced win in fewer than `moves` of its own moves.
+- `mirror`: `side` answers every move of the other side with its image, the same move with
+  every square turned half round the `board` ([width, height]). Every position
+  reachable so is visited: the image must always be a legal move, the other side must never
+  win, and, where `decisive` is true, every ending must be `side`'s win (no clock ending).
 
 Every reachable-position search walks past clock endings (repetition, no progress, the ply
 limit), so it covers more than any one history reaches, and a claim that no loss is reached
@@ -33,6 +37,7 @@ is the stronger for it.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -63,9 +68,64 @@ def _recipe(side: int, piece: str, squares: set[str], take: str | None) -> Any:
     return allowed
 
 
+_SQUARE = re.compile(r"([a-p])(1[0-6]|[1-9])")
+
+
+def _turned(text: str, width: int, height: int) -> str:
+    """The move text with every square turned half round a width x height board."""
+    def turn(m: re.Match[str]) -> str:
+        return f"{chr(ord('a') + width - 1 - (ord(m.group(1)) - ord('a')))}{height + 1 - int(m.group(2))}"
+    return _SQUARE.sub(turn, text)
+
+
+def _mirror(check: dict[str, Any], engine: Any, state: Any) -> tuple[bool, str]:
+    from collections import deque
+
+    width, height = check["board"]
+    side = check["side"]
+    seen = {prove.key(engine, state)}
+    queue = deque([state])
+    endings: dict[str, int] = {}
+    lost = stuck = 0
+
+    def ended(st: Any) -> bool:
+        nonlocal lost
+        outcome = engine.terminal(st)
+        if outcome is None:
+            return False
+        name = f"{outcome.winner}:{outcome.reason}"
+        endings[name] = endings.get(name, 0) + 1
+        if outcome.winner is not None and outcome.winner != side:
+            lost += 1
+        if check.get("decisive") and outcome.winner != side:
+            lost += 1
+        return True
+
+    while queue:
+        here = queue.popleft()
+        if ended(here):
+            continue
+        for text, after in prove.moves(engine, here):
+            if ended(after):
+                continue
+            image = _turned(text, width, height)
+            answer = dict(prove.moves(engine, after)).get(image)
+            if answer is None:
+                stuck += 1
+                continue
+            k = prove.key(engine, answer)
+            if k not in seen:
+                seen.add(k)
+                queue.append(answer)
+    ok = lost == 0 and stuck == 0
+    return ok, f"{len(seen)} positions, endings {endings}, {lost} not {side}'s, {stuck} without the image"
+
+
 def run(check: dict[str, Any], engine: Any, root: Path) -> tuple[bool, str]:
     state = engine.initial_state()
     kind = check["type"]
+    if kind == "mirror":
+        return _mirror(check, engine, state)
     if kind == "line":
         end = prove.play(engine, state, check["moves"])
         outcome = engine.terminal(end)

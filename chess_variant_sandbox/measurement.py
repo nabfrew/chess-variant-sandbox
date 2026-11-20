@@ -2305,15 +2305,18 @@ def records_digest(runs: list[Path]) -> str | None:
     Each file is read as bytes and only the `duration_ms` field is cut from each line, so two
     digests are equal exactly when the records are byte-identical outside the wall clock.
     ``None`` when a run lacks its tournament records."""
+    # D1: a kept run's records may be packed in its generation's archive (`kept_files`).
+    from chess_variant_sandbox.kept_files import kept_bytes, kept_exists
+
     made = hashlib.sha256()
     for run in runs:
-        if not (run / RECORD_FILES[0]).is_file():
+        if not kept_exists(run / RECORD_FILES[0]):
             return None
         for name in RECORD_FILES:
-            path = run / name
+            body = kept_bytes(run / name)
             made.update(f"{run.name.rsplit('-', 1)[-1]}/{name}\n".encode())
-            if path.is_file():
-                made.update(_WALL_CLOCK.sub(b"", path.read_bytes()))
+            if body is not None:
+                made.update(_WALL_CLOCK.sub(b"", body))
             else:
                 made.update(b"<absent>\n")
     return made.hexdigest()
