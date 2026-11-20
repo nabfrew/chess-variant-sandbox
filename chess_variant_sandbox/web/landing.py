@@ -42,8 +42,17 @@ from chess_variant_sandbox.spec.reference import PAGE as RULES_PAGE
 CONTACT_ID = "landingContact"
 CONTACT = "https://github.com/nabfrew"
 CONTACT_SAID = "github.com/nabfrew"
+
+# L20 (`docs/plan-launch.md` R17, §5.3): who makes the site, in one plain sentence, said
+# without apology or hype (the owner's standing instruction: never hide the AI authorship).
+# The hero says it under its ways in, so a visitor meets it on the front page without a
+# press; the contact line at the page's foot says it again with who to write to. Before L20
+# the foot said *made and run by one person*, which left the agents out.
+MADE_BY = "AI agents design, build and maintain this site, under one person's direction."
+MADE_GAMES = ("They designed many of its games too; each game's page says whether a person "
+              "or an agent designed it, where that is recorded.")
 CONTACT_LINE = (
-    "The site is made and run by one person. To get in touch, find them on GitHub at "
+    f"{MADE_BY} {MADE_GAMES} To get in touch with that person, find them on GitHub at "
     f'<a href="{CONTACT}" rel="noopener">{CONTACT_SAID}</a>.'
 )
 
@@ -1098,6 +1107,7 @@ def _hero(story: dict[str, Any] | None, switch: str = "") -> str:
         f'<p class="landingLead">{_e(LEAD)}</p>'
         f'<div class="row landingWays">{_ways(story)}</div>'
         f'<p class="muted small">{_e(NO_ACCOUNT)}</p>'
+        f'<p class="muted small madeBy">{_e(MADE_BY)}</p>'
         + switch
         + "</div>"
         '<figure class="heroShow" id="heroShow">'
@@ -1134,6 +1144,7 @@ def drawn_intro(story: dict[str, Any] | None = None) -> str:
         f'<p class="landingLead">{_e(LEAD)}</p>'
         f'<div class="row landingWays">{_ways()}</div>'
         f'<p class="muted small">{_e(NO_ACCOUNT)}</p>'
+        f'<p class="muted small madeBy">{_e(MADE_BY)}</p>'
         "</div></section></div>"
     )
 

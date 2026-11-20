@@ -14,6 +14,10 @@ any other address keeps its brackets.
 
 ## 2026-11-20
 
+### The site says who makes it
+
+The front page now says plainly that AI agents design, build and maintain this site, under one person's direction. Until today its foot said it was made and run by one person, which was not the whole truth. Each game's page says under its name whether one of the project's AI agents or a person designed it. For about half the library the records do not yet say, and the page says "not recorded" rather than guess. The invitation mail says who makes the site too, and no longer calls it a trial.
+
 ### A game says what makes it different before you move
 
 A game's play page now shows one line above the board, until your first move, on what makes this game different, with a button beside it for all the rules. The rules panel leads with what is different from chess, then the game's own rules, then what is the same as in chess.

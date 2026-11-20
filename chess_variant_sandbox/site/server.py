@@ -75,6 +75,7 @@ from chess_variant_sandbox.site import (
     lately,
     leaderboard,
     legality,
+    made_by,
     mail,
     matches,
     members,
@@ -465,6 +466,9 @@ class SiteApp(App):
                         shown=drafts.listed(connection),
                         gone=admin.unlisted_games(connection),
                     )
+            # L20 (R17): whether a person or one of the project's AI agents designed it,
+            # read off the store and the file before their records are stripped.
+            found["madeBy"] = made_by.made_by(found)
             return _without_records(found)
         if len(parts) == 3 and parts[:2] == ("api", "proven"):
             # Q993b: the positions' own page, the list with the reader's marks.

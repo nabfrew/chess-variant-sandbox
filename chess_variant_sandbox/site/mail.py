@@ -164,6 +164,17 @@ and the one on remeasuring, which an email has no room for. The join page carrie
 whole paragraph (`pages.PURPOSE`)."""
 
 
+MAKERS = (
+    "AI agents design, build and maintain the site, under one person's direction. They "
+    "designed many of its games too; each game's page says whether a person or an agent "
+    "designed it, where that is recorded."
+)
+"""Who makes the site, in the invitation (L20, `docs/plan-launch.md` R17 and §5.3): the front
+page's sentence (`landing.MADE_BY`), with *the site* for *this site*, said where the trial
+paragraph stood. The trial was the first ten's, and its reason, hearing back, is no longer the
+invitation's."""
+
+
 JUNK_TIP = (
     "If this was in your junk folder, please mark it not junk: the site is new, and mail "
     "programs don't know it yet."
@@ -200,7 +211,8 @@ def invitation(to: str, link: str, inviter: str | None = None, days: int = 14) -
     Plain text, no markup and no images (`send` adds an HTML part made from it, saying
     the same words). `docs/plan-launch.md` §5.3 (L8): who invited
     them, since a message from an unknown sender about an unknown site reads as spam; what
-    the site is; that this is a trial and what they are asked to do; that it costs nothing
+    the site is; who makes it, AI agents under one person's direction (`MAKERS`, L20, where
+    a trial paragraph stood until then); what they are asked to do; that it costs nothing
     and nothing counts down; and the one promise test 3 needs, that no other email comes
     unless they switch on the move email themselves (Q572). `inviter` is the issuer's
     handle, absent for an invitation nobody signed (`site invite` with no `--issuer`).
@@ -219,8 +231,7 @@ def invitation(to: str, link: str, inviter: str | None = None, days: int = 14) -
         ),
         body=(
             f"{who} has invited you to Chess variant sandbox: {PURPOSE}\n\n"
-            "This is a trial: a few people are invited before anybody else, and some "
-            "things will be rough. Hearing where is the reason for it.\n\n"
+            f"{MAKERS}\n\n"
             f"{goes}, the site's own address:\n\n    {link}\n\n"
             "What we'd love: play a few games against the computer, try one you've never "
             f"seen, and tell {tell} what confused you. You can make a game of your own too. "

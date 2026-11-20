@@ -4176,14 +4176,15 @@ class TestTheSender:
 
     def test_the_invitation_says_who_what_and_the_one_promise(self) -> None:
         """L8 of `docs/plan-launch.md` (§5.3, Q567): who sent it, what the site is (§1.1 of
-        `docs/archive/plan-understanding.md`), that it is a trial and what is asked, and that no
-        other email comes unless the person switches on the move email."""
+        `docs/archive/plan-understanding.md`), who makes it (L20, where the trial paragraph
+        stood), what is asked, and that no other email comes unless the person switches on
+        the move email."""
         message = mail.invitation("bo@example.com", "https://x.example/join?code=c", "ada")
         body = " ".join(message.body.split())
         assert message.subject == "ada invited you to try Chess variant sandbox"
         assert body.startswith("ada has invited you to Chess variant sandbox: a place to "
                                "find chess-like games worth playing.")
-        for said in ("This is a trial:", "tell ada what confused you", "It costs nothing",
+        for said in (mail.MAKERS, "tell ada what confused you", "It costs nothing",
                      "nothing on the site counts down",
                      "The site sends you no other email unless you ask it to",
                      "switch it off in one click",

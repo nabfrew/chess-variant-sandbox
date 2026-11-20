@@ -369,9 +369,20 @@ function sectionHtml(key, title, body, openOnPhone) {
 
 // The designer's handle under a member's game's name (PF1, PW1-F9), where the site sends
 // one (`designer.by`); nothing for any other game, or on the local application.
+// L20 (R17): any other game the site knows the designer of says under its name whether a
+// person or one of the project's AI agents designed it (`madeBy`, `site/made_by.py`). A game
+// whose records do not say draws nothing here; *Where it came from* says it is not recorded.
 function designerByHtml(game) {
   const by = game && game.source === 'designed' && game.designer && game.designer.by;
-  return by ? `<div class="muted u-mt-4" id="gameBy">by ${personHtml(by)}</div>` : '';
+  if (by) return `<div class="muted u-mt-4" id="gameBy">by ${personHtml(by)}</div>`;
+  const made = game && game.madeBy;
+  if (!made || !made.said || made.kind === 'unrecorded') return '';
+  return `<div class="muted u-mt-4" id="gameBy" data-made="${esc(made.kind)}">${
+    esc(capitalised(made.said))}</div>`;
+}
+
+function capitalised(text) {
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
 }
 
 // ------------------------------------------------- what the game is, then its rules
@@ -2902,8 +2913,18 @@ function provenanceHtml(p, game) {
   } else if (ACCOUNTS) {
     // The site names no design run and no run id: what made the game, how many rounds of
     // changes it took, and what it was asked to try (G36-G37).
-    line('where from', SITE_ORIGINS[p.origin] || ORIGINS[p.origin] || p.origin);
-    line('by', p.author);
+    // L20 (R17): who designed it, a person or one of the project's AI agents, is the
+    // server's answer (`site/made_by.py`), said here in full, *not recorded* included. It
+    // stands in for *where from* and *by*: `origin` *human* is also on files the project's
+    // agents wrote, so *invented by a person* would be a claim the file cannot back.
+    const made = game && game.madeBy;
+    if (made && made.said) {
+      line('who designed it', capitalised(made.said));
+      if (p.origin === 'control') line('what it is', SITE_ORIGINS.control);
+    } else {
+      line('where from', SITE_ORIGINS[p.origin] || ORIGINS[p.origin] || p.origin);
+      line('by', p.author);
+    }
     line('when', p.year);
     line('described in', p.source);
     if (p.generation !== undefined && p.generation !== null) {
