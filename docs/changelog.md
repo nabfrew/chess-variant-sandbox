@@ -14,6 +14,10 @@ any other address keeps its brackets.
 
 ## 2026-11-21
 
+### A member's game shows its first score
+
+A game a member published used to say "Not measured yet" on its page, even after its designer's browser had measured it. The page now shows that score, labelled as one run from its designer's computer and not an official score. After publishing, the design page also names the game the draft was changed from, where it used to name the new game itself.
+
 ### Every game says who designed it
 
 Yesterday about half the library's game pages said the designer was not recorded. Every game's page now says, under its name, who designed it: people, with the author named where it is known; one of the project's AI agents; an agent's variant of a game by people; an agent's build of the owner's idea; or the owner. The page says so with or without scripts turned on.

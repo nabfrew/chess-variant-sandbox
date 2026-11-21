@@ -1300,6 +1300,10 @@ class SiteApp(App):
                 seo.site_base(), self._near_names, self.pictures.address,
                 lambda digest, game: proven.offered(self.runs_dir, digest, game.spec),
                 lambda digest, game: endings.sheet_for(self.runs_dir, digest, game.spec),
+                # PW3 (PW2-F2): the spot-checked reading as a visitor sees it, so the
+                # served page says what the drawn page says rather than *not measured*.
+                lambda connection, digest: provisional.attached(
+                    connection, digest, self._current),
             )
         return None if found is None else game_drawing.draw(found)
 

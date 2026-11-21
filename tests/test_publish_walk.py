@@ -165,6 +165,54 @@ class TestNothingStaleAfterSaveAndPublish:
         assert "spot-checked" in _visible(drawn) and "0.74" in drawn
 
 
+class TestTheLowerPanelsAfterPublishing:
+    """PW3 (PW2-F1): after a save and a publish, *What you changed from* still names the game
+    the changes are against, not the saved game itself, and *Which game this is* shows the
+    saved game's spot-checked score as *Its family* does, not *not measured*."""
+
+    CHECKED = {"index": 0.745, "viable": True, "measured": True, "state": "spot-checked",
+               "sample": 32, "yours": True, "seeds": [7], "weights": "v15"}
+    # Just after the save: the saved game is the draft's parent, and the check on screen was
+    # asked against the game it was made from.
+    AFTER_SAVE = ("ACCOUNTS = true; DRAFT_HASH = 'h'; DRAFT_FROM = 'h';"
+                  " DRAFT = { name: 'staging walk pw2' };"
+                  " DRAFT_PARENT = { hash: 'h', name: 'staging walk pw2' };")
+
+    def test_the_changes_name_the_game_they_were_compared_with(self) -> None:
+        check = {"valid": True, "hash": "h", "changes": ["a4 and its mirror are walls now"],
+                 "changesFrom": {"hash": "p", "name": "los alamos"}}
+        seen = _visible(_in_page(self.AFTER_SAVE, "changesHtml(" + json.dumps(check) + ")"))
+        assert "What you changed from los alamos" in seen
+        assert "staging walk pw2" not in seen
+
+    def test_the_check_is_stamped_with_its_parent_when_asked(self) -> None:
+        setup = ("DRAFT_FROM = 'p'; DRAFT_PARENT = { hash: 'p', name: 'los alamos' };")
+        stamp = _in_page(setup, "JSON.stringify(changesFromNow())")
+        assert json.loads(stamp) == {"hash": "p", "name": "los alamos"}
+        assert _in_page("DRAFT_FROM = '';", "String(changesFromNow())") == "null"
+        from page_text import PAGE
+
+        assert "answer.changesFrom = comparedWith" in PAGE
+
+    def test_which_game_this_is_shows_the_spot_checked_score(self) -> None:
+        standing = {"hash": "h", "saved": True, "measured": {"state": "unscored"},
+                    "lineage": {"root": {"hash": "p", "known": True, "name": "los alamos",
+                                         "children": [{"hash": "h", "known": True,
+                                                       "here": True,
+                                                       "provisional": self.CHECKED}]}}}
+        setup = self.AFTER_SAVE + " DRAFT_STANDING = " + json.dumps(standing) + ";"
+        seen = _visible(_in_page(setup, "identityHtml({ valid: true, hash: 'h' })"))
+        assert "not measured" not in seen
+        assert "spot-checked" in seen and "0.74" in seen
+
+    def test_a_saved_game_with_no_checked_score_still_reads_not_measured(self) -> None:
+        standing = {"hash": "h", "saved": True, "measured": {"state": "unscored"},
+                    "lineage": {"root": {"hash": "h", "known": True}}}
+        setup = self.AFTER_SAVE + " DRAFT_STANDING = " + json.dumps(standing) + ";"
+        seen = _visible(_in_page(setup, "identityHtml({ valid: true, hash: 'h' })"))
+        assert "not measured" in seen
+
+
 class TestARuledOutReadingInWords:
     """PW1-F6: a failed test leads with its plain sentence and the two numbers in words; the
     code name is behind the (i), never in the text."""

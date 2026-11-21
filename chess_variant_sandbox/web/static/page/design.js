@@ -2953,6 +2953,15 @@ function seatPair(held, piece, seat, href) {
 // earlier one's: the look check's walk picker waits on it.
 let DRAFT_ASKED = 0, DRAFT_TAKEN = 0, DRAFT_CHECK_FOR = '';
 
+// PW3 (PW2-F1): the game a check's `changes` are against, as it is when the check is asked:
+// its hash and its name, or null for a draft with no parent. `changesHtml` names it.
+function changesFromNow() {
+  if (!DRAFT_FROM) return null;
+  const name = (DRAFT_PARENT && DRAFT_PARENT.hash === DRAFT_FROM && DRAFT_PARENT.name)
+    || nameOf(DRAFT_FROM) || DRAFT_FROM;
+  return { hash: DRAFT_FROM, name };
+}
+
 function checkDraft() {
   if (DRAFT_TIMER) clearTimeout(DRAFT_TIMER);
   DRAFT_TIMER = setTimeout(() => {
@@ -2960,9 +2969,11 @@ function checkDraft() {
     const asked = JSON.stringify(DRAFT);
     const ask = ++DRAFT_ASKED;
     // With the game it was forked from, so the answer can say what changed from it.
+    const comparedWith = changesFromNow();
     api('/api/design/check', { spec: DRAFT, parent: DRAFT_FROM }).then(answer => {
       if (ask < DRAFT_TAKEN) return;
       DRAFT_TAKEN = ask;
+      if (answer && comparedWith) answer.changesFrom = comparedWith;
       const current = JSON.stringify(DRAFT) === asked;
       DRAFT_CHECK = answer;
       DRAFT_CHECK_FOR = asked;
@@ -4487,10 +4498,15 @@ function lineageStateHtml(node) {
 // What a fork changed from the game it started as, in the same sentences the rules
 // below are written in. The server compares them (`describe_changes`); the page only
 // lists what it was told, and says nothing for a draft with no parent to compare with.
+// PW3 (PW2-F1): the heading names the game the server compared the draft with, stamped on
+// the answer when it was asked (`changesFrom`), never the parent of the moment: a save makes
+// the saved game the next parent, and the list on screen is still against the one before.
 function changesHtml(check) {
   const changes = check.changes;
-  if (!DRAFT_FROM || !Array.isArray(changes)) return '';
-  const parent = (DRAFT_PARENT && DRAFT_PARENT.name) || nameOf(DRAFT_FROM) || DRAFT_FROM;
+  const from = check.changesFrom;
+  if (!(from ? from.hash : DRAFT_FROM) || !Array.isArray(changes)) return '';
+  const parent = from ? from.name
+    : (DRAFT_PARENT && DRAFT_PARENT.name) || nameOf(DRAFT_FROM) || DRAFT_FROM;
   return `<div class="panel u-mt-14" id="dChanges">
     <h3 class="u-mt-0">What you changed from ${esc(parent)}</h3>
     ${changes.length
@@ -4555,9 +4571,24 @@ function identityMeasuredHtml(check, parent) {
     if (s.measuring && s.measuring.state === 'running') {
       return '<span class="muted">being measured now</span>';
     }
-    return lineageStateHtml({ measured: s.measured });
+    // PW3 (PW2-F1): with the score from its designer's computer the family's own node
+    // carries, so this row and *Its family* above it read the same game the same way.
+    return lineageStateHtml({ measured: s.measured, provisional: ownProvisional(s) });
   }
   return measuredHtml(parent);
+}
+
+// The browser-measured score the standing's family tree carries for the standing's own
+// game (`site/server.py` `_with_provisional`), or null where it carries none.
+function ownProvisional(standing) {
+  const waiting = standing && standing.lineage && standing.lineage.root
+    ? [standing.lineage.root] : [];
+  while (waiting.length) {
+    const node = waiting.pop();
+    if (node.hash === standing.hash && !node.draft) return node.provisional || null;
+    waiting.push(...(node.children || []));
+  }
+  return null;
 }
 
 // Whether the game this draft came from has a number, in the interface's own three

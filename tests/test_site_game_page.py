@@ -48,10 +48,11 @@ from test_site_links import (
     _running_site,
     _saved,
 )
+from test_site_provisional import FILES as RECORD_FILES
 from test_web import _runs_at
 
 from chess_variant_sandbox import corpus
-from chess_variant_sandbox.site import admin, game_page, mail, screening
+from chess_variant_sandbox.site import admin, game_page, mail, provisional, screening
 from chess_variant_sandbox.spec import spec_hash
 from chess_variant_sandbox.web.page import game as drawing
 from chess_variant_sandbox.web.server import App as LocalApp
@@ -210,6 +211,32 @@ class TestTheWords:
         assert drawing.score_line({"index": None, "seeds": [0, 1]}, False).startswith(
             "No score")
 
+    CHECKED = {"index": 0.7447, "viable": True, "measured": True, "state": "spot-checked",
+               "sample": 32, "yours": False, "seeds": [0], "weights": "v15"}
+
+    def test_a_spot_checked_score_is_said_as_one_run_and_never_official(self) -> None:
+        """PW3 (PW2-F2): a member's game with a spot-checked score from its designer's
+        computer said *Not measured yet* to a reader without script."""
+        said = drawing.score_line(None, False, self.CHECKED)
+        assert said.startswith("Score 0.745 out of 1, from one run, measured on its "
+                               "designer's computer and spot-checked by the site "
+                               "(scoring rules version 15)")
+        assert "replayed 32 of its games" in said
+        assert "It is not an official score" in said
+        assert "Not measured" not in said and "average" not in said
+        # A stale official score gives way to it, as on the drawn page.
+        assert drawing.score_line(None, True, self.CHECKED) == said
+        ruled = drawing.score_line(None, False, {**self.CHECKED, "viable": False})
+        assert ruled.startswith("Score 0.745 out of 1 and ruled out, from one run")
+
+    def test_a_current_official_score_always_wins(self) -> None:
+        official = {"index": 0.5, "status": "current", "seeds": [0, 1, 2, 3],
+                    "revision": "v15", "measured_at": "2026-10-12"}
+        assert drawing.score_line(official, False, self.CHECKED) == drawing.score_line(
+            official, False)
+        assert drawing.score_line(None, False, {**self.CHECKED, "index": None}) == (
+            "Not measured yet, so it has no score.")
+
 
 # ------------------------------------------------------------- what a crawler reads
 
@@ -313,6 +340,44 @@ class TestWhoIsListed:
             assert page.title == "No page here", path
         # As the game's API is.
         assert _fetch(site.port, f"/api/game/{MEDIUM_HASH}").status == 404
+
+
+class TestAMembersCheckedScore:
+    """PW3 (PW2-F2): a member's game whose score from its designer's computer the site has
+    spot-checked says so to a reader without script, as one run and not an official score,
+    where it read *Not measured yet*."""
+
+    def _checked(self, site: Site, sample: int | None) -> None:
+        _saved(site.signed_in("ada"), DRAFT)
+        with site.store.cursor() as cursor:
+            cursor.execute("select spec, owner from games where hash = %s", (DRAFT_HASH,))
+            spec, owner = cursor.fetchone()
+        now = site.app._current(DRAFT_HASH, spec)
+        assert now is not None
+        found = provisional.record(
+            site.store, site.app.runs_dir, game=DRAFT_HASH, submitter=int(owner),
+            submitted=now.in_browser().as_dict(), current=now, headline=0.7447, viable=True,
+            files=RECORD_FILES)
+        if sample is not None:
+            provisional.spot_checked(site.store, found.id, sample)
+        site.store.commit()
+
+    def test_the_served_page_says_the_spot_checked_score(self, site: Site) -> None:
+        self._checked(site, 32)
+
+        words = _fetch(site.port, f"/game/{DRAFT_HASH}").readable
+
+        assert "Not measured yet" not in words
+        assert ("Score 0.745 out of 1, from one run, measured on its designer's computer and "
+                "spot-checked by the site") in words
+        assert "replayed 32 of its games" in words and "not an official score" in words
+
+    def test_a_reading_nobody_has_replayed_is_not_shown_to_a_visitor(self, site: Site) -> None:
+        self._checked(site, None)
+
+        words = _fetch(site.port, f"/game/{DRAFT_HASH}").readable
+
+        assert "Not measured yet, so it has no score." in words and "0.745" not in words
 
 
 # ---------------------------------------------------------------------- the old links

@@ -130,6 +130,10 @@ class Drawn:
     `made_by.made_by` answer, the same `{"kind", "said"}` the scripted page draws under the
     name (`detail.js` `designerByHtml`); `None`, or a game whose records do not say, draws
     nothing there."""
+    checked: Mapping[str, Any] | None = None
+    """The score measured on its designer's computer that everybody may see (PW3, PW2-F2):
+    `provisional.attached`'s payload, spot-checked and on today's basis, or `None`. Said in
+    place of *Not measured yet* where the site's own measurement has no current number."""
 
 
 # ------------------------------------------------------------------------ the words
@@ -234,13 +238,23 @@ def _runs(seeds: Any) -> str:
     return f"the average of {word} runs"
 
 
-def score_line(score: Mapping[str, Any] | None, stale: bool) -> str:
+def score_line(
+    score: Mapping[str, Any] | None, stale: bool, checked: Mapping[str, Any] | None = None
+) -> str:
     """The score in a sentence, with what it rests on, in the site's words
     (`docs/reference/plain-words.md` §2, §3): never a bare number, never a provisional one
     as current, and *out of date* when there is no number to show. R-S4c: where the score
     has a number, the strength check's sentence follows it (`library.strength_payload`),
     except on an unread score, whose own sentence already says the players could not be
-    told apart."""
+    told apart.
+
+    PW3 (PW2-F2): `checked` is the browser-measured reading everybody may see
+    (`provisional.attached`'s payload: spot-checked, on today's basis). Where there is no
+    current official number it is said instead, as `upkeep.js` `scoreTag` gives way to it:
+    one run, measured on its designer's computer, spot-checked, and never an official score.
+    """
+    if checked is not None and _checked_says(score, checked):
+        return checked_line(checked)
     said = _score_line(score, stale)
     strength = None if score is None else score.get("strength")
     index = None if score is None else score.get("index")
@@ -287,6 +301,37 @@ def _score_line(score: Mapping[str, Any] | None, stale: bool) -> str:
         return ("Out of date: measured before the computer players or the scoring last "
                 "changed. No score is shown until it is measured again.")
     return "Not measured yet, so it has no score."
+
+
+def _checked_says(score: Mapping[str, Any] | None, checked: Mapping[str, Any]) -> bool:
+    """Whether the spot-checked reading is the one said: it has a number, and the site's own
+    measurement has no current one (a current official score always wins)."""
+    if not isinstance(checked.get("index"), (int, float)):
+        return False
+    official = None if score is None else score.get("index")
+    return not (score is not None and score.get("status") == "current"
+                and isinstance(official, (int, float)))
+
+
+def checked_line(checked: Mapping[str, Any]) -> str:
+    """A spot-checked reading from its designer's computer, in a sentence (`upkeep.js`
+    `provisionalWords`): its number, that it is one run, where it was measured and how far it
+    was checked, and that it is not an official score. A visitor's score is one run, and it
+    is never said as a library score."""
+    index = float(checked["index"])
+    runs = _runs(checked.get("seeds")) or "from one run"
+    weights = checked.get("weights")
+    rules = f" ({_rules_version(weights)})" if weights else ""
+    ruled = " and ruled out" if checked.get("viable") is False else ""
+    sample = checked.get("sample")
+    games = (f"{_COUNT_WORDS[sample] if sample < len(_COUNT_WORDS) else sample} of its games"
+             if isinstance(sample, int) and sample > 0 else "a sample of its games")
+    return (
+        f"Score {index:.3f} out of 1{ruled}, {runs}, measured on its designer's computer and "
+        f"spot-checked by the site{rules}: the site replayed {games} and they came out exactly "
+        "the same. It is not an official score: only a score the site measured itself ranks "
+        "a game or earns it a badge."
+    )
 
 
 SCORE_MEANS = "The score is how interesting a game looks when the computer plays it, out of 1."
@@ -400,7 +445,8 @@ def view(drawn: Drawn) -> str:
         + (f'<div class="row muted small u-mt-10">{escape(board)}</div>\n'
            if board else "")
         + about
-        + f'\n<p class="drawnScore">{escape(score_line(drawn.score, drawn.stale))} '
+        + f'\n<p class="drawnScore">'
+        f"{escape(score_line(drawn.score, drawn.stale, drawn.checked))} "
         f'<span class="muted">{escape(SCORE_MEANS)} <a href="{SCORE_TESTS_PATH}">'
         f"{escape(SCORE_TESTS_WORDS)}</a>.</span></p>\n"
         f'<p>{escape(play_free(drawn.name))}, against the computer, with no account '

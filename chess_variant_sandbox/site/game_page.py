@@ -236,6 +236,7 @@ def drawn(
     picture_of: Callable[[str, library.Game], str | None] | None = None,
     proven_of: Callable[[str, library.Game], int] | None = None,
     endings_of: Callable[[str, library.Game], Mapping[str, Any] | None] | None = None,
+    checked_of: Callable[[Any, str], Mapping[str, Any] | None] | None = None,
 ) -> drawing.Drawn | None:
     """What `/game/<digest>` draws, or `None` for the 404.
 
@@ -245,7 +246,10 @@ def drawn(
     (`game_pictures.Pictures.address`, G6), and the site's stands in where it says nothing.
     `proven_of` says how many proven positions the game offers (`proven.offered`), which the
     page links (G10). `endings_of` is the game's small endings' fact sheet
-    (`web/endings.sheet_for`, N3), drawn under its full rules.
+    (`web/endings.sheet_for`, N3), drawn under its full rules. `checked_of(connection,
+    digest)` is the score measured on its designer's computer that everybody may see
+    (`provisional.attached`, spot-checked on today's basis; PW3, PW2-F2), asked only of a game
+    the store holds, since only a member's game has one.
     """
     row = row_of(connection, digest)
     if row is None:
@@ -278,6 +282,8 @@ def drawn(
         proven=proven_of(digest, game) if proven_of is not None else 0,
         endings=endings_of(digest, game) if endings_of is not None else None,
         made_by=made_by_of(connection, digest, game),
+        checked=(checked_of(connection, digest)
+                 if checked_of is not None and row is not None else None),
     )
 
 
