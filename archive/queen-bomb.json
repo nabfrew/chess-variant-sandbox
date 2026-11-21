@@ -245,6 +245,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-09-07",
     "origin": "human",
     "source": "a widely played chess variant",

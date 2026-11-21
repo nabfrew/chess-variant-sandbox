@@ -107,6 +107,7 @@
     "insufficient_material": true
   },
   "provenance": {
+    "designed_by": "owner",
     "added": "2026-09-04",
     "origin": "human",
     "source": "modification of chess",

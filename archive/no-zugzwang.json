@@ -233,6 +233,7 @@
     "pass": true
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-11-08",
     "origin": "human",
     "history": "Q1129 (H5, docs/plan-hunger.md section 6): chess plus rules.pass alone, the pass's own showcase beside Hunger Chess.",

@@ -128,6 +128,9 @@ NOT_IN_DESIGNER: dict[str, str] = {
     "provenance.exhibit": "the maintainer's mark on a game kept for what it shows, not a draft's",
     "provenance.added": "stamped when a game joins the library, never by a designer",
     "provenance.preview": "the maintainer's mark on a game shown as a preview, not a draft's",
+    "provenance.designed_by": (
+        "the library's record of who designed a filed game (PV1); a draft's maker is its saver"
+    ),
 }
 
 # Every key set the validator keeps for a rule that holds keys of its own, by the path from

@@ -125,9 +125,28 @@ class Drawn:
     endings: Mapping[str, Any] | None = None
     """The small endings' fact sheet (N3, `web/endings.sheet_for`), drawn under the full
     rules; `None`, and nothing drawn, for a game with no record."""
+    made_by: Mapping[str, str] | None = None
+    """Who designed it, a person or one of the project's AI agents (PV1): the site's
+    `made_by.made_by` answer, the same `{"kind", "said"}` the scripted page draws under the
+    name (`detail.js` `designerByHtml`); `None`, or a game whose records do not say, draws
+    nothing there."""
 
 
 # ------------------------------------------------------------------------ the words
+
+
+def made_by_line(made: Mapping[str, str] | None) -> str:
+    """The line under the name saying who designed the game, as `detail.js`
+    `designerByHtml` draws it for a game that is not a member's: the answer's words with a
+    capital, or nothing where there is no answer or the records do not say."""
+    if not made:
+        return ""
+    said = str(made.get("said") or "")
+    kind = str(made.get("kind") or "")
+    if not said or kind == "unrecorded":
+        return ""
+    return (f'<div class="muted u-mt-4" id="gameBy" data-made="{escape(kind, quote=True)}">'
+            f"{escape(said[:1].upper() + said[1:])}</div>\n")
 
 
 def paragraphs(description: str) -> list[str]:
@@ -377,6 +396,7 @@ def view(drawn: Drawn) -> str:
         '<article class="drawnGame" id="drawnGame">\n'
         '<a class="crumb" href="/game">&larr; all games</a>\n'
         f'<h2 class="u-m-10-0-0">{name}</h2>\n'
+        + made_by_line(drawn.made_by)
         + (f'<div class="row muted small u-mt-10">{escape(board)}</div>\n'
            if board else "")
         + about

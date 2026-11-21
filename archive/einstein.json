@@ -410,6 +410,8 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "designed_by": "people",
+    "author": "Hans Kluever",
     "added": "2026-10-09",
     "origin": "human",
     "note": "A published variant attributed to Hans Kluever.",

@@ -550,6 +550,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-10-09",
     "origin": "human",
     "source": "archive/shogi-backward-drops",

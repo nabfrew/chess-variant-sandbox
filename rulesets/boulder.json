@@ -78,6 +78,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent",
     "added": "2026-11-07",
     "origin": "human",
     "history": "Q1132 (TS2, docs/plan-tessabi.md section 2): the showcase for pieces[].control \"shared\"."

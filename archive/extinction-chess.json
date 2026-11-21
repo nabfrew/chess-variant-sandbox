@@ -246,6 +246,8 @@
     }
   },
   "provenance": {
+    "designed_by": "people",
+    "author": "R. Wayne Schmittberger",
     "added": "2026-10-09",
     "note": "Invented by R. Wayne Schmittberger."
   }

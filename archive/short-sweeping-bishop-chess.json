@@ -233,6 +233,7 @@
     "insufficient_material": true
   },
   "provenance": {
+    "designed_by": "agent_from_owner",
     "added": "2026-10-26",
     "origin": "human",
     "source": "LPD, docs/archive/plan-landing.md §5: the one-change fix for sweeping bishop chess, written for the landing page's fourth story",

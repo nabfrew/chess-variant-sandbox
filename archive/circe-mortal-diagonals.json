@@ -241,6 +241,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-10-19",
     "origin": "human",
     "note": "Built on Circe chess, invented by Pierre Monreal in 1967.",

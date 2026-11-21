@@ -204,6 +204,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent",
     "added": "2026-11-03",
     "origin": "human",
     "history": "SR3s1: designed as the showcase of a goal for a list of pieces (docs/plan-schema-next.md section 3.8; the design log is docs/reference/runners.md)."

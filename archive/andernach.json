@@ -244,6 +244,8 @@
     }
   },
   "provenance": {
+    "designed_by": "people",
+    "year": 1993,
     "added": "2026-10-09",
     "origin": "human",
     "note": "From chess problem composers, named after the German town where it was introduced in 1993.",

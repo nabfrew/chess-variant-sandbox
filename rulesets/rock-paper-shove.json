@@ -58,6 +58,7 @@
     "no_progress_draw": 60
   },
   "provenance": {
+    "designed_by": "agent",
     "added": "2026-10-31",
     "origin": "human",
     "history": "Q1074bs: designed for the library as the showcase of a circular push hierarchy, three kinds each pushing only the next under chain 'row' (docs/plan-push.md section 6.3; the design log is docs/reference/rock-paper-shove.md)."

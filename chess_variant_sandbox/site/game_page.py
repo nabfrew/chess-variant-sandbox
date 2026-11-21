@@ -31,7 +31,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from chess_variant_sandbox.site import drafts, feeds, seo
+from chess_variant_sandbox.site import designs, drafts, feeds, identity, made_by, seo
 from chess_variant_sandbox.web import library
 from chess_variant_sandbox.web.page import front
 from chess_variant_sandbox.web.page import game as drawing
@@ -277,7 +277,25 @@ def drawn(
         picture=(picture_of(digest, game) if picture_of is not None else None) or "",
         proven=proven_of(digest, game) if proven_of is not None else 0,
         endings=endings_of(digest, game) if endings_of is not None else None,
+        made_by=made_by_of(connection, digest, game),
     )
+
+
+def made_by_of(connection: Any, digest: str, game: library.Game) -> dict[str, str]:
+    """Who designed the game, for the line under its name (PV1): `made_by.made_by` asked of
+    what `/api/game` asks it of, the game's `source`, its provenance as the library reads it
+    (`library.provenance`) and, for a member's game, its designer's handle read now (the
+    store's owner, `identity.FORMER` for one who left), so both pages say the same."""
+    found: dict[str, Any] = {"source": game.source, "provenance": library.provenance(game)}
+    if game.source == "designed":
+        design, _ = designs.around(connection, digest)
+        if design is not None and design.owner is not None:
+            with connection.cursor() as cursor:
+                cursor.execute("select handle from users where id = %s", (design.owner,))
+                row = cursor.fetchone()
+            found["designer"] = {
+                "by": str(row[0]) if row is not None and row[0] else identity.FORMER}
+    return made_by.made_by(found)
 
 
 def proven_doors(

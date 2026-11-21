@@ -180,6 +180,7 @@
   },
   "rules": {"win": "checkmate", "pass": true, "royal_facing": "allowed", "max_plies": 500, "repetition_draw": 3, "no_progress_draw": 100},
   "provenance": {
+    "designed_by": "people",
     "added": "2026-11-16",
     "origin": "human",
     "source": "en.wikipedia.org/wiki/Janggi; pychess.org/variants/janggi",

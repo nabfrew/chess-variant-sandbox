@@ -627,7 +627,7 @@ written from this reference needs none of them.
   mapping a piece id to the name of a drawing, or to a pair of names, one per player.
   Without it every piece is drawn from its name, or as its letter.
 - **`provenance`**: where the game came from, as free text
-  (`added`, `author`, `exhibit`, `history`, `note`, `origin`, `parents`, `preview`, `source`, `theme`, `year`). `added` is a day written
+  (`added`, `author`, `designed_by`, `exhibit`, `history`, `note`, `origin`, `parents`, `preview`, `source`, `theme`, `year`). `added` is a day written
   `YYYY-MM-DD` and `parents` a list of game identifiers. `note` is the one short line the
   page prints under the summary, and only when where the game came from is of interest.
 

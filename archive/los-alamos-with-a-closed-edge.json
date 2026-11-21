@@ -192,6 +192,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-10-31",
     "origin": "human",
     "history": "Q1074bs: the showcase of rules.push.edge 'blocks' (docs/plan-push.md section 6.3): Los Alamos chess, every piece but the king pushing instead of capturing, no push back.",

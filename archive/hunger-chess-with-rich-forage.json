@@ -253,6 +253,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-11-08",
     "origin": "human",
     "note": "A variation of Hunger Chess, a playtested variant sent in to this project by its designer.",

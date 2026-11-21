@@ -320,6 +320,7 @@
     "win": "checkmate"
   },
   "provenance": {
+    "designed_by": "owner",
     "added": "2026-10-11",
     "origin": "human",
     "source": "the user, 2026-10-08",

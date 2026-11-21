@@ -82,6 +82,9 @@
     "insufficient_material": true
   },
   "provenance": {
+    "designed_by": "people",
+    "author": "Edmund Nebermann",
+    "year": 1926,
     "added": "2026-08-19",
     "origin": "human",
     "note": "The Berolina pawn was devised by Edmund Nebermann in 1926.",

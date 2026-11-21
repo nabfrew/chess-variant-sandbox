@@ -192,6 +192,7 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-10-31",
     "origin": "human",
     "history": "Q1074bs: the showcase of a move's push.captures true (docs/plan-push.md section 6.3): Los Alamos chess whose knights, rooks and queen may take or push.",

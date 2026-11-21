@@ -85,6 +85,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent",
     "added": "2026-11-07",
     "origin": "human",
     "history": "Q1133 (TS3, docs/plan-tessabi.md section 3): the showcase for rules.turn.parts and rules.turn.order."

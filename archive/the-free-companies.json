@@ -288,6 +288,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-10-30",
     "origin": "human",
     "source": "international chess",

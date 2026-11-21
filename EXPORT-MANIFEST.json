@@ -1,5 +1,5 @@
 {
- "source_commit": "9ca9d945832b4d1a507b5caed37edb1ab0720c41",
+ "source_commit": "bb11f6ff07042866f6becac72d60562ef217dff1",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -78,8 +78,8 @@
   },
   {
    "path": "RULES.md",
-   "bytes": 137659,
-   "sha256": "3008abdb962945e92ff929964e8ba2537e2fbac8bff17180c5c35eac343be092"
+   "bytes": 137674,
+   "sha256": "f7a67cb20aa65adaa5c9727b7c94a008c5532f101dd45d301e28632e9ae763ae"
   },
   {
    "path": "archive/README.md",
@@ -93,8 +93,8 @@
   },
   {
    "path": "archive/andernach.json",
-   "bytes": 5376,
-   "sha256": "972f45d27afebc8fa2660a3c3f2fd1e7485c58ec2fb9d0ce8b035844185d7922"
+   "bytes": 5423,
+   "sha256": "69855d6cafba113df00b5eeaaea02eb94e23bb914c3b04e034df0e878728f902"
   },
   {
    "path": "archive/breather.json",
@@ -108,18 +108,18 @@
   },
   {
    "path": "archive/carousel.json",
-   "bytes": 4973,
-   "sha256": "16d216f3015280c3fe5c8f42782d14d86237ef539679de34e7c8b0bb2d1f2085"
+   "bytes": 5009,
+   "sha256": "ba7967265349b2175a5e8f0e933ae859deed959bcdef6ad7ae050063309374c7"
   },
   {
    "path": "archive/chess-oriented-pawns.json",
-   "bytes": 3586,
-   "sha256": "3683a9b9759ded608f190bd0e7b51e643ef5e0b65e8203be5ecbee8459211168"
+   "bytes": 3614,
+   "sha256": "2befcd6617c08ba91d59af713088f214958cc4d3d5b28d98525f9da8f033a25f"
   },
   {
    "path": "archive/chess-sweeping-bishops.json",
-   "bytes": 3633,
-   "sha256": "5fab9322f9f901b5e431d17183ff3430f8547135443cc2163019a6fc0be62d9c"
+   "bytes": 3672,
+   "sha256": "eea4498aa0fc05347ae264f38a1e089cf38f756e5d104837774b79886a8b0fb5"
   },
   {
    "path": "archive/chess-with-a-sheltering-king.json",
@@ -153,13 +153,13 @@
   },
   {
    "path": "archive/circe-mortal-diagonals.json",
-   "bytes": 6053,
-   "sha256": "d4f801540cfa062b804e893bac462af688a9a391d6e27d406addff0b167f857c"
+   "bytes": 6089,
+   "sha256": "0256ddef29dba6bd8dc82f162584f1519e42357078913d6d01f466227d579637"
   },
   {
    "path": "archive/circe.json",
-   "bytes": 5462,
-   "sha256": "db3fd182584de60d9a1b526212eb987918efef40fbb8f3eeb97c97f66d9e623b"
+   "bytes": 5541,
+   "sha256": "24b531788cd6b1aff4c3d6b020407033a13cf7c3d2707212e555761d92c69cf2"
   },
   {
    "path": "archive/circling-queen.json",
@@ -183,43 +183,43 @@
   },
   {
    "path": "archive/cylinder-wormhole.json",
-   "bytes": 5376,
-   "sha256": "423c5683e21a1f3f6cf798c9154292e2aa44ae148a9d966b13be19d9322c2087"
+   "bytes": 5412,
+   "sha256": "e9ac0154730f1267966482e73fc8a0bc28b008447e0b026e61940ef056001c12"
   },
   {
    "path": "archive/divide.json",
-   "bytes": 7652,
-   "sha256": "fb28002039b33b7fdf3f8669a8a12a86b42fbaccd59bd1147bb22e2dd4f59376"
+   "bytes": 7691,
+   "sha256": "2cb2c9c14d81e6f0406e5db0b437a55de7427dc4b7c8330b052ada5c5ea3c192"
   },
   {
    "path": "archive/einstein.json",
-   "bytes": 8412,
-   "sha256": "9f2218110a879a8d37129f77be8741ea7ec6bbaf4c26e30519dbf33d581840a7"
+   "bytes": 8471,
+   "sha256": "d559a444cb7e5020f6f73992c22e0dbb708d0b702f7c2fa4a4e2b4684ee1d049"
   },
   {
    "path": "archive/extinction-chess.json",
-   "bytes": 5209,
-   "sha256": "7b75fd358f49b89800a455da74551f6029d327e5a7e012c848c2deed3cf2a472"
+   "bytes": 5278,
+   "sha256": "339da4cc053c5cc3125d6cac12a017880f542337607116043c3695de8c6ceaa5"
   },
   {
    "path": "archive/ferry-no-straight-back.json",
-   "bytes": 5831,
-   "sha256": "986f07de9976ea5c3044a6fc19bf8844e62d0df3b8d52abe111ac2e3fa081da1"
+   "bytes": 5867,
+   "sha256": "8b29ba985f6cefcc7e9f64fb1d940546372842f9db42eaf263485c9c4050e013"
   },
   {
    "path": "archive/ferry.json",
-   "bytes": 5587,
-   "sha256": "40e494a0b4980c79a9b7e9046932adfb8910db1c452a986f937afd1896a6eb29"
+   "bytes": 5623,
+   "sha256": "d62c8f70cf63b25fcdca113d1c0bacdc5adfd60dda06c4097cdcdd66da134dac"
   },
   {
    "path": "archive/gardner-with-bishops-that-shove-straight.json",
-   "bytes": 4710,
-   "sha256": "f51b85cc480e8e48c2e87d68d25667a7c200b9ee7c4f524a828ede62081879e0"
+   "bytes": 4746,
+   "sha256": "4fe87a56d8066d9d9fa76adb48d70fd9bd9a37a65fc89c7a703e35a79892892c"
   },
   {
    "path": "archive/grand.json",
-   "bytes": 6328,
-   "sha256": "5451e34ffc64567fce998d8f3375fb59d5f812a8bb834745bec73ea19b6fda9b"
+   "bytes": 6411,
+   "sha256": "5a8a0eba420a66455323a2f77e7c7199a4f790dd61ffb39b981608437a9688ca"
   },
   {
    "path": "archive/hex-glinski-hexagon.json",
@@ -258,28 +258,28 @@
   },
   {
    "path": "archive/hunger-chess-where-pawns-forage.json",
-   "bytes": 6384,
-   "sha256": "70b7981e78e0fb981df71e16547932830fbb31d2f68583e2bec5a257151c9d57"
+   "bytes": 6420,
+   "sha256": "90dd98ca205757cf4d5a8d585cec58af027044d1db7b7151af0354808e0d83fc"
   },
   {
    "path": "archive/hunger-chess-with-cheap-promotion.json",
-   "bytes": 6311,
-   "sha256": "28d5ce1fddc3d013458809b8724de00a9262213f369167959bacfcae39cda99a"
+   "bytes": 6347,
+   "sha256": "366a7d53ad0ac20e1546a64054a3b6e74f1aa72e1ff8c41368f2edb64fd94ea2"
   },
   {
    "path": "archive/hunger-chess-with-rich-forage.json",
-   "bytes": 6165,
-   "sha256": "5f5f9eca2684a07f236af3fae27586cd63549d880add0c0b11b885d99333da33"
+   "bytes": 6201,
+   "sha256": "a1202932ace86117a9f80e96348796f4e61f53d2730304520631e4ac05a91868"
   },
   {
    "path": "archive/jeson-mor.json",
-   "bytes": 2732,
-   "sha256": "7c7b0bbb3da564835e134e9f03ac3c869577de146ca633decd15aceb13856b6d"
+   "bytes": 2761,
+   "sha256": "488b680b4062aae33ac422185441dcd7a1ea1ad939652e9ead677ca93fb51eb3"
   },
   {
    "path": "archive/kamikaze.json",
-   "bytes": 5062,
-   "sha256": "c9442ef15733f0ca8ce1667a8d4a75e5a28594c45112599238d01a29faba476a"
+   "bytes": 5091,
+   "sha256": "b86e70d0198e59d2c8a9ea8eee97a495a106f964669d02de7af2ce4d231206b6"
   },
   {
    "path": "archive/kraken-ford.json",
@@ -288,23 +288,23 @@
   },
   {
    "path": "archive/kyoto.json",
-   "bytes": 7894,
-   "sha256": "52bf7d780617057fe9ed47b6e42e5e327942cd26079bd892d4ad95d59246af24"
+   "bytes": 7973,
+   "sha256": "97c0071fe2d7fa951a300cb89cd895c3b4a5759051156ea5a9fd885292da312f"
   },
   {
    "path": "archive/los-alamos-with-a-closed-edge.json",
-   "bytes": 5036,
-   "sha256": "a28813da76b92416e10683dbe991e3f370e8041207167e96b3db79a21aca3d39"
+   "bytes": 5072,
+   "sha256": "935a17fd73d6a4768bcc43c4dddcd2eb434f56c4f4b2be82501cd000f835d3fc"
   },
   {
    "path": "archive/los-alamos-with-crushing-pillars.json",
-   "bytes": 5207,
-   "sha256": "faa735aaeb800b388c8dda304ae8a001cdcabb4ffd0b5791844839db0327ef80"
+   "bytes": 5243,
+   "sha256": "004efd797461f269e3efde6b60aa12c813e45f0ac4f306dd37b72caf2057bf10"
   },
   {
    "path": "archive/los-alamos-with-shove-or-take.json",
-   "bytes": 4614,
-   "sha256": "d236590f8b0a289a196014279190b21b3ea96fac1364b44537b26df7a2df09da"
+   "bytes": 4650,
+   "sha256": "b31eb10604173375ff8d7076e23fd2c199ceb23e92c8fb81f7d610023f5a0b91"
   },
   {
    "path": "archive/madrasi.json",
@@ -318,18 +318,18 @@
   },
   {
    "path": "archive/merger.json",
-   "bytes": 3279,
-   "sha256": "3965a167b09f13a6cc2acf96d1f01248a8fe56a3171f35daaf0d760c2e1e67b5"
+   "bytes": 3318,
+   "sha256": "ddc308e2cfb0ccca2f16bb3a002fb93dfa4fc807e6f8e0e8b49a96eef5a1ed0b"
   },
   {
    "path": "archive/no-zugzwang.json",
-   "bytes": 4854,
-   "sha256": "fd4bfd5d5536d9c124670218ca9c6a7fe3ecbacff9c235d89767bc0155e3f1fc"
+   "bytes": 4890,
+   "sha256": "44c5c32acd2c2298b4d9fe9a402d977008e0a66e42a15e4791bbea377e03e640"
   },
   {
    "path": "archive/omega.json",
-   "bytes": 7605,
-   "sha256": "65fef9d58827369bed2f318d986816e95e63907527c526b7007ef4f1730063b4"
+   "bytes": 7686,
+   "sha256": "a0b5455c474c6c616ce9e5bc83a2f68197a988f0acc7d5c2adc4649e32425e38"
   },
   {
    "path": "archive/onewaycylinder.json",
@@ -348,8 +348,8 @@
   },
   {
    "path": "archive/pawn-knockdown.json",
-   "bytes": 6106,
-   "sha256": "d5af85a7d97fb6f189966cb593ced749f429980347c859a2c4dc0856f6ae25ad"
+   "bytes": 6142,
+   "sha256": "ef1ee80536a9940ace9fcc54ac439b5d22bdba1cf37815b416c3c5d4d9ab537b"
   },
   {
    "path": "archive/pawnproof-wormhole.json",
@@ -358,8 +358,8 @@
   },
   {
    "path": "archive/perpetual.json",
-   "bytes": 4648,
-   "sha256": "845406be4b3328488de0a32d7e3fb87eeb8d4f91ea0f24b45bee70343be4d0e0"
+   "bytes": 4684,
+   "sha256": "c528bcaef2a8ba1c4bf1dd9ad9757010e832e13b347fc7fbfa1d0d99d40c1362"
   },
   {
    "path": "archive/pinwheel.json",
@@ -373,8 +373,8 @@
   },
   {
    "path": "archive/placement-chess.json",
-   "bytes": 5598,
-   "sha256": "70b19da8b0b090147c82d9b4902cf0f1b7fc6b9edb0c7bb0b7fe73cb5e5d059b"
+   "bytes": 5627,
+   "sha256": "8bea964f0341aaa35bf54f326fde0fa2c15f922a56f06ee8939efbd4ca1aafdb"
   },
   {
    "path": "archive/quarry.json",
@@ -383,13 +383,13 @@
   },
   {
    "path": "archive/queen-bomb.json",
-   "bytes": 5415,
-   "sha256": "47ed0ac50339eabb975c3cf4d18de4a57d889b2392034214f55c065fff45d372"
+   "bytes": 5451,
+   "sha256": "0bd752dc0763d2658546037381c49ca36f911bc58fcdfa4d3bf63263ace9b75c"
   },
   {
    "path": "archive/queens-wake.json",
-   "bytes": 5456,
-   "sha256": "7baf7fe602635e0ad552ad3e64561c40dd67216e08da7c088d6621645d958517"
+   "bytes": 5492,
+   "sha256": "35f1d209d0c6acea178f2235dfa228b3b02f87d135fb071b949452ca3cfcebf0"
   },
   {
    "path": "archive/rear-guard-torus-even-promotion.json",
@@ -408,8 +408,8 @@
   },
   {
    "path": "archive/rifle.json",
-   "bytes": 5193,
-   "sha256": "2d126296a7b624f9b8555d20d9b14d7cfbae52b82375703c94e1db360c25798d"
+   "bytes": 5267,
+   "sha256": "9e47d1ac00c9fb95e84c64fe738f91c5468e4022f99cfe4a6e9e3b0a14195d04"
   },
   {
    "path": "archive/sardines.json",
@@ -418,28 +418,28 @@
   },
   {
    "path": "archive/shogi-backward-drops.json",
-   "bytes": 11313,
-   "sha256": "f384894caa0ae74eeaf2bdee8cc7bcc7be4595a414d17edd35f1e07124fa60bc"
+   "bytes": 11349,
+   "sha256": "5f5613dfb2e8b54804c127bea31d80cfbe9fe497e61d819432ad61ec76f140a8"
   },
   {
    "path": "archive/shogi-drop-promoted.json",
-   "bytes": 10974,
-   "sha256": "5bd85e5cd0b7d8ad3e7739fb527f60b28c12d6c21a5aa882c978e8ba16a46005"
+   "bytes": 11010,
+   "sha256": "5e3ff5c4d74f32b56af6e9103ade184b76ee488fbbe5f6734ed7be8b20567e99"
   },
   {
    "path": "archive/short-sweeping-bishop-chess.json",
-   "bytes": 5628,
-   "sha256": "3cb71f98e6afde2521832d9d27189b36d673a613b6f52f0ce9a4ffa033bd5fc6"
+   "bytes": 5667,
+   "sha256": "7e09f950622784d85681e7831983327e27ca14ee67f3fe2a8416f48a83c06c71"
   },
   {
    "path": "archive/shut-wormhole.json",
-   "bytes": 5421,
-   "sha256": "6699d4afa2756922c2f1657158526533b6f94b1e8c879df67e064cdd753de0cb"
+   "bytes": 5457,
+   "sha256": "b5bfb2b6f7458fc7436077f20bf257d99b2418639f966189785e26117536b5fc"
   },
   {
    "path": "archive/sittuyin.json",
-   "bytes": 7479,
-   "sha256": "417ceb08dfeaaf73c5aa24a1fef12e61d8436e48ece49e2b33b54944bae43985"
+   "bytes": 7508,
+   "sha256": "37bb737f9ec1e554929ef6f6a2a7e17d9d3dbf2e41f03a1078fa71a199882b93"
   },
   {
    "path": "archive/sluice.json",
@@ -448,23 +448,23 @@
   },
   {
    "path": "archive/stones.json",
-   "bytes": 6731,
-   "sha256": "1730d212dccedf5bb4bb2baac6fcef8f4a551c8e81bf6f20bf0dfcd365c967d7"
+   "bytes": 6767,
+   "sha256": "1b0f5b08186e27806603c15295263bf0f101f54dfba8dabacd2f35d31afcb6f1"
   },
   {
    "path": "archive/succession.json",
-   "bytes": 5618,
-   "sha256": "91bba12f5bb1247f566e55db9025a729186637c790213507b116a81a385e1561"
+   "bytes": 5654,
+   "sha256": "8c12de1a76231b7d1a967f73a3814a3d69d7a5f981186ec0d3c0da44d5c69f8c"
   },
   {
    "path": "archive/the-crowd.json",
-   "bytes": 6008,
-   "sha256": "d055b97948fd27df3a3dc2c4b18558f3b54d104589f0163bd4b0809fc65e037d"
+   "bytes": 6044,
+   "sha256": "589c249a4de00af0d24d232058d34b9ac02579dc76428a84efb37756e84d34fd"
   },
   {
    "path": "archive/the-free-companies.json",
-   "bytes": 6517,
-   "sha256": "bab5b72afdc8dd43cb647d34fa96b78eaab84ccc62748c41eff25e68ffafca69"
+   "bytes": 6553,
+   "sha256": "0121025429b561526aa0a0c109e0227414efe7f254935c71c7aef71c14e43859"
   },
   {
    "path": "archive/the-golem-well.json",
@@ -488,8 +488,8 @@
   },
   {
    "path": "archive/three-stones.json",
-   "bytes": 6320,
-   "sha256": "578e7cfecd038182890fea19b22219491b0831d16672fdfeabebb92ac41f6967"
+   "bytes": 6356,
+   "sha256": "22654ac1a019a92dd5dae3675456bcfd7b60d9c552ce36219fd8e53fda073b53"
   },
   {
    "path": "archive/torus-less-extended.json",
@@ -513,23 +513,23 @@
   },
   {
    "path": "archive/wolves-bounty.json",
-   "bytes": 3542,
-   "sha256": "583b766c58435b41fb1718300951325f65a3ae54b47f386b3b3ea034dab31de4"
+   "bytes": 3572,
+   "sha256": "e49d95ced9f792c7a2847b099a40f9db4499ba79811e52bb6e83682b9f762990"
   },
   {
    "path": "archive/wolves-patrol.json",
-   "bytes": 6731,
-   "sha256": "8bbe6251f263f8889f38e033feaf64abfc97ca1fdcff1fadb4a1af9b66f6b50d"
+   "bytes": 6759,
+   "sha256": "d833bf3d14d2a06577db7f2edcdfedef4b43b435a5840b0472cfc749d1e55d55"
   },
   {
    "path": "archive/wolves.json",
-   "bytes": 3415,
-   "sha256": "7eab2309ad93c0c1a3764f5d21ff173c1fd0c3add9f496834d2ba2c4e5501b09"
+   "bytes": 3445,
+   "sha256": "7a69e3ee013f2991c0324147242e550c27672fa50b1ba53ac9c88885432f1381"
   },
   {
    "path": "archive/wormhole.json",
-   "bytes": 5239,
-   "sha256": "ab2041e0995c513850c336321e0a00cde4a38b344813a9e3aafcff4168ed4a79"
+   "bytes": 5275,
+   "sha256": "da3da6c9b9600ce80143731cb055c615ddd960c8376fda81cc2a73b70a9739a5"
   },
   {
    "path": "assets/pieces/.gitattributes",
@@ -2408,8 +2408,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/game_page.py",
-   "bytes": 11582,
-   "sha256": "94cd6da1cffb7624c3d43ca5f8b2fae782245759adb3c947c13040b8ab43dc12"
+   "bytes": 12684,
+   "sha256": "8d66cc70f111d1e161d3d065529bd1a7cfbb8a29ae34bafc43dd328c564b009d"
   },
   {
    "path": "chess_variant_sandbox/site/game_pictures.py",
@@ -2453,8 +2453,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/made_by.py",
-   "bytes": 4249,
-   "sha256": "568d1abb72654751dc8c3a3c6cb5a7a3cace32c4f69dd5920dc24dbbb5466707"
+   "bytes": 6065,
+   "sha256": "9969ec8f897b612319f7e9adac174d454a6f7a609e809e831cf81f86da967660"
   },
   {
    "path": "chess_variant_sandbox/site/mail.py",
@@ -3023,8 +3023,8 @@
   },
   {
    "path": "chess_variant_sandbox/spec/schema.py",
-   "bytes": 627530,
-   "sha256": "c1883b6b3161c4b18d9673fc0f096171dd9bc8033a163b0350d4cdca50b3e4e2"
+   "bytes": 628838,
+   "sha256": "2aeaffca71736f2b63b3dbccf7628402d8a997d4f6ede6a3725d75e6ca29f669"
   },
   {
    "path": "chess_variant_sandbox/spec/spelling.py",
@@ -3313,8 +3313,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/game.py",
-   "bytes": 17674,
-   "sha256": "ea4febd182ce06e313089deeb702d6bbf08ed0e0954ef29c403c90b987010221"
+   "bytes": 18679,
+   "sha256": "84f1fe0222ff0a889f4f26a826d145c311ab1916a061895ee8e7b22b92740ff2"
   },
   {
    "path": "chess_variant_sandbox/web/page/game_picture.py",
@@ -3678,8 +3678,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 199826,
-   "sha256": "8d32259a5f03b328a67f41720745d4ce9075d37f59f81045057bfcfd77ec7e42"
+   "bytes": 200232,
+   "sha256": "c84899fe0d1029612e377a25fb05be2b13cceb51241c1069267e82eabd09ad26"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -5573,13 +5573,13 @@
   },
   {
    "path": "rulesets/antichess.json",
-   "bytes": 4476,
-   "sha256": "f8ddb081022ccd58b138fb46bcd6afc952aab6424eef41adc42d049682a2763b"
+   "bytes": 4505,
+   "sha256": "9272e6bd7ce66cc774805ba87781c7a02186fd098409c8785dba691abbf478cf"
   },
   {
    "path": "rulesets/atomic.json",
-   "bytes": 4543,
-   "sha256": "28d655437b4ff988b54228223f9f7dd719e1e8fd42855ed15a36ee7870177e2c"
+   "bytes": 4572,
+   "sha256": "e92252aa94a550bb9267f35ea0a92c79bea8c1aa7983941162c4f3b27b4da1ef"
   },
   {
    "path": "rulesets/bastion.json",
@@ -5588,13 +5588,13 @@
   },
   {
    "path": "rulesets/berolina.json",
-   "bytes": 3448,
-   "sha256": "d3716c7c6dd22960ee8e37d963e2e356d0ef74dc2170d1cf979c498d709294a7"
+   "bytes": 3529,
+   "sha256": "c659243a881c7ba1e2012ae3a577f08051cd00d482a64f62db728699016f40c4"
   },
   {
    "path": "rulesets/boulder.json",
-   "bytes": 2694,
-   "sha256": "697752185a7f991203a182d7c333a635c6fc7c945cf523347e196012ff00cb53"
+   "bytes": 2722,
+   "sha256": "d7018979c5d08ea144b8436a63e0919d96568dd40d11f475d73d76ef84f085c1"
   },
   {
    "path": "rulesets/breakthrough.json",
@@ -5603,8 +5603,8 @@
   },
   {
    "path": "rulesets/brink.json",
-   "bytes": 4449,
-   "sha256": "09048a60a764a30e5c31c2da9aab8c3b556f5d4edb4867525684df05f57d2c3b"
+   "bytes": 4478,
+   "sha256": "53922e321dad68f88335a34e8e922020d8aa74003e86472060b36df56b6feb0e"
   },
   {
    "path": "rulesets/cannon-shogi.json",
@@ -5618,8 +5618,8 @@
   },
   {
    "path": "rulesets/chess.json",
-   "bytes": 2725,
-   "sha256": "89d39231e2da8adf46a0850a23cd3ba12e2401018cb400ba1f36b8a1c3a47d13"
+   "bytes": 2754,
+   "sha256": "a40fa55476df3dc3009cffc279da01dd753b60d1fdfba009222bf235ecd981bf"
   },
   {
    "path": "rulesets/clobber.json",
@@ -5633,33 +5633,33 @@
   },
   {
    "path": "rulesets/crazyhouse.json",
-   "bytes": 5182,
-   "sha256": "09f3355dffe0b73f45b0f41095d8fa391c43c51fc9734a54df217fb57b30e995"
+   "bytes": 5211,
+   "sha256": "0c54dfcde5b7d0dc57643bb947076dfbe0efcb1a40d79710c7e229cd73093bdb"
   },
   {
    "path": "rulesets/crossings.json",
-   "bytes": 2059,
-   "sha256": "468c46d34a299011388d0c5110f2318194a47b7ed518e2d382dbd9a29544168f"
+   "bytes": 2087,
+   "sha256": "9ad2dc0ba4e86fd9474cfebf87c0746c0df375a7cd842d468aa65393d8a9d143"
   },
   {
    "path": "rulesets/cylinder.json",
-   "bytes": 4547,
-   "sha256": "9b07f8cd6b6317a720701cefdab6ce47201a59f78847868c0c74b39f6842f6eb"
+   "bytes": 4576,
+   "sha256": "a052de8fb231cf8319bbf5b294cd8c6c541f72c60498972c01fbec289be9daa8"
   },
   {
    "path": "rulesets/dobutsu.json",
-   "bytes": 4041,
-   "sha256": "4ef9b0c1b071afc6834102710a0e886fa203a8cec1903e11ed37710a5ec0b723"
+   "bytes": 4070,
+   "sha256": "c27a11474043fc19306082101f396a6741242e30e69b013a5c9af589f7f72d45"
   },
   {
    "path": "rulesets/dohyo.json",
-   "bytes": 4584,
-   "sha256": "cec2825a1b335f62879fac525ac872fd0100d53b120be464bce165556d183e42"
+   "bytes": 4612,
+   "sha256": "f8fe5c8d0a0f9aca6873d2277e667f7b1c6f5cb37da499e61225f460a10cd2c8"
   },
   {
    "path": "rulesets/drover.json",
-   "bytes": 2981,
-   "sha256": "1a11f9f0dbb76ddcffd41ffd7ad4f8a10ca1d4070b32c1ea0467336e713fa5e9"
+   "bytes": 3009,
+   "sha256": "ea3f125304c410ae5204040e3f61bf23419d876c45b9ce7970bcc48cc2dd9c66"
   },
   {
    "path": "rulesets/duck-chess.json",
@@ -5683,33 +5683,33 @@
   },
   {
    "path": "rulesets/gorogoro-plus.json",
-   "bytes": 5424,
-   "sha256": "2131389d19614947970e4542b8e4a428274f7095922397f15a75356ab6f13c61"
+   "bytes": 5453,
+   "sha256": "d03807be745f96b334536f7d72f5131ddba7f3a371110b8e50dedf657116af9e"
   },
   {
    "path": "rulesets/horde.json",
-   "bytes": 6197,
-   "sha256": "d92474c3bc2cb19af722992596a13dac5208a3a1fb6c6d744c2d3d66455265ba"
+   "bytes": 6226,
+   "sha256": "626bc5a19e1be4d50c379ce2e889ad9e3cb8931532cf81744270733f8f6a405c"
   },
   {
    "path": "rulesets/hunger.json",
-   "bytes": 6899,
-   "sha256": "7774d908a7c8e8d5d1487756c2d15da7066de3b20db3a3b81afc08918c4bd282"
+   "bytes": 6928,
+   "sha256": "ce270ab31049ea5632d530440fcdcaa331f76ecdabf07fd21e347067ae55cd46"
   },
   {
    "path": "rulesets/intransitive.json",
-   "bytes": 6023,
-   "sha256": "e863fb0c906a0b0b0f81551611ef8072fff4842c66914c275c3ad493020b7279"
+   "bytes": 6080,
+   "sha256": "ede79d142fbda7065654b1902edcc478ba894a9d80a0fb4ad01f9ba48cdfaa28"
   },
   {
    "path": "rulesets/janggi.json",
-   "bytes": 7551,
-   "sha256": "81b251e889d97243303055d32487202584e2620b962be64bb8d43d0a54ddfbfe"
+   "bytes": 7580,
+   "sha256": "aa1cd052ad2df058b805a070c2afeea6dcf6fb51b5d2805169ecea623cc78c2f"
   },
   {
    "path": "rulesets/kingofthehill.json",
-   "bytes": 4404,
-   "sha256": "e46ffe4b83dcf9735316f85ba690c140e8e3792608c03beb0fd8c44511e19177"
+   "bytes": 4433,
+   "sha256": "eff78d4a8534bb4fd6e3218ad6c621c97b7754022e05c75e685f706fd8f3580d"
   },
   {
    "path": "rulesets/knightmate.json",
@@ -5718,18 +5718,18 @@
   },
   {
    "path": "rulesets/leapfrog.json",
-   "bytes": 2508,
-   "sha256": "f2b0aa2938672b71bb57bfa809a31b4ac6b4ac68b383c428ca8403a216214d30"
+   "bytes": 2536,
+   "sha256": "732b84b6779f9f07fed341d3a71905db603ab7c3b786f49a0b97b97ea4b98313"
   },
   {
    "path": "rulesets/losalamos.json",
-   "bytes": 2477,
-   "sha256": "121bb76742697a4f42d8bbc1c4ccac18932e48dd9694977cb1592957c849b2f0"
+   "bytes": 2506,
+   "sha256": "2d93f47e08f520bc853e61c5e29a21c69e420dcbeb0234e73897155b57c52ca5"
   },
   {
    "path": "rulesets/makruk.json",
-   "bytes": 3281,
-   "sha256": "54e7b7d86ce296603555c6619ec479f92341a9f39b93112c52cd595701e0d470"
+   "bytes": 3310,
+   "sha256": "f382908d8db6b4f0aa15884d5fc0a8863ae31bfa765e3bc73fe41626828ad9a8"
   },
   {
    "path": "rulesets/minishogi.json",
@@ -5743,48 +5743,48 @@
   },
   {
    "path": "rulesets/racingkings.json",
-   "bytes": 3948,
-   "sha256": "86460cece1d9615972e6fb58c94ed55c4bdfd6a1b91a784212d7b0d4d49e4112"
+   "bytes": 3977,
+   "sha256": "4966272cf5357e871f24a334b958cb8502d5634e148164471ae1e7d959973938"
   },
   {
    "path": "rulesets/rock-paper-shove.json",
-   "bytes": 3307,
-   "sha256": "d104fc964c007b72529d7cd714c52d61eb03a31c235afe1306335b400d233d1c"
+   "bytes": 3335,
+   "sha256": "43a063d78a234c0b24fc4f134530d85f60e35bfc02d1fc1114d05e3ca21e5b44"
   },
   {
    "path": "rulesets/rps-hierarchy-chess.json",
-   "bytes": 4494,
-   "sha256": "056ce9e56a31af40820642b023211601e3b07db7dede816742fed0afa6188d05"
+   "bytes": 4551,
+   "sha256": "dd12644f959bb60d67de20f08f8cfff3015ca309dbdce9562bc26eb7081d7849"
   },
   {
    "path": "rulesets/rps-v1.json",
-   "bytes": 3508,
-   "sha256": "c01e10caebfd4278ac757fe25b08a19beac986580f4af1b297ddf555c6452986"
+   "bytes": 3565,
+   "sha256": "b40e5bc7483a1182a7c261018ab0d858fd1d032a9fad77c1ac70f2dd53357e85"
   },
   {
    "path": "rulesets/rps-v2.json",
-   "bytes": 3806,
-   "sha256": "d987d810f10604ff5e29b1df262ba85cece42192f259b242082e1f6950af49b9"
+   "bytes": 3855,
+   "sha256": "af80d67d1407d37d84f94178c3e452058822b6d95aa7048c25cc7319b9437af4"
   },
   {
    "path": "rulesets/rps-v3.json",
-   "bytes": 4033,
-   "sha256": "7eed1242d6ec6a223366ca57671645f957fba7ceb3984f15ce075c7e44330f65"
+   "bytes": 4090,
+   "sha256": "82b49c5f1c57331b50fad071eee95788f0c96124225624d1e25856e84d3fce29"
   },
   {
    "path": "rulesets/rps-v4.json",
-   "bytes": 3942,
-   "sha256": "9db1c3d18bc71ab001ded958c32761ea4b86fc3d7d51972818bfa54da7fda350"
+   "bytes": 3991,
+   "sha256": "c5862c2b1b262bb4d08daf16e6ee1f4ad2418d4b53c74b32becae524f53fcb2e"
   },
   {
    "path": "rulesets/rps-v5.json",
-   "bytes": 3868,
-   "sha256": "49f8afc12d92c72928329bef41bd4c5a071dc4542b4737b9a5e0dde48c945271"
+   "bytes": 3917,
+   "sha256": "53fa3a2130f575e65ab91f360aefd2bbefb9251506067b92a7e8c26342c40735"
   },
   {
    "path": "rulesets/runners.json",
-   "bytes": 4638,
-   "sha256": "90fcb8fd55a07cf4735f815f2161914d179850634558030fbbf1a598cb316176"
+   "bytes": 4666,
+   "sha256": "cf6cdd73ec9d8371c1cfa2a158bd9e073a0e7b455dc5cf17c0987d0de61ed5de"
   },
   {
    "path": "rulesets/seirawan.json",
@@ -5798,18 +5798,18 @@
   },
   {
    "path": "rulesets/shogi.json",
-   "bytes": 10179,
-   "sha256": "f9d3d2cded1149bee81a09fbdbf5917fee86f61f4e3c0a177adf44ca268c2fa9"
+   "bytes": 10208,
+   "sha256": "ebeec9f31ef2da134f41469828fd10c546a9035d3e5a218e8ced21884049d182"
   },
   {
    "path": "rulesets/tessabi.json",
-   "bytes": 3787,
-   "sha256": "a129d43ba3ddf7631af1bc60f87f81efd1ed16e1b021fc1c9f32305d6c80d962"
+   "bytes": 3816,
+   "sha256": "3d2f1485a0553d06b62a8f6701bbebfb02117919a12a8489885d86cb5ccfcb3d"
   },
   {
    "path": "rulesets/threecheck.json",
-   "bytes": 4197,
-   "sha256": "f23ee22d346a57b1290a2f6dd8f9fa1dc6913d8dfdb4ca916d9958c17c5b68ed"
+   "bytes": 4226,
+   "sha256": "4180eab1003e7c3ae4b023e6e455794038422aeb22acde4a498c5b8736edb51c"
   },
   {
    "path": "rulesets/torus.json",
@@ -5818,8 +5818,8 @@
   },
   {
    "path": "rulesets/xiangqi.json",
-   "bytes": 7082,
-   "sha256": "cacff72a2ca8e2859ff851078eebb30a685405c10620b239d7da2c9f23e15646"
+   "bytes": 7111,
+   "sha256": "caaaaf5d52bf02b37422fcb4e5d24841264f4c24479b1e1d801120829c843c78"
   },
   {
    "path": "rust/Cargo.lock",
@@ -7503,8 +7503,8 @@
   },
   {
    "path": "tests/test_designer_coverage.py",
-   "bytes": 60428,
-   "sha256": "55ed430288c641718e349d267bfa9a4552c994f44b81c29bca16c4bf7a132c6c"
+   "bytes": 60563,
+   "sha256": "865604038907f6e1a9be451890ade8205ae2ec5cff0ecbe28c3c81d1b3989653"
   },
   {
    "path": "tests/test_designer_hexagon.py",
@@ -10013,8 +10013,8 @@
   },
   {
    "path": "tests/test_who_makes_it.py",
-   "bytes": 8439,
-   "sha256": "73d5afbb32c2b9ba7574bbc7c1f545362216dbcbd2517e821ac7e14f458a0aaa"
+   "bytes": 15289,
+   "sha256": "3c2ce69ee5a49c0aaadc3179468d912fc76d85955b0aaa5c96ae64b4aa60f5ff"
   },
   {
    "path": "tests/test_wild_beside_blast.py",

@@ -57,6 +57,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent",
     "added": "2026-11-07",
     "origin": "human",
     "history": "Q1131 (TS1, docs/plan-tessabi.md section 1): the showcase for reach.removes and reach.count."

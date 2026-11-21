@@ -238,6 +238,9 @@
     }
   },
   "provenance": {
+    "designed_by": "people",
+    "author": "Pierre Monreal",
+    "year": 1967,
     "added": "2026-10-09",
     "origin": "human",
     "note": "Invented by Pierre Monreal in 1967, and a favourite of chess problem composers.",

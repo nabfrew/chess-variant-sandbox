@@ -80,6 +80,7 @@
     "icons": {"D": "pawn", "O": "wazir", "S": "queen", "C": "king"}
   },
   "provenance": {
+    "designed_by": "agent",
     "added": "2026-10-30",
     "origin": "human",
     "history": "Q1074bg2: designed for the library as the showcase of pushing a line by weight and strength, of a piece that pushes its own side, and of a piece that shoves on some lines and only walks on others (docs/plan-push.md section 6.2; the design log is docs/reference/dohyo.md). Q1074bd: the four corners walled, with walls that crush, so a piece shoved into a corner is out (the ring section 6.2 drew first; the whole square was 242c02248dd2)."

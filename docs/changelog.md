@@ -14,6 +14,10 @@ any other address keeps its brackets.
 
 ## 2026-11-21
 
+### Every game says who designed it
+
+Yesterday about half the library's game pages said the designer was not recorded. Every game's page now says, under its name, who designed it: people, with the author named where it is known; one of the project's AI agents; an agent's variant of a game by people; an agent's build of the owner's idea; or the owner. The page says so with or without scripts turned on.
+
 ### You can change your display name
 
 A member can now change the name others see, from the Your name box under Settings on their own page. The box says the rule before you change anything: once in thirty days, with the first change free. Links to your old name follow you to your page, and a name you have used stays yours, so nobody else can take it. Your email address is never shown to anyone else, and a check now walks every page to hold that.

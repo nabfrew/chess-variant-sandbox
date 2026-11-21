@@ -356,6 +356,7 @@
     ]
   },
   "provenance": {
+    "designed_by": "agent_from_owner",
     "added": "2026-10-10",
     "origin": "human",
     "source": "archive/divide",

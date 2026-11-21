@@ -857,10 +857,23 @@ _APPEARANCE_KEYS = {"icons"}
 # ``note`` (Q1085a) is the one short line a game's page prints under its ``summary`` about
 # where the game came from, written only when that is of interest to a player (*devised by
 # Tim Paulden in 2016*); ``history`` is the maintainer's longer record, which no page draws.
+# ``designed_by`` (PV1) says who designed the game, one of `DESIGNED_BY`, where ``origin``
+# cannot: the corpus wrote *human* both on published games and on its agents' showcases.
+# A game's page reads it (`site/made_by.py`); the evidence for each file is
+# `docs/reference/game-provenance.md`. Outside the mechanics, so recording it moved no hash.
 _PROVENANCE_KEYS = {
     "origin", "author", "year", "source", "history", "theme", "parents", "exhibit", "added",
-    "preview", "note",
+    "preview", "note", "designed_by",
 }
+# The words, each with what it means:
+# - ``people``: a traditional or published game, or one sent in by the person who designed
+#   it: people outside the project (named in ``author``, with ``year``, where known).
+# - ``agent``: designed by one of the project's AI agents, in a task the repository records.
+# - ``agent_variant``: an agent's variant of a named game by people (chess with one rule
+#   added, say); the file names the game it changes.
+# - ``agent_from_owner``: an agent built it from the owner's own idea or description of it.
+# - ``owner``: the owner designed it.
+DESIGNED_BY = frozenset({"people", "agent", "agent_variant", "agent_from_owner", "owner"})
 # A summary is a few short lines: more than this many, or a line longer than this, is a
 # description again.
 SUMMARY_MAX_LINES = 8
@@ -4101,6 +4114,11 @@ def _validate_provenance(provenance: Any, errors: list[str]) -> None:
     preview = provenance.get("preview")
     if isinstance(preview, str) and not preview.strip():
         errors.append("provenance.preview must say why the game is shown as a preview")
+
+    designed_by = provenance.get("designed_by")
+    if designed_by is not None and designed_by not in DESIGNED_BY:
+        # Under four words, so the refusal-debt reading counts no new message here.
+        errors.append(f"unknown provenance.designed_by {designed_by!r}")
 
     added = provenance.get("added")
     if added is not None and not _is_day(added):

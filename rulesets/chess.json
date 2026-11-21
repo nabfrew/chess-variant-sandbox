@@ -92,6 +92,7 @@
     "insufficient_material": true
   },
   "provenance": {
+    "designed_by": "people",
     "added": "2026-08-19",
     "origin": "human",
     "source": "international chess",

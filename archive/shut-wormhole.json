@@ -230,6 +230,7 @@
     ]
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-10-10",
     "origin": "human",
     "source": "archive/shut-wormhole",

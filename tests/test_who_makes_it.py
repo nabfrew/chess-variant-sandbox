@@ -70,6 +70,146 @@ class TestWhoDesignedAGame:
         assert "the user" not in _made("designed", author="the user")["said"]
 
 
+class TestTheRecordedDesigner:
+    """PV1: `provenance.designed_by` settles what `origin` cannot, and is read first."""
+
+    def test_each_recorded_value_says_who(self) -> None:
+        assert _made("human", designed_by="people") == {"kind": m.PERSON, "said": m.PEOPLE_SAID}
+        assert _made("human", designed_by="owner") == {"kind": m.PERSON, "said": m.OWNER_SAID}
+        assert _made("human", designed_by="agent") == {"kind": m.AGENT, "said": m.AGENT_SAID}
+        assert _made("human", designed_by="agent_variant") == {
+            "kind": m.AGENT, "said": m.VARIANT_SAID}
+        assert _made("human", designed_by="agent_from_owner") == {
+            "kind": m.AGENT, "said": m.FROM_OWNER_SAID}
+
+    def test_every_value_the_validator_accepts_is_read(self) -> None:
+        from chess_variant_sandbox.spec.schema import DESIGNED_BY
+
+        for value in DESIGNED_BY:
+            assert _made("human", designed_by=value)["kind"] != m.UNRECORDED, value
+
+    def test_peoples_game_names_its_author_where_the_file_does(self) -> None:
+        assert _made("human", designed_by="people", author="Ann Example", year=1921) == {
+            "kind": m.PERSON, "said": "designed by a person, Ann Example"}
+
+    def test_it_outranks_origin_and_the_owner_is_never_named(self) -> None:
+        assert _made("human", designed_by="agent")["kind"] == m.AGENT
+        assert _made("designed", designed_by="people")["kind"] == m.PERSON
+        for value in ("owner", "agent_from_owner"):
+            said = _made("human", designed_by=value, author="the user")["said"]
+            assert "the user" not in said and "owner" in said
+
+    def test_a_word_outside_the_set_is_read_as_absent(self) -> None:
+        assert _made("human", designed_by="aliens")["kind"] == m.UNRECORDED
+        assert _made("generated", designed_by="aliens")["kind"] == m.AGENT
+
+    def test_a_year_written_as_a_number_says_before_this_project(self) -> None:
+        assert _made("human", year=1956) == {"kind": m.PERSON, "said": m.BEFORE_SAID}
+
+
+class TestTheLibraryRecordsIt:
+    """Every committed and archived file says who designed its game, and saying it moved no
+    game's identity. Read over the whole library, by provenance, never by name."""
+
+    ROOT = Path(__file__).resolve().parent.parent
+    FILES = sorted([*(ROOT / "rulesets").glob("*.json"), *(ROOT / "archive").glob("*.json")])
+
+    def _specs(self) -> list[tuple[Path, dict[str, Any]]]:
+        found = [(path, json.loads(path.read_text(encoding="utf-8"))) for path in self.FILES]
+        return [(path, spec) for path, spec in found if "pieces" in spec]
+
+    def test_no_library_file_is_left_unrecorded(self) -> None:
+        specs = self._specs()
+        assert len(specs) > 100
+        unrecorded = [
+            str(path) for path, spec in specs
+            if _made_of(spec)["kind"] == m.UNRECORDED
+        ]
+        assert unrecorded == []
+
+    def test_every_recorded_value_validates(self) -> None:
+        from chess_variant_sandbox.spec.schema import DESIGNED_BY
+
+        for path, spec in self._specs():
+            value = (spec.get("provenance") or {}).get("designed_by")
+            assert value is None or value in DESIGNED_BY, path
+
+    def test_the_record_is_outside_every_games_hash(self) -> None:
+        from chess_variant_sandbox.spec import spec_hash
+
+        recorded = 0
+        for path, spec in self._specs():
+            provenance = dict(spec.get("provenance") or {})
+            if "designed_by" not in provenance:
+                continue
+            recorded += 1
+            provenance.pop("designed_by")
+            assert spec_hash({**spec, "provenance": provenance}) == spec_hash(spec), path
+        assert recorded > 0
+
+    def test_the_validator_refuses_a_word_outside_the_set(self) -> None:
+        from chess_variant_sandbox.spec.schema import validate_spec
+
+        spec = json.loads(self._specs()[0][0].read_text(encoding="utf-8"))
+        spec["provenance"] = {**(spec.get("provenance") or {}), "designed_by": "aliens"}
+        assert any("designed_by" in problem for problem in validate_spec(spec))
+        spec["provenance"]["designed_by"] = "agent"
+        assert not any("designed_by" in problem for problem in validate_spec(spec))
+
+
+def _made_of(spec: dict[str, Any]) -> dict[str, str]:
+    return m.made_by({"source": "committed", "provenance": spec.get("provenance")})
+
+
+class TestTheNoScriptPageSaysIt:
+    """PV1: the page the server draws before any script carries the same line under the name
+    as the scripted page, from the same answer."""
+
+    QUIET = "globalThis.setTimeout = () => 0; ACCOUNTS = true;"
+
+    def _drawn(self, made: dict[str, str] | None) -> str:
+        from chess_variant_sandbox.web.page import game as drawing
+
+        return drawing.view(drawing.Drawn(
+            hash="0123456789ab", name="an invented game", description="Some words.",
+            spec={}, score=None, stale=False, near=(), indexable=True, made_by=made))
+
+    def test_the_line_sits_under_the_name(self) -> None:
+        drawn = self._drawn({"kind": m.AGENT, "said": m.VARIANT_SAID})
+        name = drawn.index("an invented game</h2>")
+        line = drawn.index('id="gameBy"')
+        assert name < line
+        assert 'data-made="agent"' in drawn
+
+    def test_it_says_what_the_scripted_page_says(self) -> None:
+        for made in ({"kind": m.AGENT, "said": m.FROM_OWNER_SAID},
+                     {"kind": m.PERSON, "said": "designed by a person, Ann Example"},
+                     {"kind": m.PERSON, "said": m.OWNER_SAID}):
+            game = {"source": "committed", "madeBy": made}
+            scripted = _visible(_in_page(self.QUIET, f"designerByHtml({json.dumps(game)})"))
+            served = _visible(self._drawn(made).split("</h2>", 1)[1].split("</div>", 1)[0])
+            assert served == scripted, made
+
+    def test_nothing_where_the_records_do_not_say(self) -> None:
+        for made in (None, {"kind": m.UNRECORDED, "said": m.UNRECORDED_SAID}):
+            assert 'id="gameBy"' not in self._drawn(made)
+
+    def test_the_site_asks_the_same_question_of_the_game(self) -> None:
+        """`game_page.made_by_of` hands `made_by` the source and the library's provenance,
+        as `/api/game` does; a library game needs no store."""
+        from types import SimpleNamespace
+
+        from chess_variant_sandbox.site import game_page
+
+        game = SimpleNamespace(source="committed", lineage=None,
+                               spec={"provenance": {"origin": "human", "designed_by": "agent"}})
+        assert game_page.made_by_of(None, "0123456789ab", game) == {
+            "kind": m.AGENT, "said": m.AGENT_SAID}
+        unknown = SimpleNamespace(source="committed", lineage=None,
+                                  spec={"provenance": {"origin": "human"}})
+        assert game_page.made_by_of(None, "0123456789ab", unknown)["kind"] == m.UNRECORDED
+
+
 class TestTheFrontPageSaysIt:
     def test_the_sentence_says_agents_build_it_under_one_person(self) -> None:
         for said in ("AI agents", "design, build and maintain", "one person's direction"):

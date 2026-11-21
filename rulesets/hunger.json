@@ -251,6 +251,7 @@
     "income": true
   },
   "provenance": {
+    "designed_by": "people",
     "added": "2026-11-08",
     "origin": "human",
     "source": "a playtested variant sent in by its designer",

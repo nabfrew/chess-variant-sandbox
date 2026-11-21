@@ -208,6 +208,7 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "designed_by": "agent_variant",
     "added": "2026-10-31",
     "origin": "human",
     "history": "Q1074bs: the showcase of push.along 'file' (docs/plan-push.md section 6.3): Gardner's chess whose bishops push along the file instead of capturing.",

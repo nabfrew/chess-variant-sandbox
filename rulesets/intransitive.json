@@ -193,6 +193,8 @@
     }
   },
   "provenance": {
+    "designed_by": "people",
+    "author": "webgoatguy",
     "added": "2026-09-03",
     "origin": "human",
     "note": "Designed by webgoatguy, who published the design process on YouTube.",

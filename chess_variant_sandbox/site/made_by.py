@@ -9,6 +9,12 @@ file, and from nothing else:
 
 - a game somebody saved in the designer (`source` *designed*): the store's owner, a member of
   the site, named by their handle (`designer.by`). A person.
+- `provenance.designed_by` (PV1), where the file records it, says it outright, one of
+  `schema.DESIGNED_BY`: *people* (a person, named by `author` where the file names one),
+  *agent*, *agent_variant* (an agent's variant of a game by people), *agent_from_owner* (an
+  agent's build of the owner's idea; an agent, the owner credited) or *owner* (a person, the
+  site's owner). It is read before `origin`, which it exists to settle; the evidence for each
+  file is `docs/reference/game-provenance.md`.
 - `provenance.origin` *generated* or *evolved*: a design run, which is an AI model. An agent.
 - `provenance.origin` *designed*, *hand* or *control*: written for this project, and every hand
   that writes for this project is one of its AI agents, unless `provenance.author` names the
@@ -19,7 +25,8 @@ file, and from nothing else:
   because the corpus has used *human* both for published games (chess, shogi) and for this
   project's own one-rule showcases written by its agents (`docs/archive/plan-roster-confound.md`
   §1 notes the same overload): the file cannot tell the two apart, so the page claims neither.
-  The fix is a recorded field in those files, which is the corpus's to add.
+  Since PV1 every library file that origin left unsettled records `designed_by`, so this is
+  left for a file that records neither.
 
 Display only: nothing here reaches a score or a move.
 """
@@ -45,6 +52,10 @@ OWNER_SAID = "designed by a person, the site's owner"
 AUTHOR_SAID = "designed by a person, {author}"
 AUTHORS_SAID = "designed by people: {author}"
 BEFORE_SAID = "designed by people, before this project began"
+PEOPLE_SAID = "designed by people, not by this project's AI agents"
+VARIANT_SAID = (
+    "designed by one of this project's AI agents, as a variant of a game designed by people")
+FROM_OWNER_SAID = "designed by one of this project's AI agents, from the site's owner's idea"
 UNRECORDED_SAID = (
     "not recorded: the records do not say whether a person or one of this project's AI "
     "agents designed it")
@@ -64,6 +75,24 @@ def _by_author(author: str) -> dict[str, str]:
     return {"kind": PERSON, "said": (AUTHORS_SAID if many else AUTHOR_SAID).format(author=author)}
 
 
+def _recorded(designed_by: Any, author: str) -> dict[str, str] | None:
+    """What `provenance.designed_by` says, or `None` where the file records none (or a word
+    the validator would refuse, which is then read as if absent)."""
+    if designed_by == "people":
+        if author and author.lower() != OWNER_AUTHOR:
+            return _by_author(author)
+        return {"kind": PERSON, "said": PEOPLE_SAID}
+    if designed_by == "owner":
+        return {"kind": PERSON, "said": OWNER_SAID}
+    if designed_by == "agent":
+        return {"kind": AGENT, "said": AGENT_SAID}
+    if designed_by == "agent_variant":
+        return {"kind": AGENT, "said": VARIANT_SAID}
+    if designed_by == "agent_from_owner":
+        return {"kind": AGENT, "said": FROM_OWNER_SAID}
+    return None
+
+
 def made_by(game: Mapping[str, Any]) -> dict[str, str]:
     """`{"kind": "agent" | "person" | "unrecorded", "said": <words>}` for a game's page payload
     (`library.detail`'s, before the site strips the maintainer's records: a design run's
@@ -78,6 +107,9 @@ def made_by(game: Mapping[str, Any]) -> dict[str, str]:
     provenance: Mapping[str, Any] = found if isinstance(found, Mapping) else {}
     origin = provenance.get("origin")
     author = _said(provenance.get("author"))
+    recorded = _recorded(provenance.get("designed_by"), author)
+    if recorded is not None:
+        return recorded
     if origin in _RUNS:
         return {"kind": AGENT, "said": DESIGN_RUN_SAID}
     if origin in _PROJECT:
@@ -85,6 +117,7 @@ def made_by(game: Mapping[str, Any]) -> dict[str, str]:
     if origin == "human":
         if author:
             return _by_author(author)
-        if _said(provenance.get("year")):
+        # A year is a number (1956) or words (*15th century*); both say it.
+        if _said(str(provenance.get("year") or "")):
             return {"kind": PERSON, "said": BEFORE_SAID}
     return {"kind": UNRECORDED, "said": UNRECORDED_SAID}

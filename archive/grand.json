@@ -308,6 +308,9 @@
     "forbid_immobility": true
   },
   "provenance": {
+    "designed_by": "people",
+    "author": "Christian Freeling",
+    "year": 1984,
     "added": "2026-10-09",
     "note": "Christian Freeling's ten-by-ten game, from 1984."
   }

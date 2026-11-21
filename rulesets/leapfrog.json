@@ -61,6 +61,7 @@
     }
   },
   "provenance": {
+    "designed_by": "agent",
     "added": "2026-11-07",
     "origin": "human",
     "history": "Q1134 (TS4, docs/plan-tessabi.md section 4): the showcase for pieces[].moves[].run and pieces[].moves[].displace."

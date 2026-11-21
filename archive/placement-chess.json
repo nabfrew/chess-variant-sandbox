@@ -257,6 +257,7 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "designed_by": "people",
     "added": "2026-10-09",
     "origin": "human",
     "source": "Placement chess (Fairy-Stockfish's `placement`), less two of its rules: the bishops may share a colour, and a dropped king and rook do not castle",

@@ -160,6 +160,8 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "designed_by": "people",
+    "author": "webgoatguy",
     "added": "2026-08-21",
     "origin": "human",
     "source": "docs/reference/rps-versions.md, version 3",

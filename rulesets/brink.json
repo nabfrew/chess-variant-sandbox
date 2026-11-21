@@ -103,6 +103,7 @@
     "insufficient_material": true
   },
   "provenance": {
+    "designed_by": "people",
     "added": "2026-10-30",
     "origin": "human",
     "source": "a push-instead-of-capture chess played online; the sources are in docs/plan-push.md section 6.1",
