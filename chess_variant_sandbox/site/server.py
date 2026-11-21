@@ -564,6 +564,8 @@ class SiteApp(App):
                 return _move_box(connection, viewer)
         if parts == ("api", "favourites"):
             return self._favourites(body)
+        if parts == ("api", "handle"):
+            return self._rename(body)
         if parts == ("api", "invite"):
             # Q719. One of the invitations `/admin` gave this person, sent from their page.
             with self._connection() as connection:
@@ -1659,6 +1661,7 @@ class SiteApp(App):
             asked = _challenges_of(connection, viewer, waiting=False)
             move_box = _move_box(connection, viewer)
             favourites_box = members.favourites_box(connection, viewer)
+            name_box = identity.name_box(connection, viewer)
             maker_box = challenges.maker_box(connection, viewer)
             invites_box = inviting.box(connection, viewer)
             found = {game: unbeaten.record_from(game, viewer, mine) for game in rated}
@@ -1830,6 +1833,9 @@ class SiteApp(App):
             # Q596. Your page as members see it, and its one box, off by default.
             "page": members.address(handle) if handle and handle != identity.FORMER else None,
             "favourites": favourites_box,
+            # DN2. *Your name*: the display name, whether it can change now, the rule said
+            # before the change, and this member's own former names.
+            "name": name_box,
             # Q606. *List me on the games I made as taking challengers*, off by default;
             # drawn only for somebody with a published game of their own.
             "takesChallengers": maker_box,
@@ -1845,6 +1851,28 @@ class SiteApp(App):
         known = self.known()
         with self._connection() as connection:
             return members.read(connection, handle, viewer, known, self.runs_dir)
+
+    def moved(self, handle: str) -> str | None:
+        """Where `/players/<former name>` goes now (DN2), or None (`members.moved`)."""
+        with self._connection() as connection:
+            return members.moved(connection, handle)
+
+    def _rename(self, body: dict[str, Any]) -> Any:
+        """Change the signed-in member's display name (DN2, `identity.rename`), with the
+        maintenance account's name reserved as at joining. The box as it now stands, and
+        the name, so the page can redraw both."""
+        viewer = self._signed_in()
+        with self._connection() as connection:
+            name = identity.rename(
+                connection, viewer, str(body.get("handle") or ""),
+                reserved=(admin.account_name(),),
+            )
+            box = identity.name_box(connection, viewer)
+        return {
+            "handle": name,
+            "name": box,
+            "page": members.address(name),
+        }
 
     def _favourites(self, body: dict[str, Any]) -> Any:
         """Tick or untick *show my five-star games on my page* (R1); the box as it stands."""
@@ -1975,13 +2003,22 @@ class SiteApp(App):
         reconciled, at a second scrypt, and a handle nobody held cost none, so the time
         an answer took said which was which.
 
-        The limit is met before the connection is opened (Q369), so a refused attempt
-        costs neither a reconcile nor the 50 ms of scrypt the check itself is.
+        The address's limit is met before the connection is opened (Q369), and the
+        account's right after one read, so a refused attempt costs neither a reconcile nor
+        the 50 ms of scrypt the check itself is.
+
+        **The per-account count is keyed by the account, not the name typed** (DN2,
+        `identity.limit_key`): a member's current name and every former one count against
+        one key, so renaming neither clears the failures against them nor opens a fresh
+        allowance under the new name or the old. A name nobody holds is keyed as typed.
         """
         handle = str(body.get("handle") or "")
-        self.signins.check(self.source, handle)
+        self.signins.check(self.source)
+        account = handle
         try:
             with self._connection() as connection:
+                account = identity.limit_key(connection, handle)
+                self.signins.check(self.source, account)
                 admin.ensure_account(connection)
                 connection.commit()
                 viewer, token = identity.sign_in(
@@ -1990,9 +2027,9 @@ class SiteApp(App):
                     password=str(body.get("password") or ""),
                 )
         except identity.Refused:
-            self.signins.failed(self.source, handle)
+            self.signins.failed(self.source, account)
             raise
-        self.signins.passed(self.source, handle)
+        self.signins.passed(self.source, account)
         self.viewer = viewer.id
         self.grant = Grant(token)
         return {"handle": viewer.handle}
@@ -3483,7 +3520,14 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                 return
             reading = app.member(handle, viewer.id)
             if reading is None:
-                self._lost()
+                # DN2: a member's former name goes to their page under the current one. A
+                # 303, never a 301: a browser keeps a 301 for good, and the member may take
+                # the old name back.
+                where = app.moved(handle)
+                if where is not None:
+                    self._redirect(where)
+                else:
+                    self._lost()
                 return
             self._html(
                 pages.member(reading, viewer.handle, app.players_listed(), viewer=viewer.id)

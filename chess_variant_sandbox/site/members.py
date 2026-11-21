@@ -103,6 +103,25 @@ def find(connection: Any, handle: str) -> tuple[int, str, datetime] | None:
     return int(found[0]), str(found[1]), found[2]
 
 
+def moved(connection: Any, handle: str) -> str | None:
+    """Where a link under a member's former name goes now (DN2): their page under the
+    current name, or None when the name is nobody's former name or its member has no page
+    (left, or shut out, the same 404 `find` gives them). Asked only after `find` said no,
+    so a name somebody holds now is always their own page."""
+    name = handle.strip()
+    if not identity.HANDLE.match(name):
+        return None
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select u.handle from former_handles f join users u on u.id = f.user_id"
+            " where lower(f.handle) = lower(%s) and u.handle is not null"
+            " and u.revoked is null and u.forgotten is null",
+            (name,),
+        )
+        found = cursor.fetchone()
+    return None if found is None else address(str(found[0]))
+
+
 def shows_favourites(connection: Any, user: int) -> bool:
     """Whether this person ticked *show my five-star games on my page*. Off by default."""
     with connection.cursor() as cursor:

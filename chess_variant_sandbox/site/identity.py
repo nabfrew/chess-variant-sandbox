@@ -57,6 +57,21 @@ rejected password they would have remembered."""
 INVITE_LIFETIME = timedelta(days=14)
 SESSION_LIFETIME = timedelta(days=30)
 
+RENAME_EVERY = timedelta(days=30)
+"""How long after one change of display name the next may be made (DN2). The first change
+is free: somebody who regrets the name they picked at `/join` can fix it at once. Thirty
+days because a name is how other members find and recognise a person, and a name that moves
+weekly is no name; the limit is said on the account page before anybody tries."""
+
+RENAME_RULE = (
+    "You can change your name once every 30 days; your first change can be made at any "
+    "time. Links to your page under an old name keep working and take people to your "
+    "page under the new one. Your old names stay yours: nobody else can ever take one, "
+    "and you can go back to one of them. Other members see only your current name."
+)
+"""The account page's sentence, said before the change (DN2). One string, so the page and
+`tests/test_site_display_name.py` cannot drift apart from `RENAME_EVERY`."""
+
 SEEN_RESOLUTION = timedelta(hours=1)
 """How stale `sessions.seen` is allowed to get before a request writes it. The column
 answers *when was this session last used*, which does not need to be exact, and a write
@@ -314,13 +329,144 @@ def _free(cursor: Any, handle: str, email: str, reserved: Collection[str] = ()) 
     driver's message in it. This is the same refusal in a sentence the person can act on.
     A reserved handle is one condition with a held one, so the two cannot drift apart.
     """
-    cursor.execute("select 1 from users where lower(handle) = lower(%s)", (handle,))
-    held = cursor.fetchone() is not None
-    if held or handle.lower() in {name.strip().lower() for name in reserved}:
-        raise Refused(f"the handle {handle} is taken; choose another")
+    _name_free(cursor, handle, None, reserved)
     cursor.execute("select 1 from users where email = %s", (email,))
     if cursor.fetchone() is not None:
         raise Refused("that address already has an account; sign in instead")
+
+
+def _name_free(
+    cursor: Any, handle: str, own: int | None, reserved: Collection[str] = ()
+) -> None:
+    """Refuse a name somebody else holds now or held before (DN2), or a reserved one.
+
+    `own` is the member asking to take it, whose current and former names are theirs to
+    take; `None` at joining, when nobody's are. A former name is held exactly as a current
+    one is, in the same words, so the answer does not say which it is.
+    """
+    cursor.execute(
+        "select 1 from users where lower(handle) = lower(%(name)s)"
+        " and id is distinct from %(own)s"
+        " union all select 1 from former_handles where lower(handle) = lower(%(name)s)"
+        " and user_id is distinct from %(own)s",
+        {"name": handle, "own": own},
+    )
+    held = cursor.fetchone() is not None
+    if held or handle.lower() in {name.strip().lower() for name in reserved}:
+        raise Refused(f"the handle {handle} is taken; choose another")
+
+
+# ------------------------------------------------------------------------ display names
+
+
+def rename(
+    connection: Any, user: int, handle: str, *, reserved: Collection[str] = ()
+) -> str:
+    """Change a member's display name (DN2), returning the name now held.
+
+    Under joining's format rule (`_handle`) and its check (`_name_free`), with `reserved`
+    the maintenance account's name as at joining. The name given up goes to
+    `former_handles`, where nobody else can take it and `/players/<old>` still finds its
+    member; going back to one of your own former names takes it out again. At most one
+    change in `RENAME_EVERY`, the first free; a change of case alone is a change.
+
+    The maintenance account cannot be renamed here: its name is the box's setting
+    (`ADMIN_ACCOUNT_NAME`), and `admin.ensure_account` would write it back.
+    """
+    name = _handle(handle)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select handle, handle_changed is not null and handle_changed + %s > now(),"
+            " (handle_changed + %s)::date from users"
+            " where id = %s and revoked is null and forgotten is null for update",
+            (RENAME_EVERY, RENAME_EVERY, user),
+        )
+        found = cursor.fetchone()
+        if found is None or found[0] is None:
+            raise Refused("there is no account here to rename")
+        old, waiting, next_day = str(found[0]), bool(found[1]), found[2]
+        if old.lower() in {one.strip().lower() for one in reserved}:
+            raise Refused(
+                "the maintenance account's name is set by the site's settings, not here"
+            )
+        if name == old:
+            raise Refused(f"{name} is already your name")
+        if waiting:
+            raise Refused(
+                f"you changed your name less than {RENAME_EVERY.days} days ago; "
+                f"you can change it again from {next_day:%d %B %Y}"
+            )
+        _name_free(cursor, name, user, reserved)
+        cursor.execute(
+            "delete from former_handles where user_id = %s and lower(handle) = lower(%s)",
+            (user, name),
+        )
+        if old.lower() != name.lower():
+            cursor.execute(
+                "insert into former_handles (handle, user_id) values (%s, %s)", (old, user)
+            )
+        cursor.execute(
+            "update users set handle = %s, handle_changed = now() where id = %s",
+            (name, user),
+        )
+    return name
+
+
+def name_box(connection: Any, user: int) -> dict[str, Any]:
+    """The account page's *Your name* box (DN2): the name, whether it can change now and
+    from when if not, the rule said before the change, and this member's own former names
+    (theirs to go back to, shown to them alone)."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select handle, handle_changed is not null and handle_changed + %s > now(),"
+            " (handle_changed + %s)::date from users where id = %s",
+            (RENAME_EVERY, RENAME_EVERY, user),
+        )
+        found = cursor.fetchone()
+        cursor.execute(
+            "select handle from former_handles where user_id = %s order by until desc",
+            (user,),
+        )
+        former = [str(row[0]) for row in cursor.fetchall()]
+    waiting = bool(found and found[1])
+    return {
+        "handle": None if found is None or found[0] is None else str(found[0]),
+        "canChange": not waiting,
+        "from": f"{found[2]:%d %B %Y}" if waiting else None,
+        "rule": RENAME_RULE,
+        "former": former,
+    }
+
+
+def holder_of(connection: Any, handle: str) -> tuple[int, str] | None:
+    """`(id, current name)` of the member who holds or held this name, ignoring case, or
+    None. Somebody who left holds no name, current or former (`admin.forget`)."""
+    name = handle.strip()
+    if not name:
+        return None
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select id, handle from users where lower(handle) = lower(%(name)s)"
+            " union all select u.id, u.handle from former_handles f"
+            " join users u on u.id = f.user_id where lower(f.handle) = lower(%(name)s)"
+            " and u.handle is not null",
+            {"name": name},
+        )
+        found = cursor.fetchone()
+    return None if found is None else (int(found[0]), str(found[1]))
+
+
+def limit_key(connection: Any, handle: str) -> str:
+    """What the sign-in limiter's per-account count is keyed by for this typed name.
+
+    The account, by id, for a name somebody holds now or held before; the name as typed for
+    one nobody has. Keyed by id so a rename moves no count: the failures against a member
+    stay theirs under every name they have had, and neither a new name nor an old one is a
+    fresh allowance (DN2). `user 12` cannot be anybody's handle, so the two kinds of key
+    never meet.
+    """
+    found = holder_of(connection, handle)
+    return handle if found is None else f"user {found[0]}"
 
 
 def _unclaimed(cursor: Any, address: str) -> None:
@@ -360,12 +506,17 @@ def sign_in(connection: Any, handle: str, password: str) -> tuple[Viewer, str]:
     row with no password all reach `verify` with nothing to check against, and `verify`
     spends on nothing what it would have spent on a row. Before, only a held handle cost
     the hash, so the time an answer took said whether the handle existed.
+
+    A member's former name signs them in too (DN2): it is theirs and nobody else's for
+    good, and somebody who renamed last month may well type the old one.
     """
     with connection.cursor() as cursor:
         cursor.execute(
             "select id, handle, role, password from users"
-            " where lower(handle) = lower(%s) and revoked is null",
-            (handle.strip(),),
+            " where (lower(handle) = lower(%(name)s) or id in ("
+            "   select user_id from former_handles where lower(handle) = lower(%(name)s)))"
+            " and handle is not null and revoked is null",
+            {"name": handle.strip()},
         )
         found = cursor.fetchone()
     stored = None if found is None else found[3]

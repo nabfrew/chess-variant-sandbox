@@ -743,6 +743,25 @@ def _build_parser() -> argparse.ArgumentParser:
                              "so a campaign runs in slices; each game's work is resumable")
     proofs.set_defaults(handler=_cmd_proofs)
 
+    study = sub.add_parser(
+        "study",
+        help="make the study record (opening tree and example games) every Library and "
+             "Baseline game is owed, or one game's",
+    )
+    study.add_argument(
+        "game", nargs="?", default="",
+        help="content hash or ruleset path; omit for every game that is owed",
+    )
+    study.add_argument("--check", action="store_true",
+                       help="report what is owed and why, replaying every record, and exit "
+                            "non-zero if anything is; makes nothing")
+    study.add_argument("--runs", type=Path, default=RUNS_DIR,
+                       help="where records are written, under study/")
+    study.add_argument("--games", type=Path, default=None,
+                       help="where the measurement runs are read from (default: --runs)")
+    study.add_argument("--json", action="store_true", help="machine-readable output")
+    study.set_defaults(handler=_cmd_study)
+
     strength = sub.add_parser(
         "premise",
         help="check whether a game's players are strong enough for its score (Q502d)",
@@ -2003,6 +2022,56 @@ def _cmd_proofs(args: argparse.Namespace) -> int:
     if not owed and not args.json:
         print("nothing owed")
     return 1 if failed else 0
+
+
+def _cmd_study(args: argparse.Namespace) -> int:
+    """Study records kept by hand, as `proofs` keeps proven positions (R-W4b1,
+    `docs/plan-website.md` *The study page*).
+
+    `--check` reads every Library and Baseline game's standing (`study.standing`, every
+    record replayed through the engine) and makes nothing. Without it, each owed game (or
+    the named one, owed or not) is made from its stored games, a second or less each; it
+    plays no game and runs no search.
+    """
+    from chess_variant_sandbox import study
+
+    games = args.games if args.games is not None else args.runs
+    seeds = corpus.LIBRARY_SEEDS
+    library = study.library()
+    named = ""
+    if args.game:
+        named = (spec_hash(load_spec(Path(args.game))) if Path(args.game).exists()
+                 else args.game)
+        library = [entry for entry in library if entry[0] == named]
+        if not library:
+            print(f"{args.game}: not a Library or Baseline game here", file=sys.stderr)
+            return 2
+    standings = [study.standing(digest, name, spec, args.runs, games, seeds)
+                 for digest, name, spec in library]
+    owed = [found for found in standings if found.owed or named]
+    if args.check:
+        owed = [found for found in standings if found.owed]
+        if args.json:
+            print(json.dumps([{**dataclasses.asdict(found), "owed": found.owed}
+                              for found in standings]))
+        else:
+            for found in standings:
+                print(f"  {found.needs or 'ok':5} {found.name:26} [{found.hash}] {found.reason}")
+            print(f"\n{len(owed)} of {len(standings)} owed")
+        return 1 if owed else 0
+    specs = {digest: spec for digest, _name, spec in library}
+    for found in owed:
+        began = time.monotonic()
+        data = study.make(specs[found.hash], args.runs, games, seeds)
+        line = study.summary(data).removeprefix("current: ")
+        if args.json:
+            print(json.dumps({"hash": found.hash, "name": found.name, "made": line,
+                              "seconds": round(time.monotonic() - began, 2)}))
+        else:
+            print(f"{found.name}: {line} ({time.monotonic() - began:.1f} s)")
+    if not owed and not args.json:
+        print("nothing owed")
+    return 0
 
 
 def _cmd_premise(args: argparse.Namespace) -> int:

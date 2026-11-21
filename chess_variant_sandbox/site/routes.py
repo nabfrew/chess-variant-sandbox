@@ -431,6 +431,15 @@ OWN: tuple[Route, ...] = (
         "only members see them, on `/players/<handle>`",
         visitor="Sign in to change what your page shows.",
     ),
+    # DN2, a member changes their display name (`docs/reference/site-as-built.md` §6).
+    Route(
+        "POST",
+        "/api/handle",
+        "change your own display name: joining's rule and check, once in 30 days (the "
+        "first change free); a name you give up stays yours, and its old page link "
+        "follows you",
+        visitor="Sign in to change your name.",
+    ),
     # Q719, a member's own invitations (`docs/archive/plan-launch.md` §5.3a).
     Route(
         "POST",

@@ -12,6 +12,12 @@ any other address keeps its brackets.
 
 ---
 
+## 2026-11-21
+
+### You can change your display name
+
+A member can now change the name others see, from the Your name box under Settings on their own page. The box says the rule before you change anything: once in thirty days, with the first change free. Links to your old name follow you to your page, and a name you have used stays yours, so nobody else can take it. Your email address is never shown to anyone else, and a check now walks every page to hold that.
+
 ## 2026-11-20
 
 ### The site says who makes it

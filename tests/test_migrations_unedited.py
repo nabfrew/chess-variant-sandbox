@@ -59,6 +59,8 @@ PINNED = {
         "9c9a9835f07fcd85f9006864b7c38634268e10b2d1677a5dc11c61a72a52152b"),
     "0044_usage_deploy.sql": (
         "3da0fd44cd1f2208a0800474cd795468f16803f34126c15cf901757751d70651"),
+    "0045_former_handles.sql": (
+        "f1c02642b2c8cbc48b69d538189bc8718c5f02eae5eda44f9b0acdafea88fdca"),
 }
 
 

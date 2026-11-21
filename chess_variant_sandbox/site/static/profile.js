@@ -505,6 +505,66 @@ function drawInvite(box) {
   }
 }
 
+// DN2: *Your name*, the display name other members know you by, and the way to change it.
+// The rule (`identity.RENAME_RULE`: the limit, that old links follow you, that old names stay
+// yours) is said above the form, before anybody tries. A change reloads the page, because
+// the header and *as members see it* are drawn by the server under the name.
+function drawYourName(box) {
+  const where = document.getElementById('your-name');
+  if (!where) return;
+  where.replaceChildren();
+  if (!box || !box.handle) return;
+  where.appendChild(el('h3', '', 'Your name'));
+  const now = el('p');
+  words(now, 'Other members know you as ');
+  bold(now, box.handle);
+  words(now, '. Your email address is never shown to them.');
+  where.appendChild(now);
+  // Back from a change: the settings open on this box, which says the name took.
+  if (window.location.hash === '#your-name') {
+    const settings = document.getElementById('settings');
+    if (settings) settings.open = true;
+    say('Your name is now ' + box.handle + '.');
+    where.scrollIntoView();
+    history.replaceState(null, '', window.location.pathname);
+  }
+  where.appendChild(el('p', 'under', box.rule));
+  if ((box.former || []).length) {
+    where.appendChild(el('p', 'under',
+      'Your earlier names, still yours: ' + box.former.join(', ') + '.'));
+  }
+  if (!box.canChange) {
+    where.appendChild(el('p', '', 'You can change your name again from ' + box.from + '.'));
+    return;
+  }
+  const form = el('form', 'invite');
+  const label = document.createElement('label');
+  const name = el('span', '', 'new name');
+  const field = document.createElement('input');
+  field.type = 'text';
+  field.id = 'new-handle';
+  field.required = true;
+  field.minLength = 3;
+  field.maxLength = 24;
+  field.autocomplete = 'off';
+  field.setAttribute('autocapitalize', 'off');
+  field.spellcheck = false;
+  label.append(name, field);
+  const send = el('button', '', 'change my name');
+  send.type = 'submit';
+  form.append(label, send);
+  where.appendChild(form);
+  where.appendChild(el('p', 'under',
+    '3 to 24 letters, digits, hyphens and underscores, starting with a letter or a digit.'));
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    send.disabled = true;
+    post('/api/handle', { handle: field.value })
+      .then(() => { window.location.hash = 'your-name'; window.location.reload(); })
+      .catch(error => { send.disabled = false; say(error.message); });
+  });
+}
+
 // Q606, `docs/archive/plan-return.md` §3 C4 (R10): *list me on the games I made as taking
 // challengers*, one switch, off unless you switch it on, and absent for somebody with no
 // published game of their own. Saved at once and said in the note, as the boxes above are.
@@ -1135,6 +1195,7 @@ async function draw() {
   // The workshop is drawn for anybody past the start: with nothing waiting, its *Start a
   // new game* is the page's one primary.
   if (busy || payload.counts.tried) drawYourGames(made, columns, !waits);
+  drawYourName(payload.name);
   drawMoveEmail(payload.moveEmail);
   drawTakesChallengers(payload.takesChallengers);
   drawInvite(payload.invites);

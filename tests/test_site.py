@@ -1198,7 +1198,13 @@ STORE: dict[str, tuple[str, ...]] = {
         # `0030_spot_check.sql`, Q503e. When a spot check found a game the site's replay
         # did not reproduce; null for everybody until one does.
         "flagged",
+        # `0045_former_handles.sql`, DN2. When this person last changed their display
+        # name; null until they first do.
+        "handle_changed",
     ),
+    # `0045_former_handles.sql`, DN2. The names members gave up, which nobody else may
+    # take and whose old page links follow their member.
+    "former_handles": ("handle", "user_id", "until"),
     # `email` is `0004_invite_email.sql`, task 1.3's: an invitation goes to one address,
     # so the code in the link belongs to it and the join asks for a handle and a password
     # and nothing else. Last in the tuple because that is where `alter table` puts it.
@@ -1491,6 +1497,8 @@ STORE: dict[str, tuple[str, ...]] = {
 # per game" true. Pinned because each one is a query the plan names -- the game page, the
 # fold over a game's matches in finish order, a person's match list, the top of a table.
 INDEXES = (
+    # DN2: a name is held once, current or former, ignoring case.
+    "former_handles_one_name",
     "matches_by_game",
     "matches_by_seat0",
     "matches_by_seat1",

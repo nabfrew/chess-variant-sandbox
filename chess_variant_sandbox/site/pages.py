@@ -958,6 +958,7 @@ def profile(
         # sentence. Q572's email, Q606's switch, Q596's page box and Q719's invitations.
         '<details class="settings" id="settings"><summary>Settings and invitations</summary>\n'
         '<div class="settingsGrid">\n'
+        '<div class="setting" id="your-name"></div>\n'
         '<div class="setting" id="move-email"></div>\n'
         '<div class="setting" id="takes-challengers"></div>\n'
         '<div class="setting" id="your-page"></div>\n'
@@ -2044,6 +2045,11 @@ def privacy() -> str:
         "computer players you have finished most games with. Visitors are sent to the "
         "sign-in page instead. Nothing records when you visit, so no page says when you "
         "were last here.</p>\n"
+        # DN2: a member's former names, `former_handles` (`site-as-built.md` §6).
+        "<p>You can change your handle on your own page. The site then keeps your "
+        "earlier handles, so that nobody else can ever take one and a link to your page "
+        "under an old one still reaches it; other members see only the handle you have "
+        "now, and leaving deletes the earlier ones with it.</p>\n"
         "<p>The players page lists every member, A to Z, so members can find each other "
         "by name: your mark, your handle, the month you joined and the names of up to "
         "three of your published games, each the way to your page. It shows members "

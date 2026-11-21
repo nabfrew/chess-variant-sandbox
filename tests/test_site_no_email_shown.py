@@ -57,6 +57,8 @@ MARK = "zq7vh3"
 """The invented string every seeded address carries, and nothing else on the site does."""
 
 MEMBER = "quillfeather"
+RENAMED = "quillwren"
+"""The member's name after they change it (DN2); `MEMBER` is then their former name."""
 OTHER = "tallowmere"
 ADDRESS = f"qa-{MARK}-member@unseen.invalid"
 OTHER_ADDRESS = f"qa-{MARK}-other@unseen.invalid"
@@ -172,7 +174,12 @@ def _seeded(site: Site, root: Path) -> dict[str, Any]:
     assert linked.status == 200, linked.text
     token = re.search(r"/c/([A-Za-z0-9_-]+)", linked.text)
     assert token is not None, linked.text
+    # DN2: the member changes their name, so every page below is walked after a rename,
+    # with their old page's link (`/players/<MEMBER>`) and their new one in the walk.
+    renamed = member_browser.post("/api/handle", {"handle": RENAMED})
+    assert renamed.status == 200, renamed.text
     return {
+        "renamed": renamed,
         "site": site,
         "member": member_browser,
         "other": other_browser,
@@ -190,7 +197,8 @@ def _paths(fill: dict[str, list[str]]) -> list[str]:
     """Every page the site serves and every GET route it registers, filled in."""
     pages = ["/", "/game", "/rules", "/rules.md", "/whats-new", "/score-history",
              seo.ROBOTS_PATH, seo.SITEMAP_PATH, seo.LLMS_PATH, feeds.GAMES_PATH,
-             feeds.NEWS_PATH, f"{routes.MEMBERS}{MEMBER}", f"{routes.MEMBERS}{OTHER}"]
+             feeds.NEWS_PATH, f"{routes.MEMBERS}{MEMBER}", f"{routes.MEMBERS}{RENAMED}",
+             f"{routes.MEMBERS}{OTHER}"]
     pages += list(routes.PAGES)
     pages += [f"/game/{digest}" for digest in fill["hash"]]
     pages += [f"/c/{token}" for token in fill["token"]]
@@ -239,6 +247,21 @@ def test_no_payload_carries_a_members_address_to_anybody_else(
     for path in paths:
         answer = browser.get(path)
         assert _shows(answer.text) == [], f"{who} reading {path} ({answer.status})"
+
+
+def test_a_rename_and_its_old_link_carry_no_address(seeded: dict[str, Any]) -> None:
+    """DN2: the answer to the change, the old link's redirect (whose `Location` is the new
+    page) and the new page itself, read by another member, carry no address; the member's
+    own account page, which now holds the *Your name* box, carries none either."""
+    assert _shows(seeded["renamed"].text) == []
+    moved = seeded["other"].get(f"{routes.MEMBERS}{MEMBER}")
+    assert moved.status == 303
+    assert _shows(moved.text) == []
+    new_page = seeded["other"].get(f"{routes.MEMBERS}{RENAMED}")
+    assert new_page.status == 200 and RENAMED in new_page.text
+    assert _shows(new_page.text) == []
+    for path in ("/profile", "/api/profile"):
+        assert _shows(seeded["member"].get(path).text) == [], path
 
 
 def test_the_mail_another_person_gets_names_the_member_by_handle(

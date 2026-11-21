@@ -332,9 +332,12 @@ def _handle_is_free(cursor: Any, name: str) -> bool:
     said to whoever is signing in, so the line goes to the journal, once, because this
     runs at an attempt anybody can make.
     """
+    # A member's former name is theirs as their current one is (DN2).
     cursor.execute(
-        "select 1 from users where lower(handle) = lower(%s) and email <> %s",
-        (name, RESERVED_EMAIL),
+        "select 1 from users where lower(handle) = lower(%s) and email <> %s"
+        " union all select 1 from former_handles f join users u on u.id = f.user_id"
+        " where lower(f.handle) = lower(%s) and u.email is distinct from %s",
+        (name, RESERVED_EMAIL, name, RESERVED_EMAIL),
     )
     if cursor.fetchone() is None:
         return True
@@ -857,6 +860,9 @@ def forget(connection: Any, handle: str) -> str:
             raise AdminError(f"no user with the handle {name!r}")
         user = int(found[0])
         cursor.execute("delete from sessions where user_id = %s", (user,))
+        # Their former names go with their current one (DN2): a name is theirs, and the
+        # notice says it goes. Old links to them then find nobody, as the current one does.
+        cursor.execute("delete from former_handles where user_id = %s", (user,))
         cursor.execute(
             "update users set email = null, password = null, handle = null,"
             " move_email = false, mail_off = null, show_favourites = false,"
